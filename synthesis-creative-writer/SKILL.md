@@ -1,5 +1,5 @@
 ---
-name: synthesis-creative-writer-setup
+name: synthesis-creative-writer
 description: >
   Configure an LLM as a creative writing coach and editor. Use for creative writing,
   writer setup, configure writer, creative assistant, content creation coaching,
@@ -10,7 +10,7 @@ metadata:
   version: 1.0.0
 ---
 
-# Creative Writer Setup
+# Creative Writer
 
 Configure an LLM to serve as a creative writing coach and editor that helps develop ideas, improve writing clarity, and maintain the author's unique voice.
 

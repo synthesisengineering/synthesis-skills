@@ -1,5 +1,5 @@
 ---
-name: synthesis-message-condensation
+name: synthesis-concise-messaging
 description: >
   Condense messages to 5 sentences or less using the High-Five Habit framework.
   Produces concise, effective business communications across email, Slack, text, and social media.
@@ -11,7 +11,7 @@ metadata:
   version: "1.0.0"
 ---
 
-# Message Condensation
+# Concise Messaging
 
 Condense messages to 5 sentences or less using the High-Five Habit framework. Most messages can and should be this concise.
 

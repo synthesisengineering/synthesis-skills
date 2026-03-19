@@ -1,5 +1,5 @@
 ---
-name: synthesis-technical-advisor-setup
+name: synthesis-technical-advisor
 description: >
   Configure an LLM as a senior technical advisor for software development and
   engineering. Use for technical advisor, tech setup, configure advisor, technical
@@ -10,7 +10,7 @@ metadata:
   version: 1.0.0
 ---
 
-# Technical Advisor Setup
+# Technical Advisor
 
 Configure an LLM to serve as a senior technical advisor with deep expertise in software engineering, architecture, and best practices.
 

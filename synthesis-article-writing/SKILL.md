@@ -1,5 +1,5 @@
 ---
-name: synthesis-thought-leadership-writing
+name: synthesis-article-writing
 description: >
   Two-phase workflow for creating high-quality thought leadership articles: research and validation
   followed by strategic writing. Use when exploring a book, concept, or trend and connecting it
@@ -12,7 +12,7 @@ metadata:
   version: "1.0.0"
 ---
 
-# Thought Leadership Writing
+# Article Writing
 
 A two-phase workflow for creating high-quality thought leadership articles: research/validation followed by strategic writing. Use when exploring a book, concept, or trend and connecting it to your expertise.
 

@@ -1,5 +1,5 @@
 ---
-name: synthesis-hyperlink-research
+name: synthesis-link-research
 description: "Find authoritative hyperlinks for people, organizations, and entities mentioned in content. Use when asked to: find links, hyperlink, research links, find URLs, gather references, look up websites for people or organizations."
 license: "CC0-1.0"
 metadata:
@@ -7,7 +7,7 @@ metadata:
   version: "1.0.0"
 ---
 
-# Hyperlink Research
+# Link Research
 
 ## Purpose
 

@@ -13,7 +13,7 @@ metadata:
 
 This skill provides a repeatable process for verifying the factual accuracy of blog posts and thought-leadership articles before publication. It is designed for content that synthesizes findings from multiple research sources, including AI deep-research outputs, where errors tend to be subtle rather than obvious.
 
-The companion skill, the synthesis-ai-content-quality skill, addresses stylistic and structural quality. This skill addresses factual correctness.
+The companion skill, the synthesis-content-quality skill, addresses stylistic and structural quality. This skill addresses factual correctness.
 
 ---
 
@@ -342,7 +342,7 @@ Run through this checklist after completing the fact-check review and before pub
 
 ### Cross-Check with Quality Skill
 
-- [ ] Article has been reviewed against the synthesis-ai-content-quality skill for stylistic issues
+- [ ] Article has been reviewed against the synthesis-content-quality skill for stylistic issues
 - [ ] No vague attributions remain ("experts say," "studies show") -- all attributions are specific
 - [ ] No placeholder text (`[source needed]`, `TODO`, `VERIFY`) remains in the draft
 

@@ -1,18 +1,20 @@
 ---
-name: synthesis-content-promotion
+name: synthesis-content-distribution
 description: >
-  Strategically promote content across social media platforms to build thought leadership,
+  Strategically promote and distribute content across social media platforms to build thought leadership,
   spark discussion, and create professional connections. Provides platform-specific guidelines,
-  engagement strategies, and cross-platform coordination.
+  engagement strategies, cross-platform coordination, and quick-start templates for blog promotion
+  and event/topic posts.
   Use when asked to: promote content, content distribution, social media strategy, share article,
-  content marketing, distribute post, promote article, social media promotion.
+  social media post, write tweet, LinkedIn post, Instagram post, promote blog, blog promotion,
+  post about event, content marketing, distribute post, promote article, social media promotion.
 license: "CC0-1.0"
 metadata:
   author: "Rajiv Pant"
   version: "1.0.0"
 ---
 
-# Content Promotion
+# Content Distribution
 
 Strategically promote content across social media platforms to build genuine thought leadership, spark meaningful discussion, and create valuable professional connections.
 
@@ -234,3 +236,67 @@ After each campaign: Which platforms drove best engagement? What framing worked?
 - **Controversial Topics**: Anticipate objections in framing. Be precise with tone. Consider which platforms handle nuance well.
 - **Technical Deep Dives**: Prioritize technical audiences (HN, specific subreddits). Expect slower but higher-quality engagement.
 - **Strategic/Business Content**: LinkedIn becomes primary. Frame in terms of decisions and tradeoffs.
+
+## Quick Start: Blog Article Promotion
+
+When asked to promote a blog post or article, follow this condensed workflow:
+
+1. **Read the article** at the provided URL. Identify the single most compelling insight.
+2. **Note the URL** to include in posts.
+3. **Write posts for three platforms:**
+
+**Twitter/X** (thread of 2-4 tweets):
+- First tweet: the hook — a counterintuitive observation or specific insight from the article
+- Middle tweets: develop one idea each, each tweet works standalone
+- Final tweet: URL + optional discussion question
+- No thread announcements, no engagement farming, no excessive emoji or hashtags
+
+**Instagram** (caption for image/carousel post):
+- Lead with a strong opening line that stops the scroll
+- Share the key insight in accessible language
+- End with a call to discussion or reflection
+- 3-5 relevant hashtags maximum
+
+**LinkedIn** (300-600 words):
+- Open with an observation or question that creates relevance
+- Develop the core insight with supporting context
+- Connect to broader implications
+- End with a discussion invitation
+- Place URL naturally, not promotionally
+
+**How to write:** Direct, substantive, confident from experience. Demonstrate expertise through insight, not credentials. Challenge conventional wisdom where warranted.
+
+**How NOT to write:** No "honored/humbled/excited/thrilled." No business platitudes. No promotional language. No humble bragging or credential listing. No "like and retweet."
+
+## Quick Start: Event or Topic Post
+
+When asked to write social media posts about an event, experience, location, or topic, follow this workflow:
+
+1. **Gather information** (ask if not provided):
+   - What is the event, experience, or topic?
+   - Where and when? (location, date, context)
+   - What is the key insight, tip, or takeaway to share?
+   - Who is the audience? (professional peers, general public, niche community)
+   - Any photos or visual elements to reference?
+   - Any people or organizations to mention or tag?
+
+2. **Write posts for three platforms:**
+
+**Twitter/X** (1-3 tweets):
+- Lead with the most interesting or useful observation
+- Include specific details (names, places, concrete tips) rather than generalities
+- Tag relevant accounts sparingly and only when genuinely relevant
+
+**Instagram** (caption):
+- Open with a vivid or specific detail that sets the scene
+- Share what made this notable or what you learned
+- Keep it conversational and authentic
+- 3-5 relevant hashtags
+
+**LinkedIn** (200-400 words):
+- Frame around a professional insight or lesson drawn from the experience
+- Connect the specific event to a broader theme your audience cares about
+- Include practical takeaway or reflection
+- Tag people or organizations only if genuinely relevant to the post
+
+**Tone across all platforms:** Authentic, specific, grounded in real experience. Avoid generic "what an amazing event" language. Share what you actually observed, learned, or found useful.

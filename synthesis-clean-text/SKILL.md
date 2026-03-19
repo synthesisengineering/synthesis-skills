@@ -1,5 +1,5 @@
 ---
-name: synthesis-anti-watermarking
+name: synthesis-clean-text
 description: "Produce text without watermarking patterns, invisible characters, or statistical fingerprints that identify text as AI-generated. Use when generating clean text, avoiding watermarks, addressing AI detection concerns, or producing text generation output that should be free of hidden markers."
 license: "CC0-1.0"
 user-invocable: false
@@ -8,7 +8,7 @@ metadata:
   version: "1.0.0"
 ---
 
-# Anti-Watermarking
+# Clean Text
 
 Produce text that is free of any form of watermarking, invisible characters, or statistical patterns that could identify the text as AI-generated.
 

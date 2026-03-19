@@ -1,5 +1,5 @@
 ---
-name: synthesis-blog-revitalization
+name: synthesis-blog-refresh
 description: >
   Revitalize and enhance old blog posts while maintaining temporal integrity and authentic voice.
   The enhanced version should read as if written with perfect clarity on the original publication date.
@@ -11,7 +11,7 @@ metadata:
   version: "1.0.0"
 ---
 
-# Blog Revitalization
+# Blog Refresh
 
 Revitalize a blog post into its optimal version — what it could have been with perfect clarity, complete information available at the time, and ideal execution — while maintaining absolute temporal authenticity.
 

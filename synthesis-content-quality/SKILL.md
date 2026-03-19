@@ -1,5 +1,5 @@
 ---
-name: synthesis-ai-content-quality
+name: synthesis-content-quality
 description: >
   A 27-point quality framework for evaluating and improving AI-assisted content.
   Use for content quality, AI content, quality check, writing quality, editorial
@@ -11,7 +11,7 @@ metadata:
   version: 1.0.0
 ---
 
-# AI Content Quality Framework
+# Content Quality
 
 A systematic methodology for developing high-quality AI-assisted content and identifying content that falls short. This framework defines 27 criteria organized into confidence tiers for evaluating whether AI-assisted content meets professional publishing standards.
 

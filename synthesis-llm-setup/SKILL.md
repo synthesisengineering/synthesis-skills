@@ -1,5 +1,5 @@
 ---
-name: synthesis-llm-project-setup
+name: synthesis-llm-setup
 description: "Guide for setting up and configuring LLM projects across platforms. Use when setting up a Claude Project, creating a ChatGPT GPT, configuring a Gemini Gem, setting up an AI assistant with custom instructions and knowledge, or configuring any LLM platform with AI Knowledge content."
 license: "CC0-1.0"
 metadata:
@@ -7,7 +7,7 @@ metadata:
   version: "1.0.0"
 ---
 
-# LLM Project Setup
+# LLM Setup
 
 Configure Claude Projects, ChatGPT GPTs, Gemini Gems, and other LLM platforms using compiled AI Knowledge content from the ragbot system.
 

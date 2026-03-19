@@ -1,5 +1,5 @@
 ---
-name: synthesis-multi-contributor-coding
+name: synthesis-code-integration
 description: "The adopt-and-adapt integration pattern for multi-contributor synthesis-coded projects. Covers the lead synthesist role, quality gates, cherry-pick safety, and graduated integration intensity. Use when asked to: synthesis coding, multi-contributor, integration, cherry-pick, adopt and adapt, lead synthesist, integrate contributions, merge contributor work."
 license: "CC0-1.0"
 metadata:
@@ -7,7 +7,7 @@ metadata:
   version: "1.0.0"
 ---
 
-# Multi-Contributor Synthesis Coding
+# Code Integration
 
 When multiple people contribute to a project built through synthesis coding, integration is fundamentally different from a standard open source merge workflow. This skill defines how it works.
 

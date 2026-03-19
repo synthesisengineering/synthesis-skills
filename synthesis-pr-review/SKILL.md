@@ -20,10 +20,10 @@ Three related skills cover different scopes:
 | Skill | Scope | When to use |
 |-------|-------|-------------|
 | **codebase-review** | Full codebase audit (16 categories, tiered) | New engagement, periodic health check, or major milestone |
-| **multi-contributor-synthesis-coding** | Integration workflow (adopt-and-adapt pattern, quality gates) | When merging contributor work into main |
+| **synthesis-code-integration** | Integration workflow (adopt-and-adapt pattern, quality gates) | When merging contributor work into main |
 | **pr-review** (this one) | Delta review of a single change | Every PR, before peer approval or lead integration |
 
-PR review is the **most frequent** of the three. It happens on every change. The quality gates from the synthesis-multi-contributor-coding skill apply here, but this skill operationalizes them as specific review steps.
+PR review is the **most frequent** of the three. It happens on every change. The quality gates from the synthesis-code-integration skill apply here, but this skill operationalizes them as specific review steps.
 
 ---
 

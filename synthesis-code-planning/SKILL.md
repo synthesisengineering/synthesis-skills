@@ -1,5 +1,5 @@
 ---
-name: synthesis-code-generation
+name: synthesis-code-planning
 description: "Structured approach to code generation, implementing features, and writing code. Use when asked to generate code, implement a feature, write code, or tackle a coding task. Analyzes the task, generates multiple approaches with trade-offs, selects the optimal solution, and implements it."
 license: "CC0-1.0"
 user-invocable: false
@@ -8,7 +8,7 @@ metadata:
   version: "1.0.0"
 ---
 
-# Code Generation
+# Code Planning
 
 A structured methodology for approaching code tasks that produces higher-quality implementations by evaluating multiple approaches before committing to one.
 
