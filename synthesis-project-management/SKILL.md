@@ -66,7 +66,7 @@ ai-knowledge-{workspace}/
 |----------|-----------|
 | **Flat project folders** | Status is in `index.yaml`, not folder names. No moving folders when status changes. |
 | **`_lessons/` underscore prefix** | Distinguishes from project folders. Sorts to top. Visible, not hidden. |
-| **Three-tier context** | CONTEXT.md (working memory), REFERENCE.md (stable facts), sessions/ (history). See the context-lifecycle skill. |
+| **Three-tier context** | CONTEXT.md (working memory), REFERENCE.md (stable facts), sessions/ (history). See the synthesis-context-lifecycle skill. |
 | **Date-prefixed lesson files** | Enables time-based discovery. `ls -t` shows recent. No index needed. |
 | **No templates folder** | Agents examine existing examples and adapt. Templates are a pre-AI pattern. |
 | **No patterns.md** | Patterns are lessons with `type: pattern` in front matter. One folder to search. |
@@ -117,7 +117,7 @@ projects:
 
 Projects use a three-tier context system that separates information by lifecycle. This prevents unbounded growth of context files and keeps AI collaborators effective across long-running projects.
 
-**Detailed documentation:** See the context-lifecycle skill for templates, migration guides, decision trees, and quality metrics.
+**Detailed documentation:** See the synthesis-context-lifecycle skill for templates, migration guides, decision trees, and quality metrics.
 
 **The three tiers:**
 

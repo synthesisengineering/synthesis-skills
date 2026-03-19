@@ -29,7 +29,7 @@ cd synthesis-skills
 ### Install specific skills only
 
 ```bash
-npx skills add rajivpant/synthesis-skills --global --copy --skill pr-review,codebase-review,fact-checking
+npx skills add rajivpant/synthesis-skills --global --copy --skill synthesis-pr-review,synthesis-codebase-review,synthesis-fact-checking
 ```
 
 ### Update / Uninstall
@@ -44,45 +44,43 @@ npx skills remove synthesis-skills
 # Or: ./install.sh uninstall
 ```
 
-### Note on skill names
-
-Synthesis Skills use short, descriptive names (`pr-review`, `fact-checking`). If you have skills from other repos with the same names, install selectively using `--skill` to choose which you want. The `npx skills` CLI tracks provenance to help manage this.
-
 ## Available Skills
+
+All skills are prefixed with `synthesis-` to prevent namespace collisions with skills from other repositories.
 
 ### Engineering
 | Skill | Description |
 |-------|-------------|
-| `codebase-review` | Enterprise-scale codebase audit with tiered review system |
-| `pr-review` | Delta review methodology for pull requests, including security scanning and AI-analysis verification |
-| `multi-contributor-synthesis-coding` | Adopt-and-adapt integration pattern with cherry-pick safety and regression verification |
-| `code-generation` | Structured multi-approach code generation (background instruction) |
+| `synthesis-codebase-review` | Enterprise-scale codebase audit with tiered review system |
+| `synthesis-pr-review` | Delta review methodology for pull requests, including security scanning and AI-analysis verification |
+| `synthesis-multi-contributor-coding` | Adopt-and-adapt integration pattern with cherry-pick safety and regression verification |
+| `synthesis-code-generation` | Structured multi-approach code generation (background instruction) |
 
 ### Content Creation
 | Skill | Description |
 |-------|-------------|
-| `thought-leadership-writing` | Two-phase workflow: research/validation then strategic writing |
-| `content-promotion` | Strategic content promotion across social media platforms |
-| `social-media-post` | Social media post template for multiple platforms |
-| `blog-promotion` | Blog post promotion template |
-| `hyperlink-research` | Find authoritative links for people, organizations, and entities |
+| `synthesis-thought-leadership-writing` | Two-phase workflow: research/validation then strategic writing |
+| `synthesis-content-promotion` | Strategic content promotion across social media platforms |
+| `synthesis-social-media-post` | Social media post template for multiple platforms |
+| `synthesis-blog-promotion` | Blog post promotion template |
+| `synthesis-hyperlink-research` | Find authoritative links for people, organizations, and entities |
 
 ### Content Enhancement
 | Skill | Description |
 |-------|-------------|
-| `ai-content-quality` | 27-point quality framework for AI-assisted content |
-| `fact-checking` | Systematic fact-check process with multi-source confidence framework |
-| `blog-revitalization` | Revitalize old blog posts while maintaining temporal integrity |
+| `synthesis-ai-content-quality` | 27-point quality framework for AI-assisted content |
+| `synthesis-fact-checking` | Systematic fact-check process with multi-source confidence framework |
+| `synthesis-blog-revitalization` | Revitalize old blog posts while maintaining temporal integrity |
 
 ### Communication
 | Skill | Description |
 |-------|-------------|
-| `message-condensation` | High-Five Habit framework — condense messages to 5 sentences or less |
+| `synthesis-message-condensation` | High-Five Habit framework — condense messages to 5 sentences or less |
 
 ### Project Management
 | Skill | Description |
 |-------|-------------|
-| `context-lifecycle` | Three-tier context architecture for managing AI working memory |
+| `synthesis-context-lifecycle` | Three-tier context architecture for managing AI working memory |
 | `synthesis-project-management` | Lightweight PM system for human-agent collaboration |
 
 ### Synthesis Engineering
@@ -93,16 +91,16 @@ Synthesis Skills use short, descriptive names (`pr-review`, `fact-checking`). If
 ### Reasoning & Templates
 | Skill | Description |
 |-------|-------------|
-| `tree-of-thought` | Multi-expert collaborative reasoning technique |
-| `llm-project-setup` | Configure Claude Projects, ChatGPT GPTs, and Gemini Gems |
-| `creative-writer-setup` | Configure an LLM as a creative writer assistant |
-| `technical-advisor-setup` | Configure an LLM as a technical advisor |
+| `synthesis-tree-of-thought` | Multi-expert collaborative reasoning technique |
+| `synthesis-llm-project-setup` | Configure Claude Projects, ChatGPT GPTs, and Gemini Gems |
+| `synthesis-creative-writer-setup` | Configure an LLM as a creative writer assistant |
+| `synthesis-technical-advisor-setup` | Configure an LLM as a technical advisor |
 
 ### Background Instructions
 | Skill | Description |
 |-------|-------------|
-| `anti-watermarking` | Produce clean text without AI watermarking patterns |
-| `response-synthesis` | Combine multiple LLM responses into one unified document |
+| `synthesis-anti-watermarking` | Produce clean text without AI watermarking patterns |
+| `synthesis-response-merging` | Combine multiple LLM responses into one unified document |
 
 ## How Skills Work
 

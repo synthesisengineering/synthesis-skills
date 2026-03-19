@@ -4,47 +4,41 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-03-18
+
+### Changed
+- **All skills renamed with `synthesis-` prefix** for namespace protection. This prevents collisions with skills from other repositories that may use the same generic names.
+- `multi-contributor-synthesis-coding` → `synthesis-multi-contributor-coding`
+- `response-synthesis` → `synthesis-response-merging`
+
+### Migration
+If you installed v1.0.0, uninstall and reinstall:
+```bash
+./install.sh uninstall && ./install.sh install
+# Or: npx skills remove synthesis-skills && npx skills add rajivpant/synthesis-skills --global --all --copy
+```
+
 ## [1.0.0] - 2026-03-18
 
 ### Added
 
-**Engineering (4 skills)**
-- `codebase-review` — Enterprise-scale codebase audit with tiered review system
-- `pr-review` — Delta review methodology with security scanning and AI-analysis verification
-- `multi-contributor-synthesis-coding` — Adopt-and-adapt integration pattern with cherry-pick safety
-- `code-generation` — Structured multi-approach code generation (background instruction)
+Initial release: 22 public Agent Skills.
 
-**Content Creation (5 skills)**
-- `thought-leadership-writing` — Two-phase research/validation and strategic writing workflow
-- `content-promotion` — Strategic content promotion across social media platforms
-- `social-media-post` — Social media post template for multiple platforms
-- `blog-promotion` — Blog post promotion template
-- `hyperlink-research` — Find authoritative links for entities in content
+**Engineering:** `synthesis-codebase-review`, `synthesis-pr-review`, `synthesis-multi-contributor-coding`, `synthesis-code-generation`
 
-**Content Enhancement (3 skills)**
-- `ai-content-quality` — 27-point quality framework for AI-assisted content
-- `fact-checking` — Systematic fact-check process with multi-source confidence framework
-- `blog-revitalization` — Revitalize old posts while maintaining temporal integrity
+**Content Creation:** `synthesis-thought-leadership-writing`, `synthesis-content-promotion`, `synthesis-social-media-post`, `synthesis-blog-promotion`, `synthesis-hyperlink-research`
 
-**Communication (1 skill)**
-- `message-condensation` — High-Five Habit framework for concise messaging
+**Content Enhancement:** `synthesis-ai-content-quality`, `synthesis-fact-checking`, `synthesis-blog-revitalization`
 
-**Project Management (2 skills)**
-- `context-lifecycle` — Three-tier context architecture for AI working memory
-- `synthesis-project-management` — Lightweight PM for human-agent collaboration
+**Communication:** `synthesis-message-condensation`
 
-**Synthesis Engineering (1 skill)**
-- `synthesis-content-framing` — Content framing with topic, sophistication, and engagement gates
+**Project Management:** `synthesis-context-lifecycle`, `synthesis-project-management`
 
-**Reasoning & Templates (3 skills)**
-- `tree-of-thought` — Multi-expert collaborative reasoning technique
-- `llm-project-setup` — Configure Claude Projects, ChatGPT GPTs, Gemini Gems
-- `creative-writer-setup` — Configure LLM as creative writer
-- `technical-advisor-setup` — Configure LLM as technical advisor
+**Synthesis Engineering:** `synthesis-content-framing`
 
-**Background Instructions (2 skills)**
-- `anti-watermarking` — Clean text without AI watermarking patterns
-- `response-synthesis` — Combine multiple LLM responses into one document
+**Reasoning & Templates:** `synthesis-tree-of-thought`, `synthesis-llm-project-setup`, `synthesis-creative-writer-setup`, `synthesis-technical-advisor-setup`
+
+**Background Instructions:** `synthesis-anti-watermarking`, `synthesis-response-merging`
 
 ### Installation
 
