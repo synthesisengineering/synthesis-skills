@@ -140,6 +140,120 @@ do_install() {
         echo "  Use './install.sh status' before install to review drift."
     fi
     echo "Restart your AI assistant to pick up the new skills."
+
+    # Validate dependencies in the first target directory
+    FIRST_TARGET=""
+    for t in $TARGETS; do
+        if [ -d "$t" ]; then
+            FIRST_TARGET="$t"
+            break
+        fi
+    done
+    if [ -n "$FIRST_TARGET" ]; then
+        check_dependencies "$FIRST_TARGET"
+    fi
+}
+
+# Read depends_on from a SKILL.md frontmatter. Outputs one dependency name per line.
+parse_depends_on() {
+    skill_md="$1"
+    # Extract the depends_on line, strip YAML array syntax, output one name per line
+    dep_line=$(grep '^depends_on:' "$skill_md" 2>/dev/null || true)
+    if [ -z "$dep_line" ]; then
+        return
+    fi
+    # Remove 'depends_on:', brackets, quotes, spaces — split on commas
+    echo "$dep_line" | sed 's/^depends_on: *//; s/\[//; s/\]//; s/"//g; s/ //g' | tr ',' '\n' | grep -v '^$'
+}
+
+# Read source_type from an installed skill's .source.json
+read_source_type() {
+    source_json="$1/.source.json"
+    if [ -f "$source_json" ]; then
+        grep '"source_type"' "$source_json" | sed 's/.*: *"//; s/".*//'
+    else
+        echo "unknown"
+    fi
+}
+
+# Check dependency access hierarchy: public can only depend on public,
+# private can depend on public+private, shared can depend on public+shared.
+check_hierarchy() {
+    my_type="$1"
+    dep_type="$2"
+    case "$my_type" in
+        public)
+            [ "$dep_type" = "public" ] && return 0
+            return 1
+            ;;
+        private)
+            case "$dep_type" in
+                public|private) return 0 ;;
+                *) return 1 ;;
+            esac
+            ;;
+        shared)
+            case "$dep_type" in
+                public|shared) return 0 ;;
+                *) return 1 ;;
+            esac
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
+# Validate dependencies for all installed skills from this repo
+check_dependencies() {
+    target_dir="$1"
+    echo ""
+    echo "Checking dependencies..."
+
+    WARN_COUNT=0
+    VIOLATION_COUNT=0
+    CHECKED=0
+
+    for skill_dir in $(list_skills "$CACHE_DIR"); do
+        skill_name=$(basename "$skill_dir")
+        case "$skill_name" in
+            .git|node_modules|.github) continue ;;
+        esac
+
+        installed_dir="${target_dir}/${skill_name}"
+        [ -f "${installed_dir}/SKILL.md" ] || continue
+
+        deps=$(parse_depends_on "${installed_dir}/SKILL.md")
+        [ -z "$deps" ] && continue
+
+        for dep in $deps; do
+            CHECKED=$((CHECKED + 1))
+            dep_dir="${target_dir}/${dep}"
+
+            if [ ! -d "$dep_dir" ] || [ ! -f "${dep_dir}/SKILL.md" ]; then
+                echo "  WARNING: ${skill_name} depends on ${dep} (not installed)"
+                WARN_COUNT=$((WARN_COUNT + 1))
+            else
+                # Dependency is installed — check hierarchy
+                dep_source_type=$(read_source_type "$dep_dir")
+                if ! check_hierarchy "$SOURCE_TYPE" "$dep_source_type"; then
+                    echo "  VIOLATION: ${skill_name} (${SOURCE_TYPE}) depends on ${dep} (${dep_source_type}) — cross-collection dependency not allowed"
+                    VIOLATION_COUNT=$((VIOLATION_COUNT + 1))
+                fi
+            fi
+        done
+    done
+
+    if [ "$WARN_COUNT" -eq 0 ] && [ "$VIOLATION_COUNT" -eq 0 ]; then
+        echo "  All dependencies satisfied."
+    else
+        if [ "$WARN_COUNT" -gt 0 ]; then
+            echo "  $WARN_COUNT missing dependency warning(s)."
+        fi
+        if [ "$VIOLATION_COUNT" -gt 0 ]; then
+            echo "  $VIOLATION_COUNT hierarchy violation(s)."
+        fi
+    fi
 }
 
 do_update() {
