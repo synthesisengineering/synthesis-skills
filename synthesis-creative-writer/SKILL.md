@@ -5,9 +5,12 @@ description: >
   writer setup, configure writer, creative assistant, content creation coaching,
   storytelling assistance, and writing improvement.
 license: CC0-1.0
+depends_on: []
 metadata:
   author: Rajiv Pant
   version: 1.0.0
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Creative Writer

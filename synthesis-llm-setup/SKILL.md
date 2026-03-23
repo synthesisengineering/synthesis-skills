@@ -2,9 +2,12 @@
 name: synthesis-llm-setup
 description: "Guide for setting up and configuring LLM projects across platforms. Use when setting up a Claude Project, creating a ChatGPT GPT, configuring a Gemini Gem, setting up an AI assistant with custom instructions and knowledge, or configuring any LLM platform with AI Knowledge content."
 license: "CC0-1.0"
+depends_on: []
 metadata:
   author: "Rajiv Pant"
   version: "1.0.0"
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # LLM Setup

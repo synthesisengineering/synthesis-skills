@@ -3,9 +3,12 @@ name: synthesis-clean-text
 description: "Produce text without watermarking patterns, invisible characters, or statistical fingerprints that identify text as AI-generated. Use when generating clean text, avoiding watermarks, addressing AI detection concerns, or producing text generation output that should be free of hidden markers."
 license: "CC0-1.0"
 user-invocable: false
+depends_on: []
 metadata:
   author: "Rajiv Pant"
   version: "1.0.0"
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Clean Text

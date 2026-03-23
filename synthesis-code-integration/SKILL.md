@@ -2,9 +2,12 @@
 name: synthesis-code-integration
 description: "The adopt-and-adapt integration pattern for multi-contributor synthesis-coded projects. Covers the lead synthesist role, quality gates, cherry-pick safety, and graduated integration intensity. Use when asked to: synthesis coding, multi-contributor, integration, cherry-pick, adopt and adapt, lead synthesist, integrate contributions, merge contributor work."
 license: "CC0-1.0"
+depends_on: []
 metadata:
   author: "Rajiv Pant"
   version: "1.0.0"
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Code Integration

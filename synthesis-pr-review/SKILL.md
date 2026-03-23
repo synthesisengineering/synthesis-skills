@@ -2,9 +2,12 @@
 name: synthesis-pr-review
 description: "Delta review methodology for pull requests in synthesis-coded projects, covering regression risk assessment, root cause analysis, and integration with the adopt-and-adapt workflow. Use when asked to: PR review, pull request, code review, review PR, delta review, review pull request, check PR, evaluate PR."
 license: "CC0-1.0"
+depends_on: ["synthesis-code-integration", "synthesis-codebase-review"]
 metadata:
   author: "Rajiv Pant"
   version: "1.1.0"
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Synthesis PR Review

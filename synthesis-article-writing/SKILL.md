@@ -7,9 +7,12 @@ description: >
   Use when asked to: write article, thought leadership, blog post, article workflow, write blog,
   draft article, create thought piece, write opinion piece, leadership article.
 license: "CC0-1.0"
+depends_on: ["synthesis-content-quality"]
 metadata:
   author: "Rajiv Pant"
   version: "2.0.0"
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Article Writing

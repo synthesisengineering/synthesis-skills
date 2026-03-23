@@ -2,9 +2,12 @@
 name: synthesis-content-framing
 description: "Content framing methodology for synthesis engineering articles. Covers topic selection, sophistication standards, engagement patterns, quality gates, and operational rules for publishing technical thought leadership. Use when writing synthesis engineering content, framing technical articles, checking content quality gates, or publishing thought leadership."
 license: "CC0-1.0"
+depends_on: []
 metadata:
   author: "Synthesis Engineering"
   version: "1.0.0"
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Synthesis Content Framing

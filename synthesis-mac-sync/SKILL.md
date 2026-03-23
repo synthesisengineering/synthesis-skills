@@ -2,9 +2,12 @@
 name: synthesis-mac-sync
 description: "Multi-Mac configuration sync via iCloud with bidirectional config file sync, git repository sync, machine inventory, and one-time action system. Use when asked to: mac sync, sync config, sync repos, sync with GitHub, push config to iCloud, pull config from iCloud, run mac-sync, repo status."
 license: "CC0-1.0"
+depends_on: []
 metadata:
   author: "Rajiv Pant"
   version: "1.0.0"
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Synthesis Mac Sync

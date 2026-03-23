@@ -9,9 +9,12 @@ description: >
   social media post, write tweet, LinkedIn post, Instagram post, promote blog, blog promotion,
   post about event, content marketing, distribute post, promote article, social media promotion.
 license: "CC0-1.0"
+depends_on: []
 metadata:
   author: "Rajiv Pant"
   version: "1.0.0"
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Content Distribution

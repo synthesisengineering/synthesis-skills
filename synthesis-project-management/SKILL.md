@@ -2,9 +2,12 @@
 name: synthesis-project-management
 description: "Lightweight project management system designed for human-agent collaboration, optimized for context preservation across sessions. Use when asked to: project management, project setup, project tracking, synthesis project, manage project, set up project, project structure, session protocol."
 license: "CC0-1.0"
+depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
   version: "1.0.0"
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Synthesis Project Management System

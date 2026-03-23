@@ -8,9 +8,12 @@ description: >
   review, content review, AI slop detection, content improvement, and publishing
   standards.
 license: CC0-1.0
+depends_on: ["synthesis-fact-checking"]
 metadata:
   author: Rajiv Pant
   version: 2.0.0
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Content Quality

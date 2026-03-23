@@ -6,9 +6,12 @@ description: >
   Use when asked to: revitalize blog, update old post, refresh article, blog enhancement, improve blog post,
   enhance old content, revitalize article, update historical post.
 license: "CC0-1.0"
+depends_on: []
 metadata:
   author: "Rajiv Pant"
   version: "1.0.0"
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Blog Refresh

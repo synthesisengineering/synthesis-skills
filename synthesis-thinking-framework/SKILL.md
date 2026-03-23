@@ -2,9 +2,12 @@
 name: synthesis-thinking-framework
 description: "Five-mode thinking methodology (first principles, systems thinking, complexity thinking, analogical thinking, design thinking) with a pre-response protocol for non-trivial problems. Provides the foundational reasoning approach that other synthesis skills build upon."
 license: "CC0-1.0"
+depends_on: []
 metadata:
   author: "Rajiv Pant"
   version: "2.0.0"
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Synthesis Thinking Framework

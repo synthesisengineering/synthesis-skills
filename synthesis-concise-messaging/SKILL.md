@@ -6,9 +6,12 @@ description: >
   Use when asked to: condense message, shorten email, brief message, concise writing, email template,
   make shorter, tighten email, reduce message length, write concise message.
 license: "CC0-1.0"
+depends_on: []
 metadata:
   author: "Rajiv Pant"
   version: "1.0.0"
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Concise Messaging

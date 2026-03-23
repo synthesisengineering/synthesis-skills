@@ -5,9 +5,12 @@ description: >
   engineering. Use for technical advisor, tech setup, configure advisor, technical
   assistant, architecture review, code review guidance, and engineering decisions.
 license: CC0-1.0
+depends_on: []
 metadata:
   author: Rajiv Pant
   version: 1.0.0
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Technical Advisor

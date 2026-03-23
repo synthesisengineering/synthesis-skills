@@ -2,9 +2,12 @@
 name: synthesis-tree-of-thought
 description: "Multi-expert collaborative reasoning technique. Use when asked to apply tree of thought, multi-expert brainstorming, collaborative reasoning, expert panel analysis, or when a problem benefits from simulating multiple domain experts debating step by step to reach a well-vetted conclusion."
 license: "CC0-1.0"
+depends_on: []
 metadata:
   author: "Rajiv Pant"
   version: "1.0.0"
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Tree of Thought

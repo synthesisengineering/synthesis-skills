@@ -3,9 +3,12 @@ name: synthesis-code-planning
 description: "Structured approach to code generation, implementing features, and writing code. Use when asked to generate code, implement a feature, write code, or tackle a coding task. Analyzes the task, generates multiple approaches with trade-offs, selects the optimal solution, and implements it."
 license: "CC0-1.0"
 user-invocable: false
+depends_on: []
 metadata:
   author: "Rajiv Pant"
   version: "1.0.0"
+  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_type: "public"
 ---
 
 # Code Planning
