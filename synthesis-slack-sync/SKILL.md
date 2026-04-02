@@ -153,7 +153,49 @@ Only check DMs that have active conversations. Don't read every DM — the confi
 - **Update waiting-on-others** table with any new information from thread replies.
 - **Note new action items** or signals worth responding to in the "Things to Know" section.
 - **Draft replies with grounding research.** When a Slack message requires a response (technical question, status request, bug report), research the answer in primary sources (source code, config files, PRs, deploy scripts, running systems) BEFORE drafting. Never draft a reply based solely on transcripts or conversation memory. The user's credibility depends on accuracy.
+- **Use the mandatory draft format below** for every draft message. No exceptions.
 - **Do NOT remove content** from the action plan — it is append-only (mark done, don't delete).
+
+#### Draft Message Format (MANDATORY)
+
+Every draft must use this exact structure. The user's workflow is: glance at where to send, copy-paste the message, then verify grounding. Format accordingly.
+
+```markdown
+### Draft N: [short description]
+**Send to:** #channel-name — reply to @Author Name's message at Wed Apr 2, 10:59 AM EDT (TS: 1775141956.643419)
+— OR for new messages —
+**Send to:** #channel-name — new message (not a thread reply)
+
+` ` `
+[Message text — ready to copy and paste exactly as-is]
+` ` `
+
+**Grounding:**
+- [Verified fact 1 — what source confirmed it]
+- [Verified fact 2 — what source confirmed it]
+- [Any staleness risk — e.g., "No new replies in thread since 11:23 AM"]
+```
+
+**Field rules:**
+
+1. **Send to** comes first. Must include:
+   - Channel name (e.g., `#le-csa-feedback`)
+   - Thread reply vs. new message
+   - If thread reply: the **author's name** and **human-readable date+time** of the parent message (e.g., "Thu Apr 2, 10:59 AM EDT")
+   - Unix TS in parentheses after the human time — the user doesn't need it but the agent uses it for re-reading threads
+
+2. **Message text** comes second, in a fenced code block. This is what the user copies and pastes. Nothing else should be between "Send to" and the code block.
+
+3. **Grounding** comes third. Bullet list of facts verified against primary sources (code, git, deploy logs, Slack threads). Must include:
+   - What was verified and where (file path, commit hash, GH Actions run ID, thread TS)
+   - Staleness check — whether anything has happened since the draft was written that could make it wrong
+   - Any facts the agent could NOT verify (flag explicitly so the user knows)
+
+**When marking drafts as SENT:**
+```markdown
+### ~~Draft N: [description]~~ ✅ SENT by Rajiv at Thu Apr 2, 6:16 PM EDT in #channel-name
+```
+Include the human-readable time the message was found in Slack.
 
 ---
 
