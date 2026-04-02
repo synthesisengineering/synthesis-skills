@@ -75,7 +75,17 @@ The Slack search API has indexing delays (recent messages don't appear), misses 
 
 ## Sync Protocol
 
-Every sync — whether day-start, mid-day, or day-end — follows the same five steps. No shortcuts, no skipped steps.
+Every sync — whether day-start, mid-day, or day-end — follows these steps. No shortcuts, no skipped steps.
+
+### Step 0: Run the thread checker (MANDATORY)
+
+Before doing anything else, run the thread checker script:
+
+```bash
+python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py <transcript_file> [action_plan_file]
+```
+
+This outputs every parent thread TS from the transcript and every unsent draft's target thread. You MUST re-read every thread it lists during Step 2. The script exists because manually deciding which threads to re-read has repeatedly failed — threads get skipped and messages get missed.
 
 ### Step 1: Read channels for new top-level messages
 
