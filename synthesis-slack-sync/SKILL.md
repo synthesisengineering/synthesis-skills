@@ -61,6 +61,18 @@ If the config file is missing, the skill should warn and ask the user to create 
 
 ---
 
+## ⛔ NEVER Use Slack Search API for Lookups
+
+**When verifying whether a message was sent, or looking up past conversations, ALWAYS read local transcript files first.** Use `Grep` on transcript files in the transcripts directory. NEVER call `slack_search_public`, `slack_search_public_and_private`, or `slack_read_channel` for historical lookups.
+
+The Slack search API has indexing delays (recent messages don't appear), misses thread replies entirely, and is slower and more expensive than local file reads. On 2026-04-01, four Slack search API calls returned "no results" for messages that existed in threads — nearly causing duplicate messages to be sent.
+
+**The only valid uses of the Slack MCP API are:**
+1. Syncing NEW messages during this protocol (Steps 1-3)
+2. Reading a specific thread by TS that was never synced locally
+
+---
+
 ## Sync Protocol
 
 Every sync — whether day-start, mid-day, or day-end — follows the same five steps. No shortcuts, no skipped steps.
