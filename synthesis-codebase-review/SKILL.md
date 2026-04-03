@@ -240,6 +240,17 @@ reviews/
 
 ---
 
+## Relationship to Other Verification Skills
+
+This skill evaluates the **entire system**. Two companion skills cover narrower scopes:
+
+- **synthesis-implementation-integrity** — verifies a single change is genuinely complete (self-review, run after every implementation)
+- **synthesis-pr-review** — evaluates a change proposed for merge (peer review, run on every PR)
+
+Together these three skills form a verification trio: implementation-integrity catches change-level gaps, pr-review catches what the implementer missed, and this skill catches systemic patterns that no single change reveals.
+
+---
+
 ## Key Principles
 
 1. **Tier-appropriate rigor.** Do not apply Tier 4 scrutiny to a weekend project. Do not skip Tier 1 basics for an enterprise system.

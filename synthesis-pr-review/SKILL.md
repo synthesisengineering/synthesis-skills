@@ -23,6 +23,7 @@ Three related skills cover different scopes:
 | Skill | Scope | When to use |
 |-------|-------|-------------|
 | **codebase-review** | Full codebase audit (16 categories, tiered) | New engagement, periodic health check, or major milestone |
+| **implementation-integrity** | Self-verification of a single implementation | After completing work, before creating a PR |
 | **synthesis-code-integration** | Integration workflow (adopt-and-adapt pattern, quality gates) | When merging contributor work into main |
 | **pr-review** (this one) | Delta review of a single change | Every PR, before peer approval or lead integration |
 
