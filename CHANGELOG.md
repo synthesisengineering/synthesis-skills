@@ -17,6 +17,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **`synthesis-codebase-review`** — expanded "Relationship to Other Verification Skills" to include code-audit and preflight
 - **README** — added 3 new skills to Engineering table, updated skill count to 29
 
+### Fixed
+- **install.sh** — added 7 missing skills to uninstall fallback list (4 pre-existing: implementation-integrity, skills-manager, slack-sync, voice-profiler + 3 new: code-audit, preflight, review-triage)
+
 ## [2.1.0] - 2026-03-19
 
 ### Added
