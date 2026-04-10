@@ -4,7 +4,7 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## Install
 
-**One command — installs all 26 skills to every AI agent on your machine:**
+**One command — installs all 29 skills to every AI agent on your machine:**
 
 ```bash
 npx skills add rajivpant/synthesis-skills --global --all --copy
@@ -47,9 +47,12 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | Skill | Description |
 |-------|-------------|
 | `synthesis-codebase-review` | Enterprise-scale codebase audit with tiered review system |
+| `synthesis-code-audit` | 10-dimension quality scan of code diffs with scored PASS/WARNING/FAIL verdicts |
 | `synthesis-pr-review` | Delta review methodology with security scanning and AI-analysis verification |
+| `synthesis-review-triage` | PR queue prioritization: scoring, author-response detection, and review routing |
 | `synthesis-code-integration` | Adopt-and-adapt pattern for integrating multi-contributor code with cherry-pick safety |
 | `synthesis-code-planning` | Structured multi-approach evaluation before coding |
+| `synthesis-preflight` | Pre-merge quality gate: tests, types, audit, commit hygiene, go/no-go verdict |
 | `synthesis-implementation-integrity` | Adversarial self-review: verify implementations are genuinely complete before shipping |
 
 ### Content Creation

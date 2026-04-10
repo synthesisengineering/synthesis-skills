@@ -36,17 +36,19 @@ Skip for trivial changes (typo fixes, comment updates, single-line config edits)
 
 ---
 
-## Where This Fits — Three Verification Scopes
+## Where This Fits — Verification Chain
 
-Three complementary skills cover verification at different scopes. Each has a distinct purpose and cadence:
+Five complementary skills cover verification at different scopes and lifecycle phases:
 
 | Skill | Scope | Cadence | Core question |
 |-------|-------|---------|---------------|
 | **synthesis-implementation-integrity** (this one) | A single change | After every non-trivial implementation | "Is this change genuinely complete?" |
+| **synthesis-code-audit** | A diff (changed code) | After implementation, before or during review | "Does this diff meet quality standards?" |
+| **synthesis-preflight** | A branch | Before creating a PR | "Is this branch ready to merge?" |
 | **synthesis-pr-review** | A change proposed for merge | Every pull request | "Should this change enter the codebase?" |
 | **synthesis-codebase-review** | The entire system | Periodic or at milestones | "Is this system healthy?" |
 
-**The natural flow:** Implement → self-verify (this skill) → peer review (pr-review) → periodic health check (codebase-review).
+**The natural flow:** Implement → self-verify (this skill) → quality scan (code-audit) → branch gate (preflight) → peer review (pr-review) → periodic health check (codebase-review).
 
 **When to use both this skill and codebase-review:** After a major feature that touches many system layers. Run this skill to verify the feature itself is complete. Then run relevant sections of codebase-review (security, architecture, testing) to verify the feature doesn't degrade overall system health.
 
@@ -359,15 +361,17 @@ Compilation checks syntax and type safety. It does not check that the right data
 
 ## Relationship to Other Skills
 
-This skill forms a verification trio with two others. Together they cover all three scopes of code quality:
+This skill is part of a verification chain. Together these skills cover code quality from implementation through system health:
 
 | Skill | Scope | Who runs it | Analogy |
 |-------|-------|-------------|---------|
 | **implementation-integrity** (this) | Single change | The implementer, on their own work | A pilot's pre-flight checklist |
+| **synthesis-code-audit** | A diff (changed code) | The implementer or reviewer | An instrument panel reading |
+| **synthesis-preflight** | A branch | The implementer, before PR | A pre-departure clearance |
 | **synthesis-pr-review** | Change proposed for merge | A peer reviewer | An inspector's acceptance test |
 | **synthesis-codebase-review** | Entire system | An auditor or lead | An annual structural inspection |
 
-**The handoff:** Run this skill before creating a PR. It catches the issues you'd be embarrassed to have a peer find. Then pr-review catches what you missed from an external perspective. Codebase-review catches systemic patterns that no single change reveals.
+**The handoff:** Run this skill after implementing. Then code-audit provides a systematic quality scan across 10 dimensions. Preflight gates the branch (tests, types, audit, commit hygiene). pr-review catches what you missed from an external perspective. Codebase-review catches systemic patterns that no single change reveals.
 
 Other related skills:
 
@@ -375,5 +379,6 @@ Other related skills:
 |-------|-------------|
 | **synthesis-code-planning** | Plans the approach before implementation; this skill verifies the result after |
 | **synthesis-code-integration** | Verifies the merge is safe; this skill verifies the implementation is complete before merge |
+| **synthesis-review-triage** | Prioritizes which PR to review next; upstream of pr-review in the review workflow |
 
 This skill is the bridge between "I wrote the code" and "I'd stake my reputation on it." Run it before the code leaves your hands.

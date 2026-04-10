@@ -242,12 +242,14 @@ reviews/
 
 ## Relationship to Other Verification Skills
 
-This skill evaluates the **entire system**. Two companion skills cover narrower scopes:
+This skill evaluates the **entire system**. Four companion skills cover narrower scopes:
 
 - **synthesis-implementation-integrity** — verifies a single change is genuinely complete (self-review, run after every implementation)
+- **synthesis-code-audit** — systematic 10-dimension quality scan of a diff (run after implementation, as input to preflight or pr-review)
+- **synthesis-preflight** — branch readiness gate that orchestrates tests, types, audit, and commit hygiene into a go/no-go verdict (run before creating a PR)
 - **synthesis-pr-review** — evaluates a change proposed for merge (peer review, run on every PR)
 
-Together these three skills form a verification trio: implementation-integrity catches change-level gaps, pr-review catches what the implementer missed, and this skill catches systemic patterns that no single change reveals.
+Together these five skills form a verification chain: implementation-integrity catches change-level gaps, code-audit measures quality across 10 dimensions, preflight gates the branch before it becomes a PR, pr-review catches what earlier checks missed through judgment-based evaluation, and this skill catches systemic patterns that no single change reveals.
 
 ---
 
