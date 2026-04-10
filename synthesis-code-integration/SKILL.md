@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.2.0"
   source_repo: "github.com/rajivpant/synthesis-skills"
   source_type: "public"
 ---
@@ -208,6 +208,7 @@ The attribution model should match the integration intensity:
 
 - **Full adopt-and-adapt** (substantial rework): Lead as commit author, contributor as `Co-authored-by`.
 - **Lighter-touch integration** (minor adjustments): Contributor as commit `--author`, lead as `Co-authored-by`.
+- **Merge-then-refine** (editorial improvements after merge): PR merge preserves contributor's commits. Lead's follow-up commit is separate, referencing the PR.
 - **Direct merge** (zero-adjustment): Standard PR merge flow.
 
 Attribution is not decoration. Developers use contribution graphs for career advancement. A workflow that funnels all commits through the lead's name effectively erases contributors from the project's visible history.
@@ -367,7 +368,20 @@ The lead merges with minor adjustments. The contributor's code structure is pres
 
 **When appropriate:** Contributor has had at least one round of detailed review feedback. Issues are minor and localized.
 
-### Phase 3: Direct Merge with Review
+### Phase 3: Merge-then-Refine
+
+The lead merges the PR directly via GitHub, preserving the contributor's commits and authorship. Then creates a separate follow-up commit with editorial improvements, referencing the original PR.
+
+**When appropriate:** Contribution is PR-based and high quality. The contributor did the creative work and deserves primary credit — first contributions, open-source visibility, career attribution. The lead's changes are editorial or cosmetic, not structural.
+
+**When NOT appropriate (use Phase 1 instead):** Lead's changes are structural — different approach, architectural redesign. Branch is significantly stale. Security issues require pre-merge remediation.
+
+**Workflow:**
+1. Merge the PR via GitHub (`gh pr merge N --merge` or `--rebase`)
+2. Create a separate follow-up commit with improvements, attributed to the lead
+3. Commit message references the original PR: `Refinements to #N`
+
+### Phase 4: Direct Merge with Review
 
 Standard pull request workflow. The contributor submits, gets peer and lead review, and it merges directly.
 
@@ -380,6 +394,15 @@ The phases are not permanent promotions. If a contribution introduces a security
 **Upgrade signal:** Fewer than half the issues of the previous round, and those issues are cosmetic.
 
 **Downgrade signal:** A contribution introduces a security gap, architectural regression, or bundled unrelated changes.
+
+### Choosing Between Lighter-Touch and Merge-then-Refine
+
+| Factor | Lighter-Touch (Phase 2) | Merge-then-Refine (Phase 3) |
+|--------|------------------------|-----------------------------|
+| Contribution source | Branch cherry-pick or non-PR | PR-based contribution |
+| Lead's changes | Interleaved with contributor's code | Separable from contributor's code |
+| Git blame accuracy | Single combined commit | Per-line attribution preserved |
+| GitHub merge event | No PR merge recorded | PR shows as merged, contributor credited |
 
 ---
 
