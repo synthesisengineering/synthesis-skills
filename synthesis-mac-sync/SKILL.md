@@ -107,7 +107,7 @@ Write a single bash script that loops through ALL files in the manifest, compare
 
 Example pattern:
 ```bash
-ICLOUD_BASE="$HOME/Library/Mobile Documents/com~apple~CloudDocs/workspaces/rajiv/credentials/mac-sync"
+ICLOUD_BASE="$HOME/Library/Mobile Documents/com~apple~CloudDocs/workspaces/[username]/mac-sync"
 
 sync_file() {
   local icloud="$1" local_path="$2" sensitive="$3"

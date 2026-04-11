@@ -150,7 +150,7 @@ Skills with user-specific values have a `## Configuration` section with a table:
 
 | Setting | Value | Description |
 |---------|-------|-------------|
-| `daily_plans_path` | `ai-knowledge-rajiv/projects/_daily-plans/` | Where to save daily plans |
+| `daily_plans_path` | `ai-knowledge-{workspace}/projects/_daily-plans/` | Where to save daily plans |
 ```
 
 When installing a skill that has a Configuration section:
