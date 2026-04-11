@@ -23,8 +23,8 @@ These values are user-specific. Update them for your environment.
 | Setting | Value | Description |
 |---------|-------|-------------|
 | `icloud_sync_folder` | `~/Library/Mobile Documents/com~apple~CloudDocs/workspaces/[username]/mac-sync/` | iCloud Drive folder for synced config files |
-| `git_scan_root` | `~/projects/` | Root directory for git repository discovery |
-| `git_scan_max_depth` | `4` | Maximum depth for recursive `.git` directory search |
+| `git_scan_root` | `~/workspaces/` | Root directory for git repository discovery |
+| `git_scan_max_depth` | `3` | Maximum depth for recursive `.git` directory search |
 | `git_repos_manifest` | `git-repos.yaml` | Manifest file caching discovered repos |
 
 ---
@@ -202,10 +202,10 @@ For config files containing machine-specific paths, use template files with plac
 
 ### Repository Discovery
 
-Scan a configured directory (e.g., `~/projects/`) recursively:
+Scan a configured directory (e.g., `~/workspaces/`) recursively:
 
 ```bash
-find ~/projects -maxdepth 4 -name ".git" -type d 2>/dev/null
+find ~/workspaces -maxdepth 3 -name ".git" -type d 2>/dev/null
 ```
 
 Maintain a **manifest file** (`git-repos.yaml`) that caches discovered repos for quick status checks. Refresh on each sync.
@@ -386,21 +386,21 @@ Your config file (README.md in the sync folder) should include these sections. A
 ### Git Repository Manifest (git-repos.yaml)
 
 ```yaml
-scan_root: ~/projects
-max_depth: 4
+scan_root: ~/workspaces
+max_depth: 3
 
 repositories:
-  - path: ~/projects/my-app
+  - path: ~/workspaces/personal/my-app
     remote: https://github.com/user/my-app.git
     category: personal
 
-  - path: ~/projects/work/app
+  - path: ~/workspaces/work/app
     remote: https://github.com/org/app.git
     category: work
     push_policy: pr-required
 
 excluded:
-  # - ~/projects/forks/some-repo  # Reason: upstream only
+  # - ~/workspaces/personal/some-fork  # Reason: upstream only
 ```
 
 ### Machine Inventory
