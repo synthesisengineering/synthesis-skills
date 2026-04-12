@@ -95,6 +95,15 @@ Performs all three operations:
 - **Full:** "sync my repos with GitHub"
 - **Status only:** "show me the status of my repos"
 
+### Session-End Check
+
+Every AI coding session should end with all repos committed and pushed. Use `synthesis-repo-guard` (the `repo_sync_check.py` script) to verify. This is not the same as a full mac-sync — it's a fast read-only check that detects problems without fixing them.
+
+- If repo-guard reports clean: session can end safely.
+- If repo-guard reports dirty: commit and push before ending, or run a full mac-sync.
+
+Configure repo-guard as a session-end hook so it runs automatically — see the `synthesis-repo-guard` skill for integration instructions for Claude Code, Codex, Cursor, and other tools.
+
 ---
 
 ## Performance — Minimize Tool Calls
