@@ -4,7 +4,7 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## Install
 
-**One command — installs all 29 skills to every AI agent on your machine:**
+**One command — installs all 31 skills to every AI agent on your machine:**
 
 ```bash
 npx skills add rajivpant/synthesis-skills --global --all --copy
@@ -79,6 +79,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 |-------|-------------|
 | `synthesis-context-lifecycle` | Three-tier context architecture for managing AI working memory |
 | `synthesis-project-management` | Lightweight PM system for human-agent collaboration |
+| `synthesis-daily-rituals` | Day-start and day-end checklists with dependency-ordered rituals |
 
 ### Synthesis Engineering
 | Skill | Description |
@@ -99,6 +100,8 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | Skill | Description |
 |-------|-------------|
 | `synthesis-mac-sync` | Multi-Mac config sync via iCloud with git repo sync and machine inventory |
+| `synthesis-repo-guard` | Session-end enforcement: detect uncommitted changes and unpushed commits across a workspace |
+| `synthesis-slack-sync` | Slack channel sync protocol: read channels, threads, DMs to local transcripts |
 | `synthesis-skills-manager` | Agent-native skill installer: drift detection, synthesis merge, provenance tracking |
 
 ### Background Instructions
