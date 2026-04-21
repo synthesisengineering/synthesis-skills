@@ -9,7 +9,7 @@ depends_on:
   - synthesis-repo-guard
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.0"
+  version: "2.2.0"
   source_repo: "github.com/rajivpant/synthesis-skills"
   source_type: "public"
 ---
@@ -59,11 +59,18 @@ Execute in this order (each step depends on the one before it).
 ### 2b. Meeting Transcripts
 
 After any standup, planning session, or design review with auto-generated notes (e.g., Gemini in Google Meet):
-- [ ] Download transcript from `~/Downloads/`
+
+**Automated path (preferred)** — if the project uses `synthesis-meeting-transcripts`:
+- [ ] **Run `/synthesis-meeting-transcripts`** — the skill searches Gmail/Drive for today's Gemini-generated meeting notes doc, fetches both the summary and the full word-for-word transcript, and saves to `projects/_transcripts/{workspace}/meetings/`. Configuration in `.claude/meeting-transcripts.yaml` per project. Works with Anthropic's hosted Gmail/Drive connectors (single account) or a self-hosted multi-account MCP.
+- [ ] Read the saved transcript and extract action items, decisions, status changes.
+- [ ] Update CONTEXT.md with any new information from the meeting.
+
+**Manual path (fallback)** — if no Gmail/Drive tooling is available:
+- [ ] Download transcript from `~/Downloads/`.
 - [ ] **Verify transcript completeness.** Check that the file contains BOTH a summary/notes section AND a full conversation transcript (speaker-attributed dialogue with timestamps). Many AI note-takers (Gemini, Otter, Fireflies) produce a summary by default but may omit the raw transcript. **If the file contains only a summary without the full transcript log, warn the user immediately** — the raw transcript is the primary source; summaries are lossy and may misattribute or omit statements.
 - [ ] Move to workspace meetings directory (`projects/_transcripts/{workspace}/meetings/`) with naming convention: `standup-YYYY-MM-DD.md` or `meeting-TOPIC-YYYY-MM-DD.md`. The `{workspace}` value comes from the project's `.claude/slack-sync.yaml` config.
-- [ ] Read transcript and extract action items, decisions, and status changes
-- [ ] Update CONTEXT.md with any new information from the meeting
+- [ ] Read transcript and extract action items, decisions, status changes.
+- [ ] Update CONTEXT.md with any new information from the meeting.
 
 ### 3. Catch-Up Read
 
