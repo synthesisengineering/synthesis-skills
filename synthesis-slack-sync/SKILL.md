@@ -5,7 +5,7 @@ license: "CC0-1.0"
 metadata:
   depends_on: "synthesis-daily-rituals, synthesis-project-management"
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "3.0.0"
   source_repo: "github.com/rajivpant/synthesis-skills"
   source_type: "public"
 ---
@@ -16,11 +16,37 @@ A protocol for syncing Slack channels and threads to local transcript files usin
 
 This skill provides the **protocol** — the sync methodology, thread re-reading discipline, transcript format, and action plan update rules. A per-project **config file** (`.claude/slack-sync.yaml`) provides the specifics: which channels, which paths, which DMs.
 
-## v2.0.0 — Workspace-Rooted Layout
+## v3.0.0 — Per-Channel-Per-Day Layout
 
-In v2.0.0 (2026-04-22), the path schema changed to reflect the ai-knowledge phase 2 architecture. Transcripts now live in a workspace-private repo (`ai-knowledge-<workspace>-<person>-private/transcripts/`) colocated with the workspace. Daily action plans remain person-scoped in the owner's personal ai-knowledge repo (`ai-knowledge-<person>/daily-plans/`).
+In v3.0.0 (2026-04-22 afternoon), the transcript layout changed again within the same day as v2.0.0 was released. The refinement:
 
-The v1.x schema (`ai_knowledge_repo` + `transcripts_path: projects/_transcripts/` + `action_plan_path: projects/_daily-plans/`) is NOT backward compatible with v2.0.0. See the updated config schema below.
+**Transcripts now live one-file-per-channel-per-day** inside a dated directory:
+
+```
+{transcripts_repo}/{transcripts_path}/slack/
+├── YYYY-MM-DD/
+│   ├── <channel-name>.md       (one file per channel)
+│   ├── _dms.md                  (all 1:1 DMs for the day, aggregated)
+│   ├── _group-dms.md            (all group DMs for the day, aggregated)
+│   └── _misc.md                 (cross-channel sync notes, if any)
+└── _historical-pre-v3/          (legacy pre-v3 content if any)
+```
+
+### Why v3.0.0
+
+v2.0.0 used one-file-per-day-per-type (`channels/YYYY-MM-DD.md`, `dms/YYYY-MM-DD.md`, `group-dms/YYYY-MM-DD.md`). That worked but had two weaknesses:
+
+1. **Heavy days produced large channel files.** A busy day with 50+ active channels would pack everything into one file.
+2. **Type-based directories made new primitives awkward.** Adding Slack huddles or canvases would mean new top-level folders.
+
+Per-channel-per-day solves both: each file is scoped to one channel's activity on one day (naturally smaller), and new primitives within Slack are new file patterns within the same dated dir, not new folders.
+
+### Aggregation conventions
+
+- **Channels get one file each per day.** `mmc-product-growth-squad.md`, `tech-csa-pull-requests.md`, etc.
+- **DMs are aggregated** into `_dms.md` per day. DMs are typically lower-volume; daily context across all people is more useful than per-person files.
+- **Group DMs are aggregated** into `_group-dms.md` per day. Same rationale.
+- **The `_`-prefix** on `_dms.md` and `_group-dms.md` sorts them to the top of the directory listing, visually signaling they are aggregators rather than channel files.
 
 ### `-private` Discovery Protocol (ADR-014)
 
@@ -74,21 +100,25 @@ group_dm_channels: []
 
 If the config file is missing, the skill should warn and ask the user to create one.
 
-**Path resolution summary:**
-- Channel transcripts: `{transcripts_repo}/{transcripts_path}/channels/YYYY-MM-DD.md`
-- DM transcripts: `{transcripts_repo}/{transcripts_path}/dms/YYYY-MM-DD.md`
-- Group DM transcripts: `{transcripts_repo}/{transcripts_path}/group-dms/YYYY-MM-DD.md`
-- Meeting transcripts (written by synthesis-meeting-transcripts, not this skill): `{transcripts_repo}/{transcripts_path}/meetings/`
+**Path resolution summary (v3.0.0):**
+- Channel transcripts: `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/<channel-name>.md`
+- DM transcripts (aggregated per day): `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_dms.md`
+- Group DM transcripts (aggregated per day): `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_group-dms.md`
+- Cross-channel sync notes (if any): `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_misc.md`
+- Meeting transcripts (written by synthesis-meeting-transcripts): `{transcripts_repo}/{transcripts_path}/meetings/YYYY-MM-DD-<slug>.mdYYYY-MM-DD-<slug>.md`
+- Google Chat transcripts (if any): `{transcripts_repo}/{transcripts_path}/gchat/YYYY-MM-DD.md`
+- Email threads (if any): `{transcripts_repo}/{transcripts_path}/email/<thread-id>.md`
+- Attachments: `{transcripts_repo}/{transcripts_path}/attachments/`
 - Daily action plan: `{action_plan_repo}/{action_plan_path}/YYYY-MM-DD.md`
 
-The workspace identifier no longer appears in transcript paths — it's implicit in `transcripts_repo` (the workspace-private repo is named after its workspace).
+The workspace identifier no longer appears in transcript paths — it's implicit in `transcripts_repo` (the workspace-private repo is named after its workspace). The `<channel-name>` in the per-channel filename is the Slack channel name WITHOUT the leading `#`.
 
 ---
 
 ## Prerequisites
 
 - **Slack MCP must be connected and authenticated.** If any Slack tool call fails with an auth error, stop and instruct the user to re-authenticate: `claude mcp auth slack`, then restart the IDE/CLI.
-- **Local transcript files must exist or be created.** The skill creates today's files as needed under the `channels/`, `dms/`, and `group-dms/` subdirectories of the workspace-private repo's transcripts path.
+- **Local transcript files must exist or be created.** The skill creates today's per-channel files and the `_dms.md` / `_group-dms.md` aggregators under `slack/YYYY-MM-DD/` as needed.
 
 ---
 
@@ -113,9 +143,9 @@ Every sync — whether day-start, mid-day, or day-end — follows these steps. N
 Before doing anything else, run the thread checker script on each transcript file that exists for today:
 
 ```bash
-python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/channels/YYYY-MM-DD.md [action_plan_file]
-python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/dms/YYYY-MM-DD.md [action_plan_file]
-python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/group-dms/YYYY-MM-DD.md [action_plan_file]
+python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/<channel>.md [action_plan_file]
+python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_dms.md [action_plan_file]
+python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_group-dms.md [action_plan_file]
 ```
 
 Skip any file that does not yet exist (e.g., no DMs synced today). Combine the output from all runs into a single checklist. You MUST re-read every thread listed during Step 2. The script exists because manually deciding which threads to re-read has repeatedly failed — threads get skipped and messages get missed.
@@ -140,7 +170,7 @@ Thread replies do NOT appear as channel-level messages. The only way to detect t
 
 **Source A: Threads in today's transcripts.** For every message in today's channels, DMs, and group-DMs transcript files that shows a thread (reply count > 0), re-read the full thread.
 
-**Source B: Threads from yesterday's transcripts that may have new replies.** Open the previous day's transcript files (`channels/`, `dms/`, `group-dms/` subdirectories for yesterday's date). For every thread that was active (had replies), re-read it. This catches: overnight replies, the user's own replies to threads from yesterday, and continuing conversations that span days.
+**Source B: Threads from yesterday's transcripts that may have new replies.** Open yesterday's dated directory `slack/YESTERDAY-YYYY-MM-DD/` and read every per-channel file, the `_dms.md`, and the `_group-dms.md`. For every thread that was active (had replies), re-read it. This catches: overnight replies, the user's own replies to threads from yesterday, and continuing conversations that span days.
 
 **Source C: Threads surfaced by Step 1.** Any message returned by Step 1 that shows "Thread: N replies" must be re-read, even if the parent message is from a previous day. Channel reads return messages in reverse chronological order — a thread from 3 days ago can appear in the channel read if it had recent activity.
 
@@ -187,16 +217,16 @@ Group DMs (multi-party IMs) are separate from 1:1 DMs. They use channel IDs, not
 
 Write each message type to its own transcript file under the workspace directory:
 
-- **Channels:** `{transcripts_repo}/{transcripts_path}/channels/YYYY-MM-DD.md` — channel messages and thread replies from Steps 1-2.
-- **DMs:** `{transcripts_repo}/{transcripts_path}/dms/YYYY-MM-DD.md` — 1:1 DM messages from Step 3.
-- **Group DMs:** `{transcripts_repo}/{transcripts_path}/group-dms/YYYY-MM-DD.md` — group DM messages from Step 3b.
+- **Channels:** `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/<channel>.md` — channel messages and thread replies from Steps 1-2.
+- **DMs:** `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_dms.md` — 1:1 DM messages from Step 3.
+- **Group DMs:** `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_group-dms.md` — group DM messages from Step 3b.
 
 For each file:
 - Record the sync time (e.g., `## Mid-day sync (~14:30 EDT)`).
 - If the file doesn't exist, create it with the standard header and create directories as needed.
 - If no messages of that type were found, skip that file (do not create empty files).
 
-Meeting transcripts are NOT part of Slack sync — they are handled by the daily-rituals skill and placed in `{transcripts_repo}/{transcripts_path}/meetings/`.
+Meeting transcripts are NOT part of Slack sync — they are handled by the daily-rituals skill and placed in `{transcripts_repo}/{transcripts_path}/meetings/YYYY-MM-DD-<slug>.md`.
 
 ### Step 5: Update action plan
 
@@ -252,19 +282,19 @@ Include the human-readable time the message was found in Slack.
 
 ## Transcript File Format
 
-Each transcript type has its own file under `{transcripts_repo}/{transcripts_path}/`. The internal format is the same across all three — only the header differs.
+Each file under `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/` follows one of three shapes: per-channel, `_dms.md` aggregator, or `_group-dms.md` aggregator.
 
-### Channels file (`channels/YYYY-MM-DD.md`)
+### Channel file (`slack/YYYY-MM-DD/<channel>.md`)
+
+One file per channel per day. The filename is the channel name without the leading `#` (e.g., `mmc-product-growth-squad.md`).
 
 ```markdown
-# Slack Channels — [Day], [Month] [Date], [Year]
+# Slack #[channel-name] — [Day], [Month] [Date], [Year]
 # Workspace: [workspace]
 
 Last synced: ~HH:MM TZ
 
 ---
-
-## #channel-name (CHANNEL_ID)
 
 ### [Author Name] — HH:MM TZ (TS: [unix_timestamp])
 [Message content]
@@ -277,15 +307,18 @@ Last synced: ~HH:MM TZ
 
 ## Mid-day sync (~HH:MM TZ)
 
-### #channel-name
+### [Author Name] — HH:MM TZ (TS: [unix_timestamp])
+[New message]
 
-#### [Context heading] (TS: [unix_timestamp]) — [N] replies
+#### Thread update (TS: [unix_timestamp]) — [N] replies
 - [New reply details]
 
 ---
 ```
 
-### DMs file (`dms/YYYY-MM-DD.md`)
+Within a single channel file, the channel name appears in the `# Slack #<channel>` top-level header only; messages below don't need `## #channel` subheaders (the entire file is about that channel).
+
+### DMs aggregator file (`slack/YYYY-MM-DD/_dms.md`)
 
 ```markdown
 # Slack DMs — [Day], [Month] [Date], [Year]
@@ -303,7 +336,7 @@ Last synced: ~HH:MM TZ
 ---
 ```
 
-### Group DMs file (`group-dms/YYYY-MM-DD.md`)
+### Group DMs aggregator file (`slack/YYYY-MM-DD/_group-dms.md`)
 
 ```markdown
 # Slack Group DMs — [Day], [Month] [Date], [Year]
@@ -325,7 +358,8 @@ Key rules:
 - **Always record the TS (Unix timestamp)** for every significant message. TSs are the key to re-reading threads later.
 - **Note reply counts** so the next sync can detect new replies.
 - **Separate sync sessions** with a horizontal rule and a timestamp header.
-- **Each file type only contains its own message type.** Channels file has no DMs; DMs file has no channel messages.
+- **Each file is scoped to its subject.** A per-channel file contains only that channel's messages. `_dms.md` contains only 1:1 DMs. `_group-dms.md` contains only group DMs. Mid-day syncs append to the same file; they don't fan out to new files.
+- **Directory listing tells the story.** `ls slack/YYYY-MM-DD/` shows which channels were active that day. File sizes show where activity concentrated.
 
 ---
 
