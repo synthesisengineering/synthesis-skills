@@ -5,10 +5,14 @@ license: "Apache-2.0"
 metadata:
   depends_on: "synthesis-daily-rituals (optional integration)"
   author: "Rajiv Pant"
-  version: "0.1.0"
+  version: "0.2.0"
   source_repo: "github.com/rajivpant/synthesis-skills"
   source_type: "public"
 ---
+
+## v0.2.0 — Workspace-Rooted Paths
+
+In v0.2.0 (2026-04-22), meeting transcripts land in the workspace-private repo (`ai-knowledge-<workspace>-<person>-private/transcripts/meetings/`), matching synthesis-slack-sync v2.0.0. The config schema updates accordingly: `ai_knowledge_repo` → `transcripts_repo`, with the workspace no longer included in the path (it's implicit in the repo name).
 
 # Synthesis Meeting Transcripts
 
@@ -31,23 +35,23 @@ The skill describes the *workflow*; it does not prescribe which tools must be us
 Create `.claude/meeting-transcripts.yaml` in each project that uses this skill:
 
 ```yaml
-# .claude/meeting-transcripts.yaml — Meeting transcript sync configuration
+# .claude/meeting-transcripts.yaml — Meeting transcript sync configuration (v0.2.0 schema)
 
 # REQUIRED
 workspace: example-workspace
-# Identifier for the workspace. Determines transcript subdirectory:
-#   {transcripts_path}/{workspace}/meetings/
+# Identifier for the workspace. Used in transcript headers.
+# Must match the workspace-private repo name pattern: ai-knowledge-<workspace>-<person>-private.
 
 google_account: user@example.com
 # The Google account whose Gmail/Drive will be searched.
 # With Anthropic hosted connectors: must match the account authenticated in Claude Connectors.
 # With workspace-mcp: any authenticated account.
 
-transcripts_path: projects/_transcripts/
-# Relative to ai_knowledge_repo. Meetings land in {transcripts_path}/{workspace}/meetings/
+transcripts_repo: ~/workspaces/example-workspace/ai-knowledge-example-workspace-<person>-private
+# Absolute path to the workspace-private repo where transcripts are stored (Type 3 content).
 
-ai_knowledge_repo: ~/projects/ai-knowledge
-# Absolute path to the ai-knowledge repo where transcripts are stored.
+transcripts_path: transcripts
+# Relative to transcripts_repo. Meetings land in {transcripts_repo}/{transcripts_path}/meetings/.
 
 # OPTIONAL — Named meeting patterns
 # Maps a short name the user types ("pull the standup") to a Drive search query.
@@ -63,18 +67,18 @@ meeting_patterns:
 generic_pattern: 'name contains "{{name}}" and name contains "Notes by Gemini"'
 
 # OPTIONAL — Filename date format for saved transcripts. Default: YYYY-MM-DD
-# Produces: {transcripts_path}/{workspace}/meetings/{meeting-name-slug}-{date}.md
+# Produces: {transcripts_repo}/{transcripts_path}/meetings/{meeting-name-slug}-{date}.md
 filename_date_format: "YYYY-MM-DD"
 ```
 
-If the config file is missing, the skill should warn and ask the user to create one. A minimal working config has `workspace`, `google_account`, `transcripts_path`, `ai_knowledge_repo`.
+If the config file is missing, the skill should warn and ask the user to create one. A minimal working config has `workspace`, `google_account`, `transcripts_repo`, `transcripts_path`.
 
 ---
 
 ## Prerequisites
 
 - A Gmail MCP and a Drive MCP must both be connected and authenticated for `google_account`. This skill doesn't care which specific MCPs — it will use whatever Gmail/Drive tools are available in the session.
-- Local transcript directory must exist or be creatable at `{ai_knowledge_repo}/{transcripts_path}/{workspace}/meetings/`.
+- Local transcript directory must exist or be creatable at `{transcripts_repo}/{transcripts_path}/meetings/`.
 
 ---
 
@@ -116,7 +120,7 @@ A well-behaved Drive file-read tool returns both tabs in a single fetch (verifie
 
 ### Step 4: Save to local transcript archive
 
-Write to `{ai_knowledge_repo}/{transcripts_path}/{workspace}/meetings/{meeting-slug}-{date}.md` with this header:
+Write to `{transcripts_repo}/{transcripts_path}/meetings/{meeting-slug}-{date}.md` with this header:
 
 ```markdown
 # {Meeting Title} — {Weekday}, {Month} {Day}, {Year}
@@ -144,7 +148,7 @@ If the project uses a daily action plan or CONTEXT.md that tracks meeting transc
 ### Step 6: Cleanup and commit
 
 - Never leave downloaded transcripts in `~/Downloads/`. The whole point of this skill is to bypass that path.
-- Commit the new transcript file to the ai_knowledge_repo with a descriptive message.
+- Commit the new transcript file to the transcripts_repo with a descriptive message.
 - Push if the repo is normally push-on-save.
 
 ---

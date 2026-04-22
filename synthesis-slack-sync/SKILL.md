@@ -1,11 +1,11 @@
 ---
 name: synthesis-slack-sync
-description: "Slack channel sync protocol for AI-assisted workflows. Reads channels and threads via Slack MCP, saves to local transcript files, and updates daily action plans. Handles mid-day re-syncs with thread staleness detection. Use when asked to: slack sync, sync from slack, check slack, read channels, sync messages, sync transcripts, what's new on slack."
+description: "Slack channel sync protocol for AI-assisted workflows. Reads channels and threads via Slack MCP, saves to local transcript files in workspace-scoped repos, and updates person-scoped daily action plans. Handles mid-day re-syncs with thread staleness detection. Use when asked to: slack sync, sync from slack, check slack, read channels, sync messages, sync transcripts, what's new on slack."
 license: "CC0-1.0"
 metadata:
   depends_on: "synthesis-daily-rituals, synthesis-project-management"
   author: "Rajiv Pant"
-  version: "1.2.0"
+  version: "2.0.0"
   source_repo: "github.com/rajivpant/synthesis-skills"
   source_type: "public"
 ---
@@ -16,30 +16,42 @@ A protocol for syncing Slack channels and threads to local transcript files usin
 
 This skill provides the **protocol** — the sync methodology, thread re-reading discipline, transcript format, and action plan update rules. A per-project **config file** (`.claude/slack-sync.yaml`) provides the specifics: which channels, which paths, which DMs.
 
+## v2.0.0 — Workspace-Rooted Layout
+
+In v2.0.0 (2026-04-22), the path schema changed to reflect the ai-knowledge phase 2 architecture. Transcripts now live in a workspace-private repo (`ai-knowledge-<workspace>-<person>-private/transcripts/`) colocated with the workspace. Daily action plans remain person-scoped in the owner's personal ai-knowledge repo (`ai-knowledge-<person>/daily-plans/`).
+
+The v1.x schema (`ai_knowledge_repo` + `transcripts_path: projects/_transcripts/` + `action_plan_path: projects/_daily-plans/`) is NOT backward compatible with v2.0.0. See the updated config schema below.
+
+### `-private` Discovery Protocol (ADR-014)
+
+Any repo matching `ai-knowledge-*-private` is filtered from auto-discovery by default. This skill writes to a `-private` repo intentionally — the config file points at it explicitly. Other tools (ragbot auto-discovery, etc.) must NOT include these repos in their discovery scans unless running in explicit owner context. A sentinel file `.ai-knowledge-private-owner` at the repo root confirms ownership.
+
 ## Configuration
 
 Create `.claude/slack-sync.yaml` in each project that uses this skill:
 
 ```yaml
-# .claude/slack-sync.yaml — Slack sync configuration
+# .claude/slack-sync.yaml — Slack sync configuration (v2.0.0 schema)
 #
-# workspace: (REQUIRED) Workspace identifier. Determines transcript subdirectory structure:
-#   {transcripts_path}/{workspace}/channels/YYYY-MM-DD.md
-#   {transcripts_path}/{workspace}/dms/YYYY-MM-DD.md
-#   {transcripts_path}/{workspace}/group-dms/YYYY-MM-DD.md
-# channels: Slack channels to monitor. All channel types supported.
-# dm_channels: Active 1:1 DM conversations to check (optional).
-# group_dm_channels: Group DM (mpim) conversations to check (optional).
-# transcripts_path: Root directory for transcripts (relative to ai-knowledge repo root).
-# action_plan_path: Where daily action plans live (relative to ai-knowledge repo root).
-# ai_knowledge_repo: Absolute path to the ai-knowledge repo where transcripts are stored.
-
-ai_knowledge_repo: ~/projects/ai-knowledge
+# workspace: (REQUIRED) Workspace identifier. Used in transcript headers; must match
+#   the workspace-private repo name pattern ai-knowledge-<workspace>-<person>-private.
+# transcripts_repo: Absolute path to the workspace-private repo (Type 3). Transcripts
+#   are written at {transcripts_repo}/{transcripts_path}/{channels,dms,group-dms,meetings}/.
+# transcripts_path: Relative subpath within transcripts_repo. Conventionally "transcripts".
+# action_plan_repo: Absolute path to the person's personal ai-knowledge repo where daily
+#   action plans live. Daily plans are person-scoped (one per day, shared across all
+#   workspaces the person touches that day), so this does NOT point at the workspace-
+#   private repo.
+# action_plan_path: Relative subpath within action_plan_repo. Conventionally "daily-plans".
+# channels / dm_channels / group_dm_channels: as before.
 
 workspace: example-workspace
 
-transcripts_path: projects/_transcripts/
-action_plan_path: projects/_daily-plans/
+transcripts_repo: ~/workspaces/example-workspace/ai-knowledge-example-workspace-<person>-private
+transcripts_path: transcripts
+
+action_plan_repo: ~/workspaces/<person>/ai-knowledge-<person>
+action_plan_path: daily-plans
 
 channels:
   - id: C0EXAMPLE01
@@ -62,12 +74,21 @@ group_dm_channels: []
 
 If the config file is missing, the skill should warn and ask the user to create one.
 
+**Path resolution summary:**
+- Channel transcripts: `{transcripts_repo}/{transcripts_path}/channels/YYYY-MM-DD.md`
+- DM transcripts: `{transcripts_repo}/{transcripts_path}/dms/YYYY-MM-DD.md`
+- Group DM transcripts: `{transcripts_repo}/{transcripts_path}/group-dms/YYYY-MM-DD.md`
+- Meeting transcripts (written by synthesis-meeting-transcripts, not this skill): `{transcripts_repo}/{transcripts_path}/meetings/`
+- Daily action plan: `{action_plan_repo}/{action_plan_path}/YYYY-MM-DD.md`
+
+The workspace identifier no longer appears in transcript paths — it's implicit in `transcripts_repo` (the workspace-private repo is named after its workspace).
+
 ---
 
 ## Prerequisites
 
 - **Slack MCP must be connected and authenticated.** If any Slack tool call fails with an auth error, stop and instruct the user to re-authenticate: `claude mcp auth slack`, then restart the IDE/CLI.
-- **Local transcript files must exist or be created.** The skill creates today's files as needed under `{workspace}/channels/`, `{workspace}/dms/`, and `{workspace}/group-dms/`.
+- **Local transcript files must exist or be created.** The skill creates today's files as needed under the `channels/`, `dms/`, and `group-dms/` subdirectories of the workspace-private repo's transcripts path.
 
 ---
 
@@ -92,9 +113,9 @@ Every sync — whether day-start, mid-day, or day-end — follows these steps. N
 Before doing anything else, run the thread checker script on each transcript file that exists for today:
 
 ```bash
-python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py {transcripts_path}/{workspace}/channels/YYYY-MM-DD.md [action_plan_file]
-python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py {transcripts_path}/{workspace}/dms/YYYY-MM-DD.md [action_plan_file]
-python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py {transcripts_path}/{workspace}/group-dms/YYYY-MM-DD.md [action_plan_file]
+python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/channels/YYYY-MM-DD.md [action_plan_file]
+python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/dms/YYYY-MM-DD.md [action_plan_file]
+python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/group-dms/YYYY-MM-DD.md [action_plan_file]
 ```
 
 Skip any file that does not yet exist (e.g., no DMs synced today). Combine the output from all runs into a single checklist. You MUST re-read every thread listed during Step 2. The script exists because manually deciding which threads to re-read has repeatedly failed — threads get skipped and messages get missed.
@@ -119,7 +140,7 @@ Thread replies do NOT appear as channel-level messages. The only way to detect t
 
 **Source A: Threads in today's transcripts.** For every message in today's channels, DMs, and group-DMs transcript files that shows a thread (reply count > 0), re-read the full thread.
 
-**Source B: Threads from yesterday's transcripts that may have new replies.** Open the previous day's transcript files (`{workspace}/channels/`, `{workspace}/dms/`, `{workspace}/group-dms/` for yesterday's date). For every thread that was active (had replies), re-read it. This catches: overnight replies, the user's own replies to threads from yesterday, and continuing conversations that span days.
+**Source B: Threads from yesterday's transcripts that may have new replies.** Open the previous day's transcript files (`channels/`, `dms/`, `group-dms/` subdirectories for yesterday's date). For every thread that was active (had replies), re-read it. This catches: overnight replies, the user's own replies to threads from yesterday, and continuing conversations that span days.
 
 **Source C: Threads surfaced by Step 1.** Any message returned by Step 1 that shows "Thread: N replies" must be re-read, even if the parent message is from a previous day. Channel reads return messages in reverse chronological order — a thread from 3 days ago can appear in the channel read if it had recent activity.
 
@@ -166,16 +187,16 @@ Group DMs (multi-party IMs) are separate from 1:1 DMs. They use channel IDs, not
 
 Write each message type to its own transcript file under the workspace directory:
 
-- **Channels:** `{transcripts_path}/{workspace}/channels/YYYY-MM-DD.md` — channel messages and thread replies from Steps 1-2.
-- **DMs:** `{transcripts_path}/{workspace}/dms/YYYY-MM-DD.md` — 1:1 DM messages from Step 3.
-- **Group DMs:** `{transcripts_path}/{workspace}/group-dms/YYYY-MM-DD.md` — group DM messages from Step 3b.
+- **Channels:** `{transcripts_repo}/{transcripts_path}/channels/YYYY-MM-DD.md` — channel messages and thread replies from Steps 1-2.
+- **DMs:** `{transcripts_repo}/{transcripts_path}/dms/YYYY-MM-DD.md` — 1:1 DM messages from Step 3.
+- **Group DMs:** `{transcripts_repo}/{transcripts_path}/group-dms/YYYY-MM-DD.md` — group DM messages from Step 3b.
 
 For each file:
 - Record the sync time (e.g., `## Mid-day sync (~14:30 EDT)`).
 - If the file doesn't exist, create it with the standard header and create directories as needed.
 - If no messages of that type were found, skip that file (do not create empty files).
 
-Meeting transcripts are NOT part of Slack sync — they are handled by the daily-rituals skill and placed in `{transcripts_path}/{workspace}/meetings/`.
+Meeting transcripts are NOT part of Slack sync — they are handled by the daily-rituals skill and placed in `{transcripts_repo}/{transcripts_path}/meetings/`.
 
 ### Step 5: Update action plan
 
@@ -231,9 +252,9 @@ Include the human-readable time the message was found in Slack.
 
 ## Transcript File Format
 
-Each transcript type has its own file under `{workspace}/`. The internal format is the same across all three — only the header differs.
+Each transcript type has its own file under `{transcripts_repo}/{transcripts_path}/`. The internal format is the same across all three — only the header differs.
 
-### Channels file (`{workspace}/channels/YYYY-MM-DD.md`)
+### Channels file (`channels/YYYY-MM-DD.md`)
 
 ```markdown
 # Slack Channels — [Day], [Month] [Date], [Year]
@@ -264,7 +285,7 @@ Last synced: ~HH:MM TZ
 ---
 ```
 
-### DMs file (`{workspace}/dms/YYYY-MM-DD.md`)
+### DMs file (`dms/YYYY-MM-DD.md`)
 
 ```markdown
 # Slack DMs — [Day], [Month] [Date], [Year]
@@ -282,7 +303,7 @@ Last synced: ~HH:MM TZ
 ---
 ```
 
-### Group DMs file (`{workspace}/group-dms/YYYY-MM-DD.md`)
+### Group DMs file (`group-dms/YYYY-MM-DD.md`)
 
 ```markdown
 # Slack Group DMs — [Day], [Month] [Date], [Year]

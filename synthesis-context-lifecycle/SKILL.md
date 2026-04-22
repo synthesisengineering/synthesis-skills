@@ -47,7 +47,7 @@ This maps to both cognitive science and systems engineering:
 | Working memory | L1 cache | CONTEXT.md | Small capacity, constantly refreshed, always loaded |
 | Semantic memory | L2 cache | REFERENCE.md | Facts and relationships, updated in place, loaded on demand |
 | Episodic memory | L3 cache | sessions/ | Chronological events, append-only, searched when needed |
-| Procedural memory | Firmware | CLAUDE.md + _lessons/ | How to do things, rules, patterns |
+| Procedural memory | Firmware | CLAUDE.md + lessons/ | How to do things, rules, patterns |
 
 These are design principles, not metaphors. Each memory type has different storage, retrieval, and maintenance characteristics.
 
@@ -279,7 +279,7 @@ Is this information needed for TODAY's work?
     │       │   ├── Yes → sessions/YYYY-MM.md
     │       │   └── No
     │       │       └── Is it a reusable lesson?
-    │       │           ├── Yes → _lessons/
+    │       │           ├── Yes → lessons/
     │       │           └── No → delete it
     └── Exception: completed milestones (≤10 lines) stay in CONTEXT.md
 ```

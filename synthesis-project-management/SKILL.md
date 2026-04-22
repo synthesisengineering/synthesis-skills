@@ -23,7 +23,7 @@ These values are user-specific. Update them for your environment.
 | `ai_knowledge_workspace` | `ai-knowledge-{workspace}` | Root directory for your ai-knowledge repo (e.g., `ai-knowledge-rajiv`) |
 | `projects_path` | `projects/` | Directory within the workspace for all project folders |
 | `index_file` | `projects/index.yaml` | Single index file for all projects |
-| `lessons_path` | `projects/_lessons/` | Cross-project lessons and patterns directory |
+| `lessons_path` | `lessons/` | Cross-project lessons and patterns directory |
 
 ---
 
@@ -70,8 +70,9 @@ ai-knowledge-{workspace}/
     │       ├── out/             # Outputs
     │       └── scripts/         # One-off scripts
     │
-    └── _lessons/                # Cross-project lessons and patterns
-        └── YYYY-MM-DD-*.md      # Date-prefixed for discoverability
+ai-knowledge-{workspace}/
+└── lessons/                    # Cross-workspace lessons (top-level, no underscore, ADR-017)
+    └── YYYY-MM-DD-*.md         # Date-prefixed for discoverability
 ```
 
 ### Key Structural Decisions
@@ -79,7 +80,7 @@ ai-knowledge-{workspace}/
 | Decision | Rationale |
 |----------|-----------|
 | **Flat project folders** | Status is in `index.yaml`, not folder names. No moving folders when status changes. |
-| **`_lessons/` underscore prefix** | Distinguishes from project folders. Sorts to top. Visible, not hidden. |
+| **`lessons/` at top level (no underscore)** | Lessons are a peer content domain to projects, not a sub-component. Top-level layout matches semantic equality (ADR-017). |
 | **Three-tier context** | CONTEXT.md (working memory), REFERENCE.md (stable facts), sessions/ (history). See the synthesis-context-lifecycle skill. |
 | **Date-prefixed lesson files** | Enables time-based discovery. `ls -t` shows recent. No index needed. |
 | **No templates folder** | Agents examine existing examples and adapt. Templates are a pre-AI pattern. |
@@ -143,7 +144,7 @@ Projects use a three-tier context system that separates information by lifecycle
 
 **Archival protocol:** At session start, if CONTEXT.md exceeds 120 lines: archive completed tasks and old session logs to sessions/, move stable facts to REFERENCE.md, verify content exists in destination, then remove from CONTEXT.md. Archive FIRST, delete second — two-phase commit.
 
-### 3. Lessons (`_lessons/`)
+### 3. Lessons (`lessons/`)
 
 Cross-project mistakes, insights, and patterns. All in one folder with date prefixes.
 
@@ -203,7 +204,7 @@ Complete task → Complete task → Complete task → (context compaction) → L
 1. **Read CONTEXT.md** — Understand current state before touching code
 2. **Check line count** — If CONTEXT.md >150 lines, archive before starting work
 3. **Read REFERENCE.md** — If it exists and the task needs reference details
-4. **Search _lessons/** — `grep` for relevant past experiences
+4. **Search lessons/** — `grep` for relevant past experiences
 5. **Check related projects** — Look at `related:` tags in index.yaml
 
 ### Session End
@@ -246,8 +247,8 @@ When a user mentions a project:
 | Not updating CONTEXT.md | Lost progress after compaction | Update after EVERY task |
 | Deferring updates to "session end" | Forget to update | Update immediately |
 | Putting management files in project repos | Exposes internal process | Keep in ai-knowledge-{workspace} |
-| Not checking _lessons/ | Repeat mistakes | Grep at session start |
-| Creating separate patterns.md | Duplicate, gets stale | Use `type: pattern` in _lessons/ |
+| Not checking lessons/ | Repeat mistakes | Grep at session start |
+| Creating separate patterns.md | Duplicate, gets stale | Use `type: pattern` in lessons/ |
 | Maintaining index files for lessons | Gets stale | Use date prefixes, `ls -t` |
 
 ---

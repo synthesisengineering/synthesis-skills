@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.0"
+  version: "1.3.0"
   source_repo: "github.com/rajivpant/synthesis-skills"
   source_type: "public"
 ---
@@ -94,6 +94,21 @@ Performs all three operations:
 
 - **Full:** "sync my repos with GitHub"
 - **Status only:** "show me the status of my repos"
+
+### Push Policy (v1.3.0)
+
+Each repo in the manifest may have a `push_policy` field. When set, the sync protocol MUST respect it — refusing to push to any remote that violates the policy.
+
+| `push_policy` | Meaning |
+|---------------|---------|
+| unset (default) | Push to all remotes configured in the repo |
+| `owner-only` | Only push to `origin` when origin points to the owner's personal GitHub account. Never push to a client org, another GitHub org, or a third-party Git host. Used for `ai-knowledge-*-private` repos that carry Type 3 (personal-client) content. |
+| `pr-required` | Never auto-push; user must review and open a PR |
+
+For `owner-only` repos:
+- Before any `git push`, verify `git remote -v` shows ONLY the owner's personal-GitHub URLs
+- If any non-owner remote exists, abort with an error and alert the user
+- These repos exist per ADR-013 (workspace-private repos); the `-private` suffix is also a discovery protocol filter (ADR-014)
 
 ### Session-End Check
 

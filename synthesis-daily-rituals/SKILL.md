@@ -9,7 +9,7 @@ depends_on:
   - synthesis-repo-guard
 metadata:
   author: "Rajiv Pant"
-  version: "2.2.0"
+  version: "2.3.0"
   source_repo: "github.com/rajivpant/synthesis-skills"
   source_type: "public"
 ---
@@ -18,16 +18,22 @@ metadata:
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
 
+## v2.3.0 — Workspace-Rooted Paths
+
+In v2.3.0 (2026-04-22), path configuration changed to reflect the ai-knowledge phase 2 architecture: transcripts live per-workspace in `ai-knowledge-<workspace>-<person>-private/transcripts/`; daily plans and lessons live person-scoped in `ai-knowledge-<person>/` at top-level (no `_` prefix). See synthesis-slack-sync v2.0.0 for the complementary configuration schema.
+
 ## Configuration
 
 These values are user-specific. Update them for your environment.
 
 | Setting | Value | Description |
 |---------|-------|-------------|
-| `daily_plans_path` | `projects/_daily-plans/` | Where daily action plans are saved (shared infrastructure) |
-| `transcripts_path` | `projects/_transcripts/` | Root dir for transcripts. Workspace subdirs (`{workspace}/channels/`, `/dms/`, `/group-dms/`, `/meetings/`) are managed by slack-sync skill |
-| `index_yaml_path` | `projects/index.yaml` | Project index file to update `last_session` |
-| `lessons_path` | `projects/_lessons/` | Where reusable lessons are stored |
+| `daily_plans_path` | `daily-plans/` | Where daily action plans are saved (person-scoped, in the personal ai-knowledge repo) |
+| `transcripts_path_in_private` | `transcripts/` | Relative subpath within each workspace-private repo. Workspace subdirs are NOT part of the path — they're implicit in the repo name (ADR-018) |
+| `personal_repo` | `~/workspaces/<person>/ai-knowledge-<person>` | Absolute path to personal root. Daily plans, lessons, cross-workspace projects live here |
+| `workspace_private_repo_pattern` | `~/workspaces/{workspace}/ai-knowledge-{workspace}-rajiv-private` | Path pattern for workspace-private repos (Type 3 content) |
+| `index_yaml_path` | `projects/index.yaml` | Relative to personal_repo; project index file to update `last_session` |
+| `lessons_path` | `lessons/` | Relative to personal_repo; where reusable lessons are stored (ADR-017) |
 | `downloads_path` | `~/Downloads/` | Where meeting transcripts are initially downloaded |
 | `alert_sound` | `/System/Library/Sounds/Glass.aiff` | macOS sound file for autonomous work alerts |
 | `slack_auth_command` | `claude mcp auth slack` | Command to re-authenticate Slack MCP |
@@ -61,14 +67,14 @@ Execute in this order (each step depends on the one before it).
 After any standup, planning session, or design review with auto-generated notes (e.g., Gemini in Google Meet):
 
 **Automated path (preferred)** — if the project uses `synthesis-meeting-transcripts`:
-- [ ] **Run `/synthesis-meeting-transcripts`** — the skill searches Gmail/Drive for today's Gemini-generated meeting notes doc, fetches both the summary and the full word-for-word transcript, and saves to `projects/_transcripts/{workspace}/meetings/`. Configuration in `.claude/meeting-transcripts.yaml` per project. Works with Anthropic's hosted Gmail/Drive connectors (single account) or a self-hosted multi-account MCP.
+- [ ] **Run `/synthesis-meeting-transcripts`** — the skill searches Gmail/Drive for today's Gemini-generated meeting notes doc, fetches both the summary and the full word-for-word transcript, and saves to `~/workspaces/{workspace}/ai-knowledge-{workspace}-rajiv-private/transcripts/meetings/`. Configuration in `.claude/meeting-transcripts.yaml` per project. Works with Anthropic's hosted Gmail/Drive connectors (single account) or a self-hosted multi-account MCP.
 - [ ] Read the saved transcript and extract action items, decisions, status changes.
 - [ ] Update CONTEXT.md with any new information from the meeting.
 
 **Manual path (fallback)** — if no Gmail/Drive tooling is available:
 - [ ] Download transcript from `~/Downloads/`.
 - [ ] **Verify transcript completeness.** Check that the file contains BOTH a summary/notes section AND a full conversation transcript (speaker-attributed dialogue with timestamps). Many AI note-takers (Gemini, Otter, Fireflies) produce a summary by default but may omit the raw transcript. **If the file contains only a summary without the full transcript log, warn the user immediately** — the raw transcript is the primary source; summaries are lossy and may misattribute or omit statements.
-- [ ] Move to workspace meetings directory (`projects/_transcripts/{workspace}/meetings/`) with naming convention: `standup-YYYY-MM-DD.md` or `meeting-TOPIC-YYYY-MM-DD.md`. The `{workspace}` value comes from the project's `.claude/slack-sync.yaml` config.
+- [ ] Move to workspace meetings directory (`~/workspaces/{workspace}/ai-knowledge-{workspace}-rajiv-private/transcripts/meetings/`) with naming convention: `standup-YYYY-MM-DD.md` or `meeting-TOPIC-YYYY-MM-DD.md`. The `{workspace}` value comes from the project's `.claude/slack-sync.yaml` config.
 - [ ] Read transcript and extract action items, decisions, status changes.
 - [ ] Update CONTEXT.md with any new information from the meeting.
 
@@ -88,15 +94,15 @@ After any standup, planning session, or design review with auto-generated notes 
 
 ### 5. Day Plan
 
-- [ ] **Review yesterday's daily plan** (`projects/_daily-plans/YYYY-MM-DD.md`). Identify: uncompleted tasks to carry forward, draft messages that were never sent, items that are now stale due to overnight Slack activity, and "waiting on others" items that may have been resolved.
+- [ ] **Review yesterday's daily plan** (`daily-plans/YYYY-MM-DD.md`). Identify: uncompleted tasks to carry forward, draft messages that were never sent, items that are now stale due to overnight Slack activity, and "waiting on others" items that may have been resolved.
 - [ ] **Cross-reference yesterday's plan with today's Slack sync.** A task marked incomplete yesterday may have been resolved overnight. A draft message from yesterday may no longer be accurate due to code changes, PR merges, or Slack replies. Do not blindly carry forward — verify each item is still valid and current.
-- [ ] Create today's action plan in `projects/_daily-plans/YYYY-MM-DD.md` (shared infrastructure, not inside individual project directories or ~/Downloads). This creates a permanent archive.
+- [ ] Create today's action plan in `daily-plans/YYYY-MM-DD.md` (shared infrastructure, not inside individual project directories or ~/Downloads). This creates a permanent archive.
 - [ ] The action plan should contain: tasks (prioritized with checkboxes), draft messages (with thread locators), things to know, waiting-on-others table, and everything else.
 - [ ] Update CONTEXT.md action items with new items from catch-up.
 - [ ] Prioritize today's work: integration, reviews, communications, features, meetings.
 - [ ] Check calendar for meetings today and prep needed.
 - [ ] Update the action plan throughout the day as tasks complete or change — it is a living document, not a static morning capture.
-- [ ] **Always include a clickable link to the action plan file** in your response when creating, updating, or referencing it. Use the absolute path in markdown link format: `[2026-03-23.md](/absolute/path/to/projects/_daily-plans/2026-03-23.md)`. Never use relative paths — they don't resolve in the IDE.
+- [ ] **Always include a clickable link to the action plan file** in your response when creating, updating, or referencing it. Use the absolute path in markdown link format: `[2026-03-23.md](/absolute/path/to/daily-plans/2026-03-23.md)`. Never use relative paths — they don't resolve in the IDE.
 
 ### 6. Morning Messages
 
@@ -350,7 +356,7 @@ Observer mode is NOT a reduced-effort version of the day-start checklist. It is 
 ### Steps
 
 1. **Verify the date** — run `date` to confirm today and translate any day-of-week references correctly.
-2. **Check Downloads** for standup transcripts, meeting notes, shared Google Docs, or forwarded emails. Move each to `projects/_transcripts/{workspace}/meetings/` with appropriate naming. Delete originals from Downloads.
+2. **Check Downloads** for standup transcripts, meeting notes, shared Google Docs, or forwarded emails. Move each to `~/workspaces/{workspace}/ai-knowledge-{workspace}-rajiv-private/transcripts/meetings/` with appropriate naming. Delete originals from Downloads.
 3. **Full Slack sync** — run `/synthesis-slack-sync`. Read every channel, DM, group DM. Follow threads with replies. Save to transcripts.
 4. **Create today's daily plan** in observer mode:
    - Header says "Mode: VACATION CATCH-UP (awareness only — team is operating independently)" or equivalent
@@ -406,7 +412,7 @@ When observer mode is reinvented per conversation ("do the thing you did yesterd
 
 ### 4. Lessons Learned
 
-- [ ] Document any reusable lessons in `_lessons/` (patterns, mistakes, solutions that apply beyond this session).
+- [ ] Document any reusable lessons in `lessons/` (patterns, mistakes, solutions that apply beyond this session).
 - [ ] Update project REFERENCE.md with any new stable facts discovered today.
 
 ### 5. Career Amplification
@@ -457,7 +463,7 @@ This is a hard rule to prevent unintended commits of unrelated work:
 3. **For each repo touched:** `git add <specific files>` (never `git add -A`, never `git add .`), then commit, then push.
 4. **Never touch** repos where this invocation did not create or modify files, even if they are dirty. That work belongs to another session.
 
-**Example:** A daily ritual for Project A updates `projects/project-a/CONTEXT.md` and creates `projects/_daily-plans/YYYY-MM-DD.md`. If the user also has uncommitted work in `projects/project-b/` from a different session, the ritual does NOT commit that. Only the files this invocation touched.
+**Example:** A daily ritual for Project A updates `projects/project-a/CONTEXT.md` and creates `daily-plans/YYYY-MM-DD.md`. If the user also has uncommitted work in `projects/project-b/` from a different session, the ritual does NOT commit that. Only the files this invocation touched.
 
 ### Pre-Commit Hook Failures
 
@@ -480,7 +486,7 @@ If a pre-commit hook flags sensitive content:
 
 ## How to Create a Project Supplement
 
-Project supplements live in `projects/_daily-plans/` (shared infrastructure). Example: `projects/_daily-plans/daily-checklists.md`. Each project MAY also keep project-specific ritual notes in its own directory if they don't apply cross-project. The supplement should contain:
+Project supplements live in `daily-plans/` (shared infrastructure). Example: `daily-plans/daily-checklists.md`. Each project MAY also keep project-specific ritual notes in its own directory if they don't apply cross-project. The supplement should contain:
 
 1. **Repos to sync** — which repos to `git fetch --all` on
 2. **Channels to sync** — specific Slack channels and DMs with IDs
