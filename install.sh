@@ -1,7 +1,7 @@
 #!/bin/sh
 # Synthesis Skills installer — no Node.js required
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/rajivpant/synthesis-skills/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/install.sh | sh
 #   ./install.sh install    # Install all skills
 #   ./install.sh update     # Update to latest
 #   ./install.sh uninstall  # Remove all installed skills
@@ -9,10 +9,10 @@
 
 set -e
 
-REPO_URL="https://github.com/rajivpant/synthesis-skills.git"
+REPO_URL="https://github.com/synthesisengineering/synthesis-skills.git"
 REPO_NAME="synthesis-skills"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/synthesis-skills"
-SOURCE_REPO="github.com/rajivpant/synthesis-skills"
+SOURCE_REPO="github.com/synthesisengineering/synthesis-skills"
 SOURCE_TYPE="public"
 
 # Skill directories to install to (auto-detected)

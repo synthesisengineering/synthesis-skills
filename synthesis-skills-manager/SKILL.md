@@ -6,7 +6,7 @@ depends_on: []
 metadata:
   author: "Rajiv Pant"
   version: "1.0.0"
-  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
@@ -36,7 +36,7 @@ Every installed skill has a `.source.json` file (gitignored in source repos):
 
 ```json
 {
-  "source_repo": "github.com/rajivpant/synthesis-skills",
+  "source_repo": "github.com/synthesisengineering/synthesis-skills",
   "source_type": "public",
   "source_path": "synthesis-thinking-framework/SKILL.md",
   "source_commit": "abc123...",

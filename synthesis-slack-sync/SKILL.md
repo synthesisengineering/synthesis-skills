@@ -6,7 +6,7 @@ metadata:
   depends_on: "synthesis-daily-rituals, synthesis-project-management"
   author: "Rajiv Pant"
   version: "3.0.0"
-  source_repo: "github.com/rajivpant/synthesis-skills"
+  source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 

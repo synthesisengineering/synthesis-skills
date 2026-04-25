@@ -7,7 +7,7 @@ Proven AI agent skills for code review, content creation, project management, an
 **One command — installs all 31 skills to every AI agent on your machine:**
 
 ```bash
-npx skills add rajivpant/synthesis-skills --global --all --copy
+npx skills add synthesisengineering/synthesis-skills --global --all --copy
 ```
 
 This works with Claude Code, Cursor, Codex CLI, GitHub Copilot, and [40+ other agents](https://agentskills.io).
@@ -15,13 +15,13 @@ This works with Claude Code, Cursor, Codex CLI, GitHub Copilot, and [40+ other a
 ### No Node.js? Use the shell installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rajivpant/synthesis-skills/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/install.sh | sh
 ```
 
 Or clone and run directly:
 
 ```bash
-git clone https://github.com/rajivpant/synthesis-skills.git
+git clone https://github.com/synthesisengineering/synthesis-skills.git
 cd synthesis-skills
 ./install.sh install
 ```
@@ -29,7 +29,7 @@ cd synthesis-skills
 ### Install specific skills only
 
 ```bash
-npx skills add rajivpant/synthesis-skills --global --copy --skill synthesis-pr-review,synthesis-codebase-review
+npx skills add synthesisengineering/synthesis-skills --global --copy --skill synthesis-pr-review,synthesis-codebase-review
 ```
 
 ### Update / Uninstall
