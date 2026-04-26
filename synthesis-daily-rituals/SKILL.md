@@ -36,7 +36,7 @@ These values are user-specific. Update them for your environment.
 | `lessons_path` | `lessons/` | Relative to personal_repo; where reusable lessons are stored (ADR-017) |
 | `downloads_path` | `~/Downloads/` | Where meeting transcripts are initially downloaded |
 | `alert_sound` | `/System/Library/Sounds/Glass.aiff` | macOS sound file for autonomous work alerts |
-| `slack_auth_command` | `claude mcp auth slack` | Command to re-authenticate Slack MCP |
+| `slack_auth_command` | tool-specific Slack auth flow | Command or UI flow to re-authenticate Slack for the current agent |
 
 ---
 
@@ -59,7 +59,7 @@ Execute in this order (each step depends on the one before it).
 
 - [ ] `git fetch --all` on all active project repos.
 - [ ] Check for new PRs, CI results, overnight pushes.
-- [ ] **Run `/synthesis-slack-sync`** — the `synthesis-slack-sync` skill handles the full Slack sync protocol: verify MCP auth, read all channels, re-read all threads with replies, check DMs, save to local transcripts, and update the action plan. See that skill for the detailed protocol and the rationale behind each step. Configuration is in `.claude/slack-sync.yaml` per project.
+- [ ] **Run `/synthesis-slack-sync`** — the `synthesis-slack-sync` skill handles the full Slack sync protocol: verify connector auth, read all channels, re-read all threads with replies, check DMs, save to local transcripts, and update the action plan. See that skill for the detailed protocol and the rationale behind each step. Configuration is in `.agents/slack-sync.yaml` per project, with `.claude/slack-sync.yaml` supported for existing projects.
 - [ ] Run any project-specific sync steps (see project supplement).
 
 ### 2b. Meeting Transcripts
@@ -67,14 +67,14 @@ Execute in this order (each step depends on the one before it).
 After any standup, planning session, or design review with auto-generated notes (e.g., Gemini in Google Meet):
 
 **Automated path (preferred)** — if the project uses `synthesis-meeting-transcripts`:
-- [ ] **Run `/synthesis-meeting-transcripts`** — the skill searches Gmail/Drive for today's Gemini-generated meeting notes doc, fetches both the summary and the full word-for-word transcript, and saves to `~/workspaces/{workspace}/ai-knowledge-{workspace}-rajiv-private/transcripts/meetings/`. Configuration in `.claude/meeting-transcripts.yaml` per project. Works with Anthropic's hosted Gmail/Drive connectors (single account) or a self-hosted multi-account MCP.
+- [ ] **Run `/synthesis-meeting-transcripts`** — the skill searches Gmail/Drive for today's Gemini-generated meeting notes doc, fetches both the summary and the full word-for-word transcript, and saves to the configured meeting transcript archive. Configuration is in `.agents/meeting-transcripts.yaml` per project, with `.claude/meeting-transcripts.yaml` supported for existing projects. Works with hosted Gmail/Drive connectors or a self-hosted multi-account MCP.
 - [ ] Read the saved transcript and extract action items, decisions, status changes.
 - [ ] Update CONTEXT.md with any new information from the meeting.
 
 **Manual path (fallback)** — if no Gmail/Drive tooling is available:
 - [ ] Download transcript from `~/Downloads/`.
 - [ ] **Verify transcript completeness.** Check that the file contains BOTH a summary/notes section AND a full conversation transcript (speaker-attributed dialogue with timestamps). Many AI note-takers (Gemini, Otter, Fireflies) produce a summary by default but may omit the raw transcript. **If the file contains only a summary without the full transcript log, warn the user immediately** — the raw transcript is the primary source; summaries are lossy and may misattribute or omit statements.
-- [ ] Move to workspace meetings directory (`~/workspaces/{workspace}/ai-knowledge-{workspace}-rajiv-private/transcripts/meetings/`) with naming convention: `standup-YYYY-MM-DD.md` or `meeting-TOPIC-YYYY-MM-DD.md`. The `{workspace}` value comes from the project's `.claude/slack-sync.yaml` config.
+- [ ] Move to the configured workspace meetings directory with naming convention: `standup-YYYY-MM-DD.md` or `meeting-TOPIC-YYYY-MM-DD.md`. The `{workspace}` value comes from the project's Slack sync config.
 - [ ] Read transcript and extract action items, decisions, status changes.
 - [ ] Update CONTEXT.md with any new information from the meeting.
 
@@ -126,7 +126,7 @@ Every draft message must be grounded in primary sources before it is written. Th
 | **Technical** (architecture, how something works, root cause) | Source code, config files, PRs, `git log` | "How does X work?", "Why did Y break?" |
 | **Status** (what's deployed, what's working) | Deploy scripts, version files, environment config, running services | "Is X on production?", "When was Y released?" |
 | **Infrastructure** (secrets, credentials, environments, CI/CD) | Terraform, deploy scripts, `.env.example`, CI/CD workflows, docs | "How do we manage secrets?", "Where does X run?" |
-| **Process** (PR workflow, branching, review, release) | CLAUDE.md, contributor guides, recent git history, skill files | "What's the merge process?", "Who reviews?" |
+| **Process** (PR workflow, branching, review, release) | Agent instruction files, contributor guides, recent git history, skill files | "What's the merge process?", "Who reviews?" |
 | **Product** (feature behavior, user-facing text, prompts) | Component code, prompt YAML files, test files | "Does the tool do X?", "What does the user see?" |
 
 ### Investigate First, Ask Questions Later
@@ -431,8 +431,8 @@ When observer mode is reinvented per conversation ("do the thing you did yesterd
 
 ### 7. Skills Maintenance
 
-- [ ] If any skills were edited during the session (in the installed `~/.claude/skills/` location), check whether those edits need to be synced back to the source repo. Use `synthesis-skills-manager` or check `.source.json` provenance files.
-- [ ] If skills were updated in source repos, verify they were installed to the project(s) that use them.
+- [ ] If any installed skill copies changed, check whether those edits need to be synced back to the source repo. Use `synthesis-skills-manager` or check `.source.json` provenance files.
+- [ ] If skills were updated in source repos, verify they were installed to the Claude Code, Codex, and cross-agent locations that use them.
 
 ### 8. Machine Sync
 
@@ -446,7 +446,7 @@ When observer mode is reinvented per conversation ("do the thing you did yesterd
 - [ ] If ANY repos are dirty or unpushed, resolve them before ending: commit and push, or explicitly decide to discard.
 - [ ] Zero untracked files, zero uncommitted changes, zero unpushed commits. No exceptions.
 
-This is not the same as steps 6-8. Those steps commit specific known changes. This step is the **verification gate** that catches anything those steps missed — files from earlier in the session, changes in repos you forgot about, skills edited in `~/.claude/skills/` that weren't synced back. The gate must pass before the session ends.
+This is not the same as steps 6-8. Those steps commit specific known changes. This step is the **verification gate** that catches anything those steps missed — files from earlier in the session, changes in repos you forgot about, installed skill copies that were changed without source updates. The gate must pass before the session ends.
 
 ---
 
@@ -513,7 +513,7 @@ When the user signals stepping away ("going to take a shower", "heading out", "d
 3. **If a blocker requires input**, play the alert FIRST to get attention, then display the question.
 4. **This is not limited to deployments** — any significant milestone (PR review posted, integration complete, deployment done, tests passing after a fix) should alert if the user is away.
 
-**Prerequisite:** `Bash(afplay:*)` and `Bash(say:*)` must be in the user's Claude Code allowed commands. If not, warn at the start of autonomous mode.
+**Prerequisite:** the current tool must be authorized to run the local alert commands (`afplay` and `say` on macOS). If not, warn at the start of autonomous mode.
 
 ---
 

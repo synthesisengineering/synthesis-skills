@@ -1,6 +1,6 @@
 ---
 name: synthesis-voice-profiler
-description: "Generate a structured writing voice profile from sample texts and diagnostic questions. Outputs a CLAUDE.md-compatible voice section that other skills automatically consume. Use when asked to: create voice profile, analyze writing style, extract voice, profile my writing, build voice section, writing DNA, style analysis."
+description: "Generate a structured writing voice profile from sample texts and diagnostic questions. Outputs an agent-instruction voice section that other skills automatically consume. Use when asked to: create voice profile, analyze writing style, extract voice, profile my writing, build voice section, writing DNA, style analysis."
 license: "CC0-1.0"
 user-invocable: true
 depends_on: []
@@ -13,19 +13,19 @@ metadata:
 
 # Synthesis Voice Profiler
 
-A utility that analyzes your writing samples and generates a structured voice profile for your CLAUDE.md. Once added, every skill that says "Apply voice and style preferences from your CLAUDE.md" will automatically use your profile. You run this once and update it when your style evolves.
+A utility that analyzes your writing samples and generates a structured voice profile for agent instruction files such as `CLAUDE.md` or `AGENTS.md`. Once added, every skill that says to apply voice and style preferences from agent instructions will automatically use your profile. You run this once and update it when your style evolves.
 
 ---
 
 ## What This Produces
 
-A structured voice profile section formatted for direct paste into your CLAUDE.md or project-level CLAUDE.md. The profile includes:
+A structured voice profile section formatted for direct paste into your global or project-level agent instruction file. The profile includes:
 
 - **Positive patterns** — what your writing sounds like (sentence rhythm, vocabulary preferences, rhetorical devices, formatting habits)
 - **Negative constraints** — what your writing avoids (specific words, phrases, tonal patterns, structural tendencies)
 - **Contextual notes** — how your voice shifts across different content types
 
-This output integrates with the existing synthesis skills ecosystem. Skills like synthesis-article-writing, synthesis-blog-refresh, synthesis-concise-messaging, and synthesis-content-distribution already look for voice preferences in CLAUDE.md — this skill generates what they consume.
+This output integrates with the existing synthesis skills ecosystem. Skills like synthesis-article-writing, synthesis-blog-refresh, synthesis-concise-messaging, and synthesis-content-distribution already look for voice preferences in agent instructions; this skill generates what they consume.
 
 ---
 
@@ -102,7 +102,7 @@ With samples read and questions answered, analyze across six dimensions:
 
 ### Step 4: Generate the Voice Profile
 
-Output the profile in this format, ready for the user to paste into their CLAUDE.md:
+Output the profile in this format, ready for the user to paste into an agent instruction file:
 
 ```markdown
 ## Voice & Writing Style
@@ -151,16 +151,16 @@ Revise based on feedback. The profile should feel like a mirror the writer recog
 
 ## Integration
 
-After the user adds the voice profile to their CLAUDE.md:
+After the user adds the voice profile to their agent instruction file:
 
 - **synthesis-article-writing** will apply it during Phase 2 (Writing)
 - **synthesis-blog-refresh** will use it for voice consistency checks
 - **synthesis-concise-messaging** will apply voice preferences to condensed messages
 - **synthesis-content-distribution** will adapt posts to match voice across platforms
 - **synthesis-content-quality** will flag deviations from the negative constraints during quality review
-- Any custom or private skills that say "Apply voice preferences from your CLAUDE.md" will consume it automatically
+- Any custom skills that say to apply voice preferences from agent instructions will consume it automatically
 
-No configuration or wiring is needed. The CLAUDE.md convention is the integration layer.
+No additional wiring is needed. Agent instruction files are the integration layer.
 
 ---
 

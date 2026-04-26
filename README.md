@@ -4,7 +4,7 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## Install
 
-**One command — installs all 31 skills to every AI agent on your machine:**
+**One command — installs all skills to every AI agent on your machine:**
 
 ```bash
 npx skills add synthesisengineering/synthesis-skills --global --all --copy
@@ -90,7 +90,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | Skill | Description |
 |-------|-------------|
 | `synthesis-thinking-framework` | Four-mode thinking methodology: first principles → systems → complexity → design |
-| `synthesis-voice-profiler` | Generate a structured writing voice profile from samples for your CLAUDE.md |
+| `synthesis-voice-profiler` | Generate a structured writing voice profile from samples for agent instruction files |
 | `synthesis-tree-of-thought` | Multi-expert collaborative reasoning technique |
 | `synthesis-llm-setup` | Configure Claude Projects, ChatGPT GPTs, and Gemini Gems |
 | `synthesis-creative-writer` | Creative writer persona template |
@@ -118,7 +118,7 @@ Skills use progressive disclosure:
 2. **Tier 2** (on activation): SKILL.md body — the actual instructions
 3. **Tier 3** (on demand): reference files for detailed material
 
-When you ask your AI assistant to do something that matches a skill's description, it loads automatically. Skills that involve writing include defaults that work standalone — if you have personal preferences in your CLAUDE.md, those override the defaults.
+When you ask your AI assistant to do something that matches a skill's description, it loads automatically. Skills that involve writing include defaults that work standalone. If you have personal preferences in agent instruction files such as `CLAUDE.md` or `AGENTS.md`, those override the defaults.
 
 ## Related
 

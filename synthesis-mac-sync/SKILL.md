@@ -145,6 +145,10 @@ sync_file() {
 }
 
 sync_file "$ICLOUD_BASE/.claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md" "no"
+sync_file "$ICLOUD_BASE/.codex/AGENTS.md" "$HOME/.codex/AGENTS.md" "no"
+sync_file "$ICLOUD_BASE/AGENTS.md" "$HOME/AGENTS.md" "no"
+sync_file "$ICLOUD_BASE/.codex/config.toml" "$HOME/.codex/config.toml" "no"
+sync_file "$ICLOUD_BASE/.codex/hooks.json" "$HOME/.codex/hooks.json" "no"
 # ... one line per manifest entry ...
 ```
 

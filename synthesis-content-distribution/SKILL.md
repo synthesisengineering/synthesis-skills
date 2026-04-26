@@ -65,7 +65,7 @@ Gather this information:
 
 ## Strategic Context and Voice
 
-Apply voice and style preferences from your CLAUDE.md if present. Otherwise, customize the section below.
+Apply voice and style preferences from agent instruction files such as `CLAUDE.md` or `AGENTS.md` if present. Otherwise, customize the section below.
 
 **Professional Positioning**
 Describe your professional background, areas of expertise, and how you want to be perceived. This helps produce posts that carry the right authority.

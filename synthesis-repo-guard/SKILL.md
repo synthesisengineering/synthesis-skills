@@ -132,10 +132,33 @@ Pick the combination that matches your workflow. The `Stop` hook is most valuabl
 
 ### OpenAI Codex
 
-Codex supports post-session hooks via its configuration. Add `repo_sync_check.py` to the cleanup step:
+Codex supports hooks via `~/.codex/hooks.json`, repo-local `.codex/hooks.json`, or inline hook configuration. A Stop hook can run `repo_sync_check.py` after each turn.
 
-```bash
-python3 /path/to/repo_sync_check.py --alert --speak
+Example `~/.codex/hooks.json`:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /path/to/repo_sync_check.py --workspace /path/to/workspace --dirty-only",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Enable hooks in `~/.codex/config.toml` if needed:
+
+```toml
+[features]
+codex_hooks = true
 ```
 
 ### Cursor

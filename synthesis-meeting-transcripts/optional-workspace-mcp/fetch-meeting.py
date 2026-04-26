@@ -15,7 +15,8 @@ Examples:
   fetch-meeting.py "PDE Leadership"     # uses generic_pattern from config
   fetch-meeting.py standup --account me@work.example.com   # override account
 
-Config: reads .claude/meeting-transcripts.yaml starting from CWD and walking up.
+Config: reads .agents/meeting-transcripts.yaml starting from CWD and walking up.
+Falls back to .claude/meeting-transcripts.yaml for existing projects.
 
 Requires `uv` for httpx + pyyaml. Run via: `uv run --with httpx --with pyyaml python fetch-meeting.py ...`
 Or install deps with pip first.
@@ -43,15 +44,17 @@ except ImportError as exc:
 # --- Config loading -----------------------------------------------------------
 
 def find_config() -> Path:
-    """Walk up from CWD looking for .claude/meeting-transcripts.yaml."""
+    """Walk up from CWD looking for meeting-transcripts.yaml config."""
     d = Path.cwd().resolve()
     while d != d.parent:
-        candidate = d / ".claude" / "meeting-transcripts.yaml"
-        if candidate.exists():
-            return candidate
+        for config_dir in (".agents", ".claude"):
+            candidate = d / config_dir / "meeting-transcripts.yaml"
+            if candidate.exists():
+                return candidate
         d = d.parent
     raise FileNotFoundError(
-        "No .claude/meeting-transcripts.yaml found in current tree. "
+        "No .agents/meeting-transcripts.yaml or .claude/meeting-transcripts.yaml "
+        "found in current tree. "
         "See synthesis-meeting-transcripts/SKILL.md for the schema."
     )
 

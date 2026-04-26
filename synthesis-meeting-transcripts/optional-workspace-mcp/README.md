@@ -24,7 +24,7 @@ If you use Anthropic's hosted Gmail + Drive connectors and a single Google accou
 # Start the server manually if you skipped auto-start:
 ./start.sh
 
-# Pull today's standup for the default account configured in .claude/meeting-transcripts.yaml:
+# Pull today's standup for the default account configured in .agents/meeting-transcripts.yaml:
 uv run --with httpx --with pyyaml python fetch-meeting.py standup
 
 # Or a specific date:
@@ -41,7 +41,7 @@ uv run --with httpx --with pyyaml python fetch-meeting.py standup --account me@w
 
 - [workspace-mcp](https://github.com/taylorwilsdon/google_workspace_mcp) installed and authenticated to your Google accounts
 - `uv` (runs the Python deps `httpx` and `pyyaml` on demand — no global pip install needed)
-- Your `.claude/meeting-transcripts.yaml` filled in (see parent skill's SKILL.md)
+- Your `.agents/meeting-transcripts.yaml` filled in (see parent skill's SKILL.md). Existing `.claude/meeting-transcripts.yaml` configs are supported.
 
 ## Shell alias for convenience
 
@@ -49,7 +49,7 @@ Add to your `.zshrc` / `.bashrc`:
 ```bash
 alias fetch-meeting='uv run --with httpx --with pyyaml python ~/path/to/fetch-meeting.py'
 ```
-Then just `fetch-meeting standup` from any project that has a `.claude/meeting-transcripts.yaml`.
+Then just `fetch-meeting standup` from any project that has `.agents/meeting-transcripts.yaml` or a compatible `.claude/meeting-transcripts.yaml`.
 
 ## Why separate from the skill core
 

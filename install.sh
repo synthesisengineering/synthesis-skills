@@ -18,8 +18,10 @@ SOURCE_TYPE="public"
 # Skill directories to install to (auto-detected)
 detect_targets() {
     TARGETS=""
-    # Claude Code (primary)
+    # Claude Code
     TARGETS="$TARGETS $HOME/.claude/skills"
+    # OpenAI Codex
+    TARGETS="$TARGETS $HOME/.codex/skills"
     # Cross-platform convention
     TARGETS="$TARGETS $HOME/.agents/skills"
     # Cursor

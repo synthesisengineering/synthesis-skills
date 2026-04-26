@@ -14,7 +14,7 @@ metadata:
 
 A protocol for syncing Slack channels and threads to local transcript files using Slack MCP. Designed for AI-assisted workflows where an agent reads Slack on behalf of a user, saves transcripts locally, and updates a daily action plan.
 
-This skill provides the **protocol** — the sync methodology, thread re-reading discipline, transcript format, and action plan update rules. A per-project **config file** (`.claude/slack-sync.yaml`) provides the specifics: which channels, which paths, which DMs.
+This skill provides the **protocol** — the sync methodology, thread re-reading discipline, transcript format, and action plan update rules. A per-project **config file** provides the specifics: which channels, which paths, which DMs. Prefer `.agents/slack-sync.yaml`; existing `.claude/slack-sync.yaml` configs remain supported.
 
 ## v3.0.0 — Per-Channel-Per-Day Layout
 
@@ -54,10 +54,10 @@ Any repo matching `ai-knowledge-*-private` is filtered from auto-discovery by de
 
 ## Configuration
 
-Create `.claude/slack-sync.yaml` in each project that uses this skill:
+Create `.agents/slack-sync.yaml` in each project that uses this skill. Existing `.claude/slack-sync.yaml` configs are valid compatibility fallbacks.
 
 ```yaml
-# .claude/slack-sync.yaml — Slack sync configuration (v2.0.0 schema)
+# .agents/slack-sync.yaml — Slack sync configuration (v2.0.0 schema)
 #
 # workspace: (REQUIRED) Workspace identifier. Used in transcript headers; must match
 #   the workspace-private repo name pattern ai-knowledge-<workspace>-<person>-private.
@@ -117,7 +117,7 @@ The workspace identifier no longer appears in transcript paths — it's implicit
 
 ## Prerequisites
 
-- **Slack MCP must be connected and authenticated.** If any Slack tool call fails with an auth error, stop and instruct the user to re-authenticate: `claude mcp auth slack`, then restart the IDE/CLI.
+- **Slack connector or MCP must be connected and authenticated.** If any Slack tool call fails with an auth error, stop and instruct the user to re-authenticate using the current tool's Slack auth flow (Claude Code example: `claude mcp auth slack`), then restart the IDE/CLI if required.
 - **Local transcript files must exist or be created.** The skill creates today's per-channel files and the `_dms.md` / `_group-dms.md` aggregators under `slack/YYYY-MM-DD/` as needed.
 
 ---
@@ -143,9 +143,9 @@ Every sync — whether day-start, mid-day, or day-end — follows these steps. N
 Before doing anything else, run the thread checker script on each transcript file that exists for today:
 
 ```bash
-python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/<channel>.md [action_plan_file]
-python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_dms.md [action_plan_file]
-python3 ~/.claude/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_group-dms.md [action_plan_file]
+python3 ~/.agents/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/<channel>.md [action_plan_file]
+python3 ~/.agents/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_dms.md [action_plan_file]
+python3 ~/.agents/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_group-dms.md [action_plan_file]
 ```
 
 Skip any file that does not yet exist (e.g., no DMs synced today). Combine the output from all runs into a single checklist. You MUST re-read every thread listed during Step 2. The script exists because manually deciding which threads to re-read has repeatedly failed — threads get skipped and messages get missed.
@@ -389,7 +389,7 @@ When a channel message references or continues an earlier discussion (broadcast 
 
 ## Error Handling
 
-- **Slack MCP auth failure:** Stop immediately. Instruct user to run `claude mcp auth slack` and restart.
+- **Slack connector auth failure:** Stop immediately. Instruct the user to re-authenticate using the current tool's Slack auth flow, then restart the IDE/CLI if required.
 - **Channel not found:** The channel ID may have changed or the bot may have been removed. Warn and skip.
 - **Rate limiting:** If Slack returns rate limit errors, wait and retry. Do not skip channels.
 - **Empty channel:** Record "No new messages" in the transcript. Do not silently skip.

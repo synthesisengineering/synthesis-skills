@@ -235,7 +235,7 @@ Every project has conventions that go beyond language syntax and framework patte
 
 Before starting a review, check whether the project has:
 
-1. **A project-level CLAUDE.md or equivalent configuration** — These files often encode naming rules, terminology requirements, deployment constraints, and other conventions that are not enforced by linters.
+1. **A project-level instruction file** — Files such as `CLAUDE.md`, `AGENTS.md`, or equivalent configuration often encode naming rules, terminology requirements, deployment constraints, and other conventions that are not enforced by linters.
 2. **Project-level review skills or checklists** — Some projects define their own review criteria that supplement this skill.
 3. **Convention debt patterns** — Recurring violations that the project is actively trying to eliminate.
 
@@ -250,7 +250,7 @@ Convention violations rarely appear in isolation. One violation often signals ot
 
 ### Convention Review Checklist
 
-- [ ] Checked for project-level CLAUDE.md or equivalent convention files
+- [ ] Checked for project-level instruction or convention files
 - [ ] Checked for project-specific review skills or checklists
 - [ ] All user-facing text follows project terminology and branding rules
 - [ ] API naming follows the project's established conventions

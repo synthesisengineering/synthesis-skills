@@ -165,7 +165,7 @@ Condense messages to 5 sentences or less using the High-Five Habit framework. Mo
 
 ## Customization
 
-Apply voice and style preferences from your CLAUDE.md if present. Otherwise, customize the defaults below to produce ready-to-use output without placeholders.
+Apply voice and style preferences from agent instruction files such as `CLAUDE.md` or `AGENTS.md` if present. Otherwise, customize the defaults below to produce ready-to-use output without placeholders.
 
 Include in your configuration:
 - Your specific communication style preferences

@@ -18,7 +18,7 @@ In v0.2.0 (2026-04-22), meeting transcripts land in the workspace-private repo (
 
 A protocol for fetching AI-generated meeting transcripts from the user's Gmail and Google Drive into a local markdown archive. Designed for teams where Google Meet + Gemini (or equivalents) produce meeting notes + word-for-word transcripts that live in Google Docs, and the user wants them mirrored locally alongside their project context.
 
-This skill provides the **protocol** — how to find a meeting's Gemini-generated doc, extract both the notes summary and the full transcript, and save them to the right local folder. A per-project **config file** (`.claude/meeting-transcripts.yaml`) provides the specifics: which Google account, which meeting patterns to recognize, where to save locally.
+This skill provides the **protocol** — how to find a meeting's Gemini-generated doc, extract both the notes summary and the full transcript, and save them to the right local folder. A per-project **config file** provides the specifics: which Google account, which meeting patterns to recognize, where to save locally. Prefer `.agents/meeting-transcripts.yaml`; existing `.claude/meeting-transcripts.yaml` configs remain supported.
 
 This skill is **tool-agnostic.** It works with:
 
@@ -32,10 +32,10 @@ The skill describes the *workflow*; it does not prescribe which tools must be us
 
 ## Configuration
 
-Create `.claude/meeting-transcripts.yaml` in each project that uses this skill:
+Create `.agents/meeting-transcripts.yaml` in each project that uses this skill. Existing `.claude/meeting-transcripts.yaml` configs are valid compatibility fallbacks.
 
 ```yaml
-# .claude/meeting-transcripts.yaml — Meeting transcript sync configuration (v0.2.0 schema)
+# .agents/meeting-transcripts.yaml — Meeting transcript sync configuration (v0.2.0 schema)
 
 # REQUIRED
 workspace: example-workspace
