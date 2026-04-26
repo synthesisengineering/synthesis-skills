@@ -42,10 +42,13 @@ These values are user-specific. Update them for your environment.
 When working with AI assistants on multi-session projects:
 - **Context compaction** (conversation summarization) loses detailed progress
 - **Session boundaries** create information gaps
+- **Tool switching** between Claude Code, Codex, Cursor, and other agents can strand context in tool-specific transcripts
 - **Multiple projects** create confusion about current state
 - **Lessons learned** get lost instead of compounding
 
 This system provides persistent state that survives context loss.
+
+The project files are the durable memory layer. Treat chat history, model memory, and compaction summaries as helpful but insufficient. A user should be able to pause in one capable agent environment, open the same project in another, read the project context, and continue.
 
 ---
 
@@ -213,6 +216,18 @@ Complete task → Complete task → Complete task → (context compaction) → L
 2. **Archive if needed** — Move old sessions to sessions/, stable facts to REFERENCE.md
 3. **Update index.yaml** — Set `last_session` date
 4. **Commit all changes** — Do not leave uncommitted work
+
+### Cross-Agent Handoff
+
+Before pausing work that may continue in another tool:
+
+1. Update `CONTEXT.md` with current state, decisions, and next actions
+2. Move stable facts into `REFERENCE.md`
+3. Append chronological detail to `sessions/YYYY-MM.md`
+4. Save substantial plans, audits, or checklists under `resources/artifacts/`
+5. Commit and push the project-management changes
+
+When resuming work from another agent, trust the project files over tool-specific memory. The continuity source of truth is the synthesis project context, not the previous assistant's chat transcript.
 
 ---
 

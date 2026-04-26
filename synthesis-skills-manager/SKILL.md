@@ -21,14 +21,16 @@ Three skill repositories, each with a different access level:
 | Repo | Type | Access | Purpose |
 |------|------|--------|---------|
 | `synthesis-skills` | public | Open source | General-purpose methodology skills |
-| `synthesis-skills-rajiv` (or user's private repo) | private | Owner only | Personal and proprietary skills |
-| `synthesis-skills-mcclatchy` (or team shared repo) | shared | Team members | Cross-project team skills |
+| Personal skills repo | personal | Owner only | Owner-specific skills |
+| Team shared skills repo | shared | Team members | Cross-project team skills |
 
 **Installation targets** (in priority order):
 1. `~/.claude/skills/` — Claude Code
-2. `~/.agents/skills/` — Cross-platform convention
-3. `~/.cursor/skills/` — Cursor (if present)
-4. `/path/to/project/.claude/skills/` — Project-level (shared repo only)
+2. `~/.codex/skills/` — OpenAI Codex
+3. `~/.agents/skills/` — Cross-platform convention
+4. `~/.cursor/skills/` — Cursor (if present)
+5. `/path/to/project/.claude/skills/` — Project-level Claude Code skills (shared repo only)
+6. `/path/to/project/.codex/skills/` — Project-level Codex skills (shared repo only)
 
 ## Provenance Tracking
 
@@ -165,9 +167,9 @@ When installing a skill that has a Configuration section:
 ```
 User: "Install all my synthesis skills"
 
-1. Clone/update synthesis-skills (public) → install 22 skills to ~/.claude/skills/
-2. Clone/update synthesis-skills-rajiv (private) → install 13 skills to ~/.claude/skills/
-3. For project-level: install synthesis-skills-mcclatchy skills to project .claude/skills/
+1. Clone/update synthesis-skills (public) → install public skills to `~/.claude/skills/`, `~/.codex/skills/`, and `~/.agents/skills/`
+2. Clone/update the personal skills repo → install personal skills to the same user-level targets
+3. For project-level: install team shared skills to project `.claude/skills/` and `.codex/skills/`
 4. Write .source.json for each
 5. Check all dependencies
 6. Report summary
@@ -213,3 +215,13 @@ User: "Update my skills"
 This skill is designed to be executed by an AI agent (Claude Code, Cursor, etc.), not as a shell script. The agent reads files, compares content, understands methodology structure, and makes merge decisions that a text-based tool cannot.
 
 The `install.sh` scripts in each repo serve as bootstrap/fallback installers for environments without an AI agent. They handle the mechanical parts (copy, provenance, checksums) but cannot do synthesis merge — they overwrite on conflict with a drift warning.
+
+## Source Update Protocol
+
+When updating any skill:
+
+1. Edit the skill in its source repo first
+2. Commit the source repo change with an appropriate generic message
+3. Push to every configured remote for that repo, not just `origin`
+4. Reinstall or refresh the updated skill in local agent targets such as `~/.claude/skills/`, `~/.codex/skills/`, and `~/.agents/skills/`
+5. Verify installed copies match the source repo
