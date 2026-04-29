@@ -489,6 +489,19 @@ New top-level messages don't need a permalink — there's no parent to link to.
 
 If the per-project config does not set `slack_workspace_domain`, the skill MUST emit a one-time warning ("permalinks disabled — set `slack_workspace_domain` to enable clickable links in transcripts and drafts") and fall back to the legacy `(TS: 1234567890.123456)` text format. The skill does not invent a domain.
 
+### Retrofitting older daily plans
+
+`retrofit_permalinks.py` (shipped alongside `thread_checker.py` in this skill directory) converts a legacy daily plan or transcript file from the bare-TS format to the clickable-permalink format in one pass. It reads the workspace domain and channel-name → channel-ID map from a `slack-sync.yaml` config — generic-skill, no hardcoded workspace.
+
+```bash
+python3 retrofit_permalinks.py <plan.md> --config <slack-sync.yaml>
+python3 retrofit_permalinks.py <plan.md> --config <slack-sync.yaml> --dry-run
+```
+
+Skip rules: lines containing only "parent thread TS" references are left as-is (the visible time on those lines refers to the reply, not the parent — linking it to the parent's TS would be wrong); lines with no resolvable channel hint are left unchanged (the script needs at least one `#channel-name` or `D0…`/`C0…` ID inline to construct a permalink). The script is idempotent — running it on an already-retrofitted file is a no-op.
+
+For multi-workspace daily plans (a single plan referencing messages from more than one Slack workspace), run the script once per workspace's `slack-sync.yaml`. Each pass linkifies only the TSes whose channel resolves via the config it was given; other lines fall through to the next pass.
+
 ---
 
 ## Provenance Discipline
