@@ -155,6 +155,8 @@ When the artifact is a social media post (LinkedIn, Twitter/X, Threads, BlueSky,
 
 41. **Lack of closing engagement in social** [MED for social] -- Posts that close the loop cleanly and walk away. Conversational posts invite response. Fix: end with a question, an observation that begs a follow-up, or a deliberate variant of "tell me what you've seen." Not every post needs it, but the default is yes.
 
+42. **Em dashes in social posts** [HIGH for social, LOW for articles] -- Criterion 11 covers em-dash overuse in general (LOW tier, applies to all writing). For social posts the threshold tightens to zero: any em dash usage is a tell. Fast-scrolling social readers register em dashes as the AI-typical polished-prose signal even when used correctly. Articles can still use them sparingly for genuine dramatic pause; social posts cannot. Fix: replace with commas, parentheses, colons, or sentence breaks.
+
 For the register difference and the underlying rationale, see [`synthesis-content-distribution`](../synthesis-content-distribution/SKILL.md) section "Social register vs article register".
 
 For detailed explanations, examples, and fix guidance for each criterion, see [references/detailed-criteria.md](references/detailed-criteria.md).
