@@ -94,6 +94,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 ### Synthesis Engineering
 | Skill | Description |
 |-------|-------------|
+| `synthesis-anti-shortcuts` | Deterministic enforcement of anti-shortcut discipline: costume-vocabulary catalog, constraint-first protocol, sub-agent hygiene, case studies |
 | `synthesis-content-framing` | Content framing with topic, sophistication, and engagement gates |
 
 ### Reasoning & Templates
