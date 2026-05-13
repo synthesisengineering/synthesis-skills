@@ -99,37 +99,11 @@ EOF
     exit 1
 fi
 
-# Commit-message check (strict repos only by default; configurable).
-if [ "${CHECK_COMMIT_MSG:-0}" = "1" ]; then
-    COMMIT_MSG_FILE=""
-    if [ -f ".git/COMMIT_EDITMSG" ]; then
-        COMMIT_MSG_FILE=".git/COMMIT_EDITMSG"
-    elif GIT_DIR_PATH=$(git rev-parse --git-dir 2>/dev/null) && [ -f "$GIT_DIR_PATH/COMMIT_EDITMSG" ]; then
-        COMMIT_MSG_FILE="$GIT_DIR_PATH/COMMIT_EDITMSG"
-    fi
-    if [ -n "$COMMIT_MSG_FILE" ] && [ -f "$COMMIT_MSG_FILE" ]; then
-        MSG_MATCHES=$(grep -i -E "$ACTIVE_REGEX" "$COMMIT_MSG_FILE" 2>/dev/null | head -10 || true)
-        if [ -n "${ALLOWLIST_REGEX:-}" ] && [ -n "$MSG_MATCHES" ]; then
-            MSG_MATCHES=$(echo "$MSG_MATCHES" | grep -ivE "$ALLOWLIST_REGEX" || true)
-        fi
-        if [ -n "$MSG_MATCHES" ]; then
-            cat <<EOF
-
-╔══════════════════════════════════════════════════════════════════╗
-║  ⚠️  SENSITIVE PATTERN IN COMMIT MESSAGE (synthesis-git-hooks)    ║
-╚══════════════════════════════════════════════════════════════════╝
-
-Repo class: ${REPO_CLASS:-strict}
-
-Confidential content found in commit message:
-$MSG_MATCHES
-
-Rewrite the commit message without confidential references.
-EOF
-            exit 1
-        fi
-    fi
-fi
+# Note: commit-message scanning belongs in a `commit-msg` hook, not pre-commit
+# (pre-commit reads a stale COMMIT_EDITMSG from the previous commit attempt
+# because git doesn't pass the new message file as an argument to pre-commit).
+# The CHECK_COMMIT_MSG flag from the config is reserved for a future commit-msg
+# hook in this same directory.
 
 # Export class for any delegated per-repo hook, then chain.
 export SYNTHESIS_REPO_CLASS="$REPO_CLASS"
