@@ -1,235 +1,276 @@
 ---
 name: synthesis-content-quality
 description: >
-  A systematic quality framework for evaluating and improving AI-assisted content.
-  Covers AI slop detection, saturated vocabulary, exhausted metaphors, sycophantic
-  tone, hyperbolic patterns, scenario fingerprinting, and operational confidentiality
-  exposure. Use for content quality, AI content, quality check, writing quality,
-  editorial review, content review, content improvement, and publishing standards.
+  The most comprehensive open-source slop detection system available. Catches AI-generation
+  patterns by model family (Claude, GPT, Gemini, Llama, Grok, DeepSeek, Mistral, Qwen),
+  substance and depth failures (beautiful word salad), and the full v3.1.0 catalog
+  refreshed. Includes causal-layer attribution, combined-signal fingerprints, two-axis
+  calibration, ESL safe-harbor, and zone-conditional detection (artifact mode vs full-response
+  mode). Spans the entire LLM era through the compounding-archive principle. Use for
+  content quality, slop detection, AI content auditing, editorial review, content
+  improvement, and publishing standards.
 license: CC0-1.0
 depends_on: []
 metadata:
   author: Rajiv Pant
-  version: 3.1.0
+  version: 4.0.0
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Content Quality
 
-A systematic methodology for developing high-quality AI-assisted content and identifying content that falls short. This framework organizes evaluation criteria into confidence tiers — the catalog is refreshed as model behavior shifts and as new AI-generation patterns emerge in production output. The methodology is the durable part; the specific catalog grows over time.
+A systematic methodology for evaluating writing quality and identifying slop, with or without AI involvement. The framework targets bad content, not provenance. Ethically authored AI-collaborated content can be excellent; styled empty human content is slop. This skill detects slop.
+
+The methodology is durable. The catalog refreshes as model behavior shifts and as new patterns emerge in production output. v4.0 adds model-family fingerprinting across eight families, a substance and depth section grounded in the Frankfurt-Pennycook-Hicks-Humphries-Slater framework, a cross-cutting causal-and-calibration layer, and zone-conditional detection. The compounding-archive principle means patterns are never deleted: when newer model versions train a pattern out, the catalog tags it Historical and retains it for forensic analysis of older published content.
 
 ## Where this skill fits in the writing-quality family
 
-This skill catches AI-generation patterns specifically. It is one of three sibling skills:
+This skill catches AI-generation patterns and substance failures specifically. Three sibling skills handle adjacent concerns:
 
-- **`synthesis-content-quality`** (this skill) — AI/LLM-generation patterns; refreshes with new model releases
-- [`synthesis-writing-pitfalls`](../synthesis-writing-pitfalls/SKILL.md) — Universal human-source bad-writing patterns; stable across decades
-- [`synthesis-writing-craft`](../synthesis-writing-craft/SKILL.md) — Positive principles from the writing-craft tradition
+- **`synthesis-content-quality`** (this skill, v4.0): AI/LLM-generation patterns, substance and depth, calibration. Refreshes with new model releases.
+- [`synthesis-writing-pitfalls`](../synthesis-writing-pitfalls/SKILL.md): Universal human-source bad-writing patterns (cringe, throat-clearing, caveat overload, cliché reliance). Stable across decades.
+- [`synthesis-writing-craft`](../synthesis-writing-craft/SKILL.md): Positive principles from the writing-craft tradition.
 
-Use all three together for a comprehensive quality pass. Use this one alone when the focus is specifically AI-source weaknesses.
+Use all three together for a comprehensive quality pass. Use this one alone when the focus is specifically slop in AI-collaborated or AI-generated content.
 
 ## When to Use This Skill
 
-- Reviewing AI-assisted drafts before publication
-- Editing content that may contain unrevised AI output
-- Building or calibrating AI content detection tools
-- Training writers or editors on AI content quality standards
-- Performing editorial review of submitted content
+- Reviewing AI-assisted drafts before publication.
+- Editing content that may contain unrevised AI output.
+- Building or calibrating AI content detection tools.
+- Training writers or editors on content quality standards.
+- Performing editorial review of submitted content.
+- Forensic analysis of older published content for AI authorship signals (use Historical and Deprecated era patterns).
 
 ## Core Philosophy
 
-AI-assisted content creation is legitimate and valuable. The distinction that matters is between:
+Slop is the enemy, not AI. AI-assisted content creation is legitimate and valuable. The distinction that matters is not "did AI help write this" but "is this worth publishing."
 
-- **Unedited AI output:** Raw generation copied and published without human refinement
-- **AI-augmented work:** Human expertise enhanced by AI capabilities, with proper oversight
-- **Systematic human-AI collaboration:** Methodical integration where humans maintain judgment, add genuine expertise, and ensure quality
+Three categories of AI-collaborated content:
 
-The goal is quality assessment, not origin detection. No single indicator proves AI generation definitively. Detection requires pattern recognition across multiple indicators.
+- **Unedited AI output.** Raw generation copied and published without human refinement. Often fails substance and depth tests. The pattern catalog catches this efficiently.
+- **AI-augmented work.** Human expertise enhanced by AI capabilities with proper oversight. Passes substance tests when the human contribution is real.
+- **Systematic human-AI collaboration.** Methodical integration where humans maintain judgment, add genuine expertise, and ensure quality. Indistinguishable from skilled human writing on substance; sometimes carries minor stylistic AI fingerprints from the final draft pass.
+
+The goal is quality assessment. Detection requires pattern recognition across multiple indicators. No single indicator proves AI generation definitively, and many AI-collaborated pieces are excellent content.
+
+## Zones and Detector Modes
+
+The LLM produces a single continuous token stream. It does not structurally separate "conversational wrapper" from "produced artifact." But RLHF training systematically produces a three-zone shape: warm opener, substantive body, warm closer. Patterns concentrate in different zones at different rates.
+
+### Three zones in LLM responses
+
+- **WRAPPER-OPENER (first 1-3 sentences).** Sycophantic acknowledgments (Claude's "You're absolutely right!", GPT's "Great question!"), polite framings ("Let me walk you through this"), warm acknowledgments ("Thank you for raising this").
+- **BODY-PERSISTENT (substantive content the user requested).** Em-dash density, saturated vocabulary, balanced two-handed hedging, bulleted bolded lead-ins, mid-section recaps.
+- **WRAPPER-CLOSER (final 1-3 sentences).** "I hope this helps!", "Is there anything else I can help with?", "Feel free to ask if you have more questions."
+
+Some patterns are HYBRID (appear in both zones at meaningful rates: em-dashes, focal vocabulary, uniform paragraph length). Some are MID-BODY-INSERT (safety-hedge inserts that appear mid-paragraph, not at openers or closers).
+
+### Detector mode selection
+
+The detector operates in two modes depending on what the user is auditing:
+
+- **Artifact mode (default for editorial use).** Apply BODY-PERSISTENT, HYBRID, and MID-BODY-INSERT patterns. Skip WRAPPER-OPENER and WRAPPER-CLOSER patterns. False-positive rate stays low when the user is auditing only the published artifact.
+- **Full-response mode (for forensic chat-log analysis).** Apply all patterns including wrapper-zone patterns.
+
+Newsroom editors reviewing AI-assisted submissions almost always work in artifact mode: writers copy-paste the article, not the chat transcript that produced it. Forensic chat-log auditors and researchers work in full-response mode.
+
+Each pattern in the catalog carries an explicit zone tag. The detector workflow should ask the user upfront: "Are you auditing just the produced content, or the full LLM response including conversational framing?" Then apply the appropriate pattern subset.
 
 ## The Pattern Catalog
 
-Each pattern is tagged with its confidence tier: **[HIGH]**, **[MED]**, or **[LOW]**. The catalog grows as new AI-generation patterns become observable in production output; the methodology around it stays stable.
+The full catalog has approximately 180 patterns organized across four sections. Each pattern carries the 14-field template plus era status (Active / Declining / Historical / Deprecated) and zone tag. Full per-pattern detail lives in [references/](references/) subfiles linked below.
 
-### Language and Tone Patterns
+### Section A1: Model-Family Fingerprinting
 
-1. **Undue Emphasis on Importance and Symbolism** [MED] -- Inflating significance with phrases like "stands as a testament to" or "plays a vital role in." Fix: describe subjects accurately rather than inflating importance.
+Patterns specific to one LLM family. Top-tier coverage produced 38 patterns across Claude, GPT, and Gemini. Second-tier coverage added patterns across Llama, Grok, DeepSeek, Mistral, and Qwen. Total approximately 100 active patterns plus historical entries for retired family-era markers.
 
-2. **Promotional and Travel Brochure Language** [MED] -- Marketing copy tone with "rich cultural heritage," "breathtaking," "nestled in the heart of." Fix: replace promotional adjectives with specific, factual descriptions.
+| Family | Headline pattern | Active pattern count |
+|--------|-------------------|---------------------:|
+| Anthropic Claude (A1.1) | `A1-CLAUDE-003` "You're absolutely right!" agent reflex (GitHub anthropics/claude-code#3382 documents the pattern qualitatively; the count claim in some research is not in the cited issue) | 28 |
+| OpenAI GPT (A1.2) | `A1-GPT-001` "Delve" saturated-vocabulary cluster (Kobak et al. arxiv 2406.07016, 13.5 percent of 2024 biomedical abstracts) | 18 |
+| Google Gemini (A1.3) | `A1-GEMINI-001` Plain-text markdown leakage (near-deterministic in non-rendering channels) | 13 |
+| Meta Llama (A1.4) | `A1-LLAMA-001` Near-zero em-dash baseline (useful as a negative marker) | 10 |
+| xAI Grok (A1.5) | `A1-GROK-001` Colloquial internet-native register | 10 |
+| DeepSeek (A1.6) | `A1-DEEPSEEK-001` `<think>` tag reasoning-trace leakage in R1 outputs | 10 |
+| Mistral (A1.7) | `A1-MISTRAL-001` French-corpus syntax influence | 9 |
+| Qwen (A1.8) | `A1-QWEN-001` CJK punctuation slips (Unicode-detectable) | 10 |
 
-3. **Editorial Commentary and Meta-Analysis** [MED] -- Injecting interpretation with "it's important to note," "notably," "one cannot overlook." Fix: state facts and trust readers to determine importance.
+Full per-pattern detail: [references/model-family-fingerprints.md](references/model-family-fingerprints.md).
 
-4. **Superficial Analysis with Participial Phrases** [MED] -- Sentences ending with "-ing" phrases adding shallow commentary: "highlighting its commitment to sustainability." Fix: provide real analysis with evidence, or let the statement stand alone.
+Historical entries for retired family-era markers (Bard "As a large language model trained by..." preamble, GPT-3.5 "As an AI language model" preamble, GPT-3.5 "Here's the thing" intensifier, pre-instruction-tuning GPT-3, early Llama 1 / 2, early Grok 1, early DeepSeek V1 / V2, early Mistral 7B / Mixtral, early Qwen 1 / 2) live in [references/historical-patterns.md](references/historical-patterns.md). These patterns are largely trained out of current frontier models but remain valuable for forensic analysis of older published content per the compounding-archive principle.
 
-5. **Negative Parallelism** [MED] -- Overusing "not X but Y" constructions: "not just a place to eat, but a cornerstone of community." Fix: use this structure sparingly and only for genuine contrast.
+### Section A2: Substance and Depth Detection
 
-6. **Overuse of Transition Words** [LOW] -- Excessive "Moreover," "Furthermore," "Additionally" placed mechanically. Fix: let ideas connect through logical flow; vary transitions.
+Promoted from a single sub-criterion in v3.1.0 (Superficial Depth) to a full top-level section in v4.0. 17 sub-patterns grounded in:
 
-7. **Section-Ending Summaries** [MED] -- Explicit summary phrases: "In summary," "Overall," "In essence." Fix: remove these; if a section needs a summary to be understood, restructure it.
+- Frankfurt, *On Bullshit* (2005)
+- Hicks, Humphries, Slater, "ChatGPT is Bullshit" (Ethics and Information Technology 26:38, 2024)
+- Pennycook et al., Bullshit Receptivity Scale (Judgment and Decision Making 10(6), 2015)
+- Sourati et al. 2025 homogenization survey
+- Padmakumar and He (2024) on output diversity loss
 
-8. **The Rule of Three** [MED] -- Formulaic grouping in threes: "innovative, impactful, and transformative." Fix: vary list lengths; let content dictate structure.
+The 17 sub-patterns: `A2-SUB-001` The deletion test, `A2-SUB-002` The specificity test, `A2-SUB-003` Load-bearing claim count, `A2-SUB-004` Novelty signal, `A2-SUB-005` Insight-to-word ratio, `A2-SUB-006` The any-company test, `A2-SUB-007` Hedging as substance evasion, `A2-SUB-008` Survey-without-claim pattern, `A2-SUB-009` Generic insight, `A2-SUB-010` Both-sides-without-position, `A2-SUB-011` Pseudo-profundity, `A2-SUB-012` Conclusion-shaped paragraphs that do not conclude, `A2-SUB-013` Frictionless-transition padding, plus four additional from cross-LLM contributions.
 
-9. **Passive Voice and "Has Been Described As"** [LOW] -- Overreliance on "is widely regarded as," "has been praised for." Fix: use direct statements with specific attribution.
+The most useful editorial capability of v4.0 is the **A2-SUB-001 deletion test**: if a sentence or paragraph can be removed from the piece without losing any claim, evidence, or transition, it is Frankfurt-style bullshit. The any-company test (`A2-SUB-006`) and load-bearing claim count (`A2-SUB-003`) round out a 5-minute editorial pass that catches most slop regardless of authorship.
 
-10. **Uniform Sentence and Paragraph Length** [MED] -- Mechanically consistent structure without natural variation. Fix: vary deliberately -- short sentences for emphasis, longer ones for complexity.
+Full detail and the five-minute editorial workflow: [references/substance-and-depth.md](references/substance-and-depth.md). Zone tag: BODY-PERSISTENT for all A2 sub-patterns (substance is about what the artifact says).
 
-### Style and Structural Indicators
+### Section A3: Refreshed Pattern Catalog (the 76 criteria)
 
-11. **Excessive Em Dashes** [LOW] -- Overusing em dashes where commas, parentheses, or colons fit better. Fix: match punctuation to function.
+The v3.1.0 catalog of 42 criteria has been refreshed with consolidated tier-shift recommendations from the unified research and supplemented with 34 net-new criteria. Total 76 criteria, renumbered thematically (no v3.1.0 number preservation per the no-backward-compat principle). Two-letter prefixes group by theme:
 
-12. **Bulleted Lists with Bolded Lead-ins** [MED] -- Formulaic bullets with "**Term**: explanation" structure throughout. Fix: vary list formats; sometimes prose serves better than a list.
+- **A3-LT (Language and Tone), 15 criteria.** Includes `A3-LT-001` Undue emphasis on importance and symbolism, `A3-LT-002` Promotional and travel-brochure language, `A3-LT-003` Editorial commentary and meta-analysis, `A3-LT-004` Superficial analysis with participial phrases, `A3-LT-005` Negative parallelism, `A3-LT-006` Overuse of transition words, `A3-LT-007` Section-ending summaries, `A3-LT-008` The rule of three, `A3-LT-009` Passive voice and "has been described as", `A3-LT-010` Uniform sentence and paragraph length, plus 5 net-new entries.
+- **A3-SS (Style and Structural), 9 criteria.** Includes `A3-SS-001` Excessive em-dashes (tier shift: per-family weighting; HIGH for Claude and pre-GPT-5.1 ChatGPT, LOW for current GPT-5.1 and Llama), `A3-SS-002` Bulleted lists with bolded lead-ins, `A3-SS-003` Excessive bolding and formatting, `A3-SS-004` Emoji usage in inappropriate contexts, `A3-SS-005` Markdown formatting mixed with standard text, `A3-SS-006` Curly vs. straight quotes, `A3-SS-007` Title case in headers, plus 2 net-new.
+- **A3-TF (Technical and Formatting), 7 criteria.** Placeholder text, chatbot artifacts, broken or fabricated links, citation abnormalities, suspiciously long edit summaries, plus 2 net-new.
+- **A3-CS (Citation and Sourcing), 6 criteria.** Hallucinated citations (PROMOTE to HIGH), vague attribution (PROMOTE to HIGH), plus 4 net-new including ChatGPT's retrieval-era criteria (source theater, calibration mismatch, synthetic-source contamination).
+- **A3-CX (Context-Specific), 5 criteria.** Industry slop, lack of personal detail, superficial depth (formally promoted to A2 section but stub retained for compatibility), plus 2 net-new.
+- **A3-HD (Hyperbolic and Dramatic), 7 criteria.** Hyperbolic subheadings, dramatic fragment construction, borrowed canonical examples, plus 4 net-new including the "journey" metaphor cluster.
+- **A3-CE (Confidentiality and Exposure), 2 criteria.** Scenario fingerprinting, operational decisions as teaching material.
+- **A3-BT (Behavioral and Tonal), 12 criteria.** Saturated AI vocabulary (PROMOTE to HIGH per Kobak et al. and Juzek and Ward), exhausted metaphors, unprompted moral cadence, concierge tone (DEMOTE to MED post April 2025 OpenAI sycophancy rollback for GPT; remains HIGH for Claude), plus 8 net-new including reasoning-trace token leakage, sycophancy drift, partial-refusal stems.
+- **A3-FA (Frame and Audience), 8 criteria.** Insider context collapse, plus 7 net-new including ChatGPT and Grok retrieval-era and structural-uniformity entries.
+- **A3-SR (Social-Register), 5 criteria.** Imported spec language uppercase, article structure in social posts, third-person narration of first-person experience, lack of closing engagement, em-dashes in social posts.
 
-13. **Excessive Bolding and Formatting** [LOW] -- Mechanical bolding of every "important" term. Fix: bold sparingly. If everything is emphasized, nothing is.
+Full per-criterion detail with all 16 fields (14 base + era + zone): [references/detailed-criteria.md](references/detailed-criteria.md), which also includes a renumbering map from v3.1.0 numbers to the new IDs.
 
-14. **Emoji Usage in Inappropriate Contexts** [LOW] -- Emojis in formal content where they do not belong. Normal in casual content; a tell in formal contexts.
+## The Cross-Cutting Layer
 
-15. **Markdown Formatting Mixed with Standard Text** [HIGH] -- Raw Markdown syntax (asterisks, backticks, hash headers) appearing in published content.
+v4.0 adds three cross-cutting fields applied to every pattern in the catalog. This is what transforms the catalog from a checklist into a diagnostic tool.
 
-16. **Curly vs. Straight Quotes** [LOW] -- Inconsistent quote styles or wrong type for context.
+### B1: Causal Layer
 
-17. **Title Case in Headers** [LOW] -- Every major word capitalized instead of sentence case, especially in journalism contexts.
+Each pattern is annotated with its likely origin in a twelve-code taxonomy:
 
-### Technical and Formatting Tells
+- `RHF` RLHF reward shaping
+- `TDS-acad` / `TDS-corp` / `TDS-soc` / `TDS-instr` / `TDS-news` Training data skew (academic, corporate, social, instructional, news)
+- `AST` Alignment / safety tuning
+- `RAB` Refusal-avoidance behavior
+- `HO` Helpfulness optimization
+- `SPA` System-prompt artifacts
+- `TAE` Tokenizer / architecture effects
+- `PWE` Product-wrapper effects
 
-18. **Placeholder Text and Incomplete Elements** [HIGH] -- Bracketed placeholders like `[Insert source here]` or `[Citation needed]` left in published content.
+Knowing the cause predicts the pattern's evolution: patterns rooted in RLHF reward shaping may be trained out next generation; patterns rooted in tokenizer effects persist as long as the architecture does.
 
-19. **Chatbot Communication Artifacts** [HIGH] -- Salutations, valedictions, knowledge cutoff disclaimers, or offers to assist further appearing in published content.
+Full per-criterion attribution: [references/calibration-tables.md](references/calibration-tables.md) (causal column).
 
-20. **Broken or Fabricated Links and Technical Codes** [HIGH] -- URLs leading to 404 errors, invalid DOIs/ISBNs, or ChatGPT-specific artifacts like "turn0search0." Verify all links and identifiers.
+### B2: Combined-Signal Fingerprints
 
-21. **Citation Abnormalities** [MED] -- Citations repeated without proper reference tagging, real sources cited for unrelated content, or generic "According to experts..." without naming them.
+The v3.1.0 heuristic ("5+ medium-confidence indicators equals very likely AI") is replaced with 86 specific combinations where co-occurrence is a stronger signal than count. Combined-signal detection drops false-positive rates by an order of magnitude versus count-based detection.
 
-22. **Suspiciously Long Edit Summaries** [MED] -- Unusually formal, comprehensive edit summaries in first-person paragraphs on platforms with edit tracking.
+High-yield combos to know:
 
-### Citation and Sourcing Issues
+- **`B2-COMBO-001` ChatGPT 4o tell.** Saturated vocab + exhausted metaphors + section-ending summary. False-positive rate below 1 percent at full co-occurrence.
+- **`B2-COMBO-003` Claude.ai default.** Em-dashes (high density) + bulleted bolded lead-ins + uniform paragraph length. False-positive rate below 0.5 percent. Strongest single-family fingerprint as of 2026-05.
+- **`B2-COMBO-007` Fake-expertise stack.** Vague attribution + hallucinated citation + generic insight. Definitive when the citation can be verified absent.
+- **`B2-COMBO-010` ESL false-positive trap (NEGATIVE marker).** Uniform paragraph length + restricted vocabulary + heavy transitions. The cornerstone signature for AI is also the cornerstone signature for non-native English writing per Liang et al. 2023. This combination is a **NEGATIVE marker**: do not flag as AI unless combined with at least one register-specific AI marker (saturated vocabulary cluster, em-dash density, system-prompt artifact, chatbot reflex).
 
-23. **Hallucinated Citations** [HIGH] -- Fabricated sources, misattributed quotes, non-existent journal articles with plausible-sounding titles. This is among the most dangerous AI content problems.
+Full catalog of all 86 combos: [references/combined-signal-fingerprints.md](references/combined-signal-fingerprints.md).
 
-24. **Vague Attribution to Unnamed Authorities** [MED] -- "Experts say," "Studies have shown," "Research indicates" without specific attribution. Professional standard requires verifiable sources.
+### B3: Two-Axis Calibration
 
-### Context-Specific Indicators
+Each criterion is split into two axes:
 
-25. **Industry-Specific Slop Patterns** [MED] -- Domain-characteristic AI patterns: "innovative, cutting-edge" in tech; "hidden gem" in travel; "synergy, leverage" in business; uniformly positive product reviews.
+- **SSWP (Signal Strength When Present).** A 0.0 to 1.0 score representing the conditional probability that text containing the pattern is AI-generated. SSWP above 0.85 is "smoking gun"; 0.6 to 0.85 is "strong"; 0.4 to 0.6 is "moderate"; below 0.4 is "ambient."
+- **BR (Base Rate).** Per-family percentage. Split for zone-conditional patterns into BR-artifact-body and BR-full-response.
 
-26. **Lack of Personal Detail or Specificity** [MED] -- Generic descriptions without specific examples, personal anecdotes, or experiential details. Humans who have experienced something provide sensory details and concrete examples.
+The split reveals that some widely cited markers (em-dash density) have very high signal strength but plummeting base rate in newer GPT models, while others (uniform paragraph length) have moderate signal strength but very high base rate that overlaps with ESL writing.
 
-27. **Superficial Depth Without Expertise** [MED] -- Covering topics broadly without demonstrating actual understanding. Restating common knowledge, using technical terms superficially, avoiding nuance, lacking case studies. A specific sub-pattern: the "balanced hedging" conclusion that refuses to take a definitive stance, ending with "Ultimately, finding a balance between X and Y is crucial" or "Both approaches have merits." If every section ends with equivocation rather than a position, the writer is summarizing a field rather than working in it.
+**ESL safe-harbor (structural requirement).** Per Liang et al. arxiv 2304.02819 (verified), GPT detectors misclassify a large fraction of non-native English writing as AI-generated. Any detection that triggers the cornerstone signature must be combined with at least one register-specific AI marker. Calibration discipline: hard-negative-mine against TOEFL-style writing.
 
-### Hyperbolic and Dramatic Patterns
+**Quarterly re-calibration.** Per the GPT-5.1 anti-em-dash personalization that shifted Claude vs. ChatGPT BR rankings by 30+ points in a single release, calibration drifts. Re-calibrate every quarter.
 
-28. **Hyperbolic Subheadings and Section Titles** [MED] -- Subheadings that inflate significance: "The word that changed everything," "A game-changing approach," "The revolutionary insight." Fix: subheadings should describe what the section contains, not advertise it. Use specific, factual titles.
-
-29. **Dramatic Fragment Construction** [MED] -- Short dramatic sentences or fragments used for artificial emphasis: "And it was a disaster." "Everything changed." "The results were stunning." Fix: let the content create impact through specificity and evidence, not through theatrical sentence structure. One or two per article for genuine rhetorical effect is fine; a pattern of them is AI-style pacing.
-
-30. **Borrowed Canonical Examples** [MED] -- Using the same illustrative examples that appear in every article on a topic: "A jet engine is complicated; a market is complex" (Cynefin), "the bus route that nobody rides" (design thinking), "the restaurant with great food but no customers" (systems thinking). These signal that the writer is summarizing a field rather than working in it. Fix: use examples from your own experience or construct novel ones.
-
-### Confidentiality and Exposure Risks
-
-31. **Scenario Fingerprinting in "Anonymized" Examples** [HIGH] -- Removing company names while keeping the scenario, specific numbers, stakeholder dynamics, vocabulary, and industry context. The scenario IS the identifier — names are the least important part. A story about "a content platform used by journalists" where you "changed fourteen components" from "generate" to "draft" is identifiable to anyone who knows the author's work. Fix: apply the four-test protocol: (1) Outsider test — could a stranger narrow this to a small set of companies? (2) Insider test — does this confirm something an insider suspected? (3) Adversary test — could a reporter use this as evidence? (4) Irony test — does publishing this undermine the thing the example describes protecting?
-
-32. **Operational Decisions Presented as Teaching Material** [HIGH] -- Internal product strategy decisions, risk mitigation choices, and confidential operational changes described as case studies — even without names. If the decision was made to manage risk, describing it publicly re-creates the risk. Fix: use genuinely universal patterns, publicly known examples from other companies (with attribution), fictional scenarios clearly marked as illustrative, or the author's personal methodology (which is already public).
-
-### Behavioral and Tonal Patterns
-
-33. **Saturated AI Vocabulary** [MED] -- Clustering of words that appear at disproportionately high frequency in unedited AI output: delve, tapestry, nuanced, robust, foster, beacon, catalyst, synergy, pivotal, overarching, multifaceted, landscape (used abstractly), leverage (as verb), streamline, spearhead, underscore, harness. Any single occurrence is unremarkable — these are legitimate words. The signal is clustering: three or more from this list in a single piece, or repeated use of the same word, suggests unrevised AI output. Fix: replace with specific, concrete alternatives. "Delve into" becomes "examine" or "investigate." "Robust framework" becomes a description of what makes the framework strong.
-
-34. **Exhausted Metaphors as Structural Filler** [MED] -- Dead metaphors used as connective tissue to simulate analytical sophistication: "navigating the complex landscape of," "viewed through the lens of," "a symphony of moving parts," "at the intersection of X and Y," "the fabric of," "a tapestry of," "unpacking the layers of." These function as transitions that add zero meaning — they connect ideas without saying anything about the connection. Fix: state the actual relationship between ideas directly. "Navigating the complex landscape of AI regulation" becomes "AI regulation is fragmented across jurisdictions" — a claim with content instead of a metaphor without any.
-
-35. **Unprompted Moral Cadence** [MED] -- Injecting ethical reminders, aspirational wrap-ups, or "looking toward a brighter future" codas at the end of factual or technical content where the topic does not warrant moral framing. An article about database indexing that ends with "As we build these systems, we must remain mindful of their impact on society" is an AI-typical domain mismatch — the moral register does not match the content's register. Fix: end technical content with technical conclusions. If the topic genuinely raises ethical questions, address them with specificity, not platitudes. The test: does this moral conclusion follow from the preceding analysis, or was it appended because AI defaults to inspirational endings?
-
-36. **The Concierge Tone** [HIGH] -- Sycophantic agreement, sterile professional empathy, and service-register language appearing in content that is not customer service. Manifestations include: excessive validation ("That's a great question!"), hedged positivity that avoids any negative assessment, formulaic empathy ("I understand your concern"), and a pervasive agreeableness that treats every statement as a customer interaction. Distinct from chatbot artifacts (criterion 19), which are structural tells like valedictions and help offers. The concierge tone is a tonal quality that pervades the entire piece — the writer never disagrees, never says something is wrong, never takes a position that might displease. Fix: take positions. Disagree where warranted. State limitations directly. Professional writing has a perspective; service writing has a customer.
-
-### Frame and Audience Patterns
-
-37. **Insider Context Collapse** [HIGH] -- Right vocabulary deployed in a frame the reader does not share. The article references tools, abstractions, version numbers, code identifiers, internal events, or internal directories as if the reader has the writer's project context. Distinct from criterion 26 (lack of personal detail), which catches the OPPOSITE direction (writing too generic to convey expertise). Insider context collapse is writing too specific to the writer's frame for the reader to land on. The grammar is clean; the saturated AI vocabulary is absent; the meaning is private. Manifestations: tool or project names introduced without inline definition ("synthesis-console v0.8.0"); internal abstractions used as if known ("the cockpit's NEEDS YOU region," "the parser"); version numbers in prose ("v0.8.3 → v0.8.5"); code identifiers in prose without descriptive context (function names, class names, file paths); references to internal events ("another session reviewing the code," "the X arc"); internal directories or paths used as if the reader knows the project layout. The writer cannot detect this by re-reading — the writer is the insider. The check has to be procedural: every paragraph compared against an explicit reader briefing (see [`synthesis-reader-briefing`](../synthesis-reader-briefing/SKILL.md)). Fix: every internal term gets either an inline introduction on first use or a replacement with descriptive language. Threshold calibrates by genre: strict for technical/teaching, looser for personal-narrative where unexplained texture is part of the form.
-
-### Social-register failures (apply when the artifact is a social post)
-
-When the artifact is a social media post (LinkedIn, Twitter/X, Threads, BlueSky, Reddit, Facebook, Instagram), an additional class of patterns applies. Some are tolerable in articles but flag immediately in social. The threshold differs by register: criteria 1-37 apply to both; criteria 38-41 apply primarily to social.
-
-38. **Imported spec language uppercase** [HIGH for social, LOW for articles] -- Uppercase severity labels (CRITICAL, HIGH, MEDIUM, LOWER) lifted from technical specs into a LinkedIn or Twitter post. The labels read as press-release register in conversational mode. Fix: translate to conversational equivalents ("significant", "smaller", "minor") or describe without labeling.
-
-39. **Article structure in social posts** [HIGH for social] -- Topic sentences, transitions ("First", "Second", "Finally"), formal labels ("The principle", "The takeaway", "In summary") imported into a social post. Reads as essay, not conversation. Fix: reframe as thoughts flowing in real time, not structured exposition.
-
-40. **Third-person narration of first-person experience** [HIGH for social] -- A post about the author's own experience that uses "the site", "the audit", "the fix" instead of "my site", "my audit", "my fix". Reads as third-party reporting on the author. Fix: first-person throughout. Personal pronoun in every paragraph for long-form social.
-
-41. **Lack of closing engagement in social** [MED for social] -- Posts that close the loop cleanly and walk away. Conversational posts invite response. Fix: end with a question, an observation that begs a follow-up, or a deliberate variant of "tell me what you've seen." Not every post needs it, but the default is yes.
-
-42. **Em dashes in social posts** [HIGH for social, LOW for articles] -- Criterion 11 covers em-dash overuse in general (LOW tier, applies to all writing). For social posts the threshold tightens to zero: any em dash usage is a tell. Fast-scrolling social readers register em dashes as the AI-typical polished-prose signal even when used correctly. Articles can still use them sparingly for genuine dramatic pause; social posts cannot. Fix: replace with commas, parentheses, colons, or sentence breaks.
-
-For the register difference and the underlying rationale, see [`synthesis-content-distribution`](../synthesis-content-distribution/SKILL.md) section "Social register vs article register".
-
-For detailed explanations, examples, and fix guidance for each criterion, see [references/detailed-criteria.md](references/detailed-criteria.md).
+Full per-family per-criterion table: [references/calibration-tables.md](references/calibration-tables.md).
 
 ## Confidence-Based Evaluation Process
 
-### Step 1: Scan for High-Confidence Indicators
+### Step 1: Select detector mode
 
-Check for: hallucinated citations, chatbot artifacts, placeholder text, raw Markdown formatting, broken/fabricated links, concierge tone, multiple indicators clustering together.
+Ask: artifact-only or full-response? Apply the corresponding pattern subset (zone tags filter the catalog).
 
-If any are present: very likely unedited AI output.
+### Step 2: Check for smoking-gun indicators (SSWP above 0.85)
 
-### Step 2: Count Medium-Confidence Indicators
+- Placeholder text or chatbot artifacts (A3-TF).
+- Hallucinated citations or fabricated DOIs (A3-CS).
+- Raw markdown formatting in plain-text channels.
+- Family-specific signatures: `<think>` tag leakage (DeepSeek-R1), CJK punctuation slips (Qwen), language-mixing (DeepSeek).
+- System-prompt artifact bleed (catalog entry A3-BT-013).
 
-- 3-4 present: likely AI-generated
-- 5+ present: very likely AI-generated
+If any present: very likely unedited AI output.
 
-### Step 3: Assess Overall Pattern
+### Step 3: Apply combined-signal fingerprints
 
-- Uniform structure + promotional tone + shallow analysis = strong AI signal
-- Specific details + personal voice + varied structure = human-written
+Check for the highest-yield B2 combos given the genre. For analytical / explanatory prose, check `B2-COMBO-001` (ChatGPT 4o tell), `B2-COMBO-003` (Claude.ai default), `B2-COMBO-007` (fake-expertise stack). For business / marketing, add `B2-COMBO-004` (marketing copy AI signature) and `B2-COMBO-016` (consulting register).
 
-### Step 4: Consider Context
+Combined-signal detection beats count-based detection: three matched combos is stronger than ten matched independent indicators.
+
+### Step 4: Apply substance and depth tests (A2)
+
+Run the deletion test (`A2-SUB-001`), the specificity test (`A2-SUB-002`), and the load-bearing claim count (`A2-SUB-003`) on a sample of paragraphs. This step catches slop regardless of authorship; it is the most useful single check for newsroom editors.
+
+### Step 5: Check ESL safe-harbor
+
+If the piece's signature is uniform paragraphs + restricted vocabulary + heavy transitions, check whether any register-specific AI marker is also present. If not, the piece is likely non-native English human writing; do NOT flag as AI.
+
+### Step 6: Assess overall pattern
+
+Combine the per-step signals into a confidence assessment. Per-family attribution where possible.
+
+### Step 7: Consider context
 
 - Is this from an established author with a portfolio?
 - Does other work by this author show similar patterns?
 - Is the publication known for quality control?
+- Was AI assistance disclosed? If so, are the patterns consistent with declared methodology?
 
 ## What This Framework Does NOT Catch On Its Own
 
-The catalog detects AI-shaped writing (saturated vocabulary, hyperbolic patterns, mechanical transitions), human-shaped writing that is too generic (Lack of Personal Detail), and frame-level insider collapse (Insider Context Collapse). It does not, on its own, catch upstream framing failures — articles where the writer never asked the audience question and the draft inherits the source material's frame.
+The catalog detects slop patterns (saturated vocabulary, hyperbolic patterns, mechanical transitions, hallucinated citations), substance failures (deletion-test failure, generic insight, both-sides without commit), human-shaped generic writing (lack of personal detail), and frame-level insider collapse (insider context collapse).
 
-For that, the prevention is upstream: a reader briefing before drafting (see [`synthesis-reader-briefing`](../synthesis-reader-briefing/SKILL.md)). Criterion 37 detects the failure in finished drafts; the briefing prevents it before drafting begins. Defense in depth: do both.
+It does not, on its own, catch:
 
-The framework also does not catch:
-
-- **Errors of omission relative to the briefing.** The article passes every quality check and still does not deliver what the briefing promised the reader would leave with. The Insight Quality lens in `synthesis-article-writing` Phase 3 is the closer fit.
-- **Voice mismatch.** The article is technically correct but does not sound like the author. The Human Touch test below catches some of this; the [`synthesis-voice-profiler`](../synthesis-voice-profiler/SKILL.md) skill catches more.
-- **Strategic positioning errors.** A correct article in the wrong publication, on the wrong topic, at the wrong moment. The [`synthesis-content-framing`](../synthesis-content-framing/SKILL.md) skill is the right tool for those decisions.
+- **Upstream framing failures.** Articles where the writer never asked the audience question and the draft inherits the source material's frame. Prevention is upstream: [`synthesis-reader-briefing`](../synthesis-reader-briefing/SKILL.md). Criterion A3-FA-001 detects the failure in finished drafts; the briefing prevents it before drafting begins.
+- **Errors of omission relative to the briefing.** The article passes every quality check and still does not deliver what the briefing promised. The Insight Quality lens in [`synthesis-article-writing`](../synthesis-article-writing/SKILL.md) is the closer fit.
+- **Voice mismatch.** The article is technically correct but does not sound like the author. Use [`synthesis-voice-profiler`](../synthesis-voice-profiler/SKILL.md).
+- **Strategic positioning errors.** A correct article in the wrong publication on the wrong topic at the wrong moment. Use [`synthesis-content-framing`](../synthesis-content-framing/SKILL.md).
+- **Fact-checking gaps.** Use the companion skill [`synthesis-fact-checking`](../synthesis-fact-checking/SKILL.md) v2.0 for nested attribution, paraphrase drift, composite quotes, position-shifting, source-translation drift, URL rot vs hallucination, AI-generated synthetic sources, citation laundering chains, and tool-specific hallucination patterns.
 
 ## Ineffective Detection Methods
 
 These do NOT reliably signal AI generation:
 
-- **Perfect grammar** -- Skilled humans and professional editors produce polished prose
-- **"Bland" prose** -- Corporate communications from humans can sound formulaic
-- **Common phrases** -- "Rich cultural heritage" exists in human writing too
-- **Em dashes** -- Professional human writers use them frequently
-- **Technical terminology** -- Experts naturally use jargon
+- **Perfect grammar.** Skilled humans and professional editors produce polished prose.
+- **"Bland" prose.** Corporate communications from humans can sound formulaic.
+- **Common phrases.** "Rich cultural heritage" exists in human writing too.
+- **Em dashes alone.** Professional writers use them frequently. The signal is density combined with other markers, weighted per family (HIGH for Claude, LOW for Llama, declining for GPT-5.1+).
+- **Technical terminology.** Experts naturally use jargon.
+- **Watermarking detection.** No frontier model uses reliable text watermarking as of 2026-05. Claims of watermark-based detection are unreliable.
+- **AI detectors as authority.** Pangram, GPTZero, Originality, Copyleaks, Turnitin all produce useful signals but should never be the sole basis for a determination. The Liang ESL bias finding applies to most commercial detectors.
 
 ## Systematic Revision Process for Creators
 
 When using AI to assist content creation, revise through these five passes:
 
-1. **Eliminate formulaic patterns** -- Vary sentence/paragraph length, reduce mechanical rule of three, remove promotional language and editorial commentary, replace generic descriptions with specifics.
+1. **Eliminate formulaic patterns.** Vary sentence and paragraph length. Reduce mechanical rule of three. Remove promotional language and editorial commentary. Replace generic descriptions with specifics. Cut wrapper-zone language (sycophantic openers, concierge closers) if it leaked into the artifact.
 
-2. **Add genuine expertise and experience** -- Include personal anecdotes and specific observations, provide depth beyond surface-level analysis, take clear positions with genuine reasoning.
+2. **Apply the A2 substance tests.** Run the deletion test on every paragraph: if removing it changes nothing, delete it. Apply the any-company test to business content. Count load-bearing claims; aim for 3+ per 100 words in substantive prose.
 
-3. **Verify and enhance sourcing** -- Check all citations are real and relevant, add specific attribution, include original research or first-hand sources. Use the synthesis-fact-checking skill for thorough verification.
+3. **Verify and enhance sourcing.** Check all citations exist and are relevant (use synthesis-fact-checking C1-URLROT-001 and C1-SYNTH-001 protocols). Add specific attribution. Include original research or first-hand sources.
 
-4. **Inject personality and voice** -- Use natural transitions, vary rhetorical structures, include humor or perspective where appropriate, let imperfections remain if they sound natural.
+4. **Inject personality and voice.** Use natural transitions. Vary rhetorical structures. Include humor or perspective where appropriate. Let imperfections remain if they sound natural. Apply zone awareness: strip wrapper-zone patterns ("You're absolutely right", "I hope this helps") even if they read warmly.
 
-5. **Apply the Human Touch test** -- Would a reader recognize this as distinctly yours? Does it include knowledge only you would have? Does it sound like how you actually write?
+5. **Apply the Human Touch test.** Would a reader recognize this as distinctly yours? Does it include knowledge only you would have? Does it sound like how you actually write? Would anyone else write it exactly this way? Have you added genuine value beyond what AI provided?
 
 ## Quick-Reference Checklist
 
-### High-Risk Phrases
+### High-Risk Phrases (any context)
 
 - "stands as a testament to," "plays a vital/significant role"
 - "rich cultural heritage," "breathtaking," "nestled in the heart of"
 - "it's important to note," "it is worth mentioning," "one cannot overlook"
 - "not only... but also," "it's not just X, it's Y"
-- "Moreover," "Furthermore," "Additionally," "Nevertheless"
+- "Moreover," "Furthermore," "Additionally," "Nevertheless" (especially in clusters)
 - "In summary," "In conclusion," "Overall," "In essence"
 
 ### High-Risk Vocabulary (flag when 3+ cluster in a single piece)
@@ -237,6 +278,7 @@ When using AI to assist content creation, revise through these five passes:
 - delve, tapestry, nuanced, robust, foster, beacon, catalyst
 - synergy, pivotal, overarching, multifaceted, landscape (abstract)
 - leverage (verb), streamline, spearhead, underscore, harness
+- intricate, navigate the complexities of, in the realm of
 
 ### Exhausted Metaphor Phrases
 
@@ -257,18 +299,37 @@ When using AI to assist content creation, revise through these five passes:
 - "The surprising truth about..."
 - "What nobody tells you about..."
 
+### Highest-Yield Combined Signals (per family)
+
+When seen together, these combinations indicate the named family with low false-positive rate:
+
+- **Claude family:** em-dash density + bolded lead-ins + uniform paragraphs (B2-COMBO-003).
+- **GPT-4o:** saturated vocab + exhausted metaphor + section-ending summary (B2-COMBO-001).
+- **Gemini:** plain-text markdown leakage + vague attribution + "cool/neat/unique" register (B2-COMBO-012 plus GEMINI signatures).
+- **GPT-5.1 stripped:** zero em-dashes + low concierge tone + still-present focal vocabulary + rule-of-three + uniform paragraphs (B2-COMBO-025).
+
+### A2 Substance Quick-Check (5 minutes)
+
+Run on three sample paragraphs from any piece:
+
+- [ ] **Deletion test** (`A2-SUB-001`): could this paragraph be removed without losing claim, evidence, or transition?
+- [ ] **Specificity test** (`A2-SUB-002`): would this sentence apply equally to any subject in its genre?
+- [ ] **Any-company test** (`A2-SUB-006`): if this is business content, would this paragraph apply equally to any company?
+- [ ] **Load-bearing claim count** (`A2-SUB-003`): how many sentences carry claims the rest of the piece depends on?
+- [ ] **Pseudo-profundity check** (`A2-SUB-011`): does any sentence sound deep but say nothing on inspection?
+
 ### Stranger-Read Patterns (Before Publishing)
 
-Threshold calibrates by genre per the reader briefing — strict for technical/teaching articles, looser for personal-narrative where unexplained texture is part of the form.
+Threshold calibrates by genre per the reader briefing: strict for technical or teaching content, looser for personal narrative.
 
 - [ ] Tool or project name appears without inline definition on first use
-- [ ] Internal abstraction ("the cockpit," "the dashboard's X") used without prior introduction
-- [ ] Version number appears in prose (v0.8.3, v2.4.0)
-- [ ] Code identifier in prose without descriptive context (function name, class name, file path)
-- [ ] Reference to internal events ("another session," "the X arc," "my fix arc")
+- [ ] Internal abstraction used without prior introduction
+- [ ] Version number appears in prose
+- [ ] Code identifier in prose without descriptive context
+- [ ] Reference to internal events without explanation
 - [ ] Internal directory or path used as if reader knows the project layout
 
-If any item is checked and the briefing's "what they bring" answer does not include that knowledge, translate or remove. See criterion 37 (Insider Context Collapse) and [`synthesis-reader-briefing`](../synthesis-reader-briefing/SKILL.md).
+See criterion `A3-FA-001` (insider context collapse) and [`synthesis-reader-briefing`](../synthesis-reader-briefing/SKILL.md).
 
 ### Anonymization Checks (Before Publishing)
 
@@ -277,23 +338,20 @@ If any item is checked and the briefing's "what they bring" answer does not incl
 - [ ] Adversary test: could a reporter use this as evidence?
 - [ ] Irony test: does publishing this undermine what the example describes protecting?
 - [ ] Are specific numbers (14 components, 6 engineers) identifying?
-- [ ] Are stakeholder dynamics (journalists worried about AI) identifying?
+- [ ] Are stakeholder dynamics identifying?
 - [ ] Are vocabulary choices (exact terminology changes) identifying?
 
-### Structural Checks
+### ESL Safe-Harbor Check
 
-- [ ] Sentences vary in length naturally
-- [ ] Paragraphs vary in size
-- [ ] Does not group everything in threes
-- [ ] Transitions feel natural, not mechanical
-- [ ] No section-ending summaries
-- [ ] Formatting is strategic, not excessive
-- [ ] Citations verify and are relevant
-- [ ] Voice and personality are present
-- [ ] Includes specific examples and details
-- [ ] Demonstrates genuine expertise
-- [ ] No placeholder text or artifacts
-- [ ] No chatbot communication remnants
+Before flagging a piece as AI-generated based on uniform-paragraphs + restricted-vocab + heavy-transitions, verify at least one of these register-specific AI markers is also present:
+
+- [ ] Saturated AI vocabulary cluster (3+ from the focal-word list)
+- [ ] Em-dash density (per-family calibrated)
+- [ ] System-prompt artifact bleed
+- [ ] Chatbot reflex (sycophancy opener, concierge closer)
+- [ ] Hallucinated citation or fabricated DOI
+
+If none, the piece is likely non-native English human writing. Do not flag.
 
 ### The Human Touch Test
 
@@ -309,17 +367,29 @@ If you cannot answer yes to most of these, revise further.
 
 ## Related Skills
 
-This skill is one of three in the writing-quality family:
+This skill is the AI-pattern-and-substance arm of the writing-quality family:
 
-- [`synthesis-writing-pitfalls`](../synthesis-writing-pitfalls/SKILL.md) — Universal human-source bad-writing patterns (cringe, throat-clearing, caveat overload, sentence-level weakness, cliché reliance)
-- [`synthesis-writing-craft`](../synthesis-writing-craft/SKILL.md) — Positive writing principles synthesized from the writing-craft tradition
-- [`synthesis-reader-briefing`](../synthesis-reader-briefing/SKILL.md) — Pre-writing audience analysis (catches Insider Context Collapse upstream)
-- [`synthesis-article-writing`](../synthesis-article-writing/SKILL.md) — End-to-end article workflow with quality gates
-- [`synthesis-article-refresh`](../synthesis-article-refresh/SKILL.md) — Refresh and revitalize older articles
-- [`synthesis-voice-profiler`](../synthesis-voice-profiler/SKILL.md) — Generate a structured voice profile
+- [`synthesis-writing-pitfalls`](../synthesis-writing-pitfalls/SKILL.md): Universal human-source bad-writing patterns (cringe, throat-clearing, caveat overload, sentence-level weakness, cliché reliance, stilted formality).
+- [`synthesis-writing-craft`](../synthesis-writing-craft/SKILL.md): Positive writing principles from the writing-craft tradition.
+- [`synthesis-reader-briefing`](../synthesis-reader-briefing/SKILL.md): Pre-writing audience analysis (prevents insider context collapse upstream).
+- [`synthesis-article-writing`](../synthesis-article-writing/SKILL.md): End-to-end article workflow with quality gates.
+- [`synthesis-article-refresh`](../synthesis-article-refresh/SKILL.md): Refresh and revitalize older articles.
+- [`synthesis-voice-profiler`](../synthesis-voice-profiler/SKILL.md): Generate a structured voice profile.
+- [`synthesis-fact-checking`](../synthesis-fact-checking/SKILL.md) v2.0: Companion skill for citation, quote, and source verification with per-family hallucination signatures.
+- [`synthesis-clean-text`](../synthesis-clean-text/SKILL.md): Remove watermarks and statistical fingerprints from generated text.
 
-For detailed pattern explanations and fix guidance, see [`references/detailed-criteria.md`](references/detailed-criteria.md).
+## References
+
+Detailed catalog content lives in the [references/](references/) subfolder:
+
+- [detailed-criteria.md](references/detailed-criteria.md): All 76 A3 criteria with 16-field detail and renumbering map from v3.1.0.
+- [model-family-fingerprints.md](references/model-family-fingerprints.md): All A1 patterns across 8 families.
+- [substance-and-depth.md](references/substance-and-depth.md): All 17 A2 sub-patterns with 5-minute editorial workflow.
+- [combined-signal-fingerprints.md](references/combined-signal-fingerprints.md): All 86 B2 combos.
+- [calibration-tables.md](references/calibration-tables.md): Two-axis calibration with per-family per-zone tables and ESL safe-harbor.
+- [historical-patterns.md](references/historical-patterns.md): Historical and Deprecated patterns for forensic analysis of older content.
+- [bibliography.md](references/bibliography.md): Consolidated bibliography with verification status.
 
 ---
 
-Part of the [synthesis writing](https://synthesiswriting.org) craft — the writer writes, the AI assists.
+Part of the [synthesis writing](https://synthesiswriting.org) craft. The methodology is durable. The catalog refreshes as model behavior shifts. Newsrooms and editorial workflows are the audience this skill serves.

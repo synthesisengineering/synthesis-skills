@@ -112,7 +112,7 @@ Switching between them is a craft skill. The trap is writing in one register whe
 
 The test: read the piece aloud. Does it sound right for where it will appear? If a sentence would feel out of place spoken in front of the actual reader (a colleague at a coffee shop, an audience scrolling LinkedIn, a journalist in an interview), revise it.
 
-For pattern-detection of register failures, see [`synthesis-writing-pitfalls`](../synthesis-writing-pitfalls/SKILL.md) criterion 22 and [`synthesis-content-quality`](../synthesis-content-quality/SKILL.md) criteria 38-41.
+For pattern-detection of register failures, see [`synthesis-writing-pitfalls`](../synthesis-writing-pitfalls/SKILL.md) criterion 22 and [`synthesis-content-quality`](../synthesis-content-quality/SKILL.md) v4.0 social-register criteria A3-SR-001 through A3-SR-005.
 
 ### Structure, openings, closings (tradition exemplified by Lamott, Stein)
 

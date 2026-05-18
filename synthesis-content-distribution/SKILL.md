@@ -102,7 +102,7 @@ These patterns are tolerable in articles and flag immediately in social:
 4. **Long sentences (>25 words) without compression.** Essay register. Break them.
 5. **Over-smoothed prose with no rhythmic variation.** When every sentence is grammatically tidy and every paragraph the same shape, the post reads as machine-edited.
 6. **Closing the loop instead of inviting response.** Conversational posts invite a reply (question, observation, "tell me what you've seen"). Posts that wrap up cleanly are essay-shaped, not conversation-shaped.
-7. **Em dashes.** Em dashes in articles are tolerable in moderation (the general rule against overuse from `synthesis-content-quality` criterion 11 still applies). In social posts the threshold drops to zero. Fast-scrolling readers register any em dash as the AI-typical polished-prose signal. Use commas, parentheses, colons, or sentence breaks instead.
+7. **Em dashes.** Em dashes in articles are tolerable in moderation (the general rule against overuse from `synthesis-content-quality` A3-SS-001 still applies, per-family weighted; HIGH for Claude and pre-GPT-5.1 ChatGPT, LOW for newer GPT and Llama). In social posts the threshold drops to zero (A3-SR-005). Fast-scrolling readers register any em dash as the AI-typical polished-prose signal. Use commas, parentheses, colons, or sentence breaks instead.
 
 ### Pre-publish register check
 

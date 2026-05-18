@@ -103,7 +103,7 @@ Each pattern is tagged with its confidence tier: **[HIGH]** (almost always a pit
 
 21. **Cliché as substitute for thought** [MED] — Familiar phrases that have stopped meaning anything specific: "at the end of the day," "moving the needle," "low-hanging fruit," "thinking outside the box," "a perfect storm," "moving forward," "circle back," "boil the ocean," "drink from the firehose." Fix: state the underlying claim in original language. Cliché is the writer's brain on autopilot.
 
-This is distinct from the AI-typical "exhausted metaphor" pattern (covered in `synthesis-content-quality` criterion 34) — that pattern catches mechanical recombination of training-set phrases like "navigating the complex landscape of." Human cliché reliance is laziness; AI exhausted metaphor is statistical artifact. Different root causes; both pollute prose.
+This is distinct from the AI-typical "exhausted metaphor" pattern (covered in `synthesis-content-quality` v4.0 as A3-BT-002) — that pattern catches mechanical recombination of training-set phrases like "navigating the complex landscape of." Human cliché reliance is laziness; AI exhausted metaphor is statistical artifact. Different root causes; both pollute prose.
 
 ### Stilted formality
 

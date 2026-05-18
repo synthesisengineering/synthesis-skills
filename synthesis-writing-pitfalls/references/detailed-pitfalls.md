@@ -316,7 +316,7 @@ Expanded examples and fix guidance for each pattern in `synthesis-writing-pitfal
 - "Moving the needle" becomes "improving the metric we actually care about."
 - "At the end of the day" becomes nothing — the sentence is usually fine without it.
 
-**Distinct from criterion 34 in `synthesis-content-quality`:** AI-typical exhausted metaphors ("navigating the complex landscape of," "viewed through the lens of") are statistical artifacts of training data — the model recombined common phrasings. Human cliché reliance is laziness — the writer reached for the familiar phrase. Both produce dead prose; the root cause and detection signature differ. A human writer using "circle back" is being lazy; an AI producing "navigating the complex landscape of regulatory change" is producing a training-set artifact.
+**Distinct from A3-BT-002 in `synthesis-content-quality` v4.0:** AI-typical exhausted metaphors ("navigating the complex landscape of," "viewed through the lens of") are statistical artifacts of training data — the model recombined common phrasings. Human cliché reliance is laziness — the writer reached for the familiar phrase. Both produce dead prose; the root cause and detection signature differ. A human writer using "circle back" is being lazy; an AI producing "navigating the complex landscape of regulatory change" is producing a training-set artifact.
 
 ## Stilted formality
 

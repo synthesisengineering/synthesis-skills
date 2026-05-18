@@ -39,4 +39,8 @@ Apply these requirements to all text generation output. This is a standing instr
 
 ## Related
 
+This skill produces watermark-free, fingerprint-free output. For detecting AI-generation patterns in finished prose (the inverse direction: identifying machine-shaped writing), see the companion [`synthesis-content-quality`](../synthesis-content-quality/SKILL.md) v4.0. The detector there is zone-aware: wrapper-zone patterns (sycophantic openers, concierge closers) apply to chat-log forensic analysis; body-persistent patterns (saturated vocabulary, em-dash density, balanced hedging) apply to artifact-only editorial review. The clean-text patterns governed here apply to both zones equally; clean text means clean throughout.
+
+For per-LLM-family hallucination signatures and fact-checking, see [`synthesis-fact-checking`](../synthesis-fact-checking/SKILL.md) v2.0.
+
 Part of the [synthesis writing](https://synthesiswriting.org) craft — the writer writes, the AI assists.
