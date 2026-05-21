@@ -138,41 +138,52 @@ Both contribute. But the human leads.
 
 ---
 
-## The Four Pillars
+## The Five Pillars
 
-Synthesis engineering rests on four foundational pillars that distinguish it from both traditional development and vibe coding.
+Synthesis engineering rests on five foundational pillars. They form a mutually-reinforcing loop — not a checklist — in which each pillar depends on the others to function and each one strengthens the others when practiced well.
 
 ### Pillar 1: Human Architectural Authority
 
-Humans make strategic architectural decisions. AI implements within those constraints.
+The human owns the decisions that are hardest to reverse — module boundaries, data flow, where state lives, the security model, how the system fails. AI helps with research, brainstorming, surfacing trade-offs, and stress-testing assumptions, but the final commitment is human.
 
-Complex software systems require consistent architectural vision that persists across months or years. AI operates conversation by conversation, without that temporal continuity. Engineers decide technology stack, system boundaries, data modeling, integration patterns, security models, and scaling strategies. AI implements within those constraints.
+Architectural vision must persist across months and years; AI operates one conversation at a time. The human is the only continuous mind in the loop, and architectural decisions get more expensive to change the longer a project runs.
 
-When architectural authority remains human, codebases stay comprehensible. Multiple engineers can collaborate effectively. Technical debt doesn't accumulate from inconsistent AI-generated patterns.
+When architectural authority remains human, codebases stay comprehensible, multiple engineers can collaborate effectively, and technical debt doesn't accumulate from inconsistent AI-generated patterns.
 
 ### Pillar 2: Systematic Quality Standards
 
-Apply the same quality standards to AI-generated code as human-written code. But evolve how you achieve those standards.
+AI-generated code is held to the same standards as human-written code. In practice the bar should be higher, because AI produces more code faster, and the cost of letting bad code through scales with volume. The same "I'll fix it later" reflex that produced one shaky function now produces twenty.
 
-Humans design the quality strategy. AI implements it systematically. AI generates comprehensive test suites, performs systematic security analysis, creates documentation that stays current, and optimizes performance within defined constraints.
+Review, testing, security analysis, and performance validation don't get a discount because AI was involved. What changes is that AI is also a tool for meeting these standards more systematically — catching what tired humans miss, writing the tests a human would have written if they had time, flagging the security pattern that looks correct but isn't.
 
-Quality becomes systematic across the team rather than dependent on individual diligence.
+Quality standards are the audit trail that proves Pillar 3 (Active System Understanding) is real and not performed.
 
 ### Pillar 3: Active System Understanding
 
-Engineers maintain deep understanding of system architecture and implementation even while leveraging AI for rapid development.
+The human stays close to the code — not at the level of "I approved this PR" but at the level of "I could explain what this module does, why it talks to that one, and what fails first when load doubles." The bar is what you would expect from a lead engineering manager who is also expected to read and reason about the code their team ships.
 
-This pillar prevents the most dangerous failure mode: systems nobody understands. When AI generates a solution, the engineer must be able to debug it at 2 AM if it fails in production. If not, either they need to understand it better, or it needs to be simpler.
+This is the pillar most often eroded in AI-assisted teams, because AI removes the friction that used to force engineers to read carefully. Without that friction, reading becomes a choice. The 2 AM test is the operational version: if the system breaks in production and you cannot debug it, either you have lost touch with the system or the system has grown too complex for the team to hold. Both are problems worth fixing now rather than later.
 
-Active understanding isn't optional. It's the foundation that prevents synthesis engineering from becoming technical bankruptcy.
+### Pillar 4: Self-Improving System
 
-### Pillar 4: Iterative Context Building
+Both the project and the practice are evolving systems. Improvement compounds along four threads that run together:
 
-AI effectiveness compounds when context accumulates systematically across conversations and over time.
+- **Context.** Every session adds to the project's accumulated memory. Decisions made, paths considered and rejected, conventions established. `CLAUDE.md`, `AGENTS.md`, `CONTEXT.md`, `REFERENCE.md`, and session archives capture this so it survives across conversations, across AI tools, and across the people who pick up the project later. Project memory belongs to the project, not to any single AI tool.
+- **Skills.** When you find a better way to do something, you codify it. Patterns get named and packaged so the AI applies them next time without being re-taught. The skills library grows from a few personal tricks into a serious system of reusable practices.
+- **Instructions.** The files that tell each AI tool how to work in this project get refined every time the AI does something wrong. If the AI keeps making the same mistake, the instruction is the bug, not the AI.
+- **Practice.** The discipline of synthesis coding itself improves through everything above, plus what gets shared with other practitioners. Improvement happens at four scales at once: the current project, the team's shared playbook, the practitioner's craft, and the discipline as a whole.
 
-Think of context like compound interest for AI assistance. Early conversations establish baseline understanding. Each subsequent conversation builds on that foundation. Teams maintain long-running sessions, document architectural decisions, create template prompts, and build reusable patterns.
+Iterative context building is one element of this pillar. The earlier framing of synthesis coding called out context building specifically; the broader framing recognizes that context is one of four threads, not the whole story.
 
-The compounding effect is dramatic. First feature with AI might take 80% as long as traditional development. Fifth feature takes 50%. Tenth feature takes 30%. Context accumulation makes AI progressively more effective.
+### Pillar 5: Transferable Knowledge
+
+Knowledge in synthesis coding is built to travel along multiple axes at once, and a piece of work is only as good as the weakest axis:
+
+- **Across people.** Code, documentation, and project memory are written for engineers who were not present when they were created. A new contributor should be able to pick up the project with or without AI assistance.
+- **Across AI tools.** The same project memory works in Claude Code, Codex, Cursor, Copilot, and whatever ships next month. Instructions live in files the project owns, not in any one tool's private memory.
+- **Across the synthesis crafts.** What is learned in synthesis coding transfers to synthesis writing, and the other direction. Both crafts share the same underlying pattern.
+- **Across time.** Your six-months-from-now self is effectively a different person. Project memory is the gift you leave for that person.
+- **Across organizations.** The synthesis terminology, the methodology, and the skills library are CC0 public domain. A discipline any team can adopt without negotiation is a discipline that improves in a thousand places at once.
 
 ---
 
