@@ -9,7 +9,7 @@ depends_on:
   - synthesis-repo-guard
 metadata:
   author: "Rajiv Pant"
-  version: "2.7.0"
+  version: "2.8.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -17,6 +17,20 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.8.0 — Weekly Loose-Ends Review on Fridays
+
+In v2.8.0 (2026-05-22), the Day-End ritual gains a Friday-only "Weekly Loose-Ends Review" step that scans the prior two weeks of work for incomplete, missed, or forgotten items and consolidates the surviving ones into a carryover list for Monday's day-start.
+
+**Rule:** on Fridays, before the Repo Guard final-verification step, scan the past 14 calendar days of daily plans + project context files + open commitment tables. For every surfaced item, classify it as STILL RELEVANT (carry into Monday), OBSOLETE (annotate-and-close in place), or AMBIGUOUS (surface to user). The output is a `## Weekly Loose-Ends Review` section in Friday's daily plan plus a populated `## Carried Items` section in Monday's plan.
+
+**Why:** the workweek's cracks accumulate invisibly. A missed close-of-business ritual on Wednesday means Thursday's plan doesn't pick up Wednesday's open threads. By Friday, several items can be quietly stranded. Without an explicit weekly catch, the user's mental model of "what's open" drifts from reality — and the longer the drift, the harder the eventual reconciliation. Running this on Friday afternoon catches stale items WHILE context is still warm; Monday begins with a clean carryover instead of an archaeological dig.
+
+**Why Friday and not Monday:** Monday is when the carryover gets ACTIONED. Friday is when the carryover gets ASSEMBLED. Assembling on Monday means starting the week with backwards-looking work; assembling on Friday means closing the week with a clean handoff to next week. The split also lets the user (or the agent) drop OBSOLETE items into context that's still fresh — Monday's view of "is this still relevant?" is fuzzier than Friday's.
+
+**Where in the day-end checklist:** new Step 10, just before Repo Guard (which stays the terminal step). The skill detects day-of-week and skips silently on non-Fridays. See Day-End Checklist below.
+
+**Idempotent re-runs:** if a Friday day-end ritual is missed and the agent runs the Weekly Loose-Ends Review on a later weekday (Saturday catch-up, Monday morning if Friday was skipped), it should still produce the same scan output — the scan is date-bounded, not weekday-bounded. The Friday-default is about WHEN it normally fires, not about whether the scan is meaningful on other days.
 
 ## v2.7.0 — Source-Code Sync as a First-Class Ritual Step
 
@@ -38,7 +52,7 @@ In v2.7.0 (2026-05-21), source-code synchronization becomes an explicit, first-c
 
 **Sequence within day-start:** Context Optimization (Step 1) → **Source-code sync (Step 2a — NEW)** → Slack sync (Step 2b — was Step 2) → Meeting transcripts (Step 2c — was Step 2b) → Catch-up read (Step 3) → PR review queue (Step 4) → Day plan (Step 5) → Morning messages (Step 6).
 
-**Sequence within day-end:** Transcript sync (Step 1) → **Source-code sync (Step 2 — NEW)** → Integration sweep (Step 3 — was Step 2) → … → Repo guard final verification (Step 10 — was Step 9).
+**Sequence within day-end (v2.8.0+):** Transcript sync (Step 1) → **Source-code sync (Step 2 — v2.7.0)** → Integration sweep (Step 3) → … → **Weekly Loose-Ends Review (Step 10 — v2.8.0, Fridays only)** → Repo guard final verification (Step 11 — was Step 10 in v2.7.0).
 
 ## v2.6.0 — Draft Numbering Convention (numbers, not letters)
 
@@ -613,7 +627,43 @@ This step is intentionally not "merge ready PRs" — that's Integration Sweep be
 
 - [ ] Run mac-sync (credentials, config, git remotes across machines).
 
-### 10. Repo Guard — Final Verification
+### 10. Weekly Loose-Ends Review (Fridays only)
+
+**Day-of-week gating.** Detect today's day-of-week. If today is NOT Friday, skip this step silently and continue to Step 11. If today IS Friday — OR if a recent Friday ritual was missed and today is the catch-up day — run the scan below.
+
+This step exists because work falls through the cracks during a week. A missed close-of-business ritual means the next day's plan doesn't pick up the open threads from the day before. By Friday, several items can be stranded invisibly. The Friday review catches these BEFORE the weekend disconnects fresh context, and assembles a clean carryover list for Monday.
+
+**Scope: past 14 calendar days.** Look back from today through 14 days ago. This captures the current week + the previous week — enough to surface items deferred across one weekend boundary, which is the typical failure mode.
+
+**Sources to scan (read each one; do not infer):**
+
+- [ ] `daily-plans/YYYY-MM-DD.md` for the past 14 calendar days. In each plan, look for:
+  - Drafts (`### Draft N: ...`) without a following `**Sent:**` marker — these are unsent and the deadline already passed
+  - Items under `## Priority Tasks → Do today — not negotiable` that lack a completion marker (✅ or "DONE" or strikethrough)
+  - Existing `## Carryover open items` / `## Stale targets` sections — these are last week's loose ends that may or may not still be relevant
+  - Anything under `## Decisions needed from Rajiv` that did not get a decision recorded
+- [ ] Each active project's `CONTEXT.md` "Open Items" / "Decisions Needed" / "Open Questions" sections — flag items whose surrounding text has not changed in 14+ days
+- [ ] Each active project's `## Waiting On Others` table — flag rows whose "Last asked" / "Asked at" timestamp is >7 days ago (one full work-week without a follow-up signals the ask got buried or forgotten)
+- [ ] `sessions/YYYY-MM.md` for the current AND previous calendar month — scan for explicit personal commitments (Rajiv saying "I'll do X tomorrow" or "I'll send Y by EOD") and verify each has a matching completion record. Pattern-match on first-person future-tense verbs in Rajiv's own text, not in quoted teammate messages.
+
+**Classify each surfaced item:**
+
+- **STILL RELEVANT** → carry into Monday by appending to Friday's daily plan `## Carried Items` section in the canonical format the cockpit reads. Include: the item description, the original date it surfaced, the original source (which plan / which CONTEXT.md / which Slack thread). This is what Monday's day-start picks up.
+- **OBSOLETE** → annotate IN PLACE on the original source file with a one-line reason (e.g., "obviated by Y on YYYY-MM-DD", "stakeholder OOO through Z", "decision moot post-X"). These items stop appearing in future weekly reviews because they're now marked. Do NOT delete — the annotation is the record that the item was triaged.
+- **AMBIGUOUS** → surface to the user with a brief context block. They decide carry-forward vs close. Do not guess; for items that touch other people's commitments or strategic direction, the user must be the one to call it.
+
+**Output requirements:**
+
+- [ ] Add a `## Weekly Loose-Ends Review` section to today's (Friday's) daily plan. Structure: scan summary at top (count of items by classification + per-source breakdown), then the explicit STILL RELEVANT list (these are what Monday picks up), then OBSOLETE-with-reason list (audit trail), then AMBIGUOUS list (decision queue for the user).
+- [ ] If items in STILL RELEVANT need to be tracked across the weekend, populate today's daily plan `## Carried Items` section. (Monday's plan, when created, will pull from there as part of normal day-start.)
+- [ ] Annotate OBSOLETE items in their ORIGINAL source files (not in this review section) so they get marked once and stay marked.
+- [ ] Commit + push the daily plan and any annotated source files per the Commit Protocol below.
+
+**Failure mode to avoid:** writing a `## Weekly Loose-Ends Review` section header without actually scanning the sources. The value is in the scan. If sources have not been read in this invocation, do not write the section — note "Weekly Loose-Ends Review skipped — scan not performed this invocation" in the plan and surface the gap to the user.
+
+**Idempotency:** if a Friday review was missed and the agent runs this step on a later weekday, the scan still works because it's date-bounded (past 14 calendar days from today), not weekday-bounded. The Friday-default is about WHEN it normally fires; the scan output is meaningful on any day.
+
+### 11. Repo Guard — Final Verification
 
 **This step is mandatory and must be the last step before ending any session.**
 
