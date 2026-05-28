@@ -10,7 +10,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-reader-briefing", "synthesis-content-quality"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.0"
+  version: "2.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -204,6 +204,22 @@ Craft an authentic, insightful article that:
 **Example:**
 - Good: "As I wrote when introducing [project], the key to useful AI assistants is..."
 - Bad: "To learn more about AI assistants, see this post."
+
+### Images and Alt Text
+
+**Write alt text the moment you place an image — never leave it for later.** Captionless images (`![](image.png)`) are the single largest source of accessibility debt in a migrated or fast-drafted archive; the cheapest time to describe an image is when you add it and know what it shows.
+
+For every image:
+
+- **Content image** (carries information — a diagram, screenshot, chart, photo of a person or place, a book cover, a tweet screenshot): write specific, descriptive alt text. Describe what the image *shows* and what a reader who can't see it needs to know. For a screenshot of text (tweet, chat, slide), include the key text in the alt.
+- **Decorative image** (a pure visual flourish with no informational content): use explicit empty alt, `![]( )` → `![](image.png)` is acceptable ONLY when the image is genuinely decorative. Prefer to state intent so a later reader doesn't mistake it for missing alt.
+- **A caption is not a substitute for alt text, and alt text is not a substitute for a caption.** If a visible caption already conveys the description, the alt can be shorter, but it should still exist.
+
+Markdown patterns:
+- Plain image: `![Diagram of the three-tier context architecture](./architecture.png)`
+- Linked image: `[![Book cover of "Leadership BS" by Jeffrey Pfeffer](./cover.jpg)](https://publisher.example/book)`
+
+**Do not infer an image's content from its filename or the article's topic alone.** A file named `tony_ridder.jpg` in an article about Tony Ridder may be a portrait — or a scan of a letter he wrote. View the image (or rely on a caption you can verify) before describing it.
 
 ### Ethical Storytelling and Anonymization
 

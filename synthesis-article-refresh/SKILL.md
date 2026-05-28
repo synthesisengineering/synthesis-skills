@@ -10,7 +10,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -196,6 +196,7 @@ The revitalized post must:
 - Feel like natural, organic writing, not an artificial enhancement
 - Include all valuable hyperlinks from the original (unless deliberately removed)
 - Create a lasting resource that remains valuable beyond its publication date
+- **Have alt text on every image.** A refresh is the natural moment to fix accessibility debt: if the article carries captionless images (`![](image.png)`), describe them now rather than leaving them for a separate cleanup. View the image before describing it — don't infer content from the filename.
 
 
 ## Related
