@@ -1,0 +1,48 @@
+# ~/.synthesis/inbox-cleanup/config.yaml — account + behavior configuration
+#
+# This file is per-user. The IMAP password lives in the macOS Keychain
+# (service: inbox-cleanup-imap) — NEVER in this file.
+#
+# Edit YOUR-EMAIL@example.com etc. before first use.
+
+imap:
+  # IMAP server host. Examples:
+  #   iCloud:   imap.mail.me.com
+  #   Fastmail: imap.fastmail.com
+  #   Yahoo:    imap.mail.yahoo.com
+  host: imap.mail.me.com
+
+  # Login user candidates (the engine tries each in order until one succeeds).
+  # Include aliases — e.g., iCloud users with both @icloud.com and @mac.com.
+  user_candidates:
+    - YOUR-EMAIL@example.com
+    # - YOUR-EMAIL@example-alias.com
+
+  # macOS Keychain service name where the app-specific password is stored.
+  # Set with:
+  #   security add-generic-password -s inbox-cleanup-imap -a "$USER" -w
+  keychain_service: inbox-cleanup-imap
+
+# Optional: catch-all domain configuration for icloud_catchall_google_purge.py
+#
+# If you own a domain with catch-all routing to this IMAP inbox, strangers
+# who use made-up @your-domain.com addresses to sign up for Google services
+# produce sign-in / billing / inactive notices that land here. The purge
+# script trashes those.
+#
+# Comment out the catchall section if you do not use a catch-all domain.
+catchall:
+  domains:
+    # - your-catchall-domain.example
+
+  # Exact recipient addresses on the catch-all domain that ARE yours.
+  # The purge spares any message addressed to these.
+  spare_recipients:
+    # - you@your-catchall-domain.example
+
+  # Subject substrings (case-insensitive) that spare a message from the
+  # purge regardless of recipient. Useful when you administer Google
+  # Workspace for someone else (e.g., a family member) under their own
+  # domain and notices about their domain arrive in your inbox.
+  spare_subject_keywords:
+    # - other-person-domain

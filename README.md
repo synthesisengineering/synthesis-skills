@@ -111,6 +111,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | Skill | Description |
 |-------|-------------|
 | `synthesis-git-hooks` | YAML-driven pre-commit policy: auto-classifies each repo by push remotes (personal vs strict), enforces tiered patterns for credentials and exposure-sensitive content |
+| `synthesis-inbox-cleanup` | Manifest-driven email cleanup across iCloud / generic IMAP (Python), Microsoft 365 / outlook.com (Mail.app AppleScript), and Gmail (workspace-mcp API + native server-side filters). Public engine + private rules. Ships with prompt-injection defenses and adversarial test fixtures for any LLM-augmented path. macOS. |
 | `synthesis-mac-sync` | Multi-Mac config sync via iCloud with git repo sync and machine inventory |
 | `synthesis-meeting-transcripts` | Fetch AI-generated meeting notes and transcripts into local working files |
 | `synthesis-repo-guard` | Session-end enforcement: detect uncommitted changes and unpushed commits across a workspace |
