@@ -5,7 +5,7 @@ license: "Apache-2.0"
 metadata:
   depends_on: "synthesis-daily-rituals (optional integration)"
   author: "Rajiv Pant"
-  version: "0.3.0"
+  version: "0.3.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -180,6 +180,15 @@ grep -cE '^\*?\*?[0-9]+:[0-9]+(:[0-9]+)?\*?\*?' <saved-file>
 ```
 
 If count < 5, you have not saved the full transcript. Re-fetch the Drive doc.
+
+**When the source Doc legitimately has no transcript section** (Google Meet was recorded but transcription was not enabled — common for casual 1:1s, training sessions, and meetings hosted by people who don't run Gemini): add the literal marker `<!-- VERIFIER: no-source-transcript -->` somewhere in the local file. The verifier will accept it as `OK (no-source-transcript)` rather than `INCOMPLETE`. Include a one-line human explanation alongside the marker so future readers know why the file has no transcript section.
+
+**File-name exclusions** the verifier silently skips (it doesn't audit them):
+- `_*.md` — meta/TODO/index files (e.g., `_BACKFILL_TODO.md`)
+- `gdoc-*.md` — Google Doc imports (not meetings)
+- `email-*.md` — synced email threads (not meetings)
+
+If you want to keep one of these in the meetings directory but still audit it, rename it without the excluded prefix.
 
 ### Step 5: Update indices (optional)
 

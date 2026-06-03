@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.4.1] - 2026-06-03
+
+### Changed
+
+- **`synthesis-meeting-transcripts`** bumped to **v0.3.1** — verifier-script ergonomics: (a) silently skips files matching `SKIP_PREFIXES = ('_', 'gdoc-', 'email-')` so meta/TODO files, Google Doc imports, and synced email threads don't trip false positives; (b) accepts files containing the literal marker `<!-- VERIFIER: no-source-transcript -->` as `OK (no-source-transcript)` for the legitimate case where Google Meet was recorded but transcription was never enabled at the source. The skill prose documents both mechanisms at Step 4.5. New `--no-skip` flag for debug audits. The 5 → 10 speaker-line threshold from v0.3.0 stays.
+
+### Rationale
+
+The v0.3.0 verifier was strict and produced two classes of false positives in production use: (a) audit noise from non-meeting files in the meetings directory (the TODO doc, gdoc imports), and (b) a real-but-not-fixable category — meetings whose source Doc never had a transcript section because transcription was off at meet-time. Without the no-source marker, the only way to satisfy the verifier was to fabricate a transcript, which the prior rules explicitly forbid. The marker closes that loophole the right way: explicit + grep-able + human-visible. Skip-prefixes are a separate concern (filing hygiene) but ride the same patch.
+
 ## [3.4.0] - 2026-06-03
 
 ### Changed

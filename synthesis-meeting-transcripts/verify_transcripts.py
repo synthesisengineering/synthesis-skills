@@ -8,21 +8,33 @@ file contains BOTH:
   1. Gemini notes (summary + paraphrased details + next steps)
   2. The verbatim word-for-word transcript with timestamps + speaker labels
 
-This script enforces that by counting timestamp markers in each file. A real
-Gemini transcript has timestamp markers every ~1-2 minutes (e.g., "00:01:31",
-"00:02:30"). Summary-only files lack these.
+This script enforces that by counting timestamp markers + speaker-attribution
+lines in each file. A real Gemini transcript has timestamp markers every
+~1-2 minutes (e.g., "00:01:31") and dozens of speaker-attribution lines
+(`**Name:**` or `Name Surname:`). Summary-only files lack both.
 
-Failure threshold (configurable via --min-markers): 5 timestamps. Below that,
-the file is flagged as "summary-only — needs backfill."
+Failure threshold (configurable): ≥5 timestamps + ≥10 speaker lines.
+
+Skip rules (a file is NOT audited if any of these apply):
+  - Filename starts with `_` — meta/documentation files (e.g., _BACKFILL_TODO.md)
+  - Filename starts with `gdoc-` — Google Doc imports, not meeting transcripts
+  - Filename starts with `email-` — synced email threads, not meetings
+  - File contains the literal marker `<!-- VERIFIER: no-source-transcript -->` —
+    explicitly tagged as a meeting where Gemini produced notes but NO verbatim
+    transcript (Google Meet "Recording" mode without transcription enabled).
+    Use this marker for files where the source-Doc legitimately has no
+    transcript section to mirror locally.
 
 Usage:
   python3 verify_transcripts.py <dir>
-  python3 verify_transcripts.py <dir> --min-markers 10
-  python3 verify_transcripts.py <dir> --json    # machine-readable output
+  python3 verify_transcripts.py <dir> --min-markers 10 --min-speakers 20
+  python3 verify_transcripts.py <dir> --json
+  python3 verify_transcripts.py <dir> --only-incomplete
+  python3 verify_transcripts.py <dir> --no-skip       # audit ALL files (debug)
 
 Exit code:
-  0 — all files have full transcripts
-  1 — at least one file is incomplete (failures listed)
+  0 — all audited files have full transcripts
+  1 — at least one audited file is incomplete (failures listed)
   2 — directory not found or no .md files
 
 Wire this into:
@@ -52,6 +64,14 @@ SPEAKER_RE = re.compile(
     re.MULTILINE,
 )
 
+# Files whose names start with these prefixes are not meeting transcripts.
+SKIP_PREFIXES = ("_", "gdoc-", "email-")
+
+# Files containing this marker are explicitly tagged as "Gemini notes exist but
+# no verbatim transcript was produced at the source" — Google Meet was recorded
+# but transcription was not enabled. The verifier accepts these as OK.
+NO_SOURCE_TRANSCRIPT_MARKER = "<!-- VERIFIER: no-source-transcript -->"
+
 
 def count_timestamps(content: str) -> int:
     return len(TIMESTAMP_RE.findall(content))
@@ -66,21 +86,52 @@ def has_transcript_section_heading(content: str) -> bool:
     return bool(re.search(r"(?:📖|^#+)\s*[Tt]ranscript", content, re.MULTILINE))
 
 
-def audit_dir(meetings_dir: Path, min_markers: int, min_speakers: int) -> list[dict]:
+def audit_dir(meetings_dir: Path, min_markers: int, min_speakers: int, no_skip: bool = False) -> list[dict]:
     """Audit every .md file in the directory. Returns list of result dicts.
 
-    A file is OK iff it has BOTH:
-    - >= min_markers timestamps, AND
-    - >= min_speakers speaker-attribution lines (the strongest verbatim signal)
+    A file is OK iff EITHER:
+    - It has the NO_SOURCE_TRANSCRIPT_MARKER (meaning the source Doc legitimately
+      has no verbatim transcript — Google Meet recorded but transcription off), OR
+    - It has BOTH ≥ min_markers timestamps AND ≥ min_speakers speaker-attribution lines
 
+    Files matching SKIP_PREFIXES are reported as SKIPPED (not flagged INCOMPLETE).
     Files with only timestamps but no speaker attribution are notes-only — incomplete.
+
+    Pass no_skip=True to disable the prefix-based skip (debug aid).
     """
     results = []
     for path in sorted(meetings_dir.glob("*.md")):
+        # Skip prefix-based exclusions unless --no-skip
+        if not no_skip and path.name.startswith(SKIP_PREFIXES):
+            size_kb = path.stat().st_size / 1024
+            results.append({
+                "file": path.name,
+                "timestamps": 0,
+                "speakers": 0,
+                "has_transcript_heading": False,
+                "size_kb": round(size_kb, 1),
+                "status": "SKIPPED",
+            })
+            continue
+
         try:
             content = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             content = ""
+
+        # Explicit marker for source-Doc-has-no-transcript meetings
+        if NO_SOURCE_TRANSCRIPT_MARKER in content:
+            size_kb = path.stat().st_size / 1024
+            results.append({
+                "file": path.name,
+                "timestamps": count_timestamps(content),
+                "speakers": count_speaker_lines(content),
+                "has_transcript_heading": has_transcript_section_heading(content),
+                "size_kb": round(size_kb, 1),
+                "status": "OK (no-source-transcript)",
+            })
+            continue
+
         timestamps = count_timestamps(content)
         speakers = count_speaker_lines(content)
         has_heading = has_transcript_section_heading(content)
@@ -104,6 +155,7 @@ def main() -> int:
     parser.add_argument("--min-speakers", type=int, default=10, help="Min speaker-attribution lines required (default: 10)")
     parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable")
     parser.add_argument("--only-incomplete", action="store_true", help="Only list incomplete files")
+    parser.add_argument("--no-skip", action="store_true", help="Audit ALL files including SKIP_PREFIXES + no-source markers (debug)")
     args = parser.parse_args()
 
     meetings_dir = Path(args.meetings_dir).expanduser().resolve()
@@ -111,7 +163,7 @@ def main() -> int:
         print(f"ERROR: not a directory: {meetings_dir}", file=sys.stderr)
         return 2
 
-    results = audit_dir(meetings_dir, args.min_markers, args.min_speakers)
+    results = audit_dir(meetings_dir, args.min_markers, args.min_speakers, no_skip=args.no_skip)
     if not results:
         print(f"ERROR: no .md files found in {meetings_dir}", file=sys.stderr)
         return 2
@@ -120,6 +172,8 @@ def main() -> int:
         results = [r for r in results if r["status"] == "INCOMPLETE"]
 
     incomplete_count = sum(1 for r in results if r["status"] == "INCOMPLETE")
+    skipped_count = sum(1 for r in results if r["status"] == "SKIPPED")
+    no_source_count = sum(1 for r in results if r["status"] == "OK (no-source-transcript)")
 
     if args.json:
         print(json.dumps({
@@ -128,19 +182,22 @@ def main() -> int:
             "min_speakers": args.min_speakers,
             "total_files": len(results),
             "incomplete_count": incomplete_count,
+            "skipped_count": skipped_count,
+            "no_source_count": no_source_count,
             "results": results,
         }, indent=2))
     else:
         print(f"=== Transcript completeness audit: {meetings_dir} ===")
-        print(f"Min markers required: {args.min_markers} timestamps + {args.min_speakers} speaker lines")
+        print(f"Thresholds: ≥{args.min_markers} timestamps + ≥{args.min_speakers} speaker lines")
+        print(f"Skip prefixes: {SKIP_PREFIXES} · No-source-transcript marker: {NO_SOURCE_TRANSCRIPT_MARKER}")
         print()
-        print(f"{'STATUS':<12} {'TSTAMPS':<8} {'SPKRS':<6} {'HEAD':<5} {'SIZE_KB':<9} FILE")
-        print("-" * 95)
+        print(f"{'STATUS':<25} {'TSTAMPS':<8} {'SPKRS':<6} {'HEAD':<5} {'SIZE_KB':<9} FILE")
+        print("-" * 110)
         for r in results:
             heading = "yes" if r["has_transcript_heading"] else "no"
-            print(f"{r['status']:<12} {r['timestamps']:<8} {r['speakers']:<6} {heading:<5} {r['size_kb']:<9} {r['file']}")
+            print(f"{r['status']:<25} {r['timestamps']:<8} {r['speakers']:<6} {heading:<5} {r['size_kb']:<9} {r['file']}")
         print()
-        print(f"Total: {len(results)} files, {incomplete_count} incomplete.")
+        print(f"Total: {len(results)} files — {incomplete_count} incomplete, {skipped_count} skipped, {no_source_count} no-source-transcript.")
         if incomplete_count:
             print()
             print("Incomplete files need backfill: re-fetch the source Google Doc")
