@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.6.1] - 2026-06-12
+
+### Changed
+
+- **`synthesis-daily-rituals` bumped to v2.10.1** — grounding-protocol hardening for the higher-volume agent-assisted-send era. The "No stale information" verification item now requires checking beyond the target thread: a topic may be resolved in any other channel, DM, or email, and a message rendered obsolete anywhere is obsolete everywhere. Temporal Integrity gains check #5 (cross-channel / cross-medium obsolescence sweep; full-thread re-pull before any email reply; full fact re-verification for drafts older than 24 hours) and points agent send-paths at enforcing this as a mandatory send-time gate.
+
+### Rationale
+
+When an agent sends a small percentage of a user's messages, a stale send is an occasional embarrassment; when it sends a large percentage, staleness checking must be structural. Same-day proof case: a plan asserted a "4 PM meeting today" that a newly-synced channel showed had already happened the prior afternoon — caught by exactly this class of cross-surface sweep before any message referenced it.
+
 ## [3.6.0] - 2026-06-12
 
 ### Changed

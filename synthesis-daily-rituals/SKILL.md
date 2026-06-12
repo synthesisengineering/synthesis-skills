@@ -380,6 +380,8 @@ Every draft message must be accurate *at the time it will be sent*, not at the t
 
 4. **Does the message acknowledge what happened since it was drafted?** If a standup, deployment, or Slack conversation happened between drafting and sending, re-check the message. Information that was "upcoming" may now be "completed."
 
+5. **Has the topic moved to another channel or medium?** Obsolescence is cross-channel and cross-medium: a Slack question may have been answered in email, a meeting, or a different channel entirely. Before sending, sweep recent transcripts across ALL synced surfaces for the recipient + topic, and search email when the subject could plausibly have crossed mediums. For email replies, always re-pull the FULL thread first — the latest message may supersede the one being answered. Drafts older than 24 hours get full fact re-verification, not just a thread re-read. (Agent-assisted send paths should enforce this as a mandatory send-time gate — see the user's send-system skill if one exists.)
+
 **Common temporal integrity failures:**
 - "Welcome back" to someone who was at the meeting you just attended together
 - "Staging is ready for QA" sent to someone who was already tagged in a staging notification
@@ -393,7 +395,7 @@ Before finalizing each draft message, verify:
 - [ ] **Every technical claim cites a source** — file path, line number, PR number, config value, or git SHA.
 - [ ] **Every status claim is current** — verified against the actual system state (git log, deploy status, environment), not just memory or transcripts.
 - [ ] **Every attribution is correct** — the right person is credited for the right work. Cross-reference PR authors via `gh pr view` or `git log`, not memory.
-- [ ] **No stale information** — if referencing a thread, re-read it via MCP to confirm no one has already replied or resolved it.
+- [ ] **No stale information — checked beyond the thread.** Re-read the target thread via MCP to confirm no one has replied or resolved it, AND sweep for the topic across OTHER channels, DMs, and email — resolutions frequently happen outside the thread where the question was asked. A message rendered obsolete by a communication anywhere is obsolete everywhere.
 - [ ] **Numbers are accurate** — test counts, file counts, line counts, character counts are from actual tool output, not estimates.
 - [ ] **Temporal integrity passes** — message is accurate at the time it will be read, not just at the time it was written. See Temporal Integrity section above.
 
