@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.7.0] - 2026-06-16
+
+### Changed
+
+- **`synthesis-inbox-cleanup` bumped to v1.3.0** — hardened the prompt-injection sanitizer (`scripts/sanitize.py`) against delimiter-breakout and several adjacent attack classes. The `<UNTRUSTED_EMAIL>` demarcation is now **nonce-bearing**: each message is fenced with a fresh CSPRNG token (`<UNTRUSTED_EMAIL nonce="...">`), and the wrapper token is **scrubbed out of the content entirely**, so an attacker who reads the open-source delimiter still cannot forge a closing tag to break out of the fence. Also added: repeated HTML-entity decoding (defeats entity- and full-width-encoded markers); stripping of bidi isolates (U+2066–2069) and the Unicode Tags block (U+E0000–E007F, "ASCII smuggling"); From-header split into address vs. attacker-controlled display name; URL defang; a `mixed_script_address()` homoglyph advisory flag (IDNA-aware) for the human-review gate; and a shipped output-side gate (`parse_and_validate` / `validate_disposition`) so callers stop hand-rolling the constrained-action-space check. Five new adversarial fixtures (delimiter breakout, encoded delimiter, tag smuggling, envelope spoof, homoglyph sender) and two standalone checks (output validator, mixed-script flag) added to `tests/run_poisoned.py`.
+- **Additional hardening from a full security audit** (same v1.3.0 release): a `RAW_INPUT_CAP` (256 KB) applied before the sanitizer's regex/NFKC/entity pipeline (resource-exhaustion DoS guard); scrubbing of the sanitizer's own structural labels (`[envelope …]`, `From-address:`, `(attacker-controlled)`) from content so a body cannot forge a fake verified envelope; a fail-closed credential-at-rest permission check on the `imap.secret` fallback (refused if group/other-readable) plus a `0700` private dir; explicit `ssl.create_default_context()` for the IMAP connection (cert-chain + hostname verification); and YAML `safe_load` inside a context manager. The deterministic engine audited clean — `SEARCH ALL` + filter-in-Python (no IMAP injection), hardcoded move targets, dry-run default, recoverable Trash.
+
+### Rationale
+
+The skill is open source, so the wrapper delimiter is public knowledge. A fixed `<UNTRUSTED_EMAIL>` tag is therefore forgeable: an attacker pastes a closing tag into an email body, then their own instructions, then a re-opening tag, and a naive wrapper lets the injected text escape the "treat as data" fence. The per-message nonce makes the closing delimiter unpredictable, and scrubbing the token from content removes the marker entirely — two independent locks, both of which must fail for a breakout. The same review surfaced adjacent gaps (encoded/invisible markers, body-forged envelopes, homoglyph senders, unvalidated model output) that the release closes together. The architectural layers (deterministic engine writes, LLM only proposes, human-gated `--apply`) already contained the blast radius; this hardens the demarcation layer so it is no longer the trivially-bypassable link.
+
 ## [3.6.3] - 2026-06-15
 
 ### Changed

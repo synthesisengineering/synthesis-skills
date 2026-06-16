@@ -23,6 +23,7 @@ CONFIG_PATH="$TARGET_DIR/config.yaml"
 RULES_PATH="$TARGET_DIR/rules.yaml"
 
 mkdir -p "$TARGET_DIR"
+chmod 700 "$TARGET_DIR"   # private dir: rules.yaml/config.yaml/imap.secret live here
 
 echo "→ Skill location:  $SKILL_DIR"
 echo "→ Private rules:   $TARGET_DIR"

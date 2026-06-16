@@ -14,7 +14,7 @@ Credentials:
   or fallback file ~/.synthesis/inbox-cleanup/imap.secret
   Never printed or logged.
 """
-import imaplib, email, subprocess, sys, os, yaml
+import imaplib, email, subprocess, sys, os, ssl, yaml
 from email.header import decode_header, make_header
 from email.utils import parseaddr
 
@@ -26,7 +26,8 @@ def _load_yaml(path, what):
     if not os.path.exists(path):
         sys.exit(f"ERROR: {what} not found at {path}\n"
                  f"Run the installer first: scripts/install.sh")
-    return yaml.safe_load(open(path))
+    with open(path, encoding="utf-8") as fh:
+        return yaml.safe_load(fh)
 
 
 CONFIG = _load_yaml(CONFIG_PATH, "config")
@@ -51,7 +52,13 @@ def get_password():
         return p.stdout.strip()
     f = os.path.expanduser("~/.synthesis/inbox-cleanup/imap.secret")
     if os.path.exists(f):
-        return open(f).read().strip()
+        # Fail closed if the at-rest credential is readable by group/other.
+        mode = os.stat(f).st_mode
+        if mode & 0o077:
+            sys.exit(f"ERROR: {f} is accessible to group/other "
+                     f"(mode {oct(mode & 0o777)}). Run: chmod 600 {f}")
+        with open(f, encoding="utf-8") as fh:
+            return fh.read().strip()
     sys.exit(f"ERROR: no IMAP password (Keychain '{KEYCHAIN_SERVICE}' "
              f"or ~/.synthesis/inbox-cleanup/imap.secret)")
 
@@ -126,7 +133,9 @@ def resolve(name, addr, domain, subject):
 
 def connect(readonly=True):
     pw = get_password()
-    M = imaplib.IMAP4_SSL(HOST)
+    # Explicit default context: certificate-chain + hostname verification,
+    # independent of the host Python's defaults.
+    M = imaplib.IMAP4_SSL(HOST, ssl_context=ssl.create_default_context())
     last = None
     for u in USER_CANDIDATES:
         try:
