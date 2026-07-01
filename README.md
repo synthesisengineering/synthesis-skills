@@ -68,6 +68,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | `synthesis-review-triage` | PR queue prioritization: scoring, author-response detection, and review routing |
 | `synthesis-code-integration` | Adopt-and-adapt pattern for integrating multi-contributor code with cherry-pick safety |
 | `synthesis-code-planning` | Structured multi-approach evaluation before coding |
+| `synthesis-preplan` | Architecture-decision pre-planning: locks design choices via a Q&A loop, then hands off to a commit-by-commit plan |
 | `synthesis-preflight` | Pre-merge quality gate: tests, types, audit, commit hygiene, go/no-go verdict |
 | `synthesis-implementation-integrity` | Adversarial self-review: verify implementations are genuinely complete before shipping |
 
