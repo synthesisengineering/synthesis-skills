@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.8.0] - 2026-07-01
+
+### Added
+
+- **New skill `synthesis-preplan` (v1.0.0)** — architecture-decision pre-planning for tickets or issues with real design choices. Runs a structured Q&A loop that locks the load-bearing architectural decisions (branch base, scope boundary, dependency graph, and the open questions a competent engineer could resolve more than one way) before any commit plan is drafted, writes a reviewable locked-decisions file, then hands off to the planning step with a previewed prompt. Declares `depends_on: ["synthesis-code-audit"]` — the review dimensions the decision rubric leans on live there. Bundles two reference files it carries itself: `references/commit-by-commit.md` (the multi-commit execution discipline — per-commit brief/verify/audit/amend cycle plus the end-of-plan gates) and `assets/handoff-template.md` (the agent-neutral prompt scaffold the skill fills before handing off). Fully project- and agent-agnostic: git is the only assumed baseline, while trackers, build tools, planners, and agent harnesses are all illustrative examples.
+
+### Rationale
+
+The hard part of planning is deciding what to build, not breaking the build into commits. Once the architectural decisions are locked, the commit-by-commit plan is mechanical. `synthesis-preplan` makes the decision-locking explicit and reviewable so the planner inherits a clear input instead of designing inside its own output. It pairs with `synthesis-code-planning` (which evaluates code-level approaches) and `synthesis-preflight` (the pre-merge gate) to cover the pre-implementation arc.
+
 ## [3.7.1] - 2026-06-17
 
 ### Fixed
