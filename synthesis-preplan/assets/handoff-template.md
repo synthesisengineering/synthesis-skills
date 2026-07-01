@@ -69,16 +69,17 @@ After the last commit's per-commit cycle finishes, the plan's todo list must inc
 
 Produce the plan as a document with this exact structure:
 
-1. **Goal** — what the work buys the system, in plain terms.
-2. **Context** — current state, why now, what it builds on, constraints found in the codebase.
-3. **Decisions** — ALL decisions, rewritten into the plan and grouped by topic (decision / choice / why). Include not only the locked Q&A decisions from the decisions file but every decision taken from the ticket, project conventions, and the codebase. The plan must be self-contained on decisions.
-4. **Commits** — in execution sequence. Each commit:
+1. **Title + metadata** — ticket key/URL, branch base, decisions-file path, date.
+2. **Goal** — what the work buys the system, in plain terms.
+3. **Context** — current state, why now, what it builds on, constraints found in the codebase.
+4. **Decisions** — ALL decisions, rewritten into the plan and grouped by topic (decision / choice / why). Include not only the locked Q&A decisions from the decisions file but every decision taken from the ticket, project conventions, and the codebase. The plan must be self-contained on decisions.
+5. **Commits** — in execution sequence. Each commit:
    - heading = the commit's own top-level goal;
    - **Goal** (one line) · **Changes** (what + files) · **Verification** (concrete, testable steps with expected results) · **Risks to flag to audit** (what the per-commit audit must scrutinize).
    - Commits are always run in order — do NOT include ordering, dependency, or "depends on commit N" notes; sequence is implicit. (Operation order inside a single commit, e.g. within one migration, is a Verification/Risk item.)
    - Every commit must be independently testable and sized as one coherent reviewable unit — none too large or too small.
-5. **E2E strategy** — explicit end-to-end validation for the whole change: golden path plus edge cases (boundaries, malformed input, auth boundaries, concurrency, adversarial values, every documented error code).
-6. **End-of-plan gates** — final audit on the cumulative diff, the E2E run, a test-sufficiency self-review (untested layers / wired-but-never-run surfaces / unobserved branches), address findings as new commits, then open the PR — as explicit todo items, not prose.
+6. **E2E strategy** — explicit end-to-end validation for the whole change: golden path plus edge cases (boundaries, malformed input, auth boundaries, concurrency, adversarial values, every documented error code).
+7. **End-of-plan gates** — final audit on the cumulative diff, the E2E run, a test-sufficiency self-review (untested layers / wired-but-never-run surfaces / unobserved branches), address findings as new commits, then open the PR — as explicit todo items, not prose.
 
 Strict adherence to the locked decisions; plans that diverge are returned for revision. The per-commit **Verification** and **Risks to flag to audit** subsections are the mandatory verify and audit todos — establish them in the plan, never improvise at execution time.
 
