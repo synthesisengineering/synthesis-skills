@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.8.0] - 2026-07-05
+
+### Added
+
+- **Agent Attribution convention** across the project-management skill family. `synthesis-context-lifecycle` bumped to v1.3.0 with the canonical "Agent Attribution" section: when multiple agents (Claude Code, Codex, Cursor, subagents, or different model/effort settings) contribute materially to a project, the session log records one compact attribution line per contributing agent — `agent / model / effort / scope / verified / ref` — at the end of the session entry. Field rules: `model`/`effort` recorded only when the current session or user explicitly provides them, otherwise the literal `unknown` (never inferred — git authorship and `Co-Authored-By` trailers are authored claims, not harness-verified facts); `verified` names only checks that actually ran; no secrets, OAuth/callback URLs, or private config values in any field. Placement follows the tier lifecycle: attribution lines live in `sessions/YYYY-MM.md`; CONTEXT.md gets at most a short `(via <agent>)` tag when identity changes interpretation; REFERENCE.md carries only stable agent facts; substantial artifacts may open with a short Provenance block. Session template updated with the optional line; CONTEXT.md "does not contain" list now excludes per-session provenance explicitly. Three worked examples: routine single-agent, cross-agent handoff with a capability-gap scope note, and multi-model/subagent orchestration.
+- **`synthesis-project-management` bumped to v1.1.0** — new "Agent Attribution" component (standalone summary of the same convention, pointing to synthesis-context-lifecycle for full field definitions); Session End protocol gains an "Attribute if warranted" step; Cross-Agent Handoff protocol gains an attribution step so the receiving agent knows who did what, with what verification.
+
+### Rationale
+
+Different agent tools commonly commit under the same human author identity, so git history alone cannot answer "which agent did this, at what capability, verified how." The convention makes provenance durable exactly where it helps future work — the episodic session log — without turning working memory into a telemetry stream. Attribution is opt-in by usefulness (cross-agent handoffs, capability-gap scoping, multi-model work, verification trust), never a per-edit log.
+
 ## [3.7.1] - 2026-06-17
 
 ### Fixed

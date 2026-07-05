@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -187,6 +187,18 @@ title: Pattern Name
 
 **Update when:** Immediately when you learn something reusable.
 
+### 4. Agent Attribution
+
+When multiple agents contribute materially to a project — Claude Code, Codex, Cursor, subagents, or different model/effort settings — record provenance where it helps future work. Git authorship alone cannot distinguish agents (different tools commonly commit as the same human), so the session log carries it: one italic line per contributing agent at the end of the entry in `sessions/YYYY-MM.md`:
+
+```
+*Attribution — agent: Codex CLI · model: unknown · effort: unknown · scope: single-stack sweep only (session lacked the Gmail connector) · verified: plan re-run to zero · ref: d4e5f6a*
+```
+
+Rules: record `model`/`effort` only when the current session or the user explicitly provides them — otherwise the literal word `unknown`, never inferred (git `Co-Authored-By` trailers are claims, not verification). `verified` names only checks that actually ran. Never record secrets, OAuth/callback URLs, or private config values. CONTEXT.md gets at most a short `(via Codex)`-style tag when agent identity changes interpretation; REFERENCE.md carries only stable agent facts (e.g., a standing connector gap), removed when no longer true. Attribute only when it helps future work — this is provenance, not telemetry.
+
+**Full convention with field definitions and examples:** the synthesis-context-lifecycle skill, "Agent Attribution."
+
 ---
 
 ## The Protocol
@@ -214,8 +226,9 @@ Complete task → Complete task → Complete task → (context compaction) → L
 
 1. **Final CONTEXT.md update** — Ensure all sections current (≤150 lines)
 2. **Archive if needed** — Move old sessions to sessions/, stable facts to REFERENCE.md
-3. **Update index.yaml** — Set `last_session` date
-4. **Commit all changes** — Do not leave uncommitted work
+3. **Attribute if warranted** — If multiple agents/models contributed materially, end the session-log entry with Attribution line(s) (see Agent Attribution)
+4. **Update index.yaml** — Set `last_session` date
+5. **Commit all changes** — Do not leave uncommitted work
 
 ### Cross-Agent Handoff
 
@@ -224,8 +237,9 @@ Before pausing work that may continue in another tool:
 1. Update `CONTEXT.md` with current state, decisions, and next actions
 2. Move stable facts into `REFERENCE.md`
 3. Append chronological detail to `sessions/YYYY-MM.md`
-4. Save substantial plans, audits, or checklists under `resources/artifacts/`
-5. Commit and push the project-management changes
+4. End the session-log entry with an Attribution line for the departing agent (see Agent Attribution) — the receiving agent should know who did what, with what verification
+5. Save substantial plans, audits, or checklists under `resources/artifacts/`
+6. Commit and push the project-management changes
 
 When resuming work from another agent, trust the project files over tool-specific memory. The continuity source of truth is the synthesis project context, not the previous assistant's chat transcript.
 

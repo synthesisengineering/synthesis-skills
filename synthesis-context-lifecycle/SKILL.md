@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.0"
+  version: "1.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -72,6 +72,7 @@ For cross-agent work, the project context files are the durable memory layer. Ch
 - Session logs older than 1 week (move to sessions/)
 - Stable reference facts (live in REFERENCE.md)
 - Detailed historical narrative (live in session archive)
+- Per-session agent provenance (attribution lines live in sessions/; at most a short `(via Codex)`-style tag in the status header when agent identity changes how to interpret state — see Agent Attribution)
 
 **Template — new project:**
 
@@ -226,6 +227,63 @@ Archived from CONTEXT.md on YYYY-MM-DD. See REFERENCE.md for stable project fact
 ### YYYY-MM-DD: [Session title — what was accomplished]
 
 [Summary: 5-15 lines per session. What was done, decisions made, outcomes.]
+
+*Attribution — agent: … · model: … · effort: … · scope: … · verified: … · ref: …*  ← optional; see Agent Attribution
+```
+
+### Agent Attribution — recording which agent did what
+
+Multiple agents can write to the same project files — Claude Code, Codex, Cursor, subagents, or the same tool at different model/effort settings — and git authorship often cannot distinguish them: different tools commonly commit under the same human author identity, and `Co-Authored-By` trailers are authored claims, not harness-verified facts. When agent provenance would help future work, record it explicitly.
+
+**When to attribute.** Only when it helps future work: cross-agent handoffs; sessions where an agent's tool or capability gap shaped the scope; multi-model or subagent contributions; work whose verification status a future reader must trust or re-check. Routine sessions in a single-agent project need no attribution line. This is provenance, not telemetry — never log every edit, and never let attribution bloat CONTEXT.md.
+
+**Format.** One italic line at the end of the session entry in `sessions/YYYY-MM.md`, one line per materially-contributing agent:
+
+```
+*Attribution — agent: <app/tool> · model: <version string or unknown> · effort: <setting or unknown> · scope: <what this agent did> · verified: <checks actually run, or none> · ref: <commit hash / artifact path or unknown>*
+```
+
+Field rules:
+
+- **agent** — the app or tool: `Claude Code`, `Codex CLI`, `Cursor`, `Claude Code subagent (Explore)`.
+- **model** — the exact model/version string, ONLY if the current session or the user explicitly provides it (e.g., the session's own environment states it). Otherwise the literal word `unknown`.
+- **effort** — reasoning-effort or mode setting (`max`, `high`, `default`) when explicitly known; otherwise `unknown`.
+- **scope** — what this agent contributed to this entry, one clause.
+- **verified** — the verification actually performed (`plan re-run to zero`, `tests green`, `none`). Never claim a check that did not run.
+- **ref** — durable pointer: commit hash or `resources/artifacts/` path; `unknown` if none exists yet.
+
+**Unknown means unknown.** Never infer model/effort from memory, prior sessions, vibes, or git trailers. A wrong provenance claim is worse than an explicit `unknown`.
+
+**Never record secrets.** No token values, OAuth or callback URLs, credential material, or private config values in any attribution field.
+
+**Placement by tier:**
+
+- `sessions/YYYY-MM.md` — the home for attribution lines (episodic, append-only).
+- `CONTEXT.md` — at most a short parenthetical tag — `(via Codex)` — in the status/Last-session line, and only when agent identity changes how to interpret state. Never full attribution lines.
+- `REFERENCE.md` — no per-session provenance. Stable agent facts only (e.g., "Codex sessions lack the Gmail connector; scope sweeps accordingly"), updated in place and removed when no longer true.
+- `resources/artifacts/` — a substantial standalone artifact MAY open with a short Provenance block (agent / model / effort / date / verification / commit) when it will outlive its session entry.
+
+**Cache-vs-truth still applies.** An attribution line is a claim recorded at write time by the writing agent. When provenance matters downstream, re-verify against `git log` and the artifact itself rather than trusting the line.
+
+**Examples.**
+
+Routine single-agent session (line optional; include once a project becomes multi-agent):
+
+```
+*Attribution — agent: Claude Code · model: claude-fable-5 · effort: unknown · scope: full sweep + session log · verified: plan re-run to zero · ref: a1b2c3d*
+```
+
+Cross-agent handoff (each agent's entry carries its own line; a capability gap that shaped scope belongs in `scope`):
+
+```
+*Attribution — agent: Codex CLI · model: unknown · effort: unknown · scope: single-stack sweep only (session lacked the Gmail connector) · verified: plan re-run to zero · ref: d4e5f6a*
+```
+
+Multi-model / subagent work (one line per contributor under the orchestrating entry):
+
+```
+*Attribution — agent: Claude Code · model: claude-fable-5 · effort: max · scope: orchestration + final review · verified: acceptance audit of subagent output · ref: b7c8d9e*
+*Attribution — agent: Claude Code subagent (Explore) · model: unknown · effort: unknown · scope: repo-wide call-site inventory · verified: none (inventory only) · ref: resources/artifacts/2026-07-05-call-sites.md*
 ```
 
 ---
