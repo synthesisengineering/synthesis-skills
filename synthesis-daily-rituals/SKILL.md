@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.10.0"
+  version: "2.11.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,24 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.11.0 — Cockpit Mode: `## 📅 Calendar` section (typed consumer support)
+
+In v2.11.0, Cockpit Mode plans gain a canonical `## 📅 Calendar` H2 that the plan-generation step (Day-Start Step 6) writes from the user's calendar. This is the file-based bridge that lets consumers (synthesis-console v0.12+) render the day's events, bind Tier-C slots to windows, and visualize preemption — without the consumer needing calendar access of its own. The agent fetches events via the user's calendar tool (e.g. Apple Calendar MCP) at plan-generation time and refreshes the section during mid-day sweeps, so same-day meetings appear within one sweep cadence.
+
+**Canonical item shape** (one list line per event):
+
+```markdown
+## 📅 Calendar
+
+- 09:00–09:30 · Exec staff sync · Tony, Jane, Marcelo
+- 11:30–12:00 · CSA standup · CSA team
+- 15:00–15:30 · 1:1 · Jessica Payne
+```
+
+Rules: 24-hour `HH:MM–HH:MM` range first, then ` · `, then the event title, then optionally ` · ` and a comma-separated attendee list. En-dash or hyphen both parse. Lines that don't match still render as plain markdown (Postel's Law — nothing is dropped). All-day events use the title-only fallback form (no time range).
+
+**Tier-C window binding:** each `## 🎯 Today` slot H3 SHOULD name its window in the heading (e.g. `### Deep 1 — board memo (window 09:30–11:00)`). Consumers match slot windows against calendar events; an overlapping event that is not the slot itself renders as a preemption flag on the slot. The plan-generation step keeps slot windows consistent with the `**Budget:**` line's windows.
 
 ## v2.10.0 — Cockpit Mode: Budget-Bound, Stakes-Routed Day Plans
 
