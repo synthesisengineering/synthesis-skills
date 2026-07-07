@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.11.0"
+  version: "2.12.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,20 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.12.0 — Cockpit Mode: meeting-prep packs (`meeting-preps/` + `## 📋 Prep packs`)
+
+In v2.12.0, the Day-Start ritual gains an optional **meeting-prep step** (runs inside Step 6, after the calendar fetch): for each substantive meeting on today's calendar, write a one-pager prep pack to `<knowledge-root>/meeting-preps/YYYY-MM-DD-HHMM-slug.md` and index today's packs in the day plan under a `## 📋 Prep packs` H2 (one list line per pack, linking to the consumer's `/prep/<source>/<slug>` route or the file path).
+
+**What a prep pack joins** (the chief-of-staff briefing-book function): the calendar event (when/who) × relevant transcripts (search by attendee across the workspace's transcripts) × hot items from project CONTEXTs that mention the attendee or the meeting's subject × open commitments in both directions (their waiting-on entries; your unsent drafts to them).
+
+**File contract:**
+- Filename `YYYY-MM-DD-HHMM-slug.md` (24h start time; slug identifies the meeting, e.g. `jessica-payne-1-1`). Packs sort chronologically; "today's packs" is a filename-prefix scan.
+- H1 = meeting title. A `**When:**` line and a `**Who:**` line (comma-separated attendees) near the top.
+- Body H2s are free-form; the recommended skeleton is `Context` / `Open commitments` / `Since last time` / `Suggested agenda`.
+- Packs are ritual-generated and updated by mid-day sweeps when new signals land (a transcript posts, a commitment discharges). Never hand-maintained.
+
+**Which meetings get packs:** 1:1s, externals, and any meeting with an attendee who appears in waiting-on tables or open drafts. Routine standups don't need packs unless something notable is queued.
 
 ## v2.11.0 — Cockpit Mode: `## 📅 Calendar` section (typed consumer support)
 
