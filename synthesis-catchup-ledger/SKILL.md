@@ -5,7 +5,16 @@ description: Reconcile pending, missed, and incomplete commitments after any gap
 
 # Synthesis Catch-up Ledger
 
-**Version 0.1.0** (2026-06-10)
+**Version 0.2.0** (2026-07-07)
+
+> **Consumer note (v0.2.0):** synthesis-console v0.14+ renders ledgers live at
+> `/ledger` — it classifies H2 sections by the heading keywords used in this
+> skill's output sections ("Do now", "Verify before re-adding", "Done late",
+> "Expired", "Released") and reads per-row state from a `State` table column
+> when present. Ledger files live at `<knowledge-root>/catchup-ledgers/YYYY-MM-DD.md`.
+> If this skill's section vocabulary or table shapes change, update the
+> console's `src/parsers/ledger.ts` + `docs/cockpit-design.md` in the same
+> session — producer and consumer must change together.
 
 ## The problem
 
