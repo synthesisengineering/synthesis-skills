@@ -77,8 +77,12 @@ def find_git_repos(workspace: Path, max_depth: int = 3) -> list[Path]:
     return repos
 
 
-def git_cmd(repo: Path, *args: str) -> tuple[int, str]:
-    """Run a git command in a repo directory. Returns (exit_code, stdout)."""
+def git_cmd(repo: Path, *args: str, strip: bool = True) -> tuple[int, str]:
+    """Run a git command in a repo directory. Returns (exit_code, stdout).
+
+    strip=False preserves column-significant output (git status --porcelain
+    lines start with a space for unstaged states — a global strip corrupts
+    the first line's status columns)."""
     try:
         result = subprocess.run(
             ["git", "-C", str(repo)] + list(args),
@@ -86,7 +90,7 @@ def git_cmd(repo: Path, *args: str) -> tuple[int, str]:
             text=True,
             timeout=30,
         )
-        return result.returncode, result.stdout.strip()
+        return result.returncode, result.stdout.strip() if strip else result.stdout
     except subprocess.TimeoutExpired:
         return -1, "timeout"
     except FileNotFoundError:
@@ -103,15 +107,15 @@ def check_repo(repo: Path) -> dict:
         "issues": [],
     }
 
-    # Check for uncommitted changes
-    rc, output = git_cmd(repo, "status", "--porcelain")
+    # Check for uncommitted changes (strip=False: porcelain columns matter)
+    rc, output = git_cmd(repo, "status", "--porcelain", strip=False)
     if rc != 0:
         status["clean"] = False
-        status["issues"].append({"type": "error", "detail": f"git status failed: {output}"})
+        status["issues"].append({"type": "error", "detail": f"git status failed: {output.strip()}"})
         return status
 
-    if output:
-        lines = output.splitlines()
+    if output.strip():
+        lines = [ln for ln in output.splitlines() if ln.strip()]
         status["clean"] = False
         status["issues"].append({
             "type": "uncommitted",

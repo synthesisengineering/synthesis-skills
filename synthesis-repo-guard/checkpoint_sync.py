@@ -150,7 +150,8 @@ def configured_repos(cfg: dict) -> list[Path]:
 # Git helpers
 # ---------------------------------------------------------------------------
 
-def git(repo: Path, *args: str, timeout: int = 60, env: dict | None = None) -> tuple[int, str, str]:
+def git(repo: Path, *args: str, timeout: int = 60, env: dict | None = None,
+        strip: bool = True) -> tuple[int, str, str]:
     merged_env = dict(os.environ)
     if env:
         merged_env.update(env)
@@ -159,7 +160,8 @@ def git(repo: Path, *args: str, timeout: int = 60, env: dict | None = None) -> t
             ["git", "-C", str(repo)] + list(args),
             capture_output=True, text=True, timeout=timeout, env=merged_env,
         )
-        return r.returncode, r.stdout.strip(), r.stderr.strip()
+        out = r.stdout.strip() if strip else r.stdout
+        return r.returncode, out, r.stderr.strip()
     except subprocess.TimeoutExpired:
         return -1, "", "timeout"
     except FileNotFoundError:
@@ -188,16 +190,25 @@ def remote_guard(repo: Path, allowed_prefixes: list[str]) -> tuple[bool, str]:
 
 
 def dirty_paths(repo: Path) -> list[str]:
-    rc, out, _ = git(repo, "status", "--porcelain")
-    if rc != 0 or not out:
+    # strip=False: porcelain lines for unstaged states begin with a SPACE
+    # (" M path"). A global strip() eats that space on the FIRST line and the
+    # fixed-width `line[3:]` slice then chops the path's first character.
+    # (Found live 2026-07-08: producer mode saw "rojects/…" and matched nothing.)
+    rc, out, _ = git(repo, "status", "--porcelain", strip=False)
+    if rc != 0 or not out.strip():
         return []
     paths = []
     for line in out.splitlines():
-        # porcelain: XY <path> (or `XY old -> new` for renames)
+        if len(line) < 4:
+            continue
+        # porcelain v1: two status chars, one space, then the path
+        # (or `old -> new` for renames)
         p = line[3:]
         if " -> " in p:
             p = p.split(" -> ", 1)[1]
-        paths.append(p.strip().strip('"'))
+        p = p.strip().strip('"')
+        if p:
+            paths.append(p)
     return paths
 
 
