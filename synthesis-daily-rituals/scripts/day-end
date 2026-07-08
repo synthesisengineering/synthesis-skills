@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# day-end — launcher for the synthesis-daily-rituals Day-End ritual.
+#
+# The ritual is an Agent Skill and always runs INSIDE an agentic coding
+# session (Claude Code by default). This script is a launcher, not a
+# runner: it only removes cold-start friction by opening such a session
+# with the ritual invocation as the first prompt. Inside an already-open
+# session, invoke the skill directly and ignore this launcher.
+#
+# Usage: day-end [-f|-q|-o]
+#   -f full · -q quick close · -o observer · default: the session asks.
+# Override the agent CLI with DAY_END_AGENT_CMD (default: claude).
+set -euo pipefail
+MODE_LINE="Ask me the one-letter mode question (f = full, q = quick close, o = observer) before starting."
+case "${1:-}" in
+  -f) MODE_LINE="Mode: full." ;;
+  -q) MODE_LINE="Mode: Quick Close." ;;
+  -o) MODE_LINE="Mode: observer." ;;
+  "") ;;
+  *) echo "usage: day-end [-f|-q|-o]" >&2; exit 2 ;;
+esac
+PROMPT="Please name this session day-end-$(date +%Y-%m-%d). Run the synthesis-daily-rituals Day-End ritual now. ${MODE_LINE}"
+exec "${DAY_END_AGENT_CMD:-claude}" "$PROMPT"

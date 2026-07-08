@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.11.0] - 2026-07-08
+
+### Added
+
+- **`synthesis-daily-rituals` bumped to v2.14.0 — Day-End Closure: two-speed day-end, owed-weekly review, decay tags, day-end state.** The day-end gains a first-class **Quick Close** mode (~10 minutes, exactly three human moments: a send-or-release pass over decay-tagged drafts, keep/drop curation of the day's lesson candidates, and a closure read-back), with the session asking the one-letter mode question every time. The Weekly Loose-Ends Review decouples from Friday evening: it becomes owed-weekly, running at the first ritual on/after Friday — day-start included, any mode — tracked via a new `~/.synthesis/day-end/state.json` producer (consumers: the synthesis-console day-end chip, a state-aware evening nudge, the day-start brief line). New plan-generation conventions: time-sensitive drafts carry a `**Decays:** YYYY-MM-DD (reason)` line from creation, and Day-End Step 4 becomes an explicit send-or-release pass over the tagged set; every new commitment line gets a do-by, a Decays tag, or an explicit park; daily plans gain a `## 🌱 Lesson candidates` H2 any session can append to during the day so the day-end curates warm insights instead of recalling them. New `scripts/`: a `day-end` LAUNCHER (opens an agentic session with the ritual invocation as the first prompt — the ritual itself always runs inside the agent session) and a notification-only LaunchAgent nudge (weekdays 16:55, suppressed once today's day-end ran, generic fixed banner text). The autonomous-alerts section is aligned with the alert-confidentiality model: spoken alerts and banners carry zero identifying content and honor the `~/.synthesis/quiet-audio` mute flag.
+
+### Rationale
+
+Field evidence from a four-week catch-up reconciliation: batch send-passes succeeded on every day a ritual ran, every communication decay clustered on the zero-ritual days, and the Friday-only weekly review was silently disabled for three consecutive weeks because it lived inside the ritual being skipped. The redesign makes the default evening close small enough to never skip, decouples the weekly safety net from the most-skipped ritual, moves lesson capture to the moment of insight, and makes skipping visible. The launcher-not-runner distinction is explicit — rituals are Agent Skills that run inside agentic coding sessions; the shipped script only removes cold-start friction — and the only scheduled artifact is a notification, never a mutation.
+
 ## [3.10.0] - 2026-07-08
 
 ### Added

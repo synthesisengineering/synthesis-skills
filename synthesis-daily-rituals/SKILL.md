@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.13.0"
+  version: "2.14.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,45 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.14.0 — Day-End Closure: two-speed day-end, owed-weekly review, decay tags, day-end state
+
+v2.14.0 (2026-07-08) redesigns the day-end around the observed failure mode: on busy or tired evenings the WHOLE ritual gets skipped, and three things decay invisibly — outbound-communication timing (appreciation and replies lose value overnight), lessons that were warm at 5 PM, and the user's own closure on the day. A four-week reconciliation (via `synthesis-catchup-ledger`) showed batch send-passes succeeding whenever a ritual ran, every decay clustering on the zero-ritual days, and the Friday-only Weekly Loose-Ends Review silently disabled for three straight weeks because it lived inside the ritual being skipped. The design principle: make the default evening close small enough to never skip, make starting it one word, make skipping it visible, and decouple the weekly safety net from the evening ritual entirely.
+
+1. **Two-speed day-end, always ask.** The day-end gains a first-class **Quick Close** mode (~10 minutes, exactly three human moments) alongside full mode and observer mode. The session asks the one-letter mode question every time — no time-of-day silent defaults. Spec: "Day-End Modes" block at the top of the Day-End Checklist.
+2. **Weekly Loose-Ends Review is owed weekly, not Friday-evening-bound.** The review runs at the FIRST ritual on or after Friday — day-start included, any day-end mode included — tracked via the state file. See the rewritten Step 10 gating.
+3. **Decay tags.** Time-sensitive drafts carry a `**Decays:** YYYY-MM-DD (reason)` line from creation. Plan generation applies the tag automatically to the classes field evidence shows decay fastest: appreciation/kudos and acknowledgments, public corrections, and event-bound items. Day-End Step 4 becomes an explicit send-or-release pass over the tagged set — nothing decay-tagged carries silently past its date.
+4. **No commitment line without a date or a park.** Every new commitment entering a daily plan gets a do-by, a Decays tag, or an explicit `parked (reason)` marker. Single-mention items that get none of the three are how commitments vanish without a trace.
+5. **Lesson candidates accumulate during the day.** Daily plans gain a `## 🌱 Lesson candidates` H2. Any session — mid-day syncs, checkpoint moments, ad-hoc work — appends one-line candidates as insights occur. Day-end curates (keep/drop) instead of recalling from scratch; "warm" moves from 5 PM to the moment of insight.
+6. **Day-end state file (producer).** Every ritual, both directions, every mode, writes `~/.synthesis/day-end/state.json` (atomic temp+rename) and appends one line to `~/.synthesis/day-end/history.jsonl`:
+
+   ```json
+   {
+     "last_day_end":   { "date": "2026-07-08", "mode": "quick", "outcome": "clean", "sent": 3, "released": 1 },
+     "last_day_start": { "date": "2026-07-08" },
+     "last_weekly_review": "2026-07-03",
+     "streak_day_end": 4
+   }
+   ```
+
+   `streak_day_end` = consecutive workdays with a completed day-end, computed from history at write time. Consumers: the synthesis-console day-end chip, the nudge's suppression check, and the day-start brief line ("day-end: ran Mon ✓ quick · skipped Tue").
+7. **Launcher + nudge ship in `scripts/`.** The ritual is an Agent Skill and always runs INSIDE an agentic coding session — nothing here changes that. `scripts/day-end` is a *launcher, not a runner*: it opens an agent session (Claude Code by default; `DAY_END_AGENT_CMD` overrides) with the ritual invocation as the first prompt, purely to remove cold-start friction at the end of the day. `scripts/day-end-nudge.sh` + `scripts/com.synthesis.day-end-nudge.plist` show one generic macOS banner at 16:55 on weekdays unless the state file says today's day-end already ran — notification only, never a mutation, generic fixed text (see the alert-confidentiality rule below). Install steps follow.
+8. **Audio-alert section aligned with alert confidentiality.** Spoken alerts and banners carry zero identifying content and honor the `~/.synthesis/quiet-audio` mute flag — matching the synthesis-repo-guard v2 alert model. The old `say "[user], [task description] is complete"` pattern is retired: task descriptions can name clients, repos, or people, and speakers/screen-shares leak.
+
+**Consumer coupling:** synthesis-console renders `state.json` (day-end chip) and `**Decays:**` lines (draft badges). Producer-grammar changes here require the console's `docs/cockpit-design.md` to change in the same wave — the document-as-contract rule.
+
+### Installing the launcher and nudge (macOS)
+
+```bash
+# Launcher on PATH (point the symlink at any PATH dir you use)
+ln -sf ~/.claude/skills/synthesis-daily-rituals/scripts/day-end ~/.local/bin/day-end
+
+# Nudge LaunchAgent (16:55 weekdays, state-aware, notification-only)
+cp ~/.claude/skills/synthesis-daily-rituals/scripts/com.synthesis.day-end-nudge.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.synthesis.day-end-nudge.plist
+```
+
+The plist resolves the nudge script through `$HOME/.claude/skills/.../scripts/` — the installed copy — so ordinary skill reinstalls keep it current without touching launchd. After changing the plist itself: `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.synthesis.day-end-nudge.plist`, then re-`bootstrap`.
 
 ## v2.13.0 — Per-workspace `repos.yaml` is the machine-readable repo list
 
@@ -209,6 +248,8 @@ The LLM has no clock and its sense of "today" can drift across conversation gaps
 - [ ] For each active project listed in the workspace's `index.yaml`, run `git log -5 --pretty=format:"%h %ai %s" -- projects/<id>/` and read the output. The most recent commit timestamp is the project's verified "last session." Trust this over any cached `last_session` field in CONTEXT.md or `index.yaml`.
 - [ ] Cross-check each project's `index.yaml` `last_session` value against git log. If they disagree, the git log wins; update `index.yaml` before proceeding.
 - [ ] Invoke the `synthesis-checkpoint` skill on any project whose cached state may be stale — it is the codified protocol for this verification.
+- [ ] **Day-end state read (v2.14.0):** read `~/.synthesis/day-end/state.json` and report the last day-end (date + mode) in the day plan's header or brief. If the most recent workday's day-end is missing, say so explicitly — visible skips are recoverable skips. Update `last_day_start` in the same file as part of this ritual.
+- [ ] **Weekly-review-owed check (v2.14.0):** if today is on/after the most recent Friday AND `last_weekly_review` predates that Friday, the Weekly Loose-Ends Review is owed — run the Day-End Step 10 scan in THIS session (either ritual direction, any mode) and update `last_weekly_review`. If a `synthesis-catchup-ledger` sweep already ran on/after that Friday, record its date instead of re-scanning — the ledger supersedes the review for its window.
 
 This step is the L2 (skill-rule) anchor of the temporal & continuity discipline. The L1 (Claude Code hooks) and L3 (CLAUDE.md item 13c–13e) reinforce it. See `synthesis-context-lifecycle` Session Start Protocol for the underlying rationale.
 
@@ -282,6 +323,9 @@ After any standup, planning session, or design review with auto-generated notes 
 - [ ] **Cross-reference yesterday's plan with today's Slack sync.** A task marked incomplete yesterday may have been resolved overnight. A draft message from yesterday may no longer be accurate due to code changes, PR merges, or Slack replies. Do not blindly carry forward — verify each item is still valid and current.
 - [ ] Create today's action plan in `daily-plans/YYYY-MM-DD.md` (shared infrastructure, not inside individual project directories or ~/Downloads). This creates a permanent archive.
 - [ ] The action plan should contain: tasks (prioritized with checkboxes), draft messages (with thread locators), things to know, waiting-on-others table, and everything else.
+- [ ] **Apply decay tags (v2.14.0):** any draft in the appreciation/kudos, acknowledgment, public-correction, or event-bound class gets a `**Decays:** YYYY-MM-DD (reason)` line at creation (kudos default: +2 workdays; event-bound: the event date). Day-end's send-or-release pass keys off these lines.
+- [ ] **No commitment without a date or a park (v2.14.0):** every new commitment line gets a do-by, a Decays tag, or an explicit `parked (reason)` marker before the plan is saved.
+- [ ] **Seed `## 🌱 Lesson candidates` (v2.14.0)** — an empty H2 that any session appends one-liners to during the day; the day-end curates it (keep/drop).
 - [ ] Update CONTEXT.md action items with new items from catch-up.
 - [ ] Prioritize today's work: integration, reviews, communications, features, meetings.
 - [ ] Check calendar for meetings today and prep needed.
@@ -656,6 +700,20 @@ When observer mode is reinvented per conversation ("do the thing you did yesterd
 
 ## Day-End Checklist
 
+### Day-End Modes (v2.14.0) — ask first, every time
+
+Before Step 1, ask the user the one-letter mode question — **f** (full) / **q** (Quick Close) / **o** (observer) — every time, even when a mode seems obvious. If a launcher or opening prompt already named the mode, confirm it in one line instead of re-asking. Record the chosen mode in the state file (Step 7).
+
+| Mode | Human moments | Steps run | Steps skipped |
+|------|---------------|-----------|---------------|
+| **Full** | as written | 1-11 | — |
+| **Quick Close** (~10 min; the recommended default for ordinary evenings) | exactly three | 1, 4, 5, 7, 10 (only if owed), 11 | 2, 3, 6, 8, 9 |
+| **Observer** | none | per the Vacation / Observer Mode section | comms + career steps |
+
+**Quick Close's three human moments:** (1) the **send-or-release pass** over today's decay-tagged drafts (Step 4) — the step that protects overnight communication timing; (2) **keep/drop** on the day's `## 🌱 Lesson candidates` (Step 5); (3) the **closure read-back** — the agent ends with one on-screen paragraph: "Day closed. N sent, M released, lessons kept: X. Tomorrow opens with Y." Any audio accompanying it stays generic per the alert-confidentiality rules below. Everything else in Quick Close runs agentlessly around those three moments.
+
+The Weekly Loose-Ends Review (Step 10) attaches to whichever ritual runs first on/after Friday, in any mode — a Friday Quick Close carries it. Every mode, observer included, writes the day-end state file in Step 7.
+
 ### 1. Transcript Sync
 
 - [ ] **Run `/synthesis-slack-sync`** for final capture of the day. The `synthesis-slack-sync` skill ensures all channels, threads, and DMs are captured.
@@ -677,15 +735,17 @@ This step is intentionally not "merge ready PRs" — that's Integration Sweep be
 - [ ] Close GitHub PRs with integration comments (if using adopt-and-adapt pattern).
 - [ ] If a new version was deployed to staging or production, follow your team's release notification process. Best practice: list all PRs included, credit all contributors by name and PR number, post to both product and engineering channels.
 
-### 4. Communications
+### 4. Communications — the send-or-release pass (v2.14.0)
 
-- [ ] Reply to any unanswered threads from today.
-- [ ] Post end-of-day status updates.
-- [ ] Send motivational or acknowledgment messages to contributors.
+- [ ] Collect today's decay-tagged drafts (every `**Decays:**` line in today's plan) plus unanswered threads from today.
+- [ ] For each item, one of three outcomes — nothing decay-tagged carries silently past its date: **send now** (with the user's one-tap approval; nothing sends without them), **re-date** with a stated reason on the Decays line, or **release** (strike through with a one-line why).
+- [ ] Post end-of-day status updates; send appreciation for the day's contributions (grounded per the Appreciation Message Quality rules).
+- [ ] In Quick Close this pass is human moment #1: it caps at the tagged set plus a one-line "anything else you want to send tonight?" check.
 
 ### 5. Lessons Learned
 
-- [ ] Document any reusable lessons in `lessons/` (patterns, mistakes, solutions that apply beyond this session).
+- [ ] **Curate the day's `## 🌱 Lesson candidates` (v2.14.0):** present the accumulated one-liners from today's plan; the user answers keep/drop per line. Keepers get promoted to `lessons/` or folded into the owning project's docs; drops get struck through in place. In Quick Close this is human moment #2.
+- [ ] Document any additional reusable lessons in `lessons/` (patterns, mistakes, solutions that apply beyond this session).
 - [ ] Update project REFERENCE.md with any new stable facts discovered today.
 
 ### 6. Career Amplification
@@ -706,6 +766,7 @@ This step is intentionally not "merge ready PRs" — that's Integration Sweep be
 - [ ] Commit context changes per the Commit Protocol below — separate commit per logical group (project context updates, lessons learned, etc.). Use `git add <specific-files>`, NOT `git add -A`.
 - [ ] **Push and verify.** Run `git push` for each modified repo, then run `git log origin/main..HEAD` to confirm the local HEAD reached origin. If the output is non-empty, the push did not land — investigate (network failure, branch protection rule, merge conflict) and re-push. Do NOT assume "git push said success" means the commits are durable on the remote.
 - [ ] Push updates to any shared ai-knowledge repos if modified. Same push-verify step applies.
+- [ ] **Write the day-end state (v2.14.0):** update `~/.synthesis/day-end/state.json` (atomic temp+rename) and append one line to `~/.synthesis/day-end/history.jsonl` — date, ritual direction, mode, outcome, and the send-or-release counts. Every mode writes state, observer included; day-start rituals update their own fields the same way.
 
 ### 8. Skills Maintenance
 
@@ -716,9 +777,9 @@ This step is intentionally not "merge ready PRs" — that's Integration Sweep be
 
 - [ ] Run mac-sync (credentials, config, git remotes across machines).
 
-### 10. Weekly Loose-Ends Review (Fridays only)
+### 10. Weekly Loose-Ends Review (owed weekly — v2.14.0)
 
-**Day-of-week gating.** Detect today's day-of-week. If today is NOT Friday, skip this step silently and continue to Step 11. If today IS Friday — OR if a recent Friday ritual was missed and today is the catch-up day — run the scan below.
+**Owed-weekly gating (replaces the v2.8.0 Friday-only rule).** The review is owed once per week, anchored to Friday, and tracked in `~/.synthesis/day-end/state.json`. Read `last_weekly_review`: if it is on/after the most recent Friday, skip this step silently. If it predates the most recent Friday and today is on/after that Friday, run the scan below — in whichever ritual notices first (Day-Start Step 1 checks the same condition), in any day-end mode including Quick Close — then update `last_weekly_review`. A `synthesis-catchup-ledger` sweep on/after that Friday counts as the week's review (record its date); and if this scan finds 2+ consecutive missed rituals, suggest running that skill — it is the recovery tool for broken cadence. This decoupling exists because a Friday-evening-only review is disabled by exactly the skip it is meant to catch.
 
 This step exists because work falls through the cracks during a week. A missed close-of-business ritual means the next day's plan doesn't pick up the open threads from the day before. By Friday, several items can be stranded invisibly. The Friday review catches these BEFORE the weekend disconnects fresh context, and assembles a clean carryover list for Monday.
 
@@ -817,15 +878,16 @@ The project supplement is referenced from the global checklist at "Run any proje
 When the user signals stepping away ("going to take a shower", "heading out", "don't wait on me", "continue without me"):
 
 1. **Activate autonomous mode** — complete all planned work without prompting for confirmations.
-2. **On completion of any significant task**, play the audio alert:
+2. **On completion of any significant task**, play the audio alert. **Alert-confidentiality rule (v2.14.0, matching the synthesis-repo-guard v2 alert model):** spoken text and notification banners carry ZERO identifying content — no client, repo, workspace, project, or person names. Others hear speakers on calls and see banners on screen-shares. Generic wording only, and honor the mute flag:
    ```bash
+   [ -f ~/.synthesis/quiet-audio ] || { afplay /System/Library/Sounds/Glass.aiff && \
    afplay /System/Library/Sounds/Glass.aiff && \
    afplay /System/Library/Sounds/Glass.aiff && \
-   afplay /System/Library/Sounds/Glass.aiff && \
-   say "[User name], [task description] is complete."
+   say "The current task is complete. Details are on your screen."; }
    ```
-3. **If a blocker requires input**, play the alert FIRST to get attention, then display the question.
-4. **This is not limited to deployments** — any significant milestone (PR review posted, integration complete, deployment done, tests passing after a fix) should alert if the user is away.
+   `~/.synthesis/quiet-audio` (console-managed) silences all audio; on-screen detail is unaffected.
+3. **If a blocker requires input**, play the alert FIRST (same generic wording — never speak the blocker's subject), then display the question on screen.
+4. **This is not limited to deployments** — any significant milestone (PR review posted, integration complete, deployment done, tests passing after a fix) should alert if the user is away, always with the generic wording.
 
 **Prerequisite:** the current tool must be authorized to run the local alert commands (`afplay` and `say` on macOS). If not, warn at the start of autonomous mode.
 
