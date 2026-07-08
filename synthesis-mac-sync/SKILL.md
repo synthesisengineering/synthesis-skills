@@ -115,12 +115,12 @@ For `owner-only` repos:
 
 ### Session-End Check
 
-Every AI coding session should end with all repos committed and pushed. Use `synthesis-repo-guard` (the `repo_sync_check.py` script) to verify. This is not the same as a full mac-sync — it's a fast read-only check that detects problems without fixing them.
+Every AI coding session should end with all repos committed and pushed. Use `synthesis-repo-guard` to verify — and, since its v2.0.0, to self-heal: `checkpoint_sync.py` auto-commits+pushes the configured private context-repo class at workflow events (agent turn end, console writes), so mac-sync's day-boundary sweep normally finds those repos already clean.
 
 - If repo-guard reports clean: session can end safely.
-- If repo-guard reports dirty: commit and push before ending, or run a full mac-sync.
+- If repo-guard reports dirty: the detail is in `~/.synthesis/repo-guard/last-report.txt` and the synthesis-console `/sync` page (audible/banner alerts are deliberately generic — counts only, never repo or client names). Commit and push per the report, or run a full mac-sync.
 
-Configure repo-guard as a session-end hook so it runs automatically — see the `synthesis-repo-guard` skill for integration instructions for Claude Code, Codex, Cursor, and other tools.
+Configure repo-guard hooks per the `synthesis-repo-guard` skill (Claude Code, Codex, Cursor, synthesis-console). Mac-sync remains the full multi-machine operation and the sweep for out-of-class repos (source code, public repos) that checkpoint automation deliberately never touches.
 
 ---
 
