@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.10.0] - 2026-07-08
+
+### Added
+
+- **New skill: `synthesis-autopilot` v1.0.0 — autonomous-execution mode for explicitly delegated work.** A thin composition layer, not a new methodology: one explicit delegation phrase ("take care of this for me," "autopilot this," "handle this end to end," "run with it — minimal check-ins") engages a mode that sequences the existing stack — synthesis-thinking-framework for open decisions, synthesis-project-management + synthesis-context-lifecycle + synthesis-checkpoint for compaction-proof state, synthesis-anti-shortcuts for solution quality and sub-agent hygiene, synthesis-implementation-integrity before any completion claim. Protocol unique to the mode: strict trigger discipline (explicit whole-task delegation only; ambiguity resolves to NOT engaging; never ask "should I use autopilot?"); a one-line activation acknowledgment (mode + plan-file path); a self-carrying plan file whose standing-instructions section restores the mode itself after compaction; a three-class decision protocol (constraint-determined → execute; open-and-important → thinking framework; user-only → batch at checkpoints while parallelizable work continues — never block the run on one question); an explicit standing-gates clause (delegation of a task is not delegation of reserved authority — deploy permissions, send-as-user prohibitions, confirmation-first rules, commit hygiene, and verification hooks all survive autonomy); sub-agent fan-out hygiene (≤5 deliverables per dispatch, no minimizing vocabulary in briefs, mandatory acceptance audit on non-clean returns); and confidentiality-safe completion/blocked alerts honoring the environment's mute convention. Domain-neutral: engineering, research, writing, analysis, and operations runs differ only in their verification analog.
+
+### Rationale
+
+Users who repeatedly delegate whole tasks retype the same standing-instruction paragraph per task, and the retyped block fails three ways: clauses drop between retellings (verification and the decision protocol go first), long runs outlive their own instructions when context compacts, and a paraphrase of a discipline is weaker than the skill that defines it. Encoding the delegation contract once — as a mode that composes the six skills already governing decisions, state, quality, and verification — removes the retyping and makes the contract itself compaction-proof via the plan file. Trigger discipline is the load-bearing design constraint: the same user closely supervises some work by choice, so the mode fires only on explicit delegation phrasing, and the asymmetry is stated in the skill (under-firing costs a few extra check-ins; over-firing removes supervision the user chose to keep).
+
 ## [3.9.0] - 2026-07-08
 
 ### Added
