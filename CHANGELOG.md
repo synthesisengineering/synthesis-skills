@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.8.1] - 2026-07-08
+
+### Changed
+
+- **`synthesis-daily-rituals` bumped to v2.12.1** — source-code sync scope hardening. Day-Start Step 3a and Day-End Step 2 drop the v2.7.0 "associated with active work" qualifier: the workspace `CLAUDE.md` "Workspace Repos" table is the complete decision about what to sync — every repo marked Yes syncs on every ritual run, and the agent must not re-apply its own judgment about which repos seem "active". A workspace excludes a repo by marking it No in the table, with the reason.
+
+### Rationale
+
+The "active work" qualifier delegated a scoping decision to per-run agent judgment, which reliably under-syncs: a collaborator repo judged inactive drifted for ~6 weeks, its default branch still tracking a legacy remote after a Git-host migration and silently accumulating "unpushed" commits that the repo guard flagged repeatedly. Declared configuration beats inferred activity — the table is cheap to edit, visible in diffs, and consistent across runs.
+
 ## [3.8.0] - 2026-07-05
 
 ### Added
