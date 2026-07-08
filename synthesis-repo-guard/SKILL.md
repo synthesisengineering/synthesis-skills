@@ -1,11 +1,11 @@
 ---
 name: synthesis-repo-guard
-description: "Session-end enforcement for git repository sync. Detects uncommitted changes and unpushed commits across a workspace. Works with any AI coding tool (Claude Code, Codex, Cursor, etc.) or standalone. Use when asked to: repo guard, check repos, session end check, sync check, repo status, workspace status."
+description: "Workspace git-sync guard: detects uncommitted/unpushed repos, reports through confidentiality-safe channels (generic audio/banner + detailed report files + synthesis-console tile), and auto-heals private context repos at workflow events via checkpoint_sync.py. Works with any AI coding tool (Claude Code, Codex, Cursor, etc.) or standalone. Use when asked to: repo guard, check repos, session end check, sync check, repo status, workspace status, checkpoint sync, auto-commit context repos."
 license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "2.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -14,257 +14,200 @@ metadata:
 
 ## The Problem
 
-AI coding assistants create and modify files during a session. When the session ends — whether by completion, timeout, or the user closing the window — uncommitted or unpushed changes are stranded on that machine. For anyone who works across multiple machines, this breaks the sync chain. The work exists locally but never reaches GitHub, so the next machine starts from stale state.
+AI coding assistants and project-management tooling create and modify files continuously. When a session ends — completion, timeout, closed window — uncommitted or unpushed changes are stranded on that machine, breaking the multi-machine sync chain. Tools that write files *outside* agent sessions (a project console writing status markers, manual edits) never commit at all.
 
-No AI tool reliably commits and pushes before session end. Instructions, memory, and good intentions are not enforcement. The solution must be external to the AI.
+v1 of this skill detected stranded state and alerted with a count ("N repositories have unsynced changes"). Two failures emerged in practice:
 
-## The Solution
+1. **The alert was unactionable — and leaky if made actionable.** A count says nothing useful; speaking repo names would fix that, but repo/workspace names are often client names, and audio reaches whoever is nearby or on an unmuted call. Notification banners leak the same way during screen-shares.
+2. **The alert fired on machine-fixable states.** Most unsynced state is exactly what automation should heal at the next sensible checkpoint. Alerting humans about machine-fixable problems trains them to ignore alerts.
 
-A standalone Python script (`repo_sync_check.py`) that scans a workspace for git repositories and reports any that have unsynced state. It has zero AI dependencies — it uses only Python stdlib and the git CLI. It works as:
+## The Architecture — three layers
 
-- A terminal command you run manually
-- A session-end hook for any AI coding tool
-- A scheduled check via cron or launchd
-- A CI/CD gate
+| Layer | Component | Job |
+|-------|-----------|-----|
+| Detector | `repo_sync_check.py` (scan) | Find dirty / ahead / behind / detached repos under a workspace root |
+| Messenger | `repo_sync_check.py` (output) | Generic audio/banner ping + detailed report files + console tile data |
+| Remediator | `checkpoint_sync.py` | Auto-commit + push the configured private context-repo class at workflow events |
 
-The script is the single source of truth. Everything else is a trigger.
+End state: routine changes are checkpointed silently, an always-on synthesis-console tile shows ambient status, and audible/banner alerts fire only for states automation cannot heal (blocked pre-commit hook, divergence, out-of-class dirt, stale lock) — rare, and always actionable.
 
-### Detection vs. Commit — Critical Distinction
+## Confidentiality rule for alert surfaces (ABSOLUTE)
 
-**This skill detects. It does not commit.**
+**Audio (`say`, alert sounds) and macOS notification banners never carry repo names, workspace names, or client names — only counts and a pointer ("details are in your synthesis console").** This holds at all times, not only while screen-sharing: presence detection is unreliable, and one leak outweighs the convenience. Identifying detail belongs exclusively in pull channels the user deliberately opens:
 
-`repo_sync_check.py` scans ALL repos in a workspace and reports which are dirty. That is the correct scope for detection — you want to know about every stranded change, not just ones tied to a specific project.
+- `~/.synthesis/repo-guard/last-report.txt` / `last-report.json` / `history.jsonl` — written on every scan
+- `~/.synthesis/repo-guard/checkpoint-state.json` — written on every checkpoint run
+- the synthesis-console sync tile / page, which renders both
 
-But commits must NEVER be workspace-wide. A commit step should only touch repos where the current invocation created or modified files — not every dirty repo the detector found. Different repos may belong to different projects, different contexts, or work-in-progress the user hasn't finished.
+**Mute toggle:** all audible output (speech AND alert sounds) is suppressed while `~/.synthesis/quiet-audio` exists. synthesis-console exposes this as a header button; `touch`/`rm` the file works too. Muting loses nothing — reports and tile stay current.
 
-See `synthesis-daily-rituals` "Commit Protocol" section for the per-invocation commit scoping rule. The pattern is:
+## Detection vs. commit — scoping rules
 
-1. Agent tracks which files it modified in this invocation.
-2. Agent commits only those files, in their containing repos.
-3. `repo_sync_check.py` is the final verification gate — it catches anything the per-invocation commit step missed, but the resolution is still per-repo-scoped, not workspace-wide.
+`repo_sync_check.py` **detects and never modifies** — correct scope: every repo in the workspace.
+
+Commits happen in exactly two sanctioned ways:
+
+1. **Per-invocation agent commits** (unchanged rule): an agent commits only the files IT modified in the current invocation — never workspace-wide, never other sessions' work. See `synthesis-daily-rituals` "Commit Protocol".
+2. **`checkpoint_sync.py`** — the deliberate, narrowly-scoped exception: it auto-commits repos in the configured **auto-sync class only** (private, single-writer context repos whose history is an operational log), protected by a runtime guard (below). Source-code repos and shared/public repos are structurally out of reach.
+
+## The remediator: event-driven, never scheduled
+
+`checkpoint_sync.py` runs ONLY at workflow events — moments when the user is demonstrably present and the machine awake:
+
+- **AI-tool turn/session end** (throttled via stamp file, default 10 min): catches agent sessions — and manual edits too, since sessions are usually live.
+- **After a console cockpit write:** the console calls `checkpoint_sync.py --repo <written-file> --now`, so producers own their commits through the one shared mechanism.
+- **Rituals / mac-sync:** the existing day-boundary sweeps.
+
+**Deliberately NOT a launchd/cron job.** Wall-clock daemons run detached from presence: they race the same repos across machines and create close-the-lid anxiety. Event-driven runs execute on the origin machine seconds after the change — which also shrinks multi-machine divergence windows, because work is pushed before you switch machines. (Read-only polling — the console tile refreshing — is exempt: interrupting a read is harmless.)
+
+### The auto-sync class + runtime guard
+
+Config `~/.synthesis/checkpoint-sync.yaml` (copy `checkpoint-sync.example.yaml`) lists the class by explicit path and glob. Membership criteria: private, single-writer knowledge/context repos (personal ai-knowledge repos, `*-<person>-private` workspace repos, daily plans). Never source-code repos, never shared/public repos.
+
+**The runtime remote guard is independent of config:** a repo is touched only if EVERY push remote starts with an allowed prefix (your private GitHub namespace). A glob that accidentally matches a repo with a client/org remote is excluded at run time, every time — config declares intent; the guard verifies reality. Empty `allowed_remote_prefixes` fails closed.
+
+### Safety properties
+
+- Ordering: `add -A` → `commit` → `fetch` → push **only if fast-forward**.
+- Distinct commit author (e.g. "Synthesis Checkpoint") — automated checkpoints are always distinguishable from curated commits.
+- Divergence → the commit stays local (durable, resolvable) + alert. Never rebase, never force-push.
+- Pre-commit hooks run normally; a rejection aborts that repo with an alert. **Never `--no-verify`.**
+- Quiescence: skip repos with files modified in the last N minutes (default 15) — no mid-thought commits. `--now` bypasses this for producer writes that are known-complete.
+- Stale `index.lock` (>10 min): reported, never deleted.
+- Interruption-safe by construction: runs at interactive moments; an interrupted git op doesn't corrupt a repo (killed pushes are retryable; sleep suspends rather than kills).
 
 ---
 
 ## Quick Start
 
 ```bash
-# Run directly — checks ~/workspaces by default
+# Scan ~/workspaces, write reports, print text summary
 ./repo_sync_check.py
 
-# Check a specific workspace
-./repo_sync_check.py --workspace ~/projects
+# Machine-readable scan (console tile source)
+./repo_sync_check.py --json --quiet
 
-# Quiet mode — exit code only (for hooks and scripts)
-./repo_sync_check.py --quiet
+# Generic attention ping if dirty (mute-aware)
+./repo_sync_check.py --speak --notify --dirty-only
 
-# With macOS alert sound on failure
-./repo_sync_check.py --alert --speak
+# What would the checkpoint do right now?
+./checkpoint_sync.py --dry-run
 
-# JSON output for programmatic consumption
-./repo_sync_check.py --json --dirty-only
+# Throttled sweep (what the turn-end hook runs)
+./checkpoint_sync.py --hook --quiet --notify
+
+# Producer mode: checkpoint the repo containing a just-written file
+./checkpoint_sync.py --repo ~/workspaces/example/daily-plans/today.md --now
 ```
 
-### Exit Codes
+### Exit codes (both scripts)
 
-| Code | Meaning |
-|------|---------|
-| 0 | All repos clean and synced |
-| 1 | One or more repos need attention |
-| 2 | Error (git not found, workspace doesn't exist) |
+| Code | repo_sync_check.py | checkpoint_sync.py |
+|------|--------------------|--------------------|
+| 0 | all clean & synced | nothing needed / all healed |
+| 1 | repos need attention | alerts raised (detail in state file) |
+| 2 | error | error |
 
----
+### What the detector reports
 
-## What It Detects
-
-| Condition | Report |
+| Condition | Marker |
 |-----------|--------|
-| Uncommitted changes (modified, staged, untracked) | `[dirty]` with file list |
-| Unpushed commits (ahead of remote) | `[ahead]` with count |
-| Unpulled commits (behind remote) | `[behind]` with count |
+| Uncommitted changes (modified/staged/untracked) | `[dirty]` + file list + fix hint |
+| Unpushed commits | `[ahead]` + count |
+| Unpulled commits | `[behind]` + count |
 | Detached HEAD | `[detached]` |
-| Git errors | `[error]` with detail |
+| Git errors | `[error]` |
 
 ---
 
 ## AI Tool Integration
 
-### Claude Code
+### Claude Code (`~/.claude/settings.json`)
 
-Add a `SessionEnd` hook to your settings. The hook runs automatically when any session closes — Claude has no involvement.
-
-In `~/.claude/settings.json` (or `~/.claude/settings.local.json`):
-
-```json
-{
-  "hooks": {
-    "SessionEnd": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 /path/to/repo_sync_check.py --alert --speak --dirty-only",
-            "timeout": 30
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-If the installed skill location is `~/.claude/skills/synthesis-repo-guard/`, point to that path.
-
-**Hook flag rationale:**
-- `--alert --speak` — audio notification if any repo is dirty (so you notice even if the terminal is buried).
-- `--dirty-only` — output limited to problematic repos (short, scannable).
-- Do NOT add `--quiet` unless you are intentionally silencing output. Silent hooks teach the agent and user nothing; the point of the end-of-session check is to surface what was missed.
-
-### Defense in Depth: Consider a Stop Hook Too
-
-`SessionEnd` fires when a session truly terminates (user exits, terminal closes). In long-running or resumed conversations, SessionEnd may not fire for days. A `Stop` hook fires after every agent response, which provides continuous feedback but is noisier.
-
-A reasonable pattern:
-- `Stop` hook: runs `repo_sync_check.py --dirty-only --quiet` (silent unless dirty; exit code drives alerting).
-- `SessionEnd` hook: runs `repo_sync_check.py --alert --speak --dirty-only` (loud at true termination).
-
-Pick the combination that matches your workflow. The `Stop` hook is most valuable if your agent is the one that tends to forget to commit; the `SessionEnd` hook is most valuable if you want a final safety net before the machine sleeps or you switch workspaces.
-
-### OpenAI Codex
-
-Codex supports hooks via `~/.codex/hooks.json`, repo-local `.codex/hooks.json`, or inline hook configuration. A Stop hook can run `repo_sync_check.py` after each turn.
-
-Example `~/.codex/hooks.json`:
+Turn-end remediation (throttled — cheap no-op most turns) plus optional session-end verification:
 
 ```json
 {
   "hooks": {
     "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 /path/to/repo_sync_check.py --workspace /path/to/workspace --dirty-only",
-            "timeout": 30
-          }
-        ]
-      }
+      { "hooks": [ { "type": "command",
+        "command": "python3 ~/.claude/skills/synthesis-repo-guard/checkpoint_sync.py --hook --quiet --notify",
+        "timeout": 120 } ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "command",
+        "command": "python3 ~/.claude/skills/synthesis-repo-guard/repo_sync_check.py --dirty-only --speak --notify",
+        "timeout": 60 } ] }
     ]
   }
 }
 ```
 
-Enable hooks in `~/.codex/config.toml` if needed:
-
-```toml
-[features]
-codex_hooks = true
-```
-
-### Cursor
-
-Cursor supports task hooks. Add to your `.cursor/settings.json`:
+### OpenAI Codex (`~/.codex/hooks.json`, with `codex_hooks = true`)
 
 ```json
-{
-  "task.onEnd": "python3 /path/to/repo_sync_check.py --alert --speak"
-}
+{ "hooks": { "Stop": [ { "hooks": [ { "type": "command",
+  "command": "python3 ~/.codex/skills/synthesis-repo-guard/checkpoint_sync.py --hook --quiet --notify",
+  "timeout": 120 } ] } ] } }
 ```
 
-### Any Other Tool
+The throttle stamp is shared across tools — multiple agents coexist without duplicate runs.
 
-If the tool supports any form of post-session or post-task hook, point it at the script. If it doesn't, use the scheduled approach below.
+### Cursor (`.cursor/settings.json`)
 
----
-
-## Scheduled Execution
-
-For tools that don't support hooks, or as a safety net alongside hooks, run the check on a schedule.
-
-### macOS launchd
-
-Create `~/Library/LaunchAgents/com.synthesis.repo-guard.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.synthesis.repo-guard</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/bin/python3</string>
-        <string>/path/to/repo_sync_check.py</string>
-        <string>--alert</string>
-        <string>--speak</string>
-    </array>
-    <key>StartInterval</key>
-    <integer>3600</integer>
-    <key>StandardErrorPath</key>
-    <string>/tmp/repo-guard.err</string>
-    <key>StandardOutPath</key>
-    <string>/tmp/repo-guard.out</string>
-</dict>
-</plist>
+```json
+{ "task.onEnd": "python3 /path/to/checkpoint_sync.py --hook --quiet --notify" }
 ```
 
-Load it:
-```bash
-launchctl load ~/Library/LaunchAgents/com.synthesis.repo-guard.plist
-```
+### synthesis-console (command center)
 
-### cron (Linux/macOS)
+- **Always-on sync tile:** polls `repo_sync_check.py --json --quiet` (read-only; lid-safe) and renders `checkpoint-state.json` outcomes.
+- **Quiet-audio toggle button:** creates/removes `~/.synthesis/quiet-audio`.
+- **"Sync now" button:** `checkpoint_sync.py --no-throttle` (throttle bypassed; quiescence still honored).
+- **Producer commits:** after writing a plan marker, the console fires `checkpoint_sync.py --repo <file> --now`.
 
-```bash
-# Check every hour, alert if dirty
-0 * * * * python3 /path/to/repo_sync_check.py --alert --speak --quiet
-```
+### Scheduled execution — read-only only
+
+If a tool supports no hooks at all, a scheduled **detector** run (`repo_sync_check.py --quiet`, reports only, no audio flags) is acceptable — it's read-only and interruption-safe. Do **not** schedule `checkpoint_sync.py`: mutation stays event-driven (see design rationale above). The console tile's polling normally makes scheduled detection unnecessary.
 
 ---
 
 ## Relationship to Other Skills
 
-### synthesis-mac-sync
-
-Mac-sync is the **full sync operation** — it fetches, pulls, pushes, commits dirty repos (with user approval), and syncs config files. Repo-guard is the **check** that tells you whether sync is needed.
-
-Run repo-guard frequently (session end, hourly). Run mac-sync when repo-guard reports problems, or as part of your daily ritual.
-
-### synthesis-context-lifecycle
-
-Context lifecycle manages project working memory across sessions. Repo-guard ensures that the files context-lifecycle produces actually reach GitHub. Context lifecycle should commit its own changes, but repo-guard catches the cases where it doesn't.
-
-### Daily rituals / end-of-day checklists
-
-If you have a day-end ritual or checklist skill, add a repo-guard check as the final step. If the check fails, run mac-sync to resolve before ending the day.
+- **synthesis-mac-sync** — the full multi-machine sync operation (config files, credentials, all repos, with user approval). Repo-guard keeps context repos continuously clean so mac-sync's day-boundary sweep mostly finds nothing; run mac-sync when the report shows out-of-class problems or when switching machines.
+- **synthesis-context-lifecycle / synthesis-daily-rituals** — those skills commit their own changes at the point of modification (the primary mechanism). checkpoint_sync is the safety net beneath them; `repo_sync_check.py` is the final verification gate at day-end.
 
 ---
 
 ## Command Reference
 
 ```
-usage: repo_sync_check.py [-h] [--workspace PATH] [--max-depth N]
-                          [--quiet] [--json] [--alert] [--speak]
-                          [--dirty-only]
+repo_sync_check.py [--workspace W] [--max-depth N] [--quiet] [--json]
+                   [--dirty-only] [--alert] [--speak] [--notify]
+                   [--report-dir D] [--no-report]
 
-options:
-  --workspace, -w PATH   Workspace root to scan (default: ~/workspaces)
-  --max-depth, -d N      Max directory depth for repo discovery (default: 3)
-  --quiet, -q            Suppress output — exit code only
-  --json, -j             Output results as JSON
-  --alert, -a            Play macOS alert sound if repos are dirty
-  --speak, -s            Speak warning via macOS text-to-speech
-  --dirty-only           Only include dirty repos in output
+checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
+                   [--no-throttle] [--dry-run] [--quiet] [--json]
+                   [--speak] [--notify]
 ```
+
+- `--speak/--notify/--alert` are generic + mute-aware on both scripts.
+- `checkpoint_sync --repo` accepts any path inside a repo (resolved via `git rev-parse --show-toplevel`).
+- `--hook` honors the shared throttle; `--now` bypasses throttle + quiescence (producer mode); `--no-throttle` bypasses throttle only (manual button).
 
 ---
 
 ## Design Principles
 
-1. **Zero AI dependencies** — works without any AI tool installed
-2. **Zero external dependencies** — Python stdlib + git CLI only
-3. **LLM-agnostic** — same script for Claude Code, Codex, Cursor, or manual use
-4. **Non-destructive** — only reads state, never modifies repos
-5. **Fast** — scans 20+ repos in under 2 seconds
-6. **Composable** — exit codes and JSON output for integration with other tools
+1. **Zero AI and zero external dependencies** — Python stdlib + git CLI (PyYAML used if present, minimal built-in parser otherwise)
+2. **LLM-agnostic** — same scripts for Claude Code, Codex, Cursor, console, or manual use
+3. **Detector never modifies; remediator modifies only the guarded auto-sync class**
+4. **Identifying names (repo, workspace, client) never on audio/banner surfaces** — counts and pointers only
+5. **Mutation is event-driven; only reads may poll**
+6. **Fail closed, never force** — empty guard config disables; divergence/hook-failures stop and alert
+7. **Composable** — exit codes, JSON output, shared state files
+
+## Changelog
+
+- **2.0.0 (2026-07-08):** three-layer redesign. Generic-only audio/banner (confidentiality rule), `~/.synthesis/quiet-audio` mute flag, report files + history, remediation hints, new `checkpoint_sync.py` (event-driven auto-commit/push: runtime remote guard, quiescence, shared throttle, ff-only push, distinct author, stale-lock detection), synthesis-console integration contract, scheduled-mutation explicitly disallowed. Origin: 2026-07-08 design review (lesson: alert-channel confidentiality + event-driven checkpoints).
+- **1.1.0:** detector + count-only audio alerts.

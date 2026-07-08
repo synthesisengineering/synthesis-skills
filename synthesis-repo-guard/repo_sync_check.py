@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-repo_sync_check.py — Detect unsynced git repositories in a workspace.
+repo_sync_check.py — Detect unsynced git repositories in a workspace. (v2)
 
 Scans a workspace root for git repositories and reports any that have:
   - Uncommitted changes (modified, staged, or untracked files)
@@ -8,9 +8,24 @@ Scans a workspace root for git repositories and reports any that have:
   - Unpulled commits (behind remote)
 
 Designed to run standalone from a terminal, as an AI tool session-end hook
-(Claude Code, Codex, Cursor, etc.), or on a schedule via cron/launchd.
+(Claude Code, Codex, Cursor, etc.), on demand from synthesis-console, or
+after a workflow event. Zero external dependencies — Python stdlib + git CLI.
 
-Zero external dependencies — uses only Python stdlib + git CLI.
+v2 (three-layer redesign: detector / messenger / remediator):
+  - DETECTOR (this file's scan) is unchanged in behavior.
+  - MESSENGER: every run now writes report files (text + JSON + history.jsonl)
+    to --report-dir (default ~/.synthesis/repo-guard/) for consumption by
+    synthesis-console tiles and agent sessions.
+  - AUDIO/NOTIFICATION CONFIDENTIALITY (ABSOLUTE): --speak and --notify emit
+    GENERIC content only — a count and a pointer to the console/report.
+    Repo names, workspace names, and client names are NEVER spoken or shown
+    in notification banners: audible surfaces reach whoever is nearby or on
+    an unmuted call, and banners appear during screen-shares. Identifying
+    detail belongs only in pull channels (report files, synthesis-console).
+  - MUTE FLAG: --speak/--alert/--notify honor ~/.synthesis/quiet-audio
+    (created/removed by the synthesis-console toggle; or `touch` it manually).
+  - REMEDIATOR: companion script checkpoint_sync.py auto-commits+pushes the
+    configured private context-repo class at workflow events. See SKILL.md.
 
 Exit codes:
   0 — All repos clean and synced
@@ -18,28 +33,25 @@ Exit codes:
   2 — Error (e.g., git not found, workspace doesn't exist)
 
 Examples:
-  # Check default workspace ~/workspaces
-  ./repo_sync_check.py
-
-  # Check a specific workspace
-  ./repo_sync_check.py --workspace ~/projects
-
-  # Quiet mode — exit code only, no output (for hooks)
-  ./repo_sync_check.py --quiet
-
-  # With macOS alert sound on failure
-  ./repo_sync_check.py --alert
-
-  # JSON output for programmatic consumption
-  ./repo_sync_check.py --json
+  ./repo_sync_check.py                          # scan ~/workspaces, write reports
+  ./repo_sync_check.py --json --quiet           # machine-readable, no stdout text
+  ./repo_sync_check.py --speak --notify         # generic ping if dirty (mute-aware)
+  ./repo_sync_check.py --no-report              # ad-hoc scan, don't touch reports
 """
 
 import argparse
 import json
 import os
+import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
+
+# SYNTHESIS_HOME overrides the state root (tests, sandboxes). Default ~/.synthesis
+SYNTHESIS_HOME = Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis")))
+QUIET_AUDIO_FLAG = SYNTHESIS_HOME / "quiet-audio"
+DEFAULT_REPORT_DIR = SYNTHESIS_HOME / "repo-guard"
 
 
 def find_git_repos(workspace: Path, max_depth: int = 3) -> list[Path]:
@@ -143,23 +155,79 @@ def check_repo(repo: Path) -> dict:
     return status
 
 
+# ---------------------------------------------------------------------------
+# Messenger layer — generic audio/banner, detailed reports
+# ---------------------------------------------------------------------------
+
+def audio_muted() -> bool:
+    """True when the synthesis-console quiet-audio toggle (or a manual touch)
+    has muted all audible output."""
+    return QUIET_AUDIO_FLAG.exists()
+
+
 def play_alert() -> None:
-    """Play macOS alert sound. No-op on other platforms."""
-    if sys.platform == "darwin":
+    """Play macOS alert sound. Mute-aware. No-op on other platforms."""
+    if sys.platform == "darwin" and not audio_muted():
         sound = "/System/Library/Sounds/Glass.aiff"
         for _ in range(3):
             subprocess.run(["afplay", sound], capture_output=True)
 
 
+def spoken_warning_text(dirty_count: int) -> str:
+    """GENERIC spoken warning. Deliberately carries no repo/workspace/client
+    names — audible surfaces are public-adjacent. Do not add names here."""
+    noun = "repository needs" if dirty_count == 1 else "repositories need"
+    return f"Repo guard: {dirty_count} {noun} attention. Details are in your synthesis console."
+
+
 def speak_warning(dirty_count: int) -> None:
-    """Speak a warning on macOS. No-op on other platforms."""
-    if sys.platform == "darwin":
-        msg = f"Warning: {dirty_count} {'repository has' if dirty_count == 1 else 'repositories have'} unsynced changes."
-        subprocess.run(["say", msg], capture_output=True)
+    """Speak a GENERIC warning on macOS. Mute-aware. No-op elsewhere."""
+    if sys.platform == "darwin" and not audio_muted():
+        subprocess.run(["say", spoken_warning_text(dirty_count)], capture_output=True)
+
+
+def notify_generic(dirty_count: int) -> None:
+    """Post a GENERIC macOS notification banner. Banners are visible during
+    screen-shares — same confidentiality rule as audio: count + pointer only."""
+    if sys.platform != "darwin" or audio_muted():
+        return
+    noun = "repository needs" if dirty_count == 1 else "repositories need"
+    msg = f"{dirty_count} {noun} attention — open synthesis console for details"
+    script = f'display notification "{msg}" with title "Repo guard"'
+    subprocess.run(["osascript", "-e", script], capture_output=True)
+
+
+def write_reports(results: list[dict], report_dir: Path) -> None:
+    """Write the detailed report files (the pull channel). Names and file
+    lists are fine here — these live on the private disk and are rendered
+    only by surfaces the user deliberately opens (synthesis-console, editor)."""
+    report_dir.mkdir(parents=True, exist_ok=True)
+    dirty = [r for r in results if not r["clean"]]
+    now = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    payload = {
+        "generated_at": now,
+        "host": socket.gethostname(),
+        "total_repos": len(results),
+        "dirty_count": len(dirty),
+        "repos": results,
+    }
+    (report_dir / "last-report.json").write_text(json.dumps(payload, indent=2) + "\n")
+    (report_dir / "last-report.txt").write_text(
+        f"Repo guard report — {now} on {socket.gethostname()}\n\n"
+        + format_text_report(results) + "\n"
+    )
+    history_entry = {
+        "ts": now,
+        "host": socket.gethostname(),
+        "total": len(results),
+        "dirty": [r["name"] for r in dirty],
+    }
+    with open(report_dir / "history.jsonl", "a") as fh:
+        fh.write(json.dumps(history_entry) + "\n")
 
 
 def format_text_report(results: list[dict]) -> str:
-    """Format results as human-readable text."""
+    """Format results as human-readable text, including remediation hints."""
     dirty = [r for r in results if not r["clean"]]
     clean_count = len(results) - len(dirty)
 
@@ -186,6 +254,7 @@ def format_text_report(results: list[dict]) -> str:
                     lines.append(f"      {f}")
                 if issue.get("total", 0) > len(issue.get("files", [])):
                     lines.append(f"      ... and {issue['total'] - len(issue['files'])} more")
+        lines.append(f"    fix: cd {repo['path']} && git status")
         lines.append("")
 
     lines.append(f"Clean: {clean_count} repositories")
@@ -213,7 +282,7 @@ def main() -> int:
     parser.add_argument(
         "--quiet", "-q",
         action="store_true",
-        help="Suppress output — exit code only",
+        help="Suppress stdout — exit code only (reports still written)",
     )
     parser.add_argument(
         "--json", "-j",
@@ -223,12 +292,28 @@ def main() -> int:
     parser.add_argument(
         "--alert", "-a",
         action="store_true",
-        help="Play macOS alert sound if repos are dirty",
+        help="Play macOS alert sound if repos are dirty (mute-aware)",
     )
     parser.add_argument(
         "--speak", "-s",
         action="store_true",
-        help="Speak warning via macOS text-to-speech if repos are dirty",
+        help="Speak a GENERIC warning (count only — never names) if dirty (mute-aware)",
+    )
+    parser.add_argument(
+        "--notify", "-n",
+        action="store_true",
+        help="Post a GENERIC macOS notification banner if dirty (mute-aware)",
+    )
+    parser.add_argument(
+        "--report-dir",
+        type=Path,
+        default=DEFAULT_REPORT_DIR,
+        help=f"Where to write last-report.txt/.json + history.jsonl (default: {DEFAULT_REPORT_DIR})",
+    )
+    parser.add_argument(
+        "--no-report",
+        action="store_true",
+        help="Skip writing report files (ad-hoc scans)",
     )
     parser.add_argument(
         "--dirty-only",
@@ -262,6 +347,13 @@ def main() -> int:
     results = [check_repo(repo) for repo in repos]
     dirty = [r for r in results if not r["clean"]]
 
+    # Reports — the detailed pull channel (written on every run unless opted out)
+    if not args.no_report:
+        try:
+            write_reports(results, args.report_dir.expanduser())
+        except OSError as e:
+            print(f"Warning: could not write reports: {e}", file=sys.stderr)
+
     # Output
     if not args.quiet:
         if args.json:
@@ -270,12 +362,14 @@ def main() -> int:
         else:
             print(format_text_report(results))
 
-    # Alerts
+    # Attention pings — GENERIC by design (see module docstring)
     if dirty:
         if args.alert:
             play_alert()
         if args.speak:
             speak_warning(len(dirty))
+        if args.notify:
+            notify_generic(len(dirty))
 
     return 1 if dirty else 0
 

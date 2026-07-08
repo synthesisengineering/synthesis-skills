@@ -1,0 +1,35 @@
+# checkpoint-sync.example.yaml — copy to ~/.synthesis/checkpoint-sync.yaml and edit.
+#
+# Defines the AUTO-SYNC CLASS: private context repos that checkpoint_sync.py may
+# auto-commit and push at workflow events (agent turn end, console cockpit writes,
+# rituals, mac-sync). Keep this to single-writer knowledge/context repos whose git
+# history is an operational log. NEVER list source-code repos or shared/public repos.
+#
+# SAFETY: the runtime remote guard is independent of this file — a repo is only
+# touched if EVERY push remote starts with one of allowed_remote_prefixes. If a
+# glob accidentally matches a repo with a client or org remote, the guard excludes
+# it no matter what this config says. An empty allowed_remote_prefixes disables
+# all checkpointing (fail closed).
+#
+# This example uses placeholder names — use your own GitHub namespace and paths.
+
+repos:
+  - ~/workspaces/example-person/ai-knowledge-example-person
+
+repo_globs:
+  - ~/workspaces/*/ai-knowledge-*-example-person-private
+
+allowed_remote_prefixes:
+  - https://github.com/example-person/
+  - git@github.com:example-person/
+
+# Skip a repo if any dirty file changed within this window (never commit mid-thought).
+quiescence_minutes: 15
+
+# Hook-mode runs (agent turn end) no-op if a run happened this recently.
+throttle_minutes: 10
+
+# Distinct author so automated checkpoints are always distinguishable from
+# curated commits in history.
+commit_author_name: Synthesis Checkpoint
+commit_author_email: checkpoint@example.com
