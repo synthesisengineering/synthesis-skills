@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.12.1"
+  version: "2.13.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,10 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.13.0 — Per-workspace `repos.yaml` is the machine-readable repo list
+
+In v2.13.0 (2026-07-08), the source-code sync steps (Day-Start 3a, Day-End 2) enumerate from the workspace repo manifest when one exists: `<workspace>/.agents/repos.yaml` — a symlink into the workspace's private context repo, generated and maintained per synthesis-mac-sync v1.6.0 (which owns the file's schema and lifecycle). Sync every repo with `ritual_sync: yes`. A manifest with `status: dormant` means "skip this workspace's source-code sync entirely — and never delete anything" (retention rule). The workspace `CLAUDE.md` "Workspace Repos" table remains the human-readable view and the FALLBACK source when no `repos.yaml` exists. The v2.12.1 rule applies identically to both sources: the declared list is the complete decision — no agent activity-judgment.
 
 ## v2.12.1 — Source-code sync scope: the workspace table decides (no agent activity judgment)
 
@@ -227,7 +231,7 @@ This step has three sub-steps. They run in order — source code first (so any d
 
 Before drafting the daily plan, sync every source-code repo the current workspace declares for daily sync. This makes sure any code-grounded drafts (PR reviews, technical replies, status messages citing specific files or commits) reference current state, not yesterday's.
 
-- [ ] Enumerate the repos to sync from the workspace's `CLAUDE.md` "Workspace Repos" table (e.g., `~/workspaces/<workspace>/CLAUDE.md`): **every repo the table marks Yes, on every run**. The table is the complete decision — do NOT re-apply your own judgment about which repos seem "active" (v2.12.1). Context/ai-knowledge repos are marked No there and are handled separately (checkpoint-sync / repo-guard).
+- [ ] Enumerate the repos to sync. Primary source (v2.13.0): `<workspace>/.agents/repos.yaml` — **every repo with `ritual_sync: yes`, on every run** (skip the whole workspace only if its manifest says `status: dormant`). Fallback when no `repos.yaml` exists: the workspace's `CLAUDE.md` "Workspace Repos" table, every repo marked Yes. Either way the declared list is the complete decision — do NOT re-apply your own judgment about which repos seem "active" (v2.12.1). Context/ai-knowledge repos are marked No and are handled separately (checkpoint-sync / repo-guard).
 - [ ] For each repo: `git fetch --all` to pull from all configured remotes, then fast-forward the default branches the team works on (typically `main` + `develop`; some teams also have `staging`, a long-running release branch, etc.). Use `git pull --ff-only` per branch — never a merge or rebase that could introduce silent conflicts.
 - [ ] If any branch is **diverged** (local has commits the remote doesn't, AND remote has commits local doesn't), do NOT auto-resolve. Surface it in the day-plan briefing: "develop diverged in `<repo>` — N local commits vs M remote." Decide explicitly: rebase, merge, or leave it for the owner.
 - [ ] If a default branch is **behind**, fast-forward it. If it's **ahead** of remote only (local commits not pushed), surface that too — it's a "do I push?" decision, not an auto-action.
@@ -661,7 +665,7 @@ When observer mode is reinvented per conversation ("do the thing you did yesterd
 
 End-of-day code sync ensures local main/develop reflects everything that landed during the day and that tomorrow's day-start begins from a clean, current state. Run the same source-code sync as Day-Start Step 3a — same workspace repo list, same fetch + fast-forward semantics, same surfacing of divergence.
 
-- [ ] For every repo the workspace's `CLAUDE.md` "Workspace Repos" table marks **Yes** (the complete set — no activity judgment; v2.12.1): `git fetch --all`, then `git pull --ff-only` on each long-running branch (typically `main` and `develop`).
+- [ ] For every repo the workspace manifest marks for sync (`<workspace>/.agents/repos.yaml` `ritual_sync: yes`; fallback: the `CLAUDE.md` table's Yes rows — the complete set, no activity judgment; v2.12.1/v2.13.0): `git fetch --all`, then `git pull --ff-only` on each long-running branch (typically `main` and `develop`).
 - [ ] Surface any branches that are diverged or have local-only commits not yet pushed. These are decisions to make NOW, not at next day-start, so the agent can act on them while context is fresh.
 - [ ] Note the day's net change per repo (e.g., "develop +11 commits, includes ticket-id-here"). This summary becomes part of the day-end log and feeds tomorrow's day-start briefing.
 

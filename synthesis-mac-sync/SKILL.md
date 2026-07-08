@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.5.1"
+  version: "1.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -25,7 +25,8 @@ These values are user-specific. Update them for your environment.
 | `icloud_sync_folder` | `~/Library/Mobile Documents/com~apple~CloudDocs/workspaces/[username]/mac-sync/` | iCloud Drive folder for synced config files |
 | `git_scan_root` | `~/workspaces/` | Root directory for git repository discovery |
 | `git_scan_max_depth` | `3` | Maximum depth for recursive `.git` directory search |
-| `git_repos_manifest` | `git-repos.yaml` | Manifest file caching discovered repos |
+| `git_repos_manifest` | `git-repos.yaml` | Legacy central manifest (transitional; see v1.6.0 section) |
+| `workspace_repo_manifest` | `<workspace>/.agents/repos.yaml` | Per-workspace repo manifest (v1.6.0; canonical for repo entries) |
 
 ---
 
@@ -307,6 +308,36 @@ For config files containing machine-specific paths, use template files with plac
 
 ---
 
+## Per-Workspace Repo Manifests (v1.6.0) — the decentralized inventory
+
+As of v1.6.0 (2026-07-08), the repo inventory is decentralized: each workspace owns its own list, and only a thin router stays central.
+
+**Canonical file:** `<workspace-private-repo>/.agents/repos.yaml`, symlinked to `<workspace>/.agents/repos.yaml` (plus `.claude/` and `.codex/` back-compat) by the Workspace Config Symlinks layer (v1.4.0). A personal workspace without a `-private` repo carries it in the personal ai-knowledge repo. Cross-machine propagation is git (the context repo pushes/pulls, with its usual history, diffs, and conflict detection) — not iCloud.
+
+**Schema — facts vs policy.** Fact fields (`path`, `remotes`, `default_branches`) are refreshed by scans. Policy fields (workspace-level `status: active | dormant`, per-repo `ritual_sync`, `push_policy`, `category`, `notes`) are declared by the user or their agent and are NEVER changed by a scan.
+
+**Scan behavior per workspace (replaces the central-yaml scan for repo entries):**
+
+- Refresh fact fields from `git remote -v` and local branch listings.
+- Repo on disk but not in the manifest → PROPOSE adding it (facts pre-filled); the user confirms the policy fields.
+- Repo in the manifest but not on disk → a clone decision, not an auto-clone (see Clone semantics).
+- NEVER remove an entry, and NEVER delete a local clone. **Retention rule:** leaving a client, or a client shutting down, retires a workspace to `status: dormant` — retained on disk, sync paused, nothing deleted. Deletion is a rare, explicit, manual act outside every sync flow.
+- Dead remotes (org deleted, Git host sunset): report once, keep the clone indefinitely — the local clone is the durable record.
+
+**Clone semantics (selective-cloning rule):**
+
+- The manifest records CHOSEN clones. Never enumerate a remote org (GitHub/Bitbucket) to clone or list everything the user can access.
+- New-machine bootstrap (an explicit "set this machine up" act): read `machines.yaml` for the machine's subscribed workspaces, clone each workspace's context repo, read its `repos.yaml`, clone the curated list (minus any `exclude:` entries).
+- Ongoing: a repo listed in a workspace manifest but missing locally is surfaced as a decision; a machine subscription may set `auto_clone: true` to mirror automatically (default: false).
+
+**Router file — `machines.yaml`** (same folder as the legacy central yaml): machine inventory, per-machine `workspaces:` subscriptions (`all` or an explicit list — supports restricted machines such as client-issued hardware that must never hold other clients' names), optional `auto_clone` and `exclude:`, and the workspace → context-repo bootstrap map. This is the only repo-related state that stays centralized.
+
+**Transition:** while the legacy `repositories:` section of `git-repos.yaml` still exists, each sync cross-checks it against the per-workspace manifests and REPORTS any drift — no silent divergence. After a drift-free window (at least two clean daily-ritual code-syncs plus one clean mac-sync), archive that section to a dated file; the Manifest Merge Protocol below then applies only to `machines.yaml` and any remaining central state.
+
+**Consumers:** synthesis-daily-rituals v2.13.0+ enumerates day-start/day-end source-code sync from `ritual_sync: yes` entries; this skill reads the same files for repo and remote reconciliation; synthesis-repo-guard scans disk independently (unaffected, and may later soften alerts for `status: dormant` workspaces).
+
+---
+
 ## Git Repository Sync Protocol
 
 ### Repository Discovery
@@ -318,6 +349,8 @@ find ~/workspaces -maxdepth 3 -name ".git" -type d 2>/dev/null
 ```
 
 Maintain a **manifest file** (`git-repos.yaml`) that caches discovered repos, their categories, and their remote configurations for quick status checks and cross-machine remote sync. **Update using the merge protocol** on each sync — never overwrite the yaml from scratch. See **Git Remote Sync Protocol** and **Manifest Merge Protocol**.
+
+**v1.6.0:** repo entries now live per workspace in `<workspace>/.agents/repos.yaml` (see Per-Workspace Repo Manifests above); the central `repositories:` section is transitional and the scan's write target is the workspace manifest's fact fields.
 
 ### Per-Repo Sync Procedure
 
@@ -353,6 +386,8 @@ Maintain a **manifest file** (`git-repos.yaml`) that caches discovered repos, th
 ## Git Remote Sync Protocol
 
 Remote configurations (name + URL pairs) are per-machine state stored in each repo's `.git/config`. Without explicit sync, a remote added on one Mac won't exist on the other.
+
+**v1.6.0:** the reconciliation source for a repo's remotes is its workspace `repos.yaml` `remotes:` map (fact fields), not the central yaml.
 
 ### Capture (during scan/refresh)
 
@@ -399,6 +434,8 @@ If you maintain a `setup-git-remotes.sh` bootstrap script, it serves as a fallba
 ---
 
 ## Manifest Merge Protocol
+
+**v1.6.0 scope note:** with per-workspace `repos.yaml` files live, this protocol applies to `machines.yaml` and the transitional central yaml only — per-workspace manifests merge via git in their context repos.
 
 **CRITICAL SAFETY RULE: git-repos.yaml must NEVER be generated from scratch and overwritten.** The yaml is a shared manifest across multiple machines. Each machine may have repos, remotes, or metadata that other machines don't. A destructive overwrite from one machine's scan silently destroys data contributed by other machines.
 

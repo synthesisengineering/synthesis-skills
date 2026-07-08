@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.9.0] - 2026-07-08
+
+### Added
+
+- **`synthesis-mac-sync` bumped to v1.6.0 — per-workspace repo manifests (decentralized inventory).** The repo inventory moves from the central iCloud `git-repos.yaml` to one `repos.yaml` per workspace, living in the workspace's private context repo at `.agents/repos.yaml` and symlinked to `<workspace>/.agents/` by the existing v1.4.0 symlink layer — so cross-machine propagation is git (history, diffs, conflict detection), not iCloud. Schema separates scan-refreshed **fact** fields (path, remotes, default branches) from declared **policy** fields (workspace `status: active|dormant`, per-repo `ritual_sync`, `push_policy`, category, notes) that scans never touch. Two standing rules encoded: **retention** (departure or shutdown retires a workspace to `dormant` — retained on disk, sync paused, nothing ever auto-deleted; dead remotes report once and the clone is kept) and **selective cloning** (the manifest records chosen clones; never enumerate a remote org; listed-but-missing repos are surfaced as decisions unless a machine subscription opts into `auto_clone`). A thin router (`machines.yaml`) keeps the only centralized state: machine inventory, per-machine workspace subscriptions (supports restricted machines such as client-issued hardware), and the workspace → context-repo bootstrap map. The legacy `repositories:` section is transitional with a mandatory drift check until archived.
+- **`synthesis-daily-rituals` bumped to v2.13.0** — Day-Start 3a and Day-End 2 enumerate from `<workspace>/.agents/repos.yaml` (`ritual_sync: yes`) when present, honoring `status: dormant`; the workspace CLAUDE.md table remains the human-readable view and the fallback. The v2.12.1 no-activity-judgment rule applies to both sources.
+
+### Rationale
+
+Two independent repo lists (the central mac-sync manifest and the per-workspace CLAUDE.md tables) drifted in the same week — the central one was missing four repos and carried a three-week-stale remote layout. Decentralizing puts the list next to the workspace it describes (where agents already work daily), replaces the fragile additive-merge-over-iCloud discipline with git semantics, and compartmentalizes client inventories so a future restricted machine never holds other clients' names. The facts-vs-policy split is the drift fix: facts regenerate from disk safely; policy survives regeneration.
+
 ## [3.8.1] - 2026-07-08
 
 ### Changed
