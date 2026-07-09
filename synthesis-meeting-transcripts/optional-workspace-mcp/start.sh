@@ -53,9 +53,18 @@ export OAUTHLIB_INSECURE_TRANSPORT=1  # permits http://localhost redirect
 
 mkdir -p "$GOOGLE_MCP_CREDENTIALS_DIR"
 
-if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-  echo "workspace-mcp already running (PID $(cat "$PID_FILE")). To restart: ./stop.sh && ./start.sh"
-  exit 0
+if [ -f "$PID_FILE" ]; then
+  OLD_PID="$(cat "$PID_FILE")"
+  if kill -0 "$OLD_PID" 2>/dev/null && ps -p "$OLD_PID" -o command= 2>/dev/null | grep -q "workspace-mcp"; then
+    echo "workspace-mcp already running (PID $OLD_PID). To restart: ./stop.sh && ./start.sh"
+    exit 0
+  fi
+  # Stale PID file: the process exited, or (after a reboot) the OS recycled the
+  # PID for an unrelated process. kill -0 alone cannot tell these apart — it
+  # only proves *some* process has that PID — so verify the command line before
+  # trusting it. Otherwise this script no-ops with exit 0 forever and a
+  # KeepAlive={SuccessfulExit=false} supervisor never restarts the server.
+  rm -f "$PID_FILE"
 fi
 
 TOOL_TIER="${WORKSPACE_MCP_TOOL_TIER:-complete}"
