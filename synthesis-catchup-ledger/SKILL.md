@@ -5,7 +5,7 @@ description: Reconcile pending, missed, and incomplete commitments after any gap
 
 # Synthesis Catch-up Ledger
 
-**Version 0.2.0** (2026-07-07)
+**Version 0.2.1** (2026-07-09)
 
 > **Consumer note (v0.2.0):** synthesis-console v0.14+ renders ledgers live at
 > `/ledger` — it classifies H2 sections by the heading keywords used in this
@@ -79,6 +79,7 @@ For each scan candidate AND for commitments visible in sources the script does n
 - Local transcripts (Slack channels/DMs, meeting transcripts) for: "I'll …" commitments by the person, asks directed at the person, and replies that resolved items after the plan was written.
 - Project CONTEXT/session logs for items marked open that later sessions closed.
 - Live systems where cheap (ticket status, PR state, message threads) — per the cache-vs-truth discipline, the artifact trail is a cache; verify before classifying anything DELEGATED-UNVERIFIED or DONE-LATE.
+- **Cross-project items: the OWNING project's CONTEXT wins (v0.2.1).** Before classifying an item that belongs to another project — a decision, an approval, a delegated task tracked elsewhere — read that project's CONTEXT.md, not index.yaml descriptions, roll-up summaries, or a third project's mention of it. Secondary caches lose to the owner's working memory. (Field case: an approval recorded in the owning CONTEXT while a stale index description still said "pending" — the ledger briefly carried the wrong state.)
 
 Classification requires a source citation (file path or permalink) per item. No item enters the ledger from memory alone.
 

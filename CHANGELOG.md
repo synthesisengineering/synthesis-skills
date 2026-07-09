@@ -4,6 +4,12 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.11.1] - 2026-07-09
+
+### Changed
+
+- **`synthesis-catchup-ledger` bumped to v0.2.1** — Step 3 (judgment pass) gains the owning-CONTEXT rule: before classifying a cross-project item, read the owning project's CONTEXT.md; index descriptions, roll-up summaries, and third-project mentions are secondary caches that lose to the owner's working memory. Extracted from a field case where a stale index description said "pending" while the owning CONTEXT recorded the approval.
+
 ## [3.11.0] - 2026-07-08
 
 ### Added
