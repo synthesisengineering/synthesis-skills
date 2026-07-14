@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.13.0] - 2026-07-14
+
+### Changed
+
+- **`synthesis-model-tiers` v1.1.0 — one tier vocabulary across policy and product catalogs, plus local-model coverage.** Product catalogs (reference implementation: Ragbot's `engines.yaml` as of v3.6.0) now carry the same `frontier` / `efficient` / `light` labels in a per-model `tier:` field, replacing the older `small` / `medium` / `large` capability classes — one vocabulary for one concept, everywhere it appears. `tiers.yaml` gains an `ollama` provider block (hardware-gated: role lists carry only laptop-fit local models; bigger MoEs remain catalog-only), and the resolution rules document the catalog ⊇ role-lists containment. Consistency between the two files is now ENFORCED, not observed: Ragbot's `tests/test_engines_yaml.py` validates every catalog tier against the vocabulary and cross-checks the installed `tiers.yaml` (models named in role lists must exist in the catalog under the same tier), skipping cleanly on machines without the skill.
+
+### Rationale
+
+The initial release framed role labels and catalog capability classes as intentionally separate vocabularies. In practice they are the same three-rung concept wearing two sets of words, and the correspondence between the files was maintained only by editing them in the same sitting. Renaming the catalog field and adding the cross-check turns silent drift into a loud test failure.
+
 ## [3.12.0] - 2026-07-14
 
 ### Added

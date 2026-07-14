@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -30,12 +30,14 @@ Three roles, deliberately — even when a vendor's ladder has four rungs. Roles 
 
 1. Look up `providers.<provider>.<role>` in `tiers.yaml`. The list is an **ordered preference**: first entry preferred, later entries are supported fallbacks (cost, availability). Example: a provider may prefer its newest frontier model while keeping the previous flagship as the cost-conscious fallback in the same role.
 2. A provider with fewer rungs than another lists one model per role. When a vendor merges two rungs, the list shrinks — no schema change.
-3. `clients:` carries selector strings **only where a client UI differs from the API id**. Absent an entry, the API id is the selector.
-4. Agents generally **cannot switch their own model** — model selection is a client-side action the human performs (e.g., Claude Code's `/model`). When work calls for a different tier, say so and wait; do not attempt workarounds.
+3. **Local providers** (e.g., Ollama) are hardware-gated: their role lists carry only models that fit the operator's machine. A product catalog may keep bigger models for future hardware — catalog ⊇ role lists is allowed; the reverse is drift.
+4. `clients:` carries selector strings **only where a client UI differs from the API id**. Absent an entry, the API id is the selector.
+5. Agents generally **cannot switch their own model** — model selection is a client-side action the human performs (e.g., Claude Code's `/model`). When work calls for a different tier, say so and wait; do not attempt workarounds.
 
 ## What this file is NOT
 
 - **Not a capability catalog.** Context windows, pricing, token limits, and thinking modes belong to each product's own config (e.g., Ragbot's `engines.yaml`). This file only maps roles to ids.
+- **Not a second vocabulary.** Product catalogs use the **same** three words in a per-model `tier:` field (`frontier` / `efficient` / `light`); this file adds the cross-provider ordered preference within each role. One vocabulary, two responsibilities — and a consistency test keeps them agreeing (see Consumer guidance).
 - **Not telemetry or history.** It reflects the present. Past choices live in session logs (see the Agent Attribution convention in synthesis-context-lifecycle).
 
 ## Update protocol
@@ -50,7 +52,7 @@ Three roles, deliberately — even when a vendor's ladder has four rungs. Roles 
 
 - **In skills and project docs:** write "use a frontier-tier model" or "efficient-tier is sufficient," optionally with the pointer *(resolve via synthesis-model-tiers)*.
 - **In agent memory/preferences:** store the role rule ("efficient for routine sweeps; frontier when the rules don't cover it"), not the model name.
-- **In products:** read `tiers.yaml` programmatically, or maintain a `tier:`/`category:` mapping in the product's own catalog that a maintainer reconciles against this file.
+- **In products:** read `tiers.yaml` programmatically, or carry a per-model `tier:` field in the product's own catalog using the same vocabulary — and enforce agreement with a test rather than reconciling by eye. Reference implementation: Ragbot's `tests/test_engines_yaml.py` (`TestTierVocabulary`, `TestTierRoleConsistency`), which validates every catalog tier and cross-checks the installed `tiers.yaml`, skipping cleanly where the skill isn't installed.
 
 ## License
 

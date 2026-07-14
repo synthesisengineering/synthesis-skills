@@ -15,12 +15,19 @@
 #   light     — high-volume, low-stakes bulk work (classification at scale,
 #               summarization drips)
 #
-# Per role and provider, `models` is an ORDERED PREFERENCE LIST: the first
-# entry is preferred; later entries are supported fallbacks (cost,
-# availability). A provider whose ladder has fewer rungs than another's
-# simply lists one model per role; a provider with more rungs expresses the
-# extras as ordered fallbacks. When a vendor merges two rungs, the list
-# shrinks — no schema change.
+# Per role and provider, the role key holds an ORDERED PREFERENCE LIST:
+# the first entry is preferred; later entries are supported fallbacks
+# (cost, availability). A provider whose ladder has fewer rungs than
+# another's simply lists one model per role; a provider with more rungs
+# expresses the extras as ordered fallbacks. When a vendor merges two
+# rungs, the list shrinks — no schema change.
+#
+# Product catalogs (e.g. Ragbot's engines.yaml) use the SAME tier
+# vocabulary in a per-model `tier:` field. A catalog may carry more
+# models than the role lists bless (local models kept for bigger
+# hardware); the reverse — a model listed here but absent from the
+# catalog, or listed under a different role than its catalog tier —
+# is drift, and Ragbot's tests/test_engines_yaml.py fails on it.
 #
 # Update protocol: verify identifiers against the provider's official docs
 # BEFORE editing (never from an agent's training data); record the
@@ -46,6 +53,16 @@ providers:
     frontier: [gemini/gemini-3.1-pro-preview]
     efficient: [gemini/gemini-3-flash-preview]
     light: [gemini/gemini-3.1-flash-lite-preview]
+  ollama:
+    # Local models. Ids are Ollama tags (as configured in the product
+    # catalog). Role resolution for local models is hardware-gated: these
+    # lists carry only models that fit a single Apple-Silicon laptop.
+    # Mac-Studio-class MoEs (deepseek-v3.2:671b, mistral-large-3:675b,
+    # llama4:maverick) stay catalog-only until such hardware exists here.
+    verified: "2026-07-14"           # against Ragbot engines.yaml (v3.4 open-weights set)
+    frontier: [qwen3.6:35b-a3b, gemma4:31b]   # coding-optimized MoE flagship first; dense Gemma as quality fallback
+    efficient: [gemma4:26b, qwen3.6:27b]
+    light: [gemma4:e4b]
 
 # Client-selector strings, ONLY where they differ from the provider API id.
 # Claude Code's /model command takes the API ids verbatim (verified live
