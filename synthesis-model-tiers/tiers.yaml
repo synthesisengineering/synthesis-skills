@@ -1,0 +1,53 @@
+# tiers.yaml — canonical cross-provider model-tier resolution table.
+#
+# This file answers ONE question: "which model plays which ROLE right now?"
+# It is deliberately NOT a capability catalog (context windows, pricing,
+# thinking modes) — each product keeps its own catalog (e.g. Ragbot's
+# engines.yaml). Consumers — skills, project docs, agent memory, humans
+# switching models in a client UI — reference the ROLE LABELS and resolve
+# them here.
+#
+# Roles (three, deliberately fewer than some vendors' ladders):
+#   frontier  — judgment calls, novel patterns, skill/script authorship,
+#               cross-system changes, anything where being wrong is expensive
+#   efficient — routine rule-following execution (daily sweeps, mechanical
+#               runs, well-templated work)
+#   light     — high-volume, low-stakes bulk work (classification at scale,
+#               summarization drips)
+#
+# Per role and provider, `models` is an ORDERED PREFERENCE LIST: the first
+# entry is preferred; later entries are supported fallbacks (cost,
+# availability). A provider whose ladder has fewer rungs than another's
+# simply lists one model per role; a provider with more rungs expresses the
+# extras as ordered fallbacks. When a vendor merges two rungs, the list
+# shrinks — no schema change.
+#
+# Update protocol: verify identifiers against the provider's official docs
+# BEFORE editing (never from an agent's training data); record the
+# verification date per provider; unknown means the literal string
+# "unknown", never a guess.
+
+version: 1
+updated: "2026-07-14"
+
+providers:
+  anthropic:
+    verified: "2026-07-14"           # https://platform.claude.com/docs/en/docs/about-claude/models/overview
+    frontier: [claude-fable-5, claude-opus-4-8]   # prefer Fable; Opus is the cost-conscious frontier fallback
+    efficient: [claude-sonnet-5]
+    light: [claude-haiku-4-5-20251001]            # alias claude-haiku-4-5
+  openai:
+    verified: "2026-07-14"           # https://developers.openai.com/api/docs/models
+    frontier: [gpt-5.6-sol]
+    efficient: [gpt-5.6-terra]
+    light: [gpt-5.6-luna]
+  google:
+    verified: "2026-04-24"           # carried from the April engines.yaml snapshot; refresh before relying on it
+    frontier: [gemini/gemini-3.1-pro-preview]
+    efficient: [gemini/gemini-3-flash-preview]
+    light: [gemini/gemini-3.1-flash-lite-preview]
+
+# Client-selector strings, ONLY where they differ from the provider API id.
+# Claude Code's /model command takes the API ids verbatim (verified live
+# 2026-07-14: `/model claude-sonnet-5`, `/model claude-fable-5`).
+clients: {}

@@ -10,6 +10,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 - **`synthesis-meeting-transcripts` bumped to v0.4.1** — `optional-workspace-mcp/start.sh`'s already-running check no longer trusts `kill -0` alone: after a reboot the OS can recycle the recorded PID for an unrelated process, making the stale PID file look live, so the script no-ops with exit 0 and a `KeepAlive={SuccessfulExit=false}` supervisor never restarts the server. The check now also verifies the PID's command line matches workspace-mcp and clears the stale PID file otherwise. Field case: the server was down for ~24 hours while launchd reported a healthy last-exit-0, because the pidfile pointed at a recycled macOS system-service PID.
 
+## [3.12.0] - 2026-07-14
+
+### Added
+
+- **New skill: `synthesis-model-tiers` v1.0.0 — cross-provider model-tier convention.** Three role labels — **frontier** (judgment, novel patterns, skill authorship), **efficient** (routine rule-following execution), **light** (high-volume bulk) — resolved to current model identifiers per provider in a single canonical `tiers.yaml`. Skills, project docs, and agent memory reference the labels and never hardcode model names; when a vendor ships a new generation, one file changes. Per role and provider the mapping is an ORDERED PREFERENCE LIST (first = preferred, rest = supported fallbacks), which lets a four-rung vendor ladder express itself inside three roles (e.g., a newest-flagship-first frontier list with the prior flagship as the cost-conscious fallback) and absorbs future rung-merges without schema change. Ships with an update protocol (verify ids against official provider docs, never training data; per-provider verification dates; literal `unknown` over guesses; models only move forward) and consumer guidance for skills, memory, and products. Deliberately NOT a capability catalog — context windows/pricing/thinking metadata stay in each product's own config.
+
+### Rationale
+
+Model names were creeping into skills, memory files, and standing instructions across multiple agentic tools, each copy going stale on its own schedule. One role-to-id table — the same canonical-YAML-plus-readable-mirror pattern already used for the workspace repo manifests — makes tier language portable across Claude Code, Codex, and future runtimes, and makes vendor refreshes a one-file change.
+
 ## [3.11.1] - 2026-07-09
 
 ### Changed
