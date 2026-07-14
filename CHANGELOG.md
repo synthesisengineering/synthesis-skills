@@ -4,12 +4,6 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [3.11.2] - 2026-07-09
-
-### Fixed
-
-- **`synthesis-meeting-transcripts` bumped to v0.4.1** — `optional-workspace-mcp/start.sh`'s already-running check no longer trusts `kill -0` alone: after a reboot the OS can recycle the recorded PID for an unrelated process, making the stale PID file look live, so the script no-ops with exit 0 and a `KeepAlive={SuccessfulExit=false}` supervisor never restarts the server. The check now also verifies the PID's command line matches workspace-mcp and clears the stale PID file otherwise. Field case: the server was down for ~24 hours while launchd reported a healthy last-exit-0, because the pidfile pointed at a recycled macOS system-service PID.
-
 ## [3.12.0] - 2026-07-14
 
 ### Added
@@ -19,6 +13,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 ### Rationale
 
 Model names were creeping into skills, memory files, and standing instructions across multiple agentic tools, each copy going stale on its own schedule. One role-to-id table — the same canonical-YAML-plus-readable-mirror pattern already used for the workspace repo manifests — makes tier language portable across Claude Code, Codex, and future runtimes, and makes vendor refreshes a one-file change.
+
+## [3.11.2] - 2026-07-09
+
+### Fixed
+
+- **`synthesis-meeting-transcripts` bumped to v0.4.1** — `optional-workspace-mcp/start.sh`'s already-running check no longer trusts `kill -0` alone: after a reboot the OS can recycle the recorded PID for an unrelated process, making the stale PID file look live, so the script no-ops with exit 0 and a `KeepAlive={SuccessfulExit=false}` supervisor never restarts the server. The check now also verifies the PID's command line matches workspace-mcp and clears the stale PID file otherwise. Field case: the server was down for ~24 hours while launchd reported a healthy last-exit-0, because the pidfile pointed at a recycled macOS system-service PID.
 
 ## [3.11.1] - 2026-07-09
 
