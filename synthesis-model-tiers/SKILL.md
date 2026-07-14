@@ -1,11 +1,11 @@
 ---
 name: synthesis-model-tiers
-description: "Cross-provider model-tier convention for agentic work: three role labels (frontier, efficient, light) resolved to current model IDs per provider in tiers.yaml, so skills, project docs, and memory never hardcode model names. Use when asked about: model tiers, which model, model selection, frontier model, efficient model, switch models, model equivalents across providers, update model table."
+description: "Cross-provider model-tier convention for agentic work: three role labels (judgment, routine, bulk — formerly frontier, efficient, light) resolved to current model IDs per provider in tiers.yaml, so skills, project docs, and memory never hardcode model names. Use when asked about: model tiers, which model, model selection, judgment model, routine model, bulk model, frontier model, efficient model, switch models, model equivalents across providers, update model table."
 license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "2.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -20,16 +20,22 @@ Skills, project context files, agent memory, and standing instructions reference
 
 | Role | Use for | Character |
 |---|---|---|
-| **frontier** | Judgment calls, novel patterns, skill/script authorship, cross-system changes — anywhere being wrong is expensive | The most capable model you can afford |
-| **efficient** | Routine rule-following execution: daily sweeps, mechanical runs, well-templated work | The balanced default |
-| **light** | High-volume, low-stakes bulk work: classification at scale, summarization drips | The cheapest adequate option |
+| **judgment** | Judgment calls, novel patterns, skill/script authorship, cross-system changes — anywhere being wrong is expensive | The most capable model you can afford |
+| **routine** | Routine rule-following execution: daily sweeps, mechanical runs, well-templated work | The balanced default |
+| **bulk** | High-volume, low-stakes work: classification at scale, summarization drips | The cheapest adequate option |
 
-Three roles, deliberately — even when a vendor's ladder has four rungs. Roles describe **the work**, not the vendor's catalog.
+Three roles, deliberately — even when a vendor's ladder has four or five rungs. Roles describe **the work**, not the vendor's catalog.
+
+## Why these words
+
+The labels name the work you hand a model, not the model itself — because vendor vocabulary is unstable by design. v1.x of this skill used `frontier/efficient/light`; "frontier" collapsed within a day when it turned out the industry applies that word to a vendor's *entire current generation* (OpenAI labels all three GPT-5.6 models "frontier"). Work categories are the thing no vendor's marketing will ever collide with: nobody ships a "Routine" model. The full reasoning — the selection criteria, the fuel-grade and airline-cabin analogies, and every rejected candidate — is in [`references/naming-rationale.md`](references/naming-rationale.md).
+
+The borrowing rule that fell out of the rename: **borrow an industry word only where you mean exactly what the industry means** (`flagship` = the vendor's showcase model — kept; `frontier` — dropped).
 
 ## Resolution rules
 
-1. Look up `providers.<provider>.<role>` in `tiers.yaml`. The list is an **ordered preference**: first entry preferred, later entries are supported fallbacks (cost, availability). Example: a provider may prefer its newest frontier model while keeping the previous flagship as the cost-conscious fallback in the same role.
-2. A provider with fewer rungs than another lists one model per role. When a vendor merges two rungs, the list shrinks — no schema change.
+1. Look up `providers.<provider>.<role>` in `tiers.yaml`. The list is an **ordered preference**: first entry preferred, later entries are supported fallbacks (cost, availability). Example: a provider may prefer its newest top model while keeping the previous flagship as the cost-conscious fallback in the same role.
+2. A provider with fewer rungs than another lists one model per role — the same model may serve two roles. When a vendor merges two rungs, a list shrinks; no schema change.
 3. **Local providers** (e.g., Ollama) are hardware-gated: their role lists carry only models that fit the operator's machine. A product catalog may keep bigger models for future hardware — catalog ⊇ role lists is allowed; the reverse is drift.
 4. `clients:` carries selector strings **only where a client UI differs from the API id**. Absent an entry, the API id is the selector.
 5. Agents generally **cannot switch their own model** — model selection is a client-side action the human performs (e.g., Claude Code's `/model`). When work calls for a different tier, say so and wait; do not attempt workarounds.
@@ -37,7 +43,7 @@ Three roles, deliberately — even when a vendor's ladder has four rungs. Roles 
 ## What this file is NOT
 
 - **Not a capability catalog.** Context windows, pricing, token limits, and thinking modes belong to each product's own config (e.g., Ragbot's `engines.yaml`). This file only maps roles to ids.
-- **Not a second vocabulary.** Product catalogs use the **same** three words in a per-model `tier:` field (`frontier` / `efficient` / `light`); this file adds the cross-provider ordered preference within each role. One vocabulary, two responsibilities — and a consistency test keeps them agreeing (see Consumer guidance).
+- **Not a second vocabulary.** Product catalogs use the **same** three words in a per-model `tier:` field (`judgment` / `routine` / `bulk`); this file adds the cross-provider ordered preference within each role. One vocabulary, two responsibilities — and a consistency test keeps them agreeing (see Consumer guidance).
 - **Not telemetry or history.** It reflects the present. Past choices live in session logs (see the Agent Attribution convention in synthesis-context-lifecycle).
 
 ## Update protocol
@@ -47,11 +53,12 @@ Three roles, deliberately — even when a vendor's ladder has four rungs. Roles 
 3. Unknown values are the literal string `unknown` — never a guess. A wrong model id in a canonical table is worse than an explicit gap.
 4. Models only move **forward**. If a listed model errors, the problem is configuration or code, not the model choice.
 5. After editing, propagate: reinstall skill copies and refresh any human-readable mirror (e.g., a Model Tier Convention section in global agent instructions).
+6. If a role label is ever suspected of colliding with live vendor vocabulary, re-run the collision check in `references/naming-rationale.md` before writing the label into anything new.
 
 ## Consumer guidance
 
-- **In skills and project docs:** write "use a frontier-tier model" or "efficient-tier is sufficient," optionally with the pointer *(resolve via synthesis-model-tiers)*.
-- **In agent memory/preferences:** store the role rule ("efficient for routine sweeps; frontier when the rules don't cover it"), not the model name.
+- **In skills and project docs:** write "use a judgment-tier model" or "routine-tier is sufficient," optionally with the pointer *(resolve via synthesis-model-tiers)*.
+- **In agent memory/preferences:** store the role rule ("routine for daily sweeps; judgment when the rules don't cover it"), not the model name.
 - **In products:** read `tiers.yaml` programmatically, or carry a per-model `tier:` field in the product's own catalog using the same vocabulary — and enforce agreement with a test rather than reconciling by eye. Reference implementation: Ragbot's `tests/test_engines_yaml.py` (`TestTierVocabulary`, `TestTierRoleConsistency`), which validates every catalog tier and cross-checks the installed `tiers.yaml`, skipping cleanly where the skill isn't installed.
 
 ## License

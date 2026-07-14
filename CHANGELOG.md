@@ -4,6 +4,12 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.14.0] - 2026-07-14
+
+### Changed
+
+- **`synthesis-model-tiers` v2.0.0 — BREAKING: role labels renamed `frontier/efficient/light` → `judgment/routine/bulk`.** The old top label collided with live vendor vocabulary within a day of shipping: the industry uses "frontier" for a vendor's entire current generation (OpenAI applies it to all three GPT-5.6 models, including the cost-optimized one), the opposite of our top-rung meaning — and a tier vocabulary whose primary readers are LLM agents must be corpus-collision resistant, because agents resolve collided words the vendor's way. The new labels promote the roles' own definitions into the label position: they name the WORK (judgment calls where being wrong is expensive; routine rule-following execution; high-volume bulk), which no vendor's marketing will ever collide with. New `references/naming-rationale.md` records the selection criteria, the cross-industry analogies (fuel grades, airline cabins, shipping classes — durable grade vocabularies name the buyer's decision, not the product), the full rejected-candidates table (critical, premium/standard/economy, performance/balanced/efficiency, heavy, lite, base, deep, and others — each with its specific collision or inversion), and the borrowing rule: use an industry word only where you mean exactly what the industry means (`flagship` stays; `frontier` goes). tiers.yaml bumps to `version: 2`; consumers (Ragbot v3.6.0 `tier:` values, global agent instructions, agent memory) rename in the same coordinated pass.
+
 ## [3.13.0] - 2026-07-14
 
 ### Changed

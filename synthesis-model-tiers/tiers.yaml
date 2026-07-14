@@ -7,13 +7,20 @@
 # switching models in a client UI — reference the ROLE LABELS and resolve
 # them here.
 #
-# Roles (three, deliberately fewer than some vendors' ladders):
-#   frontier  — judgment calls, novel patterns, skill/script authorship,
-#               cross-system changes, anything where being wrong is expensive
-#   efficient — routine rule-following execution (daily sweeps, mechanical
-#               runs, well-templated work)
-#   light     — high-volume, low-stakes bulk work (classification at scale,
-#               summarization drips)
+# Roles (three, deliberately fewer than some vendors' ladders). The labels
+# name the WORK, not the model — vendors name artifacts; work categories
+# are the thing that stays stable across vendor ladder changes:
+#   judgment — judgment calls, novel patterns, skill/script authorship,
+#              cross-system changes, anything where being wrong is expensive
+#   routine  — routine rule-following execution (daily sweeps, mechanical
+#              runs, well-templated work)
+#   bulk     — high-volume, low-stakes work (classification at scale,
+#              summarization drips)
+#
+# Naming history: v1.x used frontier/efficient/light. Renamed 2026-07-14
+# because the industry uses "frontier" to mean the whole current generation
+# (OpenAI applies it to all three GPT-5.6 models), colliding with our
+# top-rung meaning. Full rationale: references/naming-rationale.md.
 #
 # Per role and provider, the role key holds an ORDERED PREFERENCE LIST:
 # the first entry is preferred; later entries are supported fallbacks
@@ -34,25 +41,25 @@
 # verification date per provider; unknown means the literal string
 # "unknown", never a guess.
 
-version: 1
+version: 2
 updated: "2026-07-14"
 
 providers:
   anthropic:
     verified: "2026-07-14"           # https://platform.claude.com/docs/en/docs/about-claude/models/overview
-    frontier: [claude-fable-5, claude-opus-4-8]   # prefer Fable; Opus is the cost-conscious frontier fallback
-    efficient: [claude-sonnet-5]
-    light: [claude-haiku-4-5-20251001]            # alias claude-haiku-4-5
+    judgment: [claude-fable-5, claude-opus-4-8]   # prefer Fable; Opus is the cost-conscious judgment fallback
+    routine: [claude-sonnet-5]
+    bulk: [claude-haiku-4-5-20251001]             # alias claude-haiku-4-5
   openai:
     verified: "2026-07-14"           # https://developers.openai.com/api/docs/models
-    frontier: [gpt-5.6-sol]
-    efficient: [gpt-5.6-terra]
-    light: [gpt-5.6-luna]
+    judgment: [gpt-5.6-sol]
+    routine: [gpt-5.6-terra]
+    bulk: [gpt-5.6-luna]
   google:
     verified: "2026-04-24"           # carried from the April engines.yaml snapshot; refresh before relying on it
-    frontier: [gemini/gemini-3.1-pro-preview]
-    efficient: [gemini/gemini-3-flash-preview]
-    light: [gemini/gemini-3.1-flash-lite-preview]
+    judgment: [gemini/gemini-3.1-pro-preview]
+    routine: [gemini/gemini-3-flash-preview]
+    bulk: [gemini/gemini-3.1-flash-lite-preview]
   ollama:
     # Local models. Ids are Ollama tags (as configured in the product
     # catalog). Role resolution for local models is hardware-gated: these
@@ -60,9 +67,9 @@ providers:
     # Mac-Studio-class MoEs (deepseek-v3.2:671b, mistral-large-3:675b,
     # llama4:maverick) stay catalog-only until such hardware exists here.
     verified: "2026-07-14"           # against Ragbot engines.yaml (v3.4 open-weights set)
-    frontier: [qwen3.6:35b-a3b, gemma4:31b]   # coding-optimized MoE flagship first; dense Gemma as quality fallback
-    efficient: [gemma4:26b, qwen3.6:27b]
-    light: [gemma4:e4b]
+    judgment: [qwen3.6:35b-a3b, gemma4:31b]   # coding-optimized MoE flagship first; dense Gemma as quality fallback
+    routine: [gemma4:26b, qwen3.6:27b]
+    bulk: [gemma4:e4b]
 
 # Client-selector strings, ONLY where they differ from the provider API id.
 # Claude Code's /model command takes the API ids verbatim (verified live
