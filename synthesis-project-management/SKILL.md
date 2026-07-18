@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -243,6 +243,14 @@ Before pausing work that may continue in another tool:
 
 When resuming work from another agent, trust the project files over tool-specific memory. The continuity source of truth is the synthesis project context, not the previous assistant's chat transcript.
 
+### Parallel Sub-Agent Dispatch
+
+Fan-out to multiple sub-agents working the same project concurrently — a batch of parallel repo migrations, a multi-agent reorganization run, several research tasks feeding one project — is now a common pattern, not an edge case. Two risks are specific to concurrent writers and aren't covered by the sequential protocols above.
+
+**Git-index collisions.** When more than one agent (or background process) can commit to the same repo in the same window, `git add <your files>` followed by a bare `git commit` does not commit only what you just added — it commits everything currently staged, including anything another agent staged first. `git add` extends the index; it does not replace it. Before every commit in a repo where concurrent writers are plausible, run `git status --short` and `git diff --cached --name-only` first, and commit only the paths this invocation intends (`git commit -o <paths>`, or unstage what isn't yours). Treat this as a mechanical prefix to the commit step, not a judgment call reserved for commits that "feel risky" — the risk lives in what might already be staged, which by definition isn't visible without looking first. (General git-mechanics and repo-scoping rules live in synthesis-context-lifecycle's Commit Protocol; this is the one addition specific to concurrent writers in the same repo.)
+
+**Tracking-doc aggregation.** A sub-agent dispatched against its own slice of a project — its own repo, its own batch — correctly leaves its siblings' in-flight work alone. That discipline has a side effect: no single agent sees the combined result. A shared tracking doc (CONTEXT.md, index.yaml) updated only by whichever agent happened to touch it last will under- or overstate what the batch actually accomplished. After any parallel dispatch, the orchestrator — not an individual sub-agent — reads every report as a set, reconciles them, and updates CONTEXT.md/index.yaml to reflect the true combined state.
+
 ---
 
 ## File Requirements by Project Status
@@ -255,6 +263,8 @@ When resuming work from another agent, trust the project files over tool-specifi
 | completed | Required (summary) | Optional | Optional | ≤80 lines |
 | archived | Frozen | Frozen | Frozen | N/A |
 
+Resuming a `paused` project carries the highest scope-drift risk of any status — see the scope re-verification step in Project Discovery below before dispatching work against one.
+
 ---
 
 ## Project Discovery
@@ -265,7 +275,8 @@ When a user mentions a project:
 2. Match user's phrase against project `name`, `description`, `id`, `tags`
 3. If match found, read the project's `CONTEXT.md`
 4. Summarize current state and next steps
-5. Begin work from where it left off
+5. **Re-verify scope before dispatching work, especially for a paused project.** CONTEXT.md's "N items remaining" (or any count a plan document asserts is current) is a claim made at write time, not a live query — it goes stale the moment anything else touches the same corpus, even a workstream that has nothing to do with this project and doesn't know it exists. Before batch-dispatching agents against a stated scope, re-derive it from live state with a cheap direct check (`find`, `grep`, `wc -l` against the actual files or repos) rather than trusting the document's count. This is cheapest immediately before dispatch — the highest-leverage moment to catch drift, before agent-hours are spent at the wrong scope — and it applies even within a single session, since a count computed early in a long run can go stale by the time a later phase acts on it. If the recount disagrees with the document, update the document in the same pass rather than silently working around the discrepancy. (Distinct from context-lifecycle's Session Start Protocol, which verifies CONTEXT.md's own freshness against this project's git log — that catches a stale *file*; this catches a stale *scope claim* that can drift even when the file itself looks current.)
+6. Begin work from where it left off
 
 ---
 
@@ -279,6 +290,8 @@ When a user mentions a project:
 | Not checking lessons/ | Repeat mistakes | Grep at session start |
 | Creating separate patterns.md | Duplicate, gets stale | Use `type: pattern` in lessons/ |
 | Maintaining index files for lessons | Gets stale | Use date prefixes, `ls -t` |
+| Trusting a paused project's stated remaining-scope count | Batch-dispatches the wrong amount of work — wastes agent-hours on already-done items, or silently leaves new items undone | Re-derive the count from live disk/repo state immediately before dispatch, even when the document looks current |
+| Bare `git commit` in a repo where sub-agents dispatch concurrently | Sweeps another agent's staged work into your commit | `git status --short` / `git diff --cached --name-only` before every commit; commit only your own paths |
 
 ---
 

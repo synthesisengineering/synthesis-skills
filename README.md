@@ -4,6 +4,8 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**Multi-agent dispatch hygiene for project management (July 2026).** `synthesis-project-management` **v1.2.0** adds a "Parallel Sub-Agent Dispatch" section covering two risks specific to concurrent writers on one project: git-index collisions (a bare `git commit` after `git add <your files>` commits everything currently staged, not just what you added, so checking `git status --short` / `git diff --cached --name-only` first has to be a mechanical prefix, not a judgment call) and tracking-doc aggregation (sub-agents that each correctly leave siblings' work alone also mean no single agent sees the combined result, so the orchestrator reconciles all reports before updating the shared CONTEXT.md/index.yaml). Project Discovery also gains a scope re-verification step: before dispatching work against a paused project's stated "N items remaining," re-derive that count from live disk/repo state — the claim goes stale the moment anything else touches the same corpus, even a workstream unaware the paused project exists. See the [3.16.0 release notes](CHANGELOG.md).
+
 **Google's Open Knowledge Format, validated and converted (July 2026).** New skill `synthesis-okf` **v1.0.0** fills the one gap Google's own OKF repo leaves open: a conformance validator and an idempotent frontmatter converter for OKF v0.1 (announced 2026-06-12 by Google Cloud's Sam McVeety and Amir Hormati). `okf_validate.py` checks the spec's three hard rules plus soft-guidance warnings and link-checking; `okf_convert.py` backfills frontmatter onto an existing markdown corpus without ever overwriting what's already there. Proven across several real conversions, from a small public reference repo up to a 72-doc personal knowledge base. See the [3.15.0 release notes](CHANGELOG.md).
 
 **Day-end that survives tired evenings (July 2026).** `synthesis-daily-rituals` **v2.14.0** adds a two-speed day-end: full mode stays, and a new ~10-minute **Quick Close** keeps only the three moments that need a human — send-or-release on decay-tagged drafts, keep/drop on the day's lesson candidates, and a closure read-back. The weekly loose-ends review becomes owed-weekly (it runs at the first ritual on/after Friday instead of living inside the most-skipped one), time-sensitive drafts carry explicit `Decays:` dates from creation, and a state file plus a notification-only nudge make skipped evenings visible instead of silent. The shipped `day-end` script is a launcher, not a runner — the ritual always executes inside the agentic coding session. See the [3.11.0 release notes](CHANGELOG.md).
@@ -105,7 +107,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 |-------|-------------|
 | `synthesis-autopilot` | Autonomous-execution mode for explicitly delegated work: plan-file protocol, batched decisions, standing gates preserved |
 | `synthesis-context-lifecycle` | Three-tier context architecture for managing AI working memory, with agent attribution for multi-agent provenance |
-| `synthesis-project-management` | Lightweight PM system for human-agent collaboration, with cross-agent handoff and agent attribution protocols |
+| `synthesis-project-management` | Lightweight PM system for human-agent collaboration, with cross-agent handoff, agent attribution, and parallel sub-agent dispatch protocols |
 | `synthesis-daily-rituals` | Day-start and day-end checklists with dependency-ordered rituals |
 
 ### Synthesis Engineering

@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.16.0] - 2026-07-18
+
+### Added
+
+- **`synthesis-project-management` bumped to v1.2.0 — parallel sub-agent dispatch hygiene and paused-project scope re-verification.** New "Parallel Sub-Agent Dispatch" section names two risks specific to concurrent writers in the same project: git-index collisions (a bare `git commit` after `git add <your files>` commits everything currently staged, not just what you added — `git add` extends the index, it does not replace it — so `git status --short` / `git diff --cached --name-only` needs to run as a mechanical prefix to every commit, not a judgment call reserved for commits that "feel risky") and tracking-doc aggregation (a sub-agent that correctly leaves its siblings' in-flight work alone also means no single agent sees the combined result — the orchestrator, not any one sub-agent, reads every report as a set and reconciles the shared CONTEXT.md/index.yaml). Separately, Project Discovery gains a scope re-verification step: a paused project's stated "N items remaining" is a claim made at write time, not a live query, and goes stale the moment anything else touches the same corpus — even a workstream with no awareness the paused project exists. Re-derive the count from live disk/repo state immediately before batch-dispatching work against it. This is distinct from context-lifecycle's Session Start Protocol, which checks a file's own freshness against git log, not whether the file's scope claim still matches live reality.
+
+### Rationale
+
+Both additions come from real multi-agent orchestration incidents, not speculation: a git-index collision that swept a background agent's in-progress deletions into an unrelated commit, and a paused project whose recorded "remaining work" count was stale in both directions (some of it already done elsewhere, some of it newly created and uncounted) by the time it was resumed. Fan-out to concurrent sub-agents against one project, and pausing/resuming projects over weeks-to-months gaps, are now routine enough in practice that the skill should name the failure modes explicitly rather than leave them to be rediscovered.
+
 ## [3.15.0] - 2026-07-17
 
 ### Added
