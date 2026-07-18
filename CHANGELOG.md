@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.17.0] - 2026-07-18
+
+### Added
+
+- **`synthesis-implementation-integrity` bumped to v1.1.0 — skip-vs-pass aggregation trap in the Test Honesty pass.** New Step 6 names a specific reading error: "X passed, Y skipped, 0 failed" gets read as "tests pass," but it's a different claim — the tests that ran didn't fail, and some didn't run at all. A skip is an absence of information, not evidence. The new step asks whether the skipped set could plausibly contain the one test that validates the exact property a decision depends on, and treats a confident "no" as the bar for proceeding — not the aggregate count. The condensed Quick Integrity Check gets the same one-clause reminder. Field case included, genericized: a suite reporting "911 passed, 29 skipped, 0 failed" looked green; the skips were exactly the tests gated behind a live database connection, including the one that validated a workspace-isolation security control — which turned out to be a silent no-op once that test finally ran.
+
+### Rationale
+
+The existing Test Honesty pass already caught mock gaps and misleading test names, but had no check for the specific shape of this failure: a suite-level summary that aggregates skips and passes into one green verdict. That gap is most dangerous exactly where the stakes are highest — security, data-integrity, and irreversibility claims — because a skip there is silent, and "0 failed" is what a reader's eye catches on the way past it.
+
 ## [3.16.0] - 2026-07-18
 
 ### Added

@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -159,7 +159,11 @@ throw new Error("not implemented")
 
 **Step 5: Apply the suspicion rule.** If all tests pass without any test modifications after a change that affects data storage, external integrations, or system boundaries, the tests almost certainly don't cover the change. A change that's genuinely tested usually requires at least one new assertion.
 
-**Challenge question:** "If I deleted the implementation I just wrote but left the tests, would any test fail?" If no test would fail, the tests don't actually cover the change.
+**Step 6: Separate skipped from passed.** "X passed, Y skipped, 0 failed" is not the same claim as "tests pass" — it's "the tests that ran didn't fail, and some tests didn't run at all." A skip is an absence of information, not a green light. Read what was actually skipped, not just the aggregate count, and ask specifically: could the skipped set contain the one test that validates the exact property this decision depends on? For a cosmetic or environment-gated test, a skip is usually neutral. For a security, data-integrity, or irreversibility claim, it isn't — if the answer isn't a confident no, go run the skipped test before treating the suite as passing.
+
+*Field case:* a suite reporting "911 passed, 29 skipped, 0 failed" read as green. The 29 skips were exactly the tests gated behind a live database connection — including the one test that validated a workspace-isolation security control. When that test finally ran, it failed: the isolation was silently a no-op, because the connecting database role carried a built-in bypass for the exact policy meant to enforce it. Nothing in the aggregate summary surfaced this — the one test that would have caught it was simply never executed.
+
+**Challenge question:** "If I deleted the implementation I just wrote but left the tests, would any test fail?" If no test would fail, the tests don't actually cover the change. And separately: "Of everything that was skipped, could any of it have been the test that mattered?"
 
 ### Pass 4: Environment Parity
 
@@ -247,7 +251,7 @@ For smaller changes that don't warrant all seven passes, run this condensed vers
 
 1. **Grep the new field/function name** across the full codebase — is it referenced in every layer it should be?
 2. **Search changed files** for `TODO`, `FIXME`, `for now`, `temporary`, `stub`
-3. **Read the most critical test** — does it exercise the actual code path, or mock it away?
+3. **Read the most critical test** — does it exercise the actual code path, mock it away, or was it skipped entirely? A skip is not a pass.
 4. **Ask:** "If I deploy this to a fresh environment, what would I need to configure for it to work?"
 5. **If this is the Nth implementation in a series:** re-read the Nth one as carefully as the first
 
