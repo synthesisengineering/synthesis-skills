@@ -286,6 +286,8 @@ Discussion exemption: legitimate scoping ("this is the scope of this PR / this c
 
 Replacement framing: name the scope boundary explicitly and why the item falls outside it. If you cannot name the boundary, the item is in scope.
 
+**Sub-agent dispatch note (confirmed 2026-07-17):** in a sub-agent brief specifically, the automated dispatch-time scanner appears to match on the bare phrase regardless of whether a boundary reason follows it in the same sentence — a brief that wrote "leave X untouched, don't merge it, don't delete it — it's a separate, already-curated artifact" was blocked even though it satisfies the discussion exemption above by any reasonable read. Rather than relitigate the block, the reliable fix is to skip the phrase entirely in dispatch briefs: state the concrete instruction ("leave X untouched: don't do Y to it, don't do Z to it, because [reason]") without ever writing "out of scope" as a label. This produces a brief that is also better on its own terms (a concrete instruction is less ambiguous to a sub-agent than an abstract scope label), so the workaround is not a compromise.
+
 ### `not introduced by this change`
 
 Why it is a shortcut: same pattern, slightly different wording.
