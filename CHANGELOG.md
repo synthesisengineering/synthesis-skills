@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.15.0] - 2026-07-17
+
+### Added
+
+- **New skill: `synthesis-okf` v1.0.0 — validate, convert, and author content for Google's Open Knowledge Format.** OKF v0.1 (announced 2026-06-12 by Google Cloud's Sam McVeety and Amir Hormati) formalizes the markdown-plus-YAML-frontmatter "LLM wiki" pattern this skill family already assumes — the spec's own §10 names it as a target use case. Google's reference repo ships an enrichment agent and an HTML visualizer, but no conformance validator or converter; this skill fills that gap with `okf_validate.py` (checks the spec's three hard conformance rules — parseable frontmatter, non-empty `type`, correct reserved-filename structure — plus soft-guidance warnings and link-checking) and `okf_convert.py` (idempotent frontmatter backfill: never overwrites existing metadata, derives `title`/`timestamp` from H1/git history, renames in-bundle `README.md` to the reserved `index.md` and regenerates it in spec style, walking every ancestor directory to the bundle root so purely-organizational subdirectories don't get skipped). Proven across multiple real conversions from a public 26-doc reference repo up through a 72-doc personal knowledge base and several others of varying size, with the lessons from each folded into the skill's own reference material.
+
+### Rationale
+
+A specification only helps if adopting it is cheap. Google's OKF repo defines the format precisely but doesn't ship the tooling to check or achieve conformance — exactly the gap synthesis skills exist to fill for the broader agent-skills ecosystem. Packaging the validator and converter as a portable skill (rather than leaving them as one-off project scripts) means any Claude Code, Codex, Cursor, or other Agent-Skills-compatible session can adopt OKF for its own knowledge base without re-deriving the tooling.
+
 ## [3.14.0] - 2026-07-14
 
 ### Changed
