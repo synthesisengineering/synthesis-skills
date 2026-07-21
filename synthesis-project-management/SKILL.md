@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.0"
+  version: "1.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -91,6 +91,20 @@ ai-knowledge-{workspace}/
 
 ---
 
+## Project Naming
+
+Project `id` slugs are read every day — in the index, in directory paths, in editor and window titles. Two rules, keyed to whether the project has a defined end state:
+
+**Bounded projects (ones that will someday reach `completed`) get verb-first outcome names.** The name states the finish line: `migrate-blog-to-astro`, `accept-vendor-contract-2026-03`, `release-kb-company-wide`. When the outcome is in the name, "is this done?" answers itself, scope gets declared at creation time, and zombie projects — bounded work that sits `active` in the index for months because nothing in its name says what done means — become visible on sight.
+
+**Ongoing projects (`ongoing` status — operations seats, product stewardships) keep noun names.** They name the thing being stewarded (`payments-platform`, `workspace-operations`) because there is no finish line to state. Time-boxed instances of a standing role (`platform-2026-q3`) already carry their end in the date suffix; wrapping them in a generic verb (`do-platform-2026-q3-work`) adds ceremony, not information.
+
+**Generic verbs are banned.** `do-`, `work-on-`, `handle-`, `manage-`, `run-`, `support-` say nothing — every project is doing work. The verb must name the specific outcome. This makes the rule double as a classification diagnostic: if no specific verb fits, the project is probably not bounded — model it as `ongoing`, or split it until concrete outcomes emerge.
+
+**Existing projects keep their names.** Renames churn paths, cross-references, and history for no behavioral gain. The convention applies to projects created after adoption; a mixed index is expected and harmless, since `status` — not the name — remains the machine-readable lifecycle field.
+
+---
+
 ## Components
 
 ### 1. Project Index (`index.yaml`)
@@ -109,8 +123,8 @@ Single source of truth for all projects. Status is a field, not a folder.
 #   archived  - Old/obsolete, kept for reference only
 
 projects:
-  - id: my-project
-    name: My Project Name
+  - id: migrate-blog-to-astro        # bounded → verb-first outcome name (see Project Naming)
+    name: Migrate Blog to Astro
     status: active
     description: Brief description of what this project accomplishes
     tags:
@@ -118,8 +132,16 @@ projects:
       - tag2
     last_session: YYYY-MM-DD
 
-  - id: finished-project
-    name: Finished Project
+  - id: payments-platform            # ongoing stewardship → noun name
+    name: Payments Platform
+    status: ongoing
+    description: Standing stewardship of the thing being maintained
+    tags:
+      - tag1
+    last_session: YYYY-MM-DD
+
+  - id: launch-newsletter
+    name: Launch Newsletter
     status: completed
     completed_date: YYYY-MM-DD
     description: What was accomplished

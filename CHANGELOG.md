@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.18.0] - 2026-07-21
+
+### Added
+
+- **`synthesis-project-management` bumped to v1.3.0 — project naming convention.** New "Project Naming" section keys the naming rule to whether a project has a defined end state. Bounded projects (ones that will someday reach `completed`) get verb-first outcome names — `migrate-blog-to-astro`, `release-kb-company-wide` — so the finish line lives in the name, "is this done?" answers itself, and zombie `active` entries become visible on sight. Ongoing projects (operations seats, product stewardships) keep noun names, because there is no finish line to state; time-boxed instances of a standing role (`platform-2026-q3`) already carry their end in the date suffix, and wrapping them in a generic verb (`do-platform-2026-q3-work`) adds ceremony, not information. Generic verbs (`do-`, `work-on-`, `handle-`, `manage-`, `run-`, `support-`) are banned outright, which makes the rule double as a classification diagnostic: if no specific verb fits, the project probably isn't bounded — model it as `ongoing` or split it until concrete outcomes emerge. Existing projects keep their names; the convention applies going forward, and a mixed index is expected since `status` remains the machine-readable lifecycle field. The index.yaml example now shows all three shapes (bounded active, ongoing stewardship, completed).
+
+### Rationale
+
+Observed failure mode in long-running indexes: bounded projects named as nouns (`vendor-contract`, `bedrock-failover`) rot as `active` for months because nothing in the name says what done means — the reader can't tell a stalled arc from a standing stewardship without opening the project. Naming the outcome at creation forces scope definition exactly once, at the cheapest moment, and the generic-verb ban keeps the convention from decaying into `do-X-work` wrappers that carry no information.
+
 ## [3.17.0] - 2026-07-18
 
 ### Added
