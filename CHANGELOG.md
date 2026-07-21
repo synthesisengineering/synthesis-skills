@@ -4,6 +4,12 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [3.19.0] - 2026-07-21
+
+### Changed
+
+- **`install.sh` drift handling: whole-directory detection, pre-overwrite backups, named warnings.** Three changes to how the bootstrap installer treats an installed skill copy that differs from source. (1) Drift detection now checksums the entire skill directory (excluding installer-written `.source.json` and Finder `.DS_Store`) instead of `SKILL.md` alone — a modified script, reference file, or data table (e.g. `tiers.yaml`) now registers as drift instead of being silently replaced. (2) Every drifted copy is saved to `${XDG_CACHE_HOME:-~/.cache}/synthesis-skills-backups/<UTC-run-stamp>/<target>/<skill>/` before the overwrite, including same-name directories that carry no install provenance; backups sit beside the cache directory rather than inside it, so recloning or uninstalling never deletes them, and the newest 10 runs are retained. (3) The end-of-run warning now lists each drifted skill by name, distinguishes unique skills from per-location copies, points at the backup directory, and no longer asserts "local modifications" — a checksum mismatch can equally be an installed copy that is merely older than freshly pulled source, and the installer cannot tell the difference. Motivating incident (2026-07-21): an update run piped through `tail` preserved only the count line — "3 skill(s) had local modifications" — while the per-skill DRIFT lines above it were cut off, and with no backups there was no way to reconstruct which copies had been replaced or what they contained. Investigation showed the count itself was misleading: one skill, one commit behind source, counted once per install location. The summary block now carries the names, so even a truncated tail answers the question, and the backups make it recoverable either way. `synthesis-skills-manager` bumped to v1.1.1 — its bootstrap-installer paragraph now describes the whole-directory drift coverage and backup behavior.
+
 ## [3.18.0] - 2026-07-21
 
 ### Added

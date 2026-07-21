@@ -12,6 +12,10 @@ set -e
 REPO_URL="https://github.com/synthesisengineering/synthesis-skills.git"
 REPO_NAME="synthesis-skills"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/synthesis-skills"
+# Backups live BESIDE the cache, not inside it: the cache dir is deleted on
+# reclone and on uninstall, and backups must survive both.
+BACKUP_ROOT="${CACHE_DIR}-backups"
+BACKUP_KEEP_RUNS=10
 SOURCE_REPO="github.com/synthesisengineering/synthesis-skills"
 SOURCE_TYPE="public"
 
@@ -70,16 +74,43 @@ write_source_json() {
 ENDJSON
 }
 
-# Compute checksum of SKILL.md content (portable across macOS and Linux)
-skill_checksum() {
-    if command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 "$1" | cut -d' ' -f1
-    elif command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$1" | cut -d' ' -f1
-    else
-        # Fallback: use cksum
-        cksum "$1" | cut -d' ' -f1
-    fi
+# Checksum tooling (portable across macOS and Linux).
+# Word-split on use is intentional; do not quote $CHECKSUM_TOOL.
+if command -v shasum >/dev/null 2>&1; then
+    CHECKSUM_TOOL="shasum -a 256"
+elif command -v sha256sum >/dev/null 2>&1; then
+    CHECKSUM_TOOL="sha256sum"
+else
+    # Fallback: cksum is POSIX
+    CHECKSUM_TOOL="cksum"
+fi
+
+checksum_stdin() {
+    $CHECKSUM_TOOL | cut -d' ' -f1
+}
+
+# Checksum of an entire skill directory: every file except installer-written
+# provenance (.source.json) and Finder noise (.DS_Store), keyed by relative
+# path so an installed copy and its source dir compare equal. Whole-directory
+# coverage matters: drift in scripts/, references/, or data tables
+# (e.g. tiers.yaml) must be detected, not just drift in SKILL.md.
+skill_dir_checksum() {
+    (cd "$1" 2>/dev/null || exit 0
+     find . -type f ! -name '.source.json' ! -name '.DS_Store' -print0 \
+        | LC_ALL=C sort -z \
+        | xargs -0 $CHECKSUM_TOOL 2>/dev/null) | checksum_stdin
+}
+
+# Drop backup runs beyond the newest BACKUP_KEEP_RUNS. Run-stamp dirs are
+# UTC timestamps, so lexicographic order is chronological order.
+prune_backups() {
+    [ -d "$BACKUP_ROOT" ] || return 0
+    total=$(ls -1 "$BACKUP_ROOT" 2>/dev/null | wc -l | tr -d ' ')
+    [ "$total" -gt "$BACKUP_KEEP_RUNS" ] || return 0
+    ls -1 "$BACKUP_ROOT" | LC_ALL=C sort | head -n $((total - BACKUP_KEEP_RUNS)) \
+        | while IFS= read -r old_run; do
+            rm -rf "${BACKUP_ROOT:?}/${old_run}"
+        done
 }
 
 do_install() {
@@ -99,6 +130,9 @@ do_install() {
     TARGETS=$(detect_targets)
     SKILL_COUNT=0
     DRIFT_COUNT=0
+    DRIFT_NAMES=""
+    RUN_STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+    BACKUP_DIR="${BACKUP_ROOT}/${RUN_STAMP}"
 
     for target in $TARGETS; do
         mkdir -p "$target"
@@ -111,16 +145,25 @@ do_install() {
 
             installed_dir="${target}/${skill_name}"
 
-            # Check for drift before overwriting
-            if [ -f "${installed_dir}/SKILL.md" ] && [ -f "${skill_dir}/SKILL.md" ]; then
-                installed_sum=$(skill_checksum "${installed_dir}/SKILL.md")
-                source_sum=$(skill_checksum "${skill_dir}/SKILL.md")
+            # Check for drift before overwriting. Any existing directory that
+            # differs from source — whatever the reason: a local edit, an
+            # installed copy older than source, or a same-name directory this
+            # installer never wrote — is backed up before it is replaced.
+            if [ -d "$installed_dir" ]; then
+                installed_sum=$(skill_dir_checksum "$installed_dir")
+                source_sum=$(skill_dir_checksum "$skill_dir")
                 if [ "$installed_sum" != "$source_sum" ]; then
-                    # Check if this was from our repo
+                    target_tag=$(printf '%s' "$target" | sed "s|^${HOME}/||; s|^\.||; s|/|-|g")
+                    mkdir -p "${BACKUP_DIR}/${target_tag}"
+                    cp -R "$installed_dir" "${BACKUP_DIR}/${target_tag}/${skill_name}"
+                    DRIFT_COUNT=$((DRIFT_COUNT + 1))
+                    DRIFT_NAMES="$DRIFT_NAMES $skill_name"
                     if [ -f "${installed_dir}/.source.json" ]; then
-                        echo "  DRIFT: ${skill_name} — installed copy differs from source"
-                        DRIFT_COUNT=$((DRIFT_COUNT + 1))
+                        echo "  DRIFT: ${skill_name} in ${target} — installed copy differs from source"
+                    else
+                        echo "  DRIFT: ${skill_name} in ${target} — same-name directory without install provenance differs from source"
                     fi
+                    echo "         pre-overwrite copy saved: ${BACKUP_DIR}/${target_tag}/${skill_name}"
                 fi
             fi
 
@@ -138,9 +181,16 @@ do_install() {
     echo ""
     echo "Done. $UNIQUE_SKILLS skills installed to $(echo $TARGETS | wc -w | tr -d ' ') locations."
     if [ "$DRIFT_COUNT" -gt 0 ]; then
-        echo "WARNING: $DRIFT_COUNT skill(s) had local modifications that were overwritten."
-        echo "  Use './install.sh status' before install to review drift."
+        # Word-split $DRIFT_NAMES on purpose: one name per list entry.
+        DRIFTED_SKILLS=$(printf '%s\n' $DRIFT_NAMES | LC_ALL=C sort -u)
+        DRIFTED_SKILL_COUNT=$(printf '%s\n' "$DRIFTED_SKILLS" | grep -c .)
+        echo "WARNING: $DRIFTED_SKILL_COUNT skill(s) differed from source and were overwritten ($DRIFT_COUNT installed copies):"
+        printf '%s\n' "$DRIFTED_SKILLS" | sed 's/^/  - /'
+        echo "  Pre-overwrite copies saved under: $BACKUP_DIR"
+        echo "  A difference can be a local edit or an installed copy older than source."
+        echo "  Use './install.sh status' before install/update to review drift first."
     fi
+    prune_backups
     echo "Restart your AI assistant to pick up the new skills."
 
     # Validate dependencies in the first target directory
@@ -336,15 +386,13 @@ do_status() {
 
             INSTALLED=$((INSTALLED + 1))
 
-            if [ -f "${installed_dir}/SKILL.md" ] && [ -f "${skill_dir}/SKILL.md" ]; then
-                installed_sum=$(skill_checksum "${installed_dir}/SKILL.md")
-                source_sum=$(skill_checksum "${skill_dir}/SKILL.md")
-                if [ "$installed_sum" != "$source_sum" ]; then
-                    echo "  DRIFT:   $skill_name"
-                    DRIFTED=$((DRIFTED + 1))
-                else
-                    echo "  OK:      $skill_name"
-                fi
+            installed_sum=$(skill_dir_checksum "$installed_dir")
+            source_sum=$(skill_dir_checksum "$skill_dir")
+            if [ "$installed_sum" != "$source_sum" ]; then
+                echo "  DRIFT:   $skill_name"
+                DRIFTED=$((DRIFTED + 1))
+            else
+                echo "  OK:      $skill_name"
             fi
         done
 
