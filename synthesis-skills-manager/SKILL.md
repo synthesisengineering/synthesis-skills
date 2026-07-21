@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -214,7 +214,7 @@ User: "Update my skills"
 
 This skill is designed to be executed by an AI agent (Claude Code, Cursor, etc.), not as a shell script. The agent reads files, compares content, understands methodology structure, and makes merge decisions that a text-based tool cannot.
 
-The `install.sh` scripts in each repo serve as bootstrap/fallback installers for environments without an AI agent. They handle the mechanical parts (copy, provenance, checksums) but cannot do synthesis merge — they overwrite on conflict with a drift warning.
+The `install.sh` scripts in each repo serve as bootstrap/fallback installers for environments without an AI agent. They handle the mechanical parts (copy, provenance, checksums) but cannot do synthesis merge — they overwrite on conflict. Drift detection covers the whole skill directory (scripts, references, data tables — not just SKILL.md); every drifted copy is saved to `${XDG_CACHE_HOME:-~/.cache}/<repo-name>-backups/<UTC-run-stamp>/<target>/<skill>/` before overwrite, and the end-of-run warning names each drifted skill and the backup path. Backups are pruned to the 10 most recent runs.
 
 ## Source Update Protocol (NON-NEGOTIABLE)
 
