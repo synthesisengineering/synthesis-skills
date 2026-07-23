@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -77,6 +77,12 @@ git remote -v | awk '/\(push\)/ {print $2}'
 | Add a new personal org (sole-owner repos there) | Add a regex to `personal_remote_patterns` in the config |
 
 The `--no-verify` escape valve is genuine, but each use weakens the discipline. If a pattern fires repeatedly as a false positive, fix the underlying signal: rename the variable, extend `allowlist_lines`, or — if the repo really is sole-owner — add the right `personal_remote_patterns` entry.
+
+## Repo-local hooks are additive, not superseded
+
+If a repo has its own `.githooks/pre-commit` (version-controlled, executable), this engine **chains to it** — runs its own Tier-0/Tier-1 pass first, then `exec`s the repo-local hook. It does not replace or subsume it.
+
+This matters because it's easy to assume the opposite: "the global hook already covers confidentiality, so the repo-local one is redundant — delete it." That assumption is wrong and removes protection rather than deduplicating it. A repo-local hook typically exists because the repo needs a check the global config can't express safely — for example, a repo whose whole purpose is documenting a specific client relationship needs `personal`-class handling (so the client's own name isn't flagged as a leak) while still blocking a different category the global patterns don't cover, like engagement financials or a partner's personnel names. Verify what a repo-local hook actually checks before assuming it's covered elsewhere, and don't delete it as part of unrelated cleanup.
 
 ## Why auto-derive instead of per-repo flag files
 

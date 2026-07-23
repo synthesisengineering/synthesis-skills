@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.0"
+  version: "1.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -49,6 +49,16 @@ When working with AI assistants on multi-session projects:
 This system provides persistent state that survives context loss.
 
 The project files are the durable memory layer. Treat chat history, model memory, and compaction summaries as helpful but insufficient. A user should be able to pause in one capable agent environment, open the same project in another, read the project context, and continue.
+
+## Why Not Your Tool's Built-In Memory?
+
+Several AI coding tools now ship a per-project memory feature that writes its own notes as it works. It's genuinely useful within a single tool, on a single machine, for a single session's worth of context. It is not a substitute for this system, for three structural reasons:
+
+- **Single-tool.** A memory file your tool writes for itself is invisible to every other agent you use. If you work across Claude Code, Codex, Cursor, or others — even occasionally — that memory doesn't travel with you.
+- **Single-machine.** These features are typically scoped to the machine they run on, with no built-in sync. Work on a second machine, and the memory starts over from zero.
+- **Not version-controlled.** Without git, there's no history, no diff, no recovery from a bad write, and no way to review what got saved.
+
+This system solves all three by being nothing more than files in a git repository: `CONTEXT.md`, `REFERENCE.md`, `sessions/`, and `lessons/`, readable and writable by any agent that can read and write files. If your tool's native memory feature can be redirected or disabled, doing so and routing that content here instead avoids maintaining two parallel, drifting memories of the same work.
 
 ---
 
