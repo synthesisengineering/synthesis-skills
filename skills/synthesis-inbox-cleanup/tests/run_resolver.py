@@ -16,10 +16,29 @@ that the precedence order survived.
 """
 import sys
 import os
+import tempfile
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS = os.path.join(os.path.dirname(HERE), "scripts")
 sys.path.insert(0, SCRIPTS)
+
+# Import the resolver against isolated fixture configuration. Unit tests must
+# not depend on, or read, a user's live inbox configuration.
+TEST_CONFIG_DIR = tempfile.TemporaryDirectory()
+fixture_root = Path(TEST_CONFIG_DIR.name)
+fixture_config = fixture_root / "config.yaml"
+fixture_rules = fixture_root / "rules.yaml"
+fixture_config.write_text(
+    "imap:\n"
+    "  host: imap.example.test\n"
+    "  user_candidates:\n"
+    "    - test@example.test\n",
+    encoding="utf-8",
+)
+fixture_rules.write_text("class_defaults: {}\n", encoding="utf-8")
+os.environ["SYNTHESIS_INBOX_CONFIG"] = str(fixture_config)
+os.environ["SYNTHESIS_INBOX_RULES"] = str(fixture_rules)
 
 import _lib  # noqa: E402
 

@@ -18,8 +18,18 @@ import imaplib, email, subprocess, sys, os, ssl, yaml
 from email.header import decode_header, make_header
 from email.utils import parseaddr
 
-CONFIG_PATH = os.path.expanduser("~/.synthesis/inbox-cleanup/config.yaml")
-MANIFEST_PATH = os.path.expanduser("~/.synthesis/inbox-cleanup/rules.yaml")
+CONFIG_PATH = os.path.expanduser(
+    os.environ.get(
+        "SYNTHESIS_INBOX_CONFIG",
+        "~/.synthesis/inbox-cleanup/config.yaml",
+    )
+)
+MANIFEST_PATH = os.path.expanduser(
+    os.environ.get(
+        "SYNTHESIS_INBOX_RULES",
+        "~/.synthesis/inbox-cleanup/rules.yaml",
+    )
+)
 
 
 def _load_yaml(path, what):
