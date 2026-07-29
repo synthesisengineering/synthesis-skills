@@ -25,7 +25,7 @@ New skill contributions are welcome. Before starting:
 Every skill must include:
 
 ```
-skill-name/
+skills/skill-name/
 ├── SKILL.md          # Main instructions with YAML frontmatter (required)
 ├── references/       # Supporting reference material (optional)
 ├── scripts/          # Executable scripts (optional)
@@ -46,12 +46,13 @@ skill-name/
 
 Before submitting:
 
-- [ ] Skill works standalone (no dependency on personal CLAUDE.md or other configuration)
+- [ ] Skill works standalone (no dependency on personal agent instructions or other configuration)
 - [ ] SKILL.md has valid frontmatter
 - [ ] Body is under 500 lines
 - [ ] No personal or organization-specific content
 - [ ] Examples are generic and widely applicable
 - [ ] LICENSE file is present (CC0 for methodology, Apache 2.0 for scripts)
+- [ ] `python3 skills/synthesis-agent-conformance/scripts/conformance.py source` passes
 
 ## License
 
