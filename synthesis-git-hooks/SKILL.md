@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "2.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -15,6 +15,15 @@ metadata:
 A YAML-driven pre-commit policy engine. Part of the synthesis-engineering operational layer — deterministic enforcement that catches credential leaks and exposure-sensitive content at the commit boundary, before the diff persists.
 
 The engine is small (one bash script + one Python sidecar). The policy is data — a YAML file at `~/.synthesis/git-hook-config.yaml` that anyone adopting synthesis engineering fills in with their own personal-remote patterns, client names, and internal URLs.
+
+## v2.0.0 — fail closed, zero dependencies, self-diagnosing
+
+Three design guarantees, added after a field incident in which the v1 engine silently passed commits unscanned when its Python dependency was missing in the invoking environment:
+
+1. **Fail closed.** If the policy engine cannot run — missing config, unparsable config, sidecar crash, invalid pattern, missing interpreter — the commit is **blocked** with a loud diagnostic, never passed unscanned. The engine verifies a `SYNTHESIS_SIDECAR_OK=1` sentinel emitted as the sidecar's final line, so even a partial failure blocks. A protective control that fails open is worse than no control, because it manufactures false confidence.
+2. **Zero third-party dependencies.** v1 required PyYAML; which `python3` won PATH resolution therefore silently determined whether protection ran at all (a machine can carry several interpreters — an OS-bundled one, a package-manager one, a python.org one — with different site-packages). v2 vendors a strict YAML-subset parser using only the standard library: any python3 ≥ 3.6, in any environment, yields byte-identical policy. The supported subset is: comments, nested mappings by indentation, quoted/bare string lists, and scalar values — anything outside it (tabs, flow style, anchors, block scalars) is a **hard parse error that blocks commits** rather than a guess.
+3. **`--doctor` self-check.** `python3 ~/.synthesis/git-hooks/_load_config.py --doctor` verifies the whole chain: config parses, every pattern compiles under both Python `re` and `grep -E`, `core.hooksPath` is wired, the **installed engine matches the skill source** (drift detection — installed copies that were hot-fixed but never synced back are themselves a protection failure), and the cwd repo's classification plus chained repo-local hook. Wire it into a daily ritual and into new-machine bootstrap; a protection layer nobody monitors is a protection layer that is quietly broken.
+
 
 ## What this enforces
 

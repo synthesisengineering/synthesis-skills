@@ -53,20 +53,24 @@ else
     git config --global core.hooksPath "$TARGET_DIR"
 fi
 
-# Verify Python + PyYAML available
-if ! python3 -c 'import yaml' 2>/dev/null; then
-    echo ""
-    echo "⚠️  PyYAML not installed. The sidecar needs it."
-    echo "   Install with: pip3 install --user PyYAML"
-fi
-
+# v2: the sidecar is stdlib-only — no PyYAML or any third-party dependency.
+# Any python3 >= 3.6 on PATH works identically. Verify the whole chain:
 echo ""
-echo "✓ synthesis-git-hooks installed."
+echo "→ Running the health check (doctor)…"
+if python3 "$TARGET_DIR/_load_config.py" --doctor; then
+    echo ""
+    echo "✓ synthesis-git-hooks installed and HEALTHY."
+else
+    echo ""
+    echo "✖ synthesis-git-hooks installed but the doctor found problems (above)."
+    echo "  Commits are BLOCKED (fail closed) until they are fixed."
+    exit 1
+fi
 echo ""
 echo "  Engine:  $TARGET_DIR/pre-commit"
 echo "  Sidecar: $TARGET_DIR/_load_config.py"
 echo "  Config:  $CONFIG_PATH"
 echo ""
-echo "  Verify a repo's classification:"
-echo "    cd <repo> && $TARGET_DIR/_load_config.py --classify"
+echo "  Health check any time:  python3 $TARGET_DIR/_load_config.py --doctor"
+echo "  Repo classification:    cd <repo> && $TARGET_DIR/_load_config.py --classify"
 echo ""

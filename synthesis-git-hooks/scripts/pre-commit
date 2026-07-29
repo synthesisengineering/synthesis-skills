@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# synthesis-engineering git-hook engine (pre-commit).
+# synthesis-engineering git-hook engine (pre-commit) — v2.
 #
 # Reads policy from ~/.synthesis/git-hook-config.yaml via the Python sidecar
 # at _load_config.py. The sidecar classifies the current repo based on its
@@ -10,17 +10,34 @@
 # Tier 1 (financial, HR, confidentiality markers, confidential names, etc.)
 # runs UNLESS every push remote matches a configured personal-remote pattern.
 #
+# ── v2: FAIL CLOSED ──────────────────────────────────────────────────────
+# v1 evaluated `eval "$(python3 sidecar)"`: a sidecar failure (missing
+# interpreter dependency, unparsable config) produced empty output, the
+# eval succeeded, and the engine treated "policy engine broken" as
+# "nothing to scan" — passing commits UNSCANNED. v2:
+#   1. captures the sidecar's exit status explicitly and blocks on nonzero;
+#   2. requires the SYNTHESIS_SIDECAR_OK=1 sentinel the v2 sidecar emits as
+#      its final line — a partially-emitted var set also blocks;
+#   3. treats an empty ACTIVE_REGEX as misconfiguration (Tier 0 is never
+#      empty in a valid config) and blocks;
+#   4. keeps v1.1's assembled-regex validation (grep -E parse check) so a
+#      bad pattern aborts loudly instead of disabling detection.
+# The sidecar itself is stdlib-only (no PyYAML), so ANY python3 on PATH
+# yields identical policy on every machine and in every environment.
+#
+# Health check any time:  python3 ~/.synthesis/git-hooks/_load_config.py --doctor
+#
 # This engine is part of the synthesis-engineering operational layer. The
 # distributable form is the `synthesis-git-hooks` skill at
 # https://github.com/synthesisengineering/synthesis-skills.
 #
-# Install: ~/.synthesis/git-hooks/install.sh (in the skill package) sets
-# `core.hooksPath` to ~/.synthesis/git-hooks/ and writes an initial config.
+# Install: install.sh (in the skill package) sets `core.hooksPath` to
+# ~/.synthesis/git-hooks/ and writes an initial config.
 #
 # Override the config path per-invocation:
 #   SYNTHESIS_GIT_HOOK_CONFIG=/path/to/custom.yaml git commit ...
 #
-# Bypass once (last resort; CLAUDE.md item: never without explicit approval):
+# Bypass once (last resort; requires explicit approval per CLAUDE.md):
 #   git commit --no-verify
 #
 
@@ -30,32 +47,42 @@ CONFIG="${SYNTHESIS_GIT_HOOK_CONFIG:-$HOME/.synthesis/git-hook-config.yaml}"
 HOOK_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 SIDECAR="$HOOK_DIR/_load_config.py"
 
-if [ ! -f "$CONFIG" ]; then
-    echo "synthesis-git-hooks: config not found at $CONFIG" >&2
-    echo "  Run the install script in the synthesis-git-hooks skill to set it up." >&2
-    exit 1
-fi
-if [ ! -f "$SIDECAR" ]; then
-    echo "synthesis-git-hooks: sidecar not found at $SIDECAR" >&2
-    exit 1
-fi
+fail_closed() {
+    cat >&2 <<EOF
 
-# Sidecar emits shell-quoted assignments for: REPO_CLASS, ACTIVE_REGEX,
-# ALLOWLIST_REGEX, CHECK_COMMIT_MSG. Source them.
-eval "$(SYNTHESIS_GIT_HOOK_CONFIG="$CONFIG" python3 "$SIDECAR" --emit-shell-vars)"
+==================================================================
+  X  COMMIT BLOCKED — synthesis-git-hooks policy engine unavailable
+==================================================================
 
-if [ -z "${ACTIVE_REGEX:-}" ]; then
-    # No active patterns — nothing to check. Delegate and exit.
-    export SYNTHESIS_REPO_CLASS="${REPO_CLASS:-strict}"
-    REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || true
-    if [ -n "$REPO_ROOT" ]; then
-        REPO_HOOK="$REPO_ROOT/.githooks/pre-commit"
-        if [ -f "$REPO_HOOK" ] && [ -x "$REPO_HOOK" ]; then
-            exec "$REPO_HOOK"
-        fi
-    fi
-    exit 0
-fi
+$1
+
+The engine FAILS CLOSED: a commit is never allowed to proceed
+unscanned just because the scanner is broken.
+
+Diagnose:   python3 $SIDECAR --doctor
+Config:     $CONFIG
+Last resort (requires explicit approval per CLAUDE.md):
+            git commit --no-verify
+EOF
+    exit 1
+}
+
+[ -f "$CONFIG" ]  || fail_closed "Config not found at $CONFIG. Run the skill's install.sh to set it up."
+[ -f "$SIDECAR" ] || fail_closed "Sidecar not found at $SIDECAR."
+
+PYBIN="$(command -v python3 || true)"
+[ -n "$PYBIN" ] || fail_closed "No python3 on PATH. Install the Xcode Command Line Tools (xcode-select --install)."
+
+# Run the sidecar, capturing status explicitly — never let eval hide failure.
+set +e
+SIDECAR_OUT="$(SYNTHESIS_GIT_HOOK_CONFIG="$CONFIG" "$PYBIN" "$SIDECAR" --emit-shell-vars)"
+SIDECAR_STATUS=$?
+set -e
+[ "$SIDECAR_STATUS" -eq 0 ] || fail_closed "Sidecar exited $SIDECAR_STATUS (its message appears above)."
+
+eval "$SIDECAR_OUT"
+[ "${SYNTHESIS_SIDECAR_OK:-0}" = "1" ] || fail_closed "Sidecar output incomplete (missing OK sentinel)."
+[ -n "${ACTIVE_REGEX:-}" ] || fail_closed "Active pattern set is empty — Tier 0 must never be empty in a valid config."
 
 # Determine which files to scan. Always exclude files that contain pattern
 # definitions by design — adding a name to the policy is the opposite of
@@ -69,7 +96,23 @@ MATCHES=""
 if [ -n "$CHANGED_FILES" ]; then
     DIFF=$(echo "$CHANGED_FILES" | xargs git diff --cached --diff-filter=AM -U0 -- 2>/dev/null || true)
     if [ -n "$DIFF" ]; then
-        # Stage 1: collect added lines that hit the active regex.
+        # Stage 1: collect added lines that hit the active regex. Validate the
+        # regex against an empty string first — if grep rejects the pattern
+        # (PCRE syntax slipped into POSIX ERE, repetition-operator errors,
+        # etc.), abort the commit with an explicit diagnostic rather than
+        # falling through `|| true` to silent no-detection. A misconfigured
+        # hook that silently passes is worse than a hook that loudly fails.
+        REGEX_CHECK_ERR=$(echo "" | grep -i -E "$ACTIVE_REGEX" 2>&1 >/dev/null || true)
+        if echo "$REGEX_CHECK_ERR" | grep -qi -E 'grep:|invalid|unrecognized|error'; then
+            fail_closed "The active regex assembled from $CONFIG cannot be parsed by grep -E:
+
+  $REGEX_CHECK_ERR
+
+This usually means a PCRE-only construct (lookbehind, lookahead,
+non-capturing groups) slipped into a POSIX ERE pattern. Rewrite the
+pattern in ERE-compatible form."
+        fi
+
         STAGE1=$(echo "$DIFF" | grep '^+' | grep -v '^+++' | grep -i -E "$ACTIVE_REGEX" || true)
         # Stage 2: filter out allowlisted lines (e.g., SPDX license declarations).
         if [ -n "$STAGE1" ] && [ -n "${ALLOWLIST_REGEX:-}" ]; then
@@ -82,9 +125,9 @@ fi
 if [ -n "$MATCHES" ]; then
     cat <<EOF
 
-╔══════════════════════════════════════════════════════════════════╗
-║  ⚠️  SENSITIVE PATTERN DETECTED (synthesis-git-hooks)             ║
-╚══════════════════════════════════════════════════════════════════╝
+==================================================================
+  !  SENSITIVE PATTERN DETECTED (synthesis-git-hooks)
+==================================================================
 
 Repo class: ${REPO_CLASS:-strict}
 Config: $CONFIG

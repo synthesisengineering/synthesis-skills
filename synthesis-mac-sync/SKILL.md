@@ -77,6 +77,18 @@ mac-sync/
 
 ---
 
+## New-machine bootstrap (v1.7.0) — protection layer FIRST
+
+On any new Mac (or after a macOS / Xcode CLT update, which can replace interpreters and wipe user site-packages), bring up the protection layer BEFORE the first commit, not after:
+
+1. Install the synthesis-git-hooks engine and verify it in one step:
+   `~/workspaces/<you>/synthesis-skills/synthesis-git-hooks/scripts/install.sh`
+   — the v2 installer runs the `--doctor` self-check at the end and **exits nonzero if the chain is not fully healthy** (the engine itself fails closed, so an unhealthy install blocks commits rather than passing them unscanned).
+2. Pull the synced policy config (`~/.synthesis/git-hook-config.yaml`) via the config-file sync BEFORE running repos sync — the hooks read it on every commit.
+3. Only then run the git-repos sync and begin work.
+
+Ordering rationale: a fresh machine is exactly where the old failure mode lived — interpreters differ, site-packages are empty, and the first commits of a migration are often bulk imports with the highest leak surface. The v2 engine needs no third-party packages (any python3 works), so step 1 has no pip prerequisite on a fresh macOS with CLT installed.
+
 ## Sync Modes
 
 ### Full Sync ("run my mac-sync")
