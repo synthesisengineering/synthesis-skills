@@ -61,6 +61,22 @@ def test_instruction_adapter(tmp_path: Path) -> None:
     assert all(check.ok for check in checks)
 
 
+def test_coordination_board_schema(tmp_path: Path) -> None:
+    board = tmp_path / "active-sessions.md"
+    board.write_text(
+        "# Coordination\n\n"
+        "## Active sessions\n\n"
+        "| id | agent | started | mode | goal | claimed areas (advisory lock) | status |\n"
+        "|----|-------|---------|------|------|--------------------------------|--------|\n\n"
+        "## Messages\n\n---\n\n## Protocol\n",
+        encoding="utf-8",
+    )
+
+    checks = MODULE.coordination_checks(board)
+
+    assert all(check.ok for check in checks)
+
+
 def test_activate_and_handoff(tmp_path: Path) -> None:
     project = tmp_path / "project"
     project.mkdir()

@@ -24,6 +24,9 @@ except ImportError:  # pragma: no cover - exercised by dependency health checks
 SCRIPT_PATH = Path(__file__).resolve()
 DEFAULT_SOURCE_ROOT = SCRIPT_PATH.parents[3]
 DEFAULT_ACTIVE_PROJECT = Path.home() / ".synthesis" / "active-project.json"
+DEFAULT_COORDINATION_BOARD = (
+    Path.home() / ".synthesis" / "coordination" / "active-sessions.md"
+)
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
@@ -253,6 +256,49 @@ def instruction_checks(repo_root: Path) -> list[Check]:
     return checks
 
 
+def coordination_checks(board: Path, *, required: bool = True) -> list[Check]:
+    checks: list[Check] = []
+    if not board.is_file():
+        add(
+            checks,
+            "coordination.board",
+            False,
+            str(board),
+            required=required,
+        )
+        return checks
+    try:
+        text = board.read_text(encoding="utf-8")
+    except Exception as exc:
+        add(checks, "coordination.board", False, str(exc), required=required)
+        return checks
+    add(checks, "coordination.board", True, str(board), required=required)
+    for heading in ("## Active sessions", "## Messages", "## Protocol"):
+        add(
+            checks,
+            f"coordination.{heading[3:].lower().replace(' ', '-')}",
+            heading in text,
+            heading,
+            required=required,
+        )
+    table_ok = all(
+        column in text
+        for column in (
+            "| id |",
+            "claimed areas (advisory lock)",
+            "| status |",
+        )
+    )
+    add(
+        checks,
+        "coordination.active-table-schema",
+        table_ok,
+        str(board),
+        required=required,
+    )
+    return checks
+
+
 def project_summary(project: Path) -> tuple[dict[str, object], list[Check]]:
     checks: list[Check] = []
     context = project / "CONTEXT.md"
@@ -354,12 +400,25 @@ def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument(
         "command",
-        choices=("source", "runtime", "instructions", "activate", "handoff", "all"),
+        choices=(
+            "source",
+            "runtime",
+            "instructions",
+            "coordination",
+            "activate",
+            "handoff",
+            "all",
+        ),
     )
     result.add_argument("--source-root", type=Path, default=DEFAULT_SOURCE_ROOT)
     result.add_argument("--repo-root", type=Path)
     result.add_argument("--project", type=Path)
     result.add_argument("--active-project-file", type=Path, default=DEFAULT_ACTIVE_PROJECT)
+    result.add_argument(
+        "--coordination-board",
+        type=Path,
+        default=DEFAULT_COORDINATION_BOARD,
+    )
     result.add_argument("--json", action="store_true")
     return result
 
@@ -375,6 +434,14 @@ def main() -> int:
         if not args.repo_root:
             raise SystemExit("--repo-root is required")
         checks.extend(instruction_checks(args.repo_root.resolve()))
+    if args.command == "coordination":
+        checks.extend(
+            coordination_checks(args.coordination_board.expanduser(), required=True)
+        )
+    elif args.command == "all":
+        checks.extend(
+            coordination_checks(args.coordination_board.expanduser(), required=False)
+        )
     if args.command == "activate":
         if not args.project:
             raise SystemExit("--project is required")

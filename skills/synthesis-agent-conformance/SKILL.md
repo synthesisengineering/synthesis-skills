@@ -35,6 +35,7 @@ Run:
 python3 scripts/conformance.py source
 python3 scripts/conformance.py runtime
 python3 scripts/conformance.py instructions --repo-root <repo>
+python3 scripts/conformance.py coordination
 ```
 
 Use `--json` for a machine-readable report. A warning is not a pass. Any
@@ -61,6 +62,10 @@ python3 scripts/conformance.py activate --project <project-directory>
 
 The command writes a local pointer only. `CONTEXT.md`, `REFERENCE.md`,
 `sessions/`, and plan artifacts remain the source of truth.
+
+Before activation writes, read and claim the source areas on
+`~/.synthesis/coordination/active-sessions.md`. Conformance validates the board
+shape; `synthesis-project-management` owns its operating protocol.
 
 ### 4. Verify handoff
 

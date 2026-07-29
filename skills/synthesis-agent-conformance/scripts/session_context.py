@@ -12,6 +12,9 @@ from pathlib import Path
 
 
 DEFAULT_POINTER = Path.home() / ".synthesis" / "active-project.json"
+DEFAULT_COORDINATION_BOARD = (
+    Path.home() / ".synthesis" / "coordination" / "active-sessions.md"
+)
 
 
 def extract(context: str, key: str) -> str:
@@ -30,9 +33,45 @@ def next_actions(context: str) -> list[str]:
     return [line.strip() for line in match.group(1).splitlines() if line.strip()][:5]
 
 
-def build(pointer: Path) -> str:
+def active_session_ids(board: Path) -> list[str]:
+    if not board.is_file():
+        return []
+    text = board.read_text(encoding="utf-8")
+    if not all(
+        heading in text
+        for heading in ("## Active sessions", "## Messages", "## Protocol")
+    ):
+        raise ValueError(f"coordination board schema is invalid: {board}")
+    active = []
+    in_table = False
+    for line in text.splitlines():
+        if line.strip() == "## Active sessions":
+            in_table = True
+            continue
+        if in_table and line.startswith("## "):
+            break
+        if not in_table or not line.startswith("|"):
+            continue
+        columns = [re.sub(r"[*`]", "", value).strip() for value in line.split("|")[1:-1]]
+        if len(columns) != 7 or columns[0] in {"id", "----"}:
+            continue
+        if set(columns[0]) == {"-"}:
+            continue
+        if columns[6].lower() not in {"released", "complete", "completed", "closed"}:
+            active.append(columns[0])
+    return active
+
+
+def build(pointer: Path, coordination_board: Path = DEFAULT_COORDINATION_BOARD) -> str:
     now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z (%A)")
     lines = [f"Verified local time: {now}."]
+    sessions = active_session_ids(coordination_board)
+    if sessions:
+        lines.append(
+            "Cross-agent coordination is active for session(s): "
+            + ", ".join(sessions)
+            + ". Read the coordination board and verify claims before writes."
+        )
     if not pointer.is_file():
         lines.append("No active synthesis project pointer is set.")
         return "\n".join(lines)
@@ -70,6 +109,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--active-project-file", type=Path, default=DEFAULT_POINTER)
     parser.add_argument(
+        "--coordination-board",
+        type=Path,
+        default=DEFAULT_COORDINATION_BOARD,
+    )
+    parser.add_argument(
         "--format",
         choices=("text", "codex", "claude"),
         default="text",
@@ -81,7 +125,10 @@ def main() -> int:
     except Exception:
         payload = {}
     try:
-        message = build(args.active_project_file.expanduser())
+        message = build(
+            args.active_project_file.expanduser(),
+            args.coordination_board.expanduser(),
+        )
     except Exception as exc:
         print(f"synthesis project context failed closed: {exc}", file=sys.stderr)
         return 2
