@@ -4,14 +4,16 @@ description: >
   Validate, convert, and author content for Google's Open Knowledge Format (OKF v0.1) —
   the markdown-plus-YAML-frontmatter knowledge-bundle spec announced 2026-06-12. Includes
   a conformance validator (the checker Google's own OKF repo ships none of), a converter
-  that backfills OKF frontmatter onto an existing markdown corpus idempotently, and the
-  proven repo-by-repo conversion procedure. Use when adopting OKF for an "LLM wiki" style
-  knowledge base, auditing conformance, or converting a corpus of markdown notes/docs into
-  a conformant, agent-readable bundle.
+  that backfills OKF frontmatter onto an existing markdown corpus idempotently, a
+  config-driven seven-point metadata-consistency checker, and the proven repo-by-repo
+  conversion procedure. Use when adopting OKF for an "LLM wiki" style knowledge base,
+  auditing conformance, checking frontmatter/body drift or taxonomy consistency, or
+  converting a corpus of markdown notes/docs into a conformant, agent-readable bundle.
 license: CC0-1.0
 depends_on: []
 metadata:
   author: Rajiv Pant
+  version: "1.1.0"
 ---
 
 # synthesis-okf
@@ -24,8 +26,8 @@ of its target use cases — the differentiator is only that it's now specified.
 
 Google's reference repo (`github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf`)
 ships an enrichment agent and an HTML visualizer, but no conformance validator or converter.
-This skill fills that gap: a validator, a converter, and the procedure proven across
-several real-world repo conversions.
+This skill fills that gap: a conformance validator, a converter, a house-consistency
+checker, and a procedure proven across several real-world repo conversions.
 
 ## The spec, in brief
 
@@ -94,6 +96,32 @@ the one genuinely editorial step. Auto-extracting a good one-sentence descriptio
 file's body is unreliable (skill-stub runbooks in particular tend to be a title plus an
 `npx` code fence with no real prose to extract from); curate this file by hand per bundle.
 
+### `scripts/okf_consistency.py` — configured house-consistency checker
+
+```bash
+python3 scripts/okf_consistency.py <repo_root> [<repo-relative-doc> ...] [--strict]
+```
+
+Reads `.agents/knowledge-base.yaml` and its configured `taxonomy_path`. With no
+document arguments it checks the full configured bundle. It reports
+`file:line — SEVERITY — finding` in this order:
+
+1. Inline metadata that duplicates frontmatter.
+2. Date aliases and inline dates that conflict with the configured
+   `frontmatter.date_field`.
+3. Status/confidence and lifecycle/current-phase conflicts.
+4. Missing required fields, fields outside the house schema, malformed tags,
+   and values absent from the taxonomy.
+5. Long resource-linked concepts without a canonical-source or synchronization
+   note.
+6. Frontmatter title and H1 disagreement.
+7. Filename, date-in-name, and configured topic-routing placement problems.
+
+Exit `1` when a `CONFLICT` or `DUPLICATE` exists; warnings are review findings
+unless `--strict` is supplied. Exit `2` for a missing/invalid config or unsafe
+path. The config's date field is the sole last-update key: if it declares
+`timestamp`, an added `last_updated` is a conflict, not a tolerated alias.
+
 ## The conversion procedure
 
 Full step-by-step, proven across multiple real conversions (a public 26-doc repo, a
@@ -104,11 +132,13 @@ Full step-by-step, proven across multiple real conversions (a public 26-doc repo
 2. **Author descriptions** — the editorial 20%. Write `<bundle>-descriptions.yaml`.
 3. **Convert** — dry-run first, review, then apply for real.
 4. **Validate to clean** — 0 errors, 0 warnings, `--check-links` too.
-5. **Compiler config** — if the bundle feeds a compilation pipeline, add `**/index.md` and
+5. **Check house consistency** — when `.agents/knowledge-base.yaml` exists, run
+   `okf_consistency.py` and resolve every conflict/duplicate.
+6. **Compiler config** — if the bundle feeds a compilation pipeline, add `**/index.md` and
    `**/log.md` to its exclude list (navigation scaffolding, not knowledge to compile).
-6. **Review the diff** — confirm no README's unique guidance was lost in its `index.md`
+7. **Review the diff** — confirm no README's unique guidance was lost in its `index.md`
    regeneration; spot-check descriptions.
-7. **Commit.**
+8. **Commit.**
 
 ## Known lessons from real conversions
 
@@ -140,3 +170,7 @@ Full step-by-step, proven across multiple real conversions (a public 26-doc repo
   layer (which stays explicitly out of OKF's own bundle scope).
 - [`synthesis-anti-shortcuts`](../synthesis-anti-shortcuts/SKILL.md) — dispatch/acceptance
   hygiene for running this conversion at scale (one sub-agent per repo).
+- [`synthesis-kb-edit`](../synthesis-kb-edit/SKILL.md) — config-driven editing
+  and shipping; this skill owns its format and consistency gates.
+- [`synthesis-knowledge-capture`](../synthesis-knowledge-capture/SKILL.md) —
+  durable fact extraction and in-place reconciliation before validation.

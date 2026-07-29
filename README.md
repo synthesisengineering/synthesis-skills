@@ -4,6 +4,16 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**One knowledge-base contract across agents (July 2026).** New
+`synthesis-kb-edit` reads `.agents/knowledge-base.yaml` for editable and
+generated paths, topic routing, the one frontmatter schema, confidentiality
+controls, Git host, and review policy. `synthesis-okf` v1.1.0 adds a
+config-driven seven-point consistency checker, and
+`synthesis-knowledge-capture` v1.1.0 hands validation and shipping to those
+shared layers. A knowledge-base edit can now move between Claude Code and Codex
+without tool-owned workflow copies or date-field drift. See the
+[4.2.0 release notes](CHANGELOG.md).
+
 **A skip is not a pass (July 2026).** `synthesis-implementation-integrity` **v1.1.0** adds a Test Honesty check for a specific reading error: "X passed, Y skipped, 0 failed" gets read as "tests pass," but a skip is an absence of information, not a green light. The new step asks whether the skipped set could plausibly contain the one test that validates the exact property a decision depends on — most load-bearing for security, data-integrity, and irreversibility claims, where a skip in that territory is never neutral. See the [3.17.0 release notes](CHANGELOG.md).
 
 **Multi-agent dispatch hygiene for project management (July 2026).** `synthesis-project-management` **v1.2.0** adds a "Parallel Sub-Agent Dispatch" section covering two risks specific to concurrent writers on one project: git-index collisions (a bare `git commit` after `git add <your files>` commits everything currently staged, not just what you added, so checking `git status --short` / `git diff --cached --name-only` first has to be a mechanical prefix, not a judgment call) and tracking-doc aggregation (sub-agents that each correctly leave siblings' work alone also mean no single agent sees the combined result, so the orchestrator reconciles all reports before updating the shared CONTEXT.md/index.yaml). Project Discovery also gains a scope re-verification step: before dispatching work against a paused project's stated "N items remaining," re-derive that count from live disk/repo state — the claim goes stale the moment anything else touches the same corpus, even a workstream unaware the paused project exists. See the [3.16.0 release notes](CHANGELOG.md).
@@ -133,6 +143,14 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | `synthesis-context-lifecycle` | Three-tier context architecture for managing AI working memory, with agent attribution for multi-agent provenance |
 | `synthesis-project-management` | Lightweight PM system for human-agent collaboration, with cross-agent handoff, agent attribution, and parallel sub-agent dispatch protocols |
 | `synthesis-daily-rituals` | Day-start and day-end checklists with dependency-ordered rituals |
+
+### Knowledge Bases
+
+| Skill | Description |
+|-------|-------------|
+| `synthesis-kb-edit` | Config-driven plain-language editing, validation, branching, review, and synchronization |
+| `synthesis-knowledge-capture` | Reconcile durable session facts into the correct knowledge base with provenance |
+| `synthesis-okf` | Validate OKF conformance, metadata consistency, taxonomy use, and convert existing bundles |
 
 ### Synthesis Engineering
 | Skill | Description |

@@ -1,15 +1,17 @@
 ---
 name: synthesis-knowledge-capture
-description: Capture durable facts learned during an AI session and merge them into a long-lived OKF knowledge base — in place, deduplicated, and confidentiality-routed — instead of letting them evaporate in the transcript. Covers fact extraction, routing a fact to the right repo by confidentiality tier, scanning the corpus for every existing mention before writing, merging in place rather than blind-appending, reconciling (never blind-flipping) a fact that conflicts with the corpus, OKF validation, provenance logging, and commit hygiene with a held push. Use at session end, when told to "capture this," "update the knowledge base," "merge this into ai-knowledge," or when a session surfaces a corrected or new fact about people, org structure, products, decisions, or strategy.
+description: Capture durable facts learned during an AI session and merge them into a long-lived OKF knowledge base — in place, deduplicated, and confidentiality-routed — instead of letting them evaporate in the transcript. Covers fact extraction, routing a fact to the right repo by confidentiality tier, scanning the corpus for every existing mention before writing, merging in place rather than blind-appending, reconciling (never blind-flipping) a fact that conflicts with the corpus, configured OKF validation, provenance logging, and handoff to synthesis-kb-edit for repository-policy-aware shipping. Use at session end, when told to "capture this," "update the knowledge base," "merge this into ai-knowledge," or when a session surfaces a corrected or new fact about people, org structure, products, decisions, or strategy.
 license: CC0-1.0
-depends_on: [synthesis-okf]
+depends_on:
+  - synthesis-okf
+  - synthesis-kb-edit
 metadata:
   author: Rajiv Pant
 ---
 
 # Knowledge Capture
 
-**Version 1.0.0** (2026-07-29)
+**Version 1.1.0** (2026-07-29)
 
 A fact learned in a session and not written to the durable knowledge base is a
 fact lost. This skill is the disciplined path from "the agent now knows X" to
@@ -52,6 +54,12 @@ is neither. If the config is missing, STOP and say so — routing a fact without
 the routing table is guessing, and guessing about confidentiality is how a
 private fact ends up in a shared corpus.
 
+Each target repository must also carry `.agents/knowledge-base.yaml`. The
+private capture config answers **which repository receives the fact**; the
+repository contract answers **what may be edited there, which schema applies,
+and how the change ships**. Stop if either layer is missing or they disagree on
+the bundle path.
+
 ## The capture workflow
 
 Run these in order. Never skip step 3.
@@ -74,16 +82,16 @@ Run these in order. Never skip step 3.
    reference concept — reference tiers are updated in place. If the fact is
    genuinely new (a departure, a new hire), add it to the concept that already
    holds that class of fact (the departures table, the roster).
-5. **Validate.** Run the `synthesis-okf` validator on the bundle. Every touched
-   file must still parse its frontmatter and carry a non-empty `type`. Fix
-   before committing.
+5. **Validate.** Run both `synthesis-okf` layers: OKF conformance on the bundle
+   and configured metadata consistency on every touched concept. Resolve all
+   conformance errors, conflicts, and duplicates before shipping.
 6. **Log provenance.** Append a `log.md` entry (`## YYYY-MM-DD`, newest first)
    naming what changed and the in-session source. `log.md` is OKF-reserved and
    excluded from compiled knowledge; it is the audit trail, not content.
-7. **Commit and hold.** Stage only the files this merge touched. Write a commit
-   message that says *what area* changed, never the sensitive specifics (see
-   Commit hygiene). Push only per the repo's config posture — hold for approval
-   on any shared or mirrored repo.
+7. **Ship through `synthesis-kb-edit`.** Hand the exact touched-file list and
+   validation results to the configured editor workflow. It rechecks editable,
+   refused, generated, confidentiality, branch, host, and review policy before
+   staging or publishing anything.
 
 ## Merge discipline — the four hard rules
 
@@ -164,9 +172,12 @@ mention them," which is what makes an in-place merge possible.
 
 ## Integration
 
-- **`synthesis-okf`** validates the bundle after every merge (step 5) and is the
-  authority on the format. This skill governs *what* to write and *where*; okf
-  governs that the result stays conformant.
+- **`synthesis-okf`** validates conformance and configured metadata
+  consistency after every merge. This skill governs *what* to write and
+  *where*; OKF governs that the result stays structurally coherent.
+- **`synthesis-kb-edit`** owns repository policy and shipping. Pass it the
+  touched files; do not independently reconstruct branch, host, scanner, or
+  review mechanics from the capture config.
 - **`synthesis-context-lifecycle`** is the sibling for *project* working memory
   (CONTEXT/REFERENCE/sessions). This skill is its counterpart for the durable,
   cross-project knowledge base. Project state that has hardened into a stable
@@ -175,13 +186,9 @@ mention them," which is what makes an in-place merge possible.
 - **Daily rituals** are a natural trigger: a day-end step can ask "what did today
   teach that the knowledge base should hold?" and run this workflow on the
   answer.
-- **Repo-local ship and validate skills.** A target repo may carry its own skills
-  for shipping a change (a PR-based flow) and validating conformance (its own
-  taxonomy checker). When it does, this skill stops at the validated in-place
-  merge and hands off: it governs *what* to capture and *how* to merge it
-  safely; the repo's own skills govern *how the change ships*. Discover a repo's
-  `.claude/skills/` before merging, prefer its validator over a generic one, and
-  never bypass its PR flow with a direct push.
+- **Repository configuration.** Read `.agents/knowledge-base.yaml`; do not
+  discover client-specific workflow copies under a tool-owned skill folder.
+  One portable config plus the public skills is the cross-agent contract.
 
 ## Commit hygiene
 
@@ -197,6 +204,8 @@ mention them," which is what makes an in-place merge possible.
 ## Related
 
 - `synthesis-okf` — the OKF format validator/converter this skill validates with.
+- `synthesis-kb-edit` — repository policy, validation orchestration, and
+  configured ship flow.
 - `synthesis-context-lifecycle` — project working memory; the sibling layer.
 - `synthesis-message-guard` — the same provenance-and-fail-safe ethos, applied to
   outbound correspondence instead of stored knowledge.
