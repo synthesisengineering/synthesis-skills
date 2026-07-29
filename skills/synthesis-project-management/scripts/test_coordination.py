@@ -64,3 +64,19 @@ def test_nonoverlapping_claims(tmp_path: Path) -> None:
         assert MODULE.command_claim(command) == 0
 
     assert len(MODULE.rows(board.read_text(encoding="utf-8"))) == 2
+
+
+def test_message_accepts_annotated_protocol_heading(tmp_path: Path) -> None:
+    board = tmp_path / "active-sessions.md"
+    board.write_text(
+        MODULE.template().replace(
+            "## Protocol\n",
+            "## Protocol (proposed — formalize this)\n",
+        ),
+        encoding="utf-8",
+    )
+    message = args(board, sender="B", to="A", text="Sequencing update.")
+    assert MODULE.command_message(message) == 0
+    text = board.read_text(encoding="utf-8")
+    assert "Sequencing update." in text
+    assert "## Protocol (proposed — formalize this)" in text

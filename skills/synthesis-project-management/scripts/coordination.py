@@ -238,12 +238,19 @@ def command_message(args) -> int:
             f"### → {sanitize(args.to)}, from {sanitize(args.sender)} — {timestamp()}"
         )
         block = f"{heading}\n\n{body.strip()}\n\n"
-        marker = re.search(r"(?m)^---\s*\n\n## Protocol\s*$", content)
+        marker = re.search(
+            r"(?m)^---[ \t]*\n\n## Protocol(?:[^\n]*)?$",
+            content,
+        )
         if not marker:
             raise RuntimeError("board lacks Protocol boundary")
         return content[: marker.start()] + block + content[marker.start() :]
 
-    locked_update(args.board, operation)
+    try:
+        locked_update(args.board, operation)
+    except RuntimeError as exc:
+        print(f"coordination message failed: {exc}", file=sys.stderr)
+        return 10
     print(f"Message appended for {args.to}.")
     return 0
 

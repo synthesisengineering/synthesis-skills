@@ -4,6 +4,28 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.2.0] - 2026-07-29
+
+### Added
+
+- `synthesis-kb-edit` v1.0.0: a plain-language, config-driven knowledge-base
+  editing and shipping workflow backed by `.agents/knowledge-base.yaml`.
+- A deterministic knowledge-base contract validator and path classifier.
+- `synthesis-okf` v1.1.0 metadata-consistency checks for configured
+  frontmatter, date-field aliases, inline duplicates and conflicts, taxonomy
+  values, title/H1 agreement, filenames, and topic routing.
+- Codex UI metadata for the knowledge-base skill family, with conformance
+  checks that keep invocation prompts aligned with skill names.
+- Coordination message writes now accept annotated Protocol headings and
+  return a clean failure instead of a traceback when the board schema is
+  invalid.
+
+### Changed
+
+- `synthesis-knowledge-capture` v1.1.0 now composes the configured OKF
+  validation and knowledge-base shipping layers instead of discovering
+  tool-owned repository skill copies.
+
 ## [4.1.0] - 2026-07-29
 
 ### Added

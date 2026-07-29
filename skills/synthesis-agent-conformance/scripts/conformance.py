@@ -152,6 +152,30 @@ def source_checks(source_root: Path) -> list[Check]:
             valid = declared == skill_dir.name and bool(SKILL_NAME_RE.fullmatch(declared))
             add(checks, f"source.skill.{skill_dir.name}", valid, f"declared={declared}")
             names.append(declared)
+            interface = skill_dir / "agents" / "openai.yaml"
+            if interface.is_file():
+                try:
+                    ui = yaml.safe_load(interface.read_text(encoding="utf-8"))
+                    prompt = ui["interface"]["default_prompt"]
+                    ui_ok = (
+                        isinstance(ui["interface"]["display_name"], str)
+                        and isinstance(ui["interface"]["short_description"], str)
+                        and isinstance(prompt, str)
+                        and f"${declared}" in prompt
+                    )
+                    add(
+                        checks,
+                        f"source.skill-ui.{skill_dir.name}",
+                        ui_ok,
+                        str(interface.relative_to(source_root)),
+                    )
+                except Exception as exc:
+                    add(
+                        checks,
+                        f"source.skill-ui.{skill_dir.name}",
+                        False,
+                        f"{interface}: {exc}",
+                    )
         except Exception as exc:
             add(checks, f"source.skill.{skill_dir.name}", False, str(exc))
 
