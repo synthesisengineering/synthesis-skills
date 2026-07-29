@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Checkpoint"
+  short_description: "Apply the checkpoint synthesis workflow"
+  default_prompt: "Use $synthesis-checkpoint to apply this workflow to the current task."

@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.14.0"
+  version: "2.16.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,16 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.16.0 — Agent-neutral day-end runtime
+
+v2.16.0 (2026-07-29) installs the launcher and macOS nudge under
+`~/.synthesis/day-end/`, a stable runtime owned by synthesis rather than by one
+agent client's skill cache. The launcher can open Codex or Claude Code; `auto`
+prefers Codex when both CLIs are present, and `--agent codex|claude` persists an
+explicit choice. The installer atomically writes exact files, refuses
+symlinked runtime roots, never removes the runtime tree, and verifies source
+survival in its tests.
 
 ## v2.15.1 — Message-guard doctor joins Day-Start Step 1
 
@@ -48,7 +58,7 @@ v2.14.0 (2026-07-08) redesigns the day-end around the observed failure mode: on 
    ```
 
    `streak_day_end` = consecutive workdays with a completed day-end, computed from history at write time. Consumers: the synthesis-console day-end chip, the nudge's suppression check, and the day-start brief line ("day-end: ran Mon ✓ quick · skipped Tue").
-7. **Launcher + nudge ship in `scripts/`.** The ritual is an Agent Skill and always runs INSIDE an agentic coding session — nothing here changes that. `scripts/day-end` is a *launcher, not a runner*: it opens an agent session (Claude Code by default; `DAY_END_AGENT_CMD` overrides) with the ritual invocation as the first prompt, purely to remove cold-start friction at the end of the day. `scripts/day-end-nudge.sh` + `scripts/com.synthesis.day-end-nudge.plist` show one generic macOS banner at 16:55 on weekdays unless the state file says today's day-end already ran — notification only, never a mutation, generic fixed text (see the alert-confidentiality rule below). Install steps follow.
+7. **Launcher + nudge ship in `scripts/`.** The ritual is an Agent Skill and always runs INSIDE an agentic coding session — nothing here changes that. `scripts/day-end` is a *launcher, not a runner*: it opens Codex or Claude Code with the ritual invocation as the first prompt, purely to remove cold-start friction at the end of the day. `DAY_END_AGENT_CMD` selects a CLI for one run; the installed `agent-cli` file persists `auto`, `codex`, or `claude`. `scripts/day-end-nudge.sh` shows one generic macOS banner at 16:55 on weekdays unless the state file says today's day-end already ran — notification only, never a mutation, generic fixed text (see the alert-confidentiality rule below). Install steps follow.
 8. **Audio-alert section aligned with alert confidentiality.** Spoken alerts and banners carry zero identifying content and honor the `~/.synthesis/quiet-audio` mute flag — matching the synthesis-repo-guard v2 alert model. The old `say "[user], [task description] is complete"` pattern is retired: task descriptions can name clients, repos, or people, and speakers/screen-shares leak.
 
 **Consumer coupling:** synthesis-console renders `state.json` (day-end chip) and `**Decays:**` lines (draft badges). Producer-grammar changes here require the console's `docs/cockpit-design.md` to change in the same wave — the document-as-contract rule.
@@ -56,15 +66,20 @@ v2.14.0 (2026-07-08) redesigns the day-end around the observed failure mode: on 
 ### Installing the launcher and nudge (macOS)
 
 ```bash
-# Launcher on PATH (point the symlink at any PATH dir you use)
-ln -sf <synthesis-daily-rituals-root>/scripts/day-end ~/.local/bin/day-end
+# Auto-select Codex first when both supported clients are available
+python3 <synthesis-daily-rituals-root>/scripts/install_day_end.py
 
-# Nudge LaunchAgent (16:55 weekdays, state-aware, notification-only)
-cp <synthesis-daily-rituals-root>/scripts/com.synthesis.day-end-nudge.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.synthesis.day-end-nudge.plist
+# Or persist one client explicitly
+python3 <synthesis-daily-rituals-root>/scripts/install_day_end.py --agent codex
+python3 <synthesis-daily-rituals-root>/scripts/install_day_end.py --agent claude
 ```
 
-The plist resolves the nudge script through `$HOME/.claude/skills/.../scripts/` — the installed copy — so ordinary skill reinstalls keep it current without touching launchd. After changing the plist itself: `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.synthesis.day-end-nudge.plist`, then re-`bootstrap`.
+The installer copies the launcher and nudge into
+`~/.synthesis/day-end/bin/`, links `~/.local/bin/day-end` to that stable
+runtime, writes the LaunchAgent with an absolute program path, and reloads it.
+Re-run the installer after the skill changes. Use `--no-launchctl` only for CI
+or an installation audit that should write and verify artifacts without
+loading the LaunchAgent.
 
 ## v2.13.0 — Per-workspace `repos.yaml` is the machine-readable repo list
 

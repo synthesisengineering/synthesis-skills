@@ -4,6 +4,32 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.3.0] - 2026-07-29
+
+### Added
+
+- Codex `agents/openai.yaml` interfaces for every public synthesis skill, with
+  source conformance that requires the interface, invocation token, and a
+  correctly sized short description.
+- An agent-neutral day-end installer that atomically places the launcher and
+  nudge under `~/.synthesis/day-end/`, refuses symlinked runtime roots, and
+  supports persisted `auto`, `codex`, or `claude` selection.
+- Dual-client message-guard diagnosis: every installed Claude Code and Codex
+  hook configuration must independently gate the complete correspondence tool
+  family.
+- Regression coverage for day-end source survival, Codex-first auto selection,
+  symlink refusal, both client hook shapes, and client-bound runtime paths.
+
+### Changed
+
+- `synthesis-daily-rituals` v2.16.0 uses the stable synthesis runtime for its
+  background automation instead of a client-owned skill cache.
+- `synthesis-slack-sync` v3.3.1 resolves its checker from the active skill root.
+- `synthesis-inbox-cleanup` v1.3.2 and `synthesis-git-hooks` v2.1.1 make native
+  Codex and Claude Code plugins their primary setup path.
+- `synthesis-message-guard` v1.1.0 treats an unwired installed client as an
+  unhealthy protection layer.
+
 ## [4.2.0] - 2026-07-29
 
 ### Added

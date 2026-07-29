@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Anti Shortcuts"
+  short_description: "Apply the anti shortcuts synthesis workflow"
+  default_prompt: "Use $synthesis-anti-shortcuts to apply this workflow to the current task."

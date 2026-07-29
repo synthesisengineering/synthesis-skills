@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Code Integration"
+  short_description: "Apply the code integration synthesis workflow"
+  default_prompt: "Use $synthesis-code-integration to apply this workflow to the current task."

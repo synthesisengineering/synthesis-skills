@@ -153,13 +153,22 @@ def source_checks(source_root: Path) -> list[Check]:
             add(checks, f"source.skill.{skill_dir.name}", valid, f"declared={declared}")
             names.append(declared)
             interface = skill_dir / "agents" / "openai.yaml"
-            if interface.is_file():
+            if not interface.is_file():
+                add(
+                    checks,
+                    f"source.skill-ui.{skill_dir.name}",
+                    False,
+                    f"missing {interface.relative_to(source_root)}",
+                )
+            else:
                 try:
                     ui = yaml.safe_load(interface.read_text(encoding="utf-8"))
                     prompt = ui["interface"]["default_prompt"]
+                    short_description = ui["interface"]["short_description"]
                     ui_ok = (
                         isinstance(ui["interface"]["display_name"], str)
-                        and isinstance(ui["interface"]["short_description"], str)
+                        and isinstance(short_description, str)
+                        and 25 <= len(short_description) <= 64
                         and isinstance(prompt, str)
                         and f"${declared}" in prompt
                     )
@@ -185,8 +194,9 @@ def source_checks(source_root: Path) -> list[Check]:
     add(checks, "source.no-root-skills", not root_skills, ", ".join(root_skills) or "none")
 
     stale_patterns = {
-        "source.no-codex-copy-paths": re.compile(r"~/.codex/skills/synthesis-"),
-        "source.no-claude-copy-paths": re.compile(r"~/.claude/skills/synthesis-"),
+        "source.no-client-copy-paths": re.compile(
+            r"(?:~|\$HOME)/\.(?:codex|claude|agents)/skills/synthesis-"
+        ),
         "source.no-old-source-layout": re.compile(r"synthesis-skills/synthesis-"),
     }
     text_files = [
@@ -196,6 +206,7 @@ def source_checks(source_root: Path) -> list[Check]:
         and ".git" not in path.parts
         and ".claude" not in path.parts
         and path.resolve() != SCRIPT_PATH
+        and path.resolve() != SCRIPT_PATH.with_name("test_conformance.py")
         and path.suffix in {".md", ".py", ".sh", ".yaml", ".yml", ".json"}
     ]
     for name, pattern in stale_patterns.items():
@@ -207,6 +218,25 @@ def source_checks(source_root: Path) -> list[Check]:
             except UnicodeDecodeError:
                 continue
         add(checks, name, not matches, ", ".join(matches) or "none")
+
+    skill_local_npx = re.compile(
+        r"npx\s+skills\s+add\s+synthesisengineering/synthesis-skills"
+    )
+    matches = []
+    for path in text_files:
+        if skills_root not in path.parents:
+            continue
+        try:
+            if skill_local_npx.search(path.read_text(encoding="utf-8")):
+                matches.append(str(path.relative_to(source_root)))
+        except UnicodeDecodeError:
+            continue
+    add(
+        checks,
+        "source.no-skill-local-fallback-installs",
+        not matches,
+        ", ".join(matches) or "none",
+    )
     return checks
 
 

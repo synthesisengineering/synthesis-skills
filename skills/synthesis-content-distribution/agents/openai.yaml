@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Content Distribution"
+  short_description: "Apply the content distribution synthesis workflow"
+  default_prompt: "Use $synthesis-content-distribution to apply this workflow to the current task."

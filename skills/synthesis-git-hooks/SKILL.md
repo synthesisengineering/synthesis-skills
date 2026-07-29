@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.0"
+  version: "2.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -15,6 +15,13 @@ metadata:
 A YAML-driven pre-commit policy engine. Part of the synthesis-engineering operational layer — deterministic enforcement that catches credential leaks and exposure-sensitive content at the commit boundary, before the diff persists.
 
 The engine is small (one bash script + one Python sidecar). The policy is data — a YAML file at `~/.synthesis/git-hook-config.yaml` that anyone adopting synthesis engineering fills in with their own personal-remote patterns, client names, and internal URLs.
+
+## v2.1.1 — Native dual-runtime setup
+
+v2.1.1 (2026-07-29) makes the native synthesis plugin the primary skill setup
+for Codex and Claude Code. The enforcement runtime remains agent-neutral under
+`~/.synthesis/git-hooks/`; both clients invoke and diagnose the same installed
+engine.
 
 ## v2.0.0 — fail closed, zero dependencies, self-diagnosing
 
@@ -50,8 +57,13 @@ The classification is derived from `git remote -v` on every commit — no per-re
 ## Install
 
 ```bash
-# 1. Install this skill into ~/.claude/skills/ (or equivalent for your agent)
-npx skills add synthesisengineering/synthesis-skills --skill synthesis-git-hooks --copy
+# 1. Install the native plugin in the client you use
+codex plugin marketplace add synthesisengineering/synthesis-skills
+codex plugin add synthesis-skills@synthesis-engineering
+
+# Claude Code equivalent
+claude plugin marketplace add synthesisengineering/synthesis-skills
+claude plugin install synthesis-skills@synthesis-engineering
 
 # 2. Run the install script — copies the engine to ~/.synthesis/git-hooks/,
 #    sets git's core.hooksPath, and seeds an initial config from the template.

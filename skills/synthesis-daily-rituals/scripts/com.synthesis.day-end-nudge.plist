@@ -8,7 +8,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>exec "$HOME/.claude/skills/synthesis-daily-rituals/scripts/day-end-nudge.sh"</string>
+    <string>exec "$HOME/.synthesis/day-end/bin/day-end-nudge.sh"</string>
   </array>
   <key>StartCalendarInterval</key>
   <array>

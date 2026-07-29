@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.1"
+  version: "1.3.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   platform: "macOS (Apple Silicon and Intel)"
@@ -16,6 +16,13 @@ metadata:
 A manifest-driven email cleanup engine that scales the same human-curated rules across three account tool stacks on macOS: iCloud / generic IMAP, Microsoft 365 / outlook.com via Mail.app AppleScript, and Gmail via the workspace-mcp Gmail API (with optional native server-side filters).
 
 The engine is deterministic. Email content does not change rules at runtime. When an LLM is invoked — for new-sender categorization or for higher-risk paths like body-reading digests — sanitization defenses run first. The skill ships adversarial test fixtures so prompt-injection regressions surface in CI rather than in production.
+
+## v1.3.2 — Native dual-runtime setup
+
+v1.3.2 (2026-07-29) makes the repository's native plugin the primary setup
+path for Codex and Claude Code. The engine continues to install its private
+runtime and rules under `~/.synthesis/inbox-cleanup/`, independent of either
+client's skill cache.
 
 ## Architecture: public engine, private rules
 
@@ -237,8 +244,13 @@ The IMAP substring pitfall and the circumstantial-inference pitfall are document
 ## Setup
 
 ```bash
-# 1. Install the skill (Claude Code shown; same idea for Codex)
-npx skills add synthesisengineering/synthesis-skills --skill synthesis-inbox-cleanup --copy
+# 1. Install the native plugin in the client you use
+codex plugin marketplace add synthesisengineering/synthesis-skills
+codex plugin add synthesis-skills@synthesis-engineering
+
+# Claude Code equivalent
+claude plugin marketplace add synthesisengineering/synthesis-skills
+claude plugin install synthesis-skills@synthesis-engineering
 
 # 2. Run the installer — creates ~/.synthesis/inbox-cleanup/ with seed config + rules
 <synthesis-inbox-cleanup-root>/scripts/install.sh

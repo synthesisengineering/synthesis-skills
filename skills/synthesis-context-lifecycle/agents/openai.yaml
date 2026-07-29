@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Context Lifecycle"
+  short_description: "Apply the context lifecycle synthesis workflow"
+  default_prompt: "Use $synthesis-context-lifecycle to apply this workflow to the current task."

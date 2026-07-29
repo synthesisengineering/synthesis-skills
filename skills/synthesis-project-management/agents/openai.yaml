@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Project Management"
+  short_description: "Apply the project management synthesis workflow"
+  default_prompt: "Use $synthesis-project-management to apply this workflow to the current task."
