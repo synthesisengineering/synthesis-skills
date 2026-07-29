@@ -11,28 +11,52 @@ set -e
 
 REPO_URL="https://github.com/synthesisengineering/synthesis-skills.git"
 REPO_NAME="synthesis-skills"
-CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/synthesis-skills"
+SOURCE_MODE="remote"
+if [ -n "${SYNTHESIS_SKILLS_SOURCE_DIR:-}" ]; then
+    CACHE_DIR=$(cd "$SYNTHESIS_SKILLS_SOURCE_DIR" && pwd)
+    SOURCE_MODE="local"
+else
+    CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/synthesis-skills"
+fi
 # Backups live BESIDE the cache, not inside it: the cache dir is deleted on
 # reclone and on uninstall, and backups must survive both.
-BACKUP_ROOT="${CACHE_DIR}-backups"
+BACKUP_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/synthesis-skills-backups"
 BACKUP_KEEP_RUNS=10
 SOURCE_REPO="github.com/synthesisengineering/synthesis-skills"
 SOURCE_TYPE="public"
+SKILLS_DIR="${CACHE_DIR}/skills"
 
 # Skill directories to install to (auto-detected)
 detect_targets() {
+    if [ -n "${SYNTHESIS_SKILLS_TARGETS:-}" ]; then
+        echo "$SYNTHESIS_SKILLS_TARGETS"
+        return
+    fi
+
     TARGETS=""
-    # Claude Code
-    TARGETS="$TARGETS $HOME/.claude/skills"
-    # OpenAI Codex
-    TARGETS="$TARGETS $HOME/.codex/skills"
-    # Cross-platform convention
-    TARGETS="$TARGETS $HOME/.agents/skills"
+    # Prefer each client's native plugin package. Direct user-skill copies are
+    # the fallback for clients where the plugin is not installed.
+    if ! claude_plugin_installed; then
+        TARGETS="$TARGETS $HOME/.claude/skills"
+    fi
+    if ! codex_plugin_installed; then
+        TARGETS="$TARGETS $HOME/.agents/skills"
+    fi
     # Cursor
     if [ -d "$HOME/.cursor" ]; then
         TARGETS="$TARGETS $HOME/.cursor/skills"
     fi
     echo "$TARGETS"
+}
+
+claude_plugin_installed() {
+    command -v claude >/dev/null 2>&1 || return 1
+    claude plugin list --json 2>/dev/null | grep -q '"id": "synthesis-skills@'
+}
+
+codex_plugin_installed() {
+    command -v codex >/dev/null 2>&1 || return 1
+    codex plugin list --json 2>/dev/null | grep -q '"name": "synthesis-skills"'
 }
 
 # List skill directories (directories containing SKILL.md)
@@ -42,7 +66,7 @@ list_skills() {
 
 # Get list of our skill names from the repo
 our_skill_names() {
-    list_skills "$CACHE_DIR" | while read -r dir; do
+    list_skills "$SKILLS_DIR" | while read -r dir; do
         basename "$dir"
     done
 }
@@ -66,7 +90,7 @@ write_source_json() {
 {
   "source_repo": "${SOURCE_REPO}",
   "source_type": "${SOURCE_TYPE}",
-  "source_path": "${skill_name}/SKILL.md",
+  "source_path": "skills/${skill_name}/SKILL.md",
   "source_commit": "${commit_hash}",
   "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "installed_by": "install.sh"
@@ -117,7 +141,9 @@ do_install() {
     echo "Installing Synthesis Skills..."
 
     # Clone or update cache
-    if [ -d "$CACHE_DIR/.git" ]; then
+    if [ "$SOURCE_MODE" = "local" ]; then
+        echo "Using local source: $CACHE_DIR"
+    elif [ -d "$CACHE_DIR/.git" ]; then
         echo "Updating cached repo..."
         git -C "$CACHE_DIR" pull --quiet
     else
@@ -136,7 +162,7 @@ do_install() {
 
     for target in $TARGETS; do
         mkdir -p "$target"
-        for skill_dir in $(list_skills "$CACHE_DIR"); do
+        for skill_dir in $(list_skills "$SKILLS_DIR"); do
             skill_name=$(basename "$skill_dir")
             # Skip non-skill directories
             case "$skill_name" in
@@ -292,7 +318,7 @@ check_dependencies() {
     VIOLATION_COUNT=0
     CHECKED=0
 
-    for skill_dir in $(list_skills "$CACHE_DIR"); do
+    for skill_dir in $(list_skills "$SKILLS_DIR"); do
         skill_name=$(basename "$skill_dir")
         case "$skill_name" in
             .git|node_modules|.github) continue ;;
@@ -335,6 +361,10 @@ check_dependencies() {
 }
 
 do_update() {
+    if [ "$SOURCE_MODE" = "local" ]; then
+        do_install
+        return
+    fi
     if [ ! -d "$CACHE_DIR/.git" ]; then
         echo "No existing installation found. Running install instead."
         do_install
@@ -352,7 +382,9 @@ do_status() {
     echo ""
 
     # Update cache if present
-    if [ -d "$CACHE_DIR/.git" ]; then
+    if [ "$SOURCE_MODE" = "local" ]; then
+        :
+    elif [ -d "$CACHE_DIR/.git" ]; then
         git -C "$CACHE_DIR" pull --quiet 2>/dev/null || true
     else
         echo "No cached repo. Run './install.sh install' first."
@@ -360,6 +392,7 @@ do_status() {
     fi
 
     TARGETS=$(detect_targets)
+    STATUS_FAILURES=0
     for target in $TARGETS; do
         if [ ! -d "$target" ]; then
             continue
@@ -371,7 +404,7 @@ do_status() {
         DRIFTED=0
         ORPHANED=0
 
-        for skill_dir in $(list_skills "$CACHE_DIR"); do
+        for skill_dir in $(list_skills "$SKILLS_DIR"); do
             skill_name=$(basename "$skill_dir")
             case "$skill_name" in
                 .git|node_modules|.github) continue ;;
@@ -381,6 +414,7 @@ do_status() {
 
             if [ ! -d "$installed_dir" ]; then
                 echo "  MISSING: $skill_name"
+                STATUS_FAILURES=$((STATUS_FAILURES + 1))
                 continue
             fi
 
@@ -391,6 +425,7 @@ do_status() {
             if [ "$installed_sum" != "$source_sum" ]; then
                 echo "  DRIFT:   $skill_name"
                 DRIFTED=$((DRIFTED + 1))
+                STATUS_FAILURES=$((STATUS_FAILURES + 1))
             else
                 echo "  OK:      $skill_name"
             fi
@@ -401,7 +436,7 @@ do_status() {
             for installed_dir in "$target"/synthesis-*; do
                 [ -d "$installed_dir" ] || continue
                 skill_name=$(basename "$installed_dir")
-                if [ ! -d "${CACHE_DIR}/${skill_name}" ]; then
+                if [ ! -d "${SKILLS_DIR}/${skill_name}" ]; then
                     if [ -f "${installed_dir}/.source.json" ]; then
                         other_repo=$(grep '"source_repo"' "${installed_dir}/.source.json" 2>/dev/null | sed 's/.*: *"//;s/".*//' || echo "unknown")
                         echo "  OTHER:   $skill_name (from $other_repo)"
@@ -417,6 +452,12 @@ do_status() {
         echo "  $INSTALLED installed, $DRIFTED drifted, $ORPHANED from other repos"
         echo ""
     done
+
+    if [ "$STATUS_FAILURES" -gt 0 ]; then
+        echo "FAILED: $STATUS_FAILURES missing or drifted installation(s)."
+        return 1
+    fi
+    echo "PASS: all direct-copy targets match source."
 }
 
 do_uninstall() {
@@ -446,7 +487,9 @@ do_uninstall() {
         done
     done
 
-    rm -rf "$CACHE_DIR"
+    if [ "$SOURCE_MODE" != "local" ]; then
+        rm -rf "$CACHE_DIR"
+    fi
     echo "Done. Removed $REMOVED skill installations."
 }
 

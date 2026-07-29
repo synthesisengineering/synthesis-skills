@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-agent-conformance/scripts/session_context.py --format claude",
+            "timeout": 30,
+            "statusMessage": "Loading verified synthesis project context"
+          }
+        ]
+      }
+    ]
+  }
+}

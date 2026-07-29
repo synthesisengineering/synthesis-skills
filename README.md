@@ -22,6 +22,27 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## Install
 
+### Native plugin for ChatGPT, Codex, and Claude Code
+
+The repository is a dual-runtime plugin. The same `skills/` source tree is
+packaged for the ChatGPT/Codex plugin system and Claude Code.
+
+```bash
+# Codex / ChatGPT desktop
+codex plugin marketplace add synthesisengineering/synthesis-skills
+codex plugin add synthesis-skills@synthesis-engineering
+
+# Claude Code
+claude plugin marketplace add synthesisengineering/synthesis-skills
+claude plugin install synthesis-skills@synthesis-engineering
+```
+
+The Codex package also restores the active synthesis project after context
+compaction. Run `synthesis-agent-conformance` to verify both runtime
+installations, instruction discovery, and project handoff.
+
+### Agent Skills installer
+
 **One command — installs all skills to every AI agent on your machine:**
 
 ```bash
@@ -30,7 +51,7 @@ npx skills add synthesisengineering/synthesis-skills --global --all --copy
 
 This works with Claude Code, OpenAI Codex, Cursor, GitHub Copilot, and [40+ other agents](https://agentskills.io).
 
-### No Node.js? Use the shell installer:
+### No Node.js? Use the shell installer
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/install.sh | sh
@@ -108,6 +129,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | Skill | Description |
 |-------|-------------|
 | `synthesis-autopilot` | Autonomous-execution mode for explicitly delegated work: plan-file protocol, batched decisions, standing gates preserved |
+| `synthesis-agent-conformance` | Cross-agent control plane: native plugin/runtime checks, instruction migration, lifecycle-hook health, and durable handoff verification |
 | `synthesis-context-lifecycle` | Three-tier context architecture for managing AI working memory, with agent attribution for multi-agent provenance |
 | `synthesis-project-management` | Lightweight PM system for human-agent collaboration, with cross-agent handoff, agent attribution, and parallel sub-agent dispatch protocols |
 | `synthesis-daily-rituals` | Day-start and day-end checklists with dependency-ordered rituals |
@@ -152,6 +174,15 @@ Skills use progressive disclosure:
 1. **Tier 1** (always loaded): name + description (~50 tokens) — matches your requests
 2. **Tier 2** (on activation): SKILL.md body — the actual instructions
 3. **Tier 3** (on demand): reference files for detailed material
+
+The plugin layout is:
+
+```text
+.codex-plugin/plugin.json
+.claude-plugin/plugin.json
+hooks/hooks.json
+skills/<skill-name>/SKILL.md
+```
 
 When you ask your AI assistant to do something that matches a skill's description, it loads automatically. Skills that involve writing include defaults that work standalone. If you have personal preferences in agent instruction files such as `CLAUDE.md` or `AGENTS.md`, those override the defaults.
 

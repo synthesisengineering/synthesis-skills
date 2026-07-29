@@ -1,0 +1,88 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+
+MODULE_PATH = Path(__file__).with_name("conformance.py")
+SPEC = importlib.util.spec_from_file_location("conformance", MODULE_PATH)
+assert SPEC and SPEC.loader
+MODULE = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = MODULE
+SPEC.loader.exec_module(MODULE)
+
+
+def write_skill(root: Path, name: str) -> None:
+    skill = root / "skills" / name
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: Test skill.\n---\n\n# Test\n",
+        encoding="utf-8",
+    )
+
+
+def write_manifests(root: Path) -> None:
+    payload = json.dumps(
+        {
+            "name": "synthesis-skills",
+            "version": "1.0.0",
+            "description": "test",
+            "skills": "./skills/",
+        }
+    )
+    for folder in (".codex-plugin", ".claude-plugin"):
+        path = root / folder
+        path.mkdir()
+        (path / "plugin.json").write_text(payload, encoding="utf-8")
+
+    configurations = (
+        root / ".agents" / "plugins" / "marketplace.json",
+        root / ".claude-plugin" / "marketplace.json",
+        root / "hooks" / "hooks.json",
+    )
+    for configuration in configurations:
+        configuration.parent.mkdir(parents=True, exist_ok=True)
+        configuration.write_text("{}\n", encoding="utf-8")
+
+
+def test_source_checks_accept_dual_manifest(tmp_path: Path) -> None:
+    write_manifests(tmp_path)
+    write_skill(tmp_path, "synthesis-test")
+    checks = MODULE.source_checks(tmp_path)
+    assert all(check.ok for check in checks)
+
+
+def test_instruction_adapter(tmp_path: Path) -> None:
+    (tmp_path / "AGENTS.md").write_text("# Rules\n", encoding="utf-8")
+    (tmp_path / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
+    checks = MODULE.instruction_checks(tmp_path)
+    assert all(check.ok for check in checks)
+
+
+def test_activate_and_handoff(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "CONTEXT.md").write_text(
+        "# Context\n\n"
+        "**Phase:** 2\n"
+        "**Status:** Active\n"
+        "**Last session:** 2026-07-29\n\n"
+        "[plan](resources/artifacts/test-plan.md)\n\n"
+        "## What's Next\n\n1. [ ] Continue.\n",
+        encoding="utf-8",
+    )
+    (project / "REFERENCE.md").write_text("# Reference\n", encoding="utf-8")
+    (project / "sessions").mkdir()
+    plan = project / "resources" / "artifacts"
+    plan.mkdir(parents=True)
+    (plan / "test-plan.md").write_text("# Plan\n", encoding="utf-8")
+    subprocess = __import__("subprocess")
+    subprocess.run(["git", "init", str(project)], check=True, capture_output=True)
+
+    pointer = tmp_path / "active.json"
+    activated = MODULE.activate(project, pointer)
+    assert all(check.ok for check in activated if check.required)
+    handoff = MODULE.handoff_checks(project, pointer)
+    assert all(check.ok for check in handoff if check.required)

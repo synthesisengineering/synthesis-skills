@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "synthesis-engineering",
+  "description": "Synthesis engineering skills and lifecycle controls",
+  "owner": {
+    "name": "Synthesis Engineering"
+  },
+  "plugins": [
+    {
+      "name": "synthesis-skills",
+      "description": "Portable synthesis engineering, coding, writing, research, and project-management workflows.",
+      "author": {
+        "name": "Rajiv Pant"
+      },
+      "source": "./",
+      "category": "development",
+      "homepage": "https://synthesisengineering.org"
+    }
+  ]
+}

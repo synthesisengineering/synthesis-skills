@@ -4,6 +4,30 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.0.0] - 2026-07-29
+
+### Added
+
+- Dual-runtime plugin manifests and marketplaces for ChatGPT/Codex and Claude
+  Code.
+- `synthesis-agent-conformance`, with source/runtime/instruction/handoff checks,
+  active-project activation, and lifecycle context recovery.
+- A shared lifecycle hook that restores verified project state at client
+  startup, resume, and Codex post-compaction session restart.
+
+### Changed
+
+- Moved the canonical public skills under `skills/`, giving the repository one
+  plugin-native source tree.
+- Updated project-management, context-lifecycle, checkpoint, skills-manager,
+  repo-guard, daily-ritual, git-hook, inbox, transcript, and Mac-sync guidance
+  for agent-neutral instructions and native client adapters.
+- Removed `~/.codex/skills` as a source-managed deployment target. Codex uses
+  the public plugin plus private `~/.agents/skills`; product-owned system skills
+  remain client-managed.
+- Replaced whole-file Codex config synchronization with an owned-key overlay
+  and runtime conformance check.
+
 ## [3.19.0] - 2026-07-21
 
 ### Changed
