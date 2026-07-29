@@ -50,7 +50,7 @@ import sys
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-SIDECAR_VERSION = "2.0.0"
+SIDECAR_VERSION = "2.1.0"
 
 DEFAULT_CONFIG = Path.home() / ".synthesis" / "git-hook-config.yaml"
 DEFAULT_SOURCE_DIR = (
@@ -438,11 +438,11 @@ def run_doctor(config_path: Path) -> int:
     if hooks_path:
         hp = Path(os.path.expanduser(hooks_path))
         infos.append(f"core.hooksPath: {hp}")
-        for name in ("pre-commit", "_load_config.py"):
+        for name in ("pre-commit", "commit-msg", "_load_config.py"):
             f = hp / name
             if not f.exists():
                 problems.append(f"hooksPath missing {name}: {f}")
-            elif name == "pre-commit" and not os.access(f, os.X_OK):
+            elif name in ("pre-commit", "commit-msg") and not os.access(f, os.X_OK):
                 problems.append(f"{f} is not executable")
     else:
         problems.append(
@@ -456,7 +456,7 @@ def run_doctor(config_path: Path) -> int:
     if hooks_path and src_dir.is_dir():
         hp = Path(os.path.expanduser(hooks_path))
         drift_found = False
-        for name in ("pre-commit", "_load_config.py"):
+        for name in ("pre-commit", "commit-msg", "_load_config.py"):
             src, inst = src_dir / name, hp / name
             if src.exists() and inst.exists():
                 if src.read_bytes() != inst.read_bytes():

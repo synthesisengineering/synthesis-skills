@@ -25,8 +25,9 @@ mkdir -p "$(dirname "$CONFIG_PATH")"
 
 echo "→ Copying engine to $TARGET_DIR/"
 cp -f "$SCRIPT_DIR/pre-commit" "$TARGET_DIR/pre-commit"
+cp -f "$SCRIPT_DIR/commit-msg" "$TARGET_DIR/commit-msg"
 cp -f "$SCRIPT_DIR/_load_config.py" "$TARGET_DIR/_load_config.py"
-chmod +x "$TARGET_DIR/pre-commit" "$TARGET_DIR/_load_config.py"
+chmod +x "$TARGET_DIR/pre-commit" "$TARGET_DIR/commit-msg" "$TARGET_DIR/_load_config.py"
 
 if [ -f "$CONFIG_PATH" ]; then
     echo "→ Config already exists at $CONFIG_PATH — not overwriting."

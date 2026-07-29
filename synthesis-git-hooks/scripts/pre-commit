@@ -142,11 +142,8 @@ EOF
     exit 1
 fi
 
-# Note: commit-message scanning belongs in a `commit-msg` hook, not pre-commit
-# (pre-commit reads a stale COMMIT_EDITMSG from the previous commit attempt
-# because git doesn't pass the new message file as an argument to pre-commit).
-# The CHECK_COMMIT_MSG flag from the config is reserved for a future commit-msg
-# hook in this same directory.
+# Commit-message scanning is handled by the sibling `commit-msg` hook in this
+# directory (v2.1+), driven by the same sidecar's CHECK_COMMIT_MSG flag.
 
 # Export class for any delegated per-repo hook, then chain.
 export SYNTHESIS_REPO_CLASS="$REPO_CLASS"

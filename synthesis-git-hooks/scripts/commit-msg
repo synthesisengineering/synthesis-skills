@@ -1,0 +1,91 @@
+#!/bin/bash
+#
+# synthesis-engineering git-hook engine (commit-msg) — v2.1.
+#
+# Scans the COMMIT MESSAGE against the active pattern set for strict-class
+# repos. This closes the gap the pre-commit hook documents: pre-commit scans
+# diffs only (git gives it no reliable access to the new message), so
+# commit-message hygiene was previously enforced by discipline alone. A
+# history audit found the only real public-repo confidentiality violations
+# had arrived through exactly this unscanned channel.
+#
+# Fail-closed semantics identical to pre-commit v2: if the policy engine
+# cannot run, the commit is blocked, never passed unscanned.
+#
+# Bypass once (last resort; requires explicit approval per CLAUDE.md):
+#   git commit --no-verify
+#
+set -euo pipefail
+
+MSG_FILE="${1:?commit-msg hook requires the message file argument}"
+CONFIG="${SYNTHESIS_GIT_HOOK_CONFIG:-$HOME/.synthesis/git-hook-config.yaml}"
+HOOK_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+SIDECAR="$HOOK_DIR/_load_config.py"
+
+fail_closed() {
+    cat >&2 <<EOF
+
+==================================================================
+  X  COMMIT BLOCKED — synthesis-git-hooks policy engine unavailable
+==================================================================
+
+$1
+
+The engine FAILS CLOSED: a commit is never allowed to proceed
+unscanned just because the scanner is broken.
+
+Diagnose:   python3 $SIDECAR --doctor
+EOF
+    exit 1
+}
+
+[ -f "$CONFIG" ]  || fail_closed "Config not found at $CONFIG."
+[ -f "$SIDECAR" ] || fail_closed "Sidecar not found at $SIDECAR."
+PYBIN="$(command -v python3 || true)"
+[ -n "$PYBIN" ] || fail_closed "No python3 on PATH."
+
+set +e
+SIDECAR_OUT="$(SYNTHESIS_GIT_HOOK_CONFIG="$CONFIG" "$PYBIN" "$SIDECAR" --emit-shell-vars)"
+SIDECAR_STATUS=$?
+set -e
+[ "$SIDECAR_STATUS" -eq 0 ] || fail_closed "Sidecar exited $SIDECAR_STATUS (its message appears above)."
+eval "$SIDECAR_OUT"
+[ "${SYNTHESIS_SIDECAR_OK:-0}" = "1" ] || fail_closed "Sidecar output incomplete (missing OK sentinel)."
+
+# Personal-class repos (CHECK_COMMIT_MSG=0): message scanning off by design.
+if [ "${CHECK_COMMIT_MSG:-0}" = "1" ]; then
+    [ -n "${ACTIVE_REGEX:-}" ] || fail_closed "Active pattern set is empty."
+    # Ignore comment lines (stripped by git anyway).
+    MSG_MATCHES=$(grep -v '^#' "$MSG_FILE" | grep -i -E "$ACTIVE_REGEX" || true)
+    if [ -n "$MSG_MATCHES" ] && [ -n "${ALLOWLIST_REGEX:-}" ]; then
+        MSG_MATCHES=$(echo "$MSG_MATCHES" | grep -ivE "$ALLOWLIST_REGEX" || true)
+    fi
+    if [ -n "$MSG_MATCHES" ]; then
+        cat <<EOF
+
+==================================================================
+  !  SENSITIVE PATTERN IN COMMIT MESSAGE (synthesis-git-hooks)
+==================================================================
+
+Repo class: ${REPO_CLASS:-strict}
+
+Matched message lines:
+$MSG_MATCHES
+
+Commit messages in strict repos must stay generic: no client or
+company names, no financial/HR terms, no internal URLs. Rewrite the
+message (git commit messages are forever), or bypass once with
+explicit approval:
+  git commit --no-verify
+EOF
+        exit 1
+    fi
+fi
+
+# Chain to a repo-local commit-msg hook if one exists.
+export SYNTHESIS_REPO_CLASS="${REPO_CLASS:-strict}"
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || true
+if [ -n "$REPO_ROOT" ] && [ -x "$REPO_ROOT/.githooks/commit-msg" ]; then
+    exec "$REPO_ROOT/.githooks/commit-msg" "$MSG_FILE"
+fi
+exit 0
