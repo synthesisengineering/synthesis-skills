@@ -1,11 +1,11 @@
 ---
 name: synthesis-project-management
-description: "Lightweight project management system designed for human-agent collaboration, optimized for context preservation across sessions. Use when asked to: project management, project setup, project tracking, synthesis project, manage project, set up project, project structure, session protocol."
+description: "Lightweight project management system designed for human-agent collaboration, optimized for context preservation and cross-agent coordination across sessions. Use when asked to: project management, project setup, project tracking, synthesis project, manage project, set up project, project structure, session protocol, parallel root sessions, advisory locks, cross-agent coordination."
 license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.4.0"
+  version: "1.5.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -34,6 +34,9 @@ These values are user-specific. Update them for your environment.
 3. **Single source of truth** — No duplicate indexes to maintain. Files should be self-describing through front matter and naming conventions.
 4. **Self-describing files** — Date prefixes, status in index.yaml, front matter metadata. No separate documentation that can get stale.
 5. **Agents do the work** — Templates are obsolete. To create something new, examine an existing example and adapt it. Agents excel at this.
+6. **Coordinate before concurrent writes** — Separate root sessions share an
+   advisory-lock board outside the repositories they may restructure. Every
+   session reads it and claims its write areas before editing.
 
 ---
 
@@ -44,6 +47,8 @@ When working with AI assistants on multi-session projects:
 - **Session boundaries** create information gaps
 - **Tool switching** between Claude Code, Codex, Cursor, and other agents can strand context in tool-specific transcripts
 - **Multiple projects** create confusion about current state
+- **Parallel root sessions** can edit the same repository without seeing each
+  other's in-flight state
 - **Lessons learned** get lost instead of compounding
 
 This system provides persistent state that survives context loss.
@@ -248,11 +253,14 @@ Complete task → Complete task → Complete task → (context compaction) → L
 
 ### Session Start
 
-1. **Read CONTEXT.md** — Understand current state before touching code
-2. **Check line count** — If CONTEXT.md >150 lines, archive before starting work
-3. **Read REFERENCE.md** — If it exists and the task needs reference details
-4. **Search lessons/** — `grep` for relevant past experiences
-5. **Check related projects** — Look at `related:` tags in index.yaml
+1. **Read the coordination board** — If
+   `~/.synthesis/coordination/active-sessions.md` exists, read it before any
+   write and register or refresh this session's claim
+2. **Read CONTEXT.md** — Understand current state before touching code
+3. **Check line count** — If CONTEXT.md >150 lines, archive before starting work
+4. **Read REFERENCE.md** — If it exists and the task needs reference details
+5. **Search lessons/** — `grep` for relevant past experiences
+6. **Check related projects** — Look at `related:` tags in index.yaml
 
 ### Session End
 
@@ -261,6 +269,68 @@ Complete task → Complete task → Complete task → (context compaction) → L
 3. **Attribute if warranted** — If multiple agents/models contributed materially, end the session-log entry with Attribution line(s) (see Agent Attribution)
 4. **Update index.yaml** — Set `last_session` date
 5. **Commit all changes** — Do not leave uncommitted work
+6. **Release coordination claims** — Mark the session released or narrow its
+   claims before ending
+
+### Cross-Agent Session Coordination
+
+Durable project files solve handoff across time; they do not prevent two live
+root sessions from writing the same files at once. Use the shared coordination
+board for concurrent Claude Code, Codex, Cursor, or other root sessions:
+
+```text
+~/.synthesis/coordination/active-sessions.md
+```
+
+The board lives outside any repository a session may restructure. Its schema is:
+
+- `## Active sessions` — a table with session id, agent, start time, mode,
+  goal, claimed area globs, and status;
+- `## Messages` — append-only, addressed handoffs between sessions; and
+- `## Protocol` — the human-readable operating rules.
+
+Use `scripts/coordination.py` for atomic, file-locked updates:
+
+```bash
+# Read before writing
+python3 <synthesis-project-management-root>/scripts/coordination.py status
+
+# Claim one or more source areas
+python3 <synthesis-project-management-root>/scripts/coordination.py claim \
+  --id B --agent "OpenAI Codex" --mode autonomous \
+  --goal "Cross-client conformance" \
+  --area "synthesis-skills/**" --area "ai-knowledge-*/projects/**"
+
+# Leave an asynchronous handoff
+printf '%s\n' "Source checks pass; live install awaits authorization." |
+  python3 <synthesis-project-management-root>/scripts/coordination.py message \
+    --from B --to A
+
+# Release every claim at session end
+python3 <synthesis-project-management-root>/scripts/coordination.py release --id B
+```
+
+Rules:
+
+1. **Read at SessionStart and every synthesis checkpoint.**
+2. **Claim before write.** Area globs describe source ownership, not merely the
+   current file. Claim before creating a branch or editing.
+3. **Do not write through overlap.** If a claim conflicts, stop writes in that
+   area and use the message log or the user to sequence work.
+4. **Autonomous claim keeps priority.** When an autonomous and interactive
+   session overlap, the autonomous session keeps its existing claim; the
+   interactive session yields unless the user explicitly reorders them.
+5. **Messages are asynchronous.** Address the other session in the message log;
+   the recipient reads it at its next checkpoint.
+6. **Release explicitly.** A paused or completed session releases or narrows
+   its claims. Stale `active` rows are coordination defects.
+7. **Advisory does not mean optional.** The filesystem cannot stop every tool,
+   so the protocol and checkpoint hooks make the shared obligation visible.
+
+The script uses an OS file lock, verified backups, and atomic replacement for
+board mutations. See
+[`references/active-sessions-template.md`](references/active-sessions-template.md)
+for the canonical file shape.
 
 ### Cross-Agent Handoff
 
@@ -279,6 +349,7 @@ Before pausing work that may continue in another tool:
    python3 <skill-root>/scripts/conformance.py activate --project <project>
    python3 <skill-root>/scripts/conformance.py handoff --project <project>
    ```
+8. Release or transfer this session's coordination claims.
 
 When resuming work from another agent, re-run `handoff`, read CONTEXT.md and
 the linked plan, and verify git history before acting. Trust the project files
@@ -292,6 +363,10 @@ Fan-out to multiple sub-agents working the same project concurrently — a batch
 **Git-index collisions.** When more than one agent (or background process) can commit to the same repo in the same window, `git add <your files>` followed by a bare `git commit` does not commit only what you just added — it commits everything currently staged, including anything another agent staged first. `git add` extends the index; it does not replace it. Before every commit in a repo where concurrent writers are plausible, run `git status --short` and `git diff --cached --name-only` first, and commit only the paths this invocation intends (`git commit -o <paths>`, or unstage what isn't yours). Treat this as a mechanical prefix to the commit step, not a judgment call reserved for commits that "feel risky" — the risk lives in what might already be staged, which by definition isn't visible without looking first. (General git-mechanics and repo-scoping rules live in synthesis-context-lifecycle's Commit Protocol; this is the one addition specific to concurrent writers in the same repo.)
 
 **Tracking-doc aggregation.** A sub-agent dispatched against its own slice of a project — its own repo, its own batch — correctly leaves its siblings' in-flight work alone. That discipline has a side effect: no single agent sees the combined result. A shared tracking doc (CONTEXT.md, index.yaml) updated only by whichever agent happened to touch it last will under- or overstate what the batch actually accomplished. After any parallel dispatch, the orchestrator — not an individual sub-agent — reads every report as a set, reconciles them, and updates CONTEXT.md/index.yaml to reflect the true combined state.
+
+Sub-agents spawned by one orchestrator remain governed by that orchestrator.
+Independent root sessions use the cross-agent coordination board above; do not
+mistake a shared git worktree for implicit coordination.
 
 ---
 
@@ -334,6 +409,7 @@ When a user mentions a project:
 | Maintaining index files for lessons | Gets stale | Use date prefixes, `ls -t` |
 | Trusting a paused project's stated remaining-scope count | Batch-dispatches the wrong amount of work — wastes agent-hours on already-done items, or silently leaves new items undone | Re-derive the count from live disk/repo state immediately before dispatch, even when the document looks current |
 | Bare `git commit` in a repo where sub-agents dispatch concurrently | Sweeps another agent's staged work into your commit | `git status --short` / `git diff --cached --name-only` before every commit; commit only your own paths |
+| Editing before reading or claiming the coordination board | Two root sessions overwrite or invalidate each other's work | Read at SessionStart/checkpoint; claim source-area globs before writes |
 
 ---
 

@@ -16,7 +16,8 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install pytest pyyaml
       - run: python skills/synthesis-agent-conformance/scripts/conformance.py source
-      - run: python -m pytest skills/synthesis-agent-conformance/scripts/test_conformance.py -q
+      - run: python -m pytest skills/synthesis-agent-conformance/scripts/test_*.py -q
+      - run: python -m pytest skills/synthesis-project-management/scripts/test_coordination.py -q
       - run: sh -n install.sh tests/test_installer.sh
       - run: ./tests/test_installer.sh
       - run: python -m compileall -q skills

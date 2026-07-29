@@ -4,6 +4,25 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.1.0] - 2026-07-29
+
+### Added
+
+- Cross-agent session coordination for independent Claude Code, Codex, and
+  other root sessions: a stable active-session table, source-area advisory
+  claims, asynchronous messages, explicit release, OS-locked atomic updates,
+  verified backups, overlap detection, and tests.
+- SessionStart and checkpoint coordination reads, plus a conformance command
+  that validates the shared board schema.
+
+### Changed
+
+- `synthesis-project-management` v1.5.0 makes claim-before-write part of the
+  session protocol.
+- `synthesis-checkpoint` v1.1.0 treats concurrent-session state as another
+  source of drift.
+- `synthesis-autopilot` records, refreshes, and releases coordination claims.
+
 ## [4.0.0] - 2026-07-29
 
 ### Added

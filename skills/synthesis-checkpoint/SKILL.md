@@ -1,11 +1,11 @@
 ---
 name: synthesis-checkpoint
-description: "Mid-session refresh and drift-recovery protocol. Re-syncs the agent's awareness of current date, project state, and recent commit history when context may have drifted from disk. Use when asked to: checkpoint, re-sync, refresh context, mid-session refresh, recover from compaction, re-read project state, verify dates, drift check, where are we, what was last done, am I caught up. Invoke on any suspicion of context drift, after long conversation pauses, or before generating time-interval claims."
+description: "Mid-session refresh and drift-recovery protocol. Re-syncs the agent's awareness of current date, project state, recent commit history, and concurrent root-session claims. Use when asked to: checkpoint, re-sync, refresh context, mid-session refresh, recover from compaction, re-read project state, verify dates, drift check, coordination check, where are we, what was last done, am I caught up. Invoke on any suspicion of context drift, after long conversation pauses, before generating time-interval claims, or before writes when another agent session is active."
 license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -20,6 +20,8 @@ LLMs are stateless at the model level. Across a long conversation, an LLM's sens
 - **State drift.** Project CONTEXT.md may have been edited (by user, by sub-agent, by another session) since the model last read it.
 - **Compaction drift.** When the context window approaches its limit, the harness may summarize older turns. Details disappear. The model often cannot detect that this happened.
 - **Cached-fact drift.** Facts the model read earlier in the conversation (last commit, last session date, last decision) may no longer be true.
+- **Coordination drift.** Another live root session may have claimed or changed
+  the same source area since the last tool call.
 
 Self-discipline degrades with conversation length. Rules read at session start lose salience as turns accumulate. Even a model that "knows" to verify often skips verification under the weight of accumulated context.
 
@@ -45,6 +47,7 @@ Invoke synthesis-checkpoint when any of these conditions fire:
 - When a file read reveals content the model didn't expect (state drift signal)
 - When the user references a decision the model has no record of (compaction signal)
 - When resuming work on a project after working on something else in the same session
+- When the shared coordination board changes or another root session becomes active
 
 **Triggered automatically by lifecycle hooks:**
 
@@ -55,7 +58,15 @@ Invoke synthesis-checkpoint when any of these conditions fire:
 
 ## The Protocol
 
-Steps run in order. Each step is one shell or file operation; total cost is ~5 tool calls.
+Steps run in order. Each step is one shell or file operation; total cost is ~6 tool calls.
+
+### Step 0 — Read cross-agent coordination
+
+If `~/.synthesis/coordination/active-sessions.md` exists, read it before any
+write. Confirm that this session's claimed area still covers the intended
+files, read new messages addressed to this session, and stop writes on any
+overlap. Add or refresh claims with the
+`synthesis-project-management/scripts/coordination.py` helper.
 
 ### Step 1 — Verify current time
 
@@ -104,6 +115,7 @@ In one short paragraph in the next response to the user, state:
 - The project's verified "last session" date (from git log)
 - Where the agent's mental state diverged from disk/git, if anywhere
 - What the agent will do next, grounded in the verified facts
+- Current coordination claim and any conflict or new inter-session message
 
 Show this verification step in the response. It is the L4 visible-verification mechanism from the synthesis-context-temporal-continuity project — the user must be able to see that the checkpoint ran and what it produced.
 

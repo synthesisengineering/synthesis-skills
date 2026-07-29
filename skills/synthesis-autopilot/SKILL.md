@@ -83,6 +83,9 @@ re-read restores the mode, not just the task.
 ## Constraints and decisions already made
 Everything the user has decided; never re-litigate these.
 
+## Coordination claims
+Session id, active source-area globs, overlaps checked, and messages pending.
+
 ## Phases
 - [x] Phase 1 — ...
 - [ ] Phase 2 — ...
@@ -124,10 +127,12 @@ When a phase reaches a gated action, prepare everything up to the gate (the draf
 
 1. **Engage** — one-line acknowledgment with the plan-file path.
 2. **Anchor** — run synthesis-checkpoint: verified date, project state from disk, history from git.
-3. **Register** — attach to or create the synthesis project (synthesis-project-management); create the plan file.
-4. **Phase loop** — for each phase: re-read the plan file; execute with anti-shortcut discipline; classify each decision per the protocol above; dispatch sub-agents per the hygiene rules below; then update the plan file, and at natural checkpoints run the synthesis-context-lifecycle session protocol so CONTEXT.md and the session log stay current.
-5. **Verify** — before declaring the mission complete, run synthesis-implementation-integrity (or the domain analog). Fix what it finds; verification that only reports is not verification.
-6. **Close** — session-end per synthesis-context-lifecycle (context files updated, work committed where applicable); completion report in plain language: what shipped, what was decided and why, the batched questions; then the completion alert.
+3. **Coordinate** — read the shared active-sessions board and claim every
+   source area this run may write before editing.
+4. **Register** — attach to or create the synthesis project (synthesis-project-management); create the plan file.
+5. **Phase loop** — for each phase: re-read the plan file and coordination board; execute with anti-shortcut discipline; classify each decision per the protocol above; dispatch sub-agents per the hygiene rules below; then update the plan file, and at natural checkpoints run the synthesis-context-lifecycle session protocol so CONTEXT.md and the session log stay current.
+6. **Verify** — before declaring the mission complete, run synthesis-implementation-integrity (or the domain analog). Fix what it finds; verification that only reports is not verification.
+7. **Close** — session-end per synthesis-context-lifecycle (context files updated, work committed where applicable); release the coordination claims; completion report in plain language: what shipped, what was decided and why, the batched questions; then the completion alert.
 
 ## Sub-Agent Fan-Out Hygiene
 
