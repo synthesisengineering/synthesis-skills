@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.2"
+  version: "1.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   platform: "macOS (Apple Silicon and Intel)"
@@ -17,12 +17,13 @@ A manifest-driven email cleanup engine that scales the same human-curated rules 
 
 The engine is deterministic. Email content does not change rules at runtime. When an LLM is invoked — for new-sender categorization or for higher-risk paths like body-reading digests — sanitization defenses run first. The skill ships adversarial test fixtures so prompt-injection regressions surface in CI rather than in production.
 
-## v1.3.2 — Native dual-runtime setup
+## v1.4.0 — Stable cross-client engine runtime
 
-v1.3.2 (2026-07-29) makes the repository's native plugin the primary setup
-path for Codex and Claude Code. The engine continues to install its private
-runtime and rules under `~/.synthesis/inbox-cleanup/`, independent of either
-client's skill cache.
+v1.4.0 (2026-07-30) installs an immutable engine release under
+`~/.synthesis/inbox-cleanup/engine/releases/` and atomically points
+`engine/current` at it. Operational scripts use that stable path instead of a
+Claude Code or Codex plugin cache. Updating either client can no longer remove
+the engine path used by private workflows.
 
 ## Architecture: public engine, private rules
 
@@ -35,6 +36,9 @@ client's skill cache.
   └── tests/poisoned/                      ← adversarial fixtures
 
 ~/.synthesis/inbox-cleanup/                 ← private (per-user, not in git)
+  ├── engine/
+  │   ├── current → releases/<digest>/     ← stable client-neutral runtime
+  │   └── releases/<digest>/               ← immutable verified engine
   ├── config.yaml                          ← account list, host, user candidates
   ├── rules.yaml                           ← sender rules, never_touch, subject_rules
   └── imap.secret                          ← optional credential fallback
@@ -262,8 +266,8 @@ claude plugin install synthesis-skills@synthesis-engineering
 security add-generic-password -s inbox-cleanup-imap -a "$USER" -w
 # (paste the password when prompted; never in shell history)
 
-# 6. Sanity-check
-cd <synthesis-inbox-cleanup-root>/scripts
+# 6. Sanity-check from the stable runtime
+cd ~/.synthesis/inbox-cleanup/engine/current
 python3 icloud_census.py
 ```
 

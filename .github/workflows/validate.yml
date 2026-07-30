@@ -26,3 +26,4 @@ jobs:
       - run: python -m compileall -q skills
       - run: python skills/synthesis-inbox-cleanup/tests/run_poisoned.py
       - run: python skills/synthesis-inbox-cleanup/tests/run_resolver.py
+      - run: sh skills/synthesis-inbox-cleanup/tests/test_runtime_installer.sh

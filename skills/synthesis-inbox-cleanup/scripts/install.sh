@@ -3,8 +3,10 @@
 # synthesis-inbox-cleanup installer.
 #
 # Idempotent. Run multiple times safely. Creates ~/.synthesis/inbox-cleanup/,
-# seeds config.yaml and rules.yaml from the bundled templates (only if no
-# existing files — does not overwrite), and prints next-step instructions.
+# installs an immutable engine release behind a stable `engine/current`
+# symlink, seeds config.yaml and rules.yaml from the bundled templates (only
+# if no existing files — does not overwrite), and prints next-step
+# instructions.
 #
 # Usage:
 #   <synthesis-inbox-cleanup-root>/scripts/install.sh
@@ -18,16 +20,112 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 SKILL_DIR="$(dirname "$SCRIPT_DIR")"
 TEMPLATES_DIR="$SKILL_DIR/templates"
 
-TARGET_DIR="$HOME/.synthesis/inbox-cleanup"
+TARGET_DIR="${SYNTHESIS_INBOX_HOME:-$HOME/.synthesis/inbox-cleanup}"
 CONFIG_PATH="$TARGET_DIR/config.yaml"
 RULES_PATH="$TARGET_DIR/rules.yaml"
+ENGINE_ROOT="$TARGET_DIR/engine"
+ENGINE_RELEASES="$ENGINE_ROOT/releases"
+ENGINE_CURRENT="$ENGINE_ROOT/current"
 
+validate_runtime_root() {
+    case "$TARGET_DIR" in
+        /|"$HOME")
+            echo "ERROR: refusing unsafe inbox runtime root: $TARGET_DIR" >&2
+            return 1
+            ;;
+    esac
+    for path in "$TARGET_DIR" "$ENGINE_ROOT" "$ENGINE_RELEASES"; do
+        if [ -L "$path" ]; then
+            echo "ERROR: refusing symlinked inbox runtime path: $path" >&2
+            return 1
+        fi
+    done
+    if [ -e "$TARGET_DIR" ] && [ ! -d "$TARGET_DIR" ]; then
+        echo "ERROR: refusing non-directory inbox runtime root: $TARGET_DIR" >&2
+        return 1
+    fi
+}
+
+engine_digest() {
+    directory="$1"
+    (
+        cd "$directory"
+        for file in *.py *.applescript; do
+            [ -f "$file" ] || continue
+            printf '%s  ' "$file"
+            shasum -a 256 "$file"
+        done
+    ) | shasum -a 256 | awk '{print $1}'
+}
+
+install_engine_runtime() {
+    source_digest="$(engine_digest "$SCRIPT_DIR")"
+    release_dir="$ENGINE_RELEASES/$source_digest"
+
+    mkdir -p "$ENGINE_RELEASES"
+    chmod 700 "$ENGINE_ROOT" "$ENGINE_RELEASES"
+
+    if [ -L "$release_dir" ]; then
+        echo "ERROR: refusing symlinked engine release: $release_dir" >&2
+        return 1
+    fi
+
+    if [ -d "$release_dir" ]; then
+        installed_digest="$(engine_digest "$release_dir")"
+        if [ "$installed_digest" != "$source_digest" ]; then
+            echo "ERROR: engine release content does not match its digest: $release_dir" >&2
+            return 1
+        fi
+    else
+        stage_dir="$(mktemp -d "$ENGINE_ROOT/.engine-stage.XXXXXX")"
+        for source in "$SCRIPT_DIR"/*.py "$SCRIPT_DIR"/*.applescript; do
+            [ -f "$source" ] || continue
+            cp -p "$source" "$stage_dir/"
+        done
+        if [ ! -f "$stage_dir/_lib.py" ] || [ ! -f "$stage_dir/icloud_plan.py" ]; then
+            echo "ERROR: staged engine is incomplete: $stage_dir" >&2
+            return 1
+        fi
+        staged_digest="$(engine_digest "$stage_dir")"
+        if [ "$staged_digest" != "$source_digest" ]; then
+            echo "ERROR: staged engine failed digest verification: $stage_dir" >&2
+            return 1
+        fi
+        chmod 700 "$stage_dir"
+        mv "$stage_dir" "$release_dir"
+    fi
+
+    if [ -e "$ENGINE_CURRENT" ] && [ ! -L "$ENGINE_CURRENT" ]; then
+        echo "ERROR: refusing non-symlink engine/current: $ENGINE_CURRENT" >&2
+        return 1
+    fi
+
+    link_stage="$ENGINE_ROOT/.current.$$.tmp"
+    if [ -e "$link_stage" ] || [ -L "$link_stage" ]; then
+        echo "ERROR: temporary current-link path already exists: $link_stage" >&2
+        return 1
+    fi
+    ln -s "releases/$source_digest" "$link_stage"
+    mv -f "$link_stage" "$ENGINE_CURRENT"
+
+    resolved_current="$(cd "$ENGINE_CURRENT" && pwd -P)"
+    resolved_release="$(cd "$release_dir" && pwd -P)"
+    if [ "$resolved_current" != "$resolved_release" ]; then
+        echo "ERROR: engine/current did not resolve to the installed release" >&2
+        return 1
+    fi
+    echo "✓ Stable engine runtime: $ENGINE_CURRENT"
+}
+
+validate_runtime_root
 mkdir -p "$TARGET_DIR"
 chmod 700 "$TARGET_DIR"   # private dir: rules.yaml/config.yaml/imap.secret live here
 
 echo "→ Skill location:  $SKILL_DIR"
 echo "→ Private rules:   $TARGET_DIR"
 echo ""
+
+install_engine_runtime
 
 # config.yaml — account + behavior configuration
 if [ -f "$CONFIG_PATH" ]; then
@@ -96,7 +194,7 @@ echo "    1. Edit $CONFIG_PATH"
 echo "    2. Edit $RULES_PATH"
 echo "    3. Store the IMAP password in Keychain (see above)"
 echo "    4. Sanity-check:"
-echo "         cd $SCRIPT_DIR"
+echo "         cd $ENGINE_CURRENT"
 echo "         python3 icloud_census.py"
 echo ""
 echo "  Adversarial fixture tests (verify defenses):"

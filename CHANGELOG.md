@@ -4,6 +4,25 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.5.0] - 2026-07-30
+
+### Added
+
+- A content-addressed inbox-cleanup engine runtime under
+  `~/.synthesis/inbox-cleanup/engine/`, with an atomic `current` link shared by
+  Claude Code, Codex, and direct Agent Skills clients.
+- Installer regression coverage that proves the source tree and working
+  directory survive installation, repeated installs are idempotent, and
+  drifted immutable releases fail closed.
+
+### Changed
+
+- `synthesis-inbox-cleanup` v1.4.0 no longer requires operational scripts to
+  resolve a client-owned, version-numbered plugin cache.
+- The installer recognizes both regular Git checkouts and linked worktrees,
+  and provenance replaces the obsolete hardcoded fallback list during
+  source-free uninstall.
+
 ## [4.4.4] - 2026-07-30
 
 ### Fixed

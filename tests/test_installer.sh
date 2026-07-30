@@ -4,8 +4,12 @@ set -eu
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 TEST_ROOT=$(mktemp -d)
 TARGET="${TEST_ROOT}/installed"
+GIT_FILE_SOURCE="${TEST_ROOT}/git-file-source"
 
 cleanup() {
+    if [ -e "$GIT_FILE_SOURCE/.git" ]; then
+        git -C "$REPO_ROOT" worktree remove "$GIT_FILE_SOURCE" >/dev/null 2>&1 || true
+    fi
     rm -rf "$TEST_ROOT"
 }
 trap cleanup EXIT INT TERM
@@ -47,6 +51,32 @@ SYNTHESIS_SKILLS_TARGETS="$TARGET" \
     "$REPO_ROOT/install.sh" uninstall >/dev/null
 
 [ ! -d "$TARGET/synthesis-agent-conformance" ]
+[ -z "$(find "$TARGET" -mindepth 1 -maxdepth 1 -type d -name 'synthesis-*' -print -quit)" ]
+
+git -C "$REPO_ROOT" worktree add --detach "$GIT_FILE_SOURCE" HEAD >/dev/null
+test -f "$GIT_FILE_SOURCE/.git"
+WORKTREE_TARGET="${TEST_ROOT}/worktree-installed"
+SYNTHESIS_SKILLS_HOME="$TEST_ROOT" \
+SYNTHESIS_SKILLS_SOURCE_DIR="$GIT_FILE_SOURCE" \
+SYNTHESIS_SKILLS_TARGETS="$WORKTREE_TARGET" \
+    "$REPO_ROOT/install.sh" install >/dev/null
+SYNTHESIS_SKILLS_HOME="$TEST_ROOT" \
+SYNTHESIS_SKILLS_SOURCE_DIR="$GIT_FILE_SOURCE" \
+SYNTHESIS_SKILLS_TARGETS="$WORKTREE_TARGET" \
+    "$REPO_ROOT/install.sh" uninstall >/dev/null
+[ -z "$(find "$WORKTREE_TARGET" -mindepth 1 -maxdepth 1 -type d -name 'synthesis-*' -print -quit)" ]
+git -C "$REPO_ROOT" worktree remove "$GIT_FILE_SOURCE" >/dev/null
+
+PROVENANCE_TARGET="${TEST_ROOT}/provenance-installed"
+SYNTHESIS_SKILLS_HOME="$TEST_ROOT" \
+SYNTHESIS_SKILLS_SOURCE_DIR="$REPO_ROOT" \
+SYNTHESIS_SKILLS_TARGETS="$PROVENANCE_TARGET" \
+    "$REPO_ROOT/install.sh" install >/dev/null
+XDG_CACHE_HOME="${TEST_ROOT}/empty-cache" \
+SYNTHESIS_SKILLS_HOME="$TEST_ROOT" \
+SYNTHESIS_SKILLS_TARGETS="$PROVENANCE_TARGET" \
+    "$REPO_ROOT/install.sh" uninstall >/dev/null
+[ -z "$(find "$PROVENANCE_TARGET" -mindepth 1 -maxdepth 1 -type d -name 'synthesis-*' -print -quit)" ]
 
 PLUGIN_HOME="${TEST_ROOT}/plugin-home"
 PLUGIN_BIN="${TEST_ROOT}/plugin-bin"
