@@ -68,6 +68,22 @@ def test_json_from_output_accepts_cli_diagnostics_around_json() -> None:
     }
 
 
+def test_direct_public_copies_cover_all_client_roots(tmp_path: Path) -> None:
+    expected = []
+    for client_root in (
+        ".claude/skills",
+        ".agents/skills",
+        ".codex/skills",
+    ):
+        path = tmp_path / client_root / "synthesis-test"
+        path.mkdir(parents=True)
+        expected.append(str(path.relative_to(tmp_path)))
+    private = tmp_path / ".agents" / "skills" / "rajiv-private-test"
+    private.mkdir()
+
+    assert MODULE.direct_public_copies(tmp_path) == sorted(expected)
+
+
 def test_source_checks_accept_dual_manifest(tmp_path: Path) -> None:
     write_manifests(tmp_path)
     write_skill(tmp_path, "synthesis-test")
