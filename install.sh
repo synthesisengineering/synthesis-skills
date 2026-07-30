@@ -52,16 +52,71 @@ detect_targets() {
     echo "$TARGETS"
 }
 
+# Each client's own shell puts its CLI on PATH, but other shells (the other
+# client, cron, CI) usually do not — the Codex CLI ships inside the ChatGPT
+# desktop app on macOS. Resolve through an explicit override first (a set but
+# empty override means "treat as absent"), then PATH, then documented stable
+# install locations, so plugin detection gives the same answer from every
+# shell instead of silently reverting to direct-copy installs.
+resolve_claude_bin() {
+    if [ "${SYNTHESIS_CLAUDE_BIN+set}" = "set" ]; then
+        if [ -n "$SYNTHESIS_CLAUDE_BIN" ] && [ -x "$SYNTHESIS_CLAUDE_BIN" ]; then
+            printf '%s\n' "$SYNTHESIS_CLAUDE_BIN"
+        fi
+        return 0
+    fi
+    if command -v claude >/dev/null 2>&1; then
+        command -v claude
+        return 0
+    fi
+    for CLIENT_BIN_CANDIDATE in \
+        "$HOME/.local/bin/claude" \
+        /opt/homebrew/bin/claude \
+        /usr/local/bin/claude; do
+        if [ -x "$CLIENT_BIN_CANDIDATE" ]; then
+            printf '%s\n' "$CLIENT_BIN_CANDIDATE"
+            return 0
+        fi
+    done
+    return 0
+}
+
+resolve_codex_bin() {
+    if [ "${SYNTHESIS_CODEX_BIN+set}" = "set" ]; then
+        if [ -n "$SYNTHESIS_CODEX_BIN" ] && [ -x "$SYNTHESIS_CODEX_BIN" ]; then
+            printf '%s\n' "$SYNTHESIS_CODEX_BIN"
+        fi
+        return 0
+    fi
+    if command -v codex >/dev/null 2>&1; then
+        command -v codex
+        return 0
+    fi
+    for CLIENT_BIN_CANDIDATE in \
+        "$HOME/.local/bin/codex" \
+        /opt/homebrew/bin/codex \
+        /usr/local/bin/codex \
+        "/Applications/ChatGPT.app/Contents/Resources/codex"; do
+        if [ -x "$CLIENT_BIN_CANDIDATE" ]; then
+            printf '%s\n' "$CLIENT_BIN_CANDIDATE"
+            return 0
+        fi
+    done
+    return 0
+}
+
 claude_plugin_installed() {
-    command -v claude >/dev/null 2>&1 || return 1
-    claude plugin list --json 2>/dev/null |
+    CLAUDE_CLIENT_BIN=$(resolve_claude_bin)
+    [ -n "$CLAUDE_CLIENT_BIN" ] || return 1
+    "$CLAUDE_CLIENT_BIN" plugin list --json 2>/dev/null |
         tr '\n' ' ' |
         grep -Eq '\{[^{}]*"id"[[:space:]]*:[[:space:]]*"synthesis-skills@[^"]*"[^{}]*"enabled"[[:space:]]*:[[:space:]]*true'
 }
 
 codex_plugin_installed() {
-    command -v codex >/dev/null 2>&1 || return 1
-    codex plugin list --json 2>/dev/null |
+    CODEX_CLIENT_BIN=$(resolve_codex_bin)
+    [ -n "$CODEX_CLIENT_BIN" ] || return 1
+    "$CODEX_CLIENT_BIN" plugin list --json 2>/dev/null |
         tr '\n' ' ' |
         grep -Eq '\{[^{}]*"name"[[:space:]]*:[[:space:]]*"synthesis-skills"[^{}]*"enabled"[[:space:]]*:[[:space:]]*true'
 }

@@ -4,6 +4,36 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.6.0] - 2026-07-30
+
+### Added
+
+- Client-binary resolution for verification tooling
+  (`synthesis-agent-conformance/scripts/client_binaries.py` and matching
+  installer shell helpers): explicit `SYNTHESIS_CLAUDE_BIN` /
+  `SYNTHESIS_CODEX_BIN` overrides (a set-but-empty override means absent),
+  then `PATH`, then documented stable install locations, so conformance,
+  doctors, and plugin detection give the same answer from either client's
+  shell, cron, or CI.
+- An opt-in git-backed coordination lease (`lease.json` beside the board):
+  every board mutation publishes through an atomic git ref compare-and-swap
+  on a shared remote, with bounded retry on concurrent advance, fail-closed
+  behavior on unreachable remotes, mirror refresh in `status`, and sync
+  verification in `doctor`. Enables safe same-resource coordination across
+  machines; `synthesis-project-management` v1.7.0.
+
+### Fixed
+
+- `conformance.py runtime` no longer crashes with an unhandled traceback when
+  a client CLI is missing; every runtime check reports a structured failure
+  and the remaining check groups still run.
+- Coordination claim overlap detection now normalizes `~`, absolute, and
+  repository-relative claim spellings onto path segments, so two spellings of
+  one real path conflict instead of passing silently; ambiguous alignments
+  are treated as conflicts.
+- Plugin inventory checks validate JSON shape and count only enabled
+  installations for both clients.
+
 ## [4.5.0] - 2026-07-30
 
 ### Added

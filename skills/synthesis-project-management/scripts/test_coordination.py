@@ -279,3 +279,283 @@ def test_message_accepts_annotated_protocol_heading(tmp_path: Path) -> None:
     text = board.read_text(encoding="utf-8")
     assert "Sequencing update." in text
     assert "## Protocol (formalized)" in text
+
+
+def test_overlap_detects_relative_and_absolute_spellings_of_one_path() -> None:
+    assert MODULE.overlaps(
+        "ai-knowledge-demo/projects/index.yaml",
+        "/home/user/workspaces/demo/ai-knowledge-demo/projects/index.yaml",
+    )
+    assert MODULE.overlaps(
+        "/home/user/workspaces/demo/ai-knowledge-demo/projects/**",
+        "ai-knowledge-demo/projects/index.yaml",
+    )
+    assert MODULE.overlaps(
+        "ai-knowledge-demo/projects/demo-project/sessions/2026-07.md",
+        "/home/user/workspaces/demo/ai-knowledge-demo/projects/**",
+    )
+
+
+def test_overlap_expands_home_prefixed_claims() -> None:
+    home = Path.home()
+    assert MODULE.overlaps(
+        "~/.claude/skills/**",
+        f"{home}/.claude/skills/demo-skill/SKILL.md",
+    )
+
+
+def test_overlap_keeps_distinct_subtrees_apart() -> None:
+    assert not MODULE.overlaps(
+        "ai-knowledge-demo/daily-plans/**",
+        "/home/user/workspaces/demo/ai-knowledge-demo/projects/**",
+    )
+    assert not MODULE.overlaps(
+        "/repos/alpha/**",
+        "/repos/beta/**",
+    )
+    assert not MODULE.overlaps("/repos/alpha/**", "/repos/alphabet/**")
+    assert not MODULE.overlaps("repo/docs/**", "repo/does-not-share/**")
+
+
+def test_overlap_same_form_containment_still_holds() -> None:
+    assert MODULE.overlaps("repo/**", "repo/file.md")
+    assert MODULE.overlaps("/repos/alpha/**", "/repos/alpha/docs/**")
+    assert MODULE.overlaps("bare-glob-**", "bare-glob-**")
+
+
+def test_mixed_spelling_claims_conflict_on_the_board(tmp_path: Path) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    first = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="ai-knowledge-demo/projects/index.yaml",
+    )
+    assert MODULE.command_claim(first) == 0
+
+    second = claim_args(
+        board,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/worktree-b @ feature/b",
+        area="/home/user/workspaces/demo/ai-knowledge-demo/projects/index.yaml",
+    )
+    assert MODULE.command_claim(second) == 10
+
+
+def lease_machines(tmp_path: Path, count: int = 2) -> list[Path]:
+    """Simulate machines sharing one lease remote but no filesystem board."""
+    subprocess = __import__("subprocess")
+    remote = tmp_path / "remote.git"
+    subprocess.run(
+        ["git", "init", "--bare", "--quiet", str(remote)],
+        check=True,
+        capture_output=True,
+    )
+    boards = []
+    for index in range(1, count + 1):
+        directory = tmp_path / f"machine{index}"
+        directory.mkdir()
+        (directory / "lease.json").write_text(
+            json.dumps({"remote": str(remote)}), encoding="utf-8"
+        )
+        boards.append(directory / "active-sessions.md")
+    return boards
+
+
+def test_lease_shares_claims_across_machines(tmp_path: Path) -> None:
+    machine1, machine2 = lease_machines(tmp_path)
+    first = claim_args(
+        machine1,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="/repos/shared/docs/**",
+    )
+    assert MODULE.command_claim(first) == 0
+
+    conflicting = claim_args(
+        machine2,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/worktree-b @ feature/b",
+        area="/repos/shared/docs/guide.md",
+    )
+    assert MODULE.command_claim(conflicting) == 10
+
+    disjoint = claim_args(
+        machine2,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/worktree-b @ feature/b",
+        area="/repos/other/**",
+    )
+    assert MODULE.command_claim(disjoint) == 0
+
+    assert MODULE.command_release(args(machine1, id="A")) == 0
+    retried = claim_args(
+        machine2,
+        session_id="C",
+        project="project-c",
+        workspace="/tmp/worktree-c @ feature/c",
+        area="/repos/shared/docs/guide.md",
+    )
+    assert MODULE.command_claim(retried) == 0
+
+    table = MODULE.rows(machine2.read_text(encoding="utf-8"))
+    by_id = {row.id: row for row in table}
+    assert by_id["A"].status == "released"
+    assert by_id["B"].status == "active"
+    assert by_id["C"].status == "active"
+
+
+def test_lease_compare_and_swap_retries_after_concurrent_advance(
+    tmp_path: Path, monkeypatch
+) -> None:
+    machine1, machine2 = lease_machines(tmp_path)
+    original_publish = MODULE.lease_publish
+    state = {"raced": False}
+
+    def racing_publish(config, board_name, content, expected_sha):
+        if not state["raced"]:
+            state["raced"] = True
+            competing = claim_args(
+                machine2,
+                session_id="X",
+                project="project-x",
+                workspace="/tmp/worktree-x @ feature/x",
+                area="/repos/unrelated/**",
+            )
+            assert MODULE.command_claim(competing) == 0
+        return original_publish(config, board_name, content, expected_sha)
+
+    monkeypatch.setattr(MODULE, "lease_publish", racing_publish)
+    first = claim_args(
+        machine1,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="/repos/shared/**",
+    )
+    assert MODULE.command_claim(first) == 0
+
+    table = MODULE.rows(machine1.read_text(encoding="utf-8"))
+    identifiers = {row.id for row in table}
+    assert identifiers == {"A", "X"}
+
+
+def test_lease_unreachable_remote_fails_closed(tmp_path: Path) -> None:
+    directory = tmp_path / "machine1"
+    directory.mkdir()
+    (directory / "lease.json").write_text(
+        json.dumps({"remote": str(tmp_path / "missing-remote.git")}),
+        encoding="utf-8",
+    )
+    board = directory / "active-sessions.md"
+    request = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="/repos/shared/**",
+    )
+    assert MODULE.command_claim(request) == 10
+    assert not board.exists()
+
+
+def test_lease_bootstrap_publishes_existing_local_board(tmp_path: Path) -> None:
+    machine1, machine2 = lease_machines(tmp_path)
+    (machine1.parent / "lease.json").unlink()
+    local_only = claim_args(
+        machine1,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="/repos/shared/**",
+    )
+    assert MODULE.command_claim(local_only) == 0
+
+    (machine1.parent / "lease.json").write_text(
+        json.dumps({"remote": str(tmp_path / "remote.git")}), encoding="utf-8"
+    )
+    second = claim_args(
+        machine1,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/worktree-b @ feature/b",
+        area="/repos/other/**",
+    )
+    assert MODULE.command_claim(second) == 0
+
+    conflicting = claim_args(
+        machine2,
+        session_id="C",
+        project="project-c",
+        workspace="/tmp/worktree-c @ feature/c",
+        area="/repos/shared/inner/**",
+    )
+    assert MODULE.command_claim(conflicting) == 10
+
+
+def test_lease_status_reports_refresh_failure_in_strict_mode(
+    tmp_path: Path, capsys
+) -> None:
+    machine1, _ = lease_machines(tmp_path)
+    request = claim_args(
+        machine1,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="/repos/shared/**",
+    )
+    assert MODULE.command_claim(request) == 0
+
+    (machine1.parent / "lease.json").write_text(
+        json.dumps({"remote": str(tmp_path / "now-gone.git")}), encoding="utf-8"
+    )
+    capsys.readouterr()
+    exit_code = MODULE.command_status(
+        args(machine1, json=True, strict=True, stale_after_minutes=240)
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 10
+    assert payload["lease"]["configured"] is True
+    assert payload["lease"]["refreshed"] is False
+    assert any("lease refresh failed" in problem for problem in payload["problems"])
+
+
+def test_lease_doctor_verifies_remote_sync(tmp_path: Path, capsys) -> None:
+    machine1, machine2 = lease_machines(tmp_path)
+    request = claim_args(
+        machine1,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="/repos/shared/**",
+    )
+    assert MODULE.command_claim(request) == 0
+    assert MODULE.command_doctor(args(machine1)) == 0
+    captured = capsys.readouterr()
+    assert "lease in sync" in captured.out
+
+    advance = claim_args(
+        machine2,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/worktree-b @ feature/b",
+        area="/repos/other/**",
+    )
+    assert MODULE.command_claim(advance) == 0
+    assert MODULE.command_doctor(args(machine1)) == 1
+    captured = capsys.readouterr()
+    assert "differs from the lease remote" in captured.err
+
+    assert (
+        MODULE.command_status(
+            args(machine1, json=False, strict=False, stale_after_minutes=240)
+        )
+        == 0
+    )
+    assert MODULE.command_doctor(args(machine1)) == 0

@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import socket
+import subprocess
 import sys
 import tempfile
 from dataclasses import asdict, dataclass
@@ -143,16 +144,44 @@ def claim_prefix(claim: str) -> str:
     return claim[:marker].rstrip("/")
 
 
+def claim_segments(claim: str) -> tuple[bool, list[str]]:
+    prefix = claim_prefix(claim)
+    if not prefix:
+        return True, []
+    expanded = os.path.expanduser(prefix)
+    absolute = expanded.startswith("/")
+    segments = [part for part in expanded.strip("/").split("/") if part]
+    return absolute, segments
+
+
 def overlaps(left: str, right: str) -> bool:
-    left_prefix = claim_prefix(left)
-    right_prefix = claim_prefix(right)
-    if not left_prefix or not right_prefix:
+    """Conflict test for two claim globs.
+
+    Claims arrive in mixed spellings — absolute, ``~``-prefixed, and
+    repository-relative — and two spellings of one real path must still
+    conflict. Same-form claims overlap on segment-boundary containment.
+    A relative claim overlaps an absolute one when its segment run aligns
+    anywhere inside the absolute claim through the end of either claim;
+    that alignment can flag unrelated trees that share segment names, and
+    the protocol prefers that false conflict (resolved by re-scoping to
+    absolute claims) over silently missing a real one.
+    """
+    left_absolute, left_segments = claim_segments(left)
+    right_absolute, right_segments = claim_segments(right)
+    if not left_segments or not right_segments:
         return True
-    return (
-        left_prefix == right_prefix
-        or left_prefix.startswith(right_prefix + "/")
-        or right_prefix.startswith(left_prefix + "/")
-    )
+    if left_absolute == right_absolute:
+        shorter, longer = sorted(
+            (left_segments, right_segments), key=len
+        )
+        return longer[: len(shorter)] == shorter
+    absolute_segments = left_segments if left_absolute else right_segments
+    relative_segments = right_segments if left_absolute else left_segments
+    for start in range(len(absolute_segments)):
+        length = min(len(relative_segments), len(absolute_segments) - start)
+        if absolute_segments[start : start + length] == relative_segments[:length]:
+            return True
+    return False
 
 
 def workspace_parts(workspace: str) -> tuple[str, str]:
@@ -326,11 +355,203 @@ def write_board(board: Path, content: str) -> None:
         raise
 
 
+LEASE_CONFIG_NAME = "lease.json"
+LEASE_DEFAULT_REF = "refs/synthesis/coordination-board"
+LEASE_RETRIES = 3
+LEASE_GIT_TIMEOUT = 30
+LEASE_IDENTITY = {
+    "GIT_AUTHOR_NAME": "synthesis-coordination",
+    "GIT_AUTHOR_EMAIL": "coordination@localhost",
+    "GIT_COMMITTER_NAME": "synthesis-coordination",
+    "GIT_COMMITTER_EMAIL": "coordination@localhost",
+}
+
+
+def lease_configuration(board: Path) -> dict | None:
+    """Read the opt-in lease config that lives beside the board.
+
+    The OS file lock serializes sessions that share one filesystem. File-sync
+    services replicate the board but provide no mutual exclusion, so
+    same-resource writes from two machines need a real compare-and-swap. A
+    ``lease.json`` beside the board opts that board into publishing every
+    mutation through an atomic git ref update on a shared remote; the local
+    board file becomes a mirror of the leased ref.
+    """
+    path = board.parent / LEASE_CONFIG_NAME
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise RuntimeError(f"coordination lease config unreadable: {path}: {exc}")
+    remote = data.get("remote")
+    if not isinstance(remote, str) or not remote:
+        raise RuntimeError(f"coordination lease config lacks a remote: {path}")
+    ref = data.get("ref", LEASE_DEFAULT_REF)
+    if not isinstance(ref, str) or not ref.startswith("refs/"):
+        raise RuntimeError(f"coordination lease ref must live under refs/: {path}")
+    repository = Path(
+        str(data.get("repository", board.parent / ".lease-repo"))
+    ).expanduser()
+    return {"remote": remote, "ref": ref, "repository": repository}
+
+
+def git_lease(repository: Path, *arguments: str, input_text: str | None = None):
+    try:
+        return subprocess.run(
+            ["git", "--git-dir", str(repository), *arguments],
+            capture_output=True,
+            text=True,
+            timeout=LEASE_GIT_TIMEOUT,
+            check=False,
+            input=input_text,
+            env={**os.environ, **LEASE_IDENTITY},
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"coordination lease git call timed out: git {' '.join(arguments[:2])}"
+        )
+    except FileNotFoundError:
+        raise RuntimeError("coordination lease requires git on PATH")
+
+
+def lease_repository(config: dict) -> Path:
+    repository = config["repository"]
+    if not (repository / "HEAD").is_file():
+        repository.mkdir(parents=True, exist_ok=True)
+        created = subprocess.run(
+            ["git", "init", "--bare", "--quiet", str(repository)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if created.returncode != 0:
+            raise RuntimeError(
+                f"coordination lease repository init failed: {created.stderr.strip()}"
+            )
+    return repository
+
+
+def lease_fetch(config: dict) -> tuple[str, str | None]:
+    """Return the remote ref tip and board content, or ("", None) pre-bootstrap."""
+    repository = lease_repository(config)
+    listed = git_lease(repository, "ls-remote", config["remote"], config["ref"])
+    if listed.returncode != 0:
+        raise RuntimeError(
+            f"coordination lease remote unreachable: {listed.stderr.strip()}"
+        )
+    if not listed.stdout.strip():
+        return "", None
+    fetched = git_lease(
+        repository,
+        "fetch",
+        "--quiet",
+        config["remote"],
+        f"+{config['ref']}:refs/lease/current",
+    )
+    if fetched.returncode != 0:
+        raise RuntimeError(
+            f"coordination lease fetch failed: {fetched.stderr.strip()}"
+        )
+    sha = git_lease(repository, "rev-parse", "refs/lease/current").stdout.strip()
+    names = git_lease(
+        repository, "ls-tree", "--name-only", "refs/lease/current"
+    ).stdout.split()
+    if len(names) != 1:
+        raise RuntimeError(
+            "coordination lease ref must contain exactly one board file, found: "
+            + (", ".join(names) or "none")
+        )
+    shown = git_lease(repository, "show", f"refs/lease/current:{names[0]}")
+    if shown.returncode != 0:
+        raise RuntimeError(
+            f"coordination lease board unreadable: {shown.stderr.strip()}"
+        )
+    return sha, shown.stdout
+
+
+def lease_publish(
+    config: dict, board_name: str, content: str, expected_sha: str
+) -> tuple[bool, str]:
+    repository = lease_repository(config)
+    blob = git_lease(repository, "hash-object", "-w", "--stdin", input_text=content)
+    if blob.returncode != 0:
+        raise RuntimeError(f"coordination lease blob write failed: {blob.stderr.strip()}")
+    tree = git_lease(
+        repository,
+        "mktree",
+        input_text=f"100644 blob {blob.stdout.strip()}\t{board_name}\n",
+    )
+    if tree.returncode != 0:
+        raise RuntimeError(f"coordination lease tree write failed: {tree.stderr.strip()}")
+    commit_arguments = ["commit-tree", tree.stdout.strip(), "-m", "Update coordination board"]
+    if expected_sha:
+        commit_arguments.extend(["-p", expected_sha])
+    committed = git_lease(repository, *commit_arguments)
+    if committed.returncode != 0:
+        raise RuntimeError(
+            f"coordination lease commit failed: {committed.stderr.strip()}"
+        )
+    pushed = git_lease(
+        repository,
+        "push",
+        "--quiet",
+        config["remote"],
+        f"{committed.stdout.strip()}:{config['ref']}",
+        f"--force-with-lease={config['ref']}:{expected_sha}",
+    )
+    if pushed.returncode == 0:
+        return True, ""
+    return False, pushed.stderr.strip()
+
+
+def lease_update(board: Path, config: dict, operation) -> None:
+    failure = ""
+    for _ in range(LEASE_RETRIES):
+        sha, content = lease_fetch(config)
+        if content is None:
+            content = (
+                board.read_text(encoding="utf-8") if board.exists() else template()
+            )
+        updated = operation(content)
+        published, failure = lease_publish(config, board.name, updated, sha)
+        if published:
+            write_board(board, updated)
+            return
+    raise RuntimeError(
+        "coordination lease compare-and-swap failed after "
+        f"{LEASE_RETRIES} attempts: {failure}"
+    )
+
+
+def lease_refresh(board: Path) -> dict:
+    """Best-effort mirror refresh for read paths; reports instead of raising."""
+    try:
+        config = lease_configuration(board)
+    except RuntimeError as exc:
+        return {"configured": True, "refreshed": False, "error": str(exc)}
+    if config is None:
+        return {"configured": False}
+    try:
+        sha, content = lease_fetch(config)
+    except RuntimeError as exc:
+        return {"configured": True, "refreshed": False, "error": str(exc)}
+    if content is not None and (
+        not board.exists() or board.read_text(encoding="utf-8") != content
+    ):
+        write_board(board, content)
+    return {"configured": True, "refreshed": True, "sha": sha}
+
+
 def locked_update(board: Path, operation) -> None:
     board.parent.mkdir(parents=True, exist_ok=True)
     lock_path = board.parent / ".active-sessions.lock"
     with lock_path.open("a+", encoding="utf-8") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        config = lease_configuration(board)
+        if config is not None:
+            lease_update(board, config, operation)
+            return
         content = board.read_text(encoding="utf-8") if board.exists() else template()
         write_board(board, operation(content))
 
@@ -383,14 +604,24 @@ def validate_sessions(sessions: list[Session]) -> list[str]:
 
 
 def command_status(args) -> int:
+    lease = lease_refresh(args.board)
     if not args.board.is_file():
+        if lease.get("error"):
+            print(f"COORDINATION ERROR: {lease['error']}", file=sys.stderr)
+            return 10 if args.strict else 0
         print(f"No coordination board: {args.board}")
         return 0
     content = args.board.read_text(encoding="utf-8")
     sessions = rows(content)
+    problems = validate_sessions(sessions)
+    if lease.get("error"):
+        problems.append(
+            f"lease refresh failed; local mirror may be stale: {lease['error']}"
+        )
     payload = {
         "schema_version": SCHEMA_VERSION,
         "board": str(args.board),
+        "lease": lease,
         "sessions": [
             {
                 **asdict(session),
@@ -398,7 +629,7 @@ def command_status(args) -> int:
             }
             for session in sessions
         ],
-        "problems": validate_sessions(sessions),
+        "problems": problems,
     }
     if args.json:
         print(json.dumps(payload, indent=2))
@@ -543,7 +774,11 @@ def command_migrate(args) -> int:
         migrated = rows(content)
         return replace_table(content, migrated)
 
-    locked_update(args.board, operation)
+    try:
+        locked_update(args.board, operation)
+    except RuntimeError as exc:
+        print(f"coordination migrate failed: {exc}", file=sys.stderr)
+        return 10
     print(f"Migrated {args.board} to schema v{SCHEMA_VERSION}.")
     return 0
 
@@ -559,6 +794,25 @@ def command_doctor(args) -> int:
     except Exception as exc:
         print(f"FAIL coordination.board: {exc}", file=sys.stderr)
         return 1
+    lease_line = ""
+    try:
+        lease = lease_configuration(args.board)
+        if lease is not None:
+            sha, remote_content = lease_fetch(lease)
+            if remote_content is None:
+                problems.append(
+                    "lease is configured but the remote ref has never been "
+                    "published; run any mutating command to bootstrap it"
+                )
+            elif remote_content != content:
+                problems.append(
+                    "local board mirror differs from the lease remote; run "
+                    "status to refresh the mirror"
+                )
+            else:
+                lease_line = f", lease in sync at {sha[:12]}"
+    except RuntimeError as exc:
+        problems.append(str(exc))
     required = ("## Active sessions", "## Messages", "## Protocol")
     missing = [heading for heading in required if heading not in content]
     if missing:
@@ -571,7 +825,7 @@ def command_doctor(args) -> int:
         return 1
     print(
         f"PASS coordination: schema v{SCHEMA_VERSION}, "
-        f"{len(sessions)} session(s)"
+        f"{len(sessions)} session(s){lease_line}"
     )
     return 0
 

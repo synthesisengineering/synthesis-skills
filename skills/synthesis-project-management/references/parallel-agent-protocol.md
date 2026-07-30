@@ -109,7 +109,28 @@ user or the owning session explicitly releases or reassigns the claim.
 
 Git carries durable project state and contribution artifacts between machines.
 The default live board uses an OS file lock, which is authoritative among
-processes sharing that filesystem. Simultaneous cross-machine writes to the
-same resources are prohibited until a distributed compare-and-swap coordination
-backend is configured and conformance-verified. File-sync conflict resolution
-is not a distributed lock.
+processes sharing that filesystem. File-sync conflict resolution is not a
+distributed lock.
+
+For simultaneous sessions on different machines, opt the board into the
+git-backed lease by writing `lease.json` beside it:
+
+```json
+{"remote": "git@example.com:owner/coordination.git"}
+```
+
+Optional keys: `ref` (default `refs/synthesis/coordination-board`) and
+`repository` (the local bare mirror, default `.lease-repo` beside the board).
+Every mutating command then performs an atomic compare-and-swap ref update on
+the shared remote — the server-side ref transaction is the mutual exclusion —
+and rewrites the local board as a mirror of the accepted state. Concurrent
+advances trigger a bounded refetch-and-retry against fresh content; an
+unreachable remote fails the mutation closed rather than falling back to a
+local-only write. `status` refreshes the mirror from the remote and reports a
+refresh failure as a problem (strict mode fails); `doctor` fails when the
+mirror and remote differ. The remote must be one both machines can push to;
+enable the lease on every machine that writes the board, or its writes bypass
+the shared exclusion.
+
+Without a configured lease, simultaneous cross-machine writes to the same
+resources remain prohibited.

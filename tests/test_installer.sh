@@ -138,4 +138,32 @@ done
 find "$TEST_ROOT/plugin-cache/synthesis-skills-backups" \
     -path '*/retired-*/*/SKILL.md' -type f | grep -q .
 
+# Binary overrides must detect plugins without the client CLIs on PATH — the
+# situation every non-Codex shell is in for codex — and a set-but-empty
+# override must be authoritative even when a CLI is findable.
+printf '%s\n' '#!/bin/sh' 'printf '\''[{"id":"synthesis-skills@test","enabled":true}]\n'\''' \
+    > "$PLUGIN_BIN/claude"
+printf '%s\n' '#!/bin/sh' 'printf '\''{"installed":[{"name":"synthesis-skills","enabled":true}]}\n'\''' \
+    > "$PLUGIN_BIN/codex"
+OVERRIDE_STATUS=$(
+    SYNTHESIS_CLAUDE_BIN="$PLUGIN_BIN/claude" \
+    SYNTHESIS_CODEX_BIN="$PLUGIN_BIN/codex" \
+    SYNTHESIS_SKILLS_HOME="$PLUGIN_HOME" \
+    XDG_CACHE_HOME="$TEST_ROOT/override-cache" \
+        "$REPO_ROOT/install.sh" status 2>&1
+)
+printf '%s\n' "$OVERRIDE_STATUS" | grep -q 'Claude Code plugin: installed and enabled'
+printf '%s\n' "$OVERRIDE_STATUS" | grep -q 'Codex plugin:       installed and enabled'
+
+EMPTY_OVERRIDE_STATUS=$(
+    PATH="$PLUGIN_BIN:$PATH" \
+    SYNTHESIS_CLAUDE_BIN= \
+    SYNTHESIS_CODEX_BIN= \
+    SYNTHESIS_SKILLS_HOME="$PLUGIN_HOME" \
+    SYNTHESIS_SKILLS_TARGETS="$TEST_ROOT/empty-override-target" \
+        "$REPO_ROOT/install.sh" status 2>&1 || true
+)
+printf '%s\n' "$EMPTY_OVERRIDE_STATUS" | grep -q 'Claude Code plugin: not installed or disabled'
+printf '%s\n' "$EMPTY_OVERRIDE_STATUS" | grep -q 'Codex plugin:       not installed or disabled'
+
 echo "installer tests passed"
