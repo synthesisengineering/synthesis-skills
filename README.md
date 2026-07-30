@@ -4,6 +4,12 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**One repository contract for every agent (July 2026).** The public source now
+tracks its own `AGENTS.md`, with Claude Code importing that same contract
+through a one-line adapter. CI verifies both files so contributors using Codex
+and Claude Code receive the same repository rules. See the
+[4.4.3 release notes](CHANGELOG.md).
+
 **Trustworthy native-plugin status (July 2026).** Installer status now reads
 the checked-out or plugin-packaged skill tree directly, verifies that the
 Claude Code and Codex plugins are enabled, and fails clearly when no

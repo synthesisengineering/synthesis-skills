@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.4.3] - 2026-07-30
+
+### Added
+
+- Tracked, agent-neutral repository instructions for contributors working in
+  Codex, Claude Code, or another `AGENTS.md`-aware client.
+- A one-line Claude Code import adapter that keeps both clients on the same
+  repository rules.
+
+### Changed
+
+- CI now rejects missing or divergent repository instruction adapters.
+
 ## [4.4.2] - 2026-07-30
 
 ### Fixed
