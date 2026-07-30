@@ -33,6 +33,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   are treated as conflicts.
 - Plugin inventory checks validate JSON shape and count only enabled
   installations for both clients.
+- The `day-end` launcher resolves its agent CLI through the same override /
+  PATH / known-locations order, honors `DAY_END_AGENT_CMD` as a documented
+  executable path, and no longer silently degrades "auto" to whichever client
+  happens to be on the terminal's PATH.
 
 ## [4.5.0] - 2026-07-30
 

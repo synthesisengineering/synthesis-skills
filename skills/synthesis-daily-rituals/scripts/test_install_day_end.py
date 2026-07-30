@@ -110,3 +110,75 @@ def test_installer_refuses_symlinked_runtime_root(tmp_path: Path) -> None:
     assert completed.returncode == 2
     assert "symlinked runtime path" in completed.stderr
     assert list(elsewhere.iterdir()) == []
+
+
+def run_launcher(environment: dict[str, str], *arguments: str):
+    return subprocess.run(
+        ["bash", str(SCRIPT_DIR / "day-end"), *arguments],
+        capture_output=True,
+        text=True,
+        env=environment,
+        check=False,
+    )
+
+
+def fake_agent(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('#!/bin/sh\nprintf "%s" "$1"\n', encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
+def test_day_end_launcher_accepts_explicit_command_path(tmp_path: Path) -> None:
+    agent = fake_agent(tmp_path / "fake-agent")
+    completed = run_launcher(
+        {**os.environ, "DAY_END_AGENT_CMD": str(agent)}, "-q"
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "Quick Close" in completed.stdout
+
+
+def test_day_end_launcher_resolves_named_agent_from_known_locations(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    fake_agent(home / ".local" / "bin" / "codex")
+    completed = run_launcher(
+        {
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(home),
+            "DAY_END_AGENT_CMD": "codex",
+        }
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "Day-End ritual" in completed.stdout
+
+
+def test_day_end_launcher_fails_closed_when_no_agent_exists(tmp_path: Path) -> None:
+    home = tmp_path / "empty-home"
+    home.mkdir()
+    completed = run_launcher(
+        {
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(home),
+            "DAY_END_AGENT_CMD": "codex",
+            "SYNTHESIS_CODEX_BIN": "",
+        }
+    )
+    assert completed.returncode == 127
+    assert "unavailable" in completed.stderr
+
+
+def test_day_end_launcher_honors_binary_override(tmp_path: Path) -> None:
+    agent = fake_agent(tmp_path / "custom" / "codex")
+    completed = run_launcher(
+        {
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(tmp_path / "home"),
+            "DAY_END_AGENT_CMD": "codex",
+            "SYNTHESIS_CODEX_BIN": str(agent),
+        },
+        "-o",
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "observer" in completed.stdout
