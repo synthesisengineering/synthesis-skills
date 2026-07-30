@@ -13,6 +13,23 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
+def test_next_actions_prefers_unchecked_items() -> None:
+    context = (
+        "# Context\n\n"
+        "## What's Next — Prioritized\n\n"
+        "1. [x] Finished first.\n"
+        "2. [x] Finished second.\n"
+        "3. [ ] Resume live conformance and run\n"
+        "   the complete installed-state doctor.\n"
+        "4. [ ] Verify handoff.\n"
+    )
+
+    assert MODULE.next_actions(context) == [
+        "3. [ ] Resume live conformance and run the complete installed-state doctor.",
+        "4. [ ] Verify handoff.",
+    ]
+
+
 def test_build_includes_active_coordination(tmp_path: Path) -> None:
     board = tmp_path / "active-sessions.md"
     board.write_text(
