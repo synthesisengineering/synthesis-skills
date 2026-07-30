@@ -30,7 +30,25 @@ def next_actions(context: str) -> list[str]:
     )
     if not match:
         return []
-    return [line.strip() for line in match.group(1).splitlines() if line.strip()][:5]
+    lines = [line.strip() for line in match.group(1).splitlines()]
+    checklist = re.compile(r"^(?:[-*]|\d+\.)\s+\[([ xX])\]\s+")
+    items: list[tuple[bool, list[str]]] = []
+    current: tuple[bool, list[str]] | None = None
+    for line in lines:
+        item = checklist.match(line)
+        if item:
+            if current is not None:
+                items.append(current)
+            current = (item.group(1).lower() == "x", [line])
+        elif current is not None and line:
+            current[1].append(line)
+    if current is not None:
+        items.append(current)
+
+    pending = [" ".join(parts) for done, parts in items if not done]
+    if pending:
+        return pending[:5]
+    return [line for line in lines if line][:5]
 
 
 def active_session_ids(board: Path) -> list[str]:
