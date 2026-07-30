@@ -4,6 +4,15 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**Parallel Claude Code and Codex sessions without shared-state collisions
+(July 2026).** `synthesis-project-management` **v1.6.0** registers the machine,
+project, heartbeat, isolated worktree/branch, source claims, and context role
+for every root session. Different projects can proceed independently.
+Same-project sessions use one canonical context owner plus non-overlapping
+contributors with session-specific reconciliation artifacts. The helper
+refuses shared worktrees, branches, claims, and context ownership. See the
+[4.4.0 release notes](CHANGELOG.md).
+
 **First-class Codex interfaces and agent-neutral automation (July 2026).**
 Every public skill now carries a Codex interface with an explicit invocation
 prompt. Day-end automation installs under stable `~/.synthesis/` ownership and

@@ -27,6 +27,12 @@ DEFAULT_ACTIVE_PROJECT = Path.home() / ".synthesis" / "active-project.json"
 DEFAULT_COORDINATION_BOARD = (
     Path.home() / ".synthesis" / "coordination" / "active-sessions.md"
 )
+COORDINATION_HELPER = (
+    SCRIPT_PATH.parents[2]
+    / "synthesis-project-management"
+    / "scripts"
+    / "coordination.py"
+)
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
@@ -354,8 +360,14 @@ def coordination_checks(board: Path, *, required: bool = True) -> list[Check]:
     table_ok = all(
         column in text
         for column in (
+            "Schema: v2",
             "| id |",
+            "| machine |",
+            "| project |",
+            "| heartbeat |",
+            "workspace(s) / branch",
             "claimed areas (advisory lock)",
+            "| context role |",
             "| status |",
         )
     )
@@ -364,6 +376,32 @@ def coordination_checks(board: Path, *, required: bool = True) -> list[Check]:
         "coordination.active-table-schema",
         table_ok,
         str(board),
+        required=required,
+    )
+    if not COORDINATION_HELPER.is_file():
+        add(
+            checks,
+            "coordination.semantic-doctor",
+            False,
+            f"missing helper: {COORDINATION_HELPER}",
+            required=required,
+        )
+        return checks
+    doctor = run(
+        [
+            sys.executable,
+            str(COORDINATION_HELPER),
+            "--board",
+            str(board),
+            "doctor",
+        ]
+    )
+    detail = (doctor.stdout + doctor.stderr).strip()
+    add(
+        checks,
+        "coordination.semantic-doctor",
+        doctor.returncode == 0,
+        detail or f"exit {doctor.returncode}",
         required=required,
     )
     return checks

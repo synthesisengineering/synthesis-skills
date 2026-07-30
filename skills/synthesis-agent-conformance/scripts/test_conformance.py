@@ -131,9 +131,10 @@ def test_coordination_board_schema(tmp_path: Path) -> None:
     board = tmp_path / "active-sessions.md"
     board.write_text(
         "# Coordination\n\n"
+        "Schema: v2\n\n"
         "## Active sessions\n\n"
-        "| id | agent | started | mode | goal | claimed areas (advisory lock) | status |\n"
-        "|----|-------|---------|------|------|--------------------------------|--------|\n\n"
+        "| id | agent | machine | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|\n\n"
         "## Messages\n\n---\n\n## Protocol\n",
         encoding="utf-8",
     )
@@ -141,6 +142,28 @@ def test_coordination_board_schema(tmp_path: Path) -> None:
     checks = MODULE.coordination_checks(board)
 
     assert all(check.ok for check in checks)
+
+
+def test_coordination_board_rejects_semantic_conflict(tmp_path: Path) -> None:
+    board = tmp_path / "active-sessions.md"
+    board.write_text(
+        "# Coordination\n\n"
+        "Schema: v2\n\n"
+        "## Active sessions\n\n"
+        "| id | agent | machine | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+        "| A | Claude | host-a | shared | 2026-07-30T10:00:00-04:00 | 2026-07-30T10:00:00-04:00 | interactive | /tmp/a/repo @ feature/a | work | repo/** | owner | active |\n"
+        "| B | Codex | host-b | shared | 2026-07-30T10:00:00-04:00 | 2026-07-30T10:00:00-04:00 | autonomous | /tmp/b/repo @ feature/b | work | repo/file.md | owner | active |\n\n"
+        "## Messages\n\n---\n\n## Protocol\n",
+        encoding="utf-8",
+    )
+
+    checks = MODULE.coordination_checks(board)
+
+    doctor = next(
+        check for check in checks if check.name == "coordination.semantic-doctor"
+    )
+    assert not doctor.ok
 
 
 def test_activate_and_handoff(tmp_path: Path) -> None:
