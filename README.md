@@ -4,6 +4,15 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**Symmetric verification and cross-machine coordination (July 2026).**
+Conformance checks, doctors, and installers now resolve the Claude and Codex
+CLIs through overrides, `PATH`, and documented install locations, so the same
+verification runs from either client's shell. `synthesis-project-management`
+**v1.7.0** adds an opt-in git-backed coordination lease — an atomic ref
+compare-and-swap on a shared remote — for safe same-resource sessions across
+machines, and claim-overlap detection now matches mixed absolute, `~`, and
+relative claim spellings. See the [4.6.0 release notes](CHANGELOG.md).
+
 **A stable inbox engine across native clients (July 2026).**
 `synthesis-inbox-cleanup` **v1.4.0** installs verified, immutable engine
 releases under `~/.synthesis/inbox-cleanup/engine/`. Claude Code and Codex

@@ -26,6 +26,7 @@ SCRIPTS_DIR = SCRIPT_PATH.parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
+from client_binaries import missing_binary_detail, resolve_client_binary
 from project_context import next_actions
 
 DEFAULT_SOURCE_ROOT = SCRIPT_PATH.parents[3]
@@ -258,9 +259,12 @@ def source_checks(source_root: Path) -> list[Check]:
     return checks
 
 
-def plugin_inventory(command: list[str], client: str) -> tuple[bool, str]:
+def plugin_inventory(client: str) -> tuple[bool, str]:
+    binary = resolve_client_binary(client)
+    if not binary:
+        return False, missing_binary_detail(client)
     try:
-        result = run(command)
+        result = run([binary, "plugin", "list", "--json"])
     except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
         return False, str(exc)
     if result.returncode != 0:
@@ -270,14 +274,24 @@ def plugin_inventory(command: list[str], client: str) -> tuple[bool, str]:
     except Exception as exc:
         return False, f"invalid JSON: {exc}"
     if client == "claude":
-        found = [item for item in data if item.get("id", "").startswith("synthesis-skills@")]
-    else:
+        items = data if isinstance(data, list) else []
         found = [
             item
-            for item in data.get("installed", [])
-            if item.get("name") == "synthesis-skills" and item.get("enabled")
+            for item in items
+            if isinstance(item, dict)
+            and str(item.get("id", "")).startswith("synthesis-skills@")
+            and item.get("enabled", True)
         ]
-    return len(found) == 1, f"{len(found)} enabled installation(s)"
+    else:
+        installed = data.get("installed", []) if isinstance(data, dict) else []
+        found = [
+            item
+            for item in installed
+            if isinstance(item, dict)
+            and item.get("name") == "synthesis-skills"
+            and item.get("enabled")
+        ]
+    return len(found) == 1, f"{len(found)} enabled installation(s) via {binary}"
 
 
 def direct_public_copies(home: Path) -> list[str]:
@@ -296,9 +310,9 @@ def direct_public_copies(home: Path) -> list[str]:
 
 def runtime_checks() -> list[Check]:
     checks: list[Check] = []
-    ok, detail = plugin_inventory(["claude", "plugin", "list", "--json"], "claude")
+    ok, detail = plugin_inventory("claude")
     add(checks, "runtime.claude-plugin", ok, detail)
-    ok, detail = plugin_inventory(["codex", "plugin", "list", "--json"], "codex")
+    ok, detail = plugin_inventory("codex")
     add(checks, "runtime.codex-plugin", ok, detail)
 
     home = Path.home()
@@ -310,12 +324,16 @@ def runtime_checks() -> list[Check]:
         ", ".join(duplicates) or "none",
     )
 
-    doctor = run(["codex", "doctor", "--json"])
+    codex_binary = resolve_client_binary("codex")
+    if not codex_binary:
+        add(checks, "runtime.codex-doctor", False, missing_binary_detail("codex"))
+        return checks
     try:
+        doctor = run([codex_binary, "doctor", "--json"])
         data = json_from_output(doctor.stdout + "\n" + doctor.stderr)
         provider = data["checks"]["network.provider_reachability"]["status"] == "ok"
         websocket = data["checks"]["network.websocket_reachability"]["status"] == "ok"
-        add(checks, "runtime.codex-provider", provider, "HTTP reachability")
+        add(checks, "runtime.codex-provider", provider, f"HTTP reachability via {codex_binary}")
         add(checks, "runtime.codex-websocket", websocket, "Responses WebSocket")
     except Exception as exc:
         add(checks, "runtime.codex-doctor", False, str(exc))

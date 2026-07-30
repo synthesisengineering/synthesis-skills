@@ -198,3 +198,55 @@ def test_activate_and_handoff(tmp_path: Path) -> None:
     ]
     handoff = MODULE.handoff_checks(project, pointer)
     assert all(check.ok for check in handoff if check.required)
+
+
+def test_runtime_checks_fail_structurally_when_binaries_absent(monkeypatch) -> None:
+    monkeypatch.setattr(MODULE, "resolve_client_binary", lambda name: None)
+
+    checks = MODULE.runtime_checks()
+
+    named = {check.name: check for check in checks}
+    assert not named["runtime.claude-plugin"].ok
+    assert "SYNTHESIS_CLAUDE_BIN" in named["runtime.claude-plugin"].detail
+    assert not named["runtime.codex-plugin"].ok
+    assert not named["runtime.codex-doctor"].ok
+    assert "SYNTHESIS_CODEX_BIN" in named["runtime.codex-doctor"].detail
+
+
+def test_runtime_checks_survive_vanishing_binary(monkeypatch) -> None:
+    monkeypatch.setattr(
+        MODULE, "resolve_client_binary", lambda name: f"/gone/{name}"
+    )
+
+    def raising_run(command, timeout=30):
+        raise FileNotFoundError(command[0])
+
+    monkeypatch.setattr(MODULE, "run", raising_run)
+
+    checks = MODULE.runtime_checks()
+
+    named = {check.name: check for check in checks}
+    assert not named["runtime.claude-plugin"].ok
+    assert not named["runtime.codex-plugin"].ok
+    assert not named["runtime.codex-doctor"].ok
+
+
+def test_plugin_inventory_rejects_unexpected_json_shapes(monkeypatch) -> None:
+    monkeypatch.setattr(
+        MODULE, "resolve_client_binary", lambda name: f"/fake/{name}"
+    )
+
+    class Result:
+        returncode = 0
+        stdout = '{"unexpected": "shape"}'
+        stderr = ""
+
+    monkeypatch.setattr(MODULE, "run", lambda command, timeout=30: Result())
+
+    ok, detail = MODULE.plugin_inventory("claude")
+    assert not ok
+    assert "0 enabled" in detail
+
+    ok, detail = MODULE.plugin_inventory("codex")
+    assert not ok
+    assert "0 enabled" in detail

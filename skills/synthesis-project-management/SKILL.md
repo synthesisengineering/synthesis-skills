@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.6.0"
+  version: "1.7.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -355,7 +355,22 @@ Rules:
 The script uses an OS file lock, verified backups, and atomic replacement for
 board mutations. It refuses overlapping source areas, shared worktrees or
 branches, two context owners for the same project, and canonical-context claims
-from contributor sessions. See
+from contributor sessions. Claim overlap is compared on normalized path
+segments, so absolute, `~`-prefixed, and repository-relative spellings of the
+same real path still conflict; ambiguous relative-vs-absolute alignments are
+treated as conflicts rather than clearances.
+
+The OS file lock is authoritative only among processes sharing one
+filesystem. For simultaneous sessions on different machines, a `lease.json`
+beside the board opts it into a git-backed lease: every mutation is published
+through an atomic ref compare-and-swap on a shared git remote
+(`{"remote": "<url-or-path>", "ref": "refs/synthesis/coordination-board"}`),
+the local board file becomes a mirror of the leased ref, mutations retry on
+concurrent advance, and an unreachable remote fails closed instead of falling
+back to local-only writes. `status` refreshes the mirror; `doctor` verifies
+remote sync. Without a lease, simultaneous cross-machine writes to the same
+resources remain prohibited — file-sync conflict resolution is not a
+distributed lock. See
 [`references/active-sessions-template.md`](references/active-sessions-template.md)
 for the canonical file shape and
 [`references/parallel-agent-protocol.md`](references/parallel-agent-protocol.md)
