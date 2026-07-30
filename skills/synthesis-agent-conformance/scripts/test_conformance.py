@@ -198,6 +198,105 @@ def test_activate_and_handoff(tmp_path: Path) -> None:
     ]
     handoff = MODULE.handoff_checks(project, pointer)
     assert all(check.ok for check in handoff if check.required)
+    named = {check.name: check for check in handoff}
+    assert named["handoff.payload-parity"].ok
+    assert "identical context" in named["handoff.payload-parity"].detail
+    assert named["handoff.record-freshness"].ok
+
+
+def clone_pair_with_project(tmp_path: Path) -> tuple[Path, Path]:
+    """Two clones of one remote; the project lives in both, one goes stale."""
+    subprocess = __import__("subprocess")
+
+    def git(cwd: Path, *arguments: str) -> None:
+        subprocess.run(
+            ["git", "-C", str(cwd), *arguments], check=True, capture_output=True
+        )
+
+    remote = tmp_path / "remote.git"
+    subprocess.run(
+        ["git", "init", "--bare", "--quiet", "--initial-branch", "main", str(remote)],
+        check=True,
+        capture_output=True,
+    )
+    clones = []
+    for name in ("writer", "reader"):
+        clone = tmp_path / name
+        subprocess.run(
+            ["git", "clone", "--quiet", str(remote), str(clone)],
+            check=True,
+            capture_output=True,
+        )
+        git(clone, "config", "user.email", "test@example.com")
+        git(clone, "config", "user.name", "Test")
+        clones.append(clone)
+    writer, reader = clones
+    project = writer / "projects" / "demo"
+    project.mkdir(parents=True)
+    (project / "CONTEXT.md").write_text("**Phase:** 1\n", encoding="utf-8")
+    git(writer, "add", "projects")
+    git(writer, "commit", "--quiet", "-m", "seed")
+    git(writer, "push", "--quiet", "origin", "main")
+    git(reader, "pull", "--quiet")
+
+    (project / "CONTEXT.md").write_text("**Phase:** 2\n", encoding="utf-8")
+    git(writer, "commit", "--quiet", "-am", "advance")
+    git(writer, "push", "--quiet", "origin", "main")
+    git(reader, "fetch", "--quiet", "origin")
+    return writer / "projects" / "demo", reader / "projects" / "demo"
+
+
+def test_record_freshness_flags_stale_checkout(tmp_path: Path) -> None:
+    current, stale = clone_pair_with_project(tmp_path)
+
+    fresh, detail = MODULE.record_freshness(current)
+    assert fresh, detail
+
+    fresh, detail = MODULE.record_freshness(stale)
+    assert not fresh
+    assert "1 commit(s) behind" in detail
+
+    subprocess = __import__("subprocess")
+    subprocess.run(
+        ["git", "-C", str(stale.parents[1]), "pull", "--quiet"],
+        check=True,
+        capture_output=True,
+    )
+    fresh, detail = MODULE.record_freshness(stale)
+    assert fresh, detail
+
+
+def test_record_freshness_without_upstream_is_not_comparable(tmp_path: Path) -> None:
+    subprocess = __import__("subprocess")
+    project = tmp_path / "local-only"
+    project.mkdir()
+    subprocess.run(["git", "init", str(project)], check=True, capture_output=True)
+    fresh, detail = MODULE.record_freshness(project)
+    assert fresh
+    assert "not comparable" in detail
+
+
+def test_activate_refuses_stale_record(tmp_path: Path) -> None:
+    _, stale = clone_pair_with_project(tmp_path)
+    (stale / "REFERENCE.md").write_text("# Reference\n", encoding="utf-8")
+    (stale / "sessions").mkdir()
+
+    pointer = tmp_path / "active.json"
+    checks = MODULE.activate(stale, pointer)
+    named = {check.name: check for check in checks}
+    assert not named["handoff.record-freshness"].ok
+    assert not pointer.exists()
+
+
+def test_payload_parity_reports_broken_pointer(tmp_path: Path) -> None:
+    pointer = tmp_path / "active.json"
+    pointer.write_text(
+        json.dumps({"project": str(tmp_path / "missing-project")}),
+        encoding="utf-8",
+    )
+    ok, detail = MODULE.payload_parity(pointer)
+    assert not ok
+    assert "payload failed" in detail
 
 
 def test_runtime_checks_fail_structurally_when_binaries_absent(monkeypatch) -> None:

@@ -559,3 +559,118 @@ def test_lease_doctor_verifies_remote_sync(tmp_path: Path, capsys) -> None:
         == 0
     )
     assert MODULE.command_doctor(args(machine1)) == 0
+
+
+def test_lease_declares_itself_in_board_content(tmp_path: Path) -> None:
+    machine1, machine2 = lease_machines(tmp_path)
+    request = claim_args(
+        machine1,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="/repos/shared/**",
+    )
+    assert MODULE.command_claim(request) == 0
+    remote = str(tmp_path / "remote.git")
+    assert MODULE.declared_lease(machine1.read_text(encoding="utf-8")) == remote
+
+    follower = claim_args(
+        machine2,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/worktree-b @ feature/b",
+        area="/repos/other/**",
+    )
+    assert MODULE.command_claim(follower) == 0
+    assert MODULE.declared_lease(machine2.read_text(encoding="utf-8")) == remote
+
+
+def test_declared_board_without_config_refuses_mutation(tmp_path: Path) -> None:
+    machine1, _ = lease_machines(tmp_path)
+    request = claim_args(
+        machine1,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="/repos/shared/**",
+    )
+    assert MODULE.command_claim(request) == 0
+
+    (machine1.parent / "lease.json").unlink()
+    late = claim_args(
+        machine1,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/worktree-b @ feature/b",
+        area="/repos/other/**",
+    )
+    assert MODULE.command_claim(late) == 10
+    table = MODULE.rows(machine1.read_text(encoding="utf-8"))
+    assert {row.id for row in table} == {"A"}
+
+    assert MODULE.command_doctor(args(machine1)) == 1
+
+
+def test_lease_disable_publishes_and_retires_config(tmp_path: Path) -> None:
+    machine1, machine2 = lease_machines(tmp_path)
+    request = claim_args(
+        machine1,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="/repos/shared/**",
+    )
+    assert MODULE.command_claim(request) == 0
+
+    assert MODULE.command_lease_disable(args(machine1, local_only=False)) == 0
+    assert not (machine1.parent / "lease.json").exists()
+    assert any(
+        candidate.name.startswith("lease.json.disabled-")
+        for candidate in machine1.parent.iterdir()
+    )
+    assert MODULE.declared_lease(machine1.read_text(encoding="utf-8")) is None
+
+    unleased = claim_args(
+        machine1,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/worktree-b @ feature/b",
+        area="/repos/other/**",
+    )
+    assert MODULE.command_claim(unleased) == 0
+
+    refreshed = MODULE.lease_fetch(
+        {
+            "remote": str(tmp_path / "remote.git"),
+            "ref": MODULE.LEASE_DEFAULT_REF,
+            "repository": machine2.parent / ".lease-repo",
+        }
+    )
+    assert refreshed[1] is not None
+    assert MODULE.declared_lease(refreshed[1]) is None
+
+
+def test_lease_disable_local_only_requires_absent_config(tmp_path: Path) -> None:
+    machine1, _ = lease_machines(tmp_path)
+    request = claim_args(
+        machine1,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="/repos/shared/**",
+    )
+    assert MODULE.command_claim(request) == 0
+
+    assert MODULE.command_lease_disable(args(machine1, local_only=True)) == 10
+
+    (machine1.parent / "lease.json").unlink()
+    assert MODULE.command_lease_disable(args(machine1, local_only=True)) == 0
+    assert MODULE.declared_lease(machine1.read_text(encoding="utf-8")) is None
+    follow_up = claim_args(
+        machine1,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/worktree-b @ feature/b",
+        area="/repos/other/**",
+    )
+    assert MODULE.command_claim(follow_up) == 0

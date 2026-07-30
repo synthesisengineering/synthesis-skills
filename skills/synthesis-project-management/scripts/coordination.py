@@ -505,7 +505,41 @@ def lease_publish(
     return False, pushed.stderr.strip()
 
 
-def lease_update(board: Path, config: dict, operation) -> None:
+LEASE_DECLARATION = re.compile(r"(?m)^Lease: (\S+)[ \t]*$")
+
+
+def declared_lease(content: str) -> str | None:
+    """The remote a board says it is leased to, from its header declaration.
+
+    The declaration travels IN the board content, so it replicates with the
+    board (file sync, mirrors, the leased ref itself). A machine whose
+    `lease.json` has not arrived yet — or that lost it — then refuses to
+    mutate a lease-managed board instead of writing a local-only change that
+    the next lease refetch would silently drop.
+    """
+    match = LEASE_DECLARATION.search(content)
+    return match.group(1) if match else None
+
+
+def ensure_lease_declaration(content: str, remote: str) -> str:
+    existing = declared_lease(content)
+    if existing == remote:
+        return content
+    if existing is not None:
+        return LEASE_DECLARATION.sub(f"Lease: {remote}", content, count=1)
+    schema = re.search(r"(?m)^Schema:\s*v\d+[ \t]*$", content)
+    if schema is None:
+        return f"Lease: {remote}\n" + content
+    return content[: schema.end()] + f"\nLease: {remote}" + content[schema.end() :]
+
+
+def remove_lease_declaration(content: str) -> str:
+    return re.sub(r"(?m)^Lease: \S+[ \t]*\n?", "", content, count=1)
+
+
+def lease_update(
+    board: Path, config: dict, operation, *, declare: bool = True
+) -> None:
     failure = ""
     for _ in range(LEASE_RETRIES):
         sha, content = lease_fetch(config)
@@ -514,6 +548,8 @@ def lease_update(board: Path, config: dict, operation) -> None:
                 board.read_text(encoding="utf-8") if board.exists() else template()
             )
         updated = operation(content)
+        if declare:
+            updated = ensure_lease_declaration(updated, config["remote"])
         published, failure = lease_publish(config, board.name, updated, sha)
         if published:
             write_board(board, updated)
@@ -553,6 +589,15 @@ def locked_update(board: Path, operation) -> None:
             lease_update(board, config, operation)
             return
         content = board.read_text(encoding="utf-8") if board.exists() else template()
+        declared = declared_lease(content)
+        if declared is not None:
+            raise RuntimeError(
+                f"board declares a coordination lease ({declared}) but "
+                f"{board.parent / LEASE_CONFIG_NAME} is missing on this "
+                "machine; copy the lease configuration here, or run "
+                "'lease-disable --local-only' only if the lease is being "
+                "retired everywhere"
+            )
         write_board(board, operation(content))
 
 
@@ -783,6 +828,66 @@ def command_migrate(args) -> int:
     return 0
 
 
+def command_lease_disable(args) -> int:
+    board = args.board
+    board.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = board.parent / ".active-sessions.lock"
+    with lock_path.open("a+", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            config = lease_configuration(board)
+        except RuntimeError as exc:
+            print(f"coordination lease-disable failed: {exc}", file=sys.stderr)
+            return 10
+        if args.local_only:
+            if config is not None:
+                print(
+                    "coordination lease-disable refused: lease.json is present, "
+                    "so the sanctioned path is 'lease-disable' without "
+                    "--local-only (it retires the lease on the remote too)",
+                    file=sys.stderr,
+                )
+                return 10
+            if not board.is_file():
+                print(f"No coordination board: {board}", file=sys.stderr)
+                return 10
+            content = board.read_text(encoding="utf-8")
+            if declared_lease(content) is None:
+                print("Board declares no lease; nothing to disable.")
+                return 0
+            write_board(board, remove_lease_declaration(content))
+            print(
+                "Lease declaration removed from the local board only. If the "
+                "lease remote still exists, machines with lease.json will "
+                "republish it; this path is for retiring an unreachable lease."
+            )
+            return 0
+        if config is None:
+            print(
+                "coordination lease-disable failed: no lease.json beside the "
+                "board; use --local-only only when retiring a lease whose "
+                "remote is gone",
+                file=sys.stderr,
+            )
+            return 10
+        try:
+            lease_update(board, config, remove_lease_declaration, declare=False)
+        except RuntimeError as exc:
+            print(f"coordination lease-disable failed: {exc}", file=sys.stderr)
+            return 10
+        retired = board.parent / (
+            f"{LEASE_CONFIG_NAME}.disabled-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
+        )
+        os.replace(board.parent / LEASE_CONFIG_NAME, retired)
+        print(
+            "Lease declaration removed and published to the remote. Local "
+            f"lease config moved to {retired}. Remove lease.json on every "
+            "other machine before its next board write, or it will "
+            "re-enable the lease."
+        )
+    return 0
+
+
 def command_doctor(args) -> int:
     if not args.board.is_file():
         print(f"FAIL coordination.board: missing {args.board}", file=sys.stderr)
@@ -797,6 +902,13 @@ def command_doctor(args) -> int:
     lease_line = ""
     try:
         lease = lease_configuration(args.board)
+        if lease is None and declared_lease(content) is not None:
+            problems.append(
+                f"board declares a coordination lease "
+                f"({declared_lease(content)}) but lease.json is missing "
+                "beside it; mutations will refuse until the configuration "
+                "is copied here or the lease is retired"
+            )
         if lease is not None:
             sha, remote_content = lease_fetch(lease)
             if remote_content is None:
@@ -867,6 +979,12 @@ def parser() -> argparse.ArgumentParser:
     message.add_argument("--text")
     commands.add_parser("migrate")
     commands.add_parser("doctor")
+    lease_disable = commands.add_parser(
+        "lease-disable",
+        help="Retire the board's lease declaration (CAS-published by default; "
+        "--local-only is the unreachable-remote escape).",
+    )
+    lease_disable.add_argument("--local-only", action="store_true")
     return result
 
 
@@ -885,6 +1003,8 @@ def main() -> int:
         return command_message(args)
     if args.command == "migrate":
         return command_migrate(args)
+    if args.command == "lease-disable":
+        return command_lease_disable(args)
     return command_doctor(args)
 
 

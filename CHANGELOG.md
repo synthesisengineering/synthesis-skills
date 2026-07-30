@@ -4,6 +4,37 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.7.0] - 2026-07-30
+
+### Added
+
+- Record-freshness verification: `conformance.py` activation and handoff, and
+  the shared SessionStart context, now compare the local project record with
+  its last-fetched upstream and flag how many upstream commits touching the
+  project subtree are missing locally. A stale checkout can no longer report
+  phase, status, and plan with silent confidence; activation refuses to write
+  a pointer from a stale record.
+- Payload-parity handoff check: `handoff` runs the shared SessionStart script
+  in both client envelope formats against the live pointer and verifies the
+  enveloped context is identical, without needing either client binary.
+- Lease self-declaration (`synthesis-project-management` v1.8.0): a
+  lease-managed board carries a `Lease: <remote>` header line that travels
+  with the board content. A lease-aware helper on a machine whose
+  `lease.json` has not arrived (or was lost) refuses to mutate instead of
+  writing a local-only change that the next lease refetch would drop. The
+  `lease-disable` command retires a lease sanctionedly — publishing the
+  undeclared board through the compare-and-swap path and moving the local
+  config to a timestamped `.disabled-` file — with `--local-only` reserved
+  for unreachable-remote recovery; the doctor flags declared-but-unconfigured
+  boards.
+- `retire_worktree.py`: fail-closed retirement of merged feature worktrees.
+  Takes the repository explicitly (never inferred from the working
+  directory), refuses main worktrees, dirty trees, detached heads, branch
+  mismatches, and a working directory inside the target; verifies branch
+  ancestry against the freshly fetched remote base before removing anything;
+  deletes local branches with safe delete only and remote branches only on
+  request.
+
 ## [4.6.0] - 2026-07-30
 
 ### Added

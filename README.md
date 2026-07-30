@@ -4,6 +4,16 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**Trustworthy resumption and safe retirement (July 2026).**
+Activation, handoff, and SessionStart context now detect stale project
+checkouts by comparing the record with its fetched upstream, and handoff
+verifies that both client envelope formats carry identical context.
+`synthesis-project-management` **v1.8.0** makes lease-managed boards
+self-declaring — a machine without the lease config refuses to write rather
+than losing changes silently, with a sanctioned `lease-disable` path — and
+adds `retire_worktree.py` for fail-closed, remote-verified retirement of
+merged worktrees. See the [4.7.0 release notes](CHANGELOG.md).
+
 **Symmetric verification and cross-machine coordination (July 2026).**
 Conformance checks, doctors, and installers now resolve the Claude and Codex
 CLIs through overrides, `PATH`, and documented install locations, so the same
