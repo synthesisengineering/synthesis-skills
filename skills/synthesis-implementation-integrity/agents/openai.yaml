@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Implementation Integrity"
+  short_description: "Apply the implementation integrity synthesis workflow"
+  default_prompt: "Use $synthesis-implementation-integrity to apply this workflow to the current task."

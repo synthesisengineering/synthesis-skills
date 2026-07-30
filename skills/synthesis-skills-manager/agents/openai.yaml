@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Skills Manager"
+  short_description: "Apply the skills manager synthesis workflow"
+  default_prompt: "Use $synthesis-skills-manager to apply this workflow to the current task."

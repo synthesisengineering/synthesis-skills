@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Concise Messaging"
+  short_description: "Apply the concise messaging synthesis workflow"
+  default_prompt: "Use $synthesis-concise-messaging to apply this workflow to the current task."

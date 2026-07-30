@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Code Planning"
+  short_description: "Apply the code planning synthesis workflow"
+  default_prompt: "Use $synthesis-code-planning to apply this workflow to the current task."

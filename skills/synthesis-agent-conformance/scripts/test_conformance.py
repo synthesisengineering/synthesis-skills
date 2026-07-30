@@ -21,6 +21,15 @@ def write_skill(root: Path, name: str) -> None:
         f"---\nname: {name}\ndescription: Test skill.\n---\n\n# Test\n",
         encoding="utf-8",
     )
+    interface = skill / "agents"
+    interface.mkdir()
+    (interface / "openai.yaml").write_text(
+        "interface:\n"
+        f'  display_name: "{name}"\n'
+        '  short_description: "Apply this synthesis workflow"\n'
+        f'  default_prompt: "Use ${name} for this task."\n',
+        encoding="utf-8",
+    )
 
 
 def write_manifests(root: Path) -> None:
@@ -52,6 +61,35 @@ def test_source_checks_accept_dual_manifest(tmp_path: Path) -> None:
     write_skill(tmp_path, "synthesis-test")
     checks = MODULE.source_checks(tmp_path)
     assert all(check.ok for check in checks)
+
+
+def test_source_checks_require_openai_interface(tmp_path: Path) -> None:
+    write_manifests(tmp_path)
+    write_skill(tmp_path, "synthesis-test")
+    (tmp_path / "skills" / "synthesis-test" / "agents" / "openai.yaml").unlink()
+
+    checks = MODULE.source_checks(tmp_path)
+
+    interface = next(
+        check for check in checks if check.name == "source.skill-ui.synthesis-test"
+    )
+    assert not interface.ok
+
+
+def test_source_checks_reject_client_bound_runtime_path(tmp_path: Path) -> None:
+    write_manifests(tmp_path)
+    write_skill(tmp_path, "synthesis-test")
+    (tmp_path / "skills" / "synthesis-test" / "runtime.sh").write_text(
+        'exec "$HOME/.claude/skills/synthesis-test/run.sh"\n',
+        encoding="utf-8",
+    )
+
+    checks = MODULE.source_checks(tmp_path)
+
+    stale = next(
+        check for check in checks if check.name == "source.no-client-copy-paths"
+    )
+    assert not stale.ok
 
 
 def test_instruction_adapter(tmp_path: Path) -> None:

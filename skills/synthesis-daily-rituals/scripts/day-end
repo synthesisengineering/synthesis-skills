@@ -2,15 +2,65 @@
 # day-end — launcher for the synthesis-daily-rituals Day-End ritual.
 #
 # The ritual is an Agent Skill and always runs INSIDE an agentic coding
-# session (Claude Code by default). This script is a launcher, not a
-# runner: it only removes cold-start friction by opening such a session
-# with the ritual invocation as the first prompt. Inside an already-open
-# session, invoke the skill directly and ignore this launcher.
+# session. This script is a launcher, not a runner: it only removes
+# cold-start friction by opening Codex or Claude Code with the ritual
+# invocation as the first prompt. Inside an already-open session, invoke
+# the skill directly and ignore this launcher.
 #
 # Usage: day-end [-f|-q|-o]
 #   -f full · -q quick close · -o observer · default: the session asks.
-# Override the agent CLI with DAY_END_AGENT_CMD (default: claude).
+# Selection order:
+#   1. DAY_END_AGENT_CMD
+#   2. <runtime-root>/agent-cli (auto|codex|claude)
+#   3. auto (Codex first, then Claude Code)
 set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$SOURCE_DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+RUNTIME_ROOT="$(cd -P "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)"
+
+configured_agent() {
+  if [ -n "${DAY_END_AGENT_CMD:-}" ]; then
+    printf '%s\n' "$DAY_END_AGENT_CMD"
+    return
+  fi
+  if [ -f "$RUNTIME_ROOT/agent-cli" ]; then
+    IFS= read -r selection < "$RUNTIME_ROOT/agent-cli"
+    printf '%s\n' "${selection:-auto}"
+    return
+  fi
+  printf '%s\n' "auto"
+}
+
+AGENT="$(configured_agent)"
+case "$AGENT" in
+  auto)
+    if command -v codex >/dev/null 2>&1; then
+      AGENT="codex"
+    elif command -v claude >/dev/null 2>&1; then
+      AGENT="claude"
+    else
+      echo "day-end: neither codex nor claude is available on PATH" >&2
+      exit 127
+    fi
+    ;;
+  codex|claude) ;;
+  *)
+    echo "day-end: agent-cli must be auto, codex, or claude (got: $AGENT)" >&2
+    exit 2
+    ;;
+esac
+
+if ! command -v "$AGENT" >/dev/null 2>&1; then
+  echo "day-end: configured agent CLI is unavailable: $AGENT" >&2
+  exit 127
+fi
+
 MODE_LINE="Ask me the one-letter mode question (f = full, q = quick close, o = observer) before starting."
 case "${1:-}" in
   -f) MODE_LINE="Mode: full." ;;
@@ -20,4 +70,4 @@ case "${1:-}" in
   *) echo "usage: day-end [-f|-q|-o]" >&2; exit 2 ;;
 esac
 PROMPT="Please name this session day-end-$(date +%Y-%m-%d). Run the synthesis-daily-rituals Day-End ritual now. ${MODE_LINE}"
-exec "${DAY_END_AGENT_CMD:-claude}" "$PROMPT"
+exec "$AGENT" "$PROMPT"

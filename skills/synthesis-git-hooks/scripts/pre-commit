@@ -87,14 +87,19 @@ eval "$SIDECAR_OUT"
 # Determine which files to scan. Always exclude files that contain pattern
 # definitions by design — adding a name to the policy is the opposite of
 # leaking it, but the diff still matches.
-CHANGED_FILES=$(git diff --cached --name-only --diff-filter=AM 2>/dev/null || true)
+# Detect exact copies from already-committed files. A canonical-file migration
+# (for example CLAUDE.md -> AGENTS.md plus a one-line adapter) must not rescan
+# hundreds of unchanged historical lines as newly introduced content. Copy
+# targets receive status C and are excluded by AM; genuinely new or modified
+# lines remain in scope.
+CHANGED_FILES=$(git diff --cached -C --find-copies-harder --name-only --diff-filter=AM 2>/dev/null || true)
 if [ -n "${DIFF_EXCLUDE_REGEX:-}" ] && [ -n "$CHANGED_FILES" ]; then
     CHANGED_FILES=$(echo "$CHANGED_FILES" | grep -v -E "$DIFF_EXCLUDE_REGEX" || true)
 fi
 
 MATCHES=""
 if [ -n "$CHANGED_FILES" ]; then
-    DIFF=$(echo "$CHANGED_FILES" | xargs git diff --cached --diff-filter=AM -U0 -- 2>/dev/null || true)
+    DIFF=$(echo "$CHANGED_FILES" | xargs git diff --cached -C --find-copies-harder --diff-filter=AM -U0 -- 2>/dev/null || true)
     if [ -n "$DIFF" ]; then
         # Stage 1: collect added lines that hit the active regex. Validate the
         # regex against an empty string first — if grep rejects the pattern

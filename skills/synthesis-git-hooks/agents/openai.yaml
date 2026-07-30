@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Git Hooks"
+  short_description: "Apply the git hooks synthesis workflow"
+  default_prompt: "Use $synthesis-git-hooks to apply this workflow to the current task."

@@ -5,7 +5,7 @@ license: "CC0-1.0"
 metadata:
   depends_on: "synthesis-daily-rituals, synthesis-project-management"
   author: "Rajiv Pant"
-  version: "3.3.0"
+  version: "3.3.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -15,6 +15,13 @@ metadata:
 A protocol for syncing Slack channels and threads to local transcript files using Slack MCP. Designed for AI-assisted workflows where an agent reads Slack on behalf of a user, saves transcripts locally, and updates a daily action plan.
 
 This skill provides the **protocol** — the sync methodology, thread re-reading discipline, transcript format, and action plan update rules. A per-project **config file** provides the specifics: which channels, which paths, which DMs. Prefer `.agents/slack-sync.yaml`; existing `.claude/slack-sync.yaml` configs remain supported.
+
+## v3.3.1 — Runtime-resolved checker
+
+v3.3.1 (2026-07-29) invokes the thread checker relative to the skill root
+resolved by the active plugin runtime. The protocol no longer binds Slack sync
+to an `.agents` copy, so Codex and Claude Code execute the same checker from the
+same committed skill version.
 
 ## v3.3.0 — Two-Tier Draft Block: Templates Move into Files
 
@@ -229,9 +236,9 @@ Every sync — whether day-start, mid-day, or day-end — follows these steps. N
 Before doing anything else, run the thread checker script on each transcript file that exists for today:
 
 ```bash
-python3 ~/.agents/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/<channel>.md [action_plan_file]
-python3 ~/.agents/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_dms.md [action_plan_file]
-python3 ~/.agents/skills/synthesis-slack-sync/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_group-dms.md [action_plan_file]
+python3 <synthesis-slack-sync-root>/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/<channel>.md [action_plan_file]
+python3 <synthesis-slack-sync-root>/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_dms.md [action_plan_file]
+python3 <synthesis-slack-sync-root>/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_group-dms.md [action_plan_file]
 ```
 
 Skip any file that does not yet exist (e.g., no DMs synced today). Combine the output from all runs into a single checklist. You MUST re-read every thread listed during Step 2. The script exists because manually deciding which threads to re-read has repeatedly failed — threads get skipped and messages get missed.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """synthesis-message-guard — fail-closed pre-send gate for agent-drafted correspondence.
 
-v1.0.0 (2026-07-29)
+v1.1.0 (2026-07-29)
 
 A PreToolUse hook engine that blocks message-sending and draft-creating tool
 calls unless (a) the outgoing text passes a deterministic register scan against
@@ -27,27 +27,31 @@ Modes:
   --scan            read message text on stdin, print scan findings, exit 2 if
                     any block-tier hit. Lets an agent pre-check wording.
   --ledger-template print a skeleton ledger JSON.
-  --doctor          self-check; exit 0 HEALTHY / 2 UNHEALTHY.
+  --doctor          self-check, including every active client hook config;
+                    exit 0 HEALTHY / 2 UNHEALTHY.
   --test            behavioral test suite; exit 0 all pass / 2 failures.
 
 Environment overrides (used by --test; safe to leave unset):
   MESSAGE_GUARD_CONFIG     path to patterns/config JSON
                            (default ~/.synthesis/message-guard/patterns.json)
   MESSAGE_GUARD_STATE_DIR  ledger/log dir (default ~/.synthesis/message-guard)
-  MESSAGE_GUARD_SETTINGS   settings.json to inspect in --doctor
-                           (default ~/.claude/settings.json)
+  MESSAGE_GUARD_CLAUDE_SETTINGS  Claude Code hooks to inspect in --doctor
+                                 (default ~/.claude/settings.json)
+  MESSAGE_GUARD_CODEX_HOOKS      Codex hooks to inspect in --doctor
+                                 (default ~/.codex/hooks.json)
 """
 
 import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 import time
 from datetime import datetime, timezone
 
-ENGINE_VERSION = "1.0.0"
+ENGINE_VERSION = "1.1.0"
 
 
 def config_path():
@@ -304,6 +308,26 @@ POSITIVE_CONTROL_CLEAN = ("Thank you for writing this up properly. The step "
                           "you and I will make one of them work.")
 
 
+def hook_config_covers(path, sample_tools):
+    """Return whether a Claude Code or Codex hook config gates every sample."""
+    with open(path, "r", encoding="utf-8") as fh:
+        settings = json.load(fh)
+    for entry in settings.get("hooks", {}).get("PreToolUse", []):
+        matcher = entry.get("matcher", "")
+        guard_present = any(
+            "message_guard.py" in hook.get("command", "")
+            for hook in entry.get("hooks", [])
+        )
+        if not guard_present:
+            continue
+        try:
+            if matcher and all(re.search(matcher, tool) for tool in sample_tools):
+                return True
+        except re.error:
+            return False
+    return False
+
+
 def run_doctor():
     ok = True
 
@@ -338,11 +362,13 @@ def run_doctor():
     sample_tools = [
         "mcp__abc123__slack_send_message",
         "mcp__abc123__slack_send_message_draft",
+        "mcp__abc123__slack_schedule_message",
         "mcp__workspace-mcp__draft_gmail_message",
         "mcp__workspace-mcp__send_gmail_message",
         "mcp__d01c__create_draft",
         "mcp__d01c__update_draft",
         "mcp__apple-mail__send_email",
+        "mcp__mail__send_message",
     ]
     missed = [t for t in sample_tools if not any(rx.search(t) for rx in gated)]
     report(not missed, "gated patterns cover the send/draft tool family",
@@ -350,24 +376,43 @@ def run_doctor():
     report(any(rx.search("mcp__ccd_session_mgmt__send_message") for rx in exempt),
            "inter-session messaging is exempted")
 
-    settings_file = os.environ.get(
-        "MESSAGE_GUARD_SETTINGS", os.path.expanduser("~/.claude/settings.json"))
-    try:
-        with open(settings_file, "r", encoding="utf-8") as fh:
-            settings = json.load(fh)
-        wired = False
-        for entry in settings.get("hooks", {}).get("PreToolUse", []):
-            for h in entry.get("hooks", []):
-                if "message_guard.py" in h.get("command", ""):
-                    matcher = entry.get("matcher", "")
-                    try:
-                        wired = all(
-                            re.search(matcher, t) for t in sample_tools)
-                    except re.error:
-                        wired = False
-        report(wired, "settings.json PreToolUse wiring covers the tool family")
-    except Exception as exc:
-        report(False, "settings.json readable", str(exc))
+    client_configs = [
+        (
+            "Claude Code",
+            "claude",
+            "MESSAGE_GUARD_CLAUDE_SETTINGS",
+            os.path.expanduser("~/.claude/settings.json"),
+        ),
+        (
+            "Codex",
+            "codex",
+            "MESSAGE_GUARD_CODEX_HOOKS",
+            os.path.expanduser("~/.codex/hooks.json"),
+        ),
+    ]
+    active_clients = 0
+    for label, executable, environment_key, default_path in client_configs:
+        config_file = os.environ.get(environment_key, default_path)
+        explicitly_configured = environment_key in os.environ
+        active = (
+            explicitly_configured
+            or os.path.exists(config_file)
+            or shutil.which(executable) is not None
+        )
+        if not active:
+            print("  ok  %s hook wiring: client is not installed" % label)
+            continue
+        active_clients += 1
+        try:
+            wired = hook_config_covers(config_file, sample_tools)
+            report(
+                wired,
+                "%s PreToolUse wiring covers the tool family" % label,
+                config_file,
+            )
+        except Exception as exc:
+            report(False, "%s hook config readable" % label, str(exc))
+    report(active_clients > 0, "at least one supported agent client is active")
 
     try:
         os.makedirs(state_dir(), exist_ok=True)

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Meeting Transcripts"
+  short_description: "Apply the meeting transcripts synthesis workflow"
+  default_prompt: "Use $synthesis-meeting-transcripts to apply this workflow to the current task."

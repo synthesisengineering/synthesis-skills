@@ -1,11 +1,17 @@
 ---
 name: synthesis-message-guard
 description: Fail-closed pre-send enforcement for agent-drafted correspondence. A PreToolUse hook blocks every message-sending or draft-creating tool call unless the outgoing text passes a deterministic register scan AND a fresh, single-use grounding ledger — sha256-bound to the exact message — attests that the composing agent read the full thread, searched prior correspondence, and mapped every factual claim to a source. Use when setting up, debugging, or composing under the guard; when a send is blocked; or when asked about message grounding, voice enforcement, or pre-send gates.
+license: "Apache-2.0"
+metadata:
+  author: "Rajiv Pant"
+  version: "1.1.0"
+  source_repo: "github.com/synthesisengineering/synthesis-skills"
+  source_type: "public"
 ---
 
 # Message Guard
 
-**Version 1.0.0** (2026-07-29)
+**Version 1.1.0** (2026-07-29)
 
 Prose rules do not survive contact with a model under load. This skill is the
 enforcement layer for correspondence the way commit hooks are the enforcement
@@ -55,8 +61,10 @@ composing agent                      engine (stdlib python, fail closed)
 - **Ledger:** `~/.synthesis/message-guard/ledger.json` — written per message,
   consumed on use (single-shot; no reuse across messages). Passed sends are
   appended to `log.jsonl` with the full ledger for audit.
-- **Wiring:** a `PreToolUse` entry in `~/.claude/settings.json` matching the
-  send/draft tool family across all MCP servers by name pattern.
+- **Wiring:** equivalent `PreToolUse` entries in Claude Code's
+  `~/.claude/settings.json` and Codex's `~/.codex/hooks.json`, each matching
+  the send/draft tool family across all MCP servers by name pattern. The doctor
+  requires every installed client to carry the guard.
 
 ## The ledger contract
 
@@ -86,7 +94,7 @@ message_guard.py --gate            # hook mode (stdin: tool-call JSON)
 message_guard.py --scan  < draft   # pre-check wording; exit 2 on block hits
 message_guard.py --sha   < draft   # sha256 for the ledger
 message_guard.py --ledger-template # skeleton
-message_guard.py --doctor          # config, controls, wiring, state dir
+message_guard.py --doctor          # config, controls, all client wiring, state dir
 message_guard.py --test            # behavioral suite (12 cases)
 ```
 
@@ -103,9 +111,10 @@ message_guard.py --test            # behavioral suite (12 cases)
    messages and BLOCK the incident drafts. Re-run calibration whenever
    patterns change; a guard that blocks the principal's own voice is
    miscalibrated, not strict.
-4. **Monitored.** The doctor runs in the day-start ritual (synthesis-daily-
-   rituals Step 1) alongside the commit-hook doctor. A guard nobody monitors
-   is already broken.
+4. **Monitored across clients.** The doctor runs in the day-start ritual
+   (synthesis-daily-rituals Step 1) alongside the commit-hook doctor. It checks
+   Claude Code and Codex independently whenever each client is installed; one
+   healthy client cannot hide an unwired peer.
 
 ## Known limits — stated, not hidden
 
