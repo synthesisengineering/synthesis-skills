@@ -4,6 +4,11 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**Clean handoff after project completion (July 2026).** A completed synthesis
+project now emits no pending actions during activation or SessionStart; checked
+items are never relabeled as future work. See the
+[4.4.4 release notes](CHANGELOG.md).
+
 **One repository contract for every agent (July 2026).** The public source now
 tracks its own `AGENTS.md`, with Claude Code importing that same contract
 through a one-line adapter. CI verifies both files so contributors using Codex
