@@ -4,6 +4,10 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**Accurate cross-client project recovery (July 2026).** Active-project
+activation and SessionStart now share one parser that selects pending,
+multiline project actions. See the [4.4.1 release notes](CHANGELOG.md).
+
 **Parallel Claude Code and Codex sessions without shared-state collisions
 (July 2026).** `synthesis-project-management` **v1.6.0** registers the machine,
 project, heartbeat, isolated worktree/branch, source claims, and context role

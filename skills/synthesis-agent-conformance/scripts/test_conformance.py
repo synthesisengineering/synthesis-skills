@@ -175,7 +175,10 @@ def test_activate_and_handoff(tmp_path: Path) -> None:
         "**Status:** Active\n"
         "**Last session:** 2026-07-29\n\n"
         "[plan](resources/artifacts/test-plan.md)\n\n"
-        "## What's Next\n\n1. [ ] Continue.\n",
+        "## What's Next\n\n"
+        "1. [x] Finished.\n"
+        "2. [ ] Continue the live check\n"
+        "   from verified state.\n",
         encoding="utf-8",
     )
     (project / "REFERENCE.md").write_text("# Reference\n", encoding="utf-8")
@@ -189,5 +192,9 @@ def test_activate_and_handoff(tmp_path: Path) -> None:
     pointer = tmp_path / "active.json"
     activated = MODULE.activate(project, pointer)
     assert all(check.ok for check in activated if check.required)
+    payload = __import__("json").loads(pointer.read_text(encoding="utf-8"))
+    assert payload["next"] == [
+        "2. [ ] Continue the live check from verified state."
+    ]
     handoff = MODULE.handoff_checks(project, pointer)
     assert all(check.ok for check in handoff if check.required)

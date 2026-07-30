@@ -10,46 +10,17 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from project_context import extract, next_actions
+
 
 DEFAULT_POINTER = Path.home() / ".synthesis" / "active-project.json"
 DEFAULT_COORDINATION_BOARD = (
     Path.home() / ".synthesis" / "coordination" / "active-sessions.md"
 )
-
-
-def extract(context: str, key: str) -> str:
-    match = re.search(rf"^\*\*{re.escape(key)}:\*\*\s*(.+)$", context, re.MULTILINE)
-    return match.group(1).strip() if match else "unknown"
-
-
-def next_actions(context: str) -> list[str]:
-    match = re.search(
-        r"^## What's Next[^\n]*\n(.*?)(?=^## |\Z)",
-        context,
-        re.MULTILINE | re.DOTALL,
-    )
-    if not match:
-        return []
-    lines = [line.strip() for line in match.group(1).splitlines()]
-    checklist = re.compile(r"^(?:[-*]|\d+\.)\s+\[([ xX])\]\s+")
-    items: list[tuple[bool, list[str]]] = []
-    current: tuple[bool, list[str]] | None = None
-    for line in lines:
-        item = checklist.match(line)
-        if item:
-            if current is not None:
-                items.append(current)
-            current = (item.group(1).lower() == "x", [line])
-        elif current is not None and line:
-            current[1].append(line)
-    if current is not None:
-        items.append(current)
-
-    pending = [" ".join(parts) for done, parts in items if not done]
-    if pending:
-        return pending[:5]
-    return [line for line in lines if line][:5]
-
 
 def active_session_ids(board: Path) -> list[str]:
     if not board.is_file():
