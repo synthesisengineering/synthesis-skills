@@ -40,6 +40,4 @@ def next_actions(context: str, limit: int = 5) -> list[str]:
         items.append(current)
 
     pending = [" ".join(parts) for done, parts in items if not done]
-    if pending:
-        return pending[:limit]
-    return [" ".join(parts) for _, parts in items][:limit]
+    return pending[:limit]

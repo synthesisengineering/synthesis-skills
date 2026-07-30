@@ -30,7 +30,7 @@ def test_next_actions_prefers_unchecked_items() -> None:
     ]
 
 
-def test_next_actions_falls_back_to_completed_items() -> None:
+def test_next_actions_is_empty_when_every_item_is_complete() -> None:
     context = (
         "# Context\n\n"
         "## What's Next\n\n"
@@ -39,10 +39,7 @@ def test_next_actions_falls_back_to_completed_items() -> None:
         "   with supporting evidence.\n"
     )
 
-    assert MODULE.next_actions(context) == [
-        "1. [x] Finished first.",
-        "2. [x] Finished second with supporting evidence.",
-    ]
+    assert MODULE.next_actions(context) == []
 
 
 def test_build_includes_active_coordination(tmp_path: Path) -> None:

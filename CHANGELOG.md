@@ -4,6 +4,13 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.4.4] - 2026-07-30
+
+### Fixed
+
+- Completed projects now emit no pending actions during activation or
+  SessionStart instead of relabeling completed checklist items as next work.
+
 ## [4.4.3] - 2026-07-30
 
 ### Added
@@ -36,7 +43,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `What's Next` checklist instead of copying the first five lines regardless
   of completion state.
 - SessionStart context and active-project activation share one checklist
-  parser, including multiline items and an all-complete fallback.
+  parser, including multiline items.
 
 ## [4.4.0] - 2026-07-30
 
