@@ -4,6 +4,29 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.4.0] - 2026-07-30
+
+### Added
+
+- Cross-agent coordination schema v2, with machine/project identity,
+  checkpoint heartbeats, isolated worktree/branch registration, and explicit
+  project-context roles.
+- Same-project parallelism through one canonical context owner plus
+  non-overlapping contributor sessions and session-specific reconciliation
+  artifacts.
+- Fail-closed checks for overlapping claims, shared worktrees or branches, two
+  context owners, and contributor claims on canonical project context.
+- Migration, heartbeat, strict status, JSON status, and doctor commands for the
+  coordination helper.
+
+### Changed
+
+- `synthesis-project-management` v1.6.0 distinguishes different-project
+  parallelism, same-project contribution, git-state isolation, and the
+  cross-machine locking boundary.
+- SessionStart context and conformance accept and validate the v2 active-session
+  table.
+
 ## [4.3.0] - 2026-07-29
 
 ### Added

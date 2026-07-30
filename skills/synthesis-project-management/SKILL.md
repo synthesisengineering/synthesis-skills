@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.5.1"
+  version: "1.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -34,9 +34,14 @@ These values are user-specific. Update them for your environment.
 3. **Single source of truth** — No duplicate indexes to maintain. Files should be self-describing through front matter and naming conventions.
 4. **Self-describing files** — Date prefixes, status in index.yaml, front matter metadata. No separate documentation that can get stale.
 5. **Agents do the work** — Templates are obsolete. To create something new, examine an existing example and adapt it. Agents excel at this.
-6. **Coordinate before concurrent writes** — Separate root sessions share an
-   advisory-lock board outside the repositories they may restructure. Every
-   session reads it and claims its write areas before editing.
+6. **Coordinate before concurrent writes** — Separate root sessions share a
+   session registry and message board outside the repositories they edit. Every
+   session reads it, registers its project, claims its write areas, and records
+   its isolated worktree before editing.
+7. **One context owner per project** — Parallel sessions may contribute to one
+   project, but only one session writes canonical project context. Other
+   sessions write isolated contribution artifacts for deterministic
+   reconciliation.
 
 ---
 
@@ -255,7 +260,8 @@ Complete task → Complete task → Complete task → (context compaction) → L
 
 1. **Read the coordination board** — If
    `~/.synthesis/coordination/active-sessions.md` exists, read it before any
-   write and register or refresh this session's claim
+   write and register or refresh this session's project, worktree, branch,
+   context role, and claims
 2. **Read CONTEXT.md** — Understand current state before touching code
 3. **Check line count** — If CONTEXT.md >150 lines, archive before starting work
 4. **Read REFERENCE.md** — If it exists and the task needs reference details
@@ -270,7 +276,7 @@ Complete task → Complete task → Complete task → (context compaction) → L
 4. **Update index.yaml** — Set `last_session` date
 5. **Commit all changes** — Do not leave uncommitted work
 6. **Release coordination claims** — Mark the session released or narrow its
-   claims before ending
+   claims before pausing or ending
 
 ### Cross-Agent Session Coordination
 
@@ -282,10 +288,12 @@ board for concurrent Claude Code, Codex, Cursor, or other root sessions:
 ~/.synthesis/coordination/active-sessions.md
 ```
 
-The board lives outside any repository a session may restructure. Its schema is:
+The board lives outside any repository a session may restructure. Its v2 schema
+records:
 
-- `## Active sessions` — a table with session id, agent, start time, mode,
-  goal, claimed area globs, and status;
+- `## Active sessions` — session id, agent, machine, synthesis project,
+  start/heartbeat times, mode, isolated worktree/branch pairs, goal, claimed
+  area globs, context role, and status;
 - `## Messages` — append-only, addressed handoffs between sessions; and
 - `## Protocol` — the human-readable operating rules.
 
@@ -297,9 +305,15 @@ python3 <synthesis-project-management-root>/scripts/coordination.py status
 
 # Claim one or more source areas
 python3 <synthesis-project-management-root>/scripts/coordination.py claim \
-  --id B --agent "OpenAI Codex" --mode autonomous \
+  --id B --agent "OpenAI Codex" \
+  --project establish-codex-first-class-synthesis \
+  --mode autonomous --context-role owner \
   --goal "Cross-client conformance" \
+  --workspace "/tmp/synthesis-skills-b @ feature/cross-client" \
   --area "synthesis-skills/**" --area "ai-knowledge-*/projects/**"
+
+# Refresh the lease timestamp at every checkpoint
+python3 <synthesis-project-management-root>/scripts/coordination.py heartbeat --id B
 
 # Leave an asynchronous handoff
 printf '%s\n' "Source checks pass; live install awaits authorization." |
@@ -314,23 +328,38 @@ Rules:
 
 1. **Read at SessionStart and every synthesis checkpoint.**
 2. **Claim before write.** Area globs describe source ownership, not merely the
-   current file. Claim before creating a branch or editing.
+   current file. Claim before creating a branch or editing. Name the synthesis
+   project even when the session's claims span several repositories.
 3. **Do not write through overlap.** If a claim conflicts, stop writes in that
    area and use the message log or the user to sequence work.
-4. **Autonomous claim keeps priority.** When an autonomous and interactive
+4. **Isolate git state.** Independent root sessions never write through the
+   same worktree, index, or branch. Different projects may proceed in parallel
+   only from isolated worktrees when they touch the same repository.
+5. **One context owner.** A project has one `owner` session for `CONTEXT.md`,
+   `REFERENCE.md`, `sessions/`, its controlling plan, and `projects/index.yaml`.
+   Same-project `contributor` sessions claim non-overlapping implementation
+   areas and write their result to a session-specific contribution artifact.
+   The owner verifies and reconciles those artifacts into canonical context.
+6. **Autonomous claim keeps priority.** When an autonomous and interactive
    session overlap, the autonomous session keeps its existing claim; the
    interactive session yields unless the user explicitly reorders them.
-5. **Messages are asynchronous.** Address the other session in the message log;
+7. **Messages are asynchronous.** Address the other session in the message log;
    the recipient reads it at its next checkpoint.
-6. **Release explicitly.** A paused or completed session releases or narrows
-   its claims. Stale `active` rows are coordination defects.
-7. **Advisory does not mean optional.** The filesystem cannot stop every tool,
+8. **Heartbeat and release explicitly.** Refresh the heartbeat at checkpoints.
+   A paused or completed session releases or narrows its claims. Stale `active`
+   rows remain blocking until explicitly resolved; time alone never transfers
+   ownership.
+9. **Advisory does not mean optional.** The filesystem cannot stop every tool,
    so the protocol and checkpoint hooks make the shared obligation visible.
 
 The script uses an OS file lock, verified backups, and atomic replacement for
-board mutations. See
+board mutations. It refuses overlapping source areas, shared worktrees or
+branches, two context owners for the same project, and canonical-context claims
+from contributor sessions. See
 [`references/active-sessions-template.md`](references/active-sessions-template.md)
-for the canonical file shape.
+for the canonical file shape and
+[`references/parallel-agent-protocol.md`](references/parallel-agent-protocol.md)
+for operating patterns across different and shared projects.
 
 ### Cross-Agent Handoff
 
@@ -366,7 +395,7 @@ Fan-out to multiple sub-agents working the same project concurrently — a batch
 
 Sub-agents spawned by one orchestrator remain governed by that orchestrator.
 Independent root sessions use the cross-agent coordination board above; do not
-mistake a shared git worktree for implicit coordination.
+mistake a shared git worktree or shared chat history for coordination.
 
 ---
 

@@ -86,12 +86,28 @@ An active-project pointer may accelerate discovery, but it never overrides
 those files. A receiving agent must verify the project path and git history,
 read the current context and plan, and resume the recorded next action.
 
+Concurrent root sessions add two invariants:
+
+- every writing session owns non-overlapping resources in an isolated
+  worktree/branch; and
+- one session owns canonical project context while same-project contributors
+  write separate reconciliation artifacts.
+
+Tool-native threads remain views of the work. The synthesis project files and
+verified git history remain the record.
+
 ## 6. Cross-machine synchronization
 
 Synchronize canonical sources and stable declarative adapters. Do not use
 timestamp-winner whole-file synchronization for client configuration that also
 contains volatile marketplace data, trust hashes, caches, or machine-specific
 paths. Apply an owned-key overlay and validate the merged runtime state.
+
+Git provides durable cross-machine handoff. The default live coordination board
+uses an OS file lock and is authoritative only for processes sharing that
+filesystem. File synchronization does not provide distributed mutual
+exclusion; simultaneous cross-machine writes to the same resources require a
+separately verified compare-and-swap coordination backend.
 
 ## 7. Conformance contract
 
@@ -104,5 +120,7 @@ The ecosystem passes only when:
 - configured and authenticated connector states are named separately;
 - the same project phase, status, plan, and next action are recovered in both
   clients;
+- active sessions have non-overlapping claims and isolated git state, with no
+  more than one context owner per project;
 - cross-machine bootstrap reproduces the canonical plane and all required
   adapters without overwriting runtime-owned state.

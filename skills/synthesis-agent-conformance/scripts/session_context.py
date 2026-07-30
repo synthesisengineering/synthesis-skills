@@ -71,11 +71,16 @@ def active_session_ids(board: Path) -> list[str]:
         if not in_table or not line.startswith("|"):
             continue
         columns = [re.sub(r"[*`]", "", value).strip() for value in line.split("|")[1:-1]]
-        if len(columns) != 7 or columns[0] in {"id", "----"}:
+        if len(columns) not in {7, 12} or columns[0] in {"id", "----"}:
             continue
         if set(columns[0]) == {"-"}:
             continue
-        if columns[6].lower() not in {"released", "complete", "completed", "closed"}:
+        if columns[-1].lower() not in {
+            "released",
+            "complete",
+            "completed",
+            "closed",
+        }:
             active.append(columns[0])
     return active
 

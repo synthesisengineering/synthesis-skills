@@ -34,11 +34,12 @@ def test_build_includes_active_coordination(tmp_path: Path) -> None:
     board = tmp_path / "active-sessions.md"
     board.write_text(
         "# Coordination\n\n"
+        "Schema: v2\n\n"
         "## Active sessions\n\n"
-        "| id | agent | started | mode | goal | claimed areas (advisory lock) | status |\n"
-        "|----|-------|---------|------|------|--------------------------------|--------|\n"
-        "| A | Claude | now | interactive | work | repo-a/** | active |\n"
-        "| B | Codex | now | autonomous | work | repo-b/** | released |\n\n"
+        "| id | agent | machine | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+        "| A | Claude | mac | project-a | now | now | interactive | /tmp/a @ feature/a | work | repo-a/** | owner | active |\n"
+        "| B | Codex | mac | project-b | now | now | autonomous | /tmp/b @ feature/b | work | repo-b/** | owner | released |\n\n"
         "## Messages\n\n---\n\n## Protocol\n",
         encoding="utf-8",
     )
