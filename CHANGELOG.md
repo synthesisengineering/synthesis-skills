@@ -19,13 +19,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   family.
 - Regression coverage for day-end source survival, Codex-first auto selection,
   symlink refusal, both client hook shapes, and client-bound runtime paths.
+- Commit-hook calibration for exact canonical-file copies: unchanged committed
+  content is not reclassified as newly introduced, while a paired control proves
+  genuinely new sensitive lines still block.
 
 ### Changed
 
 - `synthesis-daily-rituals` v2.16.0 uses the stable synthesis runtime for its
   background automation instead of a client-owned skill cache.
 - `synthesis-slack-sync` v3.3.1 resolves its checker from the active skill root.
-- `synthesis-inbox-cleanup` v1.3.2 and `synthesis-git-hooks` v2.1.1 make native
+- `synthesis-inbox-cleanup` v1.3.2 and `synthesis-git-hooks` v2.1.2 make native
   Codex and Claude Code plugins their primary setup path.
 - `synthesis-message-guard` v1.1.0 treats an unwired installed client as an
   unhealthy protection layer.
