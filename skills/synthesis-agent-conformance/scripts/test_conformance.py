@@ -56,6 +56,18 @@ def write_manifests(root: Path) -> None:
         configuration.write_text("{}\n", encoding="utf-8")
 
 
+def test_json_from_output_accepts_cli_diagnostics_around_json() -> None:
+    output = (
+        "WARNING: [aliases] could not be refreshed\n"
+        '{"installed": [{"name": "synthesis-skills"}]}\n'
+        "WARNING: proceeding with cached aliases\n"
+    )
+
+    assert MODULE.json_from_output(output) == {
+        "installed": [{"name": "synthesis-skills"}]
+    }
+
+
 def test_source_checks_accept_dual_manifest(tmp_path: Path) -> None:
     write_manifests(tmp_path)
     write_skill(tmp_path, "synthesis-test")

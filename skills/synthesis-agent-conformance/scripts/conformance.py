@@ -53,10 +53,16 @@ def run(command: list[str], timeout: int = 30) -> subprocess.CompletedProcess[st
 
 
 def json_from_output(output: str) -> object:
-    starts = [pos for pos in (output.find("{"), output.find("[")) if pos >= 0]
-    if not starts:
-        raise ValueError("command returned no JSON")
-    return json.loads(output[min(starts) :])
+    decoder = json.JSONDecoder()
+    for position, character in enumerate(output):
+        if character not in "[{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(output, position)
+        except json.JSONDecodeError:
+            continue
+        return value
+    raise ValueError("command returned no JSON")
 
 
 def file_digest(path: Path) -> str:
@@ -284,7 +290,7 @@ def runtime_checks() -> list[Check]:
 
     doctor = run(["codex", "doctor", "--json"])
     try:
-        data = json_from_output(doctor.stdout)
+        data = json_from_output(doctor.stdout + "\n" + doctor.stderr)
         provider = data["checks"]["network.provider_reachability"]["status"] == "ok"
         websocket = data["checks"]["network.websocket_reachability"]["status"] == "ok"
         add(checks, "runtime.codex-provider", provider, "HTTP reachability")
