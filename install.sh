@@ -134,8 +134,12 @@ our_skill_names() {
 }
 
 # Get current git commit hash from cache
+git_source_available() {
+    git -C "$CACHE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1
+}
+
 get_source_commit() {
-    if [ -d "$CACHE_DIR/.git" ]; then
+    if git_source_available; then
         git -C "$CACHE_DIR" rev-parse HEAD
     else
         echo "unknown"
@@ -205,7 +209,7 @@ do_install() {
     # Clone or update cache
     if [ "$SOURCE_MODE" = "local" ]; then
         echo "Using local source: $CACHE_DIR"
-    elif [ -d "$CACHE_DIR/.git" ]; then
+    elif git_source_available; then
         echo "Updating cached repo..."
         git -C "$CACHE_DIR" pull --quiet
     else
@@ -434,7 +438,7 @@ do_update() {
         do_install
         return
     fi
-    if [ ! -d "$CACHE_DIR/.git" ]; then
+    if ! git_source_available; then
         echo "No existing installation found. Running install instead."
         do_install
         return
@@ -470,7 +474,7 @@ do_status() {
         STATUS_SKILLS_DIR="$SKILLS_DIR"
     elif [ -d "$SCRIPT_SKILLS_DIR" ]; then
         STATUS_SKILLS_DIR="$SCRIPT_SKILLS_DIR"
-    elif [ -d "$CACHE_DIR/.git" ]; then
+    elif git_source_available; then
         if ! git -C "$CACHE_DIR" pull --quiet; then
             echo "ERROR: could not refresh cached source: $CACHE_DIR" >&2
             return 1
@@ -579,22 +583,31 @@ do_status() {
 do_uninstall() {
     echo "Uninstalling Synthesis Skills..."
 
-    if [ ! -d "$CACHE_DIR/.git" ]; then
-        echo "No cached repo found. Scanning for installed skills..."
-    fi
-
     TARGETS=$(detect_targets)
     REMOVED=0
+    SOURCE_SKILL_NAMES=""
 
-    # Get our skill names from cache (or scan known names)
-    if [ -d "$CACHE_DIR/.git" ]; then
-        SKILL_NAMES=$(our_skill_names)
+    if git_source_available; then
+        SOURCE_SKILL_NAMES=$(our_skill_names)
     else
-        # Fallback: list of known synthesis-skills names
-        SKILL_NAMES="synthesis-article-writing synthesis-blog-refresh synthesis-clean-text synthesis-code-audit synthesis-code-integration synthesis-code-planning synthesis-codebase-review synthesis-concise-messaging synthesis-content-distribution synthesis-content-framing synthesis-content-quality synthesis-context-lifecycle synthesis-creative-writer synthesis-fact-checking synthesis-implementation-integrity synthesis-link-research synthesis-llm-setup synthesis-mac-sync synthesis-preflight synthesis-pr-review synthesis-project-management synthesis-response-merger synthesis-review-triage synthesis-skills-manager synthesis-slack-sync synthesis-technical-advisor synthesis-thinking-framework synthesis-tree-of-thought synthesis-voice-profiler"
+        echo "No source repository found. Scanning install provenance..."
     fi
 
     for target in $TARGETS; do
+        SKILL_NAMES="$SOURCE_SKILL_NAMES"
+        if [ -z "$SKILL_NAMES" ] && [ -d "$target" ]; then
+            SKILL_NAMES=$(
+                find "$target" -mindepth 2 -maxdepth 2 \
+                    -name .source.json -type f |
+                while IFS= read -r source_json; do
+                    if grep -q \
+                        "\"source_repo\": \"${SOURCE_REPO}\"" \
+                        "$source_json"; then
+                        basename "$(dirname "$source_json")"
+                    fi
+                done
+            )
+        fi
         for skill_name in $SKILL_NAMES; do
             if [ -d "${target}/${skill_name}" ]; then
                 rm -rf "${target}/${skill_name}"

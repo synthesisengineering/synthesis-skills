@@ -64,6 +64,7 @@ sh -n install.sh tests/test_installer.sh
 python3 -m compileall -q skills
 python3 skills/synthesis-inbox-cleanup/tests/run_poisoned.py
 python3 skills/synthesis-inbox-cleanup/tests/run_resolver.py
+sh skills/synthesis-inbox-cleanup/tests/test_runtime_installer.sh
 ```
 
 For a cross-client release, also run:

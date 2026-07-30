@@ -4,6 +4,13 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**A stable inbox engine across native clients (July 2026).**
+`synthesis-inbox-cleanup` **v1.4.0** installs verified, immutable engine
+releases under `~/.synthesis/inbox-cleanup/engine/`. Claude Code and Codex
+private workflows now share `engine/current` instead of depending on either
+client's version-numbered plugin cache. See the
+[4.5.0 release notes](CHANGELOG.md).
+
 **Clean handoff after project completion (July 2026).** A completed synthesis
 project now emits no pending actions during activation or SessionStart; checked
 items are never relabeled as future work. See the
