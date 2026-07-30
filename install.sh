@@ -12,6 +12,8 @@ set -e
 REPO_URL="https://github.com/synthesisengineering/synthesis-skills.git"
 REPO_NAME="synthesis-skills"
 USER_HOME="${SYNTHESIS_SKILLS_HOME:-$HOME}"
+SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" 2>/dev/null && pwd || true)
+SCRIPT_SKILLS_DIR="${SCRIPT_DIR}/skills"
 SOURCE_MODE="remote"
 if [ -n "${SYNTHESIS_SKILLS_SOURCE_DIR:-}" ]; then
     CACHE_DIR=$(cd "$SYNTHESIS_SKILLS_SOURCE_DIR" && pwd)
@@ -53,13 +55,15 @@ detect_targets() {
 claude_plugin_installed() {
     command -v claude >/dev/null 2>&1 || return 1
     claude plugin list --json 2>/dev/null |
-        grep -Eq '"id"[[:space:]]*:[[:space:]]*"synthesis-skills@'
+        tr '\n' ' ' |
+        grep -Eq '\{[^{}]*"id"[[:space:]]*:[[:space:]]*"synthesis-skills@[^"]*"[^{}]*"enabled"[[:space:]]*:[[:space:]]*true'
 }
 
 codex_plugin_installed() {
     command -v codex >/dev/null 2>&1 || return 1
     codex plugin list --json 2>/dev/null |
-        grep -Eq '"name"[[:space:]]*:[[:space:]]*"synthesis-skills"'
+        tr '\n' ' ' |
+        grep -Eq '\{[^{}]*"name"[[:space:]]*:[[:space:]]*"synthesis-skills"[^{}]*"enabled"[[:space:]]*:[[:space:]]*true'
 }
 
 retirement_target_allowed() {
@@ -446,21 +450,47 @@ do_status() {
     echo "======================"
     echo ""
 
-    # Update cache if present
+    CLAUDE_PLUGIN="not installed or disabled"
+    CODEX_PLUGIN="not installed or disabled"
+    if claude_plugin_installed; then
+        CLAUDE_PLUGIN="installed and enabled"
+    fi
+    if codex_plugin_installed; then
+        CODEX_PLUGIN="installed and enabled"
+    fi
+    echo "Claude Code plugin: $CLAUDE_PLUGIN"
+    echo "Codex plugin:       $CODEX_PLUGIN"
+    echo ""
+
+    # Resolve the authoritative source tree. A checked-out repository or
+    # installed native plugin is self-contained and must not depend on a
+    # separate legacy cache. Only a standalone downloaded script uses cache.
+    STATUS_SKILLS_DIR=""
     if [ "$SOURCE_MODE" = "local" ]; then
-        :
+        STATUS_SKILLS_DIR="$SKILLS_DIR"
+    elif [ -d "$SCRIPT_SKILLS_DIR" ]; then
+        STATUS_SKILLS_DIR="$SCRIPT_SKILLS_DIR"
     elif [ -d "$CACHE_DIR/.git" ]; then
-        git -C "$CACHE_DIR" pull --quiet 2>/dev/null || true
+        if ! git -C "$CACHE_DIR" pull --quiet; then
+            echo "ERROR: could not refresh cached source: $CACHE_DIR" >&2
+            return 1
+        fi
+        STATUS_SKILLS_DIR="${CACHE_DIR}/skills"
     else
-        echo "No cached repo. Run './install.sh install' first."
-        return
+        echo "ERROR: no authoritative skill source is available." >&2
+        echo "Run './install.sh install' or execute status from a source checkout or native plugin." >&2
+        return 1
+    fi
+    if [ ! -d "$STATUS_SKILLS_DIR" ]; then
+        echo "ERROR: authoritative skill directory is missing: $STATUS_SKILLS_DIR" >&2
+        return 1
     fi
 
     TARGETS=$(detect_targets)
     STATUS_FAILURES=0
 
     if claude_plugin_installed; then
-        for skill_dir in $(list_skills "$SKILLS_DIR"); do
+        for skill_dir in $(list_skills "$STATUS_SKILLS_DIR"); do
             skill_name=$(basename "$skill_dir")
             if [ -d "$USER_HOME/.claude/skills/$skill_name" ]; then
                 echo "  DUPLICATE: $USER_HOME/.claude/skills/$skill_name"
@@ -470,7 +500,7 @@ do_status() {
     fi
     if codex_plugin_installed; then
         for target in "$USER_HOME/.agents/skills" "$USER_HOME/.codex/skills"; do
-            for skill_dir in $(list_skills "$SKILLS_DIR"); do
+            for skill_dir in $(list_skills "$STATUS_SKILLS_DIR"); do
                 skill_name=$(basename "$skill_dir")
                 if [ -d "$target/$skill_name" ]; then
                     echo "  DUPLICATE: $target/$skill_name"
@@ -490,7 +520,7 @@ do_status() {
         DRIFTED=0
         ORPHANED=0
 
-        for skill_dir in $(list_skills "$SKILLS_DIR"); do
+        for skill_dir in $(list_skills "$STATUS_SKILLS_DIR"); do
             skill_name=$(basename "$skill_dir")
             case "$skill_name" in
                 .git|node_modules|.github) continue ;;
@@ -522,7 +552,7 @@ do_status() {
             for installed_dir in "$target"/synthesis-*; do
                 [ -d "$installed_dir" ] || continue
                 skill_name=$(basename "$installed_dir")
-                if [ ! -d "${SKILLS_DIR}/${skill_name}" ]; then
+                if [ ! -d "${STATUS_SKILLS_DIR}/${skill_name}" ]; then
                     if [ -f "${installed_dir}/.source.json" ]; then
                         other_repo=$(grep '"source_repo"' "${installed_dir}/.source.json" 2>/dev/null | sed 's/.*: *"//;s/".*//' || echo "unknown")
                         echo "  OTHER:   $skill_name (from $other_repo)"
