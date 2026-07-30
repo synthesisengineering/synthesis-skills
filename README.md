@@ -4,6 +4,13 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**Trustworthy native-plugin status (July 2026).** Installer status now reads
+the checked-out or plugin-packaged skill tree directly, verifies that the
+Claude Code and Codex plugins are enabled, and fails clearly when no
+authoritative source is available. A stale legacy cache can no longer produce
+filesystem errors followed by a false pass. See the
+[4.4.2 release notes](CHANGELOG.md).
+
 **Accurate cross-client project recovery (July 2026).** Active-project
 activation and SessionStart now share one parser that selects pending,
 multiline project actions. See the [4.4.1 release notes](CHANGELOG.md).

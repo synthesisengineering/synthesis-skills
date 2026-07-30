@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.4.2] - 2026-07-30
+
+### Fixed
+
+- Installer status now resolves its authoritative skill tree from the current
+  source checkout or native plugin before consulting the legacy cache.
+- Claude Code and Codex plugin checks require the plugin to be enabled and
+  report each client's state explicitly.
+- A stale or unavailable cache now fails with a clear diagnosis instead of
+  emitting filesystem errors followed by a false pass.
+
 ## [4.4.1] - 2026-07-30
 
 ### Fixed
