@@ -22,6 +22,12 @@ except ImportError:  # pragma: no cover - exercised by dependency health checks
 
 
 SCRIPT_PATH = Path(__file__).resolve()
+SCRIPTS_DIR = SCRIPT_PATH.parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from project_context import next_actions
+
 DEFAULT_SOURCE_ROOT = SCRIPT_PATH.parents[3]
 DEFAULT_ACTIVE_PROJECT = Path.home() / ".synthesis" / "active-project.json"
 DEFAULT_COORDINATION_BOARD = (
@@ -431,16 +437,7 @@ def project_summary(project: Path) -> tuple[dict[str, object], list[Check]]:
             summary["plan"] = "unknown"
             add(checks, "handoff.plan", False, "CONTEXT.md has no linked plan", required=False)
 
-        next_section = re.search(
-            r"^## What's Next[^\n]*\n(.*?)(?=^## |\Z)",
-            text,
-            re.MULTILINE | re.DOTALL,
-        )
-        summary["next"] = (
-            [line.strip() for line in next_section.group(1).splitlines() if line.strip()][:5]
-            if next_section
-            else []
-        )
+        summary["next"] = next_actions(text)
 
     git = run(["git", "-C", str(project), "rev-parse", "--show-toplevel"])
     add(checks, "handoff.git", git.returncode == 0, git.stdout.strip() or git.stderr.strip())
