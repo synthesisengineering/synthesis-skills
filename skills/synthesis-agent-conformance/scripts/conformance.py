@@ -268,6 +268,20 @@ def plugin_inventory(command: list[str], client: str) -> tuple[bool, str]:
     return len(found) == 1, f"{len(found)} enabled installation(s)"
 
 
+def direct_public_copies(home: Path) -> list[str]:
+    roots = (
+        home / ".claude" / "skills",
+        home / ".agents" / "skills",
+        home / ".codex" / "skills",
+    )
+    return sorted(
+        str(path.relative_to(home))
+        for root in roots
+        for path in root.glob("synthesis-*")
+        if path.is_dir()
+    )
+
+
 def runtime_checks() -> list[Check]:
     checks: list[Check] = []
     ok, detail = plugin_inventory(["claude", "plugin", "list", "--json"], "claude")
@@ -275,15 +289,11 @@ def runtime_checks() -> list[Check]:
     ok, detail = plugin_inventory(["codex", "plugin", "list", "--json"], "codex")
     add(checks, "runtime.codex-plugin", ok, detail)
 
-    duplicate_root = Path.home() / ".codex" / "skills"
-    duplicates = sorted(
-        path.name
-        for path in duplicate_root.glob("synthesis-*")
-        if path.is_dir() and path.name != ".system"
-    )
+    home = Path.home()
+    duplicates = direct_public_copies(home)
     add(
         checks,
-        "runtime.no-codex-skill-duplicates",
+        "runtime.no-direct-public-skill-copies",
         not duplicates,
         ", ".join(duplicates) or "none",
     )

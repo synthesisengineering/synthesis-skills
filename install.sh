@@ -11,16 +11,17 @@ set -e
 
 REPO_URL="https://github.com/synthesisengineering/synthesis-skills.git"
 REPO_NAME="synthesis-skills"
+USER_HOME="${SYNTHESIS_SKILLS_HOME:-$HOME}"
 SOURCE_MODE="remote"
 if [ -n "${SYNTHESIS_SKILLS_SOURCE_DIR:-}" ]; then
     CACHE_DIR=$(cd "$SYNTHESIS_SKILLS_SOURCE_DIR" && pwd)
     SOURCE_MODE="local"
 else
-    CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/synthesis-skills"
+    CACHE_DIR="${XDG_CACHE_HOME:-$USER_HOME/.cache}/synthesis-skills"
 fi
 # Backups live BESIDE the cache, not inside it: the cache dir is deleted on
 # reclone and on uninstall, and backups must survive both.
-BACKUP_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/synthesis-skills-backups"
+BACKUP_ROOT="${XDG_CACHE_HOME:-$USER_HOME/.cache}/synthesis-skills-backups"
 BACKUP_KEEP_RUNS=10
 SOURCE_REPO="github.com/synthesisengineering/synthesis-skills"
 SOURCE_TYPE="public"
@@ -37,26 +38,83 @@ detect_targets() {
     # Prefer each client's native plugin package. Direct user-skill copies are
     # the fallback for clients where the plugin is not installed.
     if ! claude_plugin_installed; then
-        TARGETS="$TARGETS $HOME/.claude/skills"
+        TARGETS="$TARGETS $USER_HOME/.claude/skills"
     fi
     if ! codex_plugin_installed; then
-        TARGETS="$TARGETS $HOME/.agents/skills"
+        TARGETS="$TARGETS $USER_HOME/.agents/skills"
     fi
     # Cursor
-    if [ -d "$HOME/.cursor" ]; then
-        TARGETS="$TARGETS $HOME/.cursor/skills"
+    if [ -d "$USER_HOME/.cursor" ]; then
+        TARGETS="$TARGETS $USER_HOME/.cursor/skills"
     fi
     echo "$TARGETS"
 }
 
 claude_plugin_installed() {
     command -v claude >/dev/null 2>&1 || return 1
-    claude plugin list --json 2>/dev/null | grep -q '"id": "synthesis-skills@'
+    claude plugin list --json 2>/dev/null |
+        grep -Eq '"id"[[:space:]]*:[[:space:]]*"synthesis-skills@'
 }
 
 codex_plugin_installed() {
     command -v codex >/dev/null 2>&1 || return 1
-    codex plugin list --json 2>/dev/null | grep -q '"name": "synthesis-skills"'
+    codex plugin list --json 2>/dev/null |
+        grep -Eq '"name"[[:space:]]*:[[:space:]]*"synthesis-skills"'
+}
+
+retirement_target_allowed() {
+    case "$1" in
+        "$USER_HOME/.claude/skills"|"$USER_HOME/.agents/skills"|"$USER_HOME/.codex/skills")
+            return 0
+            ;;
+        *)
+            echo "ERROR: refusing unexpected direct-copy retirement target: $1" >&2
+            return 1
+            ;;
+    esac
+}
+
+retire_direct_copies() {
+    RETIRE_TARGET="$1"
+    retirement_target_allowed "$RETIRE_TARGET"
+    [ -e "$RETIRE_TARGET" ] || return 0
+    if [ -L "$RETIRE_TARGET" ]; then
+        echo "ERROR: refusing symlinked direct-copy retirement target: $RETIRE_TARGET" >&2
+        return 1
+    fi
+
+    RETIRE_TAG=$(printf '%s' "$RETIRE_TARGET" |
+        sed "s|^${USER_HOME}/||; s|^\.||; s|/|-|g")
+    for RETIRE_SOURCE in $(list_skills "$SKILLS_DIR"); do
+        RETIRE_NAME=$(basename "$RETIRE_SOURCE")
+        RETIRE_INSTALLED="${RETIRE_TARGET}/${RETIRE_NAME}"
+        [ -d "$RETIRE_INSTALLED" ] || continue
+        if [ -L "$RETIRE_INSTALLED" ]; then
+            echo "ERROR: refusing symlinked direct skill copy: $RETIRE_INSTALLED" >&2
+            return 1
+        fi
+
+        RETIRE_BACKUP="${BACKUP_DIR}/retired-${RETIRE_TAG}/${RETIRE_NAME}"
+        mkdir -p "$(dirname "$RETIRE_BACKUP")"
+        cp -R "$RETIRE_INSTALLED" "$RETIRE_BACKUP"
+        if [ "$(skill_dir_checksum "$RETIRE_INSTALLED")" != \
+             "$(skill_dir_checksum "$RETIRE_BACKUP")" ]; then
+            echo "ERROR: direct-copy retirement backup verification failed: $RETIRE_INSTALLED" >&2
+            return 1
+        fi
+        rm -rf "${RETIRE_INSTALLED:?}"
+        RETIRED_COUNT=$((RETIRED_COUNT + 1))
+    done
+}
+
+retire_plugin_fallbacks() {
+    if claude_plugin_installed; then
+        retire_direct_copies "$USER_HOME/.claude/skills"
+    fi
+    if codex_plugin_installed; then
+        retire_direct_copies "$USER_HOME/.agents/skills"
+        retire_direct_copies "$USER_HOME/.codex/skills"
+    fi
 }
 
 # List skill directories (directories containing SKILL.md)
@@ -153,12 +211,14 @@ do_install() {
     fi
 
     COMMIT=$(get_source_commit)
+    RUN_STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+    BACKUP_DIR="${BACKUP_ROOT}/${RUN_STAMP}"
+    RETIRED_COUNT=0
+    retire_plugin_fallbacks
     TARGETS=$(detect_targets)
     SKILL_COUNT=0
     DRIFT_COUNT=0
     DRIFT_NAMES=""
-    RUN_STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-    BACKUP_DIR="${BACKUP_ROOT}/${RUN_STAMP}"
 
     for target in $TARGETS; do
         mkdir -p "$target"
@@ -179,7 +239,7 @@ do_install() {
                 installed_sum=$(skill_dir_checksum "$installed_dir")
                 source_sum=$(skill_dir_checksum "$skill_dir")
                 if [ "$installed_sum" != "$source_sum" ]; then
-                    target_tag=$(printf '%s' "$target" | sed "s|^${HOME}/||; s|^\.||; s|/|-|g")
+                    target_tag=$(printf '%s' "$target" | sed "s|^${USER_HOME}/||; s|^\.||; s|/|-|g")
                     mkdir -p "${BACKUP_DIR}/${target_tag}"
                     cp -R "$installed_dir" "${BACKUP_DIR}/${target_tag}/${skill_name}"
                     DRIFT_COUNT=$((DRIFT_COUNT + 1))
@@ -206,6 +266,10 @@ do_install() {
     UNIQUE_SKILLS=$(our_skill_names | wc -l | tr -d ' ')
     echo ""
     echo "Done. $UNIQUE_SKILLS skills installed to $(echo $TARGETS | wc -w | tr -d ' ') locations."
+    if [ "$RETIRED_COUNT" -gt 0 ]; then
+        echo "Retired $RETIRED_COUNT direct plugin-fallback copies after verified backups:"
+        echo "  $BACKUP_DIR"
+    fi
     if [ "$DRIFT_COUNT" -gt 0 ]; then
         # Word-split $DRIFT_NAMES on purpose: one name per list entry.
         DRIFTED_SKILLS=$(printf '%s\n' $DRIFT_NAMES | LC_ALL=C sort -u)
@@ -357,6 +421,7 @@ check_dependencies() {
         if [ "$VIOLATION_COUNT" -gt 0 ]; then
             echo "  $VIOLATION_COUNT hierarchy violation(s)."
         fi
+        return 1
     fi
 }
 
@@ -393,6 +458,27 @@ do_status() {
 
     TARGETS=$(detect_targets)
     STATUS_FAILURES=0
+
+    if claude_plugin_installed; then
+        for skill_dir in $(list_skills "$SKILLS_DIR"); do
+            skill_name=$(basename "$skill_dir")
+            if [ -d "$USER_HOME/.claude/skills/$skill_name" ]; then
+                echo "  DUPLICATE: $USER_HOME/.claude/skills/$skill_name"
+                STATUS_FAILURES=$((STATUS_FAILURES + 1))
+            fi
+        done
+    fi
+    if codex_plugin_installed; then
+        for target in "$USER_HOME/.agents/skills" "$USER_HOME/.codex/skills"; do
+            for skill_dir in $(list_skills "$SKILLS_DIR"); do
+                skill_name=$(basename "$skill_dir")
+                if [ -d "$target/$skill_name" ]; then
+                    echo "  DUPLICATE: $target/$skill_name"
+                    STATUS_FAILURES=$((STATUS_FAILURES + 1))
+                fi
+            done
+        done
+    fi
     for target in $TARGETS; do
         if [ ! -d "$target" ]; then
             continue
