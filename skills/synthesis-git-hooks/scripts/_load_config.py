@@ -388,6 +388,8 @@ DEFAULT_DIFF_EXCLUDE_PATHS = (
     r'(^|/)synthesis-disclosure-policy/',
     r'(^|/)synthesis-git-hooks/SKILL\.md$',
     r'(^|/)synthesis-git-hooks/scripts/test_pre_commit\.py$',
+    # A disclosure ledger's contents are by definition the guarded names.
+    r'(^|/)disclosure/ledger\.ya?ml$',
 )
 
 
