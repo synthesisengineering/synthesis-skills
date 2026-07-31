@@ -373,6 +373,34 @@ class ContextDoctorTests(unittest.TestCase):
         self.assertEqual(entries[0]["status"], "completed")
         self.assertEqual(entries[0]["completed_date"], "2026-01-01")
 
+    def test_status_wins_over_phase_wording(self):
+        """Regression: 'Phase: Triage — inventory complete' with Status Active.
+
+        Found by the doctor on a real project the day it shipped. Reading Phase
+        as equal to Status turned an ordinary sentence into a false completion
+        claim, which then dragged the budget check to the tighter completed
+        limit as well — one misread produced two false defects.
+        """
+        self.fx.project(
+            "alpha",
+            context=(
+                "# P\n\n**Phase:** Triage — inventory complete, nothing shipped\n"
+                "**Status:** Active\n"
+            ),
+        )
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+        self.assertNotIn("status-agreement", checks_in(self.fx.audit()))
+
+    def test_completion_words_match_on_word_boundaries(self):
+        for value, expected in [
+            ("**Status:** Completeness review underway", None),
+            ("**Status:** Incomplete", None),
+            ("**Status:** not yet complete", False),
+            ("**Status:** Complete", True),
+        ]:
+            self.assertEqual(cd.context_declares_completed(value), expected, value)
+
     def test_completion_detection_handles_real_headers(self):
         self.assertTrue(cd.context_declares_completed("**Status:** COMPLETE"))
         self.assertTrue(

@@ -397,9 +397,8 @@ def unpushed_commits(repo: Path) -> int | None:
 # Project parsing
 # ---------------------------------------------------------------------------
 
-STATUS_HEADER = re.compile(
-    r"^\*\*(?:Status|Phase)\:\*\*\s*(?P<value>.+?)\s*$", re.MULTILINE
-)
+STATUS_HEADER = re.compile(r"^\*\*Status\:\*\*\s*(?P<value>.+?)\s*$", re.MULTILINE)
+PHASE_HEADER = re.compile(r"^\*\*Phase\:\*\*\s*(?P<value>.+?)\s*$", re.MULTILINE)
 LAST_SESSION_HEADER = re.compile(
     r"^\*\*(?:Last session|Completed)\:\*\*\s*(?P<value>.+?)\s*$", re.MULTILINE
 )
@@ -415,21 +414,40 @@ def read_text(path: Path) -> str:
         raise DoctorError(f"could not read {path}: {exc}") from exc
 
 
+def _reads_completed(value: str) -> bool | None:
+    """Read one header value. None when it says nothing about completion."""
+    value = value.lower()
+    if re.search(r"\bnot\s+(?:yet\s+)?complete", value):
+        return False
+    if any(re.search(rf"\b{re.escape(w)}\b", value) for w in PAUSED_WORDS):
+        return False
+    if any(re.search(rf"\b{re.escape(w)}\b", value) for w in COMPLETED_WORDS):
+        return True
+    if re.search(r"\bactive\b", value):
+        return False
+    return None
+
+
 def context_declares_completed(text: str) -> bool | None:
-    """True/False when the CONTEXT.md header states completion; None if silent."""
-    values = [m.group("value").lower() for m in STATUS_HEADER.finditer(text)]
-    if not values:
-        return None
-    joined = " ".join(values)
-    if any(word in joined for word in PAUSED_WORDS):
-        return False
-    # "Completed and live-verified" counts; "not complete" must not.
-    for word in COMPLETED_WORDS:
-        for value in values:
-            if word in value and "not complete" not in value:
-                return True
-    if "active" in joined:
-        return False
+    """True/False when the CONTEXT.md header states completion; None if silent.
+
+    Status is authoritative and Phase is only a fallback. They routinely
+    disagree in a way that is not a contradiction: a project can be in a
+    "Triage — inventory complete" phase while its status is squarely Active.
+    Reading both as equals turns that ordinary sentence into a false alarm,
+    which is how a doctor teaches its owner to stop reading it.
+
+    Matching is on whole words for the same reason — "complete" inside
+    "completeness" or "incomplete" is not a completion claim.
+    """
+    for match in STATUS_HEADER.finditer(text):
+        verdict = _reads_completed(match.group("value"))
+        if verdict is not None:
+            return verdict
+    for match in PHASE_HEADER.finditer(text):
+        verdict = _reads_completed(match.group("value"))
+        if verdict is not None:
+            return verdict
     return None
 
 
