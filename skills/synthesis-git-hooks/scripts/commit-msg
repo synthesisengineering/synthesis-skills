@@ -55,8 +55,21 @@ eval "$SIDECAR_OUT"
 # Personal-class repos (CHECK_COMMIT_MSG=0): message scanning off by design.
 if [ "${CHECK_COMMIT_MSG:-0}" = "1" ]; then
     [ -n "${ACTIVE_REGEX:-}" ] || fail_closed "Active pattern set is empty."
+
+    # Messages scan with MESSAGE_REGEX — the strict-class set, never
+    # ledger-reduced. A commit message names the NATURE of an edit, which no
+    # published-precedent entry covers, so commit logs stay generic even
+    # where the diff may restate published biography.
+    SCAN_REGEX="${MESSAGE_REGEX:-$ACTIVE_REGEX}"
+    REGEX_CHECK_ERR=$(echo "" | grep -i -E "$SCAN_REGEX" 2>&1 >/dev/null || true)
+    if echo "$REGEX_CHECK_ERR" | grep -qi -E 'grep:|invalid|unrecognized|error'; then
+        fail_closed "The commit-message regex cannot be parsed by grep -E:
+
+  $REGEX_CHECK_ERR"
+    fi
+
     # Ignore comment lines (stripped by git anyway).
-    MSG_MATCHES=$(grep -v '^#' "$MSG_FILE" | grep -i -E "$ACTIVE_REGEX" || true)
+    MSG_MATCHES=$(grep -v '^#' "$MSG_FILE" | grep -i -E "$SCAN_REGEX" || true)
     if [ -n "$MSG_MATCHES" ] && [ -n "${ALLOWLIST_REGEX:-}" ]; then
         MSG_MATCHES=$(echo "$MSG_MATCHES" | grep -ivE "$ALLOWLIST_REGEX" || true)
     fi

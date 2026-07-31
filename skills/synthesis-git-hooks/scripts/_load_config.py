@@ -50,7 +50,8 @@ import sys
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-SIDECAR_VERSION = "2.1.0"
+SIDECAR_VERSION = "2.2.0"
+REQUIRED_CONFIG_VERSION = 2
 
 DEFAULT_CONFIG = Path.home() / ".synthesis" / "git-hook-config.yaml"
 DEFAULT_SOURCE_DIR = (
@@ -98,7 +99,10 @@ def _parse_scalar(raw: str, lineno: int) -> Any:
     if len(s) >= 2 and s[0] == "'" and s[-1] == "'":
         return s[1:-1].replace("''", "'")
     if len(s) >= 2 and s[0] == '"' and s[-1] == '"':
-        return s[1:-1].encode().decode("unicode_escape")
+        # Literal text only. `unicode_escape` would silently turn a regex
+        # `\b` into a backspace character: the pattern still compiles, the
+        # doctor still passes, and the protection is dead.
+        return s[1:-1].replace('\\"', '"').replace("\\\\", "\\")
     if s[0] in ("'", '"'):
         raise ConfigError(f"line {lineno}: unterminated quoted string")
     low = s.lower()
@@ -268,14 +272,19 @@ def classify_repo(config: dict, push_urls: List[str]) -> str:
     if not push_urls:
         return "strict"
     strict_patterns = flatten_patterns(config.get("strict_repo_patterns") or [])
-    if strict_patterns and any(_match_any(strict_patterns, u) for u in push_urls):
-        return "strict"
     surface_patterns = flatten_patterns(config.get("public_surface_patterns") or [])
-    if surface_patterns and all(_match_any(surface_patterns, u) for u in push_urls):
-        return "public-surface"
     personal_patterns = flatten_patterns(
         config.get("personal_remote_patterns") or []
     )
+    if strict_patterns and any(_match_any(strict_patterns, u) for u in push_urls):
+        return "strict"
+    if surface_patterns and all(_match_any(surface_patterns, u) for u in push_urls):
+        return "public-surface"
+    # Escalation, never demotion: a repo that partially matches a published
+    # or strict surface must not fall THROUGH to the least-protected class
+    # because a broad personal namespace pattern also matches it.
+    if surface_patterns and any(_match_any(surface_patterns, u) for u in push_urls):
+        return "strict"
     if personal_patterns and all(_match_any(personal_patterns, u) for u in push_urls):
         return "personal"
     return "strict"
@@ -329,6 +338,19 @@ def load_ledger_allowances(config: dict) -> List[str]:
         raise ConfigError(
             f"disclosure ledger has no entities mapping: {path}"
         )
+    # An allowance may only ever subtract an IDENTITY pattern (who), never a
+    # topic pattern (what). Without this, a ledger entry could quietly
+    # disable NDA, compensation, or internal-URL detection.
+    allowed_groups = flatten_patterns(
+        config.get("ledger_allowance_groups") or ["confidential_names"]
+    )
+    tier1 = config.get("tier_1_strict_only") or {}
+    eligible = set()
+    for group in allowed_groups:
+        eligible.update(flatten_patterns(tier1.get(group) or []))
+    registers_vocabulary = set(
+        flatten_patterns(config.get("ledger_registers") or ["biography"])
+    )
     allowances: List[str] = []
     for name, entry in entities.items():
         if not isinstance(entry, dict):
@@ -341,7 +363,28 @@ def load_ledger_allowances(config: dict) -> List[str]:
                 f"citations — precedent without evidence is not precedent: "
                 f"{path}"
             )
-        allowances.extend(flatten_patterns(entry.get("hook_patterns") or []))
+        registers = flatten_patterns(entry.get("registers") or [])
+        if not registers:
+            raise ConfigError(
+                f"disclosure ledger entity {name!r} declares no registers: "
+                f"{path}"
+            )
+        for register in registers:
+            if register not in registers_vocabulary:
+                raise ConfigError(
+                    f"disclosure ledger entity {name!r} declares register "
+                    f"{register!r}, which is not in the approved vocabulary "
+                    f"({', '.join(sorted(registers_vocabulary))}): {path}"
+                )
+        for pattern in flatten_patterns(entry.get("hook_patterns") or []):
+            if pattern not in eligible:
+                raise ConfigError(
+                    f"disclosure ledger entity {name!r} claims hook pattern "
+                    f"{pattern!r}, which is not in an allowance-eligible "
+                    f"group ({', '.join(allowed_groups)}) — allowances may "
+                    f"only subtract identity patterns: {path}"
+                )
+            allowances.append(pattern)
     return allowances
 
 
@@ -356,8 +399,19 @@ def build_active_regex(config: dict, repo_class: str) -> str:
     elif repo_class == "public-surface":
         tier1 = config.get("tier_1_strict_only") or {}
         allowed = set(load_ledger_allowances(config))
+        # Published surfaces enforce the IDENTITY boundary (who is named or
+        # identifiable), not private-notes topic vocabulary. Words like
+        # "salary" or "proprietary" occur legitimately across a long
+        # published archive; an unapproved NAME is the actual exposure.
+        # Absent explicit configuration every group applies (fail closed).
+        groups = flatten_patterns(config.get("public_surface_groups") or [])
+        selected = (
+            {g: tier1.get(g) for g in groups if tier1.get(g) is not None}
+            if groups
+            else tier1
+        )
         parts.extend(
-            p for p in flatten_patterns(tier1) if p not in allowed
+            p for p in flatten_patterns(selected) if p not in allowed
         )
     seen: set = set()
     deduped: List[str] = []
@@ -380,17 +434,23 @@ def build_allowlist_regex(config: dict) -> str:
 DEFAULT_DIFF_EXCLUDE_PATHS = (
     r'(^|/)\.githooks/pre-commit$',
     r'(^|/)\.githooks/extra-patterns\.ya?ml$',
-    r'(^|/)git-hook-config\.ya?ml$',
+    r'^\.synthesis/git-hook-config\.ya?ml$',
     r'(^|/)git-hook-config\.example\.ya?ml$',
     r'(^|/)anti-shortcut-catalog\.ya?ml$',
     # The disclosure-policy methodology and the hook engine's own docs and
     # tests discuss the pattern system by example — pattern-catalog class.
-    r'(^|/)synthesis-disclosure-policy/',
-    r'(^|/)synthesis-git-hooks/SKILL\.md$',
-    r'(^|/)synthesis-git-hooks/scripts/test_pre_commit\.py$',
-    # A disclosure ledger's contents are by definition the guarded names.
-    r'(^|/)disclosure/ledger\.ya?ml$',
+    # ANCHORED to their real locations: a bare basename anywhere would be a
+    # free pass any repo could claim by naming a file conveniently.
+    r'^skills/synthesis-disclosure-policy/',
+    r'^skills/synthesis-git-hooks/',
+    r'^agent-control/git-hook-config\.ya?ml$',
+    r'^agent-control/disclosure/ledger\.ya?ml$',
 )
+
+# Tier 0 is never excluded: credentials in any path, in any repo class,
+# always block. Path exclusions exist for pattern-catalog files, whose
+# risk is false positives on Tier 1 vocabulary — never for secrets.
+
 
 
 def build_diff_exclude_regex(config: dict) -> str:
@@ -398,6 +458,55 @@ def build_diff_exclude_regex(config: dict) -> str:
     user_paths = flatten_patterns(config.get("diff_exclude_paths") or [])
     all_paths = list(DEFAULT_DIFF_EXCLUDE_PATHS) + user_paths
     return "|".join(all_paths)
+
+
+ALL_PATTERN_KEYS = (
+    "personal_remote_patterns",
+    "strict_repo_patterns",
+    "public_surface_patterns",
+    "allowlist_lines",
+    "diff_exclude_paths",
+)
+
+
+def validate_all_patterns(config: dict) -> List[str]:
+    """Return problems for every configured regex in the policy.
+
+    v2.1 validated only the tier patterns. An invalid exclusion or
+    allowlist regex made grep fail, `|| true` swallowed it, and the engine
+    ran with scanning silently disabled while the doctor reported healthy.
+    """
+    problems: List[str] = []
+    groups = {
+        "tier_0_always": flatten_patterns(config.get("tier_0_always") or {}),
+        "tier_1_strict_only": flatten_patterns(
+            config.get("tier_1_strict_only") or {}
+        ),
+    }
+    for key in ALL_PATTERN_KEYS:
+        groups[key] = flatten_patterns(config.get(key) or [])
+    for key, patterns in groups.items():
+        for pattern in patterns:
+            if not pattern:
+                problems.append(
+                    f"{key}: empty pattern — an empty alternation branch "
+                    "matches everything or nothing depending on position"
+                )
+                continue
+            if any(ord(ch) < 32 for ch in pattern):
+                problems.append(
+                    f"{key}: pattern contains a control character "
+                    f"({pattern!r}) — a regex escape was interpreted as a "
+                    "literal (check double-quoted YAML scalars)"
+                )
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                problems.append(f"{key}: rejected by python re: {pattern!r} ({exc})")
+            err = _grep_validates(pattern)
+            if err:
+                problems.append(f"{key}: rejected by grep -E: {pattern!r} ({err})")
+    return problems
 
 
 def load_config(path: Path) -> dict:
@@ -431,14 +540,48 @@ def load_config(path: Path) -> dict:
             file=sys.stderr,
         )
         sys.exit(2)
+    version = config.get("config_version")
+    if not isinstance(version, int) or version < REQUIRED_CONFIG_VERSION:
+        print(
+            f"synthesis-git-hooks: config at {path} declares config_version "
+            f"{version!r}; this engine (v{SIDECAR_VERSION}) requires "
+            f"{REQUIRED_CONFIG_VERSION}. A v1 config paired with this engine "
+            "would silently skip the surface classes and ledger. Update the "
+            "config, or reinstall the matching engine.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    problems = validate_all_patterns(config)
+    if problems:
+        print(
+            "synthesis-git-hooks: invalid pattern(s) in "
+            f"{path} (fail closed):\n  " + "\n  ".join(problems),
+            file=sys.stderr,
+        )
+        sys.exit(2)
     return config
 
 
 def emit_shell_vars(config: dict) -> None:
     push_urls = get_push_remotes()
-    repo_class = classify_repo(config, push_urls)
+    try:
+        repo_class = classify_repo(config, push_urls)
+    except re.error as exc:
+        print(
+            f"synthesis-git-hooks: classification pattern invalid: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     try:
         active = build_active_regex(config, repo_class)
+    except ConfigError as exc:
+        print(f"synthesis-git-hooks: {exc}", file=sys.stderr)
+        sys.exit(2)
+    # Commit messages never get ledger allowances: a message names the
+    # nature of an edit, which no precedent covers, and site commit logs
+    # stay generic.
+    try:
+        message_regex = build_active_regex(config, "strict")
     except ConfigError as exc:
         print(f"synthesis-git-hooks: {exc}", file=sys.stderr)
         sys.exit(2)
@@ -455,6 +598,11 @@ def emit_shell_vars(config: dict) -> None:
     # shlex.quote handles regex escapes safely under bash `eval`.
     print(f"REPO_CLASS={shlex.quote(repo_class)}")
     print(f"ACTIVE_REGEX={shlex.quote(active)}")
+    print(f"MESSAGE_REGEX={shlex.quote(message_regex)}")
+    # Credentials are scanned across EVERY staged path, exclusions included:
+    # a pattern-catalog file is a plausible place for a false positive on
+    # Tier-1 vocabulary, never a legitimate place for a secret.
+    print(f"TIER0_REGEX={shlex.quote(build_active_regex(config, 'personal'))}")
     print(f"ALLOWLIST_REGEX={shlex.quote(allowlist)}")
     print(f"DIFF_EXCLUDE_REGEX={shlex.quote(diff_excludes)}")
     print(f"CHECK_COMMIT_MSG={check_msg}")
@@ -504,19 +652,23 @@ def run_doctor(config_path: Path) -> int:
             )
             if not t0:
                 problems.append("tier_0_always is empty — no credential tier")
-            # 2. Every pattern valid under BOTH python re and grep -E.
-            for p in t0 + t1:
-                try:
-                    re.compile(p)
-                except re.error as exc:
-                    problems.append(
-                        f"pattern rejected by python re: {p!r} ({exc})"
-                    )
-                err = _grep_validates(p)
-                if err:
-                    problems.append(
-                        f"pattern rejected by grep -E: {p!r} ({err})"
-                    )
+            version = config.get("config_version")
+            if not isinstance(version, int) or version < REQUIRED_CONFIG_VERSION:
+                problems.append(
+                    f"config_version is {version!r}; engine v{SIDECAR_VERSION} "
+                    f"requires {REQUIRED_CONFIG_VERSION}"
+                )
+            # 2. EVERY configured regex valid under both python re and grep -E
+            # (tiers, remote patterns, allowlist, exclusions).
+            problems.extend(validate_all_patterns(config))
+            if config.get("public_surface_patterns") and not config.get(
+                "disclosure_ledger"
+            ):
+                problems.append(
+                    "public_surface_patterns configured without a "
+                    "disclosure_ledger — public-surface repos get zero "
+                    "allowances, which blocks published-precedent content"
+                )
         except ConfigError as exc:
             problems.append(f"config unparsable: {exc}")
 
@@ -654,7 +806,7 @@ def main(argv: List[str]) -> int:
     mode.add_argument(
         "--classify",
         action="store_true",
-        help="Print just the repo class (personal|strict) and exit.",
+        help="Print just the repo class (personal|public-surface|strict) and exit.",
     )
     mode.add_argument(
         "--print-active-regex",

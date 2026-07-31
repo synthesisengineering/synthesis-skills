@@ -92,14 +92,62 @@ eval "$SIDECAR_OUT"
 # hundreds of unchanged historical lines as newly introduced content. Copy
 # targets receive status C and are excluded by AM; genuinely new or modified
 # lines remain in scope.
-CHANGED_FILES=$(git diff --cached -C --find-copies-harder --name-only --diff-filter=AM 2>/dev/null || true)
-if [ -n "${DIFF_EXCLUDE_REGEX:-}" ] && [ -n "$CHANGED_FILES" ]; then
-    CHANGED_FILES=$(echo "$CHANGED_FILES" | grep -v -E "$DIFF_EXCLUDE_REGEX" || true)
+# One unrestricted diff, filtered per file in-process. The previous design
+# round-tripped filenames through `echo | xargs`, so a filename containing a
+# quote aborted xargs and — via `|| true` — silently emptied the diff,
+# passing the ENTIRE commit unscanned. Filenames never touch the shell now.
+#
+# --diff-filter=AMCR: renames and copies ARE scanned. Under -U0 an exact
+# copy or rename contributes zero added lines (the canonical-file migration
+# stays exempt), while an edited copy/rename contributes exactly its new
+# lines — which is precisely the laundering path that must not pass.
+set +e
+RAW_DIFF=$(git diff --cached -C --find-copies-harder --diff-filter=AMCR -U0 2>/dev/null)
+DIFF_STATUS=$?
+set -e
+[ "$DIFF_STATUS" -eq 0 ] || fail_closed "git diff exited $DIFF_STATUS while collecting staged changes."
+
+if [ -n "${DIFF_EXCLUDE_REGEX:-}" ]; then
+    EXCLUDE_CHECK_ERR=$(echo "" | grep -E "$DIFF_EXCLUDE_REGEX" 2>&1 >/dev/null || true)
+    if echo "$EXCLUDE_CHECK_ERR" | grep -qi -E 'grep:|invalid|unrecognized|error'; then
+        fail_closed "diff_exclude_paths assembled an unparsable regex:
+
+  $EXCLUDE_CHECK_ERR
+
+An invalid exclusion regex would drop every file from the scan."
+    fi
 fi
 
+# Drop hunks belonging to excluded paths; keep everything else.
+DIFF=$(
+    DIFF_EXCLUDE_REGEX="${DIFF_EXCLUDE_REGEX:-}" awk '
+        /^\+\+\+ b\// {
+            path = substr($0, 7)
+            skip = 0
+            if (ENVIRON["DIFF_EXCLUDE_REGEX"] != "") {
+                cmd = "printf %s " sprintf("%c%s%c", 39, path, 39) \
+                      " | grep -qE " sprintf("%c%s%c", 39, ENVIRON["DIFF_EXCLUDE_REGEX"], 39)
+                skip = (system(cmd) == 0)
+            }
+            next
+        }
+        skip { next }
+        { print }
+    ' <<< "$RAW_DIFF"
+)
+
 MATCHES=""
-if [ -n "$CHANGED_FILES" ]; then
-    DIFF=$(echo "$CHANGED_FILES" | xargs git diff --cached -C --find-copies-harder --diff-filter=AM -U0 -- 2>/dev/null || true)
+
+# Tier 0 first, against the UNFILTERED diff: path exclusions never apply to
+# credentials.
+if [ -n "$RAW_DIFF" ] && [ -n "${TIER0_REGEX:-}" ]; then
+    TIER0_HITS=$(echo "$RAW_DIFF" | grep '^+' | grep -v '^+++' | grep -i -E "$TIER0_REGEX" || true)
+    if [ -n "$TIER0_HITS" ]; then
+        MATCHES=$(echo "$TIER0_HITS" | head -20)
+    fi
+fi
+
+if [ -z "$MATCHES" ] && [ -n "$RAW_DIFF" ]; then
     if [ -n "$DIFF" ]; then
         # Stage 1: collect added lines that hit the active regex. Validate the
         # regex against an empty string first — if grep rejects the pattern
@@ -121,6 +169,14 @@ pattern in ERE-compatible form."
         STAGE1=$(echo "$DIFF" | grep '^+' | grep -v '^+++' | grep -i -E "$ACTIVE_REGEX" || true)
         # Stage 2: filter out allowlisted lines (e.g., SPDX license declarations).
         if [ -n "$STAGE1" ] && [ -n "${ALLOWLIST_REGEX:-}" ]; then
+            ALLOWLIST_CHECK_ERR=$(echo "" | grep -iE "$ALLOWLIST_REGEX" 2>&1 >/dev/null || true)
+            if echo "$ALLOWLIST_CHECK_ERR" | grep -qi -E 'grep:|invalid|unrecognized|error'; then
+                fail_closed "allowlist_lines assembled an unparsable regex:
+
+  $ALLOWLIST_CHECK_ERR
+
+An invalid allowlist regex would suppress every detection."
+            fi
             STAGE1=$(echo "$STAGE1" | grep -ivE "$ALLOWLIST_REGEX" || true)
         fi
         MATCHES=$(echo "$STAGE1" | head -20)

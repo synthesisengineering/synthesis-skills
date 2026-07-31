@@ -23,7 +23,7 @@ def run(repository: Path, *command: str, env: dict[str, str] | None = None):
 def policy(path: Path) -> None:
     path.write_text(
         """\
-config_version: 1
+config_version: 2
 personal_remote_patterns:
   - '[:/]never-matches/'
 tier_0_always:
@@ -116,7 +116,7 @@ def surface_policy(path: Path, ledger: Path | None) -> None:
     ledger_line = f"disclosure_ledger: '{ledger}'\n" if ledger else ""
     path.write_text(
         f"""\
-config_version: 1
+config_version: 2
 personal_remote_patterns:
   - '[:/]example-person/'
 strict_repo_patterns:
@@ -341,7 +341,9 @@ def test_hook_fails_closed_when_surface_ledger_missing(tmp_path: Path) -> None:
     assert "policy engine unavailable" in completed.stderr
 
 
-def test_doctor_flags_stale_ledger_allowance(tmp_path: Path) -> None:
+def test_ledger_allowance_must_be_an_eligible_identity_pattern(
+    tmp_path: Path,
+) -> None:
     config_path = tmp_path / "policy.yaml"
     ledger = tmp_path / "ledger.yaml"
     ledger.write_text(
@@ -349,6 +351,8 @@ def test_doctor_flags_stale_ledger_allowance(tmp_path: Path) -> None:
 ledger_version: 1
 entities:
   example-client:
+    registers:
+      - biography
     hook_patterns:
       - 'name-not-in-tier-one'
     evidence:
@@ -357,12 +361,230 @@ entities:
         encoding="utf-8",
     )
     surface_policy(config_path, ledger)
+    config = load(config_path)
+
+    try:
+        SIDECAR.build_active_regex(config, "public-surface")
+        raise AssertionError("ineligible allowance must fail closed")
+    except SIDECAR.ConfigError as exc:
+        assert "allowance-eligible" in str(exc)
+
+
+def test_ledger_cannot_subtract_a_topic_pattern(tmp_path: Path) -> None:
+    """An allowance may never disable NDA/compensation-class detection."""
+    config_path = tmp_path / "policy.yaml"
+    ledger = tmp_path / "ledger.yaml"
+    ledger.write_text(
+        """\
+ledger_version: 1
+entities:
+  example-client:
+    registers:
+      - biography
+    hook_patterns:
+      - 'confidential'
+    evidence:
+      - 'site.ts: bio'
+""",
+        encoding="utf-8",
+    )
+    surface_policy(config_path, ledger)
+    config = load(config_path)
+
+    try:
+        SIDECAR.build_active_regex(config, "public-surface")
+        raise AssertionError("topic-pattern allowance must fail closed")
+    except SIDECAR.ConfigError as exc:
+        assert "allowance-eligible" in str(exc)
+
+
+def test_ledger_registers_are_validated(tmp_path: Path) -> None:
+    config_path = tmp_path / "policy.yaml"
+    ledger = tmp_path / "ledger.yaml"
+    ledger.write_text(
+        """\
+ledger_version: 1
+entities:
+  example-client:
+    registers:
+      - operational
+    hook_patterns:
+      - 'example-client'
+    evidence:
+      - 'site.ts: bio'
+""",
+        encoding="utf-8",
+    )
+    surface_policy(config_path, ledger)
+    config = load(config_path)
+
+    try:
+        SIDECAR.build_active_regex(config, "public-surface")
+        raise AssertionError("forbidden register must fail closed")
+    except SIDECAR.ConfigError as exc:
+        assert "approved vocabulary" in str(exc)
+
+
+def test_v1_config_is_refused_by_v2_engine(tmp_path: Path) -> None:
+    config_path = tmp_path / "policy.yaml"
+    surface_policy(config_path, None)
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace(
+            "config_version: 2", "config_version: 1"
+        ),
+        encoding="utf-8",
+    )
 
     completed = subprocess.run(
-        [sys.executable, str(SIDECAR_PATH), "--config", str(config_path), "--doctor"],
+        [
+            sys.executable,
+            str(SIDECAR_PATH),
+            "--config",
+            str(config_path),
+            "--emit-shell-vars",
+        ],
         capture_output=True,
         text=True,
         check=False,
     )
-    assert "stale or typo" in completed.stdout
+    assert completed.returncode == 2
+    assert "config_version" in completed.stderr
+
+
+def test_invalid_exclusion_regex_fails_closed(tmp_path: Path) -> None:
+    config_path = tmp_path / "policy.yaml"
+    surface_policy(config_path, None)
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        + "diff_exclude_paths:\n  - '(^|/)docs/*.md['\n",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SIDECAR_PATH),
+            "--config",
+            str(config_path),
+            "--emit-shell-vars",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 2
+    assert "diff_exclude_paths" in completed.stderr
+
+
+def test_renamed_file_with_new_sensitive_line_blocks(tmp_path: Path) -> None:
+    """Laundering path: git mv out of an excluded path plus new content."""
+    root, environment = repository(tmp_path)
+    (root / "NOTES.md").write_text("Harmless baseline.\n", encoding="utf-8")
+    assert run(root, "git", "add", "NOTES.md").returncode == 0
+    assert (
+        run(
+            root, "git", "-c", "core.hooksPath=/dev/null", "commit", "-m", "Add"
+        ).returncode
+        == 0
+    )
+
+    assert run(root, "git", "mv", "NOTES.md", "PUBLIC.md").returncode == 0
+    (root / "PUBLIC.md").write_text(
+        "Harmless baseline.\nNewly added confidential material.\n",
+        encoding="utf-8",
+    )
+    assert run(root, "git", "add", "PUBLIC.md").returncode == 0
+
+    completed = run(root, str(HOOK), env=environment)
+
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "SENSITIVE PATTERN DETECTED" in completed.stdout
+
+
+def test_copied_file_with_new_sensitive_line_blocks(tmp_path: Path) -> None:
+    root, environment = repository(tmp_path)
+    (root / "SOURCE.md").write_text("Baseline content here.\n", encoding="utf-8")
+    assert run(root, "git", "add", "SOURCE.md").returncode == 0
+    assert (
+        run(
+            root, "git", "-c", "core.hooksPath=/dev/null", "commit", "-m", "Add"
+        ).returncode
+        == 0
+    )
+
+    (root / "COPY.md").write_text(
+        "Baseline content here.\nAdded confidential detail.\n", encoding="utf-8"
+    )
+    assert run(root, "git", "add", "COPY.md").returncode == 0
+
+    completed = run(root, str(HOOK), env=environment)
+
     assert completed.returncode == 1
+    assert "SENSITIVE PATTERN DETECTED" in completed.stdout
+
+
+def test_quoted_filename_does_not_disable_the_scan(tmp_path: Path) -> None:
+    """A filename with an apostrophe must not empty the whole diff."""
+    root, environment = repository(tmp_path)
+    (root / "rajiv's notes.md").write_text("Harmless.\n", encoding="utf-8")
+    (root / "plain.md").write_text(
+        "AKIAABCDEFGHIJKLMNOP\n", encoding="utf-8"
+    )
+    assert run(root, "git", "add", "-A").returncode == 0
+
+    completed = run(root, str(HOOK), env=environment)
+
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "SENSITIVE PATTERN DETECTED" in completed.stdout
+
+
+def test_spaced_filename_content_is_scanned(tmp_path: Path) -> None:
+    root, environment = repository(tmp_path)
+    (root / "my notes.md").write_text(
+        "AKIAABCDEFGHIJKLMNOP\n", encoding="utf-8"
+    )
+    assert run(root, "git", "add", "-A").returncode == 0
+
+    completed = run(root, str(HOOK), env=environment)
+
+    assert completed.returncode == 1
+    assert "SENSITIVE PATTERN DETECTED" in completed.stdout
+
+
+def test_tier0_is_never_excluded_by_path(tmp_path: Path) -> None:
+    """Credentials block even in a pattern-catalog path."""
+    root, environment = repository(tmp_path)
+    catalog = root / "skills" / "synthesis-git-hooks" / "scripts"
+    catalog.mkdir(parents=True)
+    (catalog / "notes.md").write_text(
+        "AKIAABCDEFGHIJKLMNOP\n", encoding="utf-8"
+    )
+    assert run(root, "git", "add", "-A").returncode == 0
+
+    completed = run(root, str(HOOK), env=environment)
+
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "SENSITIVE PATTERN DETECTED" in completed.stdout
+
+
+def test_unanchored_config_basename_is_not_a_free_pass(tmp_path: Path) -> None:
+    """A file merely NAMED git-hook-config.yaml must still be scanned."""
+    root, environment = repository(tmp_path)
+    decoy = root / "src"
+    decoy.mkdir()
+    (decoy / "git-hook-config.yaml").write_text(
+        "note: confidential material\n", encoding="utf-8"
+    )
+    assert run(root, "git", "add", "-A").returncode == 0
+
+    completed = run(root, str(HOOK), env=environment)
+
+    assert completed.returncode == 1
+    assert "SENSITIVE PATTERN DETECTED" in completed.stdout
+
+
+def test_double_quoted_pattern_keeps_its_escapes(tmp_path: Path) -> None:
+    """`\\b` in a double-quoted scalar must stay a word boundary."""
+    parsed = SIDECAR.parse_simple_yaml('key: "\\\\bsalary\\\\b"\n')
+    assert parsed["key"] == "\\bsalary\\b"
+    assert not any(ord(ch) < 32 for ch in parsed["key"])
