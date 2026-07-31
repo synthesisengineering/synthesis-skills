@@ -19,6 +19,26 @@ config_version: 1
 personal_remote_patterns:
   - '[:/]YOUR-PERSONAL-ORG/'
 
+# Repos pinned `strict` no matter what their remotes look like (ANY push
+# remote matching flips the repo strict). Use for public OSS repos that live
+# under your personal org — a public repository is never a place for Tier-1
+# content even though its remote reads as personal.
+# strict_repo_patterns:
+#   - '[:/]YOUR-PERSONAL-ORG/your-public-oss-repo(\.git)?$'
+
+# Repos whose content YOU personally author and publish (your sites). They
+# classify `public-surface` when EVERY push remote matches: full Tier 1
+# protection applies, minus only the names your disclosure ledger records as
+# published precedent. See the synthesis-disclosure-policy skill.
+# public_surface_patterns:
+#   - '[:/]YOUR-PERSONAL-ORG/your-personal-site(\.git)?$'
+
+# The disclosure precedent ledger (see synthesis-disclosure-policy). Only
+# read for public-surface repos; entries subtract their exact hook_patterns
+# strings from tier_1_strict_only enforcement there. Missing or unparsable
+# ledger fails closed.
+# disclosure_ledger: '~/.synthesis/agent-control/disclosure/ledger.yaml'
+
 # ─── Tier 0 — credentials. ALWAYS run regardless of repo class. ───────────
 # A private repo can flip to public in one click; credentials shouldn't be in
 # git at all. Defense in depth.

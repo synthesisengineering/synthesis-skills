@@ -4,6 +4,16 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**Disclosure governance by precedent, not blacklist (July 2026).**
+`synthesis-disclosure-policy` distinguishes the names you deliberately
+publish in your own biography from disclosures nobody approved, backed by
+an evidence-cited precedent ledger. `synthesis-git-hooks` **v2.2.0**
+enforces it by publication surface: your site repos get full protection
+minus your ledgered names, public OSS repos stay pinned strict, and a
+missing or unverifiable ledger fails closed. See the
+[4.8.0 release notes](CHANGELOG.md).
+
+
 **Trustworthy resumption and safe retirement (July 2026).**
 Activation, handoff, and SessionStart context now detect stale project
 checkouts by comparing the record with its fetched upstream, and handoff

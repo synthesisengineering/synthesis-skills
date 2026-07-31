@@ -239,22 +239,46 @@ def get_push_remotes() -> List[str]:
     return urls
 
 
-def classify_repo(personal_patterns: List[str], push_urls: List[str]) -> str:
-    """Return ``"personal"`` if every push remote matches at least one
-    personal-remote pattern (case-insensitive). Otherwise ``"strict"``.
+def _match_any(patterns: List[str], url: str) -> bool:
+    return any(re.search(p, url, re.IGNORECASE) for p in patterns)
 
-    Empty remote list classifies as ``"strict"`` — the safe default for a
-    fresh ``git init`` or any repo without a defined upstream.
+
+def classify_repo(config: dict, push_urls: List[str]) -> str:
+    """Classify the repo by PUBLICATION SURFACE, not repo visibility.
+
+    Returns one of three classes, decided in strict-first precedence:
+
+    - ``"strict"`` when ANY push remote matches ``strict_repo_patterns``
+      (public OSS and multi-tenant repos pinned strict even when their
+      remotes would otherwise read as personal), when the remote list is
+      empty, or when no other class matches. Full Tier 1, no allowances.
+    - ``"public-surface"`` when EVERY push remote matches
+      ``public_surface_patterns``: repositories whose content the user
+      personally authors and publishes (their sites). Full Tier 1, minus
+      only the names the disclosure ledger records as published-precedent.
+    - ``"personal"`` when EVERY push remote matches
+      ``personal_remote_patterns``: content only the user reads. Tier 0
+      only, unchanged semantics.
+
+    The old model classified by remote ownership alone, which failed in
+    both directions: it blocked the user's own published biography on
+    their sites, and it left published surfaces with personal remotes
+    completely unguarded.
     """
     if not push_urls:
         return "strict"
-    if not personal_patterns:
+    strict_patterns = flatten_patterns(config.get("strict_repo_patterns") or [])
+    if strict_patterns and any(_match_any(strict_patterns, u) for u in push_urls):
         return "strict"
-    compiled = [re.compile(p, re.IGNORECASE) for p in personal_patterns]
-    for url in push_urls:
-        if not any(c.search(url) for c in compiled):
-            return "strict"
-    return "personal"
+    surface_patterns = flatten_patterns(config.get("public_surface_patterns") or [])
+    if surface_patterns and all(_match_any(surface_patterns, u) for u in push_urls):
+        return "public-surface"
+    personal_patterns = flatten_patterns(
+        config.get("personal_remote_patterns") or []
+    )
+    if personal_patterns and all(_match_any(personal_patterns, u) for u in push_urls):
+        return "personal"
+    return "strict"
 
 
 def flatten_patterns(node: Any) -> List[str]:
@@ -271,6 +295,56 @@ def flatten_patterns(node: Any) -> List[str]:
     return out
 
 
+def load_ledger_allowances(config: dict) -> List[str]:
+    """Read the disclosure ledger and return its allowed hook patterns.
+
+    The ledger is the machine-readable record of published-precedent
+    disclosures: names the user has personally published in biography
+    register on their own public surfaces, each entry carrying evidence
+    citations. Entries opt specific Tier-1 patterns out of enforcement in
+    ``public-surface`` repos ONLY, via ``hook_patterns`` values that must
+    TEXTUALLY EQUAL entries in ``tier_1_strict_only`` — exact string
+    equality, so every allowance is auditable and no regex-subsumption
+    reasoning is involved.
+
+    Fail closed: a configured ledger path that is missing or unparsable is
+    a ConfigError (the sidecar exits 2 and the engine blocks the commit).
+    No configured ledger simply means no allowances.
+    """
+    path_value = config.get("disclosure_ledger")
+    if not path_value:
+        return []
+    path = Path(os.path.expanduser(str(path_value)))
+    if not path.exists():
+        raise ConfigError(
+            f"disclosure_ledger configured but missing: {path} — "
+            "public-surface allowances refuse to run without their ledger"
+        )
+    try:
+        ledger = parse_simple_yaml(path.read_text())
+    except ConfigError as exc:
+        raise ConfigError(f"disclosure ledger unparsable ({path}): {exc}")
+    entities = ledger.get("entities")
+    if not isinstance(entities, dict) or not entities:
+        raise ConfigError(
+            f"disclosure ledger has no entities mapping: {path}"
+        )
+    allowances: List[str] = []
+    for name, entry in entities.items():
+        if not isinstance(entry, dict):
+            raise ConfigError(
+                f"disclosure ledger entity {name!r} is not a mapping: {path}"
+            )
+        if not flatten_patterns(entry.get("evidence") or []):
+            raise ConfigError(
+                f"disclosure ledger entity {name!r} has no evidence "
+                f"citations — precedent without evidence is not precedent: "
+                f"{path}"
+            )
+        allowances.extend(flatten_patterns(entry.get("hook_patterns") or []))
+    return allowances
+
+
 def build_active_regex(config: dict, repo_class: str) -> str:
     """Concatenate the active patterns into a single alternation regex."""
     parts: List[str] = []
@@ -279,6 +353,12 @@ def build_active_regex(config: dict, repo_class: str) -> str:
     if repo_class == "strict":
         tier1 = config.get("tier_1_strict_only") or {}
         parts.extend(flatten_patterns(tier1))
+    elif repo_class == "public-surface":
+        tier1 = config.get("tier_1_strict_only") or {}
+        allowed = set(load_ledger_allowances(config))
+        parts.extend(
+            p for p in flatten_patterns(tier1) if p not in allowed
+        )
     seen: set = set()
     deduped: List[str] = []
     for p in parts:
@@ -303,6 +383,11 @@ DEFAULT_DIFF_EXCLUDE_PATHS = (
     r'(^|/)\.synthesis/git-hook-config\.ya?ml$',
     r'(^|/)git-hook-config\.example\.ya?ml$',
     r'(^|/)anti-shortcut-catalog\.ya?ml$',
+    # The disclosure-policy methodology and the hook engine's own docs and
+    # tests discuss the pattern system by example — pattern-catalog class.
+    r'(^|/)synthesis-disclosure-policy/',
+    r'(^|/)synthesis-git-hooks/SKILL\.md$',
+    r'(^|/)synthesis-git-hooks/scripts/test_pre_commit\.py$',
 )
 
 
@@ -348,14 +433,23 @@ def load_config(path: Path) -> dict:
 
 
 def emit_shell_vars(config: dict) -> None:
-    personal_patterns = config.get("personal_remote_patterns") or []
     push_urls = get_push_remotes()
-    repo_class = classify_repo(personal_patterns, push_urls)
-    active = build_active_regex(config, repo_class)
+    repo_class = classify_repo(config, push_urls)
+    try:
+        active = build_active_regex(config, repo_class)
+    except ConfigError as exc:
+        print(f"synthesis-git-hooks: {exc}", file=sys.stderr)
+        sys.exit(2)
     allowlist = build_allowlist_regex(config)
     diff_excludes = build_diff_exclude_regex(config)
     check_msg_enabled = bool(config.get("check_commit_message", True))
-    check_msg = "1" if (repo_class == "strict" and check_msg_enabled) else "0"
+    # Commit messages stay generic on every published surface, so the
+    # message scan runs for public-surface exactly as it does for strict.
+    check_msg = (
+        "1"
+        if (repo_class in ("strict", "public-surface") and check_msg_enabled)
+        else "0"
+    )
     # shlex.quote handles regex escapes safely under bash `eval`.
     print(f"REPO_CLASS={shlex.quote(repo_class)}")
     print(f"ACTIVE_REGEX={shlex.quote(active)}")
@@ -472,13 +566,33 @@ def run_doctor(config_path: Path) -> int:
             f"skill source not present at {src_dir} (drift check skipped)"
         )
 
-    # 5. Current repo context (best-effort).
+    # 5. Disclosure ledger (when configured): must exist, parse, carry
+    # evidence, and every allowance must correspond to a real Tier-1
+    # pattern — a stale allowance protects nothing and hides intent.
+    if config is not None and config.get("disclosure_ledger"):
+        try:
+            allowances = load_ledger_allowances(config)
+            tier1 = set(
+                flatten_patterns(config.get("tier_1_strict_only") or {})
+            )
+            stale = [a for a in allowances if a not in tier1]
+            infos.append(
+                f"disclosure ledger OK: {len(allowances)} allowance(s) "
+                "for public-surface repos"
+            )
+            for pattern in stale:
+                problems.append(
+                    "ledger allowance matches no tier_1_strict_only "
+                    f"pattern (stale or typo): {pattern!r}"
+                )
+        except ConfigError as exc:
+            problems.append(str(exc))
+
+    # 6. Current repo context (best-effort).
     if config is not None:
         push_urls = get_push_remotes()
         if push_urls:
-            cls = classify_repo(
-                config.get("personal_remote_patterns") or [], push_urls
-            )
+            cls = classify_repo(config, push_urls)
             infos.append(
                 f"cwd repo class: {cls} ({len(push_urls)} push remotes)"
             )
@@ -560,20 +674,16 @@ def main(argv: List[str]) -> int:
     config = load_config(config_path)
 
     if args.classify:
-        push_urls = get_push_remotes()
-        print(classify_repo(
-            config.get("personal_remote_patterns") or [],
-            push_urls,
-        ))
+        print(classify_repo(config, get_push_remotes()))
         return 0
 
     if args.print_active_regex:
-        push_urls = get_push_remotes()
-        repo_class = classify_repo(
-            config.get("personal_remote_patterns") or [],
-            push_urls,
-        )
-        print(build_active_regex(config, repo_class))
+        repo_class = classify_repo(config, get_push_remotes())
+        try:
+            print(build_active_regex(config, repo_class))
+        except ConfigError as exc:
+            print(f"synthesis-git-hooks: {exc}", file=sys.stderr)
+            return 2
         return 0
 
     # Default: emit shell vars.

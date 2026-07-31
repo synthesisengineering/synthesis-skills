@@ -1,0 +1,34 @@
+# Disclosure precedent ledger — template.
+#
+# Copy to a private, source-controlled location of your own (for example a
+# private control-plane or dotfiles repo), deploy it to a stable local path,
+# and point `disclosure_ledger:` in ~/.synthesis/git-hook-config.yaml at the
+# deployed copy. This file is the machine-readable record of facts YOU have
+# personally published; it must never live in a public repository once it
+# contains your real entries.
+#
+# Rules (enforced by the synthesis-git-hooks engine and doctor):
+# - every entity needs at least one `evidence` citation — a file or URL on a
+#   surface you author where you published the fact; entries without
+#   evidence fail closed.
+# - `hook_patterns` values must textually equal entries in your policy's
+#   `tier_1_strict_only` set; each one stops being enforced ONLY in
+#   public-surface repos. The doctor flags stale allowances.
+# - `registers` scope what the precedent covers. `biography` means
+#   relationship, role, era, and public work — never operational detail.
+# - when you approve a new disclosure, append it here with the date in the
+#   same change; approval becomes precedent only when the ledger records it.
+
+ledger_version: 1
+
+entities:
+  example-corp:
+    kind: organization
+    relationship: former employer
+    registers:
+      - biography
+    hook_patterns:
+      - 'example-corp'
+    evidence:
+      - 'personal-site/src/config/site.ts: author bio names example-corp as former employer'
+      - 'https://example.com/about/'
