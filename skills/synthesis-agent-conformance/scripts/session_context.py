@@ -14,7 +14,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from project_context import extract, next_actions
+from project_context import extract, next_actions, record_freshness
 
 
 DEFAULT_POINTER = Path.home() / ".synthesis" / "active-project.json"
@@ -91,6 +91,9 @@ def build(pointer: Path, coordination_board: Path = DEFAULT_COORDINATION_BOARD) 
             f"Controlling plan: {plan}.",
         ]
     )
+    fresh, freshness_detail = record_freshness(project)
+    if not fresh:
+        lines.append(f"RECORD STALENESS WARNING: {freshness_detail}.")
     actions = next_actions(context)
     if actions:
         lines.append("Recorded next actions:")

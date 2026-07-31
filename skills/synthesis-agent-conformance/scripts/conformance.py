@@ -27,7 +27,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from client_binaries import missing_binary_detail, resolve_client_binary
-from project_context import next_actions
+from project_context import next_actions, record_freshness
 
 DEFAULT_SOURCE_ROOT = SCRIPT_PATH.parents[3]
 DEFAULT_ACTIVE_PROJECT = Path.home() / ".synthesis" / "active-project.json"
@@ -55,13 +55,16 @@ def add(checks: list[Check], name: str, ok: bool, detail: str, required: bool = 
     checks.append(Check(name=name, ok=ok, detail=detail, required=required))
 
 
-def run(command: list[str], timeout: int = 30) -> subprocess.CompletedProcess[str]:
+def run(
+    command: list[str], timeout: int = 30, input_text: str | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
         capture_output=True,
         text=True,
         timeout=timeout,
         check=False,
+        input=input_text,
     )
 
 
@@ -439,6 +442,8 @@ def project_summary(project: Path) -> tuple[dict[str, object], list[Check]]:
     add(checks, "handoff.context", context.is_file(), str(context))
     add(checks, "handoff.reference", reference.is_file(), str(reference))
     add(checks, "handoff.sessions", sessions.is_dir(), str(sessions))
+    fresh, detail = record_freshness(project)
+    add(checks, "handoff.record-freshness", fresh, detail)
 
     summary: dict[str, object] = {"project": str(project.resolve())}
     if context.is_file():
@@ -479,6 +484,64 @@ def activate(project: Path, pointer: Path) -> list[Check]:
     return checks
 
 
+TIMESTAMP_LINE = re.compile(r"^Verified local time: .*$", re.MULTILINE)
+
+
+def payload_parity(pointer: Path) -> tuple[bool, str]:
+    """Both client formats of the SessionStart payload must carry one context.
+
+    The claude and codex wrappers are native envelopes around the same
+    message; this runs the shared script in both formats against the live
+    pointer and compares the enveloped context after normalizing the
+    timestamp line. No client binary is required — the script itself is the
+    shared implementation both clients invoke.
+    """
+    script = SCRIPTS_DIR / "session_context.py"
+    contexts: dict[str, str] = {}
+    for client_format in ("claude", "codex"):
+        result = run(
+            [
+                sys.executable,
+                str(script),
+                "--format",
+                client_format,
+                "--active-project-file",
+                str(pointer),
+            ],
+            input_text="{}",
+        )
+        if result.returncode != 0:
+            return False, (
+                f"{client_format} payload failed: "
+                + (result.stderr.strip() or f"exit {result.returncode}")
+            )
+        try:
+            envelope = json.loads(result.stdout)
+            contexts[client_format] = envelope["hookSpecificOutput"][
+                "additionalContext"
+            ]
+        except Exception as exc:
+            return False, f"{client_format} payload is not a valid envelope: {exc}"
+    normalized = {
+        client_format: TIMESTAMP_LINE.sub("Verified local time: <normalized>", text)
+        for client_format, text in contexts.items()
+    }
+    if normalized["claude"] == normalized["codex"]:
+        return True, "claude and codex envelopes carry identical context"
+    difference = next(
+        (
+            f"claude={left!r} codex={right!r}"
+            for left, right in zip(
+                normalized["claude"].splitlines(),
+                normalized["codex"].splitlines(),
+            )
+            if left != right
+        ),
+        "payloads differ in length",
+    )
+    return False, f"client payloads diverge: {difference}"
+
+
 def handoff_checks(project: Path, pointer: Path) -> list[Check]:
     summary, checks = project_summary(project)
     try:
@@ -492,6 +555,8 @@ def handoff_checks(project: Path, pointer: Path) -> list[Check]:
                 active.get(key) == summary.get(key),
                 f"active={active.get(key)!r}; project={summary.get(key)!r}",
             )
+        parity, detail = payload_parity(pointer)
+        add(checks, "handoff.payload-parity", parity, detail)
     except Exception as exc:
         add(checks, "handoff.pointer", False, f"{pointer}: {exc}")
     return checks

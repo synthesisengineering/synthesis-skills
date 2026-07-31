@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -61,3 +62,31 @@ def test_build_includes_active_coordination(tmp_path: Path) -> None:
     assert "session(s): A" in message
     assert "B" not in message
     assert "verify claims before writes" in message
+
+
+def test_build_warns_when_project_record_is_stale(tmp_path: Path, monkeypatch) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "CONTEXT.md").write_text(
+        "**Phase:** 2\n**Status:** Active\n", encoding="utf-8"
+    )
+    pointer = tmp_path / "active.json"
+    pointer.write_text(
+        json.dumps({"project": str(project), "plan": "unknown"}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        MODULE,
+        "record_freshness",
+        lambda path: (False, "project record is 3 commit(s) behind fetched origin/main"),
+    )
+    message = MODULE.build(pointer, tmp_path / "no-board.md")
+    assert "RECORD STALENESS WARNING" in message
+    assert "3 commit(s) behind" in message
+
+    monkeypatch.setattr(
+        MODULE, "record_freshness", lambda path: (True, "record current")
+    )
+    message = MODULE.build(pointer, tmp_path / "no-board.md")
+    assert "RECORD STALENESS WARNING" not in message

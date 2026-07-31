@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.7.0"
+  version: "1.8.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -368,13 +368,21 @@ through an atomic ref compare-and-swap on a shared git remote
 the local board file becomes a mirror of the leased ref, mutations retry on
 concurrent advance, and an unreachable remote fails closed instead of falling
 back to local-only writes. `status` refreshes the mirror; `doctor` verifies
-remote sync. Without a lease, simultaneous cross-machine writes to the same
-resources remain prohibited — file-sync conflict resolution is not a
-distributed lock. See
+remote sync. A leased board declares itself in its header (`Lease: <remote>`),
+and a machine that sees the declaration without a local `lease.json` refuses
+to mutate rather than writing a change the next refetch would drop;
+`lease-disable` is the sanctioned retirement path. Without a lease,
+simultaneous cross-machine writes to the same resources remain prohibited —
+file-sync conflict resolution is not a distributed lock.
+
+Retire merged feature worktrees with `scripts/retire_worktree.py`
+(explicit repository argument, fetch-then-verify remote ancestry, fail-closed
+on dirty or unmerged state) instead of hand-run git sequences. See
 [`references/active-sessions-template.md`](references/active-sessions-template.md)
 for the canonical file shape and
 [`references/parallel-agent-protocol.md`](references/parallel-agent-protocol.md)
-for operating patterns across different and shared projects.
+for the quickstart, digest convention, administrative release, lease
+bootstrap/retirement, and worktree-retirement details.
 
 ### Cross-Agent Handoff
 
