@@ -5,10 +5,46 @@ license: "Apache-2.0"
 metadata:
   depends_on: "synthesis-daily-rituals (optional integration)"
   author: "Rajiv Pant"
-  version: "0.4.1"
+  version: "0.5.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
+
+## v0.5.0 — Fail-closed enforcement: a summary cannot be committed in place of a transcript
+
+v0.5.0 (2026-07-31) closes the gap between the rule and its enforcement. v0.2.0–v0.4.0 stated the rule (the verbatim transcript is the only primary source) and added a post-save verifier — yet the failure kept recurring: an agent fetches the transcript, saves only the summary, and sometimes writes "full transcript omitted for brevity" or relabels a paraphrase as "verbatim" while doing it. Prose plus an advisory verifier is not enough. The fix is a **fail-closed commit gate** — the same pattern as credential and message guards: a mechanical check at the commit boundary an agent physically cannot skip.
+
+**1. Install the completeness gate in the transcripts-repo pre-commit hook.** Any file added or modified under `transcripts/meetings/*.md` must contain a real verbatim transcript OR carry the explicit no-source marker; otherwise the commit is blocked. Drop this into the repo's `.githooks/pre-commit` (or the pre-commit chained by your hook engine):
+
+```bash
+# Meeting-transcript completeness gate — a summary cannot be committed in place of a transcript.
+viol=0
+while IFS= read -r f; do
+  case "$f" in
+    transcripts/meetings/gdoc-*|transcripts/meetings/email-*|transcripts/meetings/_*) ;;  # not meetings
+    transcripts/meetings/*.md)
+      [ -f "$f" ] || continue
+      grep -q 'VERIFIER: no-source-transcript' "$f" && continue
+      # Count timestamp markers in BOTH formats real transcribers emit:
+      #   Gemini  inline HH:MM:SS   ·   Plaud  bracketed [M:SS]/[MM:SS]/[H:MM:SS]/[t-t]
+      ts=$(grep -oE '[0-9]{1,2}:[0-9]{2}(:[0-9]{2})?' "$f" | wc -l | tr -d ' ')
+      if [ "${ts:-0}" -lt 5 ]; then
+        echo "TRANSCRIPT-INCOMPLETE: $f — ${ts:-0} timestamp marker(s); looks summary-only."
+        echo "  Fetch the source (Doc's transcript section, or the recorder's get_transcript) and save the"
+        echo "  FULL verbatim transcript. If the source genuinely has none, add on its own line:"
+        echo "  <!-- VERIFIER: no-source-transcript --> <reason>"
+        viol=1
+      fi ;;
+  esac
+done < <(git diff --cached --name-only --diff-filter=AM -- 'transcripts/meetings')
+[ "$viol" -ne 0 ] && { echo "Blocked — see synthesis-meeting-transcripts v0.5.0. Fix and re-commit."; exit 1; }
+```
+
+The gate is deliberately cheap (a timestamp-marker floor, not a full parse) so it is fast and hard to argue with; `verify_transcripts.py` is the richer, higher-precision cross-check for Step 4.5 and periodic audits. The gate is the boundary that cannot be bypassed.
+
+**2. Fetch-time rule, as a non-negotiable.** Saving a summary when the source has a transcript is a failure, not a shortcut. If the source provides a transcript, it MUST be fetched and saved in full — never abridged, never "omitted for brevity," never replaced by a paraphrase or a smoothed reconstruction. A summary-only save is legitimate ONLY when the source has no transcript, and it MUST carry the `<!-- VERIFIER: no-source-transcript -->` marker with a one-line reason.
+
+**3. Verifier detector hardened.** `verify_transcripts.py` now recognizes the recorder timestamp-led speaker line (`**[00:00] Name:**` and the range form `[00:00-00:32] Name:`), and treats a dense run of standalone-timestamp lines as a complete undiarized transcript. This removes the false positives — full transcripts flagged incomplete because only one speaker was diarized; unattributed running transcripts — that previously trained agents to distrust the verifier. Total-timestamp count alone cannot separate a transcript from a summary whose "Details" bullets carry inline timestamps (a summary can even wear a "Verbatim transcript" heading); **standalone-timestamp-line and speaker-line structure can.** A verbatim record that was saved with escaped `\r\n` sequences instead of real newlines reads as summary-only to every tool and to humans — always save real line breaks.
 
 ## v0.4.0 — Transcript-primary sourcing (summaries demoted, never trusted for attribution)
 

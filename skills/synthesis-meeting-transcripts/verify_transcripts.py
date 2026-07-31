@@ -52,17 +52,37 @@ from pathlib import Path
 # Any HH:MM:SS or MM:SS anywhere — Gemini uses bare, bold, heading, and markdown-link forms
 TIMESTAMP_RE = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
 
-# Speaker attribution line at start of line, in any form Gemini or our agents use:
-#   - Bolded full name:     **Name Surname:** text...   (newer Gemini output, our agent-curated)
-#   - Unbolded full name:   Name Surname: text...       (older Gemini output, March-April vintage)
-#   - Bolded first only:    **Name:** text...           (our agent-curated, brevity form)
-# A real Gemini verbatim transcript has dozens of these per file; a summary-only save has none.
-# We accept 1-4 capitalized words ending in a colon. The high min-speakers threshold (default 10)
-# ensures cumulative false positives from non-dialogue patterns can't push a summary-only file over.
+# Speaker attribution line at start of line, in any form Gemini, Plaud, or our agents use:
+#   - Bolded full name:      **Name Surname:** text...   (newer Gemini output, our agent-curated)
+#   - Unbolded full name:    Name Surname: text...       (older Gemini output, March-April vintage)
+#   - Bolded first only:     **Name:** text...           (our agent-curated, brevity form)
+#   - Plaud (timestamp-led): **[00:00] Name Surname:** text...  or  **[0:20] Speaker 2:** text...
+#     Plaud puts a bracketed [MM:SS]/[H:MM:SS] BEFORE the name, so the older name-anchored
+#     regex missed every Plaud dialogue line and flagged full Plaud transcripts as incomplete.
+# A real verbatim transcript has dozens of these per file; a summary-only save has none.
+# We accept an optional leading [timestamp], then 1-4 capitalized words (or "Speaker N") ending
+# in a colon. The high min-speakers threshold (default 10) ensures cumulative false positives from
+# non-dialogue patterns can't push a summary-only file over.
 SPEAKER_RE = re.compile(
-    r"^(?:\*\*)?[A-Z][a-zA-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+){0,3}:(?:\*\*)?\s",
+    r"^(?:\*\*)?"                                                     # optional bold
+    r"(?:\[\d{1,2}:\d{2}(?::\d{2})?(?:-\d{1,2}:\d{2}(?::\d{2})?)?\]\s*)?"  # optional leading [t] or [t-t] (Plaud)
+    r"[A-Z][a-zA-Z]{2,}(?:\s+(?:[A-Z][a-zA-Z]+|\d{1,3})){0,3}"        # Name, Name Surname, or "Speaker 2"
+    r":(?:\*\*)?\s",                                                  # colon, optional closing bold, space
     re.MULTILINE,
 )
+
+# A verbatim transcript the host recorded WITHOUT speaker diarization is a running transcript:
+# each utterance is preceded by a bare timestamp ON ITS OWN LINE (e.g. exec-offsite: 72 such lines).
+# It is still the full primary record, so a high count of standalone-timestamp lines marks it complete
+# even when speaker-line count is low. Crucially this is the signal a Details-SUMMARY lacks: a summary
+# embeds its timestamps INLINE in prose bullets ("...discussed X (00:05:12)."), never on their own line.
+# Total-timestamp-count cannot tell the two apart (a dense summary has 30+ inline timestamps and may
+# even carry a "Verbatim transcript" heading); standalone-timestamp-line count can.
+STANDALONE_TS_RE = re.compile(
+    r"^[ \t]*\*{0,2}\[?\d{1,2}:\d{2}(?::\d{2})?\]?\*{0,2}[ \t]*$",
+    re.MULTILINE,
+)
+DENSE_STANDALONE_TS_LINES = 20
 
 # Files whose names start with these prefixes are not meeting transcripts.
 SKIP_PREFIXES = ("_", "gdoc-", "email-")
@@ -81,9 +101,19 @@ def count_speaker_lines(content: str) -> int:
     return len(SPEAKER_RE.findall(content))
 
 
+def count_standalone_timestamp_lines(content: str) -> int:
+    """Lines that are ONLY a timestamp (optionally bold/bracketed). This is the fingerprint of an
+    undiarized running transcript, and the signal a Details-summary lacks (its timestamps are inline)."""
+    return len(STANDALONE_TS_RE.findall(content))
+
+
 def has_transcript_section_heading(content: str) -> bool:
-    """Heuristic: real transcripts have a '## ... Transcript' or '📖 Transcript' heading."""
-    return bool(re.search(r"(?:📖|^#+)\s*[Tt]ranscript", content, re.MULTILINE))
+    """Heuristic: real transcripts carry a heading whose text contains "transcript" —
+    e.g. '## Verbatim transcript (primary source)', '## Full transcript', '# 📖 Transcript',
+    '## Daily Standup - Transcript'. The word need not immediately follow the '#'; matching
+    only heading-initial 'Transcript' missed every '## Verbatim transcript' heading our agents
+    write, which broke the dense-transcript override for undiarized recordings."""
+    return bool(re.search(r"(?:📖\s*[Tt]ranscript|^#+[^\n]*[Tt]ranscript)", content, re.MULTILINE))
 
 
 def audit_dir(meetings_dir: Path, min_markers: int, min_speakers: int, no_skip: bool = False) -> list[dict]:
@@ -134,13 +164,21 @@ def audit_dir(meetings_dir: Path, min_markers: int, min_speakers: int, no_skip: 
 
         timestamps = count_timestamps(content)
         speakers = count_speaker_lines(content)
+        standalone = count_standalone_timestamp_lines(content)
         has_heading = has_transcript_section_heading(content)
         size_kb = path.stat().st_size / 1024
-        ok = timestamps >= min_markers and speakers >= min_speakers
+        # Diarized case: enough timestamps AND enough speaker lines (Gemini or Plaud, incl. [t-t] range form).
+        # Undiarized case: enough standalone-timestamp lines (running transcript with no speaker labels).
+        # A Details-SUMMARY passes neither — it has few speaker lines and ~0 standalone-timestamp lines,
+        # even when it carries many inline timestamps and a misleading "Verbatim transcript" heading.
+        ok = (timestamps >= min_markers and speakers >= min_speakers) or (
+            standalone >= DENSE_STANDALONE_TS_LINES
+        )
         results.append({
             "file": path.name,
             "timestamps": timestamps,
             "speakers": speakers,
+            "standalone_ts_lines": standalone,
             "has_transcript_heading": has_heading,
             "size_kb": round(size_kb, 1),
             "status": "OK" if ok else "INCOMPLETE",
