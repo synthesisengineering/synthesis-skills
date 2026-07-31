@@ -380,7 +380,7 @@ def build_allowlist_regex(config: dict) -> str:
 DEFAULT_DIFF_EXCLUDE_PATHS = (
     r'(^|/)\.githooks/pre-commit$',
     r'(^|/)\.githooks/extra-patterns\.ya?ml$',
-    r'(^|/)\.synthesis/git-hook-config\.ya?ml$',
+    r'(^|/)git-hook-config\.ya?ml$',
     r'(^|/)git-hook-config\.example\.ya?ml$',
     r'(^|/)anti-shortcut-catalog\.ya?ml$',
     # The disclosure-policy methodology and the hook engine's own docs and
