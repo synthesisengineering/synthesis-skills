@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.4.0"
+  version: "1.4.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -524,9 +524,12 @@ What it checks:
 | Budgets | CONTEXT.md ≤150 active / ≤80 completed; REFERENCE.md ≤300 (warning) |
 | Cross-tier agreement | index.yaml status agrees with the CONTEXT.md header; completed projects carry `completed_date`; indexed projects have directories and vice versa |
 | Freshness | index.yaml `last_session` and the CONTEXT.md header agree with real git history |
-| Durability | no uncommitted project files; no unpushed commits — context on one machine is not durable context |
+| Durability | no uncommitted project files; tier files actually **tracked** by git, not merely clean; a remote and upstream exist and the branch is pushed |
+| Disclosure | anything unverifiable is reported rather than skipped — unreadable status headers and freshness that cannot be established both surface as findings |
 
 Exit codes follow the guard contract: `0` healthy, `1` defects found, `2` the doctor could not establish ground truth. The third is the important one — an unreadable source or a source outside git exits 2 rather than reporting health, because a check that cannot run must never look like a check that passed.
+
+**Nothing is skipped silently.** A check that cannot run reports that it could not run. When every recent commit touching a project is a repo-wide sweep, freshness is unverifiable and says so; when a CONTEXT.md has no parseable status header, the cross-check is reported as unavailable rather than passed. Silent skips are indistinguishable from clean results, and that is the property this tool exists to remove.
 
 **Bulk commits are not sessions.** The freshness checks ignore any commit touching more than a few projects at once. A path migration or a repo-wide restructure touches every project and says nothing about when any one of them was worked; counting those as sessions makes every dormant project look stale. False alarms are not a cosmetic problem — a doctor that cries wolf gets ignored, and an ignored doctor is the fail-open state it was built to end.
 

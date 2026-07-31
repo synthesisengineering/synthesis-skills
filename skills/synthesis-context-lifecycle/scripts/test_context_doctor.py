@@ -34,16 +34,33 @@ def run_git(repo: Path, *args: str) -> None:
 
 
 class Fixture:
-    """A throwaway git repo shaped like a synthesis source."""
+    """A throwaway git repo shaped like a synthesis source.
 
-    def __init__(self, root: Path):
+    It has a real bare remote and pushes on every commit. That matters: a
+    fixture with no remote would make "healthy" mean "context that has never
+    left this machine", which is precisely the state the durability check
+    exists to catch. An adversarial review found the earlier fixture doing
+    exactly that and certifying it as healthy.
+    """
+
+    def __init__(self, root: Path, with_remote: bool = True):
         self.root = root
         self.projects = root / "projects"
         self.projects.mkdir(parents=True)
-        run_git(root, "init", "-q")
+        run_git(root, "init", "-q", "-b", "main")
         run_git(root, "config", "user.email", "test@example.invalid")
         run_git(root, "config", "user.name", "Test")
         run_git(root, "config", "commit.gpgsign", "false")
+        self.remote = root.parent / f"{root.name}-remote.git"
+        self.has_remote = with_remote
+        if with_remote:
+            subprocess.run(
+                ["git", "init", "-q", "--bare", str(self.remote)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            run_git(root, "remote", "add", "origin", str(self.remote))
 
     def project(
         self,
@@ -77,7 +94,9 @@ class Fixture:
             "\n".join(lines) + "\n", encoding="utf-8"
         )
 
-    def commit(self, message: str = "work", when: str | None = None) -> None:
+    def commit(
+        self, message: str = "work", when: str | None = None, push: bool = True
+    ) -> None:
         run_git(self.root, "add", "-A")
         subprocess.run(
             ["git", "-C", str(self.root), "commit", "-q", "-m", message],
@@ -86,6 +105,8 @@ class Fixture:
             text=True,
             env=self._env(when),
         )
+        if push and self.has_remote:
+            run_git(self.root, "push", "-q", "-u", "origin", "HEAD")
 
     def _env(self, when: str | None) -> dict:
         import os
@@ -317,6 +338,75 @@ class ContextDoctorTests(unittest.TestCase):
             "# P\n\n**Status:** Active\n\nedited but not committed\n", encoding="utf-8"
         )
         self.assertIn("uncommitted-context", checks_in(self.fx.audit()))
+
+    # --- durability: the critical hole the refute panel found --------------
+
+    def test_never_pushed_branch_is_a_defect(self):
+        """The critical finding: no upstream used to report HEALTHY."""
+        self.fx.project("alpha")
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit(push=False)
+        r = self.fx.audit()
+        self.assertIn("unpushed-context", checks_in(r))
+        self.assertEqual(r["code"], 1)
+
+    def test_repo_with_no_remote_is_a_defect(self):
+        fx = Fixture(Path(self._tmp.name) / "noremote", with_remote=False)
+        fx.project("alpha")
+        fx.index([{"id": "alpha", "status": "active"}])
+        fx.commit()
+        r = fx.audit()
+        self.assertIn("unpushed-context", checks_in(r))
+        self.assertEqual(r["code"], 1)
+
+    def test_commits_ahead_of_upstream_are_a_defect(self):
+        self.fx.project("alpha")
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+        (self.fx.projects / "alpha" / "CONTEXT.md").write_text(
+            "# P\n\n**Status:** Active\n\nmore\n", encoding="utf-8"
+        )
+        self.fx.commit(push=False)
+        self.assertIn("unpushed-context", checks_in(self.fx.audit()))
+
+    def test_gitignored_context_file_is_a_defect(self):
+        self.fx.project("alpha")
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        (self.fx.root / ".gitignore").write_text("CONTEXT.md\n", encoding="utf-8")
+        self.fx.commit()
+        r = self.fx.audit()
+        self.assertIn("untracked-context", checks_in(r))
+        self.assertEqual(r["code"], 1)
+
+    def test_uncommitted_index_yaml_is_caught(self):
+        self.fx.project("alpha")
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+        (self.fx.projects / "index.yaml").write_text(
+            "projects:\n  - id: alpha\n    status: 'completed'\n", encoding="utf-8"
+        )
+        self.assertIn("uncommitted-context", checks_in(self.fx.audit()))
+
+    def test_project_mode_also_checks_durability(self):
+        self.fx.project("alpha")
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit(push=False)
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(DOCTOR),
+                "--project",
+                str(self.fx.projects / "alpha"),
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        data = json.loads(proc.stdout)
+        self.assertIn(
+            "unpushed-context", {f["check"] for f in data.get("findings", [])}
+        )
 
     # --- fail-closed behavior ---------------------------------------------
 
