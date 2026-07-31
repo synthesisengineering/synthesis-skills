@@ -1,11 +1,11 @@
 ---
 name: synthesis-git-hooks
-description: "Deterministic pre-commit policy for the synthesis-engineering workflow. Auto-classifies each repo by its push remotes (personal vs strict), applies a tiered pattern set: Tier 0 credentials always; Tier 1 financial / HR / confidentiality / client names only in strict repos. YAML-driven policy lives in ~/.synthesis/git-hook-config.yaml. Use when asked to: install git hooks, configure pre-commit policy, prevent credential leaks, prevent confidential-name leaks in public repos, set up the synthesis-engineering enforcement layer."
+description: "Deterministic pre-commit policy for the synthesis-engineering workflow. Classifies each repo by publication surface (personal / public-surface / strict) from its push remotes, applies a tiered pattern set: Tier 0 credentials always; Tier 1 financial / HR / confidentiality / client names in strict and public-surface repos — public-surface minus only the disclosure ledger's published-precedent names. YAML-driven policy lives in ~/.synthesis/git-hook-config.yaml. Use when asked to: install git hooks, configure pre-commit policy, prevent credential leaks, prevent confidential-name leaks, allow published bio names on my own sites, disclosure ledger enforcement, set up the synthesis-engineering enforcement layer."
 license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.2"
+  version: "2.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -46,9 +46,29 @@ Three design guarantees, added after a field incident in which the v1 engine sil
 | Tier | Patterns | When applied |
 |---|---|---|
 | **Tier 0 — credentials** | API keys (AWS, OpenAI, Anthropic, Google, GitHub, GitLab, Slack), private key markers (RSA, OpenSSH, EC, PGP) | Every repo. Credentials don't belong in git regardless of who reads. |
-| **Tier 1 — exposure-sensitive** | Financial, HR/employment, confidentiality markers, confidential client/company names, private skill names, internal URLs | Skip when the repo classifies as `personal` (every push remote matches a configured `personal_remote_patterns` regex). Run otherwise. |
+| **Tier 1 — exposure-sensitive** | Financial, HR/employment, confidentiality markers, confidential client/company names, private skill names, internal URLs | Skip when the repo classifies as `personal`. Run in `strict` and `public-surface` repos — in `public-surface`, minus only the exact name patterns the disclosure ledger records as published precedent. |
 
-The classification is derived from `git remote -v` on every commit — no per-repo flag file, no static declaration, no drift potential. The remote configuration IS the security profile.
+Classification is derived from `git remote -v` on every commit and follows
+the PUBLICATION SURFACE, strict-first:
+
+1. **`strict`** — ANY push remote matches `strict_repo_patterns` (public OSS
+   repos pinned strict even under a personal org), the remote list is empty,
+   or nothing else matches. Full Tier 1, commit-message scan on.
+2. **`public-surface`** — EVERY push remote matches
+   `public_surface_patterns`: sites and other surfaces whose content the
+   user personally authors and publishes, regardless of repository
+   visibility. Full Tier 1 minus ledger allowances; commit-message scan on.
+3. **`personal`** — EVERY push remote matches `personal_remote_patterns`:
+   content only the user reads. Tier 0 only.
+
+Ledger allowances come from `disclosure_ledger` (see the
+[`synthesis-disclosure-policy`](../synthesis-disclosure-policy/SKILL.md)
+skill): each ledger entity carries evidence citations and `hook_patterns`
+strings that must textually equal `tier_1_strict_only` entries. A
+configured ledger that is missing or unparsable fails closed — commits on
+public-surface repos block until it is fixed. No per-repo flag file, no
+static declaration, no drift potential: the remote configuration plus the
+ledger IS the security profile.
 
 ## When to apply
 

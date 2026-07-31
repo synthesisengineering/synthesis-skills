@@ -4,6 +4,30 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.8.0] - 2026-07-30
+
+### Added
+
+- `synthesis-disclosure-policy`: two-category disclosure governance for
+  people who publish under their own name while handling sensitive
+  client work. Published-precedent facts (deliberately public biography, recorded
+  in an evidence-cited ledger) are restatable; unapproved disclosures —
+  anything learned from private context, negative statements, operational
+  detail, identifying descriptions, aggregation — stay closed. Ships the
+  ledger schema, five decision tests, surface-class model, and an adoption
+  quickstart with a ledger template.
+- `synthesis-git-hooks` v2.2.0: publication-surface classification.
+  `strict_repo_patterns` pins public OSS repos strict regardless of
+  remotes; `public_surface_patterns` classifies author-published site
+  repos as `public-surface` — full Tier 1 enforcement (previously these
+  either skipped Tier 1 entirely under personal remotes or blocked the
+  author's own published biography under strict), minus only the exact
+  name patterns the `disclosure_ledger` records as published precedent.
+  Evidence-free ledger entries, missing ledgers, and unparsable ledgers
+  fail closed; the doctor validates ledger allowances against the policy
+  and flags stale ones; commit-message scanning now also covers
+  public-surface repos.
+
 ## [4.7.0] - 2026-07-30
 
 ### Added
