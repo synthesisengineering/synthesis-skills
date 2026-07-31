@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.8.1] - 2026-07-30
+
+### Fixed
+
+- `synthesis-git-hooks` v2.2.1: the doctor and hook runs no longer print
+  Python `FutureWarning` noise while validating POSIX bracket expressions
+  (`[[:alnum:]]`) that are valid ERE for grep. A protective tool that emits
+  benign warnings teaches its user to ignore its output.
+
 ## [4.8.0] - 2026-07-30
 
 ### Added

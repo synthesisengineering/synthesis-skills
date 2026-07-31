@@ -47,10 +47,11 @@ import re
 import shlex
 import subprocess
 import sys
+import warnings
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-SIDECAR_VERSION = "2.2.0"
+SIDECAR_VERSION = "2.2.1"
 REQUIRED_CONFIG_VERSION = 2
 
 DEFAULT_CONFIG = Path.home() / ".synthesis" / "git-hook-config.yaml"
@@ -500,7 +501,14 @@ def validate_all_patterns(config: dict) -> List[str]:
                     "literal (check double-quoted YAML scalars)"
                 )
             try:
-                re.compile(pattern)
+                # POSIX bracket expressions ([[:alnum:]]) are valid ERE and
+                # are what grep actually runs; Python's parser warns about
+                # them as "nested sets". The compile here is only a validity
+                # smoke test, so silence that noise — a protective tool that
+                # prints benign warnings teaches its user to ignore it.
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", FutureWarning)
+                    re.compile(pattern)
             except re.error as exc:
                 problems.append(f"{key}: rejected by python re: {pattern!r} ({exc})")
             err = _grep_validates(pattern)
