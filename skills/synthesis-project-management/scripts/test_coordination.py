@@ -674,3 +674,26 @@ def test_lease_disable_local_only_requires_absent_config(tmp_path: Path) -> None
         area="/repos/other/**",
     )
     assert MODULE.command_claim(follow_up) == 0
+
+
+def test_semicolon_separated_claims_still_conflict(tmp_path: Path) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    legacy = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="repo-one/notes/**; repo-two/daily/**",
+    )
+    assert MODULE.command_claim(legacy) == 0
+    parsed = MODULE.rows(board.read_text(encoding="utf-8"))[0]
+    assert len(parsed.claims) == 2
+
+    overlapping = claim_args(
+        board,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/worktree-b @ feature/b",
+        area="/home/user/workspaces/demo/repo-two/daily/plan.md",
+    )
+    assert MODULE.command_claim(overlapping) == 10

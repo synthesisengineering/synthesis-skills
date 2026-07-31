@@ -128,9 +128,12 @@ def split_values(value: str) -> list[str]:
     clean = plain(value)
     if not clean or clean.lower().startswith("released"):
         return []
+    # Semicolons appear in hand-migrated rows; treating them as content would
+    # fuse several claims into one unmatchable string and silently disable
+    # overlap detection for that row.
     return [
         item.strip()
-        for item in re.split(r",|<br\s*/?>", clean)
+        for item in re.split(r"[,;]|<br\s*/?>", clean)
         if item.strip()
     ]
 
