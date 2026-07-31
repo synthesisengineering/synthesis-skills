@@ -4,6 +4,23 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.9.0] - 2026-07-31
+
+### Added
+
+- `synthesis-context-lifecycle` v1.4.1: a context-integrity doctor
+  (`context_doctor.py`) for the durable project layer — the one protective
+  layer in the stack that had no health check. Audits every project in every
+  configured source for tier completeness, budgets, cross-tier status
+  agreement, freshness against real git history, and durability (tracked,
+  committed, pushed), with the guard exit contract (0 healthy / 1 defects /
+  2 cannot establish ground truth) and no silent skips: anything unverifiable
+  is reported. Hardened against 30 adversarially-confirmed findings before
+  merge, including a fail-open push-state collapse that let never-pushed
+  context report healthy.
+- `synthesis-daily-rituals` v2.16.0: the context doctor joins Day-Start
+  Step 1 beside the git-hooks and message-guard doctors.
+
 ## [4.8.1] - 2026-07-30
 
 ### Fixed

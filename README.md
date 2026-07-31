@@ -11,7 +11,7 @@ an evidence-cited precedent ledger. `synthesis-git-hooks` **v2.2.0**
 enforces it by publication surface: your site repos get full protection
 minus your ledgered names, public OSS repos stay pinned strict, and a
 missing or unverifiable ledger fails closed. See the
-[4.8.1 release notes](CHANGELOG.md).
+[4.9.0 release notes](CHANGELOG.md).
 
 
 **Trustworthy resumption and safe retirement (July 2026).**
