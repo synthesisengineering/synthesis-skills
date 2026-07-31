@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.0"
+  version: "1.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -497,6 +497,40 @@ After reading CONTEXT.md, the AI collaborator should be able to answer:
 4. Where do I find stable reference information?
 
 If any question cannot be answered from CONTEXT.md alone (with a pointer to REFERENCE.md), the working memory is incomplete.
+
+---
+
+## The Context Doctor — verification, not diligence
+
+Everything above describes what a well-maintained context layer looks like. None of it verifies that yours *is* one. That gap matters more than it first appears: the durable layer is what makes cross-agent, cross-machine resumption possible, so it is the foundation every other guarantee stands on — and until you can check it, its health is an assertion by the same agent that was supposed to maintain it.
+
+Every other protective layer in the synthesis stack carries a health check. `synthesis-git-hooks` has `--doctor`. Conformance has its own suite. The context layer had none, which made it the one fail-open control in a stack built on fail-closed ones.
+
+`scripts/context_doctor.py` closes that. It audits every project in every configured source and reports what would degrade a cold resumption:
+
+```bash
+python3 <skill>/scripts/context_doctor.py            # all sources from console.yaml
+python3 <skill>/scripts/context_doctor.py --source ~/kb   # explicit source roots
+python3 <skill>/scripts/context_doctor.py --project ~/kb/projects/alpha
+python3 <skill>/scripts/context_doctor.py --json     # for consoles and rituals
+python3 <skill>/scripts/context_doctor.py --quiet    # exit code + one line
+```
+
+What it checks:
+
+| Group | Checks |
+|-------|--------|
+| Tier structure | CONTEXT.md present; sessions/ once there is history to archive; REFERENCE.md once a project has accumulated stable facts |
+| Budgets | CONTEXT.md ≤150 active / ≤80 completed; REFERENCE.md ≤300 (warning) |
+| Cross-tier agreement | index.yaml status agrees with the CONTEXT.md header; completed projects carry `completed_date`; indexed projects have directories and vice versa |
+| Freshness | index.yaml `last_session` and the CONTEXT.md header agree with real git history |
+| Durability | no uncommitted project files; no unpushed commits — context on one machine is not durable context |
+
+Exit codes follow the guard contract: `0` healthy, `1` defects found, `2` the doctor could not establish ground truth. The third is the important one — an unreadable source or a source outside git exits 2 rather than reporting health, because a check that cannot run must never look like a check that passed.
+
+**Bulk commits are not sessions.** The freshness checks ignore any commit touching more than a few projects at once. A path migration or a repo-wide restructure touches every project and says nothing about when any one of them was worked; counting those as sessions makes every dormant project look stale. False alarms are not a cosmetic problem — a doctor that cries wolf gets ignored, and an ignored doctor is the fail-open state it was built to end.
+
+**Where to run it.** A doctor nobody runs is the same as no doctor. Wire it into the day-start ritual, into session-end for the active project, and into any console or dashboard that already renders project state. The `--json` output is stable for that purpose.
 
 ---
 
