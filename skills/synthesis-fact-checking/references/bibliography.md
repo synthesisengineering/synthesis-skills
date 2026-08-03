@@ -184,7 +184,8 @@ All entries in this section anchor to `production-incident-archive.md` by defaul
 
 ## 5. Synthesis project internal cross-references
 
-Paths below are relative to `/Users/rajiv/workspaces/rajiv/`.
+Paths below are relative to the author's workspace root — the directory
+that holds these project checkouts.
 
 Bucket paths share the prefix `ai-knowledge-rajiv/projects/synthesis-quality-skills-upgrade/resources/artifacts/`. Abbreviated as `<bucket>/` below.
 

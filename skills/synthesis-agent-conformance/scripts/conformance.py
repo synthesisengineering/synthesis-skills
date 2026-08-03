@@ -215,23 +215,39 @@ def source_checks(source_root: Path) -> list[Check]:
     root_skills = sorted(path.parent.name for path in source_root.glob("*/SKILL.md"))
     add(checks, "source.no-root-skills", not root_skills, ", ".join(root_skills) or "none")
 
-    stale_patterns = {
+    forbidden_patterns = {
         "source.no-client-copy-paths": re.compile(
             r"(?:~|\$HOME)/\.(?:codex|claude|agents)/skills/synthesis-"
         ),
         "source.no-old-source-layout": re.compile(r"synthesis-skills/synthesis-"),
+        # Repository rule 8: no personal paths in this public repository. A
+        # workspace path segment must be a placeholder (<you>, *, $VAR,
+        # example-…) or a documented generic sample name (demo, personal,
+        # work, user) — never a real username. The second alternation
+        # catches home-anchored personal checkout paths in prose.
+        "source.no-personal-workspace-paths": re.compile(
+            r"workspaces/(?!<|\*|\$|example|demo/|personal/|work/|user/)[\w.-]+/"
+            r"|/(?:Users|home)/(?!user/|<)[\w.-]+/workspaces/"
+        ),
     }
-    text_files = [
-        path
-        for path in source_root.rglob("*")
-        if path.is_file()
-        and ".git" not in path.parts
-        and ".claude" not in path.parts
-        and path.resolve() != SCRIPT_PATH
-        and path.resolve() != SCRIPT_PATH.with_name("test_conformance.py")
-        and path.suffix in {".md", ".py", ".sh", ".yaml", ".yml", ".json"}
-    ]
-    for name, pattern in stale_patterns.items():
+    def scannable(path: Path) -> bool:
+        if not path.is_file():
+            return False
+        # Exclusions apply RELATIVE to the source root: a checkout may
+        # itself sit under a .claude/worktrees/ directory, and matching
+        # ancestor components would empty the scan into a silent pass.
+        rel_parts = path.relative_to(source_root).parts
+        if ".git" in rel_parts or ".claude" in rel_parts:
+            return False
+        if path.resolve() in (
+            SCRIPT_PATH,
+            SCRIPT_PATH.with_name("test_conformance.py"),
+        ):
+            return False
+        return path.suffix in {".md", ".py", ".sh", ".yaml", ".yml", ".json"}
+
+    text_files = [path for path in source_root.rglob("*") if scannable(path)]
+    for name, pattern in forbidden_patterns.items():
         matches = []
         for path in text_files:
             try:
