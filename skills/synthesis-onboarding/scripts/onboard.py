@@ -408,14 +408,17 @@ def plugin_enabled(client, binary):
     except ValueError:
         return PLUGIN_NAME in out and '"enabled": true' in out
     if isinstance(entries, dict):
-        entries = entries.get("plugins", [])
+        # claude nests under "plugins"; codex nests under "installed"
+        flat = []
+        for value in entries.values():
+            if isinstance(value, list):
+                flat.extend(value)
+        entries = flat
     for entry in entries or []:
         if not isinstance(entry, dict) or not entry.get("enabled", False):
             continue
-        ident = str(entry.get("id", ""))
-        if client == "claude" and ident.startswith(PLUGIN_NAME + "@"):
-            return True
-        if client == "codex" and entry.get("name") == PLUGIN_NAME:
+        ident = str(entry.get("id") or entry.get("pluginId") or "")
+        if ident.startswith(PLUGIN_NAME + "@") or entry.get("name") == PLUGIN_NAME:
             return True
     return False
 
