@@ -4,6 +4,27 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.10.0] - 2026-08-03
+
+### Added
+
+- New skill `synthesis-onboarding` v1.0.0: one-command onboarding for the
+  whole ecosystem. A stdlib-only convergence engine (`onboard.py`) installs
+  the synthesis-skills plugin into Claude Code and/or Codex (native plugin
+  CLI first, file-copy fallback), scaffolds `ai-knowledge-<workspace>`
+  repositories (`init-workspace`), and layers organization knowledge bases
+  and shared skills from a declarative `.agents/onboarding.yaml` manifest —
+  organizations ship configuration, never installer code. Idempotent
+  re-runs with receipts and conffile semantics (user-edited files are never
+  overwritten), adopt-in-place of existing clones, superseded-remote
+  migration, skill rename/removal tombstones (archive-first), a `doctor`
+  with the guard exit contract, plain-language guidance for non-engineers,
+  and a closing welcome that says what to try asking. Manifest schema and
+  the org wrapper-script template: `references/org-manifest.md`.
+- Root `onboard.sh`: curl-able bootstrap (POSIX sh + git only) that clones
+  or refreshes this repository and hands off to the engine. Stale caches
+  fail loudly instead of installing silently outdated content.
+
 ## [4.9.0] - 2026-07-31
 
 ### Added

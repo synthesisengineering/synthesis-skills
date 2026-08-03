@@ -21,7 +21,8 @@ jobs:
       - run: python -m pytest skills/synthesis-project-management/scripts/test_coordination.py -q
       - run: python -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py -q
-      - run: sh -n install.sh tests/test_installer.sh
+      - run: python -m pytest skills/synthesis-onboarding/scripts/test_onboard.py -q
+      - run: sh -n install.sh onboard.sh tests/test_installer.sh
       - run: ./tests/test_installer.sh
       - run: python -m compileall -q skills
       - run: python skills/synthesis-inbox-cleanup/tests/run_poisoned.py

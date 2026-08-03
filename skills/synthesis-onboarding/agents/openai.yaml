@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Onboarding"
+  short_description: "Install the synthesis ecosystem on a new machine"
+  default_prompt: "Use $synthesis-onboarding to install, update, or verify the synthesis ecosystem on this machine."

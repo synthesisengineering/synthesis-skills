@@ -107,6 +107,20 @@ without tool-owned workflow copies or date-field drift. See the
 
 ## Install
 
+### One-command onboarding (new machines, non-engineers, whole ecosystem)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/onboard.sh | sh
+```
+
+The `synthesis-onboarding` engine converges your machine: plugin installed
+into whichever of Claude Code / Codex is present, optional
+`ai-knowledge-<workspace>` scaffold, verified by its built-in doctor.
+Re-running is always safe — it updates and repairs, and never overwrites
+files you edited. Organizations layer their own knowledge bases and shared
+skills on the same engine with one declarative manifest (no installer code);
+see `skills/synthesis-onboarding/references/org-manifest.md`.
+
 ### Native plugin for ChatGPT, Codex, and Claude Code
 
 The repository is a dual-runtime plugin. The same `skills/` source tree is
