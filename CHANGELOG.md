@@ -4,6 +4,22 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.12.0] - 2026-08-03
+
+### Changed
+
+- `synthesis-daily-rituals` v2.17.0: Google Chat joins the channel syncs as a
+  first-class source beside Slack — in Day-Start Step 3b (retitled "Channel
+  Sync (Slack + Google Chat)"), the Mid-Day Sync Protocol, and Day-End
+  Step 1. Workspaces opt in by declaring `.agents/gchat-sync.yaml` (sibling
+  to `slack-sync.yaml`); without the config the step skips silently. The
+  sub-step encodes four disciplines from the first production rollout:
+  enumerate spaces fresh each run (per-meeting spaces churn daily), window
+  reads by `createTime` and treat a full page as truncated, preserve the raw
+  `users/<id>` on every line beside any resolved name (stable
+  workspace-universal keys make later authoritative correction mechanical),
+  and apply Slack-DM-grade confidentiality to Chat transcripts.
+
 ## [4.11.0] - 2026-08-03
 
 ### Added

@@ -1,6 +1,6 @@
 ---
 name: synthesis-daily-rituals
-description: "Day-start and day-end checklists for synthesis engineering projects. Execute dependency-ordered rituals for context optimization, Slack sync, catch-up reads, PR reviews, day planning, and communications. Use when asked about: daily ritual, morning routine, day start, day end, daily checklist, morning checklist, end of day checklist, daily workflow."
+description: "Day-start and day-end checklists for synthesis engineering projects. Execute dependency-ordered rituals for context optimization, Slack and Google Chat sync, catch-up reads, PR reviews, day planning, and communications. Use when asked about: daily ritual, morning routine, day start, day end, daily checklist, morning checklist, end of day checklist, daily workflow."
 license: "Apache-2.0"
 depends_on:
   - synthesis-context-lifecycle
@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.16.0"
+  version: "2.17.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,17 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.17.0 — Google Chat joins the channel syncs
+
+v2.17.0 (2026-08-03) adds Google Chat as a first-class channel sync beside Slack, in all three sync moments: Day-Start Step 3b, the Mid-Day Sync Protocol, and Day-End Step 1. A workspace opts in by declaring `.agents/gchat-sync.yaml` (sibling to `slack-sync.yaml`); workspaces without the config skip the step silently. Rationale: in many organizations executives and cross-functional teams live in Google Chat while delivery teams live in Slack — syncing only Slack leaves a systematic blind spot exactly where the highest-stakes correspondence happens.
+
+The sub-step is tool-agnostic (any Google Chat-capable MCP; a self-hosted multi-account Workspace server works with plain user OAuth). Four disciplines it encodes, learned from the first production rollout:
+
+1. **Enumerate spaces fresh each run** — per-meeting chat spaces are created for every recorded meeting; a hand-maintained space list is stale within a day. List spaces at sync time, then read what the config's scope selects.
+2. **Window by `createTime`, treat a full page as truncated** — some Chat clients expose no pagination cursor on message listing; when a read returns exactly the page size, narrow the time window and re-read until complete.
+3. **Preserve the raw `users/<id>` on every message line** alongside any resolved display name. Chat sender IDs are stable, workspace-universal profile IDs; keeping them beside inferred names means a later authoritative resolver (the People API) can correct every past attribution mechanically. Inference layers get names wrong; preserved primary keys make those errors repairable instead of permanent.
+4. **Same confidentiality handling as Slack DMs** — Chat DMs carry executive and personnel correspondence; transcripts belong in the workspace-private repo only.
 
 ## v2.16.0 — Agent-neutral day-end runtime
 
@@ -319,10 +330,11 @@ Before drafting the daily plan, sync every source-code repo the current workspac
 
 The set of remotes for each repo comes from `git remote -v` inside that repo. The skill does NOT need a separate per-remote config — the repo itself is the source of truth for its own remote layout. When a workspace's primary remote changes (e.g., a migration from one Git host to another), the change happens in the local repo's `git remote -v`, and this step picks it up automatically.
 
-#### 3b. Slack Sync
+#### 3b. Channel Sync (Slack + Google Chat)
 
 - [ ] Check for new PRs, CI results, overnight pushes (now that local repos are current).
 - [ ] **Run `/synthesis-slack-sync`** — the `synthesis-slack-sync` skill handles the full Slack sync protocol: verify connector auth, read all channels, re-read all threads with replies, check DMs, save to local transcripts, and update the action plan. See that skill for the detailed protocol and the rationale behind each step. Configuration is in `.agents/slack-sync.yaml` per project, with `.claude/slack-sync.yaml` supported for existing projects.
+- [ ] **Google Chat sync (v2.17.0)** — if the workspace declares `.agents/gchat-sync.yaml`: enumerate spaces fresh via the Chat space-list call (never a hand-maintained ID list — per-meeting spaces churn daily), read DMs/groups/named/meeting spaces per the config's scope windowed by `createTime` since the last sync, treat a full page as possibly-truncated (narrow the window and re-read), keep the raw `users/<id>` on every line beside any resolved name, and save to the workspace convention (e.g., `transcripts/gchat/gchat-YYYY-MM-DD.md`). Same confidentiality handling as Slack DMs. Skip silently when no config exists.
 - [ ] Run any project-specific sync steps (see project supplement).
 
 #### 3c. Meeting Transcripts
@@ -682,7 +694,7 @@ If a file revert is detected (system reminder says "file was externally modified
 
 ## Mid-Day Sync Protocol
 
-The day-start checklist does a full sync. The user will ask for syncs repeatedly throughout the day ("sync from Slack", "what's new", "check channels").
+The day-start checklist does a full sync. The user will ask for syncs repeatedly throughout the day ("sync from Slack", "what's new", "check channels"). A "full sync" or "what's new" request covers EVERY configured channel source — Slack AND Google Chat (when `.agents/gchat-sync.yaml` exists) — not Slack alone.
 
 **Run `/synthesis-slack-sync`.** The `synthesis-slack-sync` skill handles the complete protocol: read channels, re-read all threads with replies, check DMs, save to local transcripts, and update the action plan. See that skill for the detailed five-step protocol.
 
@@ -755,6 +767,7 @@ The Weekly Loose-Ends Review (Step 10) attaches to whichever ritual runs first o
 ### 1. Transcript Sync
 
 - [ ] **Run `/synthesis-slack-sync`** for final capture of the day. The `synthesis-slack-sync` skill ensures all channels, threads, and DMs are captured.
+- [ ] **Google Chat final capture (v2.17.0)** — if the workspace declares `.agents/gchat-sync.yaml`, run the same Chat sweep as Day-Start Step 3b for the day's window (fresh space enumeration; raw sender IDs preserved).
 - [ ] Update CONTEXT.md to mark any items resolved by day's conversations (so tomorrow's day-start does not re-propose them).
 
 ### 2. Source-Code Sync
