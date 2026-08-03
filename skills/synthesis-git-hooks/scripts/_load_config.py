@@ -25,7 +25,11 @@ v2 design changes (fail-closed hardening):
 * **`--doctor`.** Self-check for rituals/bootstrap: config parses, every
   pattern compiles under both Python `re` and `grep -E`, core.hooksPath is
   wired, installed engine matches the skill source (drift detection), and
-  the cwd repo's classification + chained hook are reported.
+  the cwd repo's classification + chained hook are reported. The drift
+  source resolves portably — `$SYNTHESIS_GIT_HOOKS_SOURCE` (authoritative;
+  invalid values fail closed), else this script's own directory when it is
+  not itself an installed copy, else documented install locations — never
+  a hardcoded personal checkout path.
 
 Supported config subset (see README / SKILL.md):
   - comments (# ...), full-line or trailing outside quotes
@@ -51,14 +55,17 @@ import warnings
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-SIDECAR_VERSION = "2.2.1"
+SIDECAR_VERSION = "2.3.0"
 REQUIRED_CONFIG_VERSION = 2
 
 DEFAULT_CONFIG = Path.home() / ".synthesis" / "git-hook-config.yaml"
-DEFAULT_SOURCE_DIR = (
-    Path.home()
-    / "workspaces/rajiv/synthesis-skills/skills/synthesis-git-hooks/scripts"
-)
+
+# The three files that constitute the engine. A directory qualifies as a
+# drift-comparison source only when it carries all of them — a partial copy
+# would let missing files pass the byte-compare loop as "no drift".
+ENGINE_FILES = ("pre-commit", "commit-msg", "_load_config.py")
+
+SOURCE_ENV = "SYNTHESIS_GIT_HOOKS_SOURCE"
 
 
 class ConfigError(Exception):
@@ -636,6 +643,88 @@ def _grep_validates(pattern: str) -> Optional[str]:
     return None
 
 
+def _is_engine_source(path: Path) -> bool:
+    """True when ``path`` carries every engine file (a usable drift source)."""
+    return all((path / name).is_file() for name in ENGINE_FILES)
+
+
+def _installed_engine_dirs(hooks_path: Optional[Path]) -> set:
+    """Directories holding INSTALLED engine copies — never a drift source.
+
+    Comparing an installed copy against itself would report "no drift"
+    unconditionally, which is exactly the false health the check exists to
+    prevent.
+    """
+    dirs = {(Path.home() / ".synthesis" / "git-hooks").resolve()}
+    if hooks_path is not None:
+        dirs.add(hooks_path.resolve())
+    return dirs
+
+
+def _documented_source_dirs() -> List[Path]:
+    """Stable locations this ecosystem's own installers create.
+
+    Direct-copy skill installs plus the shared installer's cached clone.
+    Client plugin caches are deliberately absent: they are version-numbered,
+    client-owned layouts where several stale versions coexist, and when the
+    doctor runs from a plugin cache the running script's own directory
+    already covers it — the same reasoning as the conformance suite's
+    client-binary resolution (client_binaries.py).
+    """
+    home = Path.home()
+    rel = Path("synthesis-git-hooks") / "scripts"
+    cache_home = Path(os.environ.get("XDG_CACHE_HOME") or (home / ".cache"))
+    return [
+        home / ".claude" / "skills" / rel,
+        home / ".agents" / "skills" / rel,
+        home / ".codex" / "skills" / rel,
+        cache_home / "synthesis-skills" / "skills" / rel,
+    ]
+
+
+def resolve_source_dir(
+    hooks_path: Optional[Path],
+) -> Tuple[Optional[Path], Optional[str]]:
+    """Resolve the skill-source directory the drift check compares against.
+
+    Order (mirrors the conformance suite's client-binary resolution):
+
+    1. ``$SYNTHESIS_GIT_HOOKS_SOURCE``. A set override is authoritative:
+       empty means "no source on this machine — skip drift deliberately",
+       and a value that is not an engine source directory is a doctor
+       problem rather than a fallthrough, so a misconfigured override
+       fails closed instead of silently comparing against nothing.
+    2. This script's own directory, unless it is itself an installed engine
+       copy — running the doctor from a repo checkout, a worktree, or a
+       client plugin cache compares the installation against that copy.
+    3. Documented locations the ecosystem's own installers create, first
+       complete candidate wins.
+
+    Returns ``(source_dir, problem)``. Both ``None`` means no source is
+    available and the drift check is skipped.
+    """
+    if SOURCE_ENV in os.environ:
+        override = os.environ[SOURCE_ENV]
+        if not override:
+            return None, None
+        path = Path(override).expanduser()
+        if _is_engine_source(path):
+            return path, None
+        return None, (
+            f"{SOURCE_ENV} is set to {override!r}, which is not an engine "
+            f"source directory (needs {', '.join(ENGINE_FILES)}) — fix or "
+            "unset it (fail closed)"
+        )
+    installed = _installed_engine_dirs(hooks_path)
+    own_dir = Path(__file__).resolve().parent
+    if own_dir not in installed and _is_engine_source(own_dir):
+        return own_dir, None
+    for candidate in _documented_source_dirs():
+        if candidate.resolve() not in installed and _is_engine_source(candidate):
+            return candidate, None
+    return None, None
+
+
 def run_doctor(config_path: Path) -> int:
     """Self-check the whole protection chain. Exit 0 = healthy."""
     problems: List[str] = []
@@ -691,11 +780,12 @@ def run_doctor(config_path: Path) -> int:
         hooks_path = proc.stdout.strip()
     except FileNotFoundError:
         problems.append("git not found on PATH")
+    hp_dir: Optional[Path] = None
     if hooks_path:
-        hp = Path(os.path.expanduser(hooks_path))
-        infos.append(f"core.hooksPath: {hp}")
-        for name in ("pre-commit", "commit-msg", "_load_config.py"):
-            f = hp / name
+        hp_dir = Path(os.path.expanduser(hooks_path))
+        infos.append(f"core.hooksPath: {hp_dir}")
+        for name in ENGINE_FILES:
+            f = hp_dir / name
             if not f.exists():
                 problems.append(f"hooksPath missing {name}: {f}")
             elif name in ("pre-commit", "commit-msg") and not os.access(f, os.X_OK):
@@ -705,28 +795,31 @@ def run_doctor(config_path: Path) -> int:
             "core.hooksPath is not set globally — the engine is not wired in"
         )
 
-    # 4. Drift: installed engine vs skill source (when the source is present).
-    src_dir = Path(
-        os.environ.get("SYNTHESIS_GIT_HOOKS_SOURCE", str(DEFAULT_SOURCE_DIR))
-    )
-    if hooks_path and src_dir.is_dir():
-        hp = Path(os.path.expanduser(hooks_path))
-        drift_found = False
-        for name in ("pre-commit", "commit-msg", "_load_config.py"):
-            src, inst = src_dir / name, hp / name
-            if src.exists() and inst.exists():
-                if src.read_bytes() != inst.read_bytes():
-                    drift_found = True
-                    problems.append(
-                        f"DRIFT: installed {name} differs from skill source "
-                        f"({inst} vs {src}) — reinstall or sync back"
-                    )
-        if not drift_found:
-            infos.append("installed engine matches skill source (no drift)")
-    elif not src_dir.is_dir():
+    # 4. Drift: installed engine vs skill source. See resolve_source_dir for
+    # the portable resolution order (env override, own directory, documented
+    # install locations) — never a hardcoded checkout path.
+    src_dir, src_problem = resolve_source_dir(hp_dir)
+    if src_problem:
+        problems.append(src_problem)
+    elif src_dir is None:
         infos.append(
-            f"skill source not present at {src_dir} (drift check skipped)"
+            "skill source not found (drift check skipped) — set "
+            f"{SOURCE_ENV} to the skill's scripts/ directory to enable it"
         )
+    elif hp_dir is not None:
+        drift_found = False
+        for name in ENGINE_FILES:
+            src, inst = src_dir / name, hp_dir / name
+            if inst.exists() and src.read_bytes() != inst.read_bytes():
+                drift_found = True
+                problems.append(
+                    f"DRIFT: installed {name} differs from skill source "
+                    f"({inst} vs {src}) — reinstall or sync back"
+                )
+        if not drift_found:
+            infos.append(
+                f"installed engine matches skill source (no drift): {src_dir}"
+            )
 
     # 5. Disclosure ledger (when configured): must exist, parse, carry
     # evidence, and every allowance must correspond to a real Tier-1

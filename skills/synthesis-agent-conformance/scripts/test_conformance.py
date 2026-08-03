@@ -120,6 +120,67 @@ def test_source_checks_reject_client_bound_runtime_path(tmp_path: Path) -> None:
     assert not stale.ok
 
 
+def test_source_checks_reject_personal_workspace_paths(tmp_path: Path) -> None:
+    write_manifests(tmp_path)
+    write_skill(tmp_path, "synthesis-test")
+    (tmp_path / "skills" / "synthesis-test" / "drift.py").write_text(
+        'SOURCE = "~/workspaces/someone/synthesis-skills/skills"\n',
+        encoding="utf-8",
+    )
+
+    checks = MODULE.source_checks(tmp_path)
+
+    personal = next(
+        check
+        for check in checks
+        if check.name == "source.no-personal-workspace-paths"
+    )
+    assert not personal.ok
+
+
+def test_source_scans_survive_claude_worktree_ancestors(tmp_path: Path) -> None:
+    """A checkout under .claude/worktrees/ must still be scanned — ancestor
+    path components must not empty the forbidden-pattern scans."""
+    nested = tmp_path / ".claude" / "worktrees" / "wt"
+    nested.mkdir(parents=True)
+    write_manifests(nested)
+    write_skill(nested, "synthesis-test")
+    (nested / "skills" / "synthesis-test" / "drift.py").write_text(
+        'SOURCE = "~/workspaces/someone/synthesis-skills/skills"\n',
+        encoding="utf-8",
+    )
+
+    checks = MODULE.source_checks(nested)
+
+    personal = next(
+        check
+        for check in checks
+        if check.name == "source.no-personal-workspace-paths"
+    )
+    assert not personal.ok
+
+
+def test_placeholder_workspace_paths_are_allowed(tmp_path: Path) -> None:
+    write_manifests(tmp_path)
+    write_skill(tmp_path, "synthesis-test")
+    (tmp_path / "skills" / "synthesis-test" / "notes.md").write_text(
+        "Run ~/workspaces/<you>/synthesis-skills/install.sh, or glob\n"
+        "~/workspaces/*/ai-knowledge-*; sample layouts use\n"
+        "~/workspaces/example-person/ai-knowledge-example-person/ and\n"
+        "/home/user/workspaces/demo/ai-knowledge-demo/.\n",
+        encoding="utf-8",
+    )
+
+    checks = MODULE.source_checks(tmp_path)
+
+    personal = next(
+        check
+        for check in checks
+        if check.name == "source.no-personal-workspace-paths"
+    )
+    assert personal.ok
+
+
 def test_instruction_adapter(tmp_path: Path) -> None:
     (tmp_path / "AGENTS.md").write_text("# Rules\n", encoding="utf-8")
     (tmp_path / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")

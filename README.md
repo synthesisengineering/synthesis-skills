@@ -4,6 +4,16 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**Portable drift detection, mechanically enforced (August 2026).**
+The `synthesis-git-hooks` **v2.3.0** doctor no longer assumes where the
+skill source lives: its drift baseline resolves through an explicit
+override, the running copy itself, or documented install locations, so the
+same health check works from a fresh machine, a worktree, or a plugin
+cache — and a misconfigured override fails closed instead of silently
+skipping. `synthesis-agent-conformance` now scans the repository for
+personal workspace paths so this class of defect cannot return. See the
+[4.10.0 release notes](CHANGELOG.md).
+
 **Disclosure governance by precedent, not blacklist (July 2026).**
 `synthesis-disclosure-policy` distinguishes the names you deliberately
 publish in your own biography from disclosures nobody approved, backed by
