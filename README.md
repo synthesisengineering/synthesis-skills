@@ -4,6 +4,17 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**One-command onboarding for people and whole organizations (August 2026).**
+New skill `synthesis-onboarding` **v1.0.0**: a convergence engine that takes
+a bare Mac to a working synthesis setup — plugin into Claude Code and/or
+Codex, an `ai-knowledge-<workspace>` scaffold, receipts-backed idempotent
+re-runs that repair half-finished installs and never overwrite files you
+edited, skill rename/removal reconciliation, and a built-in doctor. An
+organization onboards its members by shipping one declarative
+`.agents/onboarding.yaml` manifest in its knowledge-base repo — no
+installer code — and the curl-able `onboard.sh` covers individuals. See the
+[4.11.0 release notes](CHANGELOG.md).
+
 **Portable drift detection, mechanically enforced (August 2026).**
 The `synthesis-git-hooks` **v2.3.0** doctor no longer assumes where the
 skill source lives: its drift baseline resolves through an explicit
@@ -116,6 +127,20 @@ without tool-owned workflow copies or date-field drift. See the
 **Two major skill upgrades shipped in May 2026.** `synthesis-content-quality` reached **v4.0** with model-family fingerprinting across eight LLM families (Claude, GPT, Gemini, Llama, Grok, DeepSeek, Mistral, Qwen), a substance-and-depth section grounded in the Frankfurt-Pennycook-Hicks-Humphries-Slater framework, the compounding-archive principle that retains patterns across the LLM era, and per-family two-axis calibration with an ESL safe-harbor. `synthesis-fact-checking` reached **v2.0** with nine new protocol sections covering nested attribution, paraphrase drift, composite quotes, position-shifting, source-translation drift, URL rot vs hallucination, AI-generated synthetic sources, citation laundering chains, and tool-specific hallucination patterns by LLM family. See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 ## Install
+
+### One-command onboarding (new machines, non-engineers, whole ecosystem)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/onboard.sh | sh
+```
+
+The `synthesis-onboarding` engine converges your machine: plugin installed
+into whichever of Claude Code / Codex is present, optional
+`ai-knowledge-<workspace>` scaffold, verified by its built-in doctor.
+Re-running is always safe — it updates and repairs, and never overwrites
+files you edited. Organizations layer their own knowledge bases and shared
+skills on the same engine with one declarative manifest (no installer code);
+see `skills/synthesis-onboarding/references/org-manifest.md`.
 
 ### Native plugin for ChatGPT, Codex, and Claude Code
 

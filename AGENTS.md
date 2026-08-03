@@ -59,7 +59,8 @@ python3 -m pytest skills/synthesis-agent-conformance/scripts/test_*.py -q
 python3 -m pytest skills/synthesis-project-management/scripts/test_coordination.py -q
 python3 -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q
 python3 -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py -q
-sh -n install.sh tests/test_installer.sh
+python3 -m pytest skills/synthesis-onboarding/scripts/test_onboard.py -q
+sh -n install.sh onboard.sh tests/test_installer.sh
 ./tests/test_installer.sh
 python3 -m compileall -q skills
 python3 skills/synthesis-inbox-cleanup/tests/run_poisoned.py
