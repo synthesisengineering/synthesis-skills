@@ -94,14 +94,18 @@ SRC="${SYNTHESIS_ONBOARD_SOURCE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/synthesis-s
 if ! command -v git >/dev/null 2>&1; then
   echo "git is required. On macOS run:  xcode-select --install  (then re-run)"; exit 2
 fi
-if [ -d "$SRC/.git" ]; then
+if [ -e "$SRC/.git" ]; then
   git -C "$SRC" pull --ff-only || {
     [ "${SYNTHESIS_ONBOARD_ALLOW_STALE:-}" = "1" ] || {
       echo "Could not refresh $SRC and refusing to run stale."; exit 1; }; }
 else
   git clone https://github.com/synthesisengineering/synthesis-skills.git "$SRC"
 fi
-exec python3 "$SRC/skills/synthesis-onboarding/scripts/onboard.py" install \
+CMD="install"
+case "${1:-}" in
+  install|update|doctor|init-workspace|uninstall) CMD="$1"; shift ;;
+esac
+exec python3 "$SRC/skills/synthesis-onboarding/scripts/onboard.py" "$CMD" \
   --manifest "$REPO_ROOT/.agents/onboarding.yaml" "$@"
 ```
 

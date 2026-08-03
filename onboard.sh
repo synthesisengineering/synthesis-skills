@@ -29,7 +29,8 @@ if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/$ENGINE_REL" ]; then
   SRC="$SCRIPT_DIR"
 else
   SRC="${SYNTHESIS_ONBOARD_SOURCE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/synthesis-skills}"
-  if [ -d "$SRC/.git" ]; then
+  # -e, not -d: .git is a file in git worktrees
+  if [ -e "$SRC/.git" ]; then
     if ! git -C "$SRC" pull --ff-only; then
       if [ "${SYNTHESIS_ONBOARD_ALLOW_STALE:-}" = "1" ]; then
         echo "warning: continuing with the cached copy at $SRC (allow-stale)"

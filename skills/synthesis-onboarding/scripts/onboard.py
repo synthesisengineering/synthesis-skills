@@ -542,6 +542,10 @@ def phase_ecosystem(report, clients, dry_run, no_plugin_cli):
         if dry_run:
             report.add("ecosystem", CHANGED, "would run fallback: sh %s install" % installer)
             return
+        rc, _, _ = run(["sh", str(installer), "status"], timeout=300)
+        if rc == 0:
+            report.add("ecosystem", OK, "fallback skill copies already current")
+            return
         rc, out, err = run(["sh", str(installer), "install"], timeout=600)
         if rc == 0:
             report.add("ecosystem", CHANGED, "fallback skill copies installed (install.sh)")
