@@ -445,6 +445,51 @@ class ContextDoctorTests(unittest.TestCase):
         self.fx.commit()
         self.assertEqual(self.fx.audit()["code"], 0)
 
+    # --- report cache -------------------------------------------------------
+
+    def test_full_run_writes_report_cache(self):
+        import os
+        self.fx.project("alpha")
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+        home = Path(self._tmp.name) / "synthesis-home"
+        proc = subprocess.run(
+            [sys.executable, str(DOCTOR), "--source", str(self.fx.root), "--quiet"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**os.environ, "SYNTHESIS_HOME": str(home)},
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        cache = home / "context-doctor" / "last-report.json"
+        self.assertTrue(cache.is_file())
+        data = json.loads(cache.read_text())
+        self.assertTrue(data["ok"])
+        self.assertIn("generated_at", data)
+        self.assertEqual(data["projects_audited"], 1)
+
+    def test_project_mode_never_touches_the_cache(self):
+        """A one-project result must not masquerade as corpus state."""
+        import os
+        self.fx.project("alpha")
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+        home = Path(self._tmp.name) / "synthesis-home"
+        subprocess.run(
+            [
+                sys.executable,
+                str(DOCTOR),
+                "--project",
+                str(self.fx.projects / "alpha"),
+                "--quiet",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**os.environ, "SYNTHESIS_HOME": str(home)},
+        )
+        self.assertFalse((home / "context-doctor" / "last-report.json").exists())
+
     # --- parser ------------------------------------------------------------
 
     def test_fallback_parser_matches_expected_fields(self):

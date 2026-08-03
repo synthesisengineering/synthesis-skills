@@ -58,7 +58,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
-DOCTOR_VERSION = "1.1.0"
+DOCTOR_VERSION = "1.2.0"
 
 # Budgets from the tiered context architecture.
 CONTEXT_BUDGET_ACTIVE = 150
@@ -92,6 +92,13 @@ BULK_COMMIT_OUTSIDE_FILES = 10
 UNVERIFIABLE = "unverifiable"
 
 SEVERITY_ORDER = {"defect": 0, "warning": 1}
+
+# Every full run writes its report here (like the repo-guard detector), so
+# surfaces that must stay fast — SessionStart hooks, console pages — can read
+# the latest corpus state without paying for a fresh 150-project audit.
+def report_cache_path() -> Path:
+    home = Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis")))
+    return home / "context-doctor" / "last-report.json"
 
 
 class DoctorError(Exception):
@@ -1076,6 +1083,11 @@ def main(argv: list[str] | None = None) -> int:
         "--quiet", action="store_true", help="one summary line plus the exit code"
     )
     parser.add_argument(
+        "--no-report-cache",
+        action="store_true",
+        help="do not write the corpus report cache after a full run",
+    )
+    parser.add_argument(
         "--warnings-as-defects",
         action="store_true",
         help="exit non-zero on warnings too",
@@ -1154,21 +1166,28 @@ def main(argv: list[str] | None = None) -> int:
     warnings = [f for f in findings if f.severity == "warning"]
     failed = bool(defects) or (args.warnings_as_defects and bool(warnings))
 
+    payload = {
+        "ok": not failed,
+        "doctor_version": DOCTOR_VERSION,
+        "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "sources": source_count,
+        "projects_audited": len(audits),
+        "defects": len(defects),
+        "warnings": len(warnings),
+        "findings": [f.as_dict() for f in findings],
+    }
+    if not args.project and not args.no_report_cache:
+        # Full-corpus runs refresh the cache; single-project runs never do —
+        # a one-project result must not masquerade as corpus state.
+        try:
+            cache = report_cache_path()
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except OSError as exc:
+            print(f"warning: could not write report cache: {exc}", file=sys.stderr)
+
     if args.json:
-        print(
-            json.dumps(
-                {
-                    "ok": not failed,
-                    "doctor_version": DOCTOR_VERSION,
-                    "sources": source_count,
-                    "projects_audited": len(audits),
-                    "defects": len(defects),
-                    "warnings": len(warnings),
-                    "findings": [f.as_dict() for f in findings],
-                },
-                indent=2,
-            )
-        )
+        print(json.dumps(payload, indent=2))
     elif args.quiet:
         if failed:
             print(

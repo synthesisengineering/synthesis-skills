@@ -13,7 +13,7 @@ edited, skill rename/removal reconciliation, and a built-in doctor. An
 organization onboards its members by shipping one declarative
 `.agents/onboarding.yaml` manifest in its knowledge-base repo — no
 installer code — and the curl-able `onboard.sh` covers individuals. See the
-[4.12.0 release notes](CHANGELOG.md).
+[4.13.0 release notes](CHANGELOG.md).
 
 **Portable drift detection, mechanically enforced (August 2026).**
 The `synthesis-git-hooks` **v2.3.0** doctor no longer assumes where the
