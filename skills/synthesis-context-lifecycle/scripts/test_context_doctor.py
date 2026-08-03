@@ -119,11 +119,17 @@ class Fixture:
         return env
 
     def audit(self, *extra: str) -> dict:
+        import os
+
+        # Isolate SYNTHESIS_HOME: fixture runs must never touch the real
+        # user's caches. (The real report cache was in fact overwritten by
+        # this suite before this isolation existed.)
         proc = subprocess.run(
             [sys.executable, str(DOCTOR), "--source", str(self.root), "--json", *extra],
             capture_output=True,
             text=True,
             check=False,
+            env={**os.environ, "SYNTHESIS_HOME": str(self.root.parent / "shome")},
         )
         return {"code": proc.returncode, "data": json.loads(proc.stdout or "{}")}
 
@@ -453,8 +459,16 @@ class ContextDoctorTests(unittest.TestCase):
         self.fx.index([{"id": "alpha", "status": "active"}])
         self.fx.commit()
         home = Path(self._tmp.name) / "synthesis-home"
+        home.mkdir()
+        (home / "console.yaml").write_text(
+            "sources:\n"
+            "  - name: fx\n"
+            f"    root: {self.fx.root}\n"
+            "    projects_dir: projects\n",
+            encoding="utf-8",
+        )
         proc = subprocess.run(
-            [sys.executable, str(DOCTOR), "--source", str(self.fx.root), "--quiet"],
+            [sys.executable, str(DOCTOR), "--quiet"],
             capture_output=True,
             text=True,
             check=False,
@@ -467,6 +481,23 @@ class ContextDoctorTests(unittest.TestCase):
         self.assertTrue(data["ok"])
         self.assertIn("generated_at", data)
         self.assertEqual(data["projects_audited"], 1)
+
+    def test_explicit_source_run_never_touches_the_cache(self):
+        """The regression that happened for real: fixture --source runs
+        overwrote the user's corpus cache minutes after the cache shipped."""
+        import os
+        self.fx.project("alpha")
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+        home = Path(self._tmp.name) / "synthesis-home2"
+        subprocess.run(
+            [sys.executable, str(DOCTOR), "--source", str(self.fx.root), "--quiet"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**os.environ, "SYNTHESIS_HOME": str(home)},
+        )
+        self.assertFalse((home / "context-doctor" / "last-report.json").exists())
 
     def test_project_mode_never_touches_the_cache(self):
         """A one-project result must not masquerade as corpus state."""

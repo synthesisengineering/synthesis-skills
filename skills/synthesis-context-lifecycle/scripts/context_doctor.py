@@ -58,7 +58,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
-DOCTOR_VERSION = "1.2.0"
+DOCTOR_VERSION = "1.2.1"
 
 # Budgets from the tiered context architecture.
 CONTEXT_BUDGET_ACTIVE = 150
@@ -1176,9 +1176,12 @@ def main(argv: list[str] | None = None) -> int:
         "warnings": len(warnings),
         "findings": [f.as_dict() for f in findings],
     }
-    if not args.project and not args.no_report_cache:
-        # Full-corpus runs refresh the cache; single-project runs never do —
-        # a one-project result must not masquerade as corpus state.
+    if not args.project and not args.source and not args.no_report_cache:
+        # Only full CONFIG-DISCOVERED runs refresh the cache. Explicit
+        # --source runs are partial by construction (a fixture, one repo, a
+        # test), and single-project runs are narrower still — neither may
+        # masquerade as corpus state. This rule exists because the first
+        # thing to overwrite the real cache was this tool's own test suite.
         try:
             cache = report_cache_path()
             cache.parent.mkdir(parents=True, exist_ok=True)

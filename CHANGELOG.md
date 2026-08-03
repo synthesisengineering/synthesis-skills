@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.13.1] - 2026-08-03
+
+### Fixed
+
+- `synthesis-context-lifecycle` doctor v1.2.1: explicit `--source` runs no
+  longer write the corpus report cache — only full config-discovered runs
+  do. The first thing to overwrite the real cache with partial state was the
+  doctor's own test suite, caught minutes after 4.13.0 deployed by the new
+  SessionStart surfacing reading "1 project" as the corpus. Fixture runs are
+  now also isolated via SYNTHESIS_HOME, with regressions for both.
+
 ## [4.13.0] - 2026-08-03
 
 ### Added
