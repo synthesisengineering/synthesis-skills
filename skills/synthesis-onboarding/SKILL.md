@@ -94,7 +94,7 @@ touches knowledge-base clones or plugins.
 onboard.py init-workspace --workspace alice [--remote git@github.com:alice/ai-knowledge-alice.git]
 ```
 
-Creates `~/workspaces/alice/ai-knowledge-alice/` with `projects/index.yaml`,
+Creates `~/workspaces/<name>/ai-knowledge-<name>/` with `projects/index.yaml`,
 `lessons/`, `AGENTS.md` + `CLAUDE.md` adapter, README, git init and first
 commit — the synthesis-project-management container shape. Project *content*
 stays agent-authored (that skill's "examine an example and adapt" principle);
