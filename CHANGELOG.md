@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.13.2] - 2026-08-03
+
+### Fixed
+
+- Context doctor v1.2.2: the status header's LEADING CLAUSE decides
+  completion. Headers like "Active — Phase 4 is COMPLETE" or "active,
+  essentially complete" were read as completed because completion vocabulary
+  anywhere in the value outranked the author's leading verdict — four of the
+  eight status disagreements in the corpus census were this false positive.
+  With corpus-derived regression tests.
+
 ## [4.13.1] - 2026-08-03
 
 ### Fixed

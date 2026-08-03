@@ -567,6 +567,21 @@ class ContextDoctorTests(unittest.TestCase):
         ]:
             self.assertEqual(cd.context_declares_completed(value), expected, value)
 
+    def test_leading_clause_wins_over_trailing_completion_words(self):
+        """Real headers from the 2026-08-03 corpus remediation: the author's
+        verdict is the leading clause; completion vocabulary after the first
+        delimiter describes sub-parts, not the project."""
+        for value, expected in [
+            ("**Status:** Active — **Phase 4 ... is now COMPLETE as of 2026-07-17.**", False),
+            ("**Status:** active, essentially complete — migration verified", False),
+            ("**Status:** Active (transitioning to completed after deploy verification)", False),
+            ("**Status:** Active — Budget v1 complete + UX'd", False),
+            ("**Status:** COMPLETE | **Last Updated:** 2026-02-25", True),
+            ("**Status:** Completed and live-verified", True),
+            ("**Status:** Done — retro written", True),
+        ]:
+            self.assertEqual(cd.context_declares_completed(value), expected, value)
+
     def test_completion_detection_handles_real_headers(self):
         self.assertTrue(cd.context_declares_completed("**Status:** COMPLETE"))
         self.assertTrue(

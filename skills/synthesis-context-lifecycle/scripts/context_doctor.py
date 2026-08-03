@@ -58,7 +58,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
-DOCTOR_VERSION = "1.2.1"
+DOCTOR_VERSION = "1.2.2"
 
 # Budgets from the tiered context architecture.
 CONTEXT_BUDGET_ACTIVE = 150
@@ -554,17 +554,43 @@ def read_text(path: Path) -> str:
 
 
 def _reads_completed(value: str) -> bool | None:
-    """Read one header value. None when it says nothing about completion."""
+    """Read one header value. None when it says nothing about completion.
+
+    The leading clause decides when it can. Real headers routinely read
+    "Active — Phase 4 is COMPLETE" or "active, essentially complete": the
+    author's status verdict is the word before the first delimiter, and the
+    completion vocabulary after it describes a sub-part. Scanning the whole
+    value first turned every such header into a false status disagreement.
+    Only when the leading clause says nothing does the full value get a scan.
+    """
     value = value.lower()
-    if re.search(r"\bnot\s+(?:yet\s+)?complete", value):
-        return False
-    if any(re.search(rf"\b{re.escape(w)}\b", value) for w in PAUSED_WORDS):
-        return False
-    if any(re.search(rf"\b{re.escape(w)}\b", value) for w in COMPLETED_WORDS):
-        return True
-    if re.search(r"\bactive\b", value):
-        return False
-    return None
+
+    def scan(fragment: str) -> bool | None:
+        if re.search(r"\bnot\s+(?:yet\s+)?complete", fragment):
+            return False
+        if any(re.search(rf"\b{re.escape(w)}\b", fragment) for w in PAUSED_WORDS):
+            return False
+        active = re.search(r"\bactive\b", fragment)
+        completed = None
+        for w in COMPLETED_WORDS:
+            m = re.search(rf"\b{re.escape(w)}\b", fragment)
+            if m:
+                completed = m
+                break
+        if active and completed:
+            # Both words present: the earlier one is the author's verdict.
+            return active.start() > completed.start()
+        if completed:
+            return True
+        if active:
+            return False
+        return None
+
+    leading = re.split(r"[—|,;(.]|--", value, maxsplit=1)[0]
+    verdict = scan(leading)
+    if verdict is not None:
+        return verdict
+    return scan(value)
 
 
 def context_declares_completed(text: str) -> bool | None:
