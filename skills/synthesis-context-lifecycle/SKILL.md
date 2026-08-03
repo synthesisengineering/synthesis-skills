@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.4.1"
+  version: "1.5.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -533,7 +533,11 @@ Exit codes follow the guard contract: `0` healthy, `1` defects found, `2` the do
 
 **Bulk commits are not sessions.** The freshness checks ignore any commit touching more than a few projects at once. A path migration or a repo-wide restructure touches every project and says nothing about when any one of them was worked; counting those as sessions makes every dormant project look stale. False alarms are not a cosmetic problem — a doctor that cries wolf gets ignored, and an ignored doctor is the fail-open state it was built to end.
 
-**Where to run it.** A doctor nobody runs is the same as no doctor. Wire it into the day-start ritual, into session-end for the active project, and into any console or dashboard that already renders project state. The `--json` output is stable for that purpose.
+**The report cache.** Every full-corpus run writes its JSON report to `$SYNTHESIS_HOME/context-doctor/last-report.json` (v1.2.0+), so fast surfaces — SessionStart hooks, console pages — can show the latest corpus state without paying for a fresh audit. Single-project runs never touch the cache: a one-project result must not masquerade as corpus state. Suppress with `--no-report-cache`.
+
+**Enforcement posture (decided 2026-08-03).** Fail-closed for the actor, report-only for the bystander. At day-end (and any session close-out), `context_doctor.py --project <path>` must be CLEAN for every project the session worked — defects block the close and get fixed on the spot, because the session that made the record defective can repair it in minutes. Corpus-wide findings stay report-only at day-start and SessionStart: gating one session on another project's legacy debt manufactures false alarms, and false alarms train bypass. An unfixed active-project defect is not silently droppable — it re-surfaces at every subsequent SessionStart until repaired.
+
+**Where it runs.** A doctor nobody runs is the same as no doctor. It is wired into: day-start Step 1 (full corpus, report-only, refreshes the cache), day-end Step 7 (per-worked-project, fail-closed), SessionStart surfacing (active project live + corpus from cache), and the synthesis console's Context Integrity page. The `--json` output is stable for those consumers.
 
 ---
 

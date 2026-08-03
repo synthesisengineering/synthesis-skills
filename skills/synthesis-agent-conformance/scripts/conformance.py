@@ -327,6 +327,111 @@ def direct_public_copies(home: Path) -> list[str]:
     )
 
 
+PLUGIN_NAME = "synthesis-skills"
+
+
+def _version_key(version: str) -> tuple:
+    parts = []
+    for piece in re.split(r"[.\-+]", version):
+        parts.append((0, int(piece)) if piece.isdigit() else (1, piece))
+    return tuple(parts)
+
+
+def newest_cached_plugin_version(client_home: Path) -> str | None:
+    """Newest plugin version present in a client's plugin cache, or None."""
+    cache = client_home / "plugins" / "cache"
+    versions: list[str] = []
+    if not cache.is_dir():
+        return None
+    for marketplace in cache.iterdir():
+        plugin_dir = marketplace / PLUGIN_NAME
+        if not plugin_dir.is_dir():
+            continue
+        for entry in plugin_dir.iterdir():
+            if entry.is_dir() and not entry.name.startswith("."):
+                versions.append(entry.name)
+    return max(versions, key=_version_key) if versions else None
+
+
+def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
+    """Dual-client version-drift detection, filesystem-only.
+
+    The dual-runtime guarantee has three existing layers: CI source
+    conformance (every skill ships a Codex adapter; the two source manifests
+    agree), the documented release protocol (merge, release, refresh BOTH
+    marketplaces), and runtime conformance (both clients report the plugin
+    enabled). None of them notices the day someone releases a version and
+    refreshes only one client — or neither. This mode is that missing layer:
+    fast enough to run at every day-start and session start, no client
+    binaries required, and it fails on drift rather than describing it.
+    """
+    checks: list[Check] = []
+    home = home or Path.home()
+
+    # A plugin cache is a COPY of the source, pinned at its own version.
+    # Comparing installed clients against a cache would compare them against
+    # themselves and always pass — the degenerate check that hides exactly
+    # the drift this mode exists to catch. Fail closed instead.
+    if "plugins" in source_root.parts and "cache" in source_root.parts:
+        add(
+            checks,
+            "parity.source-root",
+            False,
+            f"{source_root} is a plugin cache, not the source checkout; "
+            "pass --source-root pointing at the synthesis-skills repository",
+        )
+        return checks
+
+    source_version: str | None = None
+    versions: dict[str, str | None] = {}
+    for manifest_dir in (".claude-plugin", ".codex-plugin"):
+        manifest = source_root / manifest_dir / "plugin.json"
+        try:
+            versions[manifest_dir] = str(
+                json.loads(manifest.read_text(encoding="utf-8")).get("version")
+            )
+        except (OSError, ValueError):
+            versions[manifest_dir] = None
+    manifest_values = {v for v in versions.values() if v}
+    add(
+        checks,
+        "parity.source-manifests",
+        len(manifest_values) == 1,
+        ", ".join(f"{k}={v}" for k, v in sorted(versions.items())),
+    )
+    source_version = next(iter(manifest_values)) if len(manifest_values) == 1 else None
+
+    installed: dict[str, str | None] = {
+        "claude": newest_cached_plugin_version(home / ".claude"),
+        "codex": newest_cached_plugin_version(home / ".codex"),
+    }
+    for client, version in installed.items():
+        add(
+            checks,
+            f"parity.{client}-installed",
+            version is not None,
+            version or f"no {PLUGIN_NAME} in {home}/.{client}/plugins/cache",
+        )
+
+    both = all(installed.values())
+    add(
+        checks,
+        "parity.clients-match",
+        both and installed["claude"] == installed["codex"],
+        f"claude={installed['claude']} codex={installed['codex']}",
+    )
+    add(
+        checks,
+        "parity.clients-current",
+        both
+        and source_version is not None
+        and installed["claude"] == installed["codex"] == source_version,
+        f"source={source_version} claude={installed['claude']} "
+        f"codex={installed['codex']}",
+    )
+    return checks
+
+
 def runtime_checks() -> list[Check]:
     checks: list[Check] = []
     ok, detail = plugin_inventory("claude")
@@ -607,6 +712,7 @@ def parser() -> argparse.ArgumentParser:
         choices=(
             "source",
             "runtime",
+            "parity",
             "instructions",
             "coordination",
             "activate",
@@ -632,6 +738,8 @@ def main() -> int:
     checks: list[Check] = []
     if args.command in {"source", "all"}:
         checks.extend(source_checks(args.source_root.resolve()))
+    if args.command in {"parity", "all"}:
+        checks.extend(parity_checks(args.source_root.resolve()))
     if args.command in {"runtime", "all"}:
         checks.extend(runtime_checks())
     if args.command in {"instructions", "all"}:

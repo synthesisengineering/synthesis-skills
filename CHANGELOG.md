@@ -4,6 +4,26 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.13.0] - 2026-08-03
+
+### Added
+
+- `synthesis-agent-conformance`: new `parity` mode — fast, filesystem-only
+  dual-client drift detection. Verifies the two source manifests agree, both
+  clients carry the plugin, both carry the SAME newest version, and that
+  version matches source main. The missing daily layer of the dual-runtime
+  guarantee; its first live run caught a real release that had reached
+  neither client. Fails closed when pointed at a plugin cache instead of the
+  source checkout.
+- `synthesis-context-lifecycle` v1.5.0 (doctor v1.2.0): every full-corpus
+  doctor run writes `$SYNTHESIS_HOME/context-doctor/last-report.json`, so
+  session-start hooks and consoles can surface corpus health without paying
+  for a fresh audit. Single-project runs never touch the cache. Enforcement
+  posture documented: fail-closed for the session's own worked projects at
+  day-end, report-only for the corpus.
+- `synthesis-daily-rituals` v2.18.0: the parity check joins Day-Start
+  Step 1; Day-End Step 7 gains the fail-closed active-project context gate.
+
 ## [4.12.0] - 2026-08-03
 
 ### Changed
