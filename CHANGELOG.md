@@ -4,6 +4,32 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.10.0] - 2026-08-03
+
+### Changed
+
+- `synthesis-git-hooks` v2.3.0: the doctor's drift check no longer assumes
+  a personal checkout path for the skill source — a hardcoded default that
+  degraded the check on every other machine and violated this repository's
+  own no-personal-paths rule. Resolution now mirrors the conformance
+  suite's client-binary pattern: `$SYNTHESIS_GIT_HOOKS_SOURCE` when set
+  (authoritative; an empty value skips the check deliberately, and an
+  invalid value is reported as a doctor problem instead of silently
+  comparing against nothing), else the running script's own directory when
+  it is not itself an installed engine copy (repo checkouts, worktrees,
+  client plugin caches), else the documented locations the ecosystem's own
+  installers create. A source directory must carry all three engine files
+  to qualify, so a partial copy can no longer report "no drift" for the
+  files it lacks, and the doctor names the resolved source in its output.
+
+### Added
+
+- `synthesis-agent-conformance`: a `source.no-personal-workspace-paths`
+  scan enforcing the no-personal-paths repository rule mechanically —
+  workspace path segments in this public repository must be placeholders
+  or documented generic sample names, never a real username, and
+  home-anchored personal checkout paths are rejected wherever they appear.
+
 ## [4.9.0] - 2026-07-31
 
 ### Added

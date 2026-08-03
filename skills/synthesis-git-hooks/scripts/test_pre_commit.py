@@ -588,3 +588,134 @@ def test_double_quoted_pattern_keeps_its_escapes(tmp_path: Path) -> None:
     parsed = SIDECAR.parse_simple_yaml('key: "\\\\bsalary\\\\b"\n')
     assert parsed["key"] == "\\bsalary\\b"
     assert not any(ord(ch) < 32 for ch in parsed["key"])
+
+
+# ─── drift-source resolution (doctor) ────────────────────────────────────
+
+
+def engine_copy(target: Path) -> None:
+    """Copy the three engine files into `target`, executable bits included."""
+    target.mkdir(parents=True, exist_ok=True)
+    for name in SIDECAR.ENGINE_FILES:
+        destination = target / name
+        destination.write_bytes((SCRIPT_DIR / name).read_bytes())
+        destination.chmod(0o755)
+
+
+def test_source_env_override_is_authoritative(tmp_path, monkeypatch) -> None:
+    source = tmp_path / "anywhere" / "scripts"
+    engine_copy(source)
+    monkeypatch.setenv("SYNTHESIS_GIT_HOOKS_SOURCE", str(source))
+
+    resolved, problem = SIDECAR.resolve_source_dir(None)
+
+    assert problem is None
+    assert resolved == source
+
+
+def test_misconfigured_source_override_fails_closed(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("SYNTHESIS_GIT_HOOKS_SOURCE", str(tmp_path / "missing"))
+
+    resolved, problem = SIDECAR.resolve_source_dir(None)
+
+    assert resolved is None
+    assert problem is not None and "fail closed" in problem
+
+
+def test_incomplete_source_override_fails_closed(tmp_path, monkeypatch) -> None:
+    """A lone sidecar copy is not a source; byte-comparing against a partial
+    directory would report "no drift" for the files it lacks."""
+    partial = tmp_path / "partial"
+    partial.mkdir()
+    (partial / "_load_config.py").write_text("# lone file\n", encoding="utf-8")
+    monkeypatch.setenv("SYNTHESIS_GIT_HOOKS_SOURCE", str(partial))
+
+    resolved, problem = SIDECAR.resolve_source_dir(None)
+
+    assert resolved is None
+    assert problem is not None
+
+
+def test_empty_source_override_skips_deliberately(monkeypatch) -> None:
+    monkeypatch.setenv("SYNTHESIS_GIT_HOOKS_SOURCE", "")
+
+    assert SIDECAR.resolve_source_dir(None) == (None, None)
+
+
+def test_own_directory_is_the_default_source(tmp_path, monkeypatch) -> None:
+    """Run from a checkout, worktree, or plugin cache, the running copy is
+    the drift baseline — no hardcoded checkout path involved."""
+    monkeypatch.delenv("SYNTHESIS_GIT_HOOKS_SOURCE", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+    installed = tmp_path / ".synthesis" / "git-hooks"
+    engine_copy(installed)
+
+    resolved, problem = SIDECAR.resolve_source_dir(installed)
+
+    assert problem is None
+    assert resolved == SCRIPT_DIR
+
+
+def test_installed_copy_never_compares_against_itself(tmp_path, monkeypatch) -> None:
+    """When the doctor runs from the installed engine, the drift source must
+    come from documented locations — comparing the installation against
+    itself would report "no drift" unconditionally."""
+    monkeypatch.delenv("SYNTHESIS_GIT_HOOKS_SOURCE", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+
+    resolved, problem = SIDECAR.resolve_source_dir(SCRIPT_DIR)
+    assert (resolved, problem) == (None, None)
+
+    direct_copy = (
+        tmp_path / ".claude" / "skills" / "synthesis-git-hooks" / "scripts"
+    )
+    engine_copy(direct_copy)
+
+    resolved, problem = SIDECAR.resolve_source_dir(SCRIPT_DIR)
+    assert problem is None
+    assert resolved == direct_copy
+
+
+def test_doctor_detects_drift_end_to_end(tmp_path: Path) -> None:
+    """Installed engine + discovered source, healthy then drifted."""
+    home = tmp_path / "home"
+    installed = home / ".synthesis" / "git-hooks"
+    engine_copy(installed)
+    source = home / ".claude" / "skills" / "synthesis-git-hooks" / "scripts"
+    engine_copy(source)
+    config = tmp_path / "policy.yaml"
+    policy(config)
+    (home / ".gitconfig").write_text(
+        f"[core]\n\thooksPath = {installed}\n", encoding="utf-8"
+    )
+    environment = dict(os.environ)
+    environment["HOME"] = str(home)
+    environment["SYNTHESIS_GIT_HOOK_CONFIG"] = str(config)
+    for variable in (
+        "SYNTHESIS_GIT_HOOKS_SOURCE",
+        "XDG_CACHE_HOME",
+        "XDG_CONFIG_HOME",
+        "GIT_CONFIG_GLOBAL",
+    ):
+        environment.pop(variable, None)
+
+    def doctor():
+        return subprocess.run(
+            [sys.executable, str(installed / "_load_config.py"), "--doctor"],
+            cwd=tmp_path,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    healthy = doctor()
+    assert healthy.returncode == 0, healthy.stdout + healthy.stderr
+    assert "no drift" in healthy.stdout
+
+    (source / "pre-commit").write_bytes(b"#!/bin/bash\n# hotfixed\n")
+    drifted = doctor()
+    assert drifted.returncode == 1, drifted.stdout + drifted.stderr
+    assert "DRIFT: installed pre-commit" in drifted.stdout

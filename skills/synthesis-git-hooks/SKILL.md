@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.2.1"
+  version: "2.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -15,6 +15,18 @@ metadata:
 A YAML-driven pre-commit policy engine. Part of the synthesis-engineering operational layer — deterministic enforcement that catches credential leaks and exposure-sensitive content at the commit boundary, before the diff persists.
 
 The engine is small (one bash script + one Python sidecar). The policy is data — a YAML file at `~/.synthesis/git-hook-config.yaml` that anyone adopting synthesis engineering fills in with their own personal-remote patterns, client names, and internal URLs.
+
+## v2.3.0 — Portable drift-source resolution
+
+v2.3.0 (2026-08-03) removes the doctor's hardcoded personal checkout path.
+The drift check's source now resolves portably: `$SYNTHESIS_GIT_HOOKS_SOURCE`
+when set (authoritative — an empty value skips the check deliberately; an
+invalid value is a doctor problem, fail closed), else the running script's
+own directory when it is not itself an installed engine copy (repo
+checkouts, worktrees, client plugin caches), else the documented locations
+the ecosystem's own installers create (direct-copy skill installs, the
+shared installer's cached clone). A source must carry all three engine
+files to qualify, and the doctor names the resolved source in its output.
 
 ## v2.1.2 — Exact-copy migration calibration
 
