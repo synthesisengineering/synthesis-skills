@@ -4,6 +4,21 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.14.1] - 2026-08-04
+
+### Fixed
+
+- `synthesis-meeting-transcripts` v0.5.1: `verify_transcripts.py` flagged
+  genuine Plaud transcripts as INCOMPLETE. v0.5.0 added Plaud's
+  timestamp-before-name format but matched only the unspaced range
+  `[00:00-00:08]`; Plaud emits `**[00:00 - 00:08] Name:**` with spaces. Two
+  live transcripts carrying 98 and 163 timestamps of real diarized dialogue
+  were reported incomplete. Whitespace around the separator is now optional
+  and en/em dashes are accepted. A false positive on a fail-closed gate is
+  as damaging as a false negative — it teaches bypass. New
+  `test_verify_transcripts.py` pins every real-world line shape plus
+  negative controls proving a summary still cannot pass.
+
 ## [4.14.0] - 2026-08-04
 
 ### Added

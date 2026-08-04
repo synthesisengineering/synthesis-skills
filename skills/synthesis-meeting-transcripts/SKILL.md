@@ -5,7 +5,7 @@ license: "Apache-2.0"
 metadata:
   depends_on: "synthesis-daily-rituals (optional integration)"
   author: "Rajiv Pant"
-  version: "0.5.0"
+  version: "0.5.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -45,6 +45,21 @@ The gate is deliberately cheap (a timestamp-marker floor, not a full parse) so i
 **2. Fetch-time rule, as a non-negotiable.** Saving a summary when the source has a transcript is a failure, not a shortcut. If the source provides a transcript, it MUST be fetched and saved in full — never abridged, never "omitted for brevity," never replaced by a paraphrase or a smoothed reconstruction. A summary-only save is legitimate ONLY when the source has no transcript, and it MUST carry the `<!-- VERIFIER: no-source-transcript -->` marker with a one-line reason.
 
 **3. Verifier detector hardened.** `verify_transcripts.py` now recognizes the recorder timestamp-led speaker line (`**[00:00] Name:**` and the range form `[00:00-00:32] Name:`), and treats a dense run of standalone-timestamp lines as a complete undiarized transcript. This removes the false positives — full transcripts flagged incomplete because only one speaker was diarized; unattributed running transcripts — that previously trained agents to distrust the verifier. Total-timestamp count alone cannot separate a transcript from a summary whose "Details" bullets carry inline timestamps (a summary can even wear a "Verbatim transcript" heading); **standalone-timestamp-line and speaker-line structure can.** A verbatim record that was saved with escaped `\r\n` sequences instead of real newlines reads as summary-only to every tool and to humans — always save real line breaks.
+
+## v0.5.1 — Plaud spaced timestamp ranges (completeness-gate false positive)
+
+v0.5.1 (2026-08-04) fixes a false POSITIVE in `verify_transcripts.py`. v0.5.0 taught the speaker-line
+detector about Plaud's timestamp-before-name format but matched only the UNSPACED range
+`[00:00-00:08]`; Plaud actually emits `**[00:00 - 00:08] Name:**` with spaces around the separator.
+Both live Plaud transcripts in a production corpus were flagged INCOMPLETE despite carrying 98 and
+163 timestamps of real diarized dialogue. Whitespace around the separator is now optional and en/em
+dashes are accepted alongside `-`.
+
+Why a false positive matters as much as a false negative: this gate is fail-closed, and a control
+that cries wolf on genuine work is a control agents learn to route around. `test_verify_transcripts.py`
+ships alongside the script and pins every real-world line shape — Plaud spaced/unspaced/en-dash/em-dash,
+hour-length ranges, undiarized `Speaker N`, Gemini bare names — plus negative controls proving a
+summary body still cannot clear the thresholds.
 
 ## v0.4.0 — Transcript-primary sourcing (summaries demoted, never trusted for attribution)
 
