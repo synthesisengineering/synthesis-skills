@@ -59,13 +59,17 @@ TIMESTAMP_RE = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
 #   - Plaud (timestamp-led): **[00:00] Name Surname:** text...  or  **[0:20] Speaker 2:** text...
 #     Plaud puts a bracketed [MM:SS]/[H:MM:SS] BEFORE the name, so the older name-anchored
 #     regex missed every Plaud dialogue line and flagged full Plaud transcripts as incomplete.
+#     v0.5.1: Plaud emits SPACED ranges — `**[00:00 - 00:08] Name:**` — and the v0.5.0 pattern
+#     only accepted the unspaced `[00:00-00:08]` form, so real Plaud transcripts still failed.
+#     Whitespace around the separator is now optional, and en/em dashes are accepted alongside `-`.
 # A real verbatim transcript has dozens of these per file; a summary-only save has none.
 # We accept an optional leading [timestamp], then 1-4 capitalized words (or "Speaker N") ending
 # in a colon. The high min-speakers threshold (default 10) ensures cumulative false positives from
 # non-dialogue patterns can't push a summary-only file over.
 SPEAKER_RE = re.compile(
     r"^(?:\*\*)?"                                                     # optional bold
-    r"(?:\[\d{1,2}:\d{2}(?::\d{2})?(?:-\d{1,2}:\d{2}(?::\d{2})?)?\]\s*)?"  # optional leading [t] or [t-t] (Plaud)
+    r"(?:\[\s*\d{1,2}:\d{2}(?::\d{2})?"                               # optional leading [t ...
+    r"(?:\s*[-–—]\s*\d{1,2}:\d{2}(?::\d{2})?)?\s*\]\s*)?"              # ... or [t - t] (Plaud; spaces/en-dash OK)
     r"[A-Z][a-zA-Z]{2,}(?:\s+(?:[A-Z][a-zA-Z]+|\d{1,3})){0,3}"        # Name, Name Surname, or "Speaker 2"
     r":(?:\*\*)?\s",                                                  # colon, optional closing bold, space
     re.MULTILINE,
