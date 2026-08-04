@@ -32,7 +32,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-ENGINE_VERSION = "1.0.0"
+ENGINE_VERSION = "1.0.1"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -545,8 +545,14 @@ def phase_ecosystem(report, clients, dry_run, no_plugin_cli):
         if dry_run:
             report.add("ecosystem", CHANGED, "would run fallback: sh %s install" % installer)
             return
+        # A clean `status` alone is not proof of an install: on a machine
+        # where the target directories do not exist yet, status has nothing
+        # to check and exits 0. Require actual copies before skipping.
         rc, _, _ = run(["sh", str(installer), "status"], timeout=300)
-        if rc == 0:
+        copies_present = any(
+            target.is_dir() and any(target.glob("synthesis-*"))
+            for target in (HOME / ".claude" / "skills", HOME / ".agents" / "skills"))
+        if rc == 0 and copies_present:
             report.add("ecosystem", OK, "fallback skill copies already current")
             return
         rc, out, err = run(["sh", str(installer), "install"], timeout=600)

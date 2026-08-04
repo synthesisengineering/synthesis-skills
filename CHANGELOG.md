@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.13.3] - 2026-08-03
+
+### Fixed
+
+- `synthesis-onboarding` v1.0.1: on a fresh machine with a client present
+  but the plugin CLI unavailable, the file-copy fallback was skipped —
+  `install.sh status` exits 0 when the target skill directories do not
+  exist yet, and the engine's probe read that as "already current." The
+  probe now also requires copies to actually be present. Found by the
+  post-merge QA run of a live org quickstart; regression test added.
+
 ## [4.13.2] - 2026-08-03
 
 ### Fixed
