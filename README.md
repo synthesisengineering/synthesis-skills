@@ -4,6 +4,8 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**Executive communication for technical leaders (August 2026).** New `synthesis-executive-communication` skill (Communication family): translating technical work for the non-technical executives who fund it — the every-noun persona test, the six-category kill-list, mechanism-to-consequence translation patterns, upward-report structure, and an in-persona adversarial review protocol. See the [4.14.0 release notes](CHANGELOG.md).
+
 **One-command onboarding for people and whole organizations (August 2026).**
 New skill `synthesis-onboarding` **v1.0.0**: a convergence engine that takes
 a bare Mac to a working synthesis setup — plugin into Claude Code and/or
@@ -244,6 +246,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | Skill | Description |
 |-------|-------------|
 | `synthesis-concise-messaging` | High-Five Habit — condense messages to 5 sentences or less |
+| `synthesis-executive-communication` | Translate technical work for non-technical executives — the every-noun test, the six-category kill-list, and upward-report structure for CTOs and product/engineering leaders |
 
 ### Project Management
 | Skill | Description |
