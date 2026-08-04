@@ -312,6 +312,32 @@ class EngineTests(unittest.TestCase):
         log2 = sh(["git", "-C", str(repo), "log", "--oneline"], env=self.box.git_env)
         self.assertEqual(len(log2.strip().splitlines()), 1)
 
+    def test_fallback_installs_on_fresh_machine_with_client(self):
+        """Regression (2026-08-03 post-merge QA): with a client present and
+        the plugin CLI unavailable, a fresh machine must get fallback copies.
+        `install.sh status` exits 0 when the target dirs don't exist yet, so
+        the probe must also require copies to be present before skipping."""
+        env = dict(os.environ)
+        env.update(self.box.env_overrides())
+        env["SYNTHESIS_CLAUDE_BIN"] = "/usr/bin/true"
+        env["SYNTHESIS_ONBOARD_NO_PLUGIN_CLI"] = "1"
+        env["SYNTHESIS_SKILLS_SOURCE_DIR"] = str(REPO_ROOT)
+
+        def run_engine(*args):
+            return subprocess.run(
+                [sys.executable, str(ENGINE)] + list(args) + ["--json"],
+                env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        proc = run_engine("install")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        copies = list((self.box.home / ".claude" / "skills").glob("synthesis-*"))
+        self.assertTrue(copies, "fallback copies missing after fresh install")
+        proc2 = run_engine("install")
+        data2 = json.loads(proc2.stdout)
+        self.assertNotIn("changed", [s["status"] for s in data2["steps"]])
+        proc3 = run_engine("doctor")
+        self.assertEqual(proc3.returncode, 0, proc3.stdout + proc3.stderr)
+
     def test_uninstall_archives_generated_files_only(self):
         manifest = self.box.manifest()
         self.box.run_json("install", "--manifest", str(manifest), expect=0)
