@@ -4,6 +4,24 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.14.0] - 2026-08-04
+
+### Added
+
+- `synthesis-executive-communication` v1.0.0 (NEW skill, Communication
+  family): translating technical work into communications non-technical
+  executives can absorb — for CTOs, CPOs, and product/engineering leaders
+  writing to CEOs, division presidents, CFOs, and business peers. The
+  every-noun persona test, the six-category kill-list (unexplained
+  codenames, workflow/tooling vocabulary, insider praise, defect counts,
+  engineering-culture credentials, mechanism-where-consequence-belongs),
+  a translation-pattern table, upward-report structure (done-first by
+  reader importance, numbers strip, a closed-loop section for the reader's own asks, honest flags,
+  forwardability test), and an in-persona adversarial review protocol.
+  Distilled from real executive report-revision cycles in which
+  engineering-literate review passes structurally missed register
+  failures only the intended non-technical reader could reveal.
+
 ## [4.13.3] - 2026-08-03
 
 ### Fixed
