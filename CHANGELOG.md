@@ -4,6 +4,27 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.14.2] - 2026-08-06
+
+### Fixed
+
+- `synthesis-meeting-transcripts` v0.5.2: `verify_transcripts.py` undercounted
+  speaker-attribution lines that carry an inferred-speaker parenthetical
+  annotation before the colon (e.g. `**[10:10] Name (Plaud Speaker 4,
+  mapped):**`) — the v0.5.1 regex required the colon immediately after the
+  name, so every annotated line silently failed to count. Confirmed against a
+  production corpus: dozens of undercounted lines across several files, each
+  still passing only because it had enough unannotated lines to clear the
+  threshold anyway. The fix accepts the annotation only on the timestamp-led
+  branch, so it cannot start matching generic markdown field headers that
+  share the same "Word (parenthetical):" shape. Also added a `SCRIPT_VERSION`
+  banner to every run's output (plus a `--version` flag): the script
+  previously had no way to reveal which version produced a result, which is
+  exactly what let a stale, orphaned plugin-cache copy go unnoticed and
+  produce a batch of false-positive INCOMPLETE flags against an already-fixed
+  corpus. `test_verify_transcripts.py` gained matching regression coverage
+  plus negative controls for the header false-positive risk.
+
 ## [4.14.1] - 2026-08-04
 
 ### Fixed
