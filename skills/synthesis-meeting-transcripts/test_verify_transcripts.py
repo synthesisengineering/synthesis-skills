@@ -67,7 +67,7 @@ SPEAKER_CASES = [
      "**[46:30] Casey Park (likely, unconfirmed):** We have no idea", True),
     # --- Gemini: bare name, no timestamp prefix ---
     ("gemini plain name", "Rajiv Pant: So AI knowledge", True),
-    ("gemini bold name", "**Taylor Nguyen:** thanks Efren", True),
+    ("gemini bold name", "**Taylor Nguyen:** thanks Devon", True),
     ("gemini three-part name", "Morgan Blake Ellis: Good morning", True),
     # --- Negative controls: a SUMMARY must never look like dialogue ---
     ("summary bullet w/ inline ts", "The team discussed the roadmap (00:05:12).", False),
