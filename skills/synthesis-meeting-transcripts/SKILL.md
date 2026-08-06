@@ -5,10 +5,39 @@ license: "Apache-2.0"
 metadata:
   depends_on: "synthesis-daily-rituals (optional integration)"
   author: "Rajiv Pant"
-  version: "0.5.1"
+  version: "0.5.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
+
+## v0.5.2 — Inferred-speaker annotation format + version-stamped output
+
+v0.5.2 (2026-08-06) fixes two issues found while individually re-verifying 26 files that a
+STALE plugin-cache copy (v4.9.0, predating v0.5.0 entirely) had flagged INCOMPLETE — the
+live corpus was actually at 0 incomplete under the correctly-installed v4.14.1, but nothing
+in the tool's own output could tell a reader which version had produced a given result.
+
+1. **Detector fix: inferred-speaker parenthetical annotations.** When Plaud diarizes only by
+   number, our agents annotate the inferred real name inline before the colon —
+   `**[10:10] Jordan Lee (Plaud Speaker 4, mapped):**` or
+   `**[09:10-09:42] Speaker 6 (Sam Rivera):**`. v0.5.1's speaker regex required the colon
+   immediately after the name, so every annotated line silently failed to count. Confirmed
+   against a production corpus: dozens of undercounted lines in each of several affected files.
+   Every affected file still passed only because it had enough unannotated lines to clear the
+   threshold regardless — a file with a different mix of annotated-vs-bare lines would have
+   been a genuine false positive. The fix accepts an optional `(...)` annotation, but ONLY on
+   the timestamp-led branch of the regex — never on the bare no-timestamp branch, where it
+   would start matching ordinary markdown field headers (`**Attendees (Invited):**`, `**Decision
+   (Gemini "Aligned"):**`) that appear in genuinely summary-only files. Verified against a
+   263-file production corpus: zero status changes, only speaker-count increases on the files
+   that actually contained the pattern.
+2. **Version-stamped output.** The script previously had no way to tell a reader which version
+   produced a given run — the failure mode that caused this incident. Every run now prints its
+   `SCRIPT_VERSION` (must match this file's frontmatter `version`) in both the human-readable
+   banner and the `--json` output, plus a standalone `--version` flag. If the printed version
+   doesn't match what you expect, the copy being run is not the one you think it is — check
+   `installed_plugins.json` for the actually-active plugin path rather than a remembered or
+   hardcoded version-numbered directory.
 
 ## v0.5.0 — Fail-closed enforcement: a summary cannot be committed in place of a transcript
 
