@@ -54,7 +54,7 @@ SPEAKER_CASES = [
     ("plaud em-dash range", "**[00:00 — 00:08] Rajiv Pant:** Oh okay", True),
     ("plaud single timestamp", "**[00:00] Rajiv Pant:** Oh okay", True),
     ("plaud undiarized Speaker N", "**[00:16 - 00:26] Speaker 2:** Yeah.", True),
-    ("plaud hour-length range", "**[1:02:03 - 1:02:44] Ana Laura Volkman:** Hi", True),
+    ("plaud hour-length range", "**[1:02:03 - 1:02:44] Morgan Blake Ellis:** Hi", True),
     ("plaud inner padding", "**[ 00:00 - 00:08 ] Rajiv Pant:** Hi", True),
     ("plaud without bold", "[00:00 - 00:08] Rajiv Pant: Hi", True),
     # --- Plaud: timestamp-led, inferred-speaker parenthetical annotation (v0.5.2) ---
@@ -67,8 +67,8 @@ SPEAKER_CASES = [
      "**[46:30] Casey Park (likely, unconfirmed):** We have no idea", True),
     # --- Gemini: bare name, no timestamp prefix ---
     ("gemini plain name", "Rajiv Pant: So AI knowledge", True),
-    ("gemini bold name", "**Kathryn Sheplavy:** thanks Efren", True),
-    ("gemini three-part name", "Ana Laura Volkman: Good morning", True),
+    ("gemini bold name", "**Taylor Nguyen:** thanks Efren", True),
+    ("gemini three-part name", "Morgan Blake Ellis: Good morning", True),
     # --- Negative controls: a SUMMARY must never look like dialogue ---
     ("summary bullet w/ inline ts", "The team discussed the roadmap (00:05:12).", False),
     ("summary sentence", "* Rajiv Pant discussed integrating the tool (00:01:02).", False),
