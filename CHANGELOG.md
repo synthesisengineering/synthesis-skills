@@ -4,6 +4,38 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.16.0] - 2026-08-07
+
+### Changed
+
+- `synthesis-agent-correspondence` v2.0.0 (BREAKING restructure, one day after
+  v1.0.0, from first real-world adoption): the recipient-facing model is now
+  **three lanes on a single axis — how much of the principal is in the
+  words** — replacing v1's review-tiers-as-primary framing. The lanes:
+  principal-direct (their words, their hands — no disclosure), the assistant
+  lane (their words, the agent's hands — a single authorship signature), and
+  the bot lane (their direction, the agent's words — a handled-for-me
+  signature). Review depth (`exact_text`, `per_message_directive`,
+  `standing_direction`, `autonomous_initiative`) is demoted to internal
+  governance — approval workflow, content limits, logging — and explicitly
+  removed from recipient-facing disclosure, because recipients care whose
+  words they are reading, not which approval path ran. The `archetype` field
+  becomes **binding** rather than tonal: an `assistant` persona carries
+  assistant-lane semantics and exactly one signature (exact-text ownership
+  required, always); a `bot` persona carries bot-lane semantics and may vary
+  its signature by review depth. Motivating discovery: under v1's
+  personas-x-tiers matrix, the assistant-persona "unreviewed" cell produced
+  self-contradictory signature wording on every attempt — "these are my
+  words" cannot honestly combine with "I never saw these words." The v2
+  model deletes the impossible cell instead of rewording it, and adds the
+  two-direction doubt rule (approval doubt routes toward more review;
+  authorship doubt routes toward the weaker claim — when in doubt, claim
+  less). Adds the recipient-learnable legend (no marker = all the principal;
+  assistant marker = the principal's words; bot marker = the principal's
+  direction), a lane-aware guard-pattern note for brand-integrity
+  enforcement, and a v1→v2 migration section. The persona-registry example
+  bumps to `registry_version: 2` with archetype-binding comments.
+
 ## [4.15.0] - 2026-08-06
 
 ### Added

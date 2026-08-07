@@ -4,7 +4,7 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
-**Agent correspondence, generalized (August 2026).** New `synthesis-agent-correspondence` skill (Communication family): how AI agents compose and send correspondence on a human principal's behalf, generalized from a mature private communications skill. The core idea — disclosure strength scales with how much the principal reviewed the exact text before it went out, following the long-standing ghostwriting/executive-assistant pattern — plus three universal review tiers, a persona-registry config schema for branding multiple agent identities, the bot-vs-assistant archetype that sets a persona's tone, verified channel-disclosure facts, and the three compose/send gates that pair with `synthesis-message-guard`. See the [4.15.0 release notes](CHANGELOG.md).
+**Agent correspondence, generalized (August 2026).** New `synthesis-agent-correspondence` skill (Communication family): how AI agents compose and send correspondence on a human principal's behalf, honestly. v2 models it as three lanes on one axis — how much of the principal is in the words: principal-direct (their words, their hands — no disclosure), the assistant lane (their words, the agent's hands — one authorship signature), and the bot lane (their direction, the agent's words — a handled-for-me signature) — with review depth demoted to internal governance and the bot-vs-assistant archetype binding a persona to its lane. Recipients learn the legend from the emoji alone. Includes the persona-registry config schema, verified channel-disclosure facts, and the three compose/send gates that pair with `synthesis-message-guard`. See the [4.16.0 release notes](CHANGELOG.md).
 
 **Executive communication for technical leaders (August 2026).** New `synthesis-executive-communication` skill (Communication family): translating technical work for the non-technical executives who fund it — the every-noun persona test, the six-category kill-list, mechanism-to-consequence translation patterns, upward-report structure, and an in-persona adversarial review protocol. See the [4.14.0 release notes](CHANGELOG.md).
 
@@ -247,7 +247,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 ### Communication
 | Skill | Description |
 |-------|-------------|
-| `synthesis-agent-correspondence` | How AI agents compose and send correspondence on a human's behalf — review tiers, a persona-registry schema, the bot-vs-assistant archetype, channel disclosure facts, and the compose/send gates |
+| `synthesis-agent-correspondence` | How AI agents compose and send correspondence on a human's behalf — the three-lane authorship model (my words / my words via my agent / my agent under my direction), a persona-registry schema with binding archetypes, channel disclosure facts, and the compose/send gates |
 | `synthesis-concise-messaging` | High-Five Habit — condense messages to 5 sentences or less |
 | `synthesis-executive-communication` | Translate technical work for non-technical executives — the every-noun test, the six-category kill-list, and upward-report structure for CTOs and product/engineering leaders |
 
