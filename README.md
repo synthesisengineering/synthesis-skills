@@ -4,6 +4,8 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**Agent correspondence, generalized (August 2026).** New `synthesis-agent-correspondence` skill (Communication family): how AI agents compose and send correspondence on a human principal's behalf, generalized from a mature private communications skill. The core idea — disclosure strength scales with how much the principal reviewed the exact text before it went out, following the long-standing ghostwriting/executive-assistant pattern — plus three universal review tiers, a persona-registry config schema for branding multiple agent identities, the bot-vs-assistant archetype that sets a persona's tone, verified channel-disclosure facts, and the three compose/send gates that pair with `synthesis-message-guard`. See the [4.15.0 release notes](CHANGELOG.md).
+
 **Executive communication for technical leaders (August 2026).** New `synthesis-executive-communication` skill (Communication family): translating technical work for the non-technical executives who fund it — the every-noun persona test, the six-category kill-list, mechanism-to-consequence translation patterns, upward-report structure, and an in-persona adversarial review protocol. See the [4.14.0 release notes](CHANGELOG.md).
 
 **One-command onboarding for people and whole organizations (August 2026).**
@@ -245,6 +247,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 ### Communication
 | Skill | Description |
 |-------|-------------|
+| `synthesis-agent-correspondence` | How AI agents compose and send correspondence on a human's behalf — review tiers, a persona-registry schema, the bot-vs-assistant archetype, channel disclosure facts, and the compose/send gates |
 | `synthesis-concise-messaging` | High-Five Habit — condense messages to 5 sentences or less |
 | `synthesis-executive-communication` | Translate technical work for non-technical executives — the every-noun test, the six-category kill-list, and upward-report structure for CTOs and product/engineering leaders |
 

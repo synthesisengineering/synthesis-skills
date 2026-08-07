@@ -1,0 +1,38 @@
+# Agent persona registry — template.
+#
+# Copy to a private, source-controlled location of your own (a private
+# skill collection, a dotfiles repo, or your control-plane config) and
+# fill in your real persona names, emoji, and URLs. Nothing here is a
+# secret — it's branding and routing metadata — but it belongs in your
+# PRIVATE layer because the names and scope rules are yours, not generic.
+# See the synthesis-agent-correspondence skill for the field reference
+# and the archetype/tone distinction.
+
+registry_version: 1
+
+personas:
+  - id: acme-bot
+    display_name: "Acme-Bot"       # exact prose spelling — branding is absolute, never vary it
+    archetype: bot                  # bot | assistant — sets the signature's default register
+    emoji: "🤖"
+    url: "https://acme-bot.example/"
+    scope: >
+      Default persona for operational / standing-direction sends: routing,
+      scheduling, status relays, acknowledgments. Never opinions, never
+      commitments, never sensitive relationships, never criticism.
+
+  - id: acme-assistant
+    display_name: "Acme-Assistant"
+    archetype: assistant
+    emoji: "🧞"
+    url: "https://acme-assistant.example/"
+    scope: >
+      Personal-voice, reviewed-tier correspondence — the message should read
+      as the human's own words, produced with a different tool. Use for
+      anything relationship-significant that still goes through an agent.
+
+# Add one entry per persona you actually use. Define as many as you want —
+# one per venture, one for work vs. personal correspondence, whatever
+# partition matches how the personas are actually used. Don't share an
+# emoji across personas: it's the fastest visual signal a recipient has
+# for which persona sent a message.

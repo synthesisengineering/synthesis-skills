@@ -4,6 +4,35 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.15.0] - 2026-08-06
+
+### Added
+
+- `synthesis-agent-correspondence` v1.0.0 (NEW skill, Communication family):
+  how AI agents compose and send correspondence on a human principal's
+  behalf, generalized from a mature private communications skill into a
+  config-driven public skill (the same public-methodology / private-config
+  split as `synthesis-bitbucket` + org-specific companions, or
+  `synthesis-model-tiers` + org-specific tier mappings). Covers the core
+  disclosure principle (strength scales with how much the principal
+  reviewed the exact text before it went out, not with abstract
+  categories, following the long-standing ghostwriting/executive-assistant
+  pattern); three universal review tiers (`reviewed`,
+  `standing_direction`, `unreviewed_substantive`) with hard content limits
+  and an always-route-up-never-down ambiguity rule; the default
+  human-sends-it-themselves lane, which carries no disclosure question on
+  any channel; a persona-registry YAML schema (`id`, `display_name`,
+  `archetype`, `emoji`, `url`, `scope`) so a user can brand and route
+  between multiple agent identities; the `bot` vs. `assistant` archetype
+  distinction that sets whether a persona's signature centers the tool or
+  the human as actor; empirically-verified channel disclosure facts
+  (Slack's connector force-stamps a visible send tag; most other channels
+  don't); a routing heuristic from content type to lane; and the three
+  compose/send gates (reply-history, compose-time voice/anti-slop,
+  pre-send relevance/grounding) that protect the work underneath the
+  disclosure, pointing to `synthesis-message-guard` as their mechanical
+  enforcement layer rather than duplicating it.
+
 ## [4.14.2] - 2026-08-06
 
 ### Fixed
