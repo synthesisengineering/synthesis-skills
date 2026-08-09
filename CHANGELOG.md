@@ -4,6 +4,27 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.17.0] - 2026-08-09
+
+### Changed
+
+- `synthesis-daily-rituals` v2.19.0: **every sync covers every configured
+  surface.** A sync request (Day-Start Step 3, the Mid-Day Sync Protocol, or
+  Day-End Step 1) now covers the workspace's full declared surface set — Slack,
+  Google Chat, **email** (inbound AND the user's own sent mail), **meeting
+  transcripts** (any meeting ended in the window), and **document comments** —
+  not the chat surfaces alone. The surface set is a declared list, exactly like
+  the repo list in the source-code sync: the agent does not re-apply its own
+  judgment about which surfaces feel active, and a sync that runs fewer
+  surfaces than the declared set must name the omission explicitly in its
+  report. Origin incident (2026-08-09): a mid-day sync ran Slack and Chat only
+  and reported all-quiet while the day's most consequential correspondence — a
+  CEO-facing email delivering two Google Docs — had happened entirely on the
+  unswept surfaces. Day-Start Step 3b retitled "Channel Sync (Slack + Google
+  Chat + email + documents)" with two new checklist items; Day-End Step 1 gains
+  the matching final-capture item; the Mid-Day Sync Protocol now enumerates all
+  five surfaces and the name-any-gap rule.
+
 ## [4.16.0] - 2026-08-07
 
 ### Changed

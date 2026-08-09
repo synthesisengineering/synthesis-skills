@@ -1,6 +1,6 @@
 ---
 name: synthesis-daily-rituals
-description: "Day-start and day-end checklists for synthesis engineering projects. Execute dependency-ordered rituals for context optimization, Slack and Google Chat sync, catch-up reads, PR reviews, day planning, and communications. Use when asked about: daily ritual, morning routine, day start, day end, daily checklist, morning checklist, end of day checklist, daily workflow."
+description: "Day-start and day-end checklists for synthesis engineering projects. Execute dependency-ordered rituals for context optimization, channel sync across Slack, Google Chat, email, meeting transcripts, and document comments, catch-up reads, PR reviews, day planning, and communications. Use when asked about: daily ritual, morning routine, day start, day end, daily checklist, morning checklist, end of day checklist, daily workflow."
 license: "Apache-2.0"
 depends_on:
   - synthesis-context-lifecycle
@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.18.0"
+  version: "2.19.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,10 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.19.0 — Every sync covers every configured surface (email + meeting transcripts + document comments join Slack/Chat)
+
+v2.19.0 (2026-08-09) extends the complete-surface principle from v2.17.0 to its conclusion: a sync request — Day-Start Step 3, the Mid-Day Sync Protocol, or Day-End Step 1 — covers ALL surfaces the workspace routinely syncs, not only the chat surfaces. The declared set: Slack (always), Google Chat (`.agents/gchat-sync.yaml`), **email** (established `transcripts/email/` practice or explicit config), **meeting transcripts** (`.agents/meeting-transcripts.yaml` — any meeting ended in the window), and **document comments** (established `transcripts/docs/` practice or explicit config). The surface set is a declared list exactly like the repo list in the source-code sync — the agent does not re-apply its own judgment about which surfaces feel active (the v2.12.1 rule, applied to channels). A sync that runs fewer surfaces than the declared set must name the omission explicitly in its report; a sync reported without naming its gaps claims a completeness it does not have. Origin incident: 2026-08-09 — a mid-day sync ran Slack and Chat only, reported all-quiet, and missed that the day's most consequential correspondence (a CEO-facing email delivering two Google Docs) had happened entirely on the unswept surfaces.
 
 ## v2.18.0 — Dual-client parity in Day-Start; fail-closed context gate in Day-End
 
@@ -335,11 +339,14 @@ Before drafting the daily plan, sync every source-code repo the current workspac
 
 The set of remotes for each repo comes from `git remote -v` inside that repo. The skill does NOT need a separate per-remote config — the repo itself is the source of truth for its own remote layout. When a workspace's primary remote changes (e.g., a migration from one Git host to another), the change happens in the local repo's `git remote -v`, and this step picks it up automatically.
 
-#### 3b. Channel Sync (Slack + Google Chat)
+#### 3b. Channel Sync (Slack + Google Chat + email + documents)
 
 - [ ] Check for new PRs, CI results, overnight pushes (now that local repos are current).
 - [ ] **Run `/synthesis-slack-sync`** — the `synthesis-slack-sync` skill handles the full Slack sync protocol: verify connector auth, read all channels, re-read all threads with replies, check DMs, save to local transcripts, and update the action plan. See that skill for the detailed protocol and the rationale behind each step. Configuration is in `.agents/slack-sync.yaml` per project, with `.claude/slack-sync.yaml` supported for existing projects.
 - [ ] **Google Chat sync (v2.17.0)** — if the workspace declares `.agents/gchat-sync.yaml`: enumerate spaces fresh via the Chat space-list call (never a hand-maintained ID list — per-meeting spaces churn daily), read DMs/groups/named/meeting spaces per the config's scope windowed by `createTime` since the last sync, treat a full page as possibly-truncated (narrow the window and re-read), keep the raw `users/<id>` on every line beside any resolved name, and save to the workspace convention (e.g., `transcripts/gchat/gchat-YYYY-MM-DD.md`). Same confidentiality handling as Slack DMs. Skip silently when no config exists.
+- [ ] **Email sync (v2.19.0)** — when the workspace routinely syncs email (established `transcripts/email/` practice or explicit config): sweep the window's inbound mail AND the user's own sent mail (sent items are correspondence records too — the user's outbound exec mail is often the day's most consequential artifact), using the workspace's designated email tooling and account. Save to the workspace convention (e.g., `transcripts/email/YYYY-MM-DD-<slug>.md`).
+- [ ] **Document-comment sync (v2.19.0)** — when the workspace has an established docs-sweep practice (`transcripts/docs/` or explicit config): Drive documents modified in the window, open comment threads where the newest reply is not the user's (ball in their court), and engagement on documents the user shared out.
+- [ ] **Name any surface not swept.** The declared surface set is the complete decision (v2.12.1 applied to channels); a sync that skips one must say so in its report rather than reporting as complete.
 - [ ] Run any project-specific sync steps (see project supplement).
 
 #### 3c. Meeting Transcripts
@@ -699,9 +706,17 @@ If a file revert is detected (system reminder says "file was externally modified
 
 ## Mid-Day Sync Protocol
 
-The day-start checklist does a full sync. The user will ask for syncs repeatedly throughout the day ("sync from Slack", "what's new", "check channels"). A "full sync" or "what's new" request covers EVERY configured channel source — Slack AND Google Chat (when `.agents/gchat-sync.yaml` exists) — not Slack alone.
+The day-start checklist does a full sync. The user will ask for syncs repeatedly throughout the day ("sync from Slack", "what's new", "check channels"). **A sync request covers EVERY surface the workspace routinely syncs — not Slack alone, and not only chat surfaces (v2.19.0):**
 
-**Run `/synthesis-slack-sync`.** The `synthesis-slack-sync` skill handles the complete protocol: read channels, re-read all threads with replies, check DMs, save to local transcripts, and update the action plan. See that skill for the detailed five-step protocol.
+1. **Slack** — always.
+2. **Google Chat** — when `.agents/gchat-sync.yaml` exists.
+3. **Email** — when the workspace routinely syncs it (evidenced by an established `transcripts/email/` directory or an explicit config). Use the workspace's designated email tooling and account; sweep inbound AND the user's own sent mail for the window.
+4. **Meeting transcripts** — when `.agents/meeting-transcripts.yaml` exists: any meeting that ended during the window gets its transcript fetched (or re-checked, for ones whose notes had not yet generated).
+5. **Document comments** — when the workspace has an established docs-sweep practice (evidenced by `transcripts/docs/` or an explicit config): Drive documents modified in the window, and open comment threads addressed to the user.
+
+**The complete-surface rule:** the surfaces a workspace syncs are a declared set, exactly like the repo list in the source-code sync (v2.12.1's no-agent-judgment rule applies here too). A sync that runs fewer surfaces than the workspace's declared/established set MUST name the omission explicitly in its report — "email and docs not swept this run" — never report as if the sync were complete. Origin incident (2026-08-09): a mid-day sync ran Slack and Chat only, while the day's most consequential correspondence — a CEO-facing email delivering two Google Docs — had happened entirely on the omitted surfaces; the gap was invisible because the sync reported quiet channels without naming what it had not checked.
+
+**Run `/synthesis-slack-sync`.** The `synthesis-slack-sync` skill handles the Slack portion's complete protocol: read channels, re-read all threads with replies, check DMs, save to local transcripts, and update the action plan. See that skill for the detailed five-step protocol.
 
 The key discipline encoded in that skill: **every sync must re-read ALL threads with replies from today**, not just fetch new channel-level messages. Thread replies don't appear as channel messages — skipping thread re-reads causes stale action plans and duplicate message sends.
 
@@ -773,6 +788,7 @@ The Weekly Loose-Ends Review (Step 10) attaches to whichever ritual runs first o
 
 - [ ] **Run `/synthesis-slack-sync`** for final capture of the day. The `synthesis-slack-sync` skill ensures all channels, threads, and DMs are captured.
 - [ ] **Google Chat final capture (v2.17.0)** — if the workspace declares `.agents/gchat-sync.yaml`, run the same Chat sweep as Day-Start Step 3b for the day's window (fresh space enumeration; raw sender IDs preserved).
+- [ ] **Email + document-comment final capture (v2.19.0)** — when the workspace syncs those surfaces (per Day-Start 3b's declared-set rule): the day's inbound and sent mail, meeting transcripts for any meeting that ended since the last sync, and document comments/engagement for the day's window. Name any surface not swept.
 - [ ] Update CONTEXT.md to mark any items resolved by day's conversations (so tomorrow's day-start does not re-propose them).
 
 ### 2. Source-Code Sync
