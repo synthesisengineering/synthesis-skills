@@ -32,6 +32,13 @@ Usage:
   python3 verify_transcripts.py <dir> --only-incomplete
   python3 verify_transcripts.py <dir> --no-skip       # audit ALL files (debug)
 
+Reporting contract:
+  `--only-incomplete` narrows which ROWS are listed. It never narrows the
+  summary counters — those always describe the whole audited corpus, so a
+  clean run reports "Total: 282 files — 0 incomplete, ..." rather than
+  "Total: 0 files", which would be byte-identical to a wrong path. The same
+  split holds in --json: `total_files` is the corpus, `listed_count` the rows.
+
 Exit code:
   0 — all audited files have full transcripts
   1 — at least one audited file is incomplete (failures listed)
@@ -49,16 +56,18 @@ import re
 import sys
 from pathlib import Path
 
-# Bump with every detector-affecting change (regex, thresholds, marker names) and add a
-# matching entry to SKILL.md's changelog. Printed in every run's output specifically so a
-# stale copy is self-diagnosing: on 2026-08-06 an orphaned plugin-cache directory (v4.9.0,
-# predating the v0.5.0 Plaud-format + undiarized-override fixes) was run in place of the
-# actually-installed v4.14.1, producing 26 false-positive INCOMPLETE flags on a corpus the
+# Bump with every detector-affecting change (regex, thresholds, marker names) OR any change
+# to what the run REPORTS, and add a matching entry to SKILL.md's changelog. Output changes
+# count because the banner exists to tell a reader which behavior produced the numbers they
+# are looking at — and a summary line is behavior. Printed in every run's output specifically
+# so a stale copy is self-diagnosing: on 2026-08-06 an orphaned plugin-cache directory
+# (v4.9.0, predating the v0.5.0 Plaud-format + undiarized-override fixes) was run in place of
+# the actually-installed v4.14.1, producing 26 false-positive INCOMPLETE flags on a corpus the
 # fixed detector reads as 0 incomplete. The script had no version banner, so nothing in its
 # own output could reveal that the copy being run was stale. This constant plus the banner
 # line below close that gap — if the printed version doesn't match SKILL.md's frontmatter
 # version, the copy being run is not the one you think it is.
-SCRIPT_VERSION = "0.5.2"
+SCRIPT_VERSION = "0.5.3"
 
 # Any HH:MM:SS or MM:SS anywhere — Gemini uses bare, bold, heading, and markdown-link forms
 TIMESTAMP_RE = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
@@ -246,12 +255,18 @@ def main() -> int:
         print(f"ERROR: no .md files found in {meetings_dir}", file=sys.stderr)
         return 2
 
-    if args.only_incomplete:
-        results = [r for r in results if r["status"] == "INCOMPLETE"]
-
+    # Counters describe the CORPUS; --only-incomplete narrows only the LISTING. Computing
+    # them from the filtered list (the v0.5.2 behavior) made a clean corpus print
+    # "Total: 0 files — 0 incomplete, 0 skipped, 0 no-source-transcript" — a clean bill of
+    # health rendered byte-identical to "wrong path / nothing audited", and the daily ritual
+    # invokes this script with exactly that flag. A control whose success output reads as a
+    # broken invocation is one operators learn to distrust, which is the same failure mode
+    # the v0.5.1 false-positive fix existed to prevent, arriving from the other direction.
     incomplete_count = sum(1 for r in results if r["status"] == "INCOMPLETE")
     skipped_count = sum(1 for r in results if r["status"] == "SKIPPED")
     no_source_count = sum(1 for r in results if r["status"] == "OK (no-source-transcript)")
+
+    listed = [r for r in results if r["status"] == "INCOMPLETE"] if args.only_incomplete else results
 
     if args.json:
         print(json.dumps({
@@ -259,11 +274,13 @@ def main() -> int:
             "dir": str(meetings_dir),
             "min_markers": args.min_markers,
             "min_speakers": args.min_speakers,
-            "total_files": len(results),
+            "total_files": len(results),      # the corpus that was audited
+            "listed_count": len(listed),      # rows present in "results" below
+            "only_incomplete": args.only_incomplete,
             "incomplete_count": incomplete_count,
             "skipped_count": skipped_count,
             "no_source_count": no_source_count,
-            "results": results,
+            "results": listed,
         }, indent=2))
     else:
         print(f"=== Transcript completeness audit: {meetings_dir} ===")
@@ -273,11 +290,14 @@ def main() -> int:
         print()
         print(f"{'STATUS':<25} {'TSTAMPS':<8} {'SPKRS':<6} {'HEAD':<5} {'SIZE_KB':<9} FILE")
         print("-" * 110)
-        for r in results:
+        for r in listed:
             heading = "yes" if r["has_transcript_heading"] else "no"
             print(f"{r['status']:<25} {r['timestamps']:<8} {r['speakers']:<6} {heading:<5} {r['size_kb']:<9} {r['file']}")
+        if not listed:
+            print("(none — no audited file matches the active listing filter)")
         print()
-        print(f"Total: {len(results)} files — {incomplete_count} incomplete, {skipped_count} skipped, {no_source_count} no-source-transcript.")
+        filter_note = " (listing filtered to incomplete only)" if args.only_incomplete else ""
+        print(f"Total: {len(results)} files — {incomplete_count} incomplete, {skipped_count} skipped, {no_source_count} no-source-transcript.{filter_note}")
         if incomplete_count:
             print()
             print("Incomplete files need backfill: re-fetch the source Google Doc")
