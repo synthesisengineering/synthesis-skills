@@ -4,6 +4,38 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.17.1] - 2026-08-11
+
+### Fixed
+
+- `synthesis-meeting-transcripts` v0.5.3: **a clean transcript audit no longer
+  looks like a broken one.** `verify_transcripts.py --only-incomplete` filtered
+  the results list *before* computing the summary counters, so every counter
+  described the filtered listing instead of the audited corpus. A clean corpus
+  printed `Total: 0 files — 0 incomplete, 0 skipped, 0 no-source-transcript` —
+  a clean bill of health rendered byte-identical to "the path was wrong / no
+  `.md` files found." Observed 2026-08-11 against a 282-file corpus that was
+  actually 0-incomplete, 2 skipped, 19 no-source-transcript; only reading the
+  source told the two apart. `--json` carried the same defect through
+  `total_files`. This is the flag `synthesis-daily-rituals` uses, so the
+  success path was the one that read as a failure — the way a fail-closed
+  control gets routed around, and the mirror image of the v0.5.1
+  false-positive fix. Counters and the file total now always describe the
+  corpus; the filter narrows only the listed rows, and the summary discloses
+  that with `(listing filtered to incomplete only)`. An empty listing prints
+  `(none — no audited file matches the active listing filter)` rather than a
+  bare table. `--json` keeps `total_files` as the corpus count and adds
+  `listed_count` plus `only_incomplete` for the listing. Exit codes unchanged.
+
+### Added
+
+- `test_verify_transcripts.py` gains 14 end-to-end reporting checks that invoke
+  the CLI against a synthetic clean corpus (complete + skipped +
+  no-source-transcript, zero incomplete) and fail if the summary ever reports
+  `Total: 0 files` again, plus the inverse case proving filtering still filters
+  and a real incomplete file still exits 1. CI and `AGENTS.md` now run this test
+  file, which no check previously invoked.
+
 ## [4.17.0] - 2026-08-09
 
 ### Changed

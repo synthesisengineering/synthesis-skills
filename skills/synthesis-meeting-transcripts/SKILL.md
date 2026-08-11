@@ -5,10 +5,50 @@ license: "Apache-2.0"
 metadata:
   depends_on: "synthesis-daily-rituals (optional integration)"
   author: "Rajiv Pant"
-  version: "0.5.2"
+  version: "0.5.3"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
+
+## v0.5.3 — A clean audit no longer looks like a broken one
+
+v0.5.3 (2026-08-11) fixes a reporting defect in `verify_transcripts.py`. It is not a
+detector change — no file's status moves — but it changes what an operator concludes
+from a run, which is the same thing in practice.
+
+`--only-incomplete` filtered the results list **before** the summary counters were
+computed, so every counter described the filtered listing rather than the corpus. On a
+clean corpus the script printed:
+
+```
+Total: 0 files — 0 incomplete, 0 skipped, 0 no-source-transcript.
+```
+
+That is a clean bill of health rendered byte-identical to *"the path was wrong / no `.md`
+files were found."* Observed on 2026-08-11 against a 282-file corpus that was actually
+0-incomplete, 2 skipped, 19 no-source-transcript; the only way to tell the two apart was
+to read the source. `--json` carried the same defect through `total_files`.
+
+This matters because **the daily ritual invokes the script with `--only-incomplete`**, so
+the success path was the one that looked broken. That is how a fail-closed control gets
+routed around — the same erosion the v0.5.1 false-positive fix existed to prevent,
+arriving from the opposite direction. A control has two ways to lose an operator's trust:
+crying wolf, and being unable to say "all clear" out loud.
+
+**The fix:** counters and the file total always describe the audited corpus; the filter
+narrows only which rows are listed. A run with filtering active now says so:
+
+```
+Total: 282 files — 0 incomplete, 2 skipped, 19 no-source-transcript. (listing filtered to incomplete only)
+```
+
+An empty listing prints `(none — no audited file matches the active listing filter)`
+rather than a bare table. In `--json`, `total_files` stays the corpus count, and new
+`listed_count` and `only_incomplete` keys describe the listing, so machine consumers see
+the same split. Exit codes are unchanged (`0` clean, `1` incomplete found, `2` bad path).
+`test_verify_transcripts.py` gains end-to-end coverage that runs the CLI against a
+synthetic clean corpus and fails if the summary ever reports `Total: 0 files` again —
+and CI now runs that test file, which it previously did not.
 
 ## v0.5.2 — Inferred-speaker annotation format + version-stamped output
 
@@ -254,6 +294,8 @@ python3 <synthesis-meeting-transcripts-root>/verify_transcripts.py \
 ```
 
 The script counts timestamp markers (`00:01:31`-style) in each meeting file. A real Gemini transcript has ~5–50 timestamps; a summary-only save has 0–2. If the just-saved file shows `INCOMPLETE`, re-fetch the Drive doc and re-save — your earlier extraction missed the Transcript tab.
+
+**Reading the summary line.** `--only-incomplete` narrows the listed rows, never the counts: the `Total:` line always describes the whole audited corpus and appends `(listing filtered to incomplete only)`. So a clean run reports the real corpus size with `0 incomplete` — an empty listing under a real total is the all-clear, not a failed invocation. A wrong path is a distinct outcome: `ERROR: not a directory` (or `no .md files found`) on stderr, exit code 2. In `--json`, `total_files` is the corpus and `listed_count` is the rows.
 
 **Failure modes this catches:**
 - Saved the Gemini email body instead of the Drive doc

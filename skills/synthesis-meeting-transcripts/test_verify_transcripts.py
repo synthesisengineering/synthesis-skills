@@ -31,12 +31,28 @@ headers sharing the "Word (parenthetical):" shape (e.g. "**Attendees (Invited):*
 do NOT start matching — the fix is scoped to the timestamp-led branch only,
 specifically to avoid eroding precision on summary-only files.
 
+v0.5.3 (2026-08-11) adds a THIRD failure direction, in the reporting layer rather
+than the detector: `--only-incomplete` filtered the results list before the summary
+counters were computed, so a clean corpus printed "Total: 0 files — 0 incomplete,
+0 skipped, 0 no-source-transcript" — a clean bill of health rendered byte-identical
+to "wrong path / no .md files found." Observed against a 282-file corpus that was
+actually 0-incomplete, 2 skipped, 19 no-source-transcript; only reading the source
+told the two apart. The daily ritual invokes the script with exactly that flag, so
+the success case was the one that looked broken — the same way a control gets
+distrusted, arriving from the opposite side of the false positives above. The
+end-to-end checks below pin the split: counters and total describe the CORPUS, the
+listing alone is filtered.
+
 Run: python3 test_verify_transcripts.py
 """
 
+import contextlib
 import importlib.util
+import io
+import json
 import pathlib
 import sys
+import tempfile
 
 _spec = importlib.util.spec_from_file_location(
     "verify_transcripts", pathlib.Path(__file__).parent / "verify_transcripts.py"
@@ -87,6 +103,125 @@ STANDALONE_TS_CASES = [
     ("inline ts in prose", "discussed X (00:05:12) and moved on", False),
 ]
 
+# What a healthy corpus looks like on the summary line. SKIPPED and
+# no-source-transcript are the two statuses that are legitimately not INCOMPLETE, and
+# they are what the buggy summary erased: a corpus that reports non-zero counts for
+# them is visibly a corpus, while one reporting all-zeros is indistinguishable from an
+# empty directory. Both are therefore present in the fixture, deliberately.
+CLEAN_CORPUS_SUMMARY = "Total: 6 files — 0 incomplete, 2 skipped, 1 no-source-transcript."
+
+
+def write_clean_corpus(root: pathlib.Path) -> None:
+    """3 complete diarized transcripts, 1 explicitly no-source-transcript, 2 skipped
+    by filename prefix, 0 incomplete."""
+    for n in (1, 2, 3):
+        dialogue = "\n".join(
+            f"**[{m:02d}:00 - {m:02d}:30] {'Taylor Nguyen' if m % 2 else 'Speaker 2'}:** line {m}"
+            for m in range(1, 16)
+        )
+        (root / f"complete-{n}.md").write_text(
+            f"# Meeting {n}\n\n## 📖 Verbatim transcript\n\n{dialogue}\n", encoding="utf-8"
+        )
+    (root / "no-source-1.md").write_text(
+        f"# Casual 1:1\n\n{v.NO_SOURCE_TRANSCRIPT_MARKER}\n"
+        "Recorded without transcription enabled — notes are the only source record.\n",
+        encoding="utf-8",
+    )
+    (root / "_BACKFILL_TODO.md").write_text("# Backfill TODO\n", encoding="utf-8")
+    (root / "gdoc-strategy.md").write_text("# Imported Google Doc\n", encoding="utf-8")
+
+
+def write_summary_only(path: pathlib.Path) -> None:
+    """A Details-summary wearing a transcript heading: inline timestamps, no dialogue.
+    The one file shape the verifier must flag INCOMPLETE."""
+    bullets = "\n".join(
+        f"* Topic {m} was discussed at length by the group (00:{m:02d}:12)." for m in range(1, 16)
+    )
+    path.write_text(f"# Standup\n\n## Verbatim transcript\n\n{bullets}\n", encoding="utf-8")
+
+
+def run_cli(argv: list[str]) -> tuple[int, str]:
+    """Invoke main() end-to-end with the given arguments, capturing stdout.
+    The reporting bug lived entirely in main(), below every unit-testable helper —
+    only a real invocation can catch it."""
+    buffer = io.StringIO()
+    saved_argv = sys.argv
+    sys.argv = ["verify_transcripts.py", *argv]
+    try:
+        with contextlib.redirect_stdout(buffer):
+            code = v.main()
+    finally:
+        sys.argv = saved_argv
+    return code, buffer.getvalue()
+
+
+def reporting_cases(corpus: pathlib.Path) -> list[tuple[str, bool, str]]:
+    """(label, passed, detail) for the listing-vs-corpus contract. Every check runs
+    against the SAME clean corpus the ritual would see on a good day."""
+    cases: list[tuple[str, bool, str]] = []
+
+    code, out = run_cli([str(corpus)])
+    cases.append(("clean corpus exits 0", code == 0, f"expected exit 0, got {code}"))
+    cases.append((
+        "unfiltered summary counts the corpus",
+        CLEAN_CORPUS_SUMMARY in out,
+        f"expected {CLEAN_CORPUS_SUMMARY!r} in:\n{out}",
+    ))
+
+    code, out = run_cli([str(corpus), "--only-incomplete"])
+    cases.append(("clean corpus exits 0 under --only-incomplete", code == 0, f"got exit {code}"))
+    cases.append((
+        "--only-incomplete never prints 'Total: 0 files' on a non-empty corpus",
+        "Total: 0 files" not in out,
+        "a clean 6-file corpus reported 'Total: 0 files' — indistinguishable from a "
+        f"wrong path or an empty directory:\n{out}",
+    ))
+    cases.append((
+        "--only-incomplete keeps the corpus counters",
+        CLEAN_CORPUS_SUMMARY in out,
+        f"expected {CLEAN_CORPUS_SUMMARY!r} in:\n{out}",
+    ))
+    cases.append((
+        "--only-incomplete says the listing is filtered",
+        "(listing filtered to incomplete only)" in out,
+        f"summary did not disclose the active filter:\n{out}",
+    ))
+
+    code, out = run_cli([str(corpus), "--only-incomplete", "--json"])
+    payload = json.loads(out)
+    # .get(), not [] — a stale copy predating a key must report a failed check, not
+    # crash the runner. Diagnosing a stale install is the exact case these tests serve.
+    for label, key, want in (
+        ("total_files is the corpus", "total_files", 6),
+        ("listed_count is the filtered rows", "listed_count", 0),
+        ("rows match listed_count", "results", []),
+        ("incomplete_count", "incomplete_count", 0),
+        ("skipped_count survives filtering", "skipped_count", 2),
+        ("no_source_count survives filtering", "no_source_count", 1),
+    ):
+        cases.append((
+            f"--json {label}",
+            payload.get(key, "<missing>") == want,
+            f"{key}={payload.get(key, '<missing>')!r}, want {want!r} — full payload: {payload}",
+        ))
+
+    # The other direction: filtering must still filter, and a real failure must still fail.
+    write_summary_only(corpus / "summary-only.md")
+    code, out = run_cli([str(corpus), "--only-incomplete"])
+    cases.append(("an incomplete file exits 1", code == 1, f"expected exit 1, got {code}"))
+    cases.append((
+        "the listing still shows only incomplete rows",
+        "summary-only.md" in out and "complete-1.md" not in out,
+        f"listing was not filtered to incomplete:\n{out}",
+    ))
+    cases.append((
+        "totals grow with the corpus, not with the listing",
+        "Total: 7 files — 1 incomplete, 2 skipped, 1 no-source-transcript." in out,
+        f"summary did not describe the 7-file corpus:\n{out}",
+    ))
+
+    return cases
+
 
 def main() -> int:
     failures = []
@@ -120,13 +255,26 @@ def main() -> int:
             f"summary body counted {v.count_speaker_lines(summary_body)} speaker lines, must stay <10"
         )
 
-    total = len(SPEAKER_CASES) + len(STANDALONE_TS_CASES) + 2
+    # Reporting layer: --only-incomplete filters the listing, never the counters.
+    with tempfile.TemporaryDirectory() as tmp:
+        corpus = pathlib.Path(tmp)
+        write_clean_corpus(corpus)
+        reporting = reporting_cases(corpus)
+
+    for label, passed, detail in reporting:
+        if not passed:
+            failures.append(f"REPORTING {label!r}: {detail}")
+
+    total = len(SPEAKER_CASES) + len(STANDALONE_TS_CASES) + 2 + len(reporting)
     if failures:
         print(f"FAILED — {len(failures)} of {total} checks:")
         for f in failures:
             print("  -", f)
         return 1
-    print(f"OK — {total} checks passed (Plaud spaced/unspaced/en-dash, Gemini, negative controls)")
+    print(
+        f"OK — {total} checks passed (Plaud spaced/unspaced/en-dash, Gemini, "
+        "negative controls, listing-vs-corpus reporting)"
+    )
     return 0
 
 

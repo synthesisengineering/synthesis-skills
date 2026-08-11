@@ -60,6 +60,7 @@ python3 -m pytest skills/synthesis-project-management/scripts/test_coordination.
 python3 -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q
 python3 -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py -q
 python3 -m pytest skills/synthesis-onboarding/scripts/test_onboard.py -q
+python3 skills/synthesis-meeting-transcripts/test_verify_transcripts.py
 sh -n install.sh onboard.sh tests/test_installer.sh
 ./tests/test_installer.sh
 python3 -m compileall -q skills
