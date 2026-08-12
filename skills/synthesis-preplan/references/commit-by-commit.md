@@ -5,6 +5,25 @@ the `synthesis-preplan` skill (which produces the inputs) and by your
 planning step (which consumes this doc when drafting the plan). Used
 directly when executing a plan by hand.
 
+## Not every change belongs here
+
+Work that is **one reviewable commit and decides nothing** runs
+[`single-commit.md`](single-commit.md) instead. That file owns the
+routing test; in short, both conditions must hold — a single coherent
+seam, and work that is mechanical in the sense this file's plan format
+uses (determinate once the ticket is read; diff size is not the
+signal). Five disqualifiers override size either way: a migration or
+other awkward-to-reverse change, a public or cross-service contract
+change, an auth/permission/validation boundary, a personal-or-behavioral
+data flow in a privacy-flagged project, and work stacked on unsettled
+in-flight work.
+
+The sibling file drops only the gates whose *subject does not exist* in
+a one-commit change, and it can re-route back here mid-flight. When the
+lane is ambiguous, state the choice and its reason before touching a
+file rather than inheriting whichever workflow the session was already
+thinking about.
+
 ## Preconditions
 
 This workflow assumes:

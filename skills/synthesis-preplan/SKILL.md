@@ -63,12 +63,13 @@ If unsure, ask the user.
 
 ## Step 2: Initial assessment
 
-Produce four short artifacts before any planning:
+Produce five short artifacts before any planning:
 
 1. **One-sentence ticket goal.** What the ticket buys the system, stated as plainly as possible.
 2. **Branch stacking recommendation.** Which base branch this work should be cut from, and why. Walk through 2–3 candidate bases if the choice is non-obvious, with pros/cons each.
 3. **Dependency clarification.** Depends on (X, Y, Z); does NOT depend on (A, B, C). Eliminate common misconceptions explicitly.
 4. **Scope boundary statement.** In scope / out of scope / deferred. The "out of scope" list is load-bearing — it documents what was deliberately not chosen and prevents scope creep in later phases.
+5. **Execution lane, with a one-line reason.** Either the full commit-by-commit workflow ([references/commit-by-commit.md](references/commit-by-commit.md)) or the single-commit workflow ([references/single-commit.md](references/single-commit.md)); the latter file owns the routing test and its disqualifiers. State the lane explicitly even where the project declares a default, and name the condition or disqualifier that decided it. A lane inherited silently is the failure this artifact prevents, and it fails in both directions: a ticket routed heavy because the session was in a planning frame, and one routed light because it looked small. If the lane is single-commit, the rest of this skill usually does not apply — say so and stop, rather than producing a decisions file for work that decides nothing.
 
 Pause here and confirm the assessment with the user before moving on. Architectural disagreements at this layer cascade into the rest of the workflow.
 
@@ -286,3 +287,4 @@ In every soft-fail case, name what's missing in one sentence so the user knows t
 - **Lean don't dictate.** Every open question has a recommendation; every recommendation can be redirected with one word.
 - **Reverse leans freely when pushed back on with a real argument.** Depth mode often exposes flaws in the initial framing. Reconsider honestly rather than defending the original lean.
 - **The commit-by-commit workflow lives at [references/commit-by-commit.md](references/commit-by-commit.md).** The handoff template references it; don't duplicate the rules inside the handoff.
+- **State the execution lane before touching a file.** The single-commit lane at [references/single-commit.md](references/single-commit.md) owns the routing test. Naming the lane and its reason is Step 2's job; inheriting one silently is what that artifact exists to prevent.
