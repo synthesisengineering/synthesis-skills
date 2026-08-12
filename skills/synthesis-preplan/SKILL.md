@@ -189,7 +189,7 @@ Every persisted plan (and the planner's output it is built from) MUST follow thi
    - The heading is the commit's own top-level goal.
    - **Goal** — one line: the single thing this commit accomplishes.
    - **Changes** — what it does and the files touched.
-   - **Verification** — concrete, testable steps that prove the commit works (commands, expected results). Every commit must be independently testable; a commit that cannot be verified on its own is mis-scoped.
+   - **Verification** — concrete, testable steps that prove the commit works (commands, expected results), split into **fast checks** (the commit's own tests, types, lint; run before the commit) and **the full gate** (the whole-tree suite; runs once, after the audit's findings are amended in). Every commit must be independently testable; a commit that cannot be verified on its own is mis-scoped.
    - **Risks to flag to audit** — the specific things the per-commit audit must scrutinize.
    - Commits are ALWAYS executed in order, so do NOT include ordering, dependency, or "depends on commit N" notes — sequence is implicit. (Intra-commit ordering, e.g. operation order inside one migration, is a Verification/Risk item, not cross-commit ordering.)
    - Size: no commit too large or too small — one coherent, reviewable unit each.

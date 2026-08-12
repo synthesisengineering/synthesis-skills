@@ -40,11 +40,14 @@ Each commit's todo list must include these as **separate, explicit** items — n
 
 1. Brief commit N (the Goal → Focus → How → Verify → Independence → Risks → Conflicts brief)
 2. Implement commit N
-3. Verify commit N (run the brief's Verify commands)
+3. Fast-check commit N (the brief's Verify fast checks: the commit's own tests, types, lint — NOT the full gate)
 4. Commit
 5. Audit commit N (run the isolated `synthesis-code-audit` skill, or your project's equivalent, on the commit's diff)
-6. Amend + re-verify if findings (the amend-over-new-commit rule applies — see below)
-7. Pause for user approval before commit N+1's brief
+6. Amend if findings (the amend-over-new-commit rule applies — see below)
+7. Full gate on commit N, once, after the amend (the whole-tree suite, including any container-backed integration tests), plus a re-run of the fast checks
+8. Pause for user approval before commit N+1's brief
+
+The brief's **Verify** section is split into *fast checks* (step 3) and *the full gate* (step 7). The full gate runs exactly once per commit and only after the audit's findings are amended in. Running it before the audit wastes a full run, because the audit routinely produces amendments and that run then tested code that no longer exists.
 
 Collapsing these into fewer items is the most common failure mode. Audit and verify get silently skipped because they look like part of "implement". Keep them as separate items.
 
@@ -76,7 +79,7 @@ Produce the plan as a document with this exact structure:
 4. **Decisions** — ALL decisions, rewritten into the plan and grouped by topic (decision / choice / why). Include not only the locked Q&A decisions from the decisions file but every decision taken from the ticket, project conventions, and the codebase. The plan must be self-contained on decisions.
 5. **Commits** — in execution sequence. Each commit:
    - heading = the commit's own top-level goal;
-   - **Goal** (one line) · **Changes** (what + files) · **Verification** (concrete, testable steps with expected results) · **Risks to flag to audit** (what the per-commit audit must scrutinize).
+   - **Goal** (one line) · **Changes** (what + files) · **Verification** (concrete, testable steps with expected results, split into fast checks and the full gate) · **Risks to flag to audit** (what the per-commit audit must scrutinize).
    - Commits are always run in order — do NOT include ordering, dependency, or "depends on commit N" notes; sequence is implicit. (Operation order inside a single commit, e.g. within one migration, is a Verification/Risk item.)
    - Every commit must be independently testable and sized as one coherent reviewable unit — none too large or too small.
 6. **E2E strategy** — explicit end-to-end validation for the whole change: golden path plus edge cases (boundaries, malformed input, auth boundaries, concurrency, adversarial values, every documented error code).

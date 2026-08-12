@@ -29,6 +29,25 @@ The **Verify** section is a numbered list of `command` → `expected
 outcome` pairs, plus a one-line note on any gates that can't be
 checked locally (e.g., remote CI like GitHub Actions or Bitbucket Pipelines runs only after push).
 
+Split it into two parts, because they run at different points in the
+cycle:
+
+- **Fast checks** — the commit's own tests, types, and lint. Seconds
+  to a minute. These run before the commit.
+- **The full gate** — the whole-tree suite, including any
+  container-backed or otherwise slow integration tests. Minutes. This
+  runs **once per commit, after the audit's findings are amended in**,
+  and never before.
+
+Running the full gate before the audit wastes a full run: the audit
+routinely produces amendments, so that run tested code that no longer
+exists. One run against the final state is the same signal at half the
+cost.
+
+Run the full gate from the repository root, over the whole tree, never
+path-scoped to what the commit touched. CI is not path-scoped, so a
+scoped local run is a different check wearing the same name.
+
 Verification is its own section, not a tail bullet inside How. When
 it lives at the end of a How list it gets skimmed past or skipped.
 Surfacing it as a first-class section makes "what proof looks like"
@@ -40,8 +59,8 @@ Do not skip steps. Do not bundle.
 
 1. **Brief** the commit (Goal → Focus → How → Verify → Independence → Risks → Conflicts).
 2. **Execute** the implementation.
-3. **Run the Verify section commands.** Confirm each expected outcome
-   before proceeding.
+3. **Run the Verify section's fast checks.** Confirm each expected
+   outcome before proceeding. Not the full gate — that comes at step 7.
 4. **Commit.**
 5. **Audit** the commit with an isolated code-review step (the
    `synthesis-code-audit` skill, or your project's equivalent) scoped
@@ -56,9 +75,11 @@ Do not skip steps. Do not bundle.
    tried, then fixed it" pair. This is a deliberate exception to the
    general "never amend" rule because the audit-fix pair is part of
    the same logical unit of work and hasn't been pushed yet.
-7. **Re-run the Verify section commands** after the amend. The
-   audit-driven changes may have shifted behavior; the original
-   Verify run was against pre-fix code.
+7. **Run the full gate, once, against the amended commit.** Re-run the
+   fast checks with it — the audit-driven changes may have shifted
+   behavior, and the step-3 run was against pre-fix code. This is the
+   only place the whole-tree suite runs for this commit. If it fails,
+   fix and amend again, then re-run it.
 8. **Pause and wait for user approval** before starting the next
    commit's brief, even in auto mode. The brief is the natural
    checkpoint; the user can always say "go" to advance, but the
@@ -93,10 +114,11 @@ For each commit, the todo list must contain these as distinct items:
 
 - Brief commit N
 - Implement commit N
-- Verify commit N (run the brief's Verify commands)
+- Fast-check commit N (the brief's Verify fast checks — not the full gate)
 - Commit (or amend if audit findings landed)
 - Audit commit N (run the isolated `synthesis-code-audit` skill, or your project's equivalent, on the commit's diff — never an inline audit)
-- Amend + re-verify if findings (the amend-over-new-commit rule applies)
+- Amend if findings (the amend-over-new-commit rule applies)
+- Full gate on commit N, once, after the amend
 - Pause for user approval before commit N+1's brief
 
 For the end of the plan, the todo list must additionally contain:
@@ -229,7 +251,7 @@ insurance against shipping that class of bug.
 
 **Per commit (N times):**
 
-1. Brief → Execute → Verify → Commit → Audit → Amend if findings → Re-Verify → Pause for user "go".
+1. Brief → Execute → Fast-check → Commit → Audit → Amend if findings → Full gate (once) → Pause for user "go".
 
 **End of plan (once):**
 
