@@ -5,10 +5,42 @@ license: "Apache-2.0"
 metadata:
   depends_on: "synthesis-daily-rituals (optional integration)"
   author: "Rajiv Pant"
-  version: "0.5.3"
+  version: "0.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
+
+## v0.6.0 — The optional auto-start service gets a heartbeat
+
+v0.6.0 (2026-08-12) adds `optional-workspace-mcp/doctor.sh`. The bundle shipped an
+installer for a supervised background service and no way to ask whether that service
+was still alive — the one fail-open control in a stack whose other guards all ship a
+health check.
+
+The failure it exists to catch: `install-autostart.sh` records an **absolute** path to
+`start.sh` into the launchd/systemd unit at install time. Move the checkout, rename a
+parent directory, or restructure the repo, and the unit still points at the old path.
+launchd exits `78` (`EX_CONFIG`), `KeepAlive` retries every 30 seconds indefinitely, and
+the log fills with thousands of identical lines. Nothing surfaces. The only symptom is
+that the MCP tools are quietly absent — and since the natural reading of "my tools are
+missing" is a client problem, the investigation starts in the wrong place. Restarting
+the client cannot help: the client never owned the process.
+
+Observed 2026-08-12 against a checkout that had gained a `skills/` directory level. The
+unit had been failing for an unknown period.
+
+`doctor.sh` checks the unit exists, that its recorded start-script path still exists and
+is executable, that the supervisor has it loaded and with what exit status (`78` gets a
+targeted hint), that the client secret is present, that the port is listening, and that
+the endpoint answers. Exit codes follow the guard contract — `0` healthy, `1` defects,
+`2` a check could not run, because a check that cannot run must never be reported as a
+check that passed. It also flags the case where the unit runs a *different* checkout
+than the one you are editing.
+
+The remedy is always to re-run `install-autostart.sh`, never to hand-edit the unit: the
+installer derives the path from its own location and is correct by construction. The
+defect was never in the generator — only in the absence of anything that noticed the
+generated artifact had gone stale.
 
 ## v0.5.3 — A clean audit no longer looks like a broken one
 

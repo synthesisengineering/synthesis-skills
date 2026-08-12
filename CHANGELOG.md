@@ -4,6 +4,41 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.18.0] - 2026-08-12
+
+### Added
+
+- `synthesis-meeting-transcripts` v0.6.0: **the optional workspace-mcp auto-start
+  service gets a heartbeat.** New `optional-workspace-mcp/doctor.sh`. The bundle
+  shipped an installer for a supervised background service and no way to ask
+  whether that service was still alive — the one fail-open control in a stack
+  whose other guards all ship a health check.
+
+  `install-autostart.sh` records an **absolute** path to `start.sh` into the
+  launchd/systemd unit at install time. Move the checkout, rename a parent
+  directory, or restructure the repo, and the unit still points at the old path.
+  launchd exits `78` (`EX_CONFIG`), `KeepAlive` retries every 30 seconds
+  indefinitely, and the log fills with thousands of identical failures. Nothing
+  surfaces. The only symptom is that the MCP tools are quietly absent — and
+  because "my tools are missing" reads as a client problem, the investigation
+  starts in the wrong place. Restarting the client cannot help; the client never
+  owned the process. Observed 2026-08-12 against a checkout that had gained a
+  `skills/` directory level, after an unknown period of silent failure.
+
+  `doctor.sh` verifies the unit exists; that its recorded start-script path still
+  exists and is executable; that the supervisor has it loaded, and with what exit
+  status (`78` gets a targeted hint); that the client secret is present; that the
+  port is listening; and that the endpoint answers. It also flags the case where
+  the unit runs a *different* checkout than the one being edited. Exit codes
+  follow the guard contract — `0` healthy, `1` defects, `2` a check could not run
+  — because a check that cannot run must never look like a check that passed.
+  `--quiet` gives an exit code and one summary line for hooks and rituals.
+
+  The remedy is always to re-run `install-autostart.sh`, never to hand-edit the
+  unit: the installer derives the path from its own location and is correct by
+  construction. The defect was never in the generator — only in the absence of
+  anything that noticed the generated artifact had gone stale.
+
 ## [4.17.1] - 2026-08-11
 
 ### Fixed
