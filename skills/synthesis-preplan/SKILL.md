@@ -248,6 +248,18 @@ A few patterns to apply consistently inside the Q&A loop:
 - **Surface privacy / security / scaling implications inside "why it matters".** This is where your code-review dimensions (see the `synthesis-code-audit` skill, or your project's review checklist) get applied early — bake them into the rubric so the resulting plan inherits the audit posture.
 - **Note when a decision is forced by the ticket itself.** Some questions only exist because the ticket left them open. Others are forced by an upstream commit or by a project convention. Calling out which is which helps the user know how much latitude they have.
 
+### Three checks that catch a bad decision before it is locked
+
+Decision quality is owned here and in Step 3. It is **not** the audit's job: an audit verifies an implementation against locked decisions, with a fixed yardstick and a fresh context, and that is exactly what makes it useful. A locked row is the one thing no audit will re-open, so a wrong decision does not get caught downstream. It gets *verified*, thoroughly, sometimes with findings inside it that make the verification look rigorous.
+
+These three exist because a real run produced a mechanism that satisfied its acceptance criterion by forcing the outcome, passed a careful isolated audit that found a genuine bug *inside* it, and was only caught when a human asked whether it should exist at all.
+
+- **Check every decision against what the downstream tickets consume.** Mechanical, so it survives a dull ticket and a tired author: the dependency graph from Step 1 already names what is downstream. For each locked decision, ask what those tickets read from this work's output, and whether this decision distorts it. The live case: a guarantee that every result row contained at least one item of a given kind pinned that count to a constant, and the very next ticket existed to *measure* that count. The conflict was visible at plan time and nobody looked.
+- **Ask what each mechanism makes unobservable.** Any guarantee, floor, quota or minimum pins a variable. Whatever measured that variable now measures the guarantee instead. Before locking a mechanism that forces an outcome, name what can no longer be learned, and check it against the previous bullet. Related: **an acceptance criterion satisfied by fiat is not met.** If the answer to "how do we know X happens?" is "because we force it", that is not evidence, and the row's *why* should say so.
+- **Before adding a mechanism to prevent an outcome, ask whether the outcome is a defect or the model working.** An absence is not automatically a gap. In the live case, a low-scoring item being crowded out of a row was the scoring model correctly reporting that it had better evidence; it was read as a hole and a mechanism was invented to plug it. This is the design-time twin of the test-sufficiency gate's grounding rule, and it reduces scope at least as often as it adds it.
+
+**A mechanism introduced inside a lean becomes its own numbered decision.** If answering one question invents a mechanism to make its own answer work, that mechanism is a second decision and gets the full treatment in Step 4: its own restated question, its own two to four options, its own "why it matters", its own lean. Riders on another decision's lean never receive the scrutiny that decision received, and they are locked with its authority.
+
 ## Skip-Q&A behavior
 
 If the user says "just give me the plan" or similar — honor it, but with a one-line warning:
