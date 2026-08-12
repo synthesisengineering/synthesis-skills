@@ -257,8 +257,11 @@ The workflow itself is neutral on which lenses apply.
 
 The per-commit cycle catches per-unit regressions but cannot catch
 integration-level defects that span the full diff or only manifest
-in a real runtime. Five additional gates run **after the last
-commit's per-commit cycle finishes** and **before opening the PR**.
+in a real runtime. Five **review gates** run **after the last commit's
+per-commit cycle finishes** and **before opening the PR**. They are the
+first five entries of the nine end-of-plan todo items above; the
+remaining four are the findings commits, the changelog, the PR, and the
+backfill. "The gates" in this document means these five reviews.
 
 ### 1. Final audit on the full diff
 

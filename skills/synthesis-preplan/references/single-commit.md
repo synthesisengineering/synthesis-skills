@@ -52,7 +52,7 @@ dropped where **their subject does not exist** in a one-commit change. That
 test, not cost, decides what survives — and it also fixes exactly what cannot
 be dropped:
 
-| Full-lane gate | One-commit change | |
+| Full-lane gate | One-commit change | Verdict |
 |---|---|---|
 | Per-commit brief × N, plan document, per-commit pauses | one commit, no plan | drop |
 | Final audit on the cumulative diff | same diff the commit audit already read | drop (merged into the one audit) |

@@ -98,7 +98,7 @@ Produce the plan as a document with this exact structure:
    - Commits are always run in order — do NOT include ordering, dependency, or "depends on commit N" notes; sequence is implicit. (Operation order inside a single commit, e.g. within one migration, is a Verification/Risk item.)
    - Every commit must be independently testable and sized as one coherent reviewable unit — none too large or too small.
 6. **E2E strategy** — explicit end-to-end validation for the whole change: golden path plus edge cases (boundaries, malformed input, auth boundaries, concurrency, adversarial values, every documented error code).
-7. **Mandatory gates** — as explicit todo items, not prose: the two Step 0 items above (write the full todo list, then create and check out the branch and confirm it), then the nine end-of-plan gates listed under "End-of-plan steps" above, in that order.
+7. **Mandatory gates** — as explicit todo items, not prose: the two Step 0 items above (write the full todo list, then create and check out the branch and confirm it), then the nine end-of-plan todo items listed under "End-of-plan steps" above, in that order. (The first five of those are the review gates; the last four are the findings commits, the changelog, the PR, and the backfill.)
 
 Strict adherence to the locked decisions; plans that diverge are returned for revision. The per-commit **Verification** and **Risks to flag to audit** subsections are the mandatory verify and audit todos — establish them in the plan, never improvise at execution time.
 
