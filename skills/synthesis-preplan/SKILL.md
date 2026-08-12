@@ -201,6 +201,20 @@ Every persisted plan (and the planner's output it is built from) MUST follow thi
 
 The per-commit **Verification** and **Risks to flag to audit** subsections ARE the mandatory verify and audit todos (the commit-by-commit workflow requires both as separate items). They are established in the plan, never improvised at execution time.
 
+### Gates state their subject by reference, never by restating its content
+
+A gate that enumerates facts freezes them at plan time. Write "state what the ticket's outcome section states", not a list of the three things the outcome is expected to be. The list is what goes stale, and it goes stale inside the artifact a gate is about to write.
+
+The live case: a squash-merge gate required the message to state "the new authoritative origin", "the recovery-only status of the old address", and "the one-time install migration". The plan's central question resolved negative, so three of the four became false, and following the gate literally would have written falsehoods into permanent history. This is the same "planned state recorded as present fact" defect that ordinary documents get audited for; the gate list is simply the last place anyone thinks to look for it.
+
+### Any gate that can resolve negative carries a negative branch, written at plan time
+
+If the plan contains a decision gate whose outcome may be "no", pre-specify what a negative changes about **closing**, not only about the commit list. A plan can pre-authorize the negative outcome in the strongest terms and still leave its own close-out gates written as though it could not happen.
+
+At minimum, name what a negative does to: the merge or PR message, the E2E strategy, any version bumps, the test-sufficiency scope, the acceptance criteria, and the ticket's status wording. Four or five lines, drafted while the positive bias is visible and cheap to counter.
+
+Related: **a re-scope block enumerates every section it touches, with a status per section** — superseded, unchanged, or rewritten, as a table. A block that names only the sections its author was thinking about leaves everything that merely *derived* from them still asserting the old branch, and the cost shows up distributed across later commits, each correcting plan prose by hand.
+
 ### Test-sufficiency self-review (end-of-plan gate)
 
 After the E2E run and before you open the PR, the plan MUST include an explicit step that asks, in the project's own terms: **is the testing performed enough to send this to review with confidence?** Treat it as an adversarial self-audit of coverage, not a formality. Enumerate, concretely:
