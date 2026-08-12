@@ -75,8 +75,14 @@ After the last commit's per-commit cycle finishes, the plan's todo list must inc
    - The golden path
    - Edge cases: boundary inputs (max/min/empty/oversize), malformed inputs, auth boundaries, concurrency (process kill mid-flight if durability is claimed), adversarial values (PII-shaped strings, injection-shaped strings, Unicode edge cases), and confirmation that every documented error status code is actually returned
 3. Test-sufficiency self-review — judge whether the testing is enough to send to review with confidence. **First ground every candidate gap in real, shipping behavior**: confirm it covers an intended, in-design surface on a code path real users reach (check the design, the feature-flag registry, and the code). Do NOT add instrumentation/tests/abstractions for speculative, flag-gated, prototype, or not-yet-designed elements — closing a "gap" on a non-product surface is itself over-reach; leave it or delete the dead UI. Then enumerate the real gaps: **untested layers** (new code with no automated test — glue/integration code like UI effects, hooks, wiring, middleware is the usual blind spot); **wired-but-never-run surfaces** (implemented and audited but never executed against a real runtime — treat as unverified, not a pass); and **unobserved branches** (fallbacks/the `else` of a new conditional, error paths, alternate surfaces like desktop vs mobile, every documented status code). For each real gap, close it (run it or add a test) or consciously surface it in the PR with the residual-risk rationale.
-4. Address findings as **new commits** — the amend-over-new-commit rule does NOT apply at end of plan
-5. Open the PR (your ship / PR-open step), which finishes by emitting a one-line, paste-ready PR blurb for the user
+4. Plan-conformance review — did each commit do what was approved, does the accumulated drift change anything locked in the decisions file, **and are the plan's own remaining gates still executable** (a gate written for a positive outcome misfires when the plan's central question resolves negative, and a gate that restates facts rather than referencing the artifact of record can require writing falsehoods)
+5. Branch-wide reconciliation — two checks no per-commit audit can see, because each was scoped to its own diff and to the branch rather than to what it merges into. **Re-derive any number the plan allocated in a shared append-only file** (changelog or decision rows, ticket keys, migration versions) against the **merge target**, not the branch base, and renumber; re-verify any "existing entries untouched" invariant against the merge target too; and tell the merger which target the allocation was derived against, since only the merge pins it. **Sweep any convention discovered mid-plan** back over the commits that predate it, deciding sweep-or-accept once rather than applying it forward only
+6. Address findings as **new commits** — the amend-over-new-commit rule does NOT apply at end of plan
+7. The project's changelog section, where it keeps one: one heading carrying the ticket key, with the PR number left as the project's placeholder
+8. Open the PR (your ship / PR-open step), which finishes by emitting a one-line, paste-ready PR blurb for the user
+9. Backfill the real PR number into that changelog heading once the PR exists
+
+The workflow document governs this list. When it changes, this copy changes with it.
 
 ### Plan output expectations
 
@@ -92,7 +98,7 @@ Produce the plan as a document with this exact structure:
    - Commits are always run in order — do NOT include ordering, dependency, or "depends on commit N" notes; sequence is implicit. (Operation order inside a single commit, e.g. within one migration, is a Verification/Risk item.)
    - Every commit must be independently testable and sized as one coherent reviewable unit — none too large or too small.
 6. **E2E strategy** — explicit end-to-end validation for the whole change: golden path plus edge cases (boundaries, malformed input, auth boundaries, concurrency, adversarial values, every documented error code).
-7. **Mandatory gates** — as explicit todo items, not prose: the two Step 0 items above (write the full todo list, then create and check out the branch and confirm it), then the end-of-plan gates — final audit on the cumulative diff, the E2E run, a test-sufficiency self-review (untested layers / wired-but-never-run surfaces / unobserved branches), address findings as new commits, then open the PR.
+7. **Mandatory gates** — as explicit todo items, not prose: the two Step 0 items above (write the full todo list, then create and check out the branch and confirm it), then the nine end-of-plan gates listed under "End-of-plan steps" above, in that order.
 
 Strict adherence to the locked decisions; plans that diverge are returned for revision. The per-commit **Verification** and **Risks to flag to audit** subsections are the mandatory verify and audit todos — establish them in the plan, never improvise at execution time.
 

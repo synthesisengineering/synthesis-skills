@@ -154,13 +154,31 @@ For each commit, the todo list must contain these as distinct items:
 - Full gate on commit N, once, after the amend
 - Pause for user approval before commit N+1's brief
 
-For the end of the plan, the todo list must additionally contain:
+For the end of the plan, the todo list must additionally contain all
+of these. **This list and the Workflow summary below are the same items
+in the same order**; if they ever differ, that is the defect, not a
+difference of scope.
 
 - Final audit on the cumulative diff (`main...HEAD`, or your base range)
 - End-to-end verification against a real runtime, including edge cases
+- Test-sufficiency self-review
+- Plan-conformance review, including whether the plan's own remaining
+  gates are still executable
+- Branch-wide reconciliation (shared numbers against the merge target;
+  conventions discovered mid-plan)
 - Address findings as new commits (the amend-over-new-commit rule
   does NOT apply at end of plan — see below)
+- The project's changelog section, where it keeps one: a single heading
+  for this change carrying the ticket key, with the PR number left as
+  the project's placeholder until the PR exists
 - Open the PR (your ship / PR-open step)
+- Backfill the real PR number into that changelog heading once the PR
+  is open
+
+This block previously carried four items and silently omitted gates the
+same document defines, which is worse than it sounds: this is the
+operative list at execution time, and it sits directly above a warning
+about collapsing items.
 
 Collapsing these into fewer items is the most common failure mode.
 Audit and verify get silently skipped because they look like part of
@@ -186,7 +204,7 @@ The workflow itself is neutral on which lenses apply.
 
 The per-commit cycle catches per-unit regressions but cannot catch
 integration-level defects that span the full diff or only manifest
-in a real runtime. Two additional gates run **after the last
+in a real runtime. Five additional gates run **after the last
 commit's per-commit cycle finishes** and **before opening the PR**.
 
 ### 1. Final audit on the full diff
@@ -280,6 +298,82 @@ issues, and any code path that depends on real network conditions.
 A 30-minute E2E run at the end of an 8-commit plan is cheap
 insurance against shipping that class of bug.
 
+### 3. Test-sufficiency self-review
+
+Ask, in the project's own terms, whether the testing performed is
+enough to send this to review with confidence. Treat it as an
+adversarial self-audit of coverage, not a formality.
+
+Ground every candidate gap in real, shipping behavior first: a
+surfaced item is only a gap if it covers an intended, in-design
+surface on a code path real users reach. Do not add tests or
+instrumentation for speculative, flag-gated or prototype elements —
+closing a "gap" on a non-product surface is itself the over-reach the
+plan exists to avoid. Then enumerate the real gaps: **untested
+layers** (glue and wiring are the usual blind spot),
+**wired-but-never-run surfaces** (statically audited but never
+executed against a real runtime — unverified, not a pass), and
+**unobserved branches** (the `else` of a new conditional, error paths,
+alternate surfaces, every documented status code).
+
+For each real gap: close it, or consciously accept it and surface it
+in the PR with the residual-risk rationale. Accepting is the user's
+call, not the implementer's.
+
+### 4. Plan-conformance review
+
+Did each commit do what was approved, and does the accumulated drift
+change anything locked in the decisions file? This is what the
+per-commit approvals structurally cannot see: eight commits each
+defensible alone whose sum has moved away from what was agreed.
+
+It also surfaces what a later commit revealed about an earlier one,
+which could not have been known when the earlier one was approved.
+
+**It also asks whether the plan's own remaining gates are still
+executable.** This is the first reader holding both the plan and the
+whole shipped result at once, and a gate that misfires when re-run
+literally is a defect the same size as a commit that drifted. The
+sharpest instance: a plan whose central question resolves *negative*
+leaves its close-out gates written for the positive branch, and one
+such gate required a merge message to state three facts that had all
+become false. Following it literally writes falsehoods into permanent
+history.
+
+### 5. Branch-wide reconciliation
+
+Two checks that are invisible to every per-commit audit, because each
+commit was scoped to its own diff and to the branch rather than to
+what it merges into.
+
+**Reconcile numbers against the merge target, not the branch base.**
+Where the plan allocated numbers in a file other branches also append
+to — changelog or decision rows, ticket keys, migration versions —
+re-derive the first free number against the merge target **now**, and
+renumber. Also re-verify any "existing entries untouched" invariant
+against the merge target: verifying it against the branch base proves
+nothing if the base has moved.
+
+**This gate has two beats, because a number cannot be made final
+here.** Renumber now, so the branch is not obviously wrong and the
+reviewer is not reading colliding identifiers. Then **hand the merger a
+re-check**: say in the handoff which target commit the allocation was
+derived against, and that it must be re-derived if the target has
+moved since. A number derived before the merge can go stale while the
+work is still in flight, and has — once inside a single commit's own
+execution window, about ninety seconds. Only the merge pins the target,
+and taking the merge is not this workflow's step.
+
+**Sweep any convention discovered mid-plan back over the commits that
+predate it.** Decide sweep-or-accept once, explicitly. Forward-only
+application leaves the branch internally inconsistent in a way no
+per-commit audit can see, because the early commits were correct under
+the rules known at the time and the later ones under different rules.
+
+**Whatever this gate changes lands as a new commit**, like every other
+end-of-plan finding. Renumbering and sweeping both read as though they
+touch earlier commits. They do not: no rebase, no amend.
+
 ## Workflow summary
 
 **Once, before the first edit:**
@@ -296,4 +390,17 @@ insurance against shipping that class of bug.
 1. Final audit on `main...HEAD` → fix findings as new commits.
 2. End-to-end run against the live local stack, including edge
    cases → fix findings as new commits.
-3. Then open the PR (your ship / PR-open step).
+3. Test-sufficiency self-review → close the real gaps, or accept and
+   surface them.
+4. Plan-conformance review → conformance, drift against locked
+   decisions, whether the plan's own remaining gates still execute,
+   patterns worth adopting as standards.
+5. Branch-wide reconciliation → re-derive shared numbers against the
+   merge target, and sweep any convention discovered mid-plan.
+6. Address findings as new commits (never amendments, at this stage).
+7. The project's changelog section, where it keeps one.
+8. Then open the PR (your ship / PR-open step).
+9. Backfill the real PR number into that changelog heading.
+
+This list is canonical. Copies elsewhere — a progress document's
+checkbox block, the pre-planning skill's handoff — follow it.

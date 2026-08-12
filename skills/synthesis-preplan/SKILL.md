@@ -156,6 +156,8 @@ Last updated: <YYYY-MM-DD>
 
 Group rows by topic. Each row: numbered, the decision restated, the choice, the one-line "why". Documentation and out-of-scope decisions are load-bearing groups — include them.
 
+**Where the project keeps a changelog, the documentation group must carry a changelog row.** Decide here what the change's section says: which subsections it needs (`Added` / `Changed` / `Fixed` / `Removed` / `Security`, or the project's own set) and the one user- or operator-visible fact each records — or that the change does not qualify, with the reason. Deciding it at this stage is what keeps it from being discovered at push time, when it becomes a scramble to reconstruct what shipped.
+
 Display the file inline in the conversation after writing. Ask the user to confirm before moving to Step 6.
 
 ## Step 6: Handoff to your planning step
@@ -195,7 +197,7 @@ Every persisted plan (and the planner's output it is built from) MUST follow thi
    - Commits are ALWAYS executed in order, so do NOT include ordering, dependency, or "depends on commit N" notes — sequence is implicit. (Intra-commit ordering, e.g. operation order inside one migration, is a Verification/Risk item, not cross-commit ordering.)
    - Size: no commit too large or too small — one coherent, reviewable unit each.
 6. **E2E strategy** — an explicit end-to-end validation strategy for the whole change: golden path plus edge cases (boundaries, malformed input, auth boundaries, concurrency, adversarial values, and every documented error code).
-7. **Mandatory gates** — as explicit todo items, not prose. Opening with the two **Step 0** items the workflow requires once, after the plan is approved and before any file is touched: write the full todo list, then create and check out the branch on the base named above and confirm with `git branch --show-current`. Both are hard requirements and both get skipped unless the plan names them, because neither becomes visibly missing until commit time. Then the end-of-plan todos: final audit on the cumulative diff (`main...HEAD` or your base range), the E2E run, a **test-sufficiency self-review** (see below), address findings as new commits, then open the PR (your ship / PR-open step).
+7. **Mandatory gates** — as explicit todo items, not prose. Opening with the two **Step 0** items the workflow requires once, after the plan is approved and before any file is touched: write the full todo list, then create and check out the branch on the base named above and confirm with `git branch --show-current`. Both are hard requirements and both get skipped unless the plan names them, because neither becomes visibly missing until commit time. Then the end-of-plan todos: final audit on the cumulative diff (`main...HEAD` or your base range), the E2E run, a **test-sufficiency self-review** (see below), a **plan-conformance review** (did each commit do what was approved, does the accumulated drift change anything locked in the decisions file, **and are the plan's own remaining gates still executable**), a **branch-wide reconciliation** (see below), the **changelog section** decided in the decisions file where the project keeps one (written, ticket key in the heading, PR number placeholder), address findings as new commits, then open the PR (your ship / PR-open step), then **backfill the real PR number** into that heading.
 
 The per-commit **Verification** and **Risks to flag to audit** subsections ARE the mandatory verify and audit todos (the commit-by-commit workflow requires both as separate items). They are established in the plan, never improvised at execution time.
 
@@ -209,6 +211,18 @@ After the E2E run and before you open the PR, the plan MUST include an explicit 
 - **Unobserved branches.** Which documented behaviors were not directly observed: fallbacks (the `else` of a new conditional), error paths, alternate surfaces (desktop vs mobile), and every documented status code? The happy path passing does not cover the branch that does the opposite.
 
 For each **real** gap (one grounded in shipping behavior): either **close it** (run it, or add the missing test), or **consciously accept and surface it** in the PR description with the rationale and residual-risk note. Runtime-only bugs (the kind the E2E exists to catch) frequently live in the untested glue layer, so a plan that ships that layer on typecheck-plus-audit alone has not earned confidence. Findings from this review are addressed as new commits, like other end-of-plan findings — and that includes removing coverage or code that the grounding check exposes as speculative.
+
+### Branch-wide reconciliation (end-of-plan gate)
+
+Two checks no per-commit audit can perform, because each commit was scoped to its own diff and to the branch rather than to what it merges into. Both land as new commits, like every other end-of-plan finding — neither is a rebase or an amend, however much renumbering reads like one.
+
+**Re-derive any number the plan allocated in a shared append-only file** — changelog or decision rows, ticket keys, migration versions — against the **merge target**, not the branch base, and renumber. Re-verify any "existing entries untouched" invariant against the merge target too: checked against the branch base it proves nothing once the base has moved, and every per-commit audit will faithfully confirm the invariant the plan named while the plan names a number a concurrent branch has already taken.
+
+**Sweep any convention discovered mid-plan back over the commits that predate it.** Decide sweep-or-accept once, explicitly. Applied forward only, the branch is left internally inconsistent in a way no per-commit audit can see, because the early commits were correct under the rules known at the time and the later ones under different rules, and the cost then shows up distributed across the review.
+
+### Numbers allocated in shared append-only files are provisional
+
+Where the plan allocates a number in a file other branches also append to, **state the allocation as provisional** in the plan itself and put the re-derivation in the close-out gates above. A number cannot be made final before the merge, because only the merge pins the target. Renumber at the reconciliation gate so the reviewer is not reading colliding identifiers, then hand the merger the re-check: which target commit the allocation was derived against, and that it needs re-deriving if the target has moved. A number derived before the merge can go stale while the work is still in flight; in one run it went stale twice, the second time within ninety seconds of being committed.
 
 ## Q&A rubric details
 
