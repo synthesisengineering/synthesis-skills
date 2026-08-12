@@ -4,6 +4,26 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.21.0] - 2026-08-12
+
+### Added
+
+- `synthesis-inbox-cleanup` v1.5.0: **workspace scoping — cleanup reach follows
+  the seat that invokes it.** New `scopes.yaml` contract plus
+  `scripts/resolve_scope.py`: a personal operations seat's ritual sweeps every
+  account; a client-workspace seat's ritual sweeps only that workspace's
+  accounts, so a client engagement's session never reads personal mail and the
+  boundary is mechanical rather than remembered. The caller states its
+  workspace explicitly — no environment sniffing. Guard-contract exit codes,
+  and an **unknown workspace is unverifiable (exit 2), never an empty list**:
+  a typo'd workspace must not resolve to zero accounts and read as a clean
+  sweep. Seven subprocess tests pin the contract.
+- `synthesis-daily-rituals` v2.21.0: Day-Start **Step 3d — Inbox Hygiene**.
+  When `scopes.yaml` exists, the morning ritual resolves this seat's scope and
+  runs the inbox-cleanup sweep dry-run-first over exactly the resolved
+  accounts, reporting per account against the scope. Inbox cleanup becomes a
+  standing chief-of-staff duty of the ritual rather than a separate session.
+
 ## [4.20.0] - 2026-08-12
 
 ### Added

@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.20.0"
+  version: "2.21.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,15 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.21.0 — Inbox hygiene joins the morning sync, scoped to the seat
+
+Day-Start gains Step 3d: when `~/.synthesis/inbox-cleanup/scopes.yaml` exists,
+the ritual resolves which accounts this workspace's seat may sweep (personal
+seat: all; client seat: its own only — the inbox-cleanup skill's v1.5.0
+workspace-scope contract) and runs the sweep dry-run-first. Unknown workspace
+or missing config stops the step loudly; sweep results always name the scope
+("7 of 9 in scope, 7 swept") so partial can never impersonate complete.
 
 ## v2.20.0 — Calendar Guardian: the rituals hold a perimeter around the calendar
 
@@ -379,6 +388,21 @@ After any standup, planning session, or design review with auto-generated notes 
 - [ ] Move to the configured workspace meetings directory with naming convention: `standup-YYYY-MM-DD.md` or `meeting-TOPIC-YYYY-MM-DD.md`. The `{workspace}` value comes from the project's Slack sync config.
 - [ ] Read transcript and extract action items, decisions, status changes.
 - [ ] Update CONTEXT.md with any new information from the meeting.
+
+#### 3d. Inbox Hygiene (v2.21.0 — when `~/.synthesis/inbox-cleanup/scopes.yaml` exists)
+
+Inbox cleanup is a chief-of-staff duty, and its reach follows the seat that
+invokes it (the inbox-cleanup skill's workspace-scope contract):
+
+- [ ] Resolve scope: `resolve_scope.py --workspace <this workspace> --json`.
+  A personal/all-scope seat sweeps every account; any other seat sweeps only
+  its own workspace's accounts. **Exit 2 (unknown workspace, missing config)
+  stops this step with the error surfaced — never improvise an account list.**
+- [ ] Run the inbox-cleanup skill's sweep over exactly the resolved accounts,
+  dry-run-first per that skill's workflow.
+- [ ] Report per account against the resolved scope ("7 of 9 in scope, 7
+  swept"), naming any account skipped and why. Held items and new-sender
+  questions go to the day plan's decisions region, not into silent limbo.
 
 ### 4. Catch-Up Read
 

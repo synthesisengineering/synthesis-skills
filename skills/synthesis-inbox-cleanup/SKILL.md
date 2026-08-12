@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.4.0"
+  version: "1.5.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   platform: "macOS (Apple Silicon and Intel)"
@@ -16,6 +16,13 @@ metadata:
 A manifest-driven email cleanup engine that scales the same human-curated rules across three account tool stacks on macOS: iCloud / generic IMAP, Microsoft 365 / outlook.com via Mail.app AppleScript, and Gmail via the workspace-mcp Gmail API (with optional native server-side filters).
 
 The engine is deterministic. Email content does not change rules at runtime. When an LLM is invoked — for new-sender categorization or for higher-risk paths like body-reading digests — sanitization defenses run first. The skill ships adversarial test fixtures so prompt-injection regressions surface in CI rather than in production.
+
+## v1.5.0 — Workspace scoping: cleanup reach follows the seat that invokes it
+
+New `scripts/resolve_scope.py` + `~/.synthesis/inbox-cleanup/scopes.yaml`
+contract (see "Workspace scoping" below): a personal operations seat sweeps
+every account; a client-workspace seat sweeps only its own. Unknown workspaces
+are unverifiable (exit 2), never an empty sweep. Subprocess-tested.
 
 ## v1.4.0 — Stable cross-client engine runtime
 
@@ -45,6 +52,42 @@ the engine path used by private workflows.
 ```
 
 The engine reads its rules from `~/.synthesis/inbox-cleanup/rules.yaml`. The contents of that file — which senders to trash, which domains to never touch, which family-domain subject keywords to spare — is private user data. It never reaches the public repo. The engine is generic; the rules are yours.
+
+## Workspace scoping — inbox cleanup as a chief-of-staff duty (v1.5.0)
+
+One person, many mailboxes, several working contexts. The morning ritual of a
+**personal operations seat** should sweep every account the person owns; the
+ritual of a **client-workspace seat** should touch only that workspace's
+accounts — a client engagement's session has no business reading personal
+mail, and the boundary should be mechanical, not remembered.
+
+The contract lives in `~/.synthesis/inbox-cleanup/scopes.yaml`:
+
+```yaml
+version: 1
+all_scope_workspaces: [personal]        # seats whose default is EVERYTHING
+accounts:
+  - address: you@example.com
+    workspace: personal
+    stack: icloud-imap
+  - address: you@work.example.com
+    workspace: acme
+    stack: gmail
+```
+
+Resolution is by `scripts/resolve_scope.py --workspace <name>` (add `--json`
+for rituals): an all-scope workspace resolves to every account; any other
+workspace resolves to its own accounts only; `--all` overrides explicitly.
+The caller **states its workspace** — rituals know where they run, and an
+explicit argument beats environment sniffing that guesses wrong silently.
+
+Guard contract: exit 0 resolved, 1 config defects, 2 unverifiable — and an
+**unknown workspace is exit 2, never an empty list**, because a cleanup run
+that resolves to zero accounts by typo must not look like a clean sweep.
+
+Sweep results are reported per account against the resolved scope ("7 of 9
+accounts in scope, 7 swept; 2 out of scope for this workspace"), so a partial
+sweep is always distinguishable from a complete one.
 
 ## When to invoke this skill
 
