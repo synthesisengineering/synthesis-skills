@@ -120,6 +120,11 @@ def check_tiers(cfg: dict) -> dict:
         # who should have known says they never heard.
         for addr in members:
             if not isinstance(addr, str) or "@" not in addr:
+                # A non-email member (TODO marker, name, note) cannot receive
+                # mail. It fails loudly at send time — good — but the config
+                # should say so up front rather than let it look complete.
+                warn(f"tier '{tid}' member '{addr}' is not an email address",
+                     "placeholder? fill it in before this tier is used")
                 continue
             local = addr.split("@", 1)[0].lower()
             if local in ALIAS_HINTS:

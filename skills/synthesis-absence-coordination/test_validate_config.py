@@ -166,6 +166,19 @@ def test_missing_quiet_type_warns(example_config, write_config):
     assert "minimal" in result.stdout
 
 
+def test_non_email_member_warns(example_config, write_config):
+    """A TODO placeholder cannot receive mail; the config must not look complete.
+
+    Found in practice: a real config shipped with 'TODO-...' members and
+    validated clean. Placeholders are correct practice — invisible ones are not.
+    """
+    cfg = copy.deepcopy(example_config)
+    tier(cfg, "family")["members"].append("TODO-ask-for-address")
+    result = run_validator(write_config(cfg))
+    assert result.returncode == 0          # a warning, not a defect
+    assert "not an email address" in result.stdout
+
+
 def test_warnings_alone_do_not_fail(example_config, write_config):
     """Warnings inform; only defects block. The example config has warnings
     (unresolved shared calendars) and still exits 0 — that contract must hold."""
