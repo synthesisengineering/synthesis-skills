@@ -18,7 +18,7 @@ Two conditions, both required:
 2. **Nothing is being decided.** The work is *mechanical* in the sense
    `commit-by-commit.md`'s plan format uses: determinate once the ticket is
    read. Diff size is not the signal. A twenty-line commit that settles how two
-   subsystems talk is judgement work and does not belong here; a
+   subsystems talk is judgment work and does not belong here; a
    four-hundred-line rename sweep does.
 
 ### Hard disqualifiers
@@ -34,8 +34,8 @@ Any one of these sends the work to the full lane regardless of size:
 - Work stacked on in-flight work, where the parent's choices are not yet
   settled.
 
-These are checkable. The two conditions above are judgement calls, and
-judgement calls under time pressure default to "small" — the disqualifier list
+These are checkable. The two conditions above are judgment calls, and
+judgment calls under time pressure default to "small" — the disqualifier list
 is what actually holds the line.
 
 ### Who chooses
@@ -100,7 +100,7 @@ judged decision-free.
 ### Step 2 — Implement
 
 One commit. If a second independently reviewable unit appears, that is a signal
-about the routing test, not a licence to split — see the tripwires.
+about the routing test, not a license to split — see the tripwires.
 
 ### Step 3 — Fast checks
 
@@ -122,7 +122,7 @@ never the expensive part.
 
 Do not substitute an inline pass. An inline audit reads the diff with the
 context that wrote it, and the full lane names that as the exact failure the
-step prevents. Two exceptions, and neither is a per-ticket judgement call:
+step prevents. Two exceptions, and neither is a per-ticket judgment call:
 
 - A diff that is mechanical in the strict sense — a rename sweep, a fixture
   regeneration, a docs pass — where an inline walk of the ten dimensions is
