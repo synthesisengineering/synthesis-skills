@@ -111,6 +111,40 @@ Do not skip steps. Do not bundle.
    checkpoint; the user can always say "go" to advance, but the
    default is to wait.
 
+### Three rules the verify step keeps needing
+
+Each of these earned its place by recurring inside a single plan after
+being written down as a lesson, which is what makes it a rule rather
+than an incident.
+
+**Verify every citation against the artifact, not against memory or
+the brief.** Before citing any document for a specific value — a row
+number, a port, a profile, a count, a condition, a cause — open it and
+locate that value. If it is not there, write it as an expectation and
+name what will measure it. **This applies to the brief's own citations,
+which are not pre-verified**: a brief is written by the orchestrator
+and inherits its errors. The failure shape is always the same and
+always plausible-looking: an inference hardened into a citation,
+attributed to a nearby record that says something narrower. One plan
+produced seven instances of it across five commits.
+
+**Sweep for claims the commit has just falsified.** A commit that
+changes some state must grep for assertions about the *old* state
+repo-wide, **including files outside its stated scope**, and either
+correct them or declare them left alone with a reason. A document that
+describes the pre-commit state is a defect the commit introduced.
+Typical instances: a scope item still calling work pending that this
+commit did, a status line that now contradicts its own subject, an
+index entry that reads as achieved.
+
+**A grep for a literal string checks wording, not state.** Where the
+assertion is about state, pair the negative grep with the positive
+one: the old string is gone **and** the replacement is present. A
+negative-only grep fails the moment a document legitimately mentions
+the old thing as the thing being ruled out. And take diff shape from
+`git diff --numstat`, never from `grep -c '^-'`, which counts the
+`---` header and reads one high.
+
 ### Why per-commit verification, not bundled at end
 
 - Catches regressions immediately, not after several commits' worth
