@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ### Added
 
-- **New skill `synthesis-preplan` (v1.0.0)** — architecture-decision pre-planning for tickets or issues with real design choices. Runs a structured Q&A loop that locks the load-bearing architectural decisions (branch base, scope boundary, dependency graph, execution lane, and the open questions a competent engineer could resolve more than one way) before any commit plan is drafted, writes a reviewable locked-decisions file, then hands off to the planning step with a previewed prompt. Declares `depends_on: ["synthesis-code-audit"]` — the review dimensions the decision rubric leans on live there. Bundles three files it carries itself: `references/commit-by-commit.md` (the multi-commit execution discipline: Step 0, the per-commit brief/fast-check/audit/amend/full-gate cycle, five end-of-plan review gates, and the nine-item close-out list they open), `references/single-commit.md` (the companion lane for work that is one reviewable commit and decides nothing), and `assets/handoff-template.md` (the agent-neutral prompt scaffold the skill fills before handing off). Fully project- and agent-agnostic: git is the only assumed baseline, while trackers, build tools, planners, and agent harnesses are all illustrative examples.
+- **New skill `synthesis-preplan` (v1.0.0)** — architecture-decision pre-planning for tickets or issues with real design choices. Runs a structured Q&A loop that locks the load-bearing architectural decisions (branch base, scope boundary, dependency graph, execution lane, and the open questions a competent engineer could resolve more than one way) before any commit plan is drafted, writes a reviewable locked-decisions file, then hands off to the planning step with a previewed prompt. Declares `depends_on: ["synthesis-code-audit"]` — the review dimensions the decision rubric leans on live there. Bundles three files it carries itself: `references/commit-by-commit.md` (the multi-commit execution discipline: Step 0, the per-commit brief/fast-check/audit/amend/full-gate cycle, and a nine-item close-out list that opens with five review gates), `references/single-commit.md` (the companion lane for work that is one reviewable commit and decides nothing), and `assets/handoff-template.md` (the agent-neutral prompt scaffold the skill fills before handing off). Fully project- and agent-agnostic: git is the only assumed baseline, while trackers, build tools, planners, and agent harnesses are all illustrative examples.
 
   Notable pieces of the methodology, each earned from a real run rather than
   theorized:
@@ -35,7 +35,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   - **Gates reference their subject instead of restating its content,** and any
     gate that can resolve negative carries a pre-written negative branch.
   - **Execution-lane routing.** Stated explicitly with its reason, backed by
-    five checkable disqualifiers, because judgement calls under time pressure
+    five checkable disqualifiers, because judgment calls under time pressure
     default to "small".
 
 ### Rationale
