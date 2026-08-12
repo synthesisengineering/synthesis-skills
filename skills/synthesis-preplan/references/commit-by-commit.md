@@ -19,6 +19,32 @@ This workflow assumes:
    Drafting commit briefs ad hoc, without a written plan, is the
    pattern this workflow is designed to replace.
 
+## Step 0: todo list and branch, before the first commit
+
+Runs once, after the plan is approved and **before any file is
+touched** — not at the first commit, and never discovered at commit
+time. Both parts are hard requirements, in this order:
+
+1. **Write the todo list** in whatever todo mechanism your agent
+   provides, with every cycle step for every commit as its own named
+   item, plus the end-of-plan block. The shape is defined in
+   **Todo-list discipline** below. Write it in full here, not commit by
+   commit: a list that arrives one commit at a time cannot show what is
+   being skipped, which is the only thing it is for.
+2. **Create and check out the branch** on the base the decisions file
+   names. Confirm with `git branch --show-current` that the merge
+   target is not checked out before the first edit. If a command is
+   about to write a file and the trunk is current, stop and branch. No
+   exception for a one-line change, a docs-only commit, or "just
+   checking something".
+
+Both parts get skipped in practice unless they are their own step, and
+the skipping is not visible until commit time, which is the worst
+moment to find either. A plan with no todo list collapses into
+"implement the plan" and the audit and verify steps quietly disappear
+with it; work started on the trunk has to be moved after the fact,
+with the diff already written.
+
 ## Briefing structure
 
 Every pre-commit briefing has these sections, in order:
@@ -109,6 +135,13 @@ Do not skip steps. Do not bundle.
 
 The cycle steps are tracked as explicit, separate todo items —
 never collapsed into "implement commit N" as a single line.
+
+The list is written in full at **Step 0**, before the first edit, not
+grown commit by commit. It opens with the two Step 0 items themselves:
+
+- Write this todo list
+- Create and check out the branch on the plan's base, and confirm with
+  `git branch --show-current`
 
 For each commit, the todo list must contain these as distinct items:
 
@@ -248,6 +281,11 @@ A 30-minute E2E run at the end of an 8-commit plan is cheap
 insurance against shipping that class of bug.
 
 ## Workflow summary
+
+**Once, before the first edit:**
+
+0. Step 0 — write the whole todo list, then create and check out the
+   branch and confirm with `git branch --show-current`.
 
 **Per commit (N times):**
 

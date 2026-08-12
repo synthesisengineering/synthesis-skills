@@ -34,6 +34,15 @@ Read the locked decisions file in full before drafting. The decisions are non-ne
 
 The commit-by-commit workflow at `{WORKFLOW_DOC_PATH}` is the canonical reference. The points below are restated here so the plan inherits them directly. If the path above does not resolve, the restatement is sufficient to draft the plan; say so rather than stopping.
 
+### Step 0, before any file is touched
+
+The plan's todo list opens with these two items, and they run once, after the plan is approved and before the first edit:
+
+1. Write the full todo list — every cycle step for every commit, plus the end-of-plan block. In full, not grown commit by commit: a list that arrives one commit at a time cannot show what is being skipped.
+2. Create and check out the branch on the base named above, and confirm with `git branch --show-current` that the merge target is not checked out.
+
+Both get skipped unless they are their own named items, and neither becomes visibly missing until commit time, which is the worst moment to find either.
+
 ### Per-commit todo discipline
 
 Each commit's todo list must include these as **separate, explicit** items — never collapsed into a single "implement commit N":
@@ -83,7 +92,7 @@ Produce the plan as a document with this exact structure:
    - Commits are always run in order — do NOT include ordering, dependency, or "depends on commit N" notes; sequence is implicit. (Operation order inside a single commit, e.g. within one migration, is a Verification/Risk item.)
    - Every commit must be independently testable and sized as one coherent reviewable unit — none too large or too small.
 6. **E2E strategy** — explicit end-to-end validation for the whole change: golden path plus edge cases (boundaries, malformed input, auth boundaries, concurrency, adversarial values, every documented error code).
-7. **End-of-plan gates** — final audit on the cumulative diff, the E2E run, a test-sufficiency self-review (untested layers / wired-but-never-run surfaces / unobserved branches), address findings as new commits, then open the PR — as explicit todo items, not prose.
+7. **Mandatory gates** — as explicit todo items, not prose: the two Step 0 items above (write the full todo list, then create and check out the branch and confirm it), then the end-of-plan gates — final audit on the cumulative diff, the E2E run, a test-sufficiency self-review (untested layers / wired-but-never-run surfaces / unobserved branches), address findings as new commits, then open the PR.
 
 Strict adherence to the locked decisions; plans that diverge are returned for revision. The per-commit **Verification** and **Risks to flag to audit** subsections are the mandatory verify and audit todos — establish them in the plan, never improvise at execution time.
 
