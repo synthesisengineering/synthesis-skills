@@ -4,6 +4,19 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**Architecture decisions locked before the plan exists (August 2026).** New
+`synthesis-preplan` skill **v1.0.0** (Engineering family): a structured Q&A loop
+that locks the load-bearing design choices, then hands a reviewable decision set
+to your planning step, on the premise that the hard part of planning is deciding
+what to build rather than breaking the build into commits. Three decision-quality
+checks sit in the rubric because nothing downstream catches a wrong decision: an
+audit verifies an implementation *against* locked decisions, which makes a locked
+row the one thing it never re-opens. Bundles two execution lanes it carries
+itself, the multi-commit workflow and a single-commit companion, with the routing
+test stated explicitly so the lane is never inherited silently. Pairs with
+`synthesis-code-planning` (code-level approaches) and `synthesis-preflight` (the
+pre-merge gate). See the [4.22.0 release notes](CHANGELOG.md).
+
 **The EA layer: absence coordination and the calendar guardian (August 2026).**
 New `synthesis-absence-coordination` skill **v1.0.0**: an absence treated as a
 handoff with a scheduled reversal, not an announcement — principals hear it
