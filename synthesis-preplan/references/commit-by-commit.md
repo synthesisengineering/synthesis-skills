@@ -176,9 +176,11 @@ endpoint with curl or an equivalent. Verify:
   directly to confirm rows are actually committed, columns are
   populated, version bumps fired, soft-deletes set the right
   columns. **This is the gate that catches bugs the test harness
-  can't see**, such as a missing `session.commit()` in the request
-  dependency, middleware ordering issues, or environment-variable
-  defaults that differ between test and runtime configuration.
+  can't see**: an uncommitted write in the request's own persistence
+  scope (in a Python web stack, for example, a missing
+  `session.commit()` in the request dependency), middleware ordering
+  issues, or environment-variable defaults that differ between test
+  and runtime configuration.
 
 ### Edge cases to exercise during end-to-end
 
@@ -206,13 +208,14 @@ amend-over-new-commit rule does not apply at end of plan.
 
 ### Why a separate end-of-plan E2E run matters
 
-The integration-test harness in most projects uses a session
-override that wraps the test in an outer transaction and rolls it
-back at teardown. That pattern is fast and isolates tests, but it
-short-circuits the real `get_session` dependency — so a missing
-commit in the production dependency is invisible to the suite. The
-first time it surfaces is the moment a real client hits the
-endpoint and the row doesn't persist.
+The integration-test harness in most projects wraps each test in an
+outer transaction and rolls it back at teardown. That pattern is fast
+and isolates tests, but it substitutes its own persistence scope for
+the one production uses, so a write the production path never commits
+is invisible to the suite. (In a Python web stack, for example, the
+harness overrides the session dependency the request would otherwise
+resolve.) The first time it surfaces is the moment a real client hits
+the endpoint and the row doesn't persist.
 
 Other classes of bug that test harnesses routinely miss: middleware
 ordering, connection-pool exhaustion, environment-variable defaults
