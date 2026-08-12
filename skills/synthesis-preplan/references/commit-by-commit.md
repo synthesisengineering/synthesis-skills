@@ -228,10 +228,10 @@ difference of scope.
 - Backfill the real PR number into that changelog heading once the PR
   is open
 
-This block previously carried four items and silently omitted gates the
-same document defines, which is worse than it sounds: this is the
-operative list at execution time, and it sits directly above a warning
-about collapsing items.
+This block must carry every gate the document defines. It is the
+operative list at execution time, so a gate missing here is a gate
+skipped in practice no matter how fully the sections below describe it,
+and it sits directly above a warning about collapsing items.
 
 Collapsing these into fewer items is the most common failure mode.
 Audit and verify get silently skipped because they look like part of
