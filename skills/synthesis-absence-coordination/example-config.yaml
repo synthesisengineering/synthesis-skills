@@ -1,0 +1,194 @@
+# synthesis-absence-coordination — example configuration
+#
+# Copy to ~/.synthesis/absence-coordination/config.yaml and replace every
+# placeholder. Validate with:
+#     python3 validate_config.py ~/.synthesis/absence-coordination/config.yaml
+#
+# Every name here is a placeholder. This file is public; your config is not.
+# Keep the real one outside any public repository.
+
+version: 1
+
+# ---------------------------------------------------------------- principal
+principal:
+  name: "Example Person"
+  timezone: "America/New_York"
+  # Address verified on the travel service. Forwards from anywhere else are
+  # discarded SILENTLY — no bounce, no trip, no symptom until it is missing.
+  travel_verified_address: "you@example.com"
+
+# ------------------------------------------------------------ absence types
+# lead_time_days  — deadline for the full announcement
+# notify_on_commit— fire the immediate cohort as soon as the plan is real
+# visibility      — standard | minimal (minimal suppresses group posts)
+# travel          — enables itinerary forwarding and the continuity tier
+absence_types:
+  vacation:
+    lead_time_days: 21
+    notify_on_commit: true
+    visibility: standard
+    travel: true
+  conference:
+    lead_time_days: 21
+    notify_on_commit: true
+    visibility: standard
+    travel: true
+  family_visit:
+    lead_time_days: 14
+    notify_on_commit: false
+    visibility: standard
+    travel: false
+  quiet:
+    # Medical, bereavement, interviews, anything personal.
+    # Holds the calendar; notifies the minimum; suppresses broadcasts.
+    lead_time_days: 0
+    notify_on_commit: false
+    visibility: minimal
+    travel: false
+
+# Which tiers hear immediately when notify_on_commit fires. Keep this small:
+# the people who protect calendars, and the people who plan their lives around
+# yours.
+notify_on_commit_tiers:
+  - exec_assistants
+  - family
+  - personal_continuity
+
+# --------------------------------------------------------------- recipients
+# content policies:
+#   dates_only                  — when, nothing more
+#   dates_city                  — when and where
+#   dates_city_coverage         — adds who decides in your absence
+#   dates_city_coverage_reach   — adds how to reach you (fullest)
+#   dates_coverage_reach        — coverage and reachability, no location
+#   dates_child_logistics       — co-parenting specifics
+#   dates_timezone_facilities   — continuity tier (see SKILL.md)
+recipient_tiers:
+  - id: principals
+    channel: email
+    # NEVER agent-sent. The agent drafts; you send.
+    send_mode: draft_only
+    members:
+      - "manager@example.com"
+      - "ceo@example.com"
+    # THE ORDERING FIX: one message, no gap, no sequencing risk.
+    cc: "tier:exec_assistants"
+    content: dates_city_coverage_reach
+
+  - id: exec_assistants
+    channel: email
+    send_mode: agent_send_after_approval
+    members:
+      - "manager-assistant@example.com"
+      - "ceo-assistant@example.com"
+    content: dates_city_coverage_reach
+    note: "Normally reached as cc on the principals email. Separate mail only for logistics."
+
+  - id: direct_reports
+    channel: email
+    send_mode: agent_send_after_approval
+    members:
+      - "report-one@example.com"
+      - "report-two@example.com"
+    content: dates_coverage_reach
+
+  - id: team_group
+    channel: chat
+    # Chat channels or groups. Posted LAST, always.
+    targets:
+      - "#team-channel"
+      - "#leadership-channel"
+    gate: after_principals
+    content: dates_city_coverage
+
+  - id: family
+    channel: email
+    # Explicit recipients. Do NOT use a distribution alias — see SKILL.md.
+    members:
+      - "parent-one@example.com"
+      - "sibling@example.com"
+    content: dates_only
+
+  - id: co_parenting
+    channel: email
+    members:
+      - "coparent@example.com"
+    content: dates_child_logistics
+
+  - id: personal_continuity
+    channel: email
+    members:
+      - "trainer@example.com"
+    content: dates_timezone_facilities
+    research:
+      # Agent looks up the lodging's facilities (equipment, hours, photos)
+      # rather than making the recipient do it. Always attribute and date.
+      lodging_facilities: true
+    cadence: daily
+    note: "Standing personal commitments disrupted by travel. Needs TIME ZONE, not city."
+
+  - id: external_counterparts
+    channel: email
+    send_mode: draft_only
+    members: []
+    content: dates_only
+
+# ---------------------------------------------------------------- calendars
+calendars:
+  personal: "you@example.com"
+  work_ooo: "you@work.example.com"
+  family_visible: "family-calendar@example.com"
+  # Additional calendars that must be checked for conflicts. List EVERY one,
+  # especially any on a different provider — those commonly sit outside a
+  # cross-calendar blocking tool and are invisible exactly when you check.
+  also_check:
+    - "advisory@example.com"
+  outside_mirror:
+    - id: "other-provider-calendar"
+      note: "Not covered by the cross-calendar blocker. Check by hand."
+  # Shared team/leadership vacation calendars, once you have the links.
+  shared:
+    - id: team_vacation_calendar
+      url: null
+      status: unknown
+    - id: leadership_vacations
+      url: null
+      status: unknown
+
+# ------------------------------------------------------------- integrations
+integrations:
+  travel_service:
+    enabled: true
+    forward_to: "plans@tripit.com"
+    must_send_from: "you@example.com"   # must equal principal.travel_verified_address
+    verify_trip_created: true
+
+  out_of_office:
+    enabled: true
+    set_on_departure: true
+    clear_on_return: true               # a responder still firing after return is a bug
+
+# ------------------------------------------------------------------ coverage
+coverage:
+  # external — supplied by whoever owns the org context (a work-operations
+  #            project, or your manager). The skill will NOT invent coverage.
+  # inline   — defined here, for simpler situations.
+  source: external
+  required_before:
+    - principals
+    - direct_reports
+    - team_group
+
+# --------------------------------------------------------------------- gates
+# Enforced, not advisory. A failing gate BLOCKS the step.
+gates:
+  - no_group_post_before_principals_notified
+  - no_send_before_conflict_check_all_calendars
+  - no_send_before_coverage_statement_present
+  - principal_tier_is_draft_only
+  - amendments_update_existing_rows_never_repost
+
+# -------------------------------------------------------------------- ledger
+ledger:
+  # Reuse an existing drafts ledger if the workspace has one.
+  path: "~/.synthesis/absence-coordination/ledger.md"

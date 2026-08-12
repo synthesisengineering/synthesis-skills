@@ -4,6 +4,51 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.19.0] - 2026-08-12
+
+### Added
+
+- **New skill: `synthesis-absence-coordination` v1.0.0** — coordinate an absence
+  end to end the way a good chief of staff would. An absence is treated as a
+  **handoff with a scheduled reversal**, not an announcement: every work-facing
+  notice must answer *who decides in my place, what waits, and how to reach me*,
+  or the skill refuses to send it.
+
+  What distinguishes it from ordinary out-of-office tooling:
+
+  - **The ordering fix.** Principals hear it first, from the person — in one
+    email with their assistants cc'd, so the assistants get identical lead time
+    with no sequencing risk. Group channels are hard-gated behind that message:
+    a manager must never learn of a report's absence from a team channel.
+  - **Two triggers, not one.** `lead_time_days` schedules the full
+    announcement; `notify_on_commit` fires a small cohort (calendar-protecting
+    assistants, family) the moment a plan is real — which is what actually
+    prevents conflicts, because it lands before conflicting things get booked.
+  - **A `personal_continuity` tier** — the tier most absence systems lack:
+    trainers, therapists, tutors, caregivers, whose standing commitments travel
+    disrupts. Its content is unlike any other tier's: time zone (not city),
+    lodging, and agent-researched local facilities, attributed and dated.
+  - **A quiet type.** `visibility: minimal` holds the calendar and notifies the
+    smallest set while suppressing broadcasts — because a system that can only
+    broadcast is abandoned exactly when discretion matters most.
+  - **Mechanical disclosure.** Content policies (`dates_only`,
+    `dates_city_coverage_reach`, …) are set per tier in config, so what each
+    audience learns is enforced rather than re-decided under time pressure.
+  - **Config validation with the guard contract.** `validate_config.py` exits
+    0/1/2 (valid / defects / unverifiable) and catches the traps that fail
+    silently in production: an unverified travel-service sender (forwards are
+    discarded with no bounce), distribution-alias recipients (unauditable,
+    die in provider migrations), agent-sendable principal tiers, ungated group
+    posts. 14 subprocess-level tests pin the CLI contract.
+  - **Return handling.** Departure is half the workflow: auto-responder set
+    *and* cleared, declined recurrences restored, and the re-entry sweep hands
+    off to `synthesis-catchup-ledger`.
+
+  Ships with a fully commented `example-config.yaml` (placeholder names only),
+  a schema reference, per-tier message templates, and a fifteen-minute
+  quickstart whose rollout doctrine is: pilot on the tiers that forgive
+  mistakes (trainer, family) before pointing anything at your workplace.
+
 ## [4.18.0] - 2026-08-12
 
 ### Added
