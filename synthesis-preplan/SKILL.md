@@ -168,6 +168,7 @@ When the user confirms the decision summary:
    - `{TICKET_URL}` — the tracker URL, or `none`
    - `{DECISIONS_FILE_PATH}` — path to the file written in Step 5
    - `{BRANCH_BASE}` — base branch name
+   - `{WORKFLOW_DOC_PATH}` — the **resolved absolute path** to this skill's `references/commit-by-commit.md`, derived from wherever the skill is installed on this machine. Resolve it, do not paste a relative path: the filled body becomes the planner's prompt, and a planning subagent or fresh-context pass runs from the project root, where `references/` does not exist. Confirm the path resolves before previewing.
    - `{PROJECT_LENSES_BLOCK}` — populated if the project flags specific lenses (privacy, security, accessibility, performance, compliance); empty otherwise
 3. **Preview the filled prompt to the user inline.** Tell them: "Preview before I hand this to the planner — edit anything, or say 'go'."
 4. **Accept edits.** If the user provides an edited version, use it verbatim. If they say "go", use the filled template as-is.

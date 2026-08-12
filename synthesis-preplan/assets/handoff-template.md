@@ -10,6 +10,7 @@ This file is the template the `synthesis-preplan` skill fills and previews to th
 | `{TICKET_URL}` | Full URL to the ticket. `none` if no tracker. | yes |
 | `{DECISIONS_FILE_PATH}` | Path to the decisions file written in Step 5. | yes |
 | `{BRANCH_BASE}` | Base branch the new work stacks on. | yes |
+| `{WORKFLOW_DOC_PATH}` | **Resolved absolute path** to the bundled `references/commit-by-commit.md`, as it exists on the machine the planner runs on. See "Why this slot is absolute" below. | yes |
 | `{PROJECT_LENSES_BLOCK}` | Populated when the project flags specific lenses (privacy, security, etc.); an empty string otherwise. See "Project-lenses block" below. | optional |
 
 ## Template body
@@ -18,7 +19,7 @@ Everything below the dashed line is the prompt body. Fill the slots and preview 
 
 ---
 
-Now let's write a plan. Use the commit-by-commit workflow defined in [references/commit-by-commit.md](../references/commit-by-commit.md) — follow it exactly.
+Now let's write a plan. Use the commit-by-commit workflow defined in `{WORKFLOW_DOC_PATH}` — follow it exactly.
 
 **Ticket:** {TICKET_URL}
 **Ticket key:** {TICKET_KEY}
@@ -31,7 +32,7 @@ Read the locked decisions file in full before drafting. The decisions are non-ne
 
 ## Workflow requirements
 
-The commit-by-commit workflow at [references/commit-by-commit.md](../references/commit-by-commit.md) is the canonical reference. The points below are restated here so the plan inherits them directly.
+The commit-by-commit workflow at `{WORKFLOW_DOC_PATH}` is the canonical reference. The points below are restated here so the plan inherits them directly. If the path above does not resolve, the restatement is sufficient to draft the plan; say so rather than stopping.
 
 ### Per-commit todo discipline
 
@@ -84,6 +85,14 @@ Produce the plan as a document with this exact structure:
 Strict adherence to the locked decisions; plans that diverge are returned for revision. The per-commit **Verification** and **Risks to flag to audit** subsections are the mandatory verify and audit todos — establish them in the plan, never improvise at execution time.
 
 ---
+
+## Why this slot is absolute
+
+`{WORKFLOW_DOC_PATH}` is the one slot that must be resolved to an absolute path rather than left relative.
+
+The body above becomes the planner's prompt, and Step 6 of the skill explicitly supports handing it to a planning subagent or a fresh planning pass in a clean context. That planner's working directory is the project root, not the installed skill directory, so a relative `../references/` path points nowhere for exactly the handoffs the skill is designed around. Resolve it at fill time, from the skill's own installed location, and the pointer survives the context boundary.
+
+The restated requirements below the pointer are the reason a dead path degrades rather than breaks. That is a safety net, not a substitute: the canonical document carries material the restatement does not.
 
 ## Project-lenses block
 
