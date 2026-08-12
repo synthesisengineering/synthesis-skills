@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.19.0"
+  version: "2.20.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,21 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.20.0 — Calendar Guardian: the rituals hold a perimeter around the calendar
+
+Three additions, all cadence for the chief-of-staff skill's new **Calendar
+guardian** doctrine (which owns the protocols; these steps own the schedule):
+Day-End Step 4a reviews the next working day (plus the weekend on the last
+working day of the week) and places id-tracked, auto-expiring holds over
+tomorrow's open windows — in every mode including Quick Close, because it
+generates the drafts Step 4 then handles. Day-Start Step 6 re-verifies the
+morning against overnight arrivals and refreshes the same-day shield. The
+owed-weekly review (Step 10) gains the week-ahead and month-ahead horizons; the
+month pass is what starts absence-notification clocks while notifying is still
+early and cheap. Requires `calendar_guardian` keys in the chief-of-staff
+private config; without them the steps report "unconfigured" rather than
+guessing thresholds.
 
 ## v2.19.0 — Every sync covers every configured surface (email + meeting transcripts + document comments join Slack/Chat)
 
@@ -390,7 +405,13 @@ After any standup, planning session, or design review with auto-generated notes 
 - [ ] **Seed `## 🌱 Lesson candidates` (v2.14.0)** — an empty H2 that any session appends one-liners to during the day; the day-end curates it (keep/drop).
 - [ ] Update CONTEXT.md action items with new items from catch-up.
 - [ ] Prioritize today's work: integration, reviews, communications, features, meetings.
-- [ ] Check calendar for meetings today and prep needed.
+- [ ] **Calendar Guardian — morning shield (v2.20.0).** Re-verify today against
+  last night's review (invites land overnight): resolve new arrivals, then
+  place/refresh holds over today's remaining open windows per the chief-of-staff
+  skill's same-day shield — id-tracked, auto-expiring, releasable only from the
+  holds ledger. Same-day requests route through triage (VIP tiers pass per
+  config; everything else becomes a proposed later slot). Check prep exists for
+  every meeting today; surface unanswered RSVPs and prep gaps as decisions.
 - [ ] Update the action plan throughout the day as tasks complete or change — it is a living document, not a static morning capture.
 - [ ] **Always include a clickable link to the action plan file** in your response when creating, updating, or referencing it. Use the absolute path in markdown link format: `[2026-03-23.md](/absolute/path/to/daily-plans/2026-03-23.md)`. Never use relative paths — they don't resolve in the IDE.
 
@@ -809,6 +830,27 @@ This step is intentionally not "merge ready PRs" — that's Integration Sweep be
 
 ### 4. Communications — the send-or-release pass (v2.14.0)
 
+#### 4a. Calendar Guardian — tomorrow's review (v2.20.0)
+
+Runs first inside Step 4, in **every mode including Quick Close** — the next-day
+review is the highest-value evening act the ritual performs, and it generates
+drafts the send-or-release pass below then handles. The review protocol itself
+lives in the chief-of-staff skill's **Calendar guardian** section; this step is
+its evening cadence.
+
+- [ ] Review the **next working day** across every configured calendar — and on
+  the last working day of the week, the **weekend too**. Run the full per-entry
+  checklist (real? answered? prepared? outcome? shape? physically possible?)
+  and the whole-day overcommitment check against config thresholds.
+- [ ] **Place holds over tomorrow's remaining open windows** per the same-day
+  shield: generically titled, busy, id-tracked in the holds ledger, auto-
+  expiring. Release/move only holds the ledger says the agent created.
+- [ ] Conflicts and overcommitment produce **named candidates to move with
+  drafted reschedule notes** — into the plan's drafts region, where this
+  step's parent pass picks them up. A warning without candidates is not done.
+- [ ] Anything only the principal can decide → one line each in the plan's
+  decisions region. Tomorrow's calendar picture → the plan's calendar section.
+
 - [ ] Collect today's decay-tagged drafts (every `**Decays:**` line in today's plan) plus unanswered threads from today.
 - [ ] For each item, one of three outcomes — nothing decay-tagged carries silently past its date: **send now** (with the user's one-tap approval; nothing sends without them), **re-date** with a stated reason on the Decays line, or **release** (strike through with a one-line why).
 - [ ] Post end-of-day status updates; send appreciation for the day's contributions (grounded per the Appreciation Message Quality rules).
@@ -864,6 +906,17 @@ This step exists because work falls through the cracks during a week. A missed c
 
 **Sources to scan (read each one; do not infer):**
 
+- [ ] **Calendar Guardian — week and month horizons (v2.20.0).** Part of the
+  owed-weekly review, so a skipped Friday still gets caught by the same gating:
+  - **Week ahead:** sweep all configured calendars for collisions, overcommitted
+    days (config thresholds), unanswered RSVPs, and prep-less meetings — while
+    there is still time to move things. Candidates-to-move come with drafted
+    notes, same contract as the nightly review.
+  - **Month ahead:** scan for anything needing lead time — travel, conferences,
+    deadlines, visits. Any commitment that should start an absence-coordination
+    notification clock (its `notify_on_commit` cohort, or a lead-time deadline
+    inside the coming month) gets flagged NOW; this scan is what makes "people
+    hear as soon as it is known" true in practice rather than in intention.
 - [ ] `daily-plans/YYYY-MM-DD.md` for the past 14 calendar days. In each plan, look for:
   - Drafts (`### Draft N: ...`) without a following `**Sent:**` marker — these are unsent and the deadline already passed
   - Items under `## Priority Tasks → Do today — not negotiable` that lack a completion marker (✅ or "DONE" or strikethrough)

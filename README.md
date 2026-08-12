@@ -4,6 +4,23 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**The EA layer: absence coordination and the calendar guardian (August 2026).**
+New `synthesis-absence-coordination` skill **v1.0.0**: an absence treated as a
+handoff with a scheduled reversal, not an announcement — principals hear it
+first in one email with their assistants cc'd, group channels are hard-gated
+behind that message, every work-facing notice must answer *who decides, what
+waits, how to reach me*, and a `personal_continuity` tier keeps the trainer or
+therapist whose standing sessions travel disrupts informed with time zones and
+researched facilities. A quiet type notifies the minimum while suppressing
+broadcasts. Config-validated (guard-contract exit codes, subprocess-tested);
+ships with per-tier message templates and a fifteen-minute quickstart. And
+`synthesis-chief-of-staff` **v1.1.0** adds the **calendar guardian** doctrine —
+next-day/week/month look-ahead horizons, per-entry review checklists,
+overcommitment checks with named move-candidates, and id-tracked auto-expiring
+holds that shield open time from same-day ambush — wired into the
+daily-rituals cadence by `synthesis-daily-rituals` **v2.20.0**. See the
+[4.19.0 and 4.20.0 release notes](CHANGELOG.md).
+
 **Agent correspondence, generalized (August 2026).** New `synthesis-agent-correspondence` skill (Communication family): how AI agents compose and send correspondence on a human principal's behalf, honestly. v2 models it as three lanes on one axis — how much of the principal is in the words: principal-direct (their words, their hands — no disclosure), the assistant lane (their words, the agent's hands — one authorship signature), and the bot lane (their direction, the agent's words — a handled-for-me signature) — with review depth demoted to internal governance and the bot-vs-assistant archetype binding a persona to its lane. Recipients learn the legend from the emoji alone. Includes the persona-registry config schema, verified channel-disclosure facts, and the three compose/send gates that pair with `synthesis-message-guard`. See the [4.16.0 release notes](CHANGELOG.md).
 
 **Executive communication for technical leaders (August 2026).** New `synthesis-executive-communication` skill (Communication family): translating technical work for the non-technical executives who fund it — the every-noun persona test, the six-category kill-list, mechanism-to-consequence translation patterns, upward-report structure, and an in-persona adversarial review protocol. See the [4.14.0 release notes](CHANGELOG.md).

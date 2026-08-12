@@ -4,6 +4,34 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.20.0] - 2026-08-12
+
+### Added
+
+- `synthesis-chief-of-staff` v1.1.0: **the calendar guardian** — doctrine for
+  holding a perimeter around the principal's calendar rather than merely
+  reading it. Three horizons, each with its own question (next working day:
+  *can tomorrow be lived as booked?*; week ahead: *what should move while
+  there is still time?*; month ahead: *what needs a lead-time clock started
+  now?*); a six-point per-entry review (real, answered, prepared, outcome,
+  shape, physically possible) plus a whole-day overcommitment check that must
+  produce **named candidates to move with drafted reschedule notes** — a
+  warning without candidates delegates the thinking back to the principal;
+  and the **same-day shield**: id-tracked, auto-expiring hold events over open
+  windows, releasable only from the agent's own holds ledger, converting
+  same-day ambush into triage (VIP tiers pass per config). New
+  `calendar_guardian` config keys documented in the skill.
+- `synthesis-daily-rituals` v2.20.0: the guardian's cadence. Day-End **Step
+  4a** reviews the next working day (plus the weekend on the last working day
+  of the week) and places tomorrow's holds — in every mode including Quick
+  Close, because it generates the drafts the send-or-release pass handles.
+  Day-Start Step 6 re-verifies the morning against overnight arrivals and
+  refreshes the shield. The owed-weekly review gains the week-ahead and
+  month-ahead horizons; the month pass starts absence-coordination
+  notification clocks (`notify_on_commit`) while notifying is still early,
+  cheap, and conflict-preventing. Unconfigured thresholds report as
+  "unconfigured" rather than being guessed.
+
 ## [4.19.0] - 2026-08-12
 
 ### Added
