@@ -4,6 +4,44 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.22.0] - 2026-08-12
+
+### Added
+
+- **New skill `synthesis-preplan` (v1.0.0)** — architecture-decision pre-planning for tickets or issues with real design choices. Runs a structured Q&A loop that locks the load-bearing architectural decisions (branch base, scope boundary, dependency graph, execution lane, and the open questions a competent engineer could resolve more than one way) before any commit plan is drafted, writes a reviewable locked-decisions file, then hands off to the planning step with a previewed prompt. Declares `depends_on: ["synthesis-code-audit"]` — the review dimensions the decision rubric leans on live there. Bundles three files it carries itself: `references/commit-by-commit.md` (the multi-commit execution discipline: Step 0, the per-commit brief/fast-check/audit/amend/full-gate cycle, and a nine-item close-out list that opens with five review gates), `references/single-commit.md` (the companion lane for work that is one reviewable commit and decides nothing), and `assets/handoff-template.md` (the agent-neutral prompt scaffold the skill fills before handing off). Fully project- and agent-agnostic: git is the only assumed baseline, while trackers, build tools, planners, and agent harnesses are all illustrative examples.
+
+  Notable pieces of the methodology, each earned from a real run rather than
+  theorized:
+
+  - **Three decision-quality checks in the Q&A rubric.** Nothing downstream
+    catches a wrong decision: an audit verifies an implementation *against*
+    locked decisions, which makes a locked row the one thing it will never
+    re-open. So the rubric tests each decision against what the downstream
+    tickets consume, names what each mechanism makes unobservable (any
+    guarantee or floor pins a variable, and whatever measured that variable now
+    measures the guarantee), and asks whether the outcome a mechanism prevents
+    is a defect or the model working correctly. A mechanism invented inside a
+    lean becomes its own numbered decision rather than riding on another
+    decision's authority without its scrutiny.
+  - **Verification split into fast checks and a single full gate.** The
+    whole-tree suite runs once per commit, after the audit's findings are
+    amended in, because a pre-audit run tests code the amend replaces.
+  - **Step 0** — write the full todo list, then create the branch, before any
+    file is touched. Neither becomes visibly missing until commit time.
+  - **Two gates no per-commit pause can see:** a plan-conformance review (which
+    also asks whether the plan's own remaining gates are still executable), and
+    a branch-wide reconciliation that re-derives shared append-only numbers
+    against the merge target rather than the branch base.
+  - **Gates reference their subject instead of restating its content,** and any
+    gate that can resolve negative carries a pre-written negative branch.
+  - **Execution-lane routing.** Stated explicitly with its reason, backed by
+    five checkable disqualifiers, because judgment calls under time pressure
+    default to "small".
+
+### Rationale
+
+The hard part of planning is deciding what to build, not breaking the build into commits. Once the architectural decisions are locked, the commit-by-commit plan is mechanical. `synthesis-preplan` makes the decision-locking explicit and reviewable so the planner inherits a clear input instead of designing inside its own output. It pairs with `synthesis-code-planning` (which evaluates code-level approaches) and `synthesis-preflight` (the pre-merge gate) to cover the pre-implementation arc.
+
 ## [4.21.0] - 2026-08-12
 
 ### Added
