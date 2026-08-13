@@ -4,7 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [4.22.0] - 2026-08-12
+## [4.22.0] - 2026-08-13
+
+### Changed
+
+- **`synthesis-pr-review`** — the "Where This Fits" lifecycle table gains the
+  `synthesis-preplan` row, so the engineering arc reads end to end: preplan →
+  code-planning → implementation-integrity → code-audit → preflight →
+  pr-review.
 
 ### Added
 

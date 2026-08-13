@@ -18,10 +18,11 @@ A pull request in a synthesis-coded project is not just "does the code work?" It
 
 ## Where This Fits
 
-Seven related engineering skills cover different scopes and lifecycle phases:
+Eight related engineering skills cover different scopes and lifecycle phases:
 
 | Skill | Scope | When to use |
 |-------|-------|-------------|
+| **preplan** | Architecture-decision locking for a ticket | Before any plan exists — lock the load-bearing design choices via Q&A |
 | **code-planning** | Approach selection for a task | Before writing code — evaluate alternatives, pick the best approach |
 | **implementation-integrity** | Self-verification of a single implementation | After completing work — "Is my code genuinely complete?" |
 | **code-audit** | 10-dimension quality scan of a diff | After implementation — systematic quality measurement |
