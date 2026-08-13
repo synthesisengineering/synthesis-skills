@@ -4,6 +4,18 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.23.0] - 2026-08-13
+
+### Added
+
+- **`synthesis-agent-conformance`** — new `source.changelog-version-parity`
+  check: both plugin manifests must match the CHANGELOG's top release heading,
+  failing closed when the heading or a manifest is missing. A release is
+  manifests + CHANGELOG moving together; this miss shipped twice (the 4.18.0
+  repair commit, and again caught in review on the 4.22.0 release) while every
+  other check stayed green. Suggested by Emil Peñaló in synthesis-preplan's
+  review thread (PR #5).
+
 ## [4.22.0] - 2026-08-13
 
 ### Changed

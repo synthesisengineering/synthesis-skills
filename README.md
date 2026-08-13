@@ -4,6 +4,13 @@ Proven AI agent skills for code review, content creation, project management, an
 
 ## What's new
 
+**Release surfaces can no longer drift apart (August 2026).** Conformance
+gains `source.changelog-version-parity` **(4.23.0)**: both plugin manifests
+must match the CHANGELOG's top release heading, failing closed when either is
+missing. The gap it closes shipped twice with every other check green.
+Suggested by Emil Peñaló during the `synthesis-preplan` review. See the
+[4.23.0 release notes](CHANGELOG.md).
+
 **Architecture decisions locked before the plan exists (August 2026).** New
 `synthesis-preplan` skill **v1.0.0** (Engineering family): a structured Q&A loop
 that locks the load-bearing design choices, then hands a reviewable decision set

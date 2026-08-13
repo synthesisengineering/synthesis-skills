@@ -55,6 +55,11 @@ def write_manifests(root: Path) -> None:
         configuration.parent.mkdir(parents=True, exist_ok=True)
         configuration.write_text("{}\n", encoding="utf-8")
 
+    (root / "CHANGELOG.md").write_text(
+        "# Changelog\n\n## [1.0.0] - 2026-01-01\n\n### Added\n\n- test\n",
+        encoding="utf-8",
+    )
+
 
 def test_json_from_output_accepts_cli_diagnostics_around_json() -> None:
     output = (
@@ -89,6 +94,36 @@ def test_source_checks_accept_dual_manifest(tmp_path: Path) -> None:
     write_skill(tmp_path, "synthesis-test")
     checks = MODULE.source_checks(tmp_path)
     assert all(check.ok for check in checks)
+
+
+def test_source_checks_fail_when_changelog_trails_manifests(tmp_path: Path) -> None:
+    write_manifests(tmp_path)
+    write_skill(tmp_path, "synthesis-test")
+    (tmp_path / "CHANGELOG.md").write_text(
+        "# Changelog\n\n## [0.9.0] - 2025-12-01\n\n### Added\n\n- test\n",
+        encoding="utf-8",
+    )
+
+    checks = MODULE.source_checks(tmp_path)
+
+    parity = next(
+        check for check in checks if check.name == "source.changelog-version-parity"
+    )
+    assert not parity.ok
+    assert "changelog=0.9.0" in parity.detail
+
+
+def test_source_checks_fail_closed_without_changelog(tmp_path: Path) -> None:
+    write_manifests(tmp_path)
+    write_skill(tmp_path, "synthesis-test")
+    (tmp_path / "CHANGELOG.md").unlink()
+
+    checks = MODULE.source_checks(tmp_path)
+
+    parity = next(
+        check for check in checks if check.name == "source.changelog-version-parity"
+    )
+    assert not parity.ok
 
 
 def test_source_checks_require_openai_interface(tmp_path: Path) -> None:

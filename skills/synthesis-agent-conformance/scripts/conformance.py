@@ -41,6 +41,7 @@ COORDINATION_HELPER = (
     / "coordination.py"
 )
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+CHANGELOG_VERSION_RE = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
 
 
 @dataclass
@@ -146,6 +147,23 @@ def source_checks(source_root: Path) -> list[Check]:
 
     versions = {str(manifest.get("version")) for manifest in manifests}
     add(checks, "source.manifest-version-parity", len(versions) == 1, ", ".join(sorted(versions)))
+
+    # A release is manifests + CHANGELOG moving together; the repeated miss is
+    # bumping one surface and not the other, which every other check passes.
+    changelog = source_root / "CHANGELOG.md"
+    try:
+        match = CHANGELOG_VERSION_RE.search(changelog.read_text(encoding="utf-8"))
+        changelog_version = match.group(1) if match else None
+        parity = changelog_version is not None and versions == {changelog_version}
+        add(
+            checks,
+            "source.changelog-version-parity",
+            parity,
+            f"changelog={changelog_version or 'no release heading'}, "
+            f"manifests={', '.join(sorted(versions)) or 'none'}",
+        )
+    except OSError as exc:
+        add(checks, "source.changelog-version-parity", False, f"{changelog}: {exc}")
 
     for config in (
         source_root / ".agents" / "plugins" / "marketplace.json",
