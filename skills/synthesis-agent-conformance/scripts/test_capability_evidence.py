@@ -73,6 +73,13 @@ def test_detail_rejects_bare_credential_values() -> None:
         "AIza" + "A" * 34 + "-",
         "glpat-" + "A" * 19 + "-",
         "xapp-" + "A" * 19 + "-",
+        "ghp_" + "A" * 36 + "-suffix",
+        "ghp_" + "A" * 36 + "_suffix",
+        "github_pat_" + "A" * 82 + "-suffix",
+        "xoxb-" + "A" * 40 + "_suffix",
+        "AKIA" + "A" * 16 + "_suffix",
+        "npm_" + "A" * 36 + "_suffix",
+        "hf_" + "A" * 36 + "_suffix",
     ):
         with pytest.raises(ValueError, match="authentication"):
             MODULE.sanitize_detail(detail)
