@@ -51,14 +51,14 @@ skills/skill-name/
 ├── agents/openai.yaml  # Codex discovery and invocation policy
 ├── references/         # Supporting material, when needed
 ├── scripts/            # Executable implementation, when needed
-├── assets/             # Templates or examples, when needed
-└── LICENSE             # CC0 or Apache 2.0
+└── assets/             # Templates or examples, when needed
 ```
 
 ### SKILL.md requirements
 
-- Use valid YAML frontmatter with `name`, `description`, `license`, and
-  `metadata`.
+- Use valid YAML frontmatter with `name`, `description`, `license`,
+  `depends_on`, and `metadata`. The SPDX license identifier selects the
+  repository-level `LICENSE-CC0` or `LICENSE-APACHE` terms.
 - Make the description specific enough to route real user requests.
 - Keep the body under 500 lines. Move detailed material to `references/`.
 - Write instructions in imperative form.

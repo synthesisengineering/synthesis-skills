@@ -1,6 +1,13 @@
 ---
 name: synthesis-chief-of-staff
 description: Act as a principal's chief of staff and executive assistant. Protects the principal's time through meeting triage, calendar-aware scheduling, look-ahead reviews, overcommitment checks, tracked holds, travel planning, correspondence posture, and a follow-up ledger; personal rules load from private preferences. Use for scheduling, meeting requests, calendar-related replies, calendar defense, travel, or any chief-of-staff and executive-assistant duty.
+license: "CC0-1.0"
+depends_on: ["synthesis-agent-correspondence"]
+metadata:
+  author: "Rajiv Pant"
+  version: "1.1.0"
+  source_repo: "github.com/synthesisengineering/synthesis-skills"
+  source_type: "public"
 ---
 
 # Chief of Staff

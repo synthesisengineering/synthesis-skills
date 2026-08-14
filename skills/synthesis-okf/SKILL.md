@@ -14,6 +14,8 @@ depends_on: []
 metadata:
   author: Rajiv Pant
   version: "1.1.0"
+  source_repo: "github.com/synthesisengineering/synthesis-skills"
+  source_type: "public"
 ---
 
 # synthesis-okf

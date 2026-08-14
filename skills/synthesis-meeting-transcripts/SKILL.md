@@ -2,8 +2,8 @@
 name: synthesis-meeting-transcripts
 description: "Fetch AI-generated meeting notes and full transcripts (e.g., Google Meet + Gemini) from the user's Gmail/Drive into local markdown files. Tool-agnostic: works with any Gmail + Drive MCP (Anthropic hosted connectors, self-hosted workspace-mcp, or others). Replaces the manual email → Google Doc → export-markdown → Downloads → move workflow. Use when asked to: fetch meeting transcript, pull standup, grab meeting notes, sync meetings, download transcript, get Gemini notes, import meeting."
 license: "Apache-2.0"
+depends_on: []
 metadata:
-  depends_on: "synthesis-daily-rituals (optional integration)"
   author: "Rajiv Pant"
   version: "0.6.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"

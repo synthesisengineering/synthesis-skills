@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -19,7 +20,11 @@ def write_skill(root: Path, name: str) -> None:
     skill = root / "skills" / name
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text(
-        f"---\nname: {name}\ndescription: Test skill.\n---\n\n# Test\n",
+        f"---\nname: {name}\ndescription: Test skill.\n"
+        "license: CC0-1.0\ndepends_on: []\nmetadata:\n"
+        "  author: Test\n  version: 1.0.0\n"
+        "  source_repo: example.test/repo\n  source_type: public\n"
+        "---\n\n# Test\n",
         encoding="utf-8",
     )
     interface = skill / "agents"
@@ -263,7 +268,7 @@ def test_coordination_board_rejects_semantic_conflict(tmp_path: Path) -> None:
     assert not doctor.ok
 
 
-def test_activate_and_handoff(tmp_path: Path) -> None:
+def test_activate_and_handoff(tmp_path: Path, monkeypatch) -> None:
     project = tmp_path / "project"
     project.mkdir()
     (project / "CONTEXT.md").write_text(
@@ -316,6 +321,29 @@ def test_activate_and_handoff(tmp_path: Path) -> None:
         f"| A | Codex | mac | test | {now} | {now} | autonomous | {project} @ feature/test | work | {project}/** | owner | active |\n\n"
         "## Messages\n\n---\n\n## Protocol\n",
         encoding="utf-8",
+    )
+    original_validate = MODULE.validate_active_project
+    monkeypatch.setattr(
+        MODULE,
+        "validate_active_project",
+        lambda payload, board: original_validate(payload, board, refresh_lease=False),
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "load_and_validate",
+        lambda pointer, board: (
+            json.loads(pointer.read_text(encoding="utf-8")),
+            original_validate(
+                json.loads(pointer.read_text(encoding="utf-8")),
+                board,
+                refresh_lease=False,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "payload_parity",
+        lambda pointer, board: (True, "identical context in fixture payloads"),
     )
 
     pointer = tmp_path / "active.json"
@@ -593,6 +621,25 @@ def test_hook_live_checks_reject_static_absence_and_accept_receipts(
     ).ok is False
 
 
+def test_public_hook_live_checks_do_not_require_private_control_plane(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    (source / ".codex-plugin").mkdir(parents=True)
+    (source / ".codex-plugin" / "plugin.json").write_text(
+        json.dumps({"version": "1.2.3"}), encoding="utf-8"
+    )
+
+    checks = MODULE.hook_live_checks(
+        tmp_path / "codex.json", tmp_path / "claude.json", source_root=source
+    )
+
+    assert [check.name for check in checks] == [
+        "hook-live.public-codex-sessionstart",
+        "hook-live.public-claude-sessionstart",
+    ]
+
+
 def test_hook_trust_requires_public_sessionstart_to_be_enabled(monkeypatch) -> None:
     monkeypatch.setattr(
         MODULE,
@@ -624,7 +671,7 @@ def test_hook_trust_requires_public_sessionstart_to_be_enabled(monkeypatch) -> N
     assert public.ok is False
 
 
-def test_instruction_budget_reserves_space_and_requires_tail_sentinel(
+def test_instruction_budget_reserves_space(
     tmp_path: Path,
 ) -> None:
     home = tmp_path / "home"
@@ -650,6 +697,72 @@ def test_instruction_budget_reserves_space_and_requires_tail_sentinel(
         check for check in checks if check.name == "instruction-budget.codex-bytes"
     )
     assert not budget.ok
+
+
+def test_instruction_budget_counts_root_to_target_override_chain(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    codex = home / ".codex"
+    codex.mkdir(parents=True)
+    (codex / "config.toml").write_text(
+        'project_doc_max_bytes = 20000\nproject_doc_fallback_filenames = ["CLAUDE.md"]\n',
+        encoding="utf-8",
+    )
+    (codex / "AGENTS.md").write_text("user\n", encoding="utf-8")
+    repo = tmp_path / "repo"
+    nested = repo / "packages" / "app"
+    nested.mkdir(parents=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "init", "--initial-branch", "main"],
+        check=True,
+        capture_output=True,
+    )
+    (repo / "AGENTS.md").write_text("root\n", encoding="utf-8")
+    (repo / "packages" / "AGENTS.override.md").write_text(
+        "scoped\n", encoding="utf-8"
+    )
+    (nested / "CLAUDE.md").write_text("fallback\n", encoding="utf-8")
+
+    checks = MODULE.instruction_budget_checks(nested, home)
+    budget = next(
+        check for check in checks if check.name == "instruction-budget.codex-bytes"
+    )
+
+    assert budget.ok
+    assert "4 file(s)" in budget.detail
+
+
+def test_capability_checks_reject_incomplete_or_misattributed_evidence(
+    tmp_path: Path, monkeypatch
+) -> None:
+    evidence = tmp_path / "capabilities.json"
+    evidence.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "entries": {
+                    "codex-cli.repository": {
+                        "client": "claude-code",
+                        "capability": "repository",
+                        "status": "PASS",
+                        "checked_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(MODULE, "resolve_client_binary", lambda client: f"/{client}")
+
+    checks = MODULE.capability_checks(tmp_path, evidence)
+    target = next(
+        check for check in checks if check.name == "capability.codex-cli.repository"
+    )
+
+    assert target.ok is False
+    assert target.status == "FAIL"
+    assert "client must equal codex-cli" in target.detail
+    assert "evidence_kind is invalid" in target.detail
+    assert "detail must contain 1-500 characters" in target.detail
 
 
 def test_catalog_checks_enforce_installed_count_parity(

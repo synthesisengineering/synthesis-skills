@@ -8,6 +8,7 @@ import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import active_project
 from active_project import load_and_validate, validate
 
 
@@ -61,7 +62,7 @@ def fixture(tmp_path: Path) -> tuple[dict[str, object], Path]:
 def test_valid_pointer_has_no_issues(tmp_path: Path) -> None:
     payload, board = fixture(tmp_path)
 
-    assert validate(payload, board) == []
+    assert validate(payload, board, refresh_lease=False) == []
 
 
 def test_pointer_rejects_missing_plan_worktree_and_wrong_owner(tmp_path: Path) -> None:
@@ -70,7 +71,7 @@ def test_pointer_rejects_missing_plan_worktree_and_wrong_owner(tmp_path: Path) -
     payload["worktree"] = str(tmp_path / "missing-worktree")
     payload["owner_session"] = "B"
 
-    issues = validate(payload, board)
+    issues = validate(payload, board, refresh_lease=False)
 
     assert any("controlling plan is missing" in issue for issue in issues)
     assert any("worktree is missing" in issue for issue in issues)
@@ -81,7 +82,7 @@ def test_pointer_rejects_expired_owner_lease(tmp_path: Path) -> None:
     payload, board = fixture(tmp_path)
     future = datetime.now().astimezone() + timedelta(hours=5)
 
-    issues = validate(payload, board, now=future)
+    issues = validate(payload, board, now=future, refresh_lease=False)
 
     assert any("owner session lease expired" in issue for issue in issues)
 
@@ -90,7 +91,7 @@ def test_pointer_rejects_implausible_future_heartbeat(tmp_path: Path) -> None:
     payload, board = fixture(tmp_path)
     past = datetime.now().astimezone() - timedelta(hours=1)
 
-    issues = validate(payload, board, now=past)
+    issues = validate(payload, board, now=past, refresh_lease=False)
 
     assert any("heartbeat is in the future" in issue for issue in issues)
 
@@ -102,7 +103,7 @@ def test_pointer_owner_must_hold_canonical_context_role(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    issues = validate(payload, board)
+    issues = validate(payload, board, refresh_lease=False)
 
     assert any("does not hold canonical context role" in issue for issue in issues)
 
@@ -119,7 +120,7 @@ def test_pointer_rejects_branch_behind_origin_main(tmp_path: Path) -> None:
     ).stdout.strip()
     git(worktree, "update-ref", "refs/remotes/origin/main", child)
 
-    issues = validate(payload, board)
+    issues = validate(payload, board, refresh_lease=False)
 
     assert any("behind local origin/main" in issue for issue in issues)
 
@@ -151,8 +152,48 @@ def test_pointer_rejects_symlinked_or_outside_project_paths(tmp_path: Path) -> N
     payload["project"] = str(linked_project)
     payload["plan"] = str(external_plan)
 
-    issues = validate(payload, board)
+    issues = validate(payload, board, refresh_lease=False)
 
     assert any("project path must not be a symlink" in issue for issue in issues)
     assert any("project directory is outside pointer worktree" in issue for issue in issues)
     assert any("controlling plan is outside project directory" in issue for issue in issues)
+
+
+def test_pointer_accepts_head_descended_from_recorded_commit(tmp_path: Path) -> None:
+    payload, board = fixture(tmp_path)
+    worktree = Path(str(payload["worktree"]))
+    (worktree / "next.txt").write_text("next\n", encoding="utf-8")
+    git(worktree, "add", "next.txt")
+    git(worktree, "commit", "-m", "next")
+
+    assert validate(payload, board, refresh_lease=False) == []
+
+
+def test_pointer_rejects_prefix_only_workspace_claim(tmp_path: Path) -> None:
+    payload, board = fixture(tmp_path)
+    worktree = str(payload["worktree"])
+    board.write_text(
+        board.read_text(encoding="utf-8").replace(
+            f"{worktree} @ feature/test", f"{worktree}-old @ feature/test"
+        ),
+        encoding="utf-8",
+    )
+
+    issues = validate(payload, board, refresh_lease=False)
+
+    assert any("does not claim exact pointer worktree and branch" in issue for issue in issues)
+
+
+def test_pointer_fails_closed_when_lease_refresh_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    payload, board = fixture(tmp_path)
+    monkeypatch.setattr(
+        active_project,
+        "_refresh_leased_board",
+        lambda _board: "coordination lease refresh failed: offline",
+    )
+
+    issues = validate(payload, board)
+
+    assert "coordination lease refresh failed: offline" in issues

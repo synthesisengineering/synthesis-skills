@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -315,6 +316,25 @@ def source_checks(source_root: Path) -> list[Check]:
             declared = str(meta.get("name", ""))
             valid = declared == skill_dir.name and bool(SKILL_NAME_RE.fullmatch(declared))
             add(checks, f"source.skill.{skill_dir.name}", valid, f"declared={declared}")
+            license_id = meta.get("license")
+            dependencies = meta.get("depends_on")
+            metadata = meta.get("metadata")
+            contract_ok = (
+                license_id in {"CC0-1.0", "Apache-2.0"}
+                and isinstance(dependencies, list)
+                and all(isinstance(dependency, str) for dependency in dependencies)
+                and isinstance(metadata, dict)
+                and all(
+                    isinstance(metadata.get(field), str) and metadata.get(field)
+                    for field in ("author", "version", "source_repo", "source_type")
+                )
+            )
+            add(
+                checks,
+                f"source.skill-contract.{skill_dir.name}",
+                contract_ok,
+                f"license={license_id}; depends_on={dependencies}; metadata={metadata}",
+            )
             names.append(declared)
             interface = skill_dir / "agents" / "openai.yaml"
             if not interface.is_file():
@@ -329,7 +349,11 @@ def source_checks(source_root: Path) -> list[Check]:
                     ui = yaml.safe_load(interface.read_text(encoding="utf-8"))
                     prompt = ui["interface"]["default_prompt"]
                     short_description = ui["interface"]["short_description"]
-                    policy = ui.get("policy") or {}
+                    policy = ui.get("policy")
+                    if policy is None:
+                        policy = {}
+                    if not isinstance(policy, dict):
+                        raise ValueError("policy must be a mapping when present")
                     if policy.get("allow_implicit_invocation", True):
                         prompt_visible.add(declared)
                     ui_ok = (
@@ -758,7 +782,7 @@ def _receipt_check(
 def hook_live_checks(
     public_codex_receipt: Path = DEFAULT_PUBLIC_CODEX_SESSIONSTART_RECEIPT,
     public_claude_receipt: Path = DEFAULT_PUBLIC_CLAUDE_SESSIONSTART_RECEIPT,
-    private_codex_receipt: Path = DEFAULT_PRIVATE_CODEX_SESSIONSTART_RECEIPT,
+    private_codex_receipt: Path | None = None,
     source_root: Path = DEFAULT_SOURCE_ROOT,
 ) -> list[Check]:
     """Require receipts produced only by genuine SessionStart payloads."""
@@ -787,12 +811,13 @@ def hook_live_checks(
         expected_client="claude",
         expected_plugin_version=source_version,
     )
-    _receipt_check(
-        checks,
-        "hook-live.codex-private-sessionstart",
-        private_codex_receipt,
-        expected_client="codex",
-    )
+    if private_codex_receipt is not None:
+        _receipt_check(
+            checks,
+            "hook-live.codex-private-sessionstart",
+            private_codex_receipt,
+            expected_client="codex",
+        )
     return checks
 
 
@@ -891,12 +916,67 @@ def _codex_instruction_limit(home: Path) -> int:
         return 32_768
 
 
+def _codex_instruction_fallbacks(home: Path) -> list[str]:
+    try:
+        payload = tomllib.loads(
+            (home / ".codex" / "config.toml").read_text(encoding="utf-8")
+        )
+        values = payload.get("project_doc_fallback_filenames", [])
+        if not isinstance(values, list) or not all(
+            isinstance(value, str) and value for value in values
+        ):
+            return []
+        return values
+    except (OSError, tomllib.TOMLDecodeError):
+        return []
+
+
+def _codex_instruction_chain(repo_root: Path, home: Path) -> list[Path]:
+    """Resolve Codex's user file and root-to-cwd scoped instruction chain."""
+    chain: list[Path] = []
+    user_root = home / ".codex"
+    for name in ("AGENTS.override.md", "AGENTS.md"):
+        candidate = user_root / name
+        if candidate.is_file():
+            chain.append(candidate)
+            break
+
+    target = repo_root if repo_root.is_dir() else repo_root.parent
+    discovered = run(["git", "-C", str(target), "rev-parse", "--show-toplevel"])
+    project_root = (
+        Path(discovered.stdout.strip())
+        if discovered.returncode == 0 and discovered.stdout.strip()
+        else target
+    )
+    try:
+        relative = target.resolve().relative_to(project_root.resolve())
+        directories = [project_root.resolve()]
+        current = project_root.resolve()
+        for part in relative.parts:
+            current = current / part
+            directories.append(current)
+    except ValueError:
+        directories = [target.resolve()]
+
+    names = [
+        "AGENTS.override.md",
+        "AGENTS.md",
+        *_codex_instruction_fallbacks(home),
+    ]
+    for directory in directories:
+        for name in names:
+            candidate = directory / name
+            if candidate.is_file():
+                chain.append(candidate)
+                break
+    return chain
+
+
 def instruction_budget_checks(repo_root: Path, home: Path | None = None) -> list[Check]:
     """Measure the instructions Codex may concatenate before task content."""
     checks: list[Check] = []
     home = home or Path.home()
-    candidates = [home / ".codex" / "AGENTS.md", repo_root / "AGENTS.md"]
-    existing = [path for path in candidates if path.is_file()]
+    existing = _codex_instruction_chain(repo_root, home)
     total = sum(path.stat().st_size for path in existing)
     limit = _codex_instruction_limit(home)
     reserve = 4_096
@@ -906,17 +986,6 @@ def instruction_budget_checks(repo_root: Path, home: Path | None = None) -> list
         total <= limit - reserve,
         f"{total} bytes across {len(existing)} file(s); limit={limit}; required reserve={reserve}",
     )
-    user_agents = home / ".codex" / "AGENTS.md"
-    if user_agents.is_file():
-        text = user_agents.read_text(encoding="utf-8")
-        add(
-            checks,
-            "instruction-budget.user-tail-sentinel",
-            "<!-- synthesis-agent-rules:end -->" in text[-2048:],
-            f"tail sentinel in {user_agents}",
-        )
-    else:
-        add(checks, "instruction-budget.user-tail-sentinel", False, str(user_agents))
     return checks
 
 
@@ -1269,6 +1338,13 @@ CAPABILITY_NAMES = (
     "browser",
 )
 CAPABILITY_CLIENTS = ("claude-code", "codex-desktop", "codex-cli")
+CAPABILITY_EVIDENCE_KINDS = (
+    "live-read-only",
+    "client-health",
+    "authenticated-cli",
+    "environment-restricted",
+    "product-boundary",
+)
 
 
 def capability_checks(
@@ -1286,6 +1362,8 @@ def capability_checks(
         )
     try:
         payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        if payload.get("schema_version") != 1:
+            raise ValueError("schema_version must equal 1")
         entries = payload.get("entries", {})
         if not isinstance(entries, dict):
             raise ValueError("entries is not an object")
@@ -1304,6 +1382,27 @@ def capability_checks(
                     f"capability.{key}",
                     None,
                     f"no timestamped read-only evidence in {evidence_path}",
+                )
+                continue
+            detail = entry.get("detail")
+            schema_issues = []
+            if entry.get("client") != client:
+                schema_issues.append(f"client must equal {client}")
+            if entry.get("capability") != capability:
+                schema_issues.append(f"capability must equal {capability}")
+            if entry.get("status") not in {"PASS", "FAIL", "UNKNOWN", "UNSUPPORTED"}:
+                schema_issues.append("status is invalid")
+            if entry.get("evidence_kind") not in CAPABILITY_EVIDENCE_KINDS:
+                schema_issues.append("evidence_kind is invalid")
+            if not isinstance(detail, str) or not 1 <= len(" ".join(detail.split())) <= 500:
+                schema_issues.append("detail must contain 1-500 characters")
+            if schema_issues:
+                add(
+                    checks,
+                    f"capability.{key}",
+                    False,
+                    f"malformed evidence in {evidence_path}: " + "; ".join(schema_issues),
+                    outcome="FAIL",
                 )
                 continue
             outcome = str(entry.get("status", "UNKNOWN")).upper()
@@ -1431,7 +1530,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument(
         "--private-codex-sessionstart-receipt",
         type=Path,
-        default=DEFAULT_PRIVATE_CODEX_SESSIONSTART_RECEIPT,
+        help="Opt in to a private control-plane SessionStart receipt check.",
     )
     result.add_argument(
         "--capability-evidence",
@@ -1470,7 +1569,9 @@ def main() -> int:
             hook_live_checks(
                 args.public_codex_sessionstart_receipt.expanduser(),
                 args.public_claude_sessionstart_receipt.expanduser(),
-                args.private_codex_sessionstart_receipt.expanduser(),
+                args.private_codex_sessionstart_receipt.expanduser()
+                if args.private_codex_sessionstart_receipt
+                else None,
                 args.source_root.resolve(),
             )
         )

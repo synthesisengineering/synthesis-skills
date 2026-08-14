@@ -121,3 +121,11 @@ def test_live_receipt_records_real_sessionstart_shape(
     assert recorded["plugin_version"]
     assert Path(recorded["plugin_root"]).resolve() == MODULE.SCRIPTS_DIR.parents[2]
     assert not list(receipt.parent.glob("*.tmp"))
+
+
+def test_claude_signal_wins_over_inherited_codex_home(monkeypatch) -> None:
+    monkeypatch.delenv("PLUGIN_ROOT", raising=False)
+    monkeypatch.setenv("CODEX_HOME", "/tmp/codex")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/tmp/claude-plugin")
+
+    assert MODULE.infer_client({}) == "claude"

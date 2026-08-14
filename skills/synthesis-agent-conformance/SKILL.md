@@ -1,6 +1,13 @@
 ---
 name: synthesis-agent-conformance
 description: Audit, install, and verify a synthesis ecosystem across multiple AI agent runtimes. Use for Claude Code and OpenAI Codex parity audits, AGENTS.md and CLAUDE.md instruction migrations, skill or plugin deployment checks, lifecycle-hook health, Mac bootstrap validation, active-project handoffs, post-compaction recovery, and any request to make synthesis project management portable between agent clients.
+license: "Apache-2.0"
+depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
+metadata:
+  author: "Rajiv Pant"
+  version: "1.0.0"
+  source_repo: "github.com/synthesisengineering/synthesis-skills"
+  source_type: "public"
 ---
 
 # Synthesis Agent Conformance

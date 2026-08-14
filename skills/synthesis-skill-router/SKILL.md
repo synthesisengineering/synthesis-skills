@@ -1,6 +1,13 @@
 ---
 name: synthesis-skill-router
 description: Route a request to the correct synthesis engineering, coding, writing, project-management, knowledge, operations, or agent-governance skill while keeping specialist metadata out of Codex's bounded prompt. Use when a task appears to match a synthesis workflow but the user did not name the exact skill.
+license: "CC0-1.0"
+depends_on: []
+metadata:
+  author: "Rajiv Pant"
+  version: "1.0.0"
+  source_repo: "github.com/synthesisengineering/synthesis-skills"
+  source_type: "public"
 ---
 
 # Synthesis Skill Router

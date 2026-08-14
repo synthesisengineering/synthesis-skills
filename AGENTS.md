@@ -38,8 +38,9 @@ here, verify it, merge it to `main`, then update the installed plugins.
 
 ## Cross-Client Contract
 
-- Every public skill requires `SKILL.md`, `LICENSE`, and
-  `agents/openai.yaml`.
+- Every public skill requires `SKILL.md` with an SPDX license identifier in
+  frontmatter and `agents/openai.yaml`. The repository-level
+  `LICENSE-APACHE` and `LICENSE-CC0` files carry the corresponding terms.
 - Claude Code and Codex must load the same skill source and shared scripts.
 - `AGENTS.md` is the tracked repository instruction source.
 - `CLAUDE.md` is only the Claude Code import adapter: `@AGENTS.md`.

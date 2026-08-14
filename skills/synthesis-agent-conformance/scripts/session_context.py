@@ -73,10 +73,12 @@ def plugin_identity() -> tuple[str | None, str]:
 
 def infer_client(payload: dict[str, object]) -> str:
     """Identify the caller conservatively from client-owned environment."""
-    if os.environ.get("PLUGIN_ROOT") or os.environ.get("CODEX_HOME"):
+    if os.environ.get("PLUGIN_ROOT"):
         return "codex"
     if os.environ.get("CLAUDE_PLUGIN_ROOT") or os.environ.get("CLAUDE_CONFIG_DIR"):
         return "claude"
+    if os.environ.get("CODEX_HOME"):
+        return "codex"
     transcript = str(payload.get("transcript_path") or "")
     if "/.codex/" in transcript:
         return "codex"
