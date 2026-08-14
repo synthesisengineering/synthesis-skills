@@ -89,6 +89,9 @@ DEFAULT_CAPABILITY_EVIDENCE = (
     / "agent-conformance"
     / "capabilities.json"
 )
+DEFAULT_REPO_GUARD_STATE = Path(
+    os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis"))
+) / "repo-guard"
 COORDINATION_HELPER = (
     SCRIPT_PATH.parents[2]
     / "synthesis-project-management"
@@ -150,6 +153,7 @@ PLANE_BY_PREFIX = {
     "coordination": "continuity",
     "pointer": "continuity",
     "handoff": "continuity",
+    "continuity": "continuity",
     "hook-live": "live",
     "capability": "capability",
     "surface": "capability",
@@ -1510,6 +1514,12 @@ def handoff_checks(
     coordination_board: Path = DEFAULT_COORDINATION_BOARD,
 ) -> list[Check]:
     summary, checks = project_summary(project)
+    stopped_parity, stopped_detail = stopped_payload_parity(
+        project,
+        summary,
+        coordination_board,
+    )
+    add(checks, "handoff.stopped-task-payload", stopped_parity, stopped_detail)
     try:
         active = json.loads(pointer.read_text(encoding="utf-8"))
         matches = Path(active["project"]).resolve() == project.resolve()
@@ -1523,8 +1533,351 @@ def handoff_checks(
             )
         parity, detail = payload_parity(pointer, coordination_board)
         add(checks, "handoff.payload-parity", parity, detail)
+    except FileNotFoundError:
+        add(
+            checks,
+            "handoff.pointer-cache",
+            True,
+            "absent by design; stopped-task recovery uses the durable project record",
+            required=False,
+        )
     except Exception as exc:
         add(checks, "handoff.pointer", False, f"{pointer}: {exc}")
+    return checks
+
+
+def stopped_payload_parity(
+    project: Path,
+    summary: dict[str, object],
+    coordination_board: Path = DEFAULT_COORDINATION_BOARD,
+) -> tuple[bool, str]:
+    """Prove both adapters reconstruct a stopped project without a pointer."""
+    script = SCRIPTS_DIR / "session_context.py"
+    missing_pointer = project / ".synthesis-stopped-pointer-must-not-exist.json"
+    if missing_pointer.exists():
+        return False, f"reserved stopped-task probe path exists: {missing_pointer}"
+    contexts: dict[str, str] = {}
+    input_text = json.dumps({"cwd": str(project)})
+    for client_format in ("claude", "codex"):
+        result = run(
+            [
+                sys.executable,
+                str(script),
+                "--format",
+                client_format,
+                "--active-project-file",
+                str(missing_pointer),
+                "--coordination-board",
+                str(coordination_board),
+            ],
+            input_text=input_text,
+        )
+        if result.returncode != 0:
+            return False, (
+                f"{client_format} stopped-task payload failed: "
+                + (result.stderr.strip() or f"exit {result.returncode}")
+            )
+        try:
+            contexts[client_format] = json.loads(result.stdout)["hookSpecificOutput"][
+                "additionalContext"
+            ]
+        except Exception as exc:
+            return False, f"{client_format} stopped-task envelope is invalid: {exc}"
+
+    normalized = {
+        client: TIMESTAMP_LINE.sub("Verified local time: <normalized>", context)
+        for client, context in contexts.items()
+    }
+    if normalized["claude"] != normalized["codex"]:
+        return False, "Claude and Codex stopped-task payloads diverge"
+    message = contexts["codex"]
+    expected = [
+        str(project.resolve()),
+        f"Current phase: {summary.get('phase', 'unknown')}.",
+        f"Current status: {summary.get('status', 'unknown')}.",
+        f"Controlling plan: {summary.get('plan', 'unknown')}.",
+    ]
+    missing = [value for value in expected if value not in message]
+    if missing:
+        return False, "stopped-task payload is missing: " + ", ".join(missing)
+    return True, "Claude and Codex reconstruct the same durable record without a pointer"
+
+
+def _manifest_records_project(data: dict[str, object], project: Path) -> bool:
+    project_root = project.resolve()
+    values = data.get("remote_paths", data.get("paths", []))
+    if not isinstance(values, list):
+        return False
+    for value in values:
+        try:
+            Path(str(value)).expanduser().resolve(strict=False).relative_to(project_root)
+            return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
+def project_pending_manifests(project: Path, state_root: Path) -> list[tuple[Path, dict]]:
+    pending = state_root / "pending"
+    found: list[tuple[Path, dict]] = []
+    if not pending.is_dir():
+        return found
+    for path in sorted(pending.glob("*.json")):
+        if path.is_symlink():
+            raise ValueError(f"pending handoff manifest is a symlink: {path}")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        session_id = data.get("session_id")
+        if not isinstance(session_id, str) or not session_id:
+            raise ValueError(f"pending handoff manifest has no session id: {path}")
+        if not isinstance(data.get("paths"), list):
+            raise ValueError(f"pending handoff manifest paths are invalid: {path}")
+        if "remote_paths" in data and not isinstance(data.get("remote_paths"), list):
+            raise ValueError(f"pending handoff manifest remote_paths are invalid: {path}")
+        expected = hashlib.sha256(session_id.encode("utf-8")).hexdigest() + ".json"
+        if path.name != expected:
+            raise ValueError(f"pending handoff manifest name mismatch: {path}")
+        if _manifest_records_project(data, project):
+            found.append((path, data))
+    return found
+
+
+def _file_receipt_matches(item: dict[str, object]) -> bool:
+    path = Path(str(item.get("path") or "")).expanduser()
+    state = item.get("state")
+    if state == "deleted-or-missing":
+        return not path.exists()
+    if state != "present" or not path.is_file() or path.is_symlink():
+        return False
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest() == item.get("sha256")
+
+
+def valid_local_receipt(session_id: str, state_root: Path) -> bool:
+    name = hashlib.sha256(session_id.encode("utf-8")).hexdigest() + ".json"
+    receipt = state_root / "local-handoff" / name
+    if not receipt.is_file() or receipt.is_symlink():
+        return False
+    try:
+        data = json.loads(receipt.read_text(encoding="utf-8"))
+        if data.get("session_id") != session_id or data.get("readiness") != "LOCAL_READY":
+            return False
+        results = [
+            result for result in data.get("results", []) if isinstance(result, dict)
+        ]
+        evidence = [
+            item
+            for result in results
+            for item in result.get("file_evidence", [])
+            if isinstance(item, dict)
+        ]
+        if not evidence or not all(_file_receipt_matches(item) for item in evidence):
+            return False
+        for result in results:
+            if result.get("action") != "local-ready" or result.get("alert"):
+                return False
+            repo = Path(str(result.get("repo") or "")).expanduser()
+            branch = run(["git", "-C", str(repo), "branch", "--show-current"])
+            head = run(["git", "-C", str(repo), "rev-parse", "HEAD"])
+            if (
+                branch.returncode != 0
+                or head.returncode != 0
+                or branch.stdout.strip() != result.get("branch")
+                or head.stdout.strip() != result.get("head")
+            ):
+                return False
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def porcelain_paths(output: str, repo_root: Path) -> set[Path]:
+    paths: set[Path] = set()
+    for line in output.splitlines():
+        if len(line) < 4:
+            continue
+        value = line[3:]
+        if " -> " in value:
+            value = value.split(" -> ", 1)[1]
+        value = value.strip().strip('"')
+        if value:
+            paths.add((repo_root / value).resolve(strict=False))
+    return paths
+
+
+def continuity_readiness_checks(
+    project: Path,
+    readiness: str,
+    state_root: Path = DEFAULT_REPO_GUARD_STATE,
+) -> list[Check]:
+    checks: list[Check] = []
+    try:
+        manifests = project_pending_manifests(project, state_root)
+    except (OSError, ValueError, TypeError) as exc:
+        add(checks, "continuity.local-manifest", False, str(exc))
+        return checks
+
+    root_result = run(["git", "-C", str(project), "rev-parse", "--show-toplevel"])
+    if root_result.returncode != 0 or not root_result.stdout.strip():
+        add(checks, "continuity.local-state", False, "git repository root is unavailable")
+        return checks
+    repo_root = Path(root_result.stdout.strip()).resolve()
+    status = run(
+        [
+            "git",
+            "-C",
+            str(project),
+            "-c",
+            "core.quotePath=false",
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--",
+            ".",
+        ]
+    )
+    if status.returncode != 0:
+        add(
+            checks,
+            "continuity.local-state",
+            False,
+            status.stderr.strip() or "git status failed",
+        )
+        return checks
+    dirty_files = porcelain_paths(status.stdout, repo_root)
+    dirty = bool(dirty_files)
+    attributed = {
+        Path(str(value)).expanduser().resolve(strict=False)
+        for _, data in manifests
+        for value in data.get("paths", [])
+    }
+    unattributed = sorted(dirty_files - attributed)
+    if dirty and (not manifests or unattributed):
+        add(
+            checks,
+            "continuity.local-state",
+            False,
+            (
+                "project has unattributed local edits: "
+                + ", ".join(str(path) for path in unattributed[:5])
+            )
+            if unattributed
+            else "project has unattributed local edits; no client-session manifest can reconstruct the interruption",
+        )
+    elif manifests:
+        receipt_count = sum(
+            valid_local_receipt(str(data["session_id"]), state_root)
+            for _, data in manifests
+        )
+        state = "LOCAL_READY" if receipt_count == len(manifests) else "LOCAL_RECOVERABLE"
+        add(
+            checks,
+            "continuity.local-state",
+            True,
+            f"{state}: {len(manifests)} attributed session manifest(s), {receipt_count} current Stop receipt(s)",
+        )
+    else:
+        add(
+            checks,
+            "continuity.local-state",
+            True,
+            "LOCAL_READY: project record is clean and readable on this machine",
+        )
+
+    if readiness == "local":
+        return checks
+
+    add(
+        checks,
+        "continuity.remote-pending",
+        not manifests,
+        "no pending local handoff manifests"
+        if not manifests
+        else f"{len(manifests)} local handoff manifest(s) still require publication",
+    )
+    upstream = run(
+        [
+            "git",
+            "-C",
+            str(project),
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ]
+    )
+    if upstream.returncode != 0 or not upstream.stdout.strip():
+        add(
+            checks,
+            "continuity.remote-upstream",
+            False,
+            "current branch has no upstream",
+        )
+        return checks
+    branch = run(["git", "-C", str(project), "branch", "--show-current"])
+    remote = run(
+        [
+            "git",
+            "-C",
+            str(project),
+            "config",
+            "--get",
+            f"branch.{branch.stdout.strip()}.remote",
+        ]
+    )
+    if (
+        branch.returncode != 0
+        or not branch.stdout.strip()
+        or remote.returncode != 0
+        or not remote.stdout.strip()
+        or remote.stdout.strip() == "."
+    ):
+        add(
+            checks,
+            "continuity.remote-upstream",
+            False,
+            "current branch has no fetchable remote",
+        )
+        return checks
+    fetched = run(
+        ["git", "-C", str(project), "fetch", remote.stdout.strip()]
+    )
+    if fetched.returncode != 0:
+        add(
+            checks,
+            "continuity.remote-upstream",
+            False,
+            fetched.stderr.strip() or "remote fetch failed",
+        )
+        return checks
+    counts = run(
+        [
+            "git",
+            "-C",
+            str(project),
+            "rev-list",
+            "--left-right",
+            "--count",
+            f"{upstream.stdout.strip()}...HEAD",
+            "--",
+            str(project),
+        ]
+    )
+    parts = counts.stdout.split()
+    comparable = counts.returncode == 0 and len(parts) == 2
+    behind, ahead = (int(value) for value in parts) if comparable else (-1, -1)
+    add(
+        checks,
+        "continuity.remote-upstream",
+        comparable and behind == 0 and ahead == 0 and not dirty,
+        (
+            f"REMOTE_READY against fetched {upstream.stdout.strip()}"
+            if comparable and behind == 0 and ahead == 0 and not dirty
+            else f"remote readiness failed: dirty={dirty}, ahead={ahead}, behind={behind}"
+        ),
+    )
     return checks
 
 
@@ -1781,6 +2134,7 @@ def parser() -> argparse.ArgumentParser:
             "capabilities",
             "surfaces",
             "coordination",
+            "continuity",
             "activate",
             "handoff",
             "all",
@@ -1789,6 +2143,12 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--source-root", type=Path, default=DEFAULT_SOURCE_ROOT)
     result.add_argument("--repo-root", type=Path)
     result.add_argument("--project", type=Path)
+    result.add_argument(
+        "--readiness",
+        choices=("local", "remote"),
+        default="local",
+        help="Continuity gate: same-machine recovery or published cross-machine state",
+    )
     result.add_argument("--active-project-file", type=Path, default=DEFAULT_ACTIVE_PROJECT)
     result.add_argument(
         "--session-id",
@@ -1908,6 +2268,22 @@ def main() -> int:
                 args.project.resolve(),
                 args.active_project_file.expanduser(),
                 args.coordination_board.expanduser(),
+            )
+        )
+    if args.command == "continuity":
+        if not args.project:
+            raise SystemExit("--project is required")
+        summary, project_checks = project_summary(args.project.resolve())
+        checks.extend(project_checks)
+        parity, detail = stopped_payload_parity(
+            args.project.resolve(),
+            summary,
+            args.coordination_board.expanduser(),
+        )
+        add(checks, "continuity.stopped-task-payload", parity, detail)
+        checks.extend(
+            continuity_readiness_checks(
+                args.project.resolve(), args.readiness
             )
         )
     return render(checks, args.json, args.report_file)

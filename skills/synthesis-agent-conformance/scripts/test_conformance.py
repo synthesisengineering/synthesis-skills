@@ -527,6 +527,125 @@ def test_payload_parity_reports_broken_pointer(tmp_path: Path) -> None:
     assert "payload failed" in detail
 
 
+def test_stopped_handoff_passes_without_active_pointer(tmp_path: Path) -> None:
+    subprocess = __import__("subprocess")
+    repo = tmp_path / "repo"
+    project = repo / "projects" / "demo"
+    plan = project / "resources" / "artifacts" / "demo-plan.md"
+    plan.parent.mkdir(parents=True)
+    (project / "sessions").mkdir()
+    (project / "CONTEXT.md").write_text(
+        "**Phase:** Ready\n"
+        "**Status:** Paused\n\n"
+        "[plan](resources/artifacts/demo-plan.md)\n\n"
+        "## What's Next\n\n"
+        "1. [ ] Resume on either client.\n",
+        encoding="utf-8",
+    )
+    (project / "REFERENCE.md").write_text("# Reference\n", encoding="utf-8")
+    plan.write_text("# Plan\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "init", "--quiet", "--initial-branch", "main", str(repo)],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "seed"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "update-ref", "refs/remotes/origin/main", "HEAD"],
+        check=True,
+    )
+
+    checks = MODULE.handoff_checks(
+        project,
+        tmp_path / "missing-pointer.json",
+        tmp_path / "missing-board.md",
+    )
+
+    assert all(check.ok for check in checks if check.required)
+    named = {check.name: check for check in checks}
+    assert named["handoff.stopped-task-payload"].ok
+    assert named["handoff.pointer-cache"].ok
+
+
+def test_local_continuity_recovers_interrupted_attributed_edits(tmp_path: Path) -> None:
+    project, _stale = clone_pair_with_project(tmp_path)
+    context = project / "CONTEXT.md"
+    context.write_text("**Phase:** interrupted\n", encoding="utf-8")
+    state = tmp_path / "repo-guard"
+    pending = state / "pending"
+    pending.mkdir(parents=True)
+    session_id = "interrupted-session"
+    manifest = pending / (
+        MODULE.hashlib.sha256(session_id.encode("utf-8")).hexdigest() + ".json"
+    )
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": session_id,
+                "paths": [str(context)],
+                "remote_paths": [str(context)],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    checks = MODULE.continuity_readiness_checks(project, "local", state)
+
+    assert all(check.ok for check in checks if check.required)
+    assert "LOCAL_RECOVERABLE" in checks[0].detail
+
+
+def test_local_continuity_rejects_dirty_project_paths_missing_from_manifest(
+    tmp_path: Path,
+) -> None:
+    project, _stale = clone_pair_with_project(tmp_path)
+    context = project / "CONTEXT.md"
+    reference = project / "REFERENCE.md"
+    context.write_text("**Phase:** attributed\n", encoding="utf-8")
+    reference.write_text("# Unattributed\n", encoding="utf-8")
+    state = tmp_path / "repo-guard"
+    pending = state / "pending"
+    pending.mkdir(parents=True)
+    session_id = "partial-session"
+    manifest = pending / (
+        MODULE.hashlib.sha256(session_id.encode("utf-8")).hexdigest() + ".json"
+    )
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": session_id,
+                "paths": [str(context)],
+                "remote_paths": [str(context)],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    checks = MODULE.continuity_readiness_checks(project, "local", state)
+
+    local = next(check for check in checks if check.name == "continuity.local-state")
+    assert not local.ok
+    assert "REFERENCE.md" in local.detail
+
+
+def test_remote_continuity_requires_clean_published_project(tmp_path: Path) -> None:
+    project, _stale = clone_pair_with_project(tmp_path)
+
+    checks = MODULE.continuity_readiness_checks(
+        project, "remote", tmp_path / "empty-state"
+    )
+
+    assert all(check.ok for check in checks if check.required)
+    assert any("REMOTE_READY" in check.detail for check in checks)
+
+
 def test_runtime_checks_fail_structurally_when_binaries_absent(monkeypatch) -> None:
     monkeypatch.setattr(MODULE, "resolve_client_binary", lambda name: None)
 

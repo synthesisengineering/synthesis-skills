@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.0"
+  version: "1.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -129,7 +129,7 @@ Show this verification step in the response. It is the L4 visible-verification m
 
 ### Step 6 — Update CONTEXT.md if it was stale
 
-If Step 3 revealed CONTEXT.md was out of date (later commits exist that aren't reflected in its "Last session" or "Recent Sessions" sections), update CONTEXT.md in place to reflect verified facts. Commit and push that update separately from any other work. This prevents the next session from inheriting the stale cache.
+If Step 3 revealed CONTEXT.md was out of date (later commits exist that aren't reflected in its "Last session" or "Recent Sessions" sections), update CONTEXT.md in place to reflect verified facts. Leave the correction session-attributed and locally receipted; publish it in the next explicit remote handoff or day-end batch. This prevents the next local client from inheriting the stale cache without creating a network round trip at every checkpoint.
 
 ## Output Format
 

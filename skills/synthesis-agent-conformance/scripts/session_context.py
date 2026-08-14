@@ -33,6 +33,9 @@ DEFAULT_LIVE_RECEIPT = (
     / "live"
     / "public-sessionstart.json"
 )
+DEFAULT_PENDING_HANDOFFS = Path(
+    os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis"))
+) / "repo-guard" / "pending"
 
 
 def atomic_json_write(destination: Path, payload: dict[str, object]) -> None:
@@ -178,41 +181,65 @@ def active_session_ids(board: Path) -> list[str]:
     return active
 
 
-def build(pointer: Path, coordination_board: Path = DEFAULT_COORDINATION_BOARD) -> str:
-    now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z (%A)")
-    lines = [f"Verified local time: {now}."]
-    sessions = active_session_ids(coordination_board)
-    if sessions:
-        lines.append(
-            "Cross-agent coordination is active for session(s): "
-            + ", ".join(sessions)
-            + ". Read the coordination board and verify claims before writes."
-        )
-    if not pointer.is_file():
-        lines.append("No active synthesis project pointer is set.")
-        return "\n".join(lines)
+def pending_handoff_count(directory: Path) -> int:
+    if not directory.is_dir():
+        return 0
+    count = 0
+    for path in directory.glob("*.json"):
+        if path.is_symlink():
+            raise ValueError(f"pending handoff manifest is a symlink: {path}")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data.get("session_id"), str) or not isinstance(
+            data.get("paths"), list
+        ):
+            raise ValueError(f"pending handoff manifest is invalid: {path}")
+        count += 1
+    return count
 
-    data, pointer_issues = load_and_validate(pointer, coordination_board)
-    if pointer_issues:
-        raise ValueError("; ".join(pointer_issues))
-    project = Path(data["project"]).expanduser().resolve()
+
+def project_from_cwd(cwd: Path | None) -> Path | None:
+    """Discover a durable project when a task opens inside its directory."""
+    if cwd is None:
+        return None
+    try:
+        candidate = cwd.expanduser().resolve(strict=True)
+    except OSError:
+        return None
+    if candidate.is_file():
+        candidate = candidate.parent
+    for directory in (candidate, *candidate.parents):
+        if (
+            (directory / "CONTEXT.md").is_file()
+            and (directory / "REFERENCE.md").is_file()
+            and (directory / "sessions").is_dir()
+        ):
+            return directory
+    return None
+
+
+def linked_plan(project: Path, context: str) -> Path | None:
+    match = re.search(
+        r"\((resources/artifacts/[^)\n]*plan[^)\n]*\.md)\)",
+        context,
+        re.IGNORECASE,
+    )
+    return project / match.group(1) if match else None
+
+
+def append_project_context(lines: list[str], project: Path, *, label: str) -> None:
     context_path = project / "CONTEXT.md"
-    if not context_path.is_file():
-        raise FileNotFoundError(f"active project CONTEXT.md is missing: {context_path}")
-
     context = context_path.read_text(encoding="utf-8")
     phase = extract(context, "Phase")
     status = extract(context, "Status")
-    plan = data.get("plan", "unknown")
-    if plan != "unknown" and not Path(plan).is_file():
+    plan = linked_plan(project, context)
+    if plan is not None and not plan.is_file():
         raise FileNotFoundError(f"active plan is missing: {plan}")
-
     lines.extend(
         [
-            f"Active synthesis project: {project}.",
+            f"{label}: {project}.",
             f"Current phase: {phase}.",
             f"Current status: {status}.",
-            f"Controlling plan: {plan}.",
+            f"Controlling plan: {plan or 'unknown'}.",
         ]
     )
     fresh, freshness_detail = record_freshness(project)
@@ -223,6 +250,61 @@ def build(pointer: Path, coordination_board: Path = DEFAULT_COORDINATION_BOARD) 
         lines.append("Recorded next actions:")
         lines.extend(f"- {action}" for action in actions)
     lines.append("Re-read CONTEXT.md and the controlling plan before substantive work.")
+
+
+def build(
+    pointer: Path,
+    coordination_board: Path = DEFAULT_COORDINATION_BOARD,
+    cwd: Path | None = None,
+    pending_handoffs: Path = DEFAULT_PENDING_HANDOFFS,
+) -> str:
+    now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z (%A)")
+    lines = [f"Verified local time: {now}."]
+    sessions = active_session_ids(coordination_board)
+    if sessions:
+        lines.append(
+            "Cross-agent coordination is active for session(s): "
+            + ", ".join(sessions)
+            + ". Read the coordination board and verify claims before writes."
+        )
+    pending = pending_handoff_count(pending_handoffs)
+    if pending:
+        lines.append(
+            f"Local continuity: {pending} attributed edit manifest(s) await "
+            "remote publication. Inspect working-tree truth before relying on "
+            "cached project context; an interrupted task remains recoverable on "
+            "this machine."
+        )
+    if not pointer.is_file():
+        lines.append("No active synthesis project pointer is set.")
+        discovered = project_from_cwd(cwd)
+        if discovered is not None:
+            append_project_context(
+                lines,
+                discovered,
+                label="Stopped synthesis project discovered from the task directory",
+            )
+        else:
+            lines.append(
+                "Stopped-task recovery remains available: when the user names a "
+                "synthesis project, resolve it from the git-tracked projects/index.yaml "
+                "and run the Session Start Protocol automatically; never ask the user "
+                "to run a context-lifecycle command or save state manually."
+            )
+        return "\n".join(lines)
+
+    data, pointer_issues = load_and_validate(pointer, coordination_board)
+    if pointer_issues:
+        raise ValueError("; ".join(pointer_issues))
+    project = Path(data["project"]).expanduser().resolve()
+    context_path = project / "CONTEXT.md"
+    if not context_path.is_file():
+        raise FileNotFoundError(f"active project CONTEXT.md is missing: {context_path}")
+
+    plan = data.get("plan", "unknown")
+    if plan != "unknown" and not Path(plan).is_file():
+        raise FileNotFoundError(f"active plan is missing: {plan}")
+    append_project_context(lines, project, label="Active synthesis project")
     return "\n".join(lines)
 
 
@@ -259,6 +341,7 @@ def main() -> int:
         message = build(
             args.active_project_file.expanduser(),
             args.coordination_board.expanduser(),
+            Path(str(payload["cwd"])) if payload.get("cwd") else None,
         )
     except Exception as exc:
         print(f"synthesis project context failed closed: {exc}", file=sys.stderr)

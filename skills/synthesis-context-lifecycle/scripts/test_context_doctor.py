@@ -345,6 +345,24 @@ class ContextDoctorTests(unittest.TestCase):
         )
         self.assertIn("uncommitted-context", checks_in(self.fx.audit()))
 
+    def test_local_readiness_reports_uncommitted_context_as_warning(self):
+        self.fx.project("alpha")
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+        (self.fx.projects / "alpha" / "CONTEXT.md").write_text(
+            "# P\n\n**Status:** Active\n\nlocal handoff\n", encoding="utf-8"
+        )
+
+        result = self.fx.audit("--readiness", "local")
+
+        finding = next(
+            item
+            for item in result["data"]["findings"]
+            if item["check"] == "uncommitted-context"
+        )
+        self.assertEqual(finding["severity"], "warning")
+        self.assertEqual(result["code"], 0)
+
     # --- durability: the critical hole the refute panel found --------------
 
     def test_never_pushed_branch_is_a_defect(self):
@@ -374,6 +392,25 @@ class ContextDoctorTests(unittest.TestCase):
         )
         self.fx.commit(push=False)
         self.assertIn("unpushed-context", checks_in(self.fx.audit()))
+
+    def test_local_readiness_reports_ahead_context_as_warning(self):
+        self.fx.project("alpha")
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+        (self.fx.projects / "alpha" / "CONTEXT.md").write_text(
+            "# P\n\n**Status:** Active\n\ncommitted locally\n", encoding="utf-8"
+        )
+        self.fx.commit(push=False)
+
+        result = self.fx.audit("--readiness", "local")
+
+        finding = next(
+            item
+            for item in result["data"]["findings"]
+            if item["check"] == "unpushed-context"
+        )
+        self.assertEqual(finding["severity"], "warning")
+        self.assertEqual(result["code"], 0)
 
     def test_gitignored_context_file_is_a_defect(self):
         self.fx.project("alpha")

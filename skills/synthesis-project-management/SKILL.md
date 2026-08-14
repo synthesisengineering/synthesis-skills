@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.9.0"
+  version: "2.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -248,7 +248,7 @@ Rules: record `model`/`effort` only when the current session or the user explici
 ### During Work
 
 ```
-Complete task → Update CONTEXT.md → Commit → Next task
+Complete task → Update CONTEXT.md → local receipt → Next task
 ```
 
 **NOT:**
@@ -274,7 +274,9 @@ Complete task → Complete task → Complete task → (context compaction) → L
 2. **Archive if needed** — Move old sessions to sessions/, stable facts to REFERENCE.md
 3. **Attribute if warranted** — If multiple agents/models contributed materially, end the session-log entry with Attribution line(s) (see Agent Attribution)
 4. **Update index.yaml** — Set `last_session` date
-5. **Commit all changes** — Do not leave uncommitted work
+5. **Verify local continuity** — Confirm session-attributed state is readable;
+   do not create a commit or network push solely because the user is switching
+   clients on this machine
 6. **Release coordination claims** — Mark the session released or narrow its
    claims before pausing or ending
 
@@ -386,14 +388,17 @@ bootstrap/retirement, and worktree-retirement details.
 
 ### Cross-Agent Handoff
 
-Before pausing work that may continue in another tool:
+Before pausing work that may continue in another tool, the outgoing agent runs
+this protocol automatically. Rajiv does not invoke lifecycle commands or save
+state by hand:
 
 1. Update `CONTEXT.md` with current state, decisions, and next actions
 2. Move stable facts into `REFERENCE.md`
 3. Append chronological detail to `sessions/YYYY-MM.md`
 4. End the session-log entry with an Attribution line for the departing agent (see Agent Attribution) — the receiving agent should know who did what, with what verification
 5. Save substantial plans, audits, or checklists under `resources/artifacts/`
-6. Commit and push the project-management changes
+6. Verify `LOCAL_READY` or `LOCAL_RECOVERABLE`; a same-machine client switch
+   does not require a commit, push, or manual lifecycle command
 7. If `synthesis-agent-conformance` is installed, activate and verify the
    project:
 
@@ -401,17 +406,36 @@ Before pausing work that may continue in another tool:
    python3 <skill-root>/scripts/conformance.py activate \
      --project <project> --session-id <coordination-session-id>
    python3 <skill-root>/scripts/conformance.py pointer --project <project>
-   python3 <skill-root>/scripts/conformance.py handoff --project <project>
+   python3 <skill-root>/scripts/conformance.py continuity \
+     --project <project> --readiness local
    ```
-8. Release or transfer this session's coordination claims. A normal release
+8. When changing computers, run `synthesis-mac-sync` remote-handoff mode, then
+   verify `continuity --readiness remote`. Day-end performs the same transition.
+9. Release or transfer this session's coordination claims. A normal release
    recoverably moves an active-project pointer owned by that session into
    `~/.synthesis/active-project-history/`; a pointer owned by another session is
    untouched.
 
-When resuming work from another agent, re-run `handoff`, read CONTEXT.md and
-the linked plan, and verify git history before acting. Trust the project files
-over tool-specific memory. The continuity source of truth is the synthesis
-project context, not the previous assistant's chat transcript.
+When resuming work from another agent, resolve the named project through the
+git-tracked `projects/index.yaml`, run local continuity for a stopped project,
+read CONTEXT.md and the linked plan, and inspect Git status and diff before
+acting. Working-tree truth supersedes cached project prose after an interrupted
+task. This is automatic agent work, not a prerequisite Rajiv performs. The
+continuity source of truth is the filesystem-backed synthesis record, not the
+previous assistant's chat transcript.
+
+The pointer is a leased acceleration cache for a live context owner. Claim
+release archives it recoverably, so its absence after a clean stop is expected.
+Never replace it with one git-tracked global "current project" value: parallel
+Claude Code and Codex sessions can legitimately work different projects. A
+stopped task resumes by named-project registry resolution; a task opened inside
+the project directory can also be discovered from its durable file structure.
+
+Cross-computer recovery adds two preconditions: the source machine must reach
+`REMOTE_READY` through synthesis-mac-sync or day-end, and the destination must
+fetch and fast-forward before Session Start. Offline, divergent, behind,
+unpublished, or overlapping-claim states are reported explicitly and are not
+remote-continuity passes.
 
 ### Parallel Sub-Agent Dispatch
 

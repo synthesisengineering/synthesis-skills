@@ -28,10 +28,9 @@ Checks (see CHECKS for the registry):
                    completed projects carry completed_date
   freshness        index.yaml last_session and the CONTEXT.md "Last session"
                    header agree with the project's real git history
-  durability       no uncommitted context files; tier files are TRACKED by git,
-                   not merely clean; a remote and upstream exist and the branch
-                   is pushed, because context that exists on one machine is not
-                   durable context
+  durability       tier files are TRACKED by git; remote mode requires a clean,
+                   upstream-current branch; local mode reports recoverable
+                   uncommitted or ahead state as warnings
   disclosure       anything the doctor could not verify is reported, never
                    silently skipped: unreadable records and freshness that
                    cannot be established both surface as findings
@@ -40,6 +39,8 @@ Usage:
     context_doctor.py                    # audit every source in console.yaml
     context_doctor.py --source PATH ...  # audit explicit source roots
     context_doctor.py --project PATH     # audit one project directory
+    context_doctor.py --readiness local  # same-machine continuity posture
+    context_doctor.py --readiness remote # cross-machine publication posture
     context_doctor.py --json             # machine-readable report
     context_doctor.py --quiet            # exit code + one summary line
 
@@ -58,7 +59,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
-DOCTOR_VERSION = "1.2.2"
+DOCTOR_VERSION = "1.3.0"
 
 # Budgets from the tiered context architecture.
 CONTEXT_BUDGET_ACTIVE = 150
@@ -696,6 +697,7 @@ def audit_project(
     index_entry: dict | None,
     repo_root: Path,
     projects_root: Path,
+    readiness: str = "remote",
 ) -> ProjectAudit:
     audit = ProjectAudit(source=source.name, project_id=project_id, path=project_path)
 
@@ -856,10 +858,10 @@ def audit_project(
     if dirty:
         audit.add(
             "uncommitted-context",
-            "defect",
-            f"{len(dirty)} uncommitted file(s) under the project — context that "
-            "exists on one machine is not durable context",
-            "commit and push the project files",
+            "defect" if readiness == "remote" else "warning",
+            f"{len(dirty)} uncommitted file(s) under the project — same-machine "
+            "continuity is available, but this project is not REMOTE_READY",
+            "run the explicit remote-handoff sync before changing computers",
         )
 
     # A clean `git status` says nothing about a file git was never told to
@@ -893,7 +895,10 @@ def audit_project(
 
 
 def durability_findings(
-    source_name: str, repo_root: Path, projects_root: Path
+    source_name: str,
+    repo_root: Path,
+    projects_root: Path,
+    readiness: str = "remote",
 ) -> list[Finding]:
     """Repo-level durability, shared by whole-source and single-project runs.
 
@@ -910,7 +915,7 @@ def durability_findings(
                 project="(repository)",
                 source=source_name,
                 check="unpushed-context",
-                severity="defect",
+                severity="defect" if readiness == "remote" else "warning",
                 message=f"{count} commit(s) touching project context are not "
                 "pushed — another machine or agent cannot see this context yet",
                 remedy="push the branch",
@@ -923,7 +928,7 @@ def durability_findings(
                 project="(repository)",
                 source=source_name,
                 check="unpushed-context",
-                severity="defect",
+                severity="defect" if readiness == "remote" else "warning",
                 message=message,
                 remedy=remedy,
             )
@@ -938,7 +943,7 @@ def durability_findings(
                 project="(source)",
                 source=source_name,
                 check="uncommitted-context",
-                severity="defect",
+                severity="defect" if readiness == "remote" else "warning",
                 message="projects/index.yaml has uncommitted changes",
                 remedy="commit and push index.yaml",
             )
@@ -947,7 +952,9 @@ def durability_findings(
     return findings
 
 
-def audit_source(source: Source) -> tuple[list[ProjectAudit], list[Finding]]:
+def audit_source(
+    source: Source, readiness: str = "remote"
+) -> tuple[list[ProjectAudit], list[Finding]]:
     source_findings: list[Finding] = []
     projects_root = source.projects_root
 
@@ -1017,6 +1024,7 @@ def audit_source(source: Source) -> tuple[list[ProjectAudit], list[Finding]]:
                 index_by_id.get(child.name),
                 repo_root,
                 projects_root,
+                readiness,
             )
         )
 
@@ -1037,7 +1045,9 @@ def audit_source(source: Source) -> tuple[list[ProjectAudit], list[Finding]]:
             )
         )
 
-    source_findings.extend(durability_findings(source.name, repo_root, projects_root))
+    source_findings.extend(
+        durability_findings(source.name, repo_root, projects_root, readiness)
+    )
 
     return audits, source_findings
 
@@ -1118,6 +1128,15 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="exit non-zero on warnings too",
     )
+    parser.add_argument(
+        "--readiness",
+        choices=("local", "remote"),
+        default="remote",
+        help=(
+            "local accepts recoverable same-machine Git state as warnings; "
+            "remote requires committed and pushed context"
+        ),
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -1153,17 +1172,20 @@ def main(argv: list[str] | None = None) -> int:
                     entry,
                     repo_root,
                     projects_root,
+                    args.readiness,
                 )
             )
             findings.extend(
-                durability_findings(source.name, repo_root, projects_root)
+                durability_findings(
+                    source.name, repo_root, projects_root, args.readiness
+                )
             )
             source_count = 1
         else:
             sources = discover_sources(args.source)
             source_count = len(sources)
             for source in sources:
-                src_audits, src_findings = audit_source(source)
+                src_audits, src_findings = audit_source(source, args.readiness)
                 audits.extend(src_audits)
                 findings.extend(src_findings)
 
@@ -1195,6 +1217,7 @@ def main(argv: list[str] | None = None) -> int:
     payload = {
         "ok": not failed,
         "doctor_version": DOCTOR_VERSION,
+        "readiness": args.readiness,
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "sources": source_count,
         "projects_audited": len(audits),

@@ -64,6 +64,66 @@ def test_build_includes_active_coordination(tmp_path: Path) -> None:
     assert "verify claims before writes" in message
 
 
+def test_build_without_pointer_explains_automatic_named_project_recovery(
+    tmp_path: Path,
+) -> None:
+    message = MODULE.build(tmp_path / "missing-pointer.json", tmp_path / "no-board.md")
+
+    assert "No active synthesis project pointer is set." in message
+    assert "resolve it from the git-tracked projects/index.yaml" in message
+    assert "never ask the user to run a context-lifecycle command" in message
+
+
+def test_build_surfaces_interrupted_local_handoff_without_names(tmp_path: Path) -> None:
+    pending = tmp_path / "repo-guard" / "pending"
+    pending.mkdir(parents=True)
+    (pending / "one.json").write_text(
+        json.dumps({"session_id": "session-a", "paths": ["/private/path"]}),
+        encoding="utf-8",
+    )
+
+    message = MODULE.build(
+        tmp_path / "missing-pointer.json",
+        tmp_path / "no-board.md",
+        pending_handoffs=pending,
+    )
+
+    assert "Local continuity: 1 attributed edit manifest" in message
+    assert "/private/path" not in message
+    assert "interrupted task remains recoverable" in message
+
+
+def test_build_discovers_stopped_project_from_cwd(tmp_path: Path, monkeypatch) -> None:
+    project = tmp_path / "projects" / "alpha"
+    plan = project / "resources" / "artifacts" / "alpha-plan.md"
+    plan.parent.mkdir(parents=True)
+    plan.write_text("# Plan\n", encoding="utf-8")
+    (project / "sessions").mkdir()
+    (project / "REFERENCE.md").write_text("# Reference\n", encoding="utf-8")
+    (project / "CONTEXT.md").write_text(
+        "# Alpha\n\n"
+        "**Phase:** Validation\n"
+        "**Status:** Active\n\n"
+        "[plan](resources/artifacts/alpha-plan.md)\n\n"
+        "## What's Next\n\n"
+        "- [ ] Resume from durable state.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(MODULE, "record_freshness", lambda path: (True, "current"))
+
+    message = MODULE.build(
+        tmp_path / "missing-pointer.json",
+        tmp_path / "no-board.md",
+        project / "resources",
+    )
+
+    assert f"Stopped synthesis project discovered from the task directory: {project}." in message
+    assert "Current phase: Validation." in message
+    assert "Current status: Active." in message
+    assert f"Controlling plan: {plan}." in message
+    assert "Resume from durable state" in message
+
+
 def test_build_rejects_incomplete_or_unleased_pointer(
     tmp_path: Path, monkeypatch
 ) -> None:
