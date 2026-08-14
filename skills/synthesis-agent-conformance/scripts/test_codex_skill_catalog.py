@@ -7,8 +7,14 @@ import json
 from pathlib import Path
 
 import pytest
+import codex_skill_catalog as MODULE
 
-from codex_skill_catalog import allows_implicit_invocation, normalized_audit
+from codex_skill_catalog import (
+    _configured_model,
+    _context_window,
+    allows_implicit_invocation,
+    normalized_audit,
+)
 
 
 def _skill(root: Path, name: str, description: str = "Short trigger") -> dict[str, object]:
@@ -106,3 +112,55 @@ def test_catalog_budget_honors_codex_home(
 
     assert audit["model"] == "custom-model"
     assert audit["context_window"] == 80_000
+
+
+def test_configured_model_parses_top_level_toml_only(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    codex = home / ".codex"
+    codex.mkdir(parents=True)
+    (codex / "config.toml").write_text(
+        "model = 'active-model' # current default\n"
+        "[profiles.inactive]\n"
+        'model = "wrong-model"\n',
+        encoding="utf-8",
+    )
+
+    assert _configured_model(home) == "active-model"
+
+
+def test_configured_model_fallback_ignores_profile_tables(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    codex = home / ".codex"
+    codex.mkdir(parents=True)
+    (codex / "config.toml").write_text(
+        "model = 'active-model' # current default\n"
+        "[profiles.inactive]\n"
+        'model = "wrong-model"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(MODULE, "tomllib", None)
+
+    assert MODULE._configured_model(home) == "active-model"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        [],
+        {"models": "invalid"},
+        {"models": [None, "invalid"]},
+    ),
+)
+def test_context_window_survives_malformed_cache_shapes(
+    tmp_path: Path, payload: object
+) -> None:
+    home = tmp_path / "home"
+    codex = home / ".codex"
+    codex.mkdir(parents=True)
+    (codex / "models_cache.json").write_text(
+        json.dumps(payload), encoding="utf-8"
+    )
+
+    assert _context_window(home, "test-model") is None

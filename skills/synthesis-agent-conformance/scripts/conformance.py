@@ -52,6 +52,7 @@ from active_project import (
 )
 from codex_hook_audit import audit as codex_hook_audit
 from codex_skill_catalog import audit as codex_skill_catalog_audit
+from capability_evidence import sanitize_detail
 from live_receipt import transcript_binds_session
 from project_context import next_actions, record_freshness
 from pointer_lock import locked_pointer
@@ -576,24 +577,43 @@ def _version_key(version: str) -> tuple:
     return tuple(parts)
 
 
-def newest_cached_plugin_version(client_home: Path) -> str | None:
-    """Newest plugin version present in a client's plugin cache, or None."""
-    cache = client_home / "plugins" / "cache"
-    versions: list[str] = []
-    if not cache.is_dir():
+def enabled_plugin_version(client: str) -> str | None:
+    """Return the one enabled native-plugin version reported by the client."""
+    binary = resolve_client_binary(client)
+    if not binary:
         return None
-    for marketplace in cache.iterdir():
-        plugin_dir = marketplace / PLUGIN_NAME
-        if not plugin_dir.is_dir():
-            continue
-        for entry in plugin_dir.iterdir():
-            if entry.is_dir() and not entry.name.startswith("."):
-                versions.append(entry.name)
-    return max(versions, key=_version_key) if versions else None
+    try:
+        result = run([binary, "plugin", "list", "--json"])
+        if result.returncode != 0:
+            return None
+        data = json_from_output(result.stdout + "\n" + result.stderr)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+    if client == "claude":
+        items = data if isinstance(data, list) else []
+        matches = [
+            item
+            for item in items
+            if isinstance(item, dict)
+            and str(item.get("id", "")).startswith(f"{PLUGIN_NAME}@")
+            and item.get("enabled", True)
+            and item.get("version")
+        ]
+    else:
+        installed = data.get("installed", []) if isinstance(data, dict) else []
+        matches = [
+            item
+            for item in installed
+            if isinstance(item, dict)
+            and item.get("name") == PLUGIN_NAME
+            and item.get("enabled")
+            and item.get("version")
+        ]
+    return str(matches[0]["version"]) if len(matches) == 1 else None
 
 
 def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
-    """Dual-client version-drift detection, filesystem-only.
+    """Dual-client version-drift detection against enabled inventories.
 
     The dual-runtime guarantee has three existing layers: CI source
     conformance (every skill ships a Codex adapter; the two source manifests
@@ -601,8 +621,8 @@ def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
     marketplaces), and runtime conformance (both clients report the plugin
     enabled). None of them notices the day someone releases a version and
     refreshes only one client — or neither. This mode is that missing layer:
-    fast enough to run at every day-start and session start, no client
-    binaries required, and it fails on drift rather than describing it.
+    fast enough to run at every day-start and session start, and it fails on
+    drift rather than mistaking unused cache directories for live installs.
     """
     checks: list[Check] = []
     home = home or None
@@ -641,8 +661,8 @@ def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
     source_version = next(iter(manifest_values)) if len(manifest_values) == 1 else None
 
     installed: dict[str, str | None] = {
-        "claude": newest_cached_plugin_version(_client_config_dir("claude", home)),
-        "codex": newest_cached_plugin_version(_client_config_dir("codex", home)),
+        "claude": enabled_plugin_version("claude"),
+        "codex": enabled_plugin_version("codex"),
     }
     for client, version in installed.items():
         add(
@@ -650,7 +670,7 @@ def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
             f"parity.{client}-installed",
             version is not None,
             version
-            or f"no {PLUGIN_NAME} in {_client_config_dir(client, home)}/plugins/cache",
+            or f"no single enabled {PLUGIN_NAME} installation reported by {client}",
         )
 
     both = all(installed.values())
@@ -1627,6 +1647,11 @@ def capability_checks(
                 schema_issues.append("evidence_kind is invalid")
             if not isinstance(detail, str) or not 1 <= len(" ".join(detail.split())) <= 500:
                 schema_issues.append("detail must contain 1-500 characters")
+            elif isinstance(detail, str):
+                try:
+                    sanitize_detail(detail)
+                except ValueError:
+                    schema_issues.append("detail appears to contain authentication material")
             if schema_issues:
                 add(
                     checks,

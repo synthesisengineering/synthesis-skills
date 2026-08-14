@@ -2,7 +2,7 @@
 """Tests for the dual-client parity mode.
 
 The mode exists to catch the day a release reaches one client and not the
-other — or neither. Each test builds a fake pair of client caches plus a fake
+other — or neither. Each test supplies fake enabled inventories plus a fake
 source checkout and asserts the drift verdicts, including the degenerate
 self-comparison case (running from inside a plugin cache), which must fail
 closed rather than pass vacuously.
@@ -15,18 +15,11 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from conformance import newest_cached_plugin_version, parity_checks  # noqa: E402
-
-
-def build(home: Path, claude: list[str], codex: list[str]) -> None:
-    for client, versions in (("claude", claude), ("codex", codex)):
-        for version in versions:
-            (
-                home / f".{client}" / "plugins" / "cache" / "mp" / "synthesis-skills" / version
-            ).mkdir(parents=True, exist_ok=True)
+import conformance as MODULE  # noqa: E402
 
 
 def source(root: Path, version: str) -> Path:
@@ -50,27 +43,32 @@ class ParityTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
+    def checks(self, claude: str | None, codex: str | None):
+        versions = {"claude": claude, "codex": codex}
+        with patch.object(
+            MODULE,
+            "enabled_plugin_version",
+            side_effect=lambda client: versions[client],
+        ):
+            return MODULE.parity_checks(self.src, home=self.home)
+
     def test_everything_current_passes(self):
-        build(self.home, ["4.12.0", "4.13.0"], ["4.13.0"])
-        ok = by_name(parity_checks(self.src, home=self.home))
+        ok = by_name(self.checks("4.13.0", "4.13.0"))
         self.assertTrue(all(ok.values()), ok)
 
     def test_one_client_behind_fails_match_and_current(self):
-        build(self.home, ["4.13.0"], ["4.12.0"])
-        ok = by_name(parity_checks(self.src, home=self.home))
+        ok = by_name(self.checks("4.13.0", "4.12.0"))
         self.assertFalse(ok["parity.clients-match"])
         self.assertFalse(ok["parity.clients-current"])
         self.assertTrue(ok["parity.claude-installed"])
 
     def test_both_behind_source_fails_current_only(self):
-        build(self.home, ["4.12.0"], ["4.12.0"])
-        ok = by_name(parity_checks(self.src, home=self.home))
+        ok = by_name(self.checks("4.12.0", "4.12.0"))
         self.assertTrue(ok["parity.clients-match"])
         self.assertFalse(ok["parity.clients-current"])
 
-    def test_missing_client_cache_fails_installed(self):
-        build(self.home, ["4.13.0"], [])
-        ok = by_name(parity_checks(self.src, home=self.home))
+    def test_missing_enabled_client_fails_installed(self):
+        ok = by_name(self.checks("4.13.0", None))
         self.assertFalse(ok["parity.codex-installed"])
         self.assertFalse(ok["parity.clients-match"])
 
@@ -78,8 +76,7 @@ class ParityTests(unittest.TestCase):
         (self.src / ".codex-plugin" / "plugin.json").write_text(
             json.dumps({"version": "4.12.0"})
         )
-        build(self.home, ["4.13.0"], ["4.13.0"])
-        ok = by_name(parity_checks(self.src, home=self.home))
+        ok = by_name(self.checks("4.13.0", "4.13.0"))
         self.assertFalse(ok["parity.source-manifests"])
         self.assertFalse(ok["parity.clients-current"])
 
@@ -89,17 +86,10 @@ class ParityTests(unittest.TestCase):
             self.home / ".claude" / "plugins" / "cache" / "mp" / "synthesis-skills" / "4.13.0"
         )
         cache_root.mkdir(parents=True, exist_ok=True)
-        checks = parity_checks(cache_root, home=self.home)
+        checks = MODULE.parity_checks(cache_root, home=self.home)
         ok = by_name(checks)
         self.assertEqual(list(ok), ["parity.source-root"])
         self.assertFalse(ok["parity.source-root"])
-
-    def test_version_ordering_is_numeric_not_lexical(self):
-        build(self.home, ["4.9.0", "4.10.0"], [])
-        self.assertEqual(
-            newest_cached_plugin_version(self.home / ".claude"), "4.10.0"
-        )
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

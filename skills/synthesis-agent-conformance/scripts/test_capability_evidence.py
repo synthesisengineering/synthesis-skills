@@ -64,6 +64,12 @@ def test_detail_rejects_bare_credential_values() -> None:
         "AKIA" + "IOSFODNN7EXAMPLE",
         "ya29.0123456789abcdefghijklmnopqrstuv",
         "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature12",
+        "AIza" + "A" * 35,
+        "glpat-" + "A" * 20,
+        "github_pat_" + "A" * 82,
+        "xapp-1-" + "A" * 30,
+        "ASIA" + "A" * 16,
+        "-----BEGIN OPENSSH " + "PRIVATE KEY-----",
     ):
         with pytest.raises(ValueError, match="authentication"):
             MODULE.sanitize_detail(detail)

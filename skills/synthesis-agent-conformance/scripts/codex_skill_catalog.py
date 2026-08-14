@@ -12,6 +12,14 @@ from pathlib import Path
 from client_binaries import missing_binary_detail, resolve_client_binary
 from codex_app_server import query
 
+try:
+    import tomllib
+except ImportError:  # Python 3.9/3.10 compatibility
+    try:
+        import tomli as tomllib  # type: ignore[no-redef]
+    except ImportError:  # pragma: no cover - exercised with Apple Python 3.9
+        tomllib = None  # type: ignore[assignment]
+
 DEFAULT_CHAR_BUDGET = 8_000
 CONTEXT_PERCENT = 2
 MAX_DESCRIPTION_CHARS = 1_024
@@ -26,15 +34,30 @@ def _codex_home(home: Path | None = None) -> Path:
 
 
 def _configured_model(home: Path | None = None) -> str | None:
+    path = _codex_home(home) / "config.toml"
     try:
-        match = re.search(
-            r'^model\s*=\s*"([^"]+)"\s*$',
-            (_codex_home(home) / "config.toml").read_text(encoding="utf-8"),
-            re.MULTILINE,
-        )
+        text = path.read_text(encoding="utf-8")
     except OSError:
         return None
-    return match.group(1) if match else None
+    if tomllib is not None:
+        try:
+            payload = tomllib.loads(text)
+        except (TypeError, ValueError):
+            return None
+        model = payload.get("model") if isinstance(payload, dict) else None
+        return model if isinstance(model, str) and model else None
+    # Apple Python 3.9 has no stdlib TOML parser. Read only a top-level model
+    # string and stop at the first table, so inactive profile models can never
+    # be mistaken for the default runtime model.
+    for line in text.splitlines():
+        if re.match(r"^\s*\[", line):
+            break
+        match = re.match(
+            r'''^\s*model\s*=\s*(["'])(.*?)\1\s*(?:#.*)?$''', line
+        )
+        if match:
+            return match.group(2) or None
+    return None
 
 
 def _context_window(home: Path | None, model: str | None) -> int | None:
@@ -46,7 +69,14 @@ def _context_window(home: Path | None, model: str | None) -> int | None:
         )
     except (OSError, ValueError):
         return None
-    for row in payload.get("models", []):
+    if not isinstance(payload, dict):
+        return None
+    models = payload.get("models")
+    if not isinstance(models, list):
+        return None
+    for row in models:
+        if not isinstance(row, dict):
+            continue
         if row.get("slug") == model and isinstance(row.get("context_window"), int):
             return int(row["context_window"])
     return None

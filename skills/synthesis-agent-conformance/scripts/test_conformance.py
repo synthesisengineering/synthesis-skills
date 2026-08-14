@@ -951,6 +951,41 @@ def test_capability_checks_reject_incomplete_or_misattributed_evidence(
     assert "detail must contain 1-500 characters" in target.detail
 
 
+def test_capability_checks_never_echo_stored_authentication_material(
+    tmp_path: Path, monkeypatch
+) -> None:
+    evidence = tmp_path / "capabilities.json"
+    credential = "github_pat_" + "A" * 82
+    evidence.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "entries": {
+                    "codex-cli.repository": {
+                        "client": "codex-cli",
+                        "capability": "repository",
+                        "status": "PASS",
+                        "evidence_kind": "authenticated-cli",
+                        "detail": credential,
+                        "checked_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(MODULE, "resolve_client_binary", lambda client: f"/{client}")
+
+    checks = MODULE.capability_checks(tmp_path, evidence)
+    target = next(
+        check for check in checks if check.name == "capability.codex-cli.repository"
+    )
+
+    assert target.ok is False
+    assert "authentication material" in target.detail
+    assert credential not in target.detail
+
+
 def test_catalog_checks_enforce_installed_content_parity(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -1095,7 +1130,101 @@ def test_parity_uses_configured_client_homes(tmp_path: Path, monkeypatch) -> Non
             parents=True
         )
 
+    class Result:
+        returncode = 0
+        stderr = ""
+
+        def __init__(self, stdout: str):
+            self.stdout = stdout
+
+    monkeypatch.setattr(
+        MODULE, "resolve_client_binary", lambda client: f"/fake/{client}"
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "run",
+        lambda command, timeout=30, input_text=None: Result(
+            json.dumps(
+                [
+                    {
+                        "id": "synthesis-skills@synthesis-engineering",
+                        "enabled": True,
+                        "version": "1.0.0",
+                    }
+                ]
+                if command[0].endswith("claude")
+                else {
+                    "installed": [
+                        {
+                            "name": "synthesis-skills",
+                            "enabled": True,
+                            "version": "1.0.0",
+                        }
+                    ]
+                }
+            )
+        ),
+    )
+
     checks = MODULE.parity_checks(source)
+
+    assert all(check.ok for check in checks)
+
+
+def test_parity_uses_enabled_inventory_not_newest_cache(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    write_manifests(source)
+    for client in ("claude", "codex"):
+        (
+            tmp_path
+            / f".{client}"
+            / "plugins"
+            / "cache"
+            / "market"
+            / "synthesis-skills"
+            / "9.9.9"
+        ).mkdir(parents=True)
+
+    class Result:
+        returncode = 0
+        stderr = ""
+
+        def __init__(self, stdout: str):
+            self.stdout = stdout
+
+    monkeypatch.setattr(
+        MODULE, "resolve_client_binary", lambda client: f"/fake/{client}"
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "run",
+        lambda command, timeout=30, input_text=None: Result(
+            json.dumps(
+                [
+                    {
+                        "id": "synthesis-skills@synthesis-engineering",
+                        "enabled": True,
+                        "version": "1.0.0",
+                    }
+                ]
+                if command[0].endswith("claude")
+                else {
+                    "installed": [
+                        {
+                            "name": "synthesis-skills",
+                            "enabled": True,
+                            "version": "1.0.0",
+                        }
+                    ]
+                }
+            )
+        ),
+    )
+
+    checks = MODULE.parity_checks(source, tmp_path)
 
     assert all(check.ok for check in checks)
 

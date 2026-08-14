@@ -75,11 +75,17 @@ def sanitize_detail(detail: str) -> str:
     credential_value_pattern = re.compile(
         r"(?i)(?:"
         r"\bgh[pousr]_[A-Za-z0-9]{20,}\b|"
-        r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b|"
+        r"\bgithub_pat_[A-Za-z0-9_]{20,}\b|"
+        r"\bglpat-[A-Za-z0-9_-]{20,}\b|"
+        r"\b(?:xox[baprs]|xapp)-[A-Za-z0-9-]{20,}\b|"
         r"\bsk-[A-Za-z0-9_-]{20,}\b|"
-        r"\bAKIA[A-Z0-9]{16}\b|"
+        r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b|"
+        r"\bAIza[A-Za-z0-9_-]{35}\b|"
+        r"\bnpm_[A-Za-z0-9]{20,}\b|"
+        r"\bhf_[A-Za-z0-9]{20,}\b|"
         r"\bya29\.[A-Za-z0-9_-]{20,}\b|"
-        r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"
+        r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b|"
+        r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"
         r")"
     )
     if credential_value_pattern.search(compact):
