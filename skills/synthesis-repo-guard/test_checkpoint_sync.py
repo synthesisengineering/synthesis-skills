@@ -4,7 +4,10 @@ import importlib.util
 import json
 import subprocess
 import sys
+import threading
 from pathlib import Path
+
+import pytest
 
 
 MODULE_PATH = Path(__file__).with_name("checkpoint_sync.py")
@@ -161,6 +164,315 @@ def test_local_handoff_rejects_dangling_manifest_symlink(
 
     assert results[0]["action"] == "failed"
     assert "symlink" in results[0]["alert"]
+
+
+def test_reconcile_retired_worktree_repairs_prior_removal(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo, _remote, _cfg = repository(tmp_path)
+    worktree = tmp_path / "retired-worktree"
+    command("git", "worktree", "add", "-qb", "feature/retired", str(worktree), cwd=repo)
+    retired_path = worktree / "change.txt"
+    retired_path.write_text("change\n", encoding="utf-8")
+    command("git", "add", "change.txt", cwd=worktree)
+    command("git", "commit", "-qm", "change", cwd=worktree)
+    head = command("git", "rev-parse", "HEAD", cwd=worktree)
+    command("git", "merge", "-q", "--no-edit", "feature/retired", cwd=repo)
+    branch = command("git", "branch", "--show-current", cwd=repo)
+    command("git", "push", "-q", "origin", branch, cwd=repo)
+
+    pending = tmp_path / "state" / "pending"
+    receipts = tmp_path / "state" / "local-handoff"
+    retirements = tmp_path / "state" / "retired-worktrees"
+    monkeypatch.setattr(MODULE, "PENDING_DIR", pending)
+    monkeypatch.setattr(MODULE, "LOCAL_HANDOFF_DIR", receipts)
+    monkeypatch.setattr(MODULE, "RETIREMENT_DIR", retirements)
+    pending.mkdir(parents=True)
+    receipts.mkdir(parents=True)
+    manifest = MODULE.pending_manifest_path("session-retired")
+    survivor = repo / "projects" / "alpha" / "CONTEXT.md"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": "session-retired",
+                "paths": [str(retired_path), str(survivor)],
+                "remote_paths": [str(survivor)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    receipt = receipts / manifest.name
+    receipt.write_text("{}\n", encoding="utf-8")
+    command("git", "worktree", "remove", str(worktree), cwd=repo)
+
+    results, touched = MODULE.reconcile_retired_worktree(
+        worktree, repo, head, "origin/main", dry_run=False
+    )
+
+    assert results[0]["action"] == "retired-worktree-reconciled"
+    assert touched == [manifest]
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    assert payload["paths"] == [str(survivor)]
+    assert not receipt.exists()
+    assert len(list(retirements.glob("*.json"))) == 1
+
+
+def test_reconcile_retired_worktree_removes_retired_only_manifest(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo, _remote, _cfg = repository(tmp_path)
+    worktree = tmp_path / "retired-only-worktree"
+    command("git", "worktree", "add", "-qb", "feature/retired-only", str(worktree), cwd=repo)
+    retired_path = worktree / "change.txt"
+    retired_path.write_text("change\n", encoding="utf-8")
+    command("git", "add", "change.txt", cwd=worktree)
+    command("git", "commit", "-qm", "change", cwd=worktree)
+    head = command("git", "rev-parse", "HEAD", cwd=worktree)
+    command("git", "merge", "-q", "--no-edit", "feature/retired-only", cwd=repo)
+    branch = command("git", "branch", "--show-current", cwd=repo)
+    command("git", "push", "-q", "origin", branch, cwd=repo)
+
+    pending = tmp_path / "state" / "pending"
+    receipts = tmp_path / "state" / "local-handoff"
+    retirements = tmp_path / "state" / "retired-worktrees"
+    monkeypatch.setattr(MODULE, "PENDING_DIR", pending)
+    monkeypatch.setattr(MODULE, "LOCAL_HANDOFF_DIR", receipts)
+    monkeypatch.setattr(MODULE, "RETIREMENT_DIR", retirements)
+    pending.mkdir(parents=True)
+    receipts.mkdir(parents=True)
+    manifest = MODULE.pending_manifest_path("session-retired-only")
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": "session-retired-only",
+                "paths": [str(retired_path)],
+                "remote_paths": [str(retired_path)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    receipt = receipts / manifest.name
+    receipt.write_text("{}\n", encoding="utf-8")
+    command("git", "worktree", "remove", str(worktree), cwd=repo)
+
+    results, touched = MODULE.reconcile_retired_worktree(
+        worktree, repo, head, "origin/main", dry_run=False
+    )
+
+    assert results[0]["action"] == "retired-worktree-reconciled"
+    assert touched == [manifest]
+    assert not manifest.exists()
+    assert not receipt.exists()
+    assert len(list(retirements.glob("*.json"))) == 1
+
+
+def test_reconcile_retired_worktree_refuses_unpublished_head(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo, _remote, _cfg = repository(tmp_path)
+    worktree = tmp_path / "unpublished-worktree"
+    command("git", "worktree", "add", "-qb", "feature/unpublished", str(worktree), cwd=repo)
+    retired_path = worktree / "change.txt"
+    retired_path.write_text("change\n", encoding="utf-8")
+    command("git", "add", "change.txt", cwd=worktree)
+    command("git", "commit", "-qm", "change", cwd=worktree)
+    head = command("git", "rev-parse", "HEAD", cwd=worktree)
+    pending = tmp_path / "state" / "pending"
+    monkeypatch.setattr(MODULE, "PENDING_DIR", pending)
+    pending.mkdir(parents=True)
+    manifest = MODULE.pending_manifest_path("session-unpublished")
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": "session-unpublished",
+                "paths": [str(retired_path)],
+                "remote_paths": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    command("git", "worktree", "remove", str(worktree), cwd=repo)
+
+    results, touched = MODULE.reconcile_retired_worktree(
+        worktree, repo, head, "origin/main", dry_run=False
+    )
+
+    assert results[0]["action"] == "retirement-reconcile-failed"
+    assert "not contained" in results[0]["alert"]
+    assert touched == []
+    assert manifest.exists()
+
+
+def test_retirement_intent_resumes_after_removal_gap(tmp_path: Path, monkeypatch) -> None:
+    repo, _remote, _cfg = repository(tmp_path)
+    worktree = tmp_path / "resumable-worktree"
+    command("git", "worktree", "add", "-qb", "feature/resumable", str(worktree), cwd=repo)
+    retired_path = worktree / "change.txt"
+    retired_path.write_text("change\n", encoding="utf-8")
+    command("git", "add", "change.txt", cwd=worktree)
+    command("git", "commit", "-qm", "change", cwd=worktree)
+    head = command("git", "rev-parse", "HEAD", cwd=worktree)
+    command("git", "merge", "-q", "--no-edit", "feature/resumable", cwd=repo)
+    branch = command("git", "branch", "--show-current", cwd=repo)
+    command("git", "push", "-q", "origin", branch, cwd=repo)
+
+    state = tmp_path / "state"
+    pending = state / "pending"
+    receipts = state / "local-handoff"
+    retirements = state / "retired-worktrees"
+    monkeypatch.setattr(MODULE, "PENDING_DIR", pending)
+    monkeypatch.setattr(MODULE, "LOCAL_HANDOFF_DIR", receipts)
+    monkeypatch.setattr(MODULE, "RETIREMENT_DIR", retirements)
+    pending.mkdir(parents=True)
+    session_id = "session-resumable"
+    manifest = MODULE.pending_manifest_path(session_id)
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": session_id,
+                "paths": [str(retired_path)],
+                "remote_paths": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with MODULE.lifecycle_lock():
+        prepared, intent, _touched = MODULE.prepare_retirement_intent(
+            worktree,
+            repo,
+            head,
+            "origin",
+            "origin/main",
+            expect_active=True,
+            dry_run=False,
+        )
+    assert prepared["action"] == "retirement-prepared"
+    assert intent is not None
+    assert json.loads(intent.read_text(encoding="utf-8"))["state"] == "prepared"
+
+    command("git", "worktree", "remove", str(worktree), cwd=repo)
+    with MODULE.lifecycle_lock():
+        completed, touched = MODULE.complete_retirement_intent(intent)
+
+    assert completed["action"] == "retired-worktree-reconciled"
+    assert touched == [manifest]
+    assert not manifest.exists()
+    assert json.loads(intent.read_text(encoding="utf-8"))["state"] == "completed"
+
+
+def test_retirement_completion_rejects_reconciler_digest_mismatch(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo, _remote, _cfg = repository(tmp_path)
+    worktree = tmp_path / "digest-mismatch-worktree"
+    command("git", "worktree", "add", "-qb", "feature/digest", str(worktree), cwd=repo)
+    changed = worktree / "change.txt"
+    changed.write_text("change\n", encoding="utf-8")
+    command("git", "add", "change.txt", cwd=worktree)
+    command("git", "commit", "-qm", "change", cwd=worktree)
+    head = command("git", "rev-parse", "HEAD", cwd=worktree)
+    command("git", "merge", "-q", "--no-edit", "feature/digest", cwd=repo)
+    branch = command("git", "branch", "--show-current", cwd=repo)
+    command("git", "push", "-q", "origin", branch, cwd=repo)
+
+    state = tmp_path / "state"
+    monkeypatch.setattr(MODULE, "PENDING_DIR", state / "pending")
+    monkeypatch.setattr(MODULE, "LOCAL_HANDOFF_DIR", state / "local-handoff")
+    monkeypatch.setattr(MODULE, "RETIREMENT_DIR", state / "retired-worktrees")
+    MODULE.PENDING_DIR.mkdir(parents=True)
+    manifest = MODULE.pending_manifest_path("session-digest-mismatch")
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": "session-digest-mismatch",
+                "paths": [str(changed)],
+                "remote_paths": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with MODULE.lifecycle_lock():
+        _prepared, intent, _touched = MODULE.prepare_retirement_intent(
+            worktree,
+            repo,
+            head,
+            "origin",
+            "origin/main",
+            expect_active=True,
+            dry_run=False,
+        )
+    assert intent is not None
+    payload = json.loads(intent.read_text(encoding="utf-8"))
+    payload["reconciler_sha256"] = "0" * 64
+    intent.write_text(json.dumps(payload), encoding="utf-8")
+    command("git", "worktree", "remove", str(worktree), cwd=repo)
+
+    with MODULE.lifecycle_lock():
+        with pytest.raises(ValueError, match="pinned reconciler"):
+            MODULE.complete_retirement_intent(intent)
+
+    assert manifest.exists()
+
+
+def test_retirement_recovery_rejects_local_base_ref(tmp_path: Path, monkeypatch) -> None:
+    repo, _remote, _cfg = repository(tmp_path)
+    worktree = tmp_path / "local-base-worktree"
+    command("git", "worktree", "add", "-qb", "feature/local-base", str(worktree), cwd=repo)
+    command("git", "worktree", "remove", str(worktree), cwd=repo)
+    monkeypatch.setattr(MODULE, "PENDING_DIR", tmp_path / "state" / "pending")
+    monkeypatch.setattr(MODULE, "LOCAL_HANDOFF_DIR", tmp_path / "state" / "local-handoff")
+    monkeypatch.setattr(MODULE, "RETIREMENT_DIR", tmp_path / "state" / "retired-worktrees")
+    head = command("git", "rev-parse", "HEAD", cwd=repo)
+
+    results, touched = MODULE.reconcile_retired_worktree(
+        worktree, repo, head, "HEAD", dry_run=False
+    )
+
+    assert results[0]["action"] == "retirement-reconcile-failed"
+    assert "remote-tracking ref" in results[0]["alert"]
+    assert touched == []
+
+
+def test_lifecycle_lock_serializes_threads(tmp_path: Path, monkeypatch) -> None:
+    state = tmp_path / "state"
+    monkeypatch.setattr(MODULE, "PENDING_DIR", state / "pending")
+    monkeypatch.setattr(MODULE, "LOCAL_HANDOFF_DIR", state / "local-handoff")
+    monkeypatch.setattr(MODULE, "RETIREMENT_DIR", state / "retired-worktrees")
+    entered = threading.Event()
+
+    def contender() -> None:
+        with MODULE.lifecycle_lock():
+            entered.set()
+
+    with MODULE.lifecycle_lock():
+        thread = threading.Thread(target=contender)
+        thread.start()
+        assert not entered.wait(0.1)
+    thread.join(timeout=2)
+    assert entered.is_set()
+
+
+def test_lifecycle_lock_rejects_symlinked_state_ancestor(
+    tmp_path: Path, monkeypatch
+) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    linked = tmp_path / "linked"
+    linked.symlink_to(real, target_is_directory=True)
+    monkeypatch.setattr(MODULE, "PENDING_DIR", linked / "pending")
+    monkeypatch.setattr(MODULE, "LOCAL_HANDOFF_DIR", linked / "local-handoff")
+    monkeypatch.setattr(MODULE, "RETIREMENT_DIR", linked / "retired-worktrees")
+
+    with pytest.raises(ValueError, match="symlink component"):
+        with MODULE.lifecycle_lock():
+            pass
 
 
 def test_offline_push_preserves_local_commit_and_manifest(tmp_path: Path, monkeypatch) -> None:

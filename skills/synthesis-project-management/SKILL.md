@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.0"
+  version: "2.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -378,8 +378,18 @@ simultaneous cross-machine writes to the same resources remain prohibited —
 file-sync conflict resolution is not a distributed lock.
 
 Retire merged feature worktrees with `scripts/retire_worktree.py`
-(explicit repository argument, fetch-then-verify remote ancestry, fail-closed
-on dirty or unmerged state) instead of hand-run git sequences. See
+(explicit repository argument, freshly fetched remote-tracking ancestry,
+fail-closed on dirty or unpublished state) instead of hand-run git sequences.
+The helper holds the shared handoff lifecycle lock across preparation, removal,
+and reconciliation; pins the remote commit; content-addresses its reconciler
+outside the target; and fsyncs a resumable intent before removal. Unexplained
+missing paths remain blocking Stop failures. There is no offline or local-ref
+escape hatch. If interruption lands after removal, rerun the same helper
+command: it finds the matching prepared intent, executes that exact pinned
+reconciler, completes reconciliation idempotently, and then finishes branch
+cleanup. Optional remote deletion uses a compare-and-delete lease and refuses
+an advanced or differently sourced branch.
+See
 [`references/active-sessions-template.md`](references/active-sessions-template.md)
 for the canonical file shape and
 [`references/parallel-agent-protocol.md`](references/parallel-agent-protocol.md)

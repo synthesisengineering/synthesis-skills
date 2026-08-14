@@ -11,6 +11,15 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Verified cleanup is part of continuity (August 2026).** Release **4.25.2**
+makes worktree retirement a resumable handoff transaction. One lifecycle lock
+spans durable intent, removal, manifest reconciliation, and receipt
+invalidation. The ancestry authority is a freshly fetched remote-tracking
+commit, the reconciler is content-addressed outside the target before removal,
+and interrupted recovery executes that exact pinned copy. Optional remote
+branch deletion uses a lease bound to the verified remote head. Missing paths
+without that proof still block Stop. See the [4.25.2 release notes](CHANGELOG.md).
+
 **Codex catalog pressure is now engineered, not tolerated (August 2026).**
 Release **4.24.1** adds an implicit-core/explicit-specialist catalog with a
 public routing skill, app-server-backed hook and skill audits, live capability
