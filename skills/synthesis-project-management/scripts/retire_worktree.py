@@ -184,6 +184,33 @@ def verify_reconciler_interface(checkpoint_sync: Path) -> None:
         raise ValueError("staged retirement reconciler lacks the required interface")
 
 
+def reconciler_digest(data: dict) -> str:
+    digest = data.get("reconciler_sha256")
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in "0123456789abcdef" for character in digest)
+    ):
+        raise ValueError("retirement intent has no valid reconciler digest")
+    return digest
+
+
+def pinned_reconciler(data: dict) -> Path:
+    digest = reconciler_digest(data)
+    checkpoint_sync = RETIREMENT_RUNTIME_DIR / f"checkpoint-sync-{digest}.py"
+    validate_state_paths(RETIREMENT_RUNTIME_DIR, checkpoint_sync)
+    if checkpoint_sync.is_symlink() or not checkpoint_sync.is_file():
+        raise ValueError(
+            f"retirement intent's pinned reconciler is unavailable: {checkpoint_sync}"
+        )
+    if hashlib.sha256(checkpoint_sync.read_bytes()).hexdigest() != digest:
+        raise ValueError(
+            f"retirement intent's pinned reconciler hash does not match: {checkpoint_sync}"
+        )
+    verify_reconciler_interface(checkpoint_sync)
+    return checkpoint_sync
+
+
 def run_reconciler(
     checkpoint_sync: Path,
     arguments: list[str],
@@ -255,29 +282,60 @@ def matching_retirement_intent(
 
 
 def cleanup_branch(
-    repository: Path, branch: str, remote: str, *, delete_remote: bool
+    repository: Path,
+    branch: str,
+    remote: str,
+    expected_head: str,
+    *,
+    delete_remote: bool,
 ) -> int:
-    deleted = run(repository, "branch", "-d", branch)
-    if deleted.returncode != 0:
-        print(
-            f"retire-worktree: local branch kept: "
-            + (deleted.stderr.strip() or f"could not delete {branch}"),
-            file=sys.stderr,
-        )
-    else:
+    branch_check = run(repository, "check-ref-format", "--branch", branch)
+    if branch_check.returncode != 0:
+        return fail(f"retirement intent branch is invalid: {branch}")
+    head_check = run(repository, "rev-parse", "--verify", f"{expected_head}^{{commit}}")
+    if head_check.returncode != 0 or head_check.stdout.strip() != expected_head:
+        return fail("retirement intent head is not a canonical commit")
+
+    local_ref = f"refs/heads/{branch}"
+    local_exists = run(repository, "show-ref", "--verify", "--quiet", local_ref)
+    if local_exists.returncode == 0:
+        deleted = run(repository, "branch", "-d", branch)
+        if deleted.returncode != 0:
+            return fail(
+                "local branch cleanup failed; remote branch was not touched: "
+                + (deleted.stderr.strip() or f"could not delete {branch}")
+            )
         print(f"Deleted local branch {branch}")
+    elif local_exists.returncode == 1:
+        print(f"Local branch {branch} already absent")
+    else:
+        return fail(local_exists.stderr.strip() or "could not inspect local branch")
 
     if delete_remote:
-        listed = run(repository, "ls-remote", "--heads", remote, branch)
+        remote_ref = f"refs/heads/{branch}"
+        listed = run(repository, "ls-remote", "--heads", remote, remote_ref)
         if listed.returncode != 0:
             return fail(f"could not query {remote}: {listed.stderr.strip()}")
         if not listed.stdout.strip():
             print(f"Remote branch {remote}/{branch} already absent")
         else:
-            pushed = run(repository, "push", remote, "--delete", branch)
+            lines = [line.split() for line in listed.stdout.splitlines() if line.strip()]
+            if lines != [[expected_head, remote_ref]]:
+                return fail(
+                    f"remote branch {remote}/{branch} no longer equals the "
+                    "verified retirement head; it was not deleted"
+                )
+            pushed = run(
+                repository,
+                "push",
+                f"--force-with-lease={remote_ref}:{expected_head}",
+                remote,
+                f":{remote_ref}",
+            )
             if pushed.returncode != 0:
                 return fail(
-                    f"remote branch deletion failed: {pushed.stderr.strip()}"
+                    "remote branch deletion lease failed; the branch may have "
+                    f"advanced and was not deleted: {pushed.stderr.strip()}"
                 )
             print(f"Deleted remote branch {remote}/{branch}")
     return 0
@@ -296,16 +354,25 @@ def resume_retirement(
         return None
     intent, data = match
     recorded_branch = data.get("branch")
+    recorded_remote = data.get("remote")
+    recorded_head = data.get("head")
     if recorded_branch is not None and not isinstance(recorded_branch, str):
         return fail("retirement intent branch is invalid")
+    if not isinstance(recorded_remote, str) or not recorded_remote:
+        return fail("retirement intent remote is invalid")
+    if remote != recorded_remote:
+        return fail(
+            f"retirement intent was verified against {recorded_remote}, not {remote}"
+        )
+    if not isinstance(recorded_head, str) or not recorded_head:
+        return fail("retirement intent head is invalid")
     if expected_branch and recorded_branch and expected_branch != recorded_branch:
         return fail(
             f"retirement intent is for {recorded_branch}, not {expected_branch}"
         )
     try:
         with lifecycle_lock() as lock_fd:
-            checkpoint_sync = stage_reconciler()
-            verify_reconciler_interface(checkpoint_sync)
+            checkpoint_sync = pinned_reconciler(data)
             completed = run_reconciler(
                 checkpoint_sync,
                 ["--complete-worktree-retirement", str(intent)],
@@ -319,7 +386,13 @@ def resume_retirement(
     if not branch:
         print("retire-worktree: no recorded branch; branch cleanup was not attempted")
         return 0
-    return cleanup_branch(repository, branch, remote, delete_remote=delete_remote)
+    return cleanup_branch(
+        repository,
+        branch,
+        recorded_remote,
+        recorded_head,
+        delete_remote=delete_remote,
+    )
 
 
 def main() -> int:
@@ -489,6 +562,8 @@ def main() -> int:
                 lock_fd,
             )
             intent = reconciler_detail(prepared)
+            intent_data = json.loads(intent.read_text(encoding="utf-8"))
+            checkpoint_sync = pinned_reconciler(intent_data)
 
             removed = run(repository, "worktree", "remove", str(worktree))
             if removed.returncode != 0:
@@ -507,7 +582,11 @@ def main() -> int:
         return fail(str(exc))
 
     return cleanup_branch(
-        repository, branch, args.remote, delete_remote=args.delete_remote
+        repository,
+        branch,
+        args.remote,
+        head,
+        delete_remote=args.delete_remote,
     )
 
 

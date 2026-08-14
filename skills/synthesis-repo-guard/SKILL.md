@@ -251,8 +251,10 @@ checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
 ## Changelog
 
 - **2.2.0 (2026-08-14):** makes retirement a lifecycle-locked, remote-pinned,
-  fsynced, resumable transaction across manifests and receipts; keeps
-  unexplained missing and unpublished paths fail-closed.
+  fsynced, resumable transaction across manifests and receipts; resumes with
+  the intent's exact content-addressed reconciler and compare-binds optional
+  remote branch deletion to the verified head; keeps unexplained missing and
+  unpublished paths fail-closed.
 - **2.1.1 (2026-08-14):** clarifies that a clean no-edit task needs no empty receipt and that remote readiness compares complete branch heads rather than project-path history.
 - **2.1.0 (2026-08-14):** separates local and remote readiness. Stop records atomic client-session receipts without Git or network mutation; interruption leaves a recoverable manifest; explicit remote handoff batches exact private-context paths only after source paths are upstream-current. Adds worktree identity, first-branch publication, generic commit messages, staged-index isolation, and integration fixtures.
 - **2.0.0 (2026-07-08):** three-layer redesign. Generic-only audio/banner (confidentiality rule), `~/.synthesis/quiet-audio` mute flag, report files + history, remediation hints, new `checkpoint_sync.py` (event-driven auto-commit/push: runtime remote guard, quiescence, shared throttle, ff-only push, distinct author, stale-lock detection), synthesis-console integration contract, scheduled-mutation explicitly disallowed. Origin: 2026-07-08 design review (lesson: alert-channel confidentiality + event-driven checkpoints).

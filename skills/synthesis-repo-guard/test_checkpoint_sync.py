@@ -365,6 +365,62 @@ def test_retirement_intent_resumes_after_removal_gap(tmp_path: Path, monkeypatch
     assert json.loads(intent.read_text(encoding="utf-8"))["state"] == "completed"
 
 
+def test_retirement_completion_rejects_reconciler_digest_mismatch(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo, _remote, _cfg = repository(tmp_path)
+    worktree = tmp_path / "digest-mismatch-worktree"
+    command("git", "worktree", "add", "-qb", "feature/digest", str(worktree), cwd=repo)
+    changed = worktree / "change.txt"
+    changed.write_text("change\n", encoding="utf-8")
+    command("git", "add", "change.txt", cwd=worktree)
+    command("git", "commit", "-qm", "change", cwd=worktree)
+    head = command("git", "rev-parse", "HEAD", cwd=worktree)
+    command("git", "merge", "-q", "--no-edit", "feature/digest", cwd=repo)
+    branch = command("git", "branch", "--show-current", cwd=repo)
+    command("git", "push", "-q", "origin", branch, cwd=repo)
+
+    state = tmp_path / "state"
+    monkeypatch.setattr(MODULE, "PENDING_DIR", state / "pending")
+    monkeypatch.setattr(MODULE, "LOCAL_HANDOFF_DIR", state / "local-handoff")
+    monkeypatch.setattr(MODULE, "RETIREMENT_DIR", state / "retired-worktrees")
+    MODULE.PENDING_DIR.mkdir(parents=True)
+    manifest = MODULE.pending_manifest_path("session-digest-mismatch")
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": "session-digest-mismatch",
+                "paths": [str(changed)],
+                "remote_paths": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with MODULE.lifecycle_lock():
+        _prepared, intent, _touched = MODULE.prepare_retirement_intent(
+            worktree,
+            repo,
+            head,
+            "origin",
+            "origin/main",
+            expect_active=True,
+            dry_run=False,
+        )
+    assert intent is not None
+    payload = json.loads(intent.read_text(encoding="utf-8"))
+    payload["reconciler_sha256"] = "0" * 64
+    intent.write_text(json.dumps(payload), encoding="utf-8")
+    command("git", "worktree", "remove", str(worktree), cwd=repo)
+
+    with MODULE.lifecycle_lock():
+        with pytest.raises(ValueError, match="pinned reconciler"):
+            MODULE.complete_retirement_intent(intent)
+
+    assert manifest.exists()
+
+
 def test_retirement_recovery_rejects_local_base_ref(tmp_path: Path, monkeypatch) -> None:
     repo, _remote, _cfg = repository(tmp_path)
     worktree = tmp_path / "local-base-worktree"

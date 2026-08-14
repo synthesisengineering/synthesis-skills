@@ -772,15 +772,6 @@ def complete_retirement_intent(intent: Path) -> tuple[dict, list[Path]]:
     data = load_retirement_intent(intent)
     repository = Path(str(data.get("repository") or ""))
     result = retirement_result(repository)
-    if data["state"] == "completed":
-        result.update(
-            action="retired-worktree-reconciled",
-            manifests=len(data.get("manifests", [])),
-            files=int(data.get("paths_removed", 0)),
-            detail=str(intent),
-        )
-        return result, [Path(value) for value in data.get("manifests", [])]
-
     worktree, repository = validate_retirement_target(
         Path(str(data.get("worktree") or "")), repository, expect_active=False
     )
@@ -799,6 +790,23 @@ def complete_retirement_intent(intent: Path) -> tuple[dict, list[Path]]:
     )
     if intent != retirement_intent_path(worktree, canonical_head, canonical_base):
         raise ValueError("retirement intent filename does not match its identity")
+    reconciler_hash = data.get("reconciler_sha256")
+    current_hash = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    if (
+        not isinstance(reconciler_hash, str)
+        or len(reconciler_hash) != 64
+        or any(character not in "0123456789abcdef" for character in reconciler_hash)
+        or reconciler_hash != current_hash
+    ):
+        raise ValueError("retirement intent is not running under its pinned reconciler")
+    if data["state"] == "completed":
+        result.update(
+            action="retired-worktree-reconciled",
+            manifests=len(data.get("manifests", [])),
+            files=int(data.get("paths_removed", 0)),
+            detail=str(intent),
+        )
+        return result, [Path(value) for value in data.get("manifests", [])]
     plans, locks = manifest_reconciliation_plans(worktree)
     try:
         reconciled_at = time.strftime("%Y-%m-%dT%H:%M:%S%z")

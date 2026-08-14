@@ -433,6 +433,10 @@ def test_helper_resumes_from_prepared_intent_after_interruption(
     )
     environment = dict(os.environ)
     environment["SYNTHESIS_HOME"] = str(synthesis_home)
+    digest = hashlib.sha256(CHECKPOINT_SCRIPT.read_bytes()).hexdigest()
+    runtime = synthesis_home / "repo-guard" / "retirement-runtime"
+    runtime.mkdir(parents=True)
+    shutil.copy2(CHECKPOINT_SCRIPT, runtime / f"checkpoint-sync-{digest}.py")
     prepared = subprocess.run(
         [
             sys.executable,
@@ -471,3 +475,247 @@ def test_helper_resumes_from_prepared_intent_after_interruption(
 
     repeated = retire("--repository", str(clone), "--worktree", str(worktree))
     assert repeated.returncode == 0, repeated.stderr
+
+
+def test_resume_uses_intent_pinned_reconciler_after_source_changes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    commit_and_merge(clone, worktree)
+    head = git(worktree, "rev-parse", "HEAD").stdout.strip()
+    synthesis_home = worktree.parent.parent / "synthesis-home"
+    state = synthesis_home / "repo-guard"
+    pending = state / "pending"
+    runtime = state / "retirement-runtime"
+    retirements = state / "retired-worktrees"
+    pending.mkdir(parents=True)
+    runtime.mkdir(parents=True)
+    session_id = "session-pinned-reconciler"
+    name = hashlib.sha256(session_id.encode("utf-8")).hexdigest() + ".json"
+    manifest = pending / name
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": session_id,
+                "paths": [str(worktree / "change.txt")],
+                "remote_paths": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    digest = hashlib.sha256(CHECKPOINT_SCRIPT.read_bytes()).hexdigest()
+    pinned = runtime / f"checkpoint-sync-{digest}.py"
+    shutil.copy2(CHECKPOINT_SCRIPT, pinned)
+    environment = dict(os.environ)
+    environment["SYNTHESIS_HOME"] = str(synthesis_home)
+    prepared = subprocess.run(
+        [
+            sys.executable,
+            str(pinned),
+            "--prepare-worktree-retirement",
+            str(worktree),
+            "--retirement-repository",
+            str(clone),
+            "--retirement-head",
+            head,
+            "--retirement-remote",
+            "origin",
+            "--retirement-base",
+            "origin/main",
+            "--retirement-branch",
+            "feature/demo",
+            "--json",
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert prepared.returncode == 0, prepared.stderr
+    intent = Path(json.loads(prepared.stdout)[0]["detail"])
+    git(clone, "worktree", "remove", str(worktree))
+
+    changed_source = tmp_path / "changed-checkpoint-sync.py"
+    changed_source.write_text("raise SystemExit('wrong reconciler')\n", encoding="utf-8")
+    monkeypatch.setattr(MODULE, "CHECKPOINT_SYNC", changed_source)
+    monkeypatch.setattr(MODULE, "PENDING_DIR", pending)
+    monkeypatch.setattr(MODULE, "STATE_DIR", state)
+    monkeypatch.setattr(MODULE, "LIFECYCLE_LOCK", state / "lifecycle.lock")
+    monkeypatch.setattr(MODULE, "RETIREMENT_RUNTIME_DIR", runtime)
+    monkeypatch.setattr(MODULE, "RETIREMENT_DIR", retirements)
+    monkeypatch.setenv("SYNTHESIS_HOME", str(synthesis_home))
+
+    result = MODULE.resume_retirement(
+        clone, worktree, "feature/demo", "origin", delete_remote=False
+    )
+
+    assert result == 0
+    assert not manifest.exists()
+    assert json.loads(intent.read_text(encoding="utf-8"))["state"] == "completed"
+
+
+def test_resume_refuses_remote_different_from_intent(tmp_path: Path) -> None:
+    _remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    commit_and_merge(clone, worktree)
+    head = git(worktree, "rev-parse", "HEAD").stdout.strip()
+    synthesis_home = worktree.parent.parent / "synthesis-home"
+    pending = synthesis_home / "repo-guard" / "pending"
+    pending.mkdir(parents=True)
+    session_id = "session-remote-mismatch"
+    name = hashlib.sha256(session_id.encode("utf-8")).hexdigest() + ".json"
+    manifest = pending / name
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": session_id,
+                "paths": [str(worktree / "change.txt")],
+                "remote_paths": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    environment = dict(os.environ)
+    environment["SYNTHESIS_HOME"] = str(synthesis_home)
+    prepared = subprocess.run(
+        [
+            sys.executable,
+            str(CHECKPOINT_SCRIPT),
+            "--prepare-worktree-retirement",
+            str(worktree),
+            "--retirement-repository",
+            str(clone),
+            "--retirement-head",
+            head,
+            "--retirement-remote",
+            "origin",
+            "--retirement-base",
+            "origin/main",
+            "--retirement-branch",
+            "feature/demo",
+            "--json",
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert prepared.returncode == 0, prepared.stderr
+    git(clone, "worktree", "remove", str(worktree))
+
+    result = retire(
+        "--repository",
+        str(clone),
+        "--worktree",
+        str(worktree),
+        "--remote",
+        "other",
+    )
+
+    assert result.returncode == 2
+    assert "verified against origin, not other" in result.stderr
+    assert manifest.exists()
+    assert git(clone, "branch", "--list", "feature/demo").stdout.strip()
+
+
+def test_remote_branch_advance_blocks_delete(tmp_path: Path) -> None:
+    remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    commit_and_merge(clone, worktree)
+    expected_head = git(worktree, "rev-parse", "HEAD").stdout.strip()
+    git(clone, "worktree", "remove", str(worktree))
+
+    contender = tmp_path / "contender"
+    subprocess.run(
+        ["git", "clone", "--quiet", str(remote), str(contender)],
+        check=True,
+        capture_output=True,
+    )
+    git(contender, "config", "user.email", "test@example.com")
+    git(contender, "config", "user.name", "Test")
+    git(contender, "checkout", "--quiet", "-b", "feature/demo", "origin/feature/demo")
+    (contender / "advanced.txt").write_text("advanced\n", encoding="utf-8")
+    git(contender, "add", "advanced.txt")
+    git(contender, "commit", "--quiet", "-m", "advanced")
+    git(contender, "push", "--quiet", "origin", "feature/demo")
+    advanced_head = git(contender, "rev-parse", "HEAD").stdout.strip()
+
+    result = MODULE.cleanup_branch(
+        clone,
+        "feature/demo",
+        "origin",
+        expected_head,
+        delete_remote=True,
+    )
+
+    assert result == 2
+    remote_head = git(clone, "ls-remote", "--heads", "origin", "feature/demo").stdout
+    assert remote_head.split()[0] == advanced_head
+
+
+def test_local_branch_delete_failure_never_touches_remote(tmp_path: Path) -> None:
+    _remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    (worktree / "unmerged.txt").write_text("unmerged\n", encoding="utf-8")
+    git(worktree, "add", "unmerged.txt")
+    git(worktree, "commit", "--quiet", "-m", "unmerged")
+    git(worktree, "push", "--quiet", "-u", "origin", "feature/demo")
+    expected_head = git(worktree, "rev-parse", "HEAD").stdout.strip()
+    git(clone, "worktree", "remove", str(worktree))
+    git(clone, "branch", "--unset-upstream", "feature/demo")
+
+    result = MODULE.cleanup_branch(
+        clone,
+        "feature/demo",
+        "origin",
+        expected_head,
+        delete_remote=True,
+    )
+
+    assert result == 2
+    remote_head = git(clone, "ls-remote", "--heads", "origin", "feature/demo").stdout
+    assert remote_head.split()[0] == expected_head
+
+
+def test_remote_delete_uses_compare_and_delete_lease(monkeypatch, tmp_path: Path) -> None:
+    expected_head = "a" * 40
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(_repository: Path, *arguments: str, timeout: int = 60):
+        del timeout
+        calls.append(arguments)
+        if arguments[:2] == ("check-ref-format", "--branch"):
+            return subprocess.CompletedProcess(arguments, 0, "feature/demo\n", "")
+        if arguments[:2] == ("rev-parse", "--verify"):
+            return subprocess.CompletedProcess(arguments, 0, f"{expected_head}\n", "")
+        if arguments[:3] == ("show-ref", "--verify", "--quiet"):
+            return subprocess.CompletedProcess(arguments, 1, "", "")
+        if arguments[:2] == ("ls-remote", "--heads"):
+            return subprocess.CompletedProcess(
+                arguments, 0, f"{expected_head}\trefs/heads/feature/demo\n", ""
+            )
+        if arguments[0] == "push":
+            return subprocess.CompletedProcess(arguments, 0, "", "")
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(MODULE, "run", fake_run)
+
+    result = MODULE.cleanup_branch(
+        tmp_path,
+        "feature/demo",
+        "origin",
+        expected_head,
+        delete_remote=True,
+    )
+
+    assert result == 0
+    push = next(arguments for arguments in calls if arguments[0] == "push")
+    assert push == (
+        "push",
+        f"--force-with-lease=refs/heads/feature/demo:{expected_head}",
+        "origin",
+        ":refs/heads/feature/demo",
+    )

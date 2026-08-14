@@ -12,8 +12,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   receipts, remote flushes, and retirement now share one lifecycle lock. The
   helper pins a freshly fetched remote-tracking commit, stages a known-capable
   reconciler outside the target, and fsyncs a resumable intent before removal.
-  Completion is idempotent after interruption; unexplained missing or
-  unpublished paths continue to block Stop.
+  Interrupted completion selects and verifies that exact content-addressed
+  reconciler even after an upgrade. Optional remote branch deletion is bound
+  to the recorded remote and head with Git's compare-and-delete lease.
+  Completion is idempotent; unexplained missing or unpublished paths continue
+  to block Stop.
 
 ## [4.25.1] - 2026-08-14
 
