@@ -119,5 +119,5 @@ def test_live_receipt_records_real_sessionstart_shape(
     assert recorded["session_id"] == "session-123"
     assert recorded["hook_event_name"] == "SessionStart"
     assert recorded["plugin_version"]
-    assert recorded["plugin_root"].endswith("synthesis-skills-codex-first-upgrade")
+    assert Path(recorded["plugin_root"]).resolve() == MODULE.SCRIPTS_DIR.parents[2]
     assert not list(receipt.parent.glob("*.tmp"))
