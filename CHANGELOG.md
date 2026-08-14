@@ -8,11 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ### Fixed
 
-- **Worktree-retirement continuity** — the fail-closed retirement helper now
-  reconciles session manifests only after proving that the clean worktree head
-  is contained in the fetched remote base. A standalone, equally verified
-  reconciliation path repairs a removal that completed before its manifest
-  update. Unexplained missing paths continue to block Stop.
+- **Transactional worktree-retirement continuity** — manifest writers, Stop
+  receipts, remote flushes, and retirement now share one lifecycle lock. The
+  helper pins a freshly fetched remote-tracking commit, stages a known-capable
+  reconciler outside the target, and fsyncs a resumable intent before removal.
+  Completion is idempotent after interruption; unexplained missing or
+  unpublished paths continue to block Stop.
 
 ## [4.25.1] - 2026-08-14
 

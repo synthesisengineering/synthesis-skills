@@ -4,12 +4,16 @@ import hashlib
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 
 SCRIPT = Path(__file__).with_name("retire_worktree.py")
+CHECKPOINT_SCRIPT = (
+    SCRIPT.resolve().parents[2] / "synthesis-repo-guard" / "checkpoint_sync.py"
+)
 SPEC = importlib.util.spec_from_file_location("retire_worktree", SCRIPT)
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
@@ -182,7 +186,7 @@ def test_branch_mismatch_and_detached_head_refuse(tmp_path: Path) -> None:
     assert "not on a local branch" in result.stderr
 
 
-def test_no_fetch_verifies_against_last_fetched_state(tmp_path: Path) -> None:
+def test_no_fetch_escape_hatch_is_rejected(tmp_path: Path) -> None:
     remote, clone = build_repo(tmp_path)
     worktree = add_feature_worktree(tmp_path, clone)
     commit_and_merge(clone, worktree)
@@ -194,8 +198,28 @@ def test_no_fetch_verifies_against_last_fetched_state(tmp_path: Path) -> None:
         str(worktree),
         "--no-fetch",
     )
-    assert result.returncode == 0, result.stderr
-    assert not worktree.exists()
+    assert result.returncode == 2
+    assert "unrecognized arguments: --no-fetch" in result.stderr
+    assert worktree.exists()
+
+
+def test_local_verification_base_is_rejected(tmp_path: Path) -> None:
+    _remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    commit_and_merge(clone, worktree)
+
+    result = retire(
+        "--repository",
+        str(clone),
+        "--worktree",
+        str(worktree),
+        "--base",
+        "HEAD",
+    )
+
+    assert result.returncode == 2
+    assert "remote-tracking ref" in result.stderr
+    assert worktree.exists()
 
 
 def test_retirement_reconciles_session_manifest_and_invalidates_receipt(
@@ -255,7 +279,7 @@ def test_invalid_manifest_blocks_retirement_before_worktree_removal(
     result = retire("--repository", str(clone), "--worktree", str(worktree))
 
     assert result.returncode == 2
-    assert "reconciliation preflight failed" in result.stderr
+    assert "retirement preparation or completion failed" in result.stderr
     assert worktree.exists()
 
 
@@ -288,22 +312,162 @@ def test_invalid_retirement_history_blocks_removal(tmp_path: Path) -> None:
     assert worktree.exists()
 
 
-def test_reconciler_resolution_survives_target_worktree_removal(
+def test_staged_reconciler_survives_source_removal(
     tmp_path: Path, monkeypatch
 ) -> None:
-    repository = tmp_path / "repository"
     worktree = tmp_path / "target-worktree"
-    canonical = (
-        repository / "skills" / "synthesis-repo-guard" / "checkpoint_sync.py"
-    )
     target_local = worktree / "skills" / "synthesis-repo-guard" / "checkpoint_sync.py"
-    canonical.parent.mkdir(parents=True)
     target_local.parent.mkdir(parents=True)
-    canonical.write_text("# canonical\n", encoding="utf-8")
-    target_local.write_text("# target local\n", encoding="utf-8")
+    shutil.copy2(CHECKPOINT_SCRIPT, target_local)
     monkeypatch.setattr(MODULE, "CHECKPOINT_SYNC", target_local)
+    monkeypatch.setattr(MODULE, "RETIREMENT_RUNTIME_DIR", tmp_path / "runtime")
 
-    assert MODULE.checkpoint_sync_path(repository, worktree) == canonical.resolve()
+    staged = MODULE.stage_reconciler()
+    MODULE.verify_reconciler_interface(staged)
+    expected = hashlib.sha256(target_local.read_bytes()).hexdigest()
 
-    canonical.unlink()
-    assert MODULE.checkpoint_sync_path(repository, worktree) is None
+    shutil.rmtree(worktree)
+    assert staged.is_file()
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
+def test_helper_invoked_from_target_completes_after_target_removal(
+    tmp_path: Path,
+) -> None:
+    _remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    target_helper = (
+        worktree
+        / "skills"
+        / "synthesis-project-management"
+        / "scripts"
+        / "retire_worktree.py"
+    )
+    target_reconciler = (
+        worktree / "skills" / "synthesis-repo-guard" / "checkpoint_sync.py"
+    )
+    target_helper.parent.mkdir(parents=True)
+    target_reconciler.parent.mkdir(parents=True)
+    shutil.copy2(SCRIPT, target_helper)
+    shutil.copy2(CHECKPOINT_SCRIPT, target_reconciler)
+    retired = worktree / "change.txt"
+    retired.write_text("change\n", encoding="utf-8")
+    git(worktree, "add", ".")
+    git(worktree, "commit", "--quiet", "-m", "change")
+    git(worktree, "push", "--quiet", "-u", "origin", "feature/demo")
+    git(clone, "merge", "--quiet", "--no-edit", "feature/demo")
+    git(clone, "push", "--quiet", "origin", "main")
+
+    synthesis_home = tmp_path / "synthesis-home"
+    pending = synthesis_home / "repo-guard" / "pending"
+    receipts = synthesis_home / "repo-guard" / "local-handoff"
+    pending.mkdir(parents=True)
+    receipts.mkdir(parents=True)
+    session_id = "session-target-helper"
+    name = hashlib.sha256(session_id.encode("utf-8")).hexdigest() + ".json"
+    manifest = pending / name
+    survivor = clone / "seed.txt"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": session_id,
+                "paths": [str(retired), str(survivor)],
+                "remote_paths": [str(survivor)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (receipts / name).write_text("{}\n", encoding="utf-8")
+    environment = dict(os.environ)
+    environment["SYNTHESIS_HOME"] = str(synthesis_home)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(target_helper),
+            "--repository",
+            str(clone),
+            "--worktree",
+            str(worktree),
+        ],
+        cwd=clone,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not worktree.exists()
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    assert payload["paths"] == [str(survivor)]
+    intents = list((synthesis_home / "repo-guard" / "retired-worktrees").glob("*.json"))
+    assert len(intents) == 1
+    assert json.loads(intents[0].read_text(encoding="utf-8"))["state"] == "completed"
+
+
+def test_helper_resumes_from_prepared_intent_after_interruption(
+    tmp_path: Path,
+) -> None:
+    _remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    commit_and_merge(clone, worktree)
+    head = git(worktree, "rev-parse", "HEAD").stdout.strip()
+    synthesis_home = worktree.parent.parent / "synthesis-home"
+    pending = synthesis_home / "repo-guard" / "pending"
+    pending.mkdir(parents=True)
+    session_id = "session-interrupted-retirement"
+    name = hashlib.sha256(session_id.encode("utf-8")).hexdigest() + ".json"
+    manifest = pending / name
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": session_id,
+                "paths": [str(worktree / "change.txt")],
+                "remote_paths": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    environment = dict(os.environ)
+    environment["SYNTHESIS_HOME"] = str(synthesis_home)
+    prepared = subprocess.run(
+        [
+            sys.executable,
+            str(CHECKPOINT_SCRIPT),
+            "--prepare-worktree-retirement",
+            str(worktree),
+            "--retirement-repository",
+            str(clone),
+            "--retirement-head",
+            head,
+            "--retirement-remote",
+            "origin",
+            "--retirement-base",
+            "origin/main",
+            "--retirement-branch",
+            "feature/demo",
+            "--json",
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert prepared.returncode == 0, prepared.stderr
+    intent = Path(json.loads(prepared.stdout)[0]["detail"])
+    assert json.loads(intent.read_text(encoding="utf-8"))["state"] == "prepared"
+    git(clone, "worktree", "remove", str(worktree))
+
+    resumed = retire("--repository", str(clone), "--worktree", str(worktree))
+
+    assert resumed.returncode == 0, resumed.stderr
+    assert "Resumed retirement" in resumed.stdout
+    assert not manifest.exists()
+    assert json.loads(intent.read_text(encoding="utf-8"))["state"] == "completed"
+    assert not git(clone, "branch", "--list", "feature/demo").stdout.strip()
+
+    repeated = retire("--repository", str(clone), "--worktree", str(worktree))
+    assert repeated.returncode == 0, repeated.stderr

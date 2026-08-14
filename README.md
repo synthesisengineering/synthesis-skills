@@ -12,11 +12,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 ## What's new
 
 **Verified cleanup is part of continuity (August 2026).** Release **4.25.2**
-connects fail-closed worktree retirement to session-attributed handoff state.
-Once a clean worktree head is proven contained in the fetched remote base, its
-retired paths are removed from pending manifests and any stale local receipt is
-invalidated. Missing paths without that proof still block Stop. See the
-[4.25.2 release notes](CHANGELOG.md).
+makes worktree retirement a resumable handoff transaction. One lifecycle lock
+spans durable intent, removal, manifest reconciliation, and receipt
+invalidation. The ancestry authority is a freshly fetched remote-tracking
+commit, and the reconciler is staged outside the target before removal.
+Missing paths without that proof still block Stop. See the [4.25.2 release
+notes](CHANGELOG.md).
 
 **Codex catalog pressure is now engineered, not tolerated (August 2026).**
 Release **4.24.1** adds an implicit-core/explicit-specialist catalog with a

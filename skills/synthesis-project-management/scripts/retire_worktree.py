@@ -28,9 +28,15 @@ verification passes.
 from __future__ import annotations
 
 import argparse
+import fcntl
+import hashlib
+import json
 import os
+import stat
 import subprocess
 import sys
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -38,6 +44,11 @@ SYNTHESIS_HOME = Path(
     os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis"))
 )
 PENDING_DIR = SYNTHESIS_HOME / "repo-guard" / "pending"
+STATE_DIR = PENDING_DIR.parent
+LIFECYCLE_LOCK = STATE_DIR / "lifecycle.lock"
+RETIREMENT_RUNTIME_DIR = STATE_DIR / "retirement-runtime"
+RETIREMENT_DIR = STATE_DIR / "retired-worktrees"
+LIFECYCLE_LOCK_FD_ENV = "SYNTHESIS_LIFECYCLE_LOCK_FD"
 CHECKPOINT_SYNC = (
     Path(__file__).resolve().parents[2]
     / "synthesis-repo-guard"
@@ -81,60 +92,234 @@ def worktree_entries(repository: Path) -> list[dict[str, str]]:
     return entries
 
 
-def path_is_within(path: Path, root: Path) -> bool:
+def lexical_absolute(path: Path) -> Path:
+    return Path(os.path.abspath(os.path.expanduser(str(path))))
+
+
+def validate_state_paths(*paths: Path) -> None:
+    for value in paths:
+        path = lexical_absolute(value)
+        current = Path(path.anchor)
+        for part in path.parts[1:]:
+            current = current / part
+            if os.path.lexists(current) and current.is_symlink():
+                raise ValueError(f"state path contains a symlink component: {current}")
+
+
+@contextmanager
+def lifecycle_lock():
+    validate_state_paths(STATE_DIR, LIFECYCLE_LOCK, RETIREMENT_RUNTIME_DIR)
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    validate_state_paths(STATE_DIR, LIFECYCLE_LOCK, RETIREMENT_RUNTIME_DIR)
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(LIFECYCLE_LOCK, flags, 0o600)
+    if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+        os.close(descriptor)
+        raise ValueError(f"lifecycle lock is not a regular file: {LIFECYCLE_LOCK}")
+    fcntl.flock(descriptor, fcntl.LOCK_EX)
     try:
-        path.resolve(strict=False).relative_to(root.resolve(strict=False))
-        return True
-    except ValueError:
-        return False
+        yield descriptor
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
 
 
-def checkpoint_sync_path(repository: Path, worktree: Path) -> Path | None:
-    """Return a reconciler that will survive removal of the target worktree."""
+def stage_reconciler() -> Path:
+    source = CHECKPOINT_SYNC
+    if source.is_symlink() or not source.is_file():
+        raise ValueError(f"source-managed retirement reconciler is unavailable: {source}")
+    content = source.read_bytes()
+    digest = hashlib.sha256(content).hexdigest()
+    destination = RETIREMENT_RUNTIME_DIR / f"checkpoint-sync-{digest}.py"
+    validate_state_paths(RETIREMENT_RUNTIME_DIR, destination)
+    RETIREMENT_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    validate_state_paths(RETIREMENT_RUNTIME_DIR, destination)
+    if destination.is_symlink():
+        raise ValueError(f"staged retirement reconciler is a symlink: {destination}")
+    if destination.is_file():
+        if hashlib.sha256(destination.read_bytes()).hexdigest() != digest:
+            raise ValueError(f"staged retirement reconciler hash mismatch: {destination}")
+        return destination
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".tmp", dir=str(RETIREMENT_RUNTIME_DIR)
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary_name, 0o700)
+        os.replace(temporary_name, destination)
+        directory_fd = os.open(
+            RETIREMENT_RUNTIME_DIR,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except Exception:
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
+        raise
+    return destination
 
-    candidates = [
-        repository / "skills" / "synthesis-repo-guard" / "checkpoint_sync.py",
-        CHECKPOINT_SYNC,
-    ]
-    for candidate in candidates:
-        if candidate.is_symlink() or not candidate.is_file():
-            continue
-        resolved = candidate.resolve()
-        if not path_is_within(resolved, worktree):
-            return resolved
-    return None
+
+def verify_reconciler_interface(checkpoint_sync: Path) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(checkpoint_sync), "--help"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    required = {
+        "--prepare-worktree-retirement",
+        "--complete-worktree-retirement",
+        "--retirement-remote",
+    }
+    if completed.returncode != 0 or not required.issubset(set(completed.stdout.split())):
+        raise ValueError("staged retirement reconciler lacks the required interface")
 
 
-def reconcile_pending_handoffs(
+def run_reconciler(
     checkpoint_sync: Path,
-    repository: Path,
-    worktree: Path,
-    head: str,
-    base: str,
-    *,
-    dry_run: bool,
+    arguments: list[str],
+    lock_fd: int,
 ) -> subprocess.CompletedProcess[str]:
-    arguments = [
+    environment = dict(os.environ)
+    environment[LIFECYCLE_LOCK_FD_ENV] = str(lock_fd)
+    command = [
         sys.executable,
         str(checkpoint_sync),
-        "--reconcile-retired-worktree",
-        str(worktree),
-        "--retirement-repository",
-        str(repository),
-        "--retirement-head",
-        head,
-        "--retirement-base",
-        base,
+        *arguments,
+        "--json",
     ]
-    if dry_run:
-        arguments.append("--dry-run")
     return subprocess.run(
-        arguments,
+        command,
         capture_output=True,
         text=True,
         timeout=60,
         check=False,
+        env=environment,
+        pass_fds=(lock_fd,),
     )
+
+
+def reconciler_detail(completed: subprocess.CompletedProcess[str]) -> Path:
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip()
+        try:
+            payload = json.loads(completed.stdout)
+            detail = str(payload[0].get("alert") or detail)
+        except (IndexError, TypeError, json.JSONDecodeError):
+            pass
+        raise ValueError(f"retirement preparation or completion failed: {detail}")
+    try:
+        payload = json.loads(completed.stdout)
+        detail = payload[0]["detail"]
+    except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("retirement reconciler returned invalid intent evidence") from exc
+    return lexical_absolute(Path(str(detail)))
+
+
+def matching_retirement_intent(
+    repository: Path, worktree: Path
+) -> tuple[Path, dict] | None:
+    validate_state_paths(RETIREMENT_DIR)
+    if not RETIREMENT_DIR.is_dir():
+        return None
+    matches: list[tuple[Path, dict]] = []
+    for intent in sorted(RETIREMENT_DIR.glob("*.json")):
+        validate_state_paths(intent)
+        if intent.is_symlink():
+            raise ValueError(f"retirement intent is a symlink: {intent}")
+        data = json.loads(intent.read_text(encoding="utf-8"))
+        if data.get("schema_version") != 2 or data.get("state") not in {
+            "prepared",
+            "completed",
+        }:
+            raise ValueError(f"retirement intent is invalid: {intent}")
+        if (
+            lexical_absolute(Path(str(data.get("repository") or "")))
+            == lexical_absolute(repository)
+            and lexical_absolute(Path(str(data.get("worktree") or "")))
+            == lexical_absolute(worktree)
+        ):
+            matches.append((intent, data))
+    if len(matches) > 1:
+        raise ValueError("multiple retirement intents match the missing worktree")
+    return matches[0] if matches else None
+
+
+def cleanup_branch(
+    repository: Path, branch: str, remote: str, *, delete_remote: bool
+) -> int:
+    deleted = run(repository, "branch", "-d", branch)
+    if deleted.returncode != 0:
+        print(
+            f"retire-worktree: local branch kept: "
+            + (deleted.stderr.strip() or f"could not delete {branch}"),
+            file=sys.stderr,
+        )
+    else:
+        print(f"Deleted local branch {branch}")
+
+    if delete_remote:
+        listed = run(repository, "ls-remote", "--heads", remote, branch)
+        if listed.returncode != 0:
+            return fail(f"could not query {remote}: {listed.stderr.strip()}")
+        if not listed.stdout.strip():
+            print(f"Remote branch {remote}/{branch} already absent")
+        else:
+            pushed = run(repository, "push", remote, "--delete", branch)
+            if pushed.returncode != 0:
+                return fail(
+                    f"remote branch deletion failed: {pushed.stderr.strip()}"
+                )
+            print(f"Deleted remote branch {remote}/{branch}")
+    return 0
+
+
+def resume_retirement(
+    repository: Path,
+    worktree: Path,
+    expected_branch: str | None,
+    remote: str,
+    *,
+    delete_remote: bool,
+) -> int | None:
+    match = matching_retirement_intent(repository, worktree)
+    if match is None:
+        return None
+    intent, data = match
+    recorded_branch = data.get("branch")
+    if recorded_branch is not None and not isinstance(recorded_branch, str):
+        return fail("retirement intent branch is invalid")
+    if expected_branch and recorded_branch and expected_branch != recorded_branch:
+        return fail(
+            f"retirement intent is for {recorded_branch}, not {expected_branch}"
+        )
+    try:
+        with lifecycle_lock() as lock_fd:
+            checkpoint_sync = stage_reconciler()
+            verify_reconciler_interface(checkpoint_sync)
+            completed = run_reconciler(
+                checkpoint_sync,
+                ["--complete-worktree-retirement", str(intent)],
+                lock_fd,
+            )
+            reconciler_detail(completed)
+            print(f"Resumed retirement from {intent}")
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        return fail(str(exc))
+    branch = expected_branch or recorded_branch
+    if not branch:
+        print("retire-worktree: no recorded branch; branch cleanup was not attempted")
+        return 0
+    return cleanup_branch(repository, branch, remote, delete_remote=delete_remote)
 
 
 def main() -> int:
@@ -158,12 +343,6 @@ def main() -> int:
         "<remote>/main).",
     )
     parser.add_argument("--remote", default="origin")
-    parser.add_argument(
-        "--no-fetch",
-        action="store_true",
-        help="Skip the pre-verification fetch (verification then runs against "
-        "the last-fetched state).",
-    )
     parser.add_argument(
         "--delete-remote",
         action="store_true",
@@ -201,6 +380,18 @@ def main() -> int:
         None,
     )
     if match is None:
+        try:
+            resumed = resume_retirement(
+                repository,
+                worktree,
+                args.branch,
+                args.remote,
+                delete_remote=args.delete_remote,
+            )
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            return fail(str(exc))
+        if resumed is not None:
+            return resumed
         return fail(f"{worktree} is not a worktree of {repository}")
     if Path(match["worktree"]).resolve() == main_worktree:
         return fail("refusing to retire the repository's main worktree")
@@ -228,14 +419,12 @@ def main() -> int:
     if args.branch and args.branch != branch:
         return fail(f"worktree is on {branch}, not the expected {args.branch}")
 
-    if not args.no_fetch:
-        fetched = run(repository, "fetch", "--quiet", "--prune", args.remote)
-        if fetched.returncode != 0:
-            return fail(
-                f"fetch from {args.remote} failed (pass --no-fetch only to "
-                "verify against last-fetched state): "
-                + fetched.stderr.strip()
-            )
+    fetched = run(repository, "fetch", "--quiet", "--prune", args.remote)
+    if fetched.returncode != 0:
+        return fail(
+            f"fetch from {args.remote} failed; remote ancestry cannot be proven: "
+            + fetched.stderr.strip()
+        )
 
     base = args.base
     if base is None:
@@ -249,11 +438,23 @@ def main() -> int:
             f"could not resolve a verification base under {args.remote}; "
             "pass --base explicitly"
         )
-    base_check = run(repository, "rev-parse", "--verify", "--quiet", base)
-    if base_check.returncode != 0:
+    symbolic_base = run(repository, "rev-parse", "--symbolic-full-name", base)
+    remote_prefix = f"refs/remotes/{args.remote}/"
+    if (
+        symbolic_base.returncode != 0
+        or not symbolic_base.stdout.strip().startswith(remote_prefix)
+    ):
+        return fail(
+            f"verification base must be a freshly fetched {args.remote} "
+            "remote-tracking ref"
+        )
+    base = symbolic_base.stdout.strip()
+    base_check = run(repository, "rev-parse", "--verify", f"{base}^{{commit}}")
+    if base_check.returncode != 0 or not base_check.stdout.strip():
         return fail(f"verification base does not resolve: {base}")
+    base_oid = base_check.stdout.strip()
 
-    ancestry = run(repository, "merge-base", "--is-ancestor", branch, base)
+    ancestry = run(repository, "merge-base", "--is-ancestor", branch, base_oid)
     if ancestry.returncode != 0:
         return fail(
             f"branch {branch} is not fully contained in {base}; its commits "
@@ -265,65 +466,49 @@ def main() -> int:
         return fail(head_result.stderr.strip() or "worktree HEAD is unavailable")
     head = head_result.stdout.strip()
 
-    if PENDING_DIR.is_symlink():
-        return fail(f"pending handoff directory is a symlink: {PENDING_DIR}")
-    pending_exists = PENDING_DIR.is_dir() and any(PENDING_DIR.glob("*.json"))
-    checkpoint_sync = checkpoint_sync_path(repository, worktree)
-    if pending_exists:
-        if checkpoint_sync is None:
-            return fail(
-                "pending handoff manifests exist but their source-managed "
-                "reconciler is unavailable outside the target worktree"
+    try:
+        with lifecycle_lock() as lock_fd:
+            checkpoint_sync = stage_reconciler()
+            verify_reconciler_interface(checkpoint_sync)
+            prepared = run_reconciler(
+                checkpoint_sync,
+                [
+                    "--prepare-worktree-retirement",
+                    str(worktree),
+                    "--retirement-repository",
+                    str(repository),
+                    "--retirement-head",
+                    head,
+                    "--retirement-remote",
+                    args.remote,
+                    "--retirement-base",
+                    base,
+                    "--retirement-branch",
+                    branch,
+                ],
+                lock_fd,
             )
-        preflight = reconcile_pending_handoffs(
-            checkpoint_sync, repository, worktree, head, base, dry_run=True
-        )
-        if preflight.returncode != 0:
-            detail = (preflight.stderr or preflight.stdout).strip()
-            return fail(f"pending handoff reconciliation preflight failed: {detail}")
+            intent = reconciler_detail(prepared)
 
-    removed = run(repository, "worktree", "remove", str(worktree))
-    if removed.returncode != 0:
-        return fail(removed.stderr.strip() or "git worktree remove failed")
-    print(f"Removed worktree {worktree}")
+            removed = run(repository, "worktree", "remove", str(worktree))
+            if removed.returncode != 0:
+                return fail(removed.stderr.strip() or "git worktree remove failed")
+            print(f"Removed worktree {worktree}")
 
-    if checkpoint_sync is not None:
-        reconciled = reconcile_pending_handoffs(
-            checkpoint_sync, repository, worktree, head, base, dry_run=False
-        )
-        if reconciled.returncode != 0:
-            detail = (reconciled.stderr or reconciled.stdout).strip()
-            return fail(
-                "worktree was removed after remote verification, but pending "
-                f"handoff reconciliation failed: {detail}"
+            completed = run_reconciler(
+                checkpoint_sync,
+                ["--complete-worktree-retirement", str(intent)],
+                lock_fd,
             )
-        if reconciled.stdout.strip():
-            print(reconciled.stdout.strip())
+            reconciler_detail(completed)
+            if completed.stdout.strip():
+                print(completed.stdout.strip())
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        return fail(str(exc))
 
-    deleted = run(repository, "branch", "-d", branch)
-    if deleted.returncode != 0:
-        print(
-            f"retire-worktree: local branch kept: "
-            + (deleted.stderr.strip() or f"could not delete {branch}"),
-            file=sys.stderr,
-        )
-    else:
-        print(f"Deleted local branch {branch}")
-
-    if args.delete_remote:
-        listed = run(repository, "ls-remote", "--heads", args.remote, branch)
-        if listed.returncode != 0:
-            return fail(f"could not query {args.remote}: {listed.stderr.strip()}")
-        if not listed.stdout.strip():
-            print(f"Remote branch {args.remote}/{branch} already absent")
-        else:
-            pushed = run(repository, "push", args.remote, "--delete", branch)
-            if pushed.returncode != 0:
-                return fail(
-                    f"remote branch deletion failed: {pushed.stderr.strip()}"
-                )
-            print(f"Deleted remote branch {args.remote}/{branch}")
-    return 0
+    return cleanup_branch(
+        repository, branch, args.remote, delete_remote=args.delete_remote
+    )
 
 
 if __name__ == "__main__":

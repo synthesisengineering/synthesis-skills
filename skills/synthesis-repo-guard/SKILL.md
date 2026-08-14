@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.2"
+  version: "2.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -83,10 +83,11 @@ Config `~/.synthesis/checkpoint-sync.yaml` (copy `checkpoint-sync.example.yaml`)
 - Remote publication orders exact-path context commit, fetch, then
   fast-forward push. Existing staged or dirty files outside the manifest
   remain untouched.
-- The worktree-retirement helper removes attributed paths only after proving
-  the clean worktree head is contained in the fetched remote base. It
-  invalidates the old local receipt and records an audit artifact; a missing
-  path without this lifecycle proof remains a fail-closed Stop error.
+- Manifest writers, Stop receipts, remote flushes, and worktree retirement use
+  one lifecycle lock. Retirement pins a freshly fetched remote-tracking
+  commit, fsyncs a resumable intent before removal, invalidates old receipts,
+  and completes idempotently after interruption. A missing path without this
+  proof remains a fail-closed Stop error.
 - A distinct commit author identifies batched remote-context commits.
 - Divergence leaves the exact commit and manifest local and reports the
   block. Never rebase or force-push.
@@ -218,9 +219,13 @@ repo_sync_check.py [--workspace W] [--max-depth N] [--quiet] [--json]
 
 checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
                    [--flush-pending] [--no-throttle] [--dry-run]
+                   [--prepare-worktree-retirement PATH
+                    --retirement-repository REPO --retirement-head SHA
+                    --retirement-remote REMOTE --retirement-base REMOTE_REF]
+                   [--complete-worktree-retirement INTENT]
                    [--reconcile-retired-worktree PATH
                     --retirement-repository REPO --retirement-head SHA
-                    --retirement-base REF]
+                    --retirement-remote REMOTE --retirement-base REMOTE_REF]
                    [--quiet] [--json]
                    [--speak] [--notify]
 ```
@@ -245,9 +250,9 @@ checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
 
 ## Changelog
 
-- **2.1.2 (2026-08-14):** reconciles verified retired-worktree paths with
-  pending session manifests, invalidates stale receipts, and keeps unexplained
-  missing paths fail-closed.
+- **2.2.0 (2026-08-14):** makes retirement a lifecycle-locked, remote-pinned,
+  fsynced, resumable transaction across manifests and receipts; keeps
+  unexplained missing and unpublished paths fail-closed.
 - **2.1.1 (2026-08-14):** clarifies that a clean no-edit task needs no empty receipt and that remote readiness compares complete branch heads rather than project-path history.
 - **2.1.0 (2026-08-14):** separates local and remote readiness. Stop records atomic client-session receipts without Git or network mutation; interruption leaves a recoverable manifest; explicit remote handoff batches exact private-context paths only after source paths are upstream-current. Adds worktree identity, first-branch publication, generic commit messages, staged-index isolation, and integration fixtures.
 - **2.0.0 (2026-07-08):** three-layer redesign. Generic-only audio/banner (confidentiality rule), `~/.synthesis/quiet-audio` mute flag, report files + history, remediation hints, new `checkpoint_sync.py` (event-driven auto-commit/push: runtime remote guard, quiescence, shared throttle, ff-only push, distinct author, stale-lock detection), synthesis-console integration contract, scheduled-mutation explicitly disallowed. Origin: 2026-07-08 design review (lesson: alert-channel confidentiality + event-driven checkpoints).
