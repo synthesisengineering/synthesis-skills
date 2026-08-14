@@ -892,7 +892,8 @@ def catalog_checks(source_root: Path, home: Path | None = None) -> list[Check]:
         f"prompt-visible={runtime.get('skill_count', 0)}; "
         f"cost={runtime.get('full_cost_tokens')} tokens; "
         f"budget={runtime.get('budget_tokens')} tokens; "
-        f"model={runtime.get('model')}; errors={runtime.get('errors', [])}"
+        f"model={runtime.get('model')}; missing={runtime.get('missing_skill_names', [])}; "
+        f"errors={runtime.get('errors', [])}"
     )
     add(
         checks,
@@ -1314,8 +1315,12 @@ def pointer_checks(
         identity_ok = (
             payload.get("worktree") == worktree
             and payload.get("branch") == branch
-            and payload.get("source_commit") == commit
         )
+        recorded = str(payload.get("source_commit") or "")
+        ancestry = run(
+            ["git", "-C", worktree, "merge-base", "--is-ancestor", recorded, commit]
+        )
+        identity_ok = identity_ok and ancestry.returncode == 0
         add(
             checks,
             "pointer.checkout-identity",

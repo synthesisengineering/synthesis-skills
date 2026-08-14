@@ -789,7 +789,8 @@ def command_release(args) -> int:
     pointer = getattr(args, "active_project_file", None)
     if pointer is not None:
         try:
-            archived = archive_owned_pointer(Path(pointer), args.id)
+            board_lease = declared_lease(args.board.read_text(encoding="utf-8"))
+            archived = archive_owned_pointer(Path(pointer), args.id, board_lease)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             print(
                 f"coordination release completed, but active-project archival failed: {exc}",
@@ -802,14 +803,20 @@ def command_release(args) -> int:
     return 0
 
 
-def archive_owned_pointer(pointer: Path, owner_session: str) -> Path | None:
+def archive_owned_pointer(
+    pointer: Path, owner_session: str, owner_lease: str | None
+) -> Path | None:
     """Recoverably clear the pointer when its coordination owner releases."""
     if not pointer.exists():
         return None
     if pointer.is_symlink():
         raise ValueError(f"active-project pointer must not be a symlink: {pointer}")
     payload = json.loads(pointer.read_text(encoding="utf-8"))
-    if payload.get("owner_session") != owner_session:
+    if (
+        owner_lease is None
+        or payload.get("owner_session") != owner_session
+        or payload.get("owner_lease") != owner_lease
+    ):
         return None
     archive = pointer.parent / "active-project-history"
     if archive.is_symlink():

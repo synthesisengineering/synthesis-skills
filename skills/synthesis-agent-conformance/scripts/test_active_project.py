@@ -197,3 +197,28 @@ def test_pointer_fails_closed_when_lease_refresh_fails(
     issues = validate(payload, board)
 
     assert "coordination lease refresh failed: offline" in issues
+
+
+def test_lease_refresh_finishes_inside_session_start_deadline(
+    tmp_path: Path, monkeypatch
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    board.write_text("# Coordination\n", encoding="utf-8")
+    observed: dict[str, object] = {}
+
+    def fake_run(command, **kwargs):
+        observed["command"] = command
+        observed["timeout"] = kwargs.get("timeout")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {"lease": {"configured": True, "refreshed": True, "error": None}}
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(active_project.subprocess, "run", fake_run)
+
+    assert active_project._refresh_leased_board(board) is None
+    assert observed["timeout"] == 20

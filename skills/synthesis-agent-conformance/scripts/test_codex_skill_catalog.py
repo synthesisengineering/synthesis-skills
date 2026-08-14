@@ -68,3 +68,17 @@ def test_prompt_visible_catalog_fails_when_model_budget_is_exceeded(
 def test_malformed_data_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="not a list"):
         normalized_audit({"data": None}, home=_home(tmp_path))
+
+
+def test_resolved_catalog_fails_when_expected_skill_is_missing(tmp_path: Path) -> None:
+    root = tmp_path / "skills"
+    present = _skill(root, "present-skill")
+
+    audit = normalized_audit(
+        {"data": [{"skills": [present], "errors": []}]},
+        home=_home(tmp_path),
+        expected_skill_names={"present-skill", "missing-skill"},
+    )
+
+    assert audit["status"] == "FAIL"
+    assert audit["missing_skill_names"] == ["missing-skill"]

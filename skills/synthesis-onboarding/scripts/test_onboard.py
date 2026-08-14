@@ -285,6 +285,21 @@ class PluginTests(unittest.TestCase):
         self.assertEqual(report.steps[0]["status"], onboard.CHANGED)
         self.assertIn("4.23.0 -> 4.24.0", report.steps[0]["detail"])
 
+    def test_installed_plugin_cache_never_becomes_version_expectation(self):
+        with tempfile.TemporaryDirectory(prefix="onboard-plugin-cache-") as root:
+            cache = (
+                Path(root)
+                / ".codex/plugins/cache/synthesis-engineering/synthesis-skills/4.23.0"
+            )
+            (cache / ".git").mkdir(parents=True)
+            (cache / ".codex-plugin").mkdir()
+            (cache / ".codex-plugin/plugin.json").write_text(
+                json.dumps({"version": "4.23.0"}), encoding="utf-8"
+            )
+
+            with patch.object(onboard, "source_root", return_value=cache):
+                self.assertIsNone(onboard.expected_source_plugin_version())
+
 
 class EngineTests(unittest.TestCase):
     def setUp(self):

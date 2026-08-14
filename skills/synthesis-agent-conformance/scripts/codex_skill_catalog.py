@@ -109,7 +109,8 @@ def _line(skill: dict[str, object], roots: list[Path]) -> str:
 
 
 def normalized_audit(
-    result: dict[str, object], *, home: Path | None = None
+    result: dict[str, object], *, home: Path | None = None,
+    expected_skill_names: set[str] | None = None,
 ) -> dict[str, object]:
     home = home or Path.home()
     data = result.get("data", [])
@@ -131,6 +132,10 @@ def normalized_audit(
         for skill in rows[0].get("skills", [])
         if isinstance(skill, dict) and bool(skill.get("enabled", True))
     ]
+    discovered_names = {
+        str(skill.get("name") or "") for skill in discovered if skill.get("name")
+    }
+    missing_skills = sorted((expected_skill_names or set()) - discovered_names)
     skills = [
         skill
         for skill in discovered
@@ -152,10 +157,11 @@ def normalized_audit(
     else:
         budget_tokens = DEFAULT_CHAR_BUDGET // 4
         budget_source = "Codex fallback"
-    fits = not errors and full_cost_tokens <= budget_tokens
+    fits = not errors and not missing_skills and full_cost_tokens <= budget_tokens
     return {
         "status": "PASS" if fits else "FAIL",
         "discovered_skill_count": len(discovered),
+        "missing_skill_names": missing_skills,
         "skill_count": len(skills),
         "full_cost_tokens": full_cost_tokens,
         "metadata_tokens": metadata_tokens,
@@ -186,7 +192,13 @@ def audit(cwd: Path, *, home: Path | None = None) -> dict[str, object]:
             {"cwds": [str(cwd.resolve())], "forceReload": True},
             title="Synthesis Skill Catalog Audit",
         )
-        return normalized_audit(result, home=home)
+        source_skills = Path(__file__).resolve().parents[2]
+        expected = {
+            skill.parent.name for skill in source_skills.glob("*/SKILL.md")
+        }
+        return normalized_audit(
+            result, home=home, expected_skill_names=expected
+        )
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
         return {
             "status": "UNKNOWN",

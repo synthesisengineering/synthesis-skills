@@ -77,7 +77,7 @@ def test_claim_conflict_message_heartbeat_and_release(tmp_path: Path) -> None:
     assert next(row for row in table if row.id == "B").status == "active"
 
 
-def test_release_recoverably_archives_owned_active_pointer(tmp_path: Path) -> None:
+def test_release_leaves_pointer_without_matching_board_lease(tmp_path: Path) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     claim = claim_args(
         board,
@@ -89,7 +89,13 @@ def test_release_recoverably_archives_owned_active_pointer(tmp_path: Path) -> No
     assert MODULE.command_claim(claim) == 0
     pointer = tmp_path / "active-project.json"
     pointer.write_text(
-        json.dumps({"owner_session": "A", "project": "/tmp/project-a"}),
+        json.dumps(
+            {
+                "owner_session": "A",
+                "owner_lease": "https://example.test/other.git",
+                "project": "/tmp/project-a",
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -97,21 +103,44 @@ def test_release_recoverably_archives_owned_active_pointer(tmp_path: Path) -> No
         args(board, id="A", active_project_file=pointer)
     ) == 0
 
+    assert pointer.exists()
+    assert not (tmp_path / "active-project-history").exists()
+
+
+def test_matching_session_and_lease_recoverably_archive_pointer(tmp_path: Path) -> None:
+    pointer = tmp_path / "active-project.json"
+    lease = "https://example.test/coordination.git"
+    pointer.write_text(
+        json.dumps(
+            {
+                "owner_session": "A",
+                "owner_lease": lease,
+                "project": "/tmp/project-a",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    archived = MODULE.archive_owned_pointer(pointer, "A", lease)
+
+    assert archived is not None and archived.is_file()
     assert not pointer.exists()
-    archived = list((tmp_path / "active-project-history").glob("*-A.json"))
-    assert len(archived) == 1
-    assert json.loads(archived[0].read_text(encoding="utf-8"))["project"] == "/tmp/project-a"
+    assert json.loads(archived.read_text(encoding="utf-8"))["project"] == "/tmp/project-a"
 
 
 def test_release_refuses_symlinked_active_pointer_archive(tmp_path: Path) -> None:
     pointer = tmp_path / "active-project.json"
-    pointer.write_text(json.dumps({"owner_session": "A"}), encoding="utf-8")
+    lease = "https://example.test/coordination.git"
+    pointer.write_text(
+        json.dumps({"owner_session": "A", "owner_lease": lease}),
+        encoding="utf-8",
+    )
     outside = tmp_path / "outside"
     outside.mkdir()
     (tmp_path / "active-project-history").symlink_to(outside, target_is_directory=True)
 
     try:
-        MODULE.archive_owned_pointer(pointer, "A")
+        MODULE.archive_owned_pointer(pointer, "A", lease)
     except ValueError as exc:
         assert "archive must not be a symlink" in str(exc)
     else:

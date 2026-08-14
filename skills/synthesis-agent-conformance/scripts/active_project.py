@@ -85,7 +85,7 @@ def _refresh_leased_board(board: Path) -> str | None:
             capture_output=True,
             text=True,
             check=False,
-            timeout=45,
+            timeout=20,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return f"coordination lease refresh failed: {exc}"

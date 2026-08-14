@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import tempfile
 from contextlib import contextmanager
@@ -64,8 +65,12 @@ def sanitize_detail(detail: str) -> str:
     compact = " ".join(detail.split())
     if not compact or len(compact) > 500:
         raise ValueError("detail must contain 1-500 printable characters")
-    forbidden = ("token=", "authorization:", "bearer ", "password=")
-    if any(value in compact.lower() for value in forbidden):
+    credential_pattern = re.compile(
+        r"(?i)(?:\b(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|"
+        r"api[_-]?key|x-api-key|client[_-]?secret|password)\b[\"']?\s*[:=]"
+        r"|\bauthorization\s*:|\bbearer\s+)"
+    )
+    if credential_pattern.search(compact):
         raise ValueError("detail appears to contain authentication material")
     return compact
 

@@ -45,8 +45,15 @@ def test_record_is_atomic_and_preserves_other_cells(tmp_path: Path) -> None:
 
 
 def test_detail_rejects_authentication_material() -> None:
-    with pytest.raises(ValueError, match="authentication"):
-        MODULE.sanitize_detail("Authorization: Bearer secret")
+    for detail in (
+        "Authorization: Bearer secret",
+        '{"access_token":"secret"}',
+        '{"token": "secret"}',
+        "x-api-key: secret",
+        "client_secret=secret",
+    ):
+        with pytest.raises(ValueError, match="authentication"):
+            MODULE.sanitize_detail(detail)
 
 
 def test_parallel_recorders_do_not_lose_cells(tmp_path: Path) -> None:

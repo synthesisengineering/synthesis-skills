@@ -447,7 +447,14 @@ def expected_source_plugin_version():
     that stale manifest would turn a successful upgrade into a false error.
     """
     root = source_root()
-    if os.environ.get("SYNTHESIS_ONBOARD_SOURCE_DIR") or (root / ".git").exists():
+    parts = root.resolve().parts
+    installed_cache = any(
+        parts[index : index + 2] == ("plugins", "cache")
+        for index in range(len(parts) - 1)
+    )
+    if not installed_cache and (
+        os.environ.get("SYNTHESIS_ONBOARD_SOURCE_DIR") or (root / ".git").exists()
+    ):
         return source_plugin_version()
     return None
 
