@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.24.2] - 2026-08-14
+
+### Fixed
+
+- **Installed-to-source conformance** — forbidden-pattern scans exclude the
+  conformance checker's own definitions by source-relative identity, so an
+  installed checker auditing a canonical checkout produces the same source
+  result as the source checkout itself.
+
 ## [4.24.1] - 2026-08-14
 
 ### Fixed
