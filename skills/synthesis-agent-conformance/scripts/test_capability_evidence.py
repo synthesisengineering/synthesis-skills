@@ -56,6 +56,19 @@ def test_detail_rejects_authentication_material() -> None:
             MODULE.sanitize_detail(detail)
 
 
+def test_detail_rejects_bare_credential_values() -> None:
+    for detail in (
+        "ghp_" + "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        "xoxb-" + "1234567890-1234567890-abcdefghijklmnopqrstuvwx",
+        "sk-0123456789abcdefghijklmnopqrstuv",
+        "AKIA" + "IOSFODNN7EXAMPLE",
+        "ya29.0123456789abcdefghijklmnopqrstuv",
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature12",
+    ):
+        with pytest.raises(ValueError, match="authentication"):
+            MODULE.sanitize_detail(detail)
+
+
 def test_parallel_recorders_do_not_lose_cells(tmp_path: Path) -> None:
     destination = tmp_path / "capabilities.json"
     cells = [

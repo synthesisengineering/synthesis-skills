@@ -241,7 +241,10 @@ def test_lease_refresh_finishes_inside_session_start_deadline(
             command,
             0,
             stdout=json.dumps(
-                {"lease": {"configured": True, "refreshed": True, "error": None}}
+                {
+                    "lease": {"configured": True, "refreshed": True, "error": None},
+                    "problems": [],
+                }
             ),
             stderr="",
         )
@@ -250,3 +253,30 @@ def test_lease_refresh_finishes_inside_session_start_deadline(
 
     assert active_project._refresh_leased_board(board) is None
     assert observed["timeout"] == 20
+
+
+def test_lease_refresh_rejects_semantically_invalid_board(
+    tmp_path: Path, monkeypatch
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    board.write_text("# Coordination\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        active_project.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "lease": {"configured": True, "refreshed": True, "error": None},
+                    "problems": ["duplicate session id: A"],
+                }
+            ),
+            stderr="",
+        ),
+    )
+
+    assert active_project._refresh_leased_board(board) == (
+        "coordination board is invalid after lease refresh: duplicate session id: A"
+    )

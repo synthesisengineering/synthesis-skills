@@ -99,6 +99,13 @@ def _refresh_leased_board(board: Path) -> str | None:
         lease = payload["lease"]
     except (KeyError, TypeError, ValueError) as exc:
         return f"coordination lease refresh returned invalid evidence: {exc}"
+    problems = payload.get("problems")
+    if not isinstance(problems, list):
+        return "coordination lease refresh returned invalid problem evidence"
+    if problems:
+        return "coordination board is invalid after lease refresh: " + "; ".join(
+            str(problem) for problem in problems
+        )
     if not isinstance(lease, dict) or not lease.get("configured"):
         return "coordination lease is not configured on this machine"
     if lease.get("error") or not lease.get("refreshed"):

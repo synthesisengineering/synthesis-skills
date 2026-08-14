@@ -72,6 +72,18 @@ def sanitize_detail(detail: str) -> str:
     )
     if credential_pattern.search(compact):
         raise ValueError("detail appears to contain authentication material")
+    credential_value_pattern = re.compile(
+        r"(?i)(?:"
+        r"\bgh[pousr]_[A-Za-z0-9]{20,}\b|"
+        r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b|"
+        r"\bsk-[A-Za-z0-9_-]{20,}\b|"
+        r"\bAKIA[A-Z0-9]{16}\b|"
+        r"\bya29\.[A-Za-z0-9_-]{20,}\b|"
+        r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"
+        r")"
+    )
+    if credential_value_pattern.search(compact):
+        raise ValueError("detail appears to contain authentication material")
     return compact
 
 
