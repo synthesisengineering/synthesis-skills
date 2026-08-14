@@ -53,12 +53,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **Active project injection** — SessionStart now refuses missing plans or
   worktrees, released or expired owners, non-owner context roles, wrong
   worktree claims, symlinked or out-of-tree paths, stale branch or commit
-  identity, and checkouts behind local `origin/main`.
+  identity, and checkouts behind local `origin/main`. Activation and release
+  share one cross-process pointer lock so release cannot archive a successor's
+  newly activated pointer.
 - **Concurrent evidence writes** — capability ledgers, conformance reports,
   and client SessionStart receipts use unique atomic replacements; the
   read-modify-write capability ledger also holds a cross-process lock.
 - **App-server response handling** — malformed `hooks/list` and `skills/list`
-  payloads become explicit unknown evidence instead of unclassified errors.
+  payloads become explicit unknown evidence instead of unclassified errors;
+  malformed nested hook rows cannot collapse into an empty PASS.
+- **Live SessionStart provenance** — public receipts require a UUID session,
+  an existing client-owned transcript, and the exact enabled immutable plugin
+  root; missing source-version truth fails the live plane closed.
 
 ## [4.23.0] - 2026-08-13
 

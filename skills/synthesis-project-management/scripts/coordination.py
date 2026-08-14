@@ -17,6 +17,12 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
+SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from pointer_lock import locked_pointer
+
 
 DEFAULT_BOARD = Path.home() / ".synthesis" / "coordination" / "active-sessions.md"
 DEFAULT_ACTIVE_PROJECT = Path.home() / ".synthesis" / "active-project.json"
@@ -807,25 +813,26 @@ def archive_owned_pointer(
     pointer: Path, owner_session: str, owner_lease: str | None
 ) -> Path | None:
     """Recoverably clear the pointer when its coordination owner releases."""
-    if not pointer.exists():
-        return None
-    if pointer.is_symlink():
-        raise ValueError(f"active-project pointer must not be a symlink: {pointer}")
-    payload = json.loads(pointer.read_text(encoding="utf-8"))
-    if (
-        owner_lease is None
-        or payload.get("owner_session") != owner_session
-        or payload.get("owner_lease") != owner_lease
-    ):
-        return None
-    archive = pointer.parent / "active-project-history"
-    if archive.is_symlink():
-        raise ValueError(f"active-project archive must not be a symlink: {archive}")
-    archive.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%f%z")
-    destination = archive / f"{stamp}-{sanitize(owner_session)}.json"
-    os.replace(pointer, destination)
-    return destination
+    with locked_pointer(pointer):
+        if not pointer.exists():
+            return None
+        if pointer.is_symlink():
+            raise ValueError(f"active-project pointer must not be a symlink: {pointer}")
+        payload = json.loads(pointer.read_text(encoding="utf-8"))
+        if (
+            owner_lease is None
+            or payload.get("owner_session") != owner_session
+            or payload.get("owner_lease") != owner_lease
+        ):
+            return None
+        archive = pointer.parent / "active-project-history"
+        if archive.is_symlink():
+            raise ValueError(f"active-project archive must not be a symlink: {archive}")
+        archive.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%f%z")
+        destination = archive / f"{stamp}-{sanitize(owner_session)}.json"
+        os.replace(pointer, destination)
+        return destination
 
 
 def command_message(args) -> int:

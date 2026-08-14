@@ -94,3 +94,19 @@ def test_timeout_is_reported_as_unknown(monkeypatch) -> None:
 def test_malformed_data_is_rejected() -> None:
     with pytest.raises(ValueError, match="not a list"):
         MODULE.normalized_audit({"data": None})
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({"data": []}, "no rows"),
+        ({"data": [None]}, "row 0 is not an object"),
+        ({"data": [{"hooks": "corrupt"}]}, "hooks is not a list"),
+        ({"data": [{"hooks": [None]}]}, "hook 0 is not an object"),
+        ({"data": [{"hooks": [], "warnings": "bad"}]}, "warnings is not a list"),
+        ({"data": [{"hooks": [], "errors": "bad"}]}, "errors is not a list"),
+    ],
+)
+def test_malformed_nested_rows_are_rejected(payload: dict, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        MODULE.normalized_audit(payload)

@@ -102,12 +102,18 @@ def test_live_receipt_records_real_sessionstart_shape(
     tmp_path: Path, monkeypatch
 ) -> None:
     receipt = tmp_path / "live" / "receipt.json"
-    monkeypatch.setenv("PLUGIN_ROOT", "/tmp/plugin")
+    codex_home = tmp_path / ".codex"
+    transcript = codex_home / "sessions" / "live.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text("", encoding="utf-8")
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("PLUGIN_ROOT", str(MODULE.SCRIPTS_DIR.parents[2]))
     payload = {
         "hook_event_name": "SessionStart",
-        "session_id": "session-123",
+        "session_id": "019fff79-5858-7993-a329-b301bccf5d31",
         "cwd": "/tmp/repo",
         "source": "startup",
+        "transcript_path": str(transcript),
     }
 
     assert MODULE.record_live_receipt(payload, receipt)
@@ -116,16 +122,42 @@ def test_live_receipt_records_real_sessionstart_shape(
     assert client_receipt.is_file()
     assert json.loads(client_receipt.read_text(encoding="utf-8")) == recorded
     assert recorded["client"] == "codex"
-    assert recorded["session_id"] == "session-123"
+    assert recorded["session_id"] == "019fff79-5858-7993-a329-b301bccf5d31"
     assert recorded["hook_event_name"] == "SessionStart"
     assert recorded["plugin_version"]
+    assert recorded["provenance_env"] == "codex-transcript"
+    assert recorded["transcript_path"] == str(transcript)
     assert Path(recorded["plugin_root"]).resolve() == MODULE.SCRIPTS_DIR.parents[2]
     assert not list(receipt.parent.glob("*.tmp"))
 
 
-def test_claude_signal_wins_over_inherited_codex_home(monkeypatch) -> None:
+def test_claude_signal_wins_over_inherited_codex_home(tmp_path: Path, monkeypatch) -> None:
+    claude_home = tmp_path / ".claude"
+    transcript = claude_home / "projects" / "session.jsonl"
+    transcript.parent.mkdir(parents=True, exist_ok=True)
+    transcript.write_text("", encoding="utf-8")
     monkeypatch.delenv("PLUGIN_ROOT", raising=False)
     monkeypatch.setenv("CODEX_HOME", "/tmp/codex")
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/tmp/claude-plugin")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(MODULE.SCRIPTS_DIR.parents[2]))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
 
-    assert MODULE.infer_client({}) == "claude"
+    assert MODULE.client_provenance(
+        {"transcript_path": str(transcript)}
+    ) == ("claude", "claude-transcript")
+
+
+def test_live_receipt_rejects_forged_payload_without_client_owned_roots(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "receipt.json"
+    monkeypatch.setenv("PLUGIN_ROOT", "/tmp/not-the-executing-plugin")
+
+    assert not MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": "019fff79-5858-7993-a329-b301bccf5d31",
+            "transcript_path": str(tmp_path / ".codex" / "sessions" / "fake.jsonl"),
+        },
+        receipt,
+    )
+    assert not receipt.exists()

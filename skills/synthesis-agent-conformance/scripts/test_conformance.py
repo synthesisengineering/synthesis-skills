@@ -551,7 +551,7 @@ def test_hook_definition_checks_require_session_context(tmp_path: Path) -> None:
 
 
 def test_hook_live_checks_reject_static_absence_and_accept_receipts(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch,
 ) -> None:
     public_codex = tmp_path / "public-codex.json"
     public_claude = tmp_path / "public-claude.json"
@@ -560,6 +560,30 @@ def test_hook_live_checks_reject_static_absence_and_accept_receipts(
     (source / ".codex-plugin").mkdir(parents=True)
     (source / ".codex-plugin" / "plugin.json").write_text(
         json.dumps({"version": "1.2.3"}), encoding="utf-8"
+    )
+    installed_roots = {
+        "codex": tmp_path / "codex-cache" / "1.2.3",
+        "claude": tmp_path / "claude-cache" / "1.2.3",
+    }
+    for root in installed_roots.values():
+        root.mkdir(parents=True)
+    codex_home = tmp_path / ".codex"
+    claude_home = tmp_path / ".claude"
+    transcripts = {
+        "codex": codex_home / "sessions" / "public-1.jsonl",
+        "claude": claude_home / "projects" / "public-2.jsonl",
+    }
+    for transcript in transcripts.values():
+        transcript.parent.mkdir(parents=True)
+        transcript.write_text("", encoding="utf-8")
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+    monkeypatch.setattr(
+        MODULE,
+        "_enabled_plugin_root",
+        lambda client, version, home=None: installed_roots[client]
+        if version == "1.2.3"
+        else None,
     )
     absent = MODULE.hook_live_checks(
         public_codex, public_claude, private, source
@@ -571,9 +595,12 @@ def test_hook_live_checks_reject_static_absence_and_accept_receipts(
         json.dumps(
             {
                 "hook_event_name": "SessionStart",
-                "session_id": "public-1",
+                "session_id": "019fff79-5858-7993-a329-b301bccf5d31",
                 "client": "codex",
                 "plugin_version": "1.2.3",
+                "plugin_root": str(installed_roots["codex"]),
+                "provenance_env": "codex-transcript",
+                "transcript_path": str(transcripts["codex"]),
                 "recorded_at": recorded_at,
             }
         ),
@@ -583,9 +610,12 @@ def test_hook_live_checks_reject_static_absence_and_accept_receipts(
         json.dumps(
             {
                 "hook_event_name": "SessionStart",
-                "session_id": "public-2",
+                "session_id": "019fff79-5858-7993-a329-b301bccf5d32",
                 "client": "claude",
                 "plugin_version": "1.2.3",
+                "plugin_root": str(installed_roots["claude"]),
+                "provenance_env": "claude-transcript",
+                "transcript_path": str(transcripts["claude"]),
                 "recorded_at": recorded_at,
             }
         ),
@@ -595,7 +625,7 @@ def test_hook_live_checks_reject_static_absence_and_accept_receipts(
         json.dumps(
             {
                 "hook_event_name": "SessionStart",
-                "session_id": "private-1",
+                "session_id": "019fff79-5858-7993-a329-b301bccf5d33",
                 "client": "codex",
                 "recorded_at": recorded_at,
             }
@@ -622,12 +652,15 @@ def test_hook_live_checks_reject_static_absence_and_accept_receipts(
 
 
 def test_public_hook_live_checks_do_not_require_private_control_plane(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch,
 ) -> None:
     source = tmp_path / "source"
     (source / ".codex-plugin").mkdir(parents=True)
     (source / ".codex-plugin" / "plugin.json").write_text(
         json.dumps({"version": "1.2.3"}), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        MODULE, "_enabled_plugin_root", lambda client, version, home=None: tmp_path / client
     )
 
     checks = MODULE.hook_live_checks(
@@ -638,6 +671,13 @@ def test_public_hook_live_checks_do_not_require_private_control_plane(
         "hook-live.public-codex-sessionstart",
         "hook-live.public-claude-sessionstart",
     ]
+
+
+def test_hook_live_fails_closed_without_source_version(tmp_path: Path) -> None:
+    checks = MODULE.hook_live_checks(source_root=tmp_path / "missing")
+
+    assert [check.name for check in checks] == ["hook-live.source-version"]
+    assert checks[0].ok is False
 
 
 def test_hook_trust_requires_public_sessionstart_to_be_enabled(monkeypatch) -> None:

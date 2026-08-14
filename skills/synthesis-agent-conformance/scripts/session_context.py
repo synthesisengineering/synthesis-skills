@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -71,20 +72,30 @@ def plugin_identity() -> tuple[str | None, str]:
     return None, str(root)
 
 
-def infer_client(payload: dict[str, object]) -> str:
-    """Identify the caller conservatively from client-owned environment."""
-    if os.environ.get("PLUGIN_ROOT"):
-        return "codex"
-    if os.environ.get("CLAUDE_PLUGIN_ROOT") or os.environ.get("CLAUDE_CONFIG_DIR"):
-        return "claude"
-    if os.environ.get("CODEX_HOME"):
-        return "codex"
-    transcript = str(payload.get("transcript_path") or "")
-    if "/.codex/" in transcript:
-        return "codex"
-    if "/.claude/" in transcript:
-        return "claude"
-    return "unknown"
+def client_provenance(payload: dict[str, object]) -> tuple[str, str] | None:
+    """Identify the client from its owned, existing transcript path."""
+    transcript = Path(str(payload.get("transcript_path") or "")).expanduser()
+    candidates = (
+        (
+            "codex",
+            Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).expanduser(),
+        ),
+        (
+            "claude",
+            Path(
+                os.environ.get("CLAUDE_CONFIG_DIR", str(Path.home() / ".claude"))
+            ).expanduser(),
+        ),
+    )
+    if not transcript.is_absolute() or not transcript.is_file():
+        return None
+    for client, transcript_root in candidates:
+        try:
+            transcript.resolve().relative_to(transcript_root.resolve())
+        except (OSError, ValueError):
+            continue
+        return client, f"{client}-transcript"
+    return None
 
 
 def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
@@ -98,14 +109,23 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
     session_id = payload.get("session_id")
     if event != "SessionStart" or not isinstance(session_id, str) or not session_id:
         return False
+    try:
+        uuid.UUID(session_id)
+    except ValueError:
+        return False
+    provenance = client_provenance(payload)
+    if provenance is None:
+        return False
     version, plugin_root = plugin_identity()
-    client = infer_client(payload)
+    client, provenance_env = provenance
     receipt = {
         "hook_event_name": event,
         "session_id": session_id,
         "client": client,
         "cwd": payload.get("cwd"),
         "source": payload.get("source"),
+        "transcript_path": payload.get("transcript_path"),
+        "provenance_env": provenance_env,
         "plugin_version": version,
         "plugin_root": plugin_root,
         "recorded_at": datetime.now(timezone.utc).isoformat(),

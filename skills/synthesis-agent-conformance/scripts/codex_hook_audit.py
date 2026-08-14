@@ -53,15 +53,28 @@ def normalized_audit(result: dict[str, object]) -> dict[str, object]:
     data = result.get("data", [])
     if not isinstance(data, list):
         raise ValueError("hooks/list data is not a list")
-    for row in data:
+    if not data:
+        raise ValueError("hooks/list data contains no rows")
+    for index, row in enumerate(data):
         if not isinstance(row, dict):
-            continue
+            raise ValueError(f"hooks/list row {index} is not an object")
         cwd = str(row.get("cwd") or "")
-        warnings.extend(str(value) for value in row.get("warnings", []) or [])
-        errors.extend(str(value) for value in row.get("errors", []) or [])
-        for hook in row.get("hooks", []) or []:
+        row_warnings = row.get("warnings", []) or []
+        row_errors = row.get("errors", []) or []
+        hooks = row.get("hooks", []) or []
+        if not isinstance(row_warnings, list):
+            raise ValueError(f"hooks/list row {index} warnings is not a list")
+        if not isinstance(row_errors, list):
+            raise ValueError(f"hooks/list row {index} errors is not a list")
+        if not isinstance(hooks, list):
+            raise ValueError(f"hooks/list row {index} hooks is not a list")
+        warnings.extend(str(value) for value in row_warnings)
+        errors.extend(str(value) for value in row_errors)
+        for hook_index, hook in enumerate(hooks):
             if not isinstance(hook, dict):
-                continue
+                raise ValueError(
+                    f"hooks/list row {index} hook {hook_index} is not an object"
+                )
             trust_status = str(hook.get("trustStatus") or "unknown")
             managed = bool(hook.get("isManaged"))
             records.append(

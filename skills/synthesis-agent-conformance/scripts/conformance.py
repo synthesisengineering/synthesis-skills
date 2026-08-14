@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,11 @@ SCRIPT_PATH = Path(__file__).resolve()
 SCRIPTS_DIR = SCRIPT_PATH.parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
+PROJECT_MANAGEMENT_SCRIPTS_DIR = (
+    SCRIPT_PATH.parents[2] / "synthesis-project-management" / "scripts"
+)
+if str(PROJECT_MANAGEMENT_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_MANAGEMENT_SCRIPTS_DIR))
 
 from client_binaries import missing_binary_detail, resolve_client_binary
 from active_project import (
@@ -38,6 +44,7 @@ from active_project import (
 from codex_hook_audit import audit as codex_hook_audit
 from codex_skill_catalog import audit as codex_skill_catalog_audit
 from project_context import next_actions, record_freshness
+from pointer_lock import locked_pointer
 
 DEFAULT_SOURCE_ROOT = SCRIPT_PATH.parents[3]
 DEFAULT_ACTIVE_PROJECT = Path.home() / ".synthesis" / "active-project.json"
@@ -738,6 +745,7 @@ def _receipt_check(
     *,
     expected_client: str | None = None,
     expected_plugin_version: str | None = None,
+    expected_plugin_root: Path | None = None,
     max_age_hours: int = 24,
 ) -> None:
     try:
@@ -745,12 +753,45 @@ def _receipt_check(
         event = payload.get("hook_event_name")
         session_id = payload.get("session_id")
         client = payload.get("client")
-        ok = bool(event == "SessionStart" and session_id)
+        provenance = payload.get("provenance_env")
+        transcript_path = payload.get("transcript_path")
+        plugin_root = payload.get("plugin_root")
+        try:
+            uuid.UUID(str(session_id))
+            valid_session_id = True
+        except ValueError:
+            valid_session_id = False
+        ok = bool(event == "SessionStart" and valid_session_id)
         if expected_client is not None:
             ok = ok and client == expected_client
         actual_version = payload.get("plugin_version")
         if expected_plugin_version is not None:
-            ok = ok and actual_version == expected_plugin_version
+            ok = bool(
+                ok
+                and actual_version == expected_plugin_version
+                and provenance == f"{expected_client}-transcript"
+                and transcript_path
+                and plugin_root
+            )
+            if expected_plugin_root is None:
+                ok = False
+            else:
+                try:
+                    ok = ok and Path(str(plugin_root)).resolve() == expected_plugin_root.resolve()
+                except OSError:
+                    ok = False
+            transcript_root = Path(
+                os.environ.get(
+                    "CODEX_HOME" if expected_client == "codex" else "CLAUDE_CONFIG_DIR",
+                    str(Path.home() / (".codex" if expected_client == "codex" else ".claude")),
+                )
+            ).expanduser()
+            try:
+                transcript = Path(str(transcript_path)).expanduser()
+                transcript.resolve().relative_to(transcript_root.resolve())
+                ok = ok and transcript.is_absolute() and transcript.is_file()
+            except (OSError, ValueError):
+                ok = False
         recorded_at = payload.get("recorded_at")
         age_seconds: float | None = None
         try:
@@ -764,6 +805,8 @@ def _receipt_check(
         detail = (
             f"receipt={path}; client={client}; session_id={session_id}; "
             f"plugin_version={actual_version}; expected_plugin_version={expected_plugin_version}; "
+            f"plugin_root={plugin_root}; expected_plugin_root={expected_plugin_root}; "
+            f"provenance_env={provenance}; transcript_path={transcript_path}; "
             f"recorded_at={recorded_at}; age_seconds="
             f"{int(age_seconds) if age_seconds is not None else 'invalid'}"
         )
@@ -779,11 +822,51 @@ def _receipt_check(
         add(checks, name, False, f"{path}: {exc}")
 
 
+def _enabled_plugin_root(
+    client: str, version: str, home: Path | None = None
+) -> Path | None:
+    """Return the enabled client's immutable cache root for one exact version."""
+    home = home or Path.home()
+    binary = resolve_client_binary(client)
+    if not binary:
+        return None
+    try:
+        result = run([binary, "plugin", "list", "--json"])
+        if result.returncode != 0:
+            return None
+        data = json_from_output(result.stdout + "\n" + result.stderr)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+    if client == "claude":
+        items = data if isinstance(data, list) else []
+        matches = [
+            item
+            for item in items
+            if isinstance(item, dict)
+            and str(item.get("id", "")).startswith(f"{PLUGIN_NAME}@")
+            and item.get("enabled", True)
+            and str(item.get("version")) == version
+            and item.get("installPath")
+        ]
+        return Path(str(matches[0]["installPath"])) if len(matches) == 1 else None
+    installed = data.get("installed", []) if isinstance(data, dict) else []
+    matches = [
+        item
+        for item in installed
+        if isinstance(item, dict)
+        and item.get("name") == PLUGIN_NAME
+        and item.get("enabled")
+        and str(item.get("version")) == version
+    ]
+    return _plugin_cache_path(home, client, version) if len(matches) == 1 else None
+
+
 def hook_live_checks(
     public_codex_receipt: Path = DEFAULT_PUBLIC_CODEX_SESSIONSTART_RECEIPT,
     public_claude_receipt: Path = DEFAULT_PUBLIC_CLAUDE_SESSIONSTART_RECEIPT,
     private_codex_receipt: Path | None = None,
     source_root: Path = DEFAULT_SOURCE_ROOT,
+    home: Path | None = None,
 ) -> list[Check]:
     """Require receipts produced only by genuine SessionStart payloads."""
     checks: list[Check] = []
@@ -795,14 +878,23 @@ def hook_live_checks(
                 )
             )["version"]
         )
-    except (OSError, ValueError, KeyError):
-        source_version = None
+    except (OSError, ValueError, KeyError) as exc:
+        add(
+            checks,
+            "hook-live.source-version",
+            False,
+            f"source plugin version is unavailable: {source_root}: {exc}",
+        )
+        return checks
+    codex_root = _enabled_plugin_root("codex", source_version, home)
+    claude_root = _enabled_plugin_root("claude", source_version, home)
     _receipt_check(
         checks,
         "hook-live.public-codex-sessionstart",
         public_codex_receipt,
         expected_client="codex",
         expected_plugin_version=source_version,
+        expected_plugin_root=codex_root,
     )
     _receipt_check(
         checks,
@@ -810,6 +902,7 @@ def hook_live_checks(
         public_claude_receipt,
         expected_client="claude",
         expected_plugin_version=source_version,
+        expected_plugin_root=claude_root,
     )
     if private_codex_receipt is not None:
         _receipt_check(
@@ -1160,16 +1253,17 @@ def activate(
         "owner_session": owner,
         "owner_lease": lease,
     }
-    pointer_issues = validate_active_project(payload, coordination_board)
-    if pointer_issues:
-        add(
-            checks,
-            "handoff.pointer-owner",
-            False,
-            "; ".join(pointer_issues),
-        )
-        return checks
-    atomic_json_write(pointer, payload)
+    with locked_pointer(pointer):
+        pointer_issues = validate_active_project(payload, coordination_board)
+        if pointer_issues:
+            add(
+                checks,
+                "handoff.pointer-owner",
+                False,
+                "; ".join(pointer_issues),
+            )
+            return checks
+        atomic_json_write(pointer, payload)
     add(checks, "handoff.pointer-written", True, str(pointer))
     return checks
 

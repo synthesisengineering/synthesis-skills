@@ -307,7 +307,8 @@ When `synthesis-agent-conformance` is available, record the local
 active-project pointer after verification:
 
 ```bash
-python3 <skill-root>/scripts/conformance.py activate --project <project-directory>
+python3 <skill-root>/scripts/conformance.py activate \
+  --project <project-directory> --session-id <coordination-session-id>
 ```
 
 The pointer accelerates SessionStart and PostCompact recovery. It is a cache;

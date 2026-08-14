@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import threading
 from pathlib import Path
 
 
@@ -146,6 +147,35 @@ def test_release_refuses_symlinked_active_pointer_archive(tmp_path: Path) -> Non
     else:
         raise AssertionError("symlinked archive root was accepted")
     assert pointer.is_file()
+
+
+def test_release_rechecks_owner_after_waiting_for_pointer_writer(tmp_path: Path) -> None:
+    pointer = tmp_path / "active-project.json"
+    lease = "https://example.test/coordination.git"
+    pointer.write_text(
+        json.dumps({"owner_session": "A", "owner_lease": lease}),
+        encoding="utf-8",
+    )
+    result: list[Path | None] = []
+    done = threading.Event()
+
+    def release_a() -> None:
+        result.append(MODULE.archive_owned_pointer(pointer, "A", lease))
+        done.set()
+
+    with MODULE.locked_pointer(pointer):
+        thread = threading.Thread(target=release_a)
+        thread.start()
+        assert not done.wait(0.1)
+        pointer.write_text(
+            json.dumps({"owner_session": "B", "owner_lease": lease}),
+            encoding="utf-8",
+        )
+
+    thread.join(timeout=2)
+    assert done.is_set()
+    assert result == [None]
+    assert json.loads(pointer.read_text(encoding="utf-8"))["owner_session"] == "B"
 
 
 def test_different_projects_and_worktrees_run_in_parallel(tmp_path: Path) -> None:
