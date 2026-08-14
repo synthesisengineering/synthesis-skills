@@ -1047,6 +1047,10 @@ def test_catalog_checks_enforce_installed_content_parity(
     )
     source_bytecode.parent.mkdir(parents=True)
     source_bytecode.write_bytes(b"transient source bytecode")
+    for suffix in ("pyc", "pyo"):
+        (source_bytecode.parents[1] / f"direct-bytecode.{suffix}").write_bytes(
+            b"transient direct bytecode"
+        )
     installed_pytest_cache = (
         home
         / ".claude"
@@ -1094,12 +1098,16 @@ def test_directory_digest_ignores_cache_children_not_cache_named_ancestors(
     regular_checkout = tmp_path / "regular"
     cache_named_checkout.mkdir(parents=True)
     regular_checkout.mkdir()
-    (cache_named_checkout / "SKILL.md").write_text("first\n", encoding="utf-8")
-    (regular_checkout / "SKILL.md").write_text("second\n", encoding="utf-8")
+    cache_named_skill = cache_named_checkout / "SKILL.md"
+    cache_named_skill.write_text("same\n", encoding="utf-8")
+    (regular_checkout / "SKILL.md").write_text("same\n", encoding="utf-8")
 
-    assert MODULE.directory_digest(cache_named_checkout) != MODULE.directory_digest(
+    original = MODULE.directory_digest(cache_named_checkout)
+    assert original == MODULE.directory_digest(
         regular_checkout
     )
+    cache_named_skill.write_text("changed\n", encoding="utf-8")
+    assert MODULE.directory_digest(cache_named_checkout) != original
 
 
 def test_enabled_codex_root_binds_to_inventory_marketplace(
