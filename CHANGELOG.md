@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.24.1] - 2026-08-14
+
+### Fixed
+
+- **Installed catalog parity** — source-checkout Python and pytest caches no
+  longer create false drift against clean plugin packages; substantive skill
+  content remains digest-bound.
+- **Codex plugin skill discovery** — authoritative `skills/list` namespaced
+  names are matched to their canonical public skill names, so a healthy
+  enabled plugin no longer reports every public skill as missing.
+
 ## [4.24.0] - 2026-08-14
 
 ### Added

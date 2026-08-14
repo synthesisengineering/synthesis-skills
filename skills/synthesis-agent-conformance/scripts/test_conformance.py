@@ -1037,6 +1037,39 @@ def test_catalog_checks_enforce_installed_content_parity(
 
     assert all(check.ok for check in checks)
 
+    source_bytecode = (
+        source
+        / "skills"
+        / "synthesis-one"
+        / "scripts"
+        / "__pycache__"
+        / "probe.cpython-312.pyc"
+    )
+    source_bytecode.parent.mkdir(parents=True)
+    source_bytecode.write_bytes(b"transient source bytecode")
+    for suffix in ("pyc", "pyo"):
+        (source_bytecode.parents[1] / f"direct-bytecode.{suffix}").write_bytes(
+            b"transient direct bytecode"
+        )
+    installed_pytest_cache = (
+        home
+        / ".claude"
+        / "plugins"
+        / "cache"
+        / "marketplace"
+        / "synthesis-skills"
+        / "1.0.0"
+        / "skills"
+        / ".pytest_cache"
+        / "README.md"
+    )
+    installed_pytest_cache.parent.mkdir(parents=True)
+    installed_pytest_cache.write_text("transient test cache\n", encoding="utf-8")
+
+    checks = MODULE.catalog_checks(source, home)
+
+    assert all(check.ok for check in checks)
+
     drifted = (
         home
         / ".codex"
@@ -1056,6 +1089,25 @@ def test_catalog_checks_enforce_installed_content_parity(
     codex_cache = next(check for check in checks if check.name == "catalog.codex-cache")
     assert codex_cache.ok is False
     assert "source_digest=" in codex_cache.detail
+
+
+def test_directory_digest_ignores_cache_children_not_cache_named_ancestors(
+    tmp_path: Path,
+) -> None:
+    cache_named_checkout = tmp_path / "__pycache__" / "source"
+    regular_checkout = tmp_path / "regular"
+    cache_named_checkout.mkdir(parents=True)
+    regular_checkout.mkdir()
+    cache_named_skill = cache_named_checkout / "SKILL.md"
+    cache_named_skill.write_text("same\n", encoding="utf-8")
+    (regular_checkout / "SKILL.md").write_text("same\n", encoding="utf-8")
+
+    original = MODULE.directory_digest(cache_named_checkout)
+    assert original == MODULE.directory_digest(
+        regular_checkout
+    )
+    cache_named_skill.write_text("changed\n", encoding="utf-8")
+    assert MODULE.directory_digest(cache_named_checkout) != original
 
 
 def test_enabled_codex_root_binds_to_inventory_marketplace(
