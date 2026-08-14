@@ -176,7 +176,10 @@ def add(
 
 
 def run(
-    command: list[str], timeout: int = 30, input_text: str | None = None
+    command: list[str],
+    timeout: int = 30,
+    input_text: str | None = None,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
@@ -185,6 +188,7 @@ def run(
         timeout=timeout,
         check=False,
         input=input_text,
+        env=env,
     )
 
 
@@ -577,13 +581,18 @@ def _version_key(version: str) -> tuple:
     return tuple(parts)
 
 
-def enabled_plugin_version(client: str) -> str | None:
+def enabled_plugin_version(client: str, home: Path | None = None) -> str | None:
     """Return the one enabled native-plugin version reported by the client."""
     binary = resolve_client_binary(client)
     if not binary:
         return None
     try:
-        result = run([binary, "plugin", "list", "--json"])
+        environment = os.environ.copy()
+        variable = "CODEX_HOME" if client == "codex" else "CLAUDE_CONFIG_DIR"
+        environment[variable] = str(_client_config_dir(client, home))
+        result = run(
+            [binary, "plugin", "list", "--json"], env=environment
+        )
         if result.returncode != 0:
             return None
         data = json_from_output(result.stdout + "\n" + result.stderr)
@@ -661,8 +670,8 @@ def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
     source_version = next(iter(manifest_values)) if len(manifest_values) == 1 else None
 
     installed: dict[str, str | None] = {
-        "claude": enabled_plugin_version("claude"),
-        "codex": enabled_plugin_version("codex"),
+        "claude": enabled_plugin_version("claude", home),
+        "codex": enabled_plugin_version("codex", home),
     }
     for client, version in installed.items():
         add(

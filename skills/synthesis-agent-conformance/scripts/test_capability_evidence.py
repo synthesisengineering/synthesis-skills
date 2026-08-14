@@ -70,6 +70,9 @@ def test_detail_rejects_bare_credential_values() -> None:
         "xapp-1-" + "A" * 30,
         "ASIA" + "A" * 16,
         "-----BEGIN OPENSSH " + "PRIVATE KEY-----",
+        "AIza" + "A" * 34 + "-",
+        "glpat-" + "A" * 19 + "-",
+        "xapp-" + "A" * 19 + "-",
     ):
         with pytest.raises(ValueError, match="authentication"):
             MODULE.sanitize_detail(detail)

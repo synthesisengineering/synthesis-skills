@@ -1140,28 +1140,32 @@ def test_parity_uses_configured_client_homes(tmp_path: Path, monkeypatch) -> Non
     monkeypatch.setattr(
         MODULE, "resolve_client_binary", lambda client: f"/fake/{client}"
     )
+    observed_environments = []
     monkeypatch.setattr(
         MODULE,
         "run",
-        lambda command, timeout=30, input_text=None: Result(
-            json.dumps(
-                [
-                    {
-                        "id": "synthesis-skills@synthesis-engineering",
-                        "enabled": True,
-                        "version": "1.0.0",
-                    }
-                ]
-                if command[0].endswith("claude")
-                else {
-                    "installed": [
+        lambda command, timeout=30, input_text=None, env=None: (
+            observed_environments.append(env)
+            or Result(
+                json.dumps(
+                    [
                         {
-                            "name": "synthesis-skills",
+                            "id": "synthesis-skills@synthesis-engineering",
                             "enabled": True,
                             "version": "1.0.0",
                         }
                     ]
-                }
+                    if command[0].endswith("claude")
+                    else {
+                        "installed": [
+                            {
+                                "name": "synthesis-skills",
+                                "enabled": True,
+                                "version": "1.0.0",
+                            }
+                        ]
+                    }
+                )
             )
         ),
     )
@@ -1169,6 +1173,16 @@ def test_parity_uses_configured_client_homes(tmp_path: Path, monkeypatch) -> Non
     checks = MODULE.parity_checks(source)
 
     assert all(check.ok for check in checks)
+    assert {
+        environment["CLAUDE_CONFIG_DIR"]
+        for environment in observed_environments
+        if "CLAUDE_CONFIG_DIR" in environment
+    } == {str(claude_home)}
+    assert {
+        environment["CODEX_HOME"]
+        for environment in observed_environments
+        if "CODEX_HOME" in environment
+    } == {str(codex_home)}
 
 
 def test_parity_uses_enabled_inventory_not_newest_cache(
@@ -1201,7 +1215,7 @@ def test_parity_uses_enabled_inventory_not_newest_cache(
     monkeypatch.setattr(
         MODULE,
         "run",
-        lambda command, timeout=30, input_text=None: Result(
+        lambda command, timeout=30, input_text=None, env=None: Result(
             json.dumps(
                 [
                     {

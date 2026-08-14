@@ -48,7 +48,7 @@ class ParityTests(unittest.TestCase):
         with patch.object(
             MODULE,
             "enabled_plugin_version",
-            side_effect=lambda client: versions[client],
+            side_effect=lambda client, home=None: versions[client],
         ):
             return MODULE.parity_checks(self.src, home=self.home)
 
