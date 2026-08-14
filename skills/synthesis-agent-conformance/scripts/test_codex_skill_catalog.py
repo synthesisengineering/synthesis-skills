@@ -104,6 +104,22 @@ def test_expected_skill_matches_plugin_namespaced_runtime_name(tmp_path: Path) -
     assert audit["missing_skill_names"] == []
 
 
+def test_other_plugin_namespace_cannot_substitute_for_expected_skill(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "skills"
+    skill = _skill(root, "other-plugin:synthesis-autopilot")
+
+    audit = normalized_audit(
+        {"data": [{"skills": [skill], "errors": []}]},
+        home=_home(tmp_path),
+        expected_skill_names={"synthesis-autopilot"},
+    )
+
+    assert audit["status"] == "FAIL"
+    assert audit["missing_skill_names"] == ["synthesis-autopilot"]
+
+
 def test_catalog_budget_honors_codex_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

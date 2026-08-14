@@ -24,6 +24,7 @@ DEFAULT_CHAR_BUDGET = 8_000
 CONTEXT_PERCENT = 2
 MAX_DESCRIPTION_CHARS = 1_024
 ALIAS_INSTRUCTION_RESERVE_TOKENS = 256
+PUBLIC_PLUGIN_NAMESPACE = "synthesis-skills:"
 
 
 def _codex_home(home: Path | None = None) -> Path:
@@ -169,11 +170,14 @@ def normalized_audit(
         for skill in rows[0].get("skills", [])
         if isinstance(skill, dict) and bool(skill.get("enabled", True))
     ]
-    discovered_names = {
-        str(skill.get("name") or "").rsplit(":", 1)[-1]
-        for skill in discovered
-        if skill.get("name")
-    }
+    discovered_names = set()
+    for skill in discovered:
+        name = str(skill.get("name") or "")
+        if not name:
+            continue
+        if name.startswith(PUBLIC_PLUGIN_NAMESPACE):
+            name = name.removeprefix(PUBLIC_PLUGIN_NAMESPACE)
+        discovered_names.add(name)
     missing_skills = sorted((expected_skill_names or set()) - discovered_names)
     skills = [
         skill

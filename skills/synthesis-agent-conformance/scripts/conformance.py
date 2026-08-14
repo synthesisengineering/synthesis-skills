@@ -243,7 +243,10 @@ def directory_digest(path: Path) -> str:
         for item in path.rglob("*")
         if item.is_file()
         and item.name not in {".source.json", ".DS_Store"}
-        and not any(part in {"__pycache__", ".pytest_cache"} for part in item.parts)
+        and not any(
+            part in {"__pycache__", ".pytest_cache"}
+            for part in item.relative_to(path).parts
+        )
         and item.suffix not in {".pyc", ".pyo"}
     )
     for item in files:

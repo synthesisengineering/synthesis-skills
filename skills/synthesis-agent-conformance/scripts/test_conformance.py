@@ -1087,6 +1087,21 @@ def test_catalog_checks_enforce_installed_content_parity(
     assert "source_digest=" in codex_cache.detail
 
 
+def test_directory_digest_ignores_cache_children_not_cache_named_ancestors(
+    tmp_path: Path,
+) -> None:
+    cache_named_checkout = tmp_path / "__pycache__" / "source"
+    regular_checkout = tmp_path / "regular"
+    cache_named_checkout.mkdir(parents=True)
+    regular_checkout.mkdir()
+    (cache_named_checkout / "SKILL.md").write_text("first\n", encoding="utf-8")
+    (regular_checkout / "SKILL.md").write_text("second\n", encoding="utf-8")
+
+    assert MODULE.directory_digest(cache_named_checkout) != MODULE.directory_digest(
+        regular_checkout
+    )
+
+
 def test_enabled_codex_root_binds_to_inventory_marketplace(
     tmp_path: Path, monkeypatch
 ) -> None:
