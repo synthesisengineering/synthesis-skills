@@ -1037,6 +1037,35 @@ def test_catalog_checks_enforce_installed_content_parity(
 
     assert all(check.ok for check in checks)
 
+    source_bytecode = (
+        source
+        / "skills"
+        / "synthesis-one"
+        / "scripts"
+        / "__pycache__"
+        / "probe.cpython-312.pyc"
+    )
+    source_bytecode.parent.mkdir(parents=True)
+    source_bytecode.write_bytes(b"transient source bytecode")
+    installed_pytest_cache = (
+        home
+        / ".claude"
+        / "plugins"
+        / "cache"
+        / "marketplace"
+        / "synthesis-skills"
+        / "1.0.0"
+        / "skills"
+        / ".pytest_cache"
+        / "README.md"
+    )
+    installed_pytest_cache.parent.mkdir(parents=True)
+    installed_pytest_cache.write_text("transient test cache\n", encoding="utf-8")
+
+    checks = MODULE.catalog_checks(source, home)
+
+    assert all(check.ok for check in checks)
+
     drifted = (
         home
         / ".codex"

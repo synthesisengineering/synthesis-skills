@@ -170,7 +170,9 @@ def normalized_audit(
         if isinstance(skill, dict) and bool(skill.get("enabled", True))
     ]
     discovered_names = {
-        str(skill.get("name") or "") for skill in discovered if skill.get("name")
+        str(skill.get("name") or "").rsplit(":", 1)[-1]
+        for skill in discovered
+        if skill.get("name")
     }
     missing_skills = sorted((expected_skill_names or set()) - discovered_names)
     skills = [

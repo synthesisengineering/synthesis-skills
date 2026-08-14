@@ -12,12 +12,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 ## What's new
 
 **Codex catalog pressure is now engineered, not tolerated (August 2026).**
-Release **4.24.0** adds an implicit-core/explicit-specialist catalog with a
+Release **4.24.1** adds an implicit-core/explicit-specialist catalog with a
 public routing skill, app-server-backed hook and skill audits, live capability
 evidence, leased active-project validation, session-safe plugin refresh semantics,
 and an explicit supported-surface matrix. Claude Code keeps its complete
 native trigger behavior; Codex keeps every specialist explicitly available
-with measurable prompt reserve. See the [4.24.0 release notes](CHANGELOG.md).
+with measurable prompt reserve. See the [4.24.1 release notes](CHANGELOG.md).
 
 **Release surfaces can no longer drift apart (August 2026).** Conformance
 gains `source.changelog-version-parity` **(4.23.0)**: both plugin manifests
