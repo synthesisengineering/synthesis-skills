@@ -61,6 +61,7 @@ QUIET_AUDIO_FLAG = SYNTHESIS_HOME / "quiet-audio"
 PENDING_DIR = STATE_DIR / "pending"
 LOCAL_HANDOFF_DIR = STATE_DIR / "local-handoff"
 REMOTE_HANDOFF_STATE = STATE_DIR / "remote-handoff-last.json"
+RETIREMENT_DIR = STATE_DIR / "retired-worktrees"
 
 DEFAULTS = {
     "repos": [],
@@ -384,6 +385,240 @@ def repo_root_for_path(path: Path) -> Path | None:
     probe = path if path.is_dir() else path.parent
     rc, output, _ = git(probe, "rev-parse", "--show-toplevel")
     return Path(output).resolve() if rc == 0 and output else None
+
+
+def path_is_within(path: Path, root: Path) -> bool:
+    try:
+        path.resolve(strict=False).relative_to(root.resolve(strict=False))
+        return True
+    except ValueError:
+        return False
+
+
+def listed_worktree_roots(repository: Path) -> tuple[list[Path], str | None]:
+    rc, output, error = git(repository, "worktree", "list", "--porcelain")
+    if rc != 0:
+        return [], error or output or "git worktree list failed"
+    roots = [
+        Path(line.partition(" ")[2]).resolve(strict=False)
+        for line in output.splitlines()
+        if line.startswith("worktree ")
+    ]
+    return roots, None
+
+
+def reconcile_retired_worktree(
+    worktree: Path,
+    repository: Path,
+    verified_head: str,
+    base: str,
+    *,
+    dry_run: bool,
+) -> tuple[list[dict], list[Path]]:
+    """Remove only remotely verified, retired-worktree paths from manifests.
+
+    A missing pending path remains a hard failure unless the lifecycle helper
+    proves that the exact worktree was clean, removed, and already contained in
+    the stated base. Dry-run mode is the helper's pre-removal validation pass.
+    """
+
+    worktree = worktree.expanduser().resolve(strict=False)
+    repository_input = repository.expanduser()
+    result = {
+        "repo": str(repository_input),
+        "name": "retired-worktree",
+        "action": "retirement-reconcile-failed",
+        "alert": None,
+    }
+
+    try:
+        if repository_input.is_symlink():
+            raise ValueError("repository path is a symlink")
+        repository = repository_input.resolve(strict=True)
+    except OSError as exc:
+        result["alert"] = f"repository is unavailable: {exc}"
+        return [result], []
+
+    unsafe_roots = {Path("/").resolve(), Path.home().resolve(), Path.cwd().resolve()}
+    if worktree in unsafe_roots:
+        result["alert"] = f"unsafe retired-worktree root: {worktree}"
+        return [result], []
+    if (
+        worktree == repository
+        or worktree in repository.parents
+        or repository in worktree.parents
+    ):
+        result["alert"] = "retired worktree overlaps the repository root"
+        return [result], []
+
+    top_rc, top, top_error = git(repository, "rev-parse", "--show-toplevel")
+    if top_rc != 0 or not top or Path(top).resolve() != repository:
+        result["alert"] = top_error or "repository is not its git toplevel"
+        return [result], []
+
+    worktrees, worktree_error = listed_worktree_roots(repository)
+    if worktree_error:
+        result["alert"] = worktree_error
+        return [result], []
+    target_is_active = worktree in worktrees
+    if dry_run:
+        if not target_is_active or not worktree.is_dir() or worktree.is_symlink():
+            result["alert"] = "retirement preflight requires the exact active worktree"
+            return [result], []
+    elif target_is_active or os.path.lexists(worktree):
+        result["alert"] = "retired worktree still exists or remains registered"
+        return [result], []
+
+    head_rc, canonical_head, head_error = git(
+        repository, "rev-parse", "--verify", f"{verified_head}^{{commit}}"
+    )
+    base_rc, _canonical_base, base_error = git(
+        repository, "rev-parse", "--verify", f"{base}^{{commit}}"
+    )
+    if head_rc != 0 or not canonical_head:
+        result["alert"] = head_error or "verified retirement head does not resolve"
+        return [result], []
+    if base_rc != 0:
+        result["alert"] = base_error or "retirement base does not resolve"
+        return [result], []
+    ancestry_rc, _, ancestry_error = git(
+        repository, "merge-base", "--is-ancestor", canonical_head, base
+    )
+    if ancestry_rc != 0:
+        result["alert"] = ancestry_error or "retired head is not contained in the verification base"
+        return [result], []
+
+    manifests = sorted(PENDING_DIR.glob("*.json")) if PENDING_DIR.is_dir() else []
+    plans: list[tuple[Path, dict, list[str], list[str], list[str]]] = []
+    locks = []
+    try:
+        for manifest in manifests:
+            lock_path = manifest.with_suffix(".lock")
+            if lock_path.is_symlink():
+                raise ValueError(f"pending manifest lock is a symlink: {lock_path}")
+            lock = lock_path.open("a+", encoding="utf-8")
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            locks.append(lock)
+            if manifest.is_symlink():
+                raise ValueError(f"pending manifest is a symlink: {manifest}")
+            if not manifest.exists():
+                continue
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            session_id = data.get("session_id")
+            if (
+                not isinstance(session_id, str)
+                or pending_manifest_path(session_id) != manifest
+            ):
+                raise ValueError(f"pending manifest filename or session mismatch: {manifest}")
+            paths = data.get("paths")
+            remote_paths = data.get("remote_paths", paths)
+            if not isinstance(paths, list) or not isinstance(remote_paths, list):
+                raise ValueError(f"pending manifest path arrays are invalid: {manifest}")
+            if any(
+                not isinstance(value, str) or not Path(value).expanduser().is_absolute()
+                for value in [*paths, *remote_paths]
+            ):
+                raise ValueError(
+                    f"pending manifest paths must be absolute strings: {manifest}"
+                )
+
+            removed = [
+                str(value)
+                for value in paths
+                if path_is_within(Path(str(value)).expanduser(), worktree)
+            ]
+            if not removed:
+                continue
+            remaining = [
+                str(value)
+                for value in paths
+                if not path_is_within(Path(str(value)).expanduser(), worktree)
+            ]
+            remaining_remote = [
+                str(value)
+                for value in remote_paths
+                if not path_is_within(Path(str(value)).expanduser(), worktree)
+            ]
+            receipt = LOCAL_HANDOFF_DIR / manifest.name
+            if receipt.is_symlink():
+                raise ValueError(f"local handoff receipt is a symlink: {receipt}")
+            history = data.get("retired_worktrees", [])
+            if not isinstance(history, list):
+                raise ValueError(f"retired_worktrees history is invalid: {manifest}")
+            plans.append((manifest, data, removed, remaining, remaining_remote))
+
+        if dry_run:
+            result.update(
+                action="retirement-reconcile-ready",
+                alert=None,
+                manifests=len(plans),
+                files=sum(len(plan[2]) for plan in plans),
+            )
+            return [result], [plan[0] for plan in plans]
+
+        reconciled_at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        touched: list[Path] = []
+        removed_count = 0
+        for manifest, data, removed, remaining, remaining_remote in plans:
+            receipt = LOCAL_HANDOFF_DIR / manifest.name
+            if os.path.lexists(receipt):
+                receipt.unlink()
+            removed_count += len(removed)
+            touched.append(manifest)
+            if not remaining:
+                manifest.unlink(missing_ok=True)
+                continue
+            history = data.get("retired_worktrees", [])
+            history.append(
+                {
+                    "worktree": str(worktree),
+                    "repository": str(repository),
+                    "head": canonical_head,
+                    "base": base,
+                    "reconciled_at": reconciled_at,
+                    "paths_removed": len(removed),
+                }
+            )
+            data.update(
+                updated_at=reconciled_at,
+                paths=remaining,
+                remote_paths=remaining_remote,
+                retired_worktrees=history,
+            )
+            atomic_json(manifest, data)
+
+        retirement_record = RETIREMENT_DIR / (
+            hashlib.sha256(str(worktree).encode("utf-8")).hexdigest()
+            + f"-{canonical_head[:12]}.json"
+        )
+        atomic_json(
+            retirement_record,
+            {
+                "schema_version": 1,
+                "worktree": str(worktree),
+                "repository": str(repository),
+                "head": canonical_head,
+                "base": base,
+                "reconciled_at": reconciled_at,
+                "manifests": [str(path) for path in touched],
+                "paths_removed": removed_count,
+            },
+        )
+        result.update(
+            action="retired-worktree-reconciled",
+            alert=None,
+            manifests=len(touched),
+            files=removed_count,
+            detail=str(retirement_record),
+        )
+        return [result], touched
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        result["alert"] = str(exc)
+        return [result], []
+    finally:
+        for lock in reversed(locks):
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+            lock.close()
 
 
 def checkpoint_explicit_paths(repo: Path, paths: list[Path], cfg: dict, *, dry_run: bool) -> dict:
@@ -855,6 +1090,28 @@ def main() -> int:
         help="Commit and push all session-attributed context paths for remote handoff",
     )
     ap.add_argument(
+        "--reconcile-retired-worktree",
+        type=Path,
+        default=None,
+        help="Remove paths beneath one verified retired worktree from pending manifests",
+    )
+    ap.add_argument(
+        "--retirement-repository",
+        type=Path,
+        default=None,
+        help="Main repository that owned the retired worktree",
+    )
+    ap.add_argument(
+        "--retirement-head",
+        default=None,
+        help="Exact commit that the retirement helper verified on the remote base",
+    )
+    ap.add_argument(
+        "--retirement-base",
+        default=None,
+        help="Fetched base ref that contains the retired head",
+    )
+    ap.add_argument(
         "--now",
         action="store_true",
         help="Compatibility flag for local post-write producer mode",
@@ -874,6 +1131,40 @@ def main() -> int:
     args = ap.parse_args()
 
     cfg = resolve_config(args.config.expanduser())
+
+    if args.reconcile_retired_worktree is not None:
+        if not (
+            args.retirement_repository
+            and args.retirement_head
+            and args.retirement_base
+        ):
+            if not args.quiet:
+                print(
+                    "checkpoint_sync: retired-worktree reconciliation requires "
+                    "--retirement-repository, --retirement-head, and --retirement-base",
+                    file=sys.stderr,
+                )
+            return 2
+        results, _manifests = reconcile_retired_worktree(
+            args.reconcile_retired_worktree,
+            args.retirement_repository,
+            args.retirement_head,
+            args.retirement_base,
+            dry_run=args.dry_run,
+        )
+        alerts = [result for result in results if result.get("alert")]
+        if not args.quiet:
+            if args.json:
+                print(json.dumps(results, indent=2))
+            else:
+                for result in results:
+                    line = f"{result['name']}: {result['action']}"
+                    if result.get("files") is not None:
+                        line += f" ({result['files']} path(s))"
+                    if result.get("alert"):
+                        line += f"  ⚠ {result['alert']}"
+                    print(line)
+        return 1 if alerts else 0
 
     if args.hook:
         try:

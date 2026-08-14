@@ -11,6 +11,13 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Verified cleanup is part of continuity (August 2026).** Release **4.25.2**
+connects fail-closed worktree retirement to session-attributed handoff state.
+Once a clean worktree head is proven contained in the fetched remote base, its
+retired paths are removed from pending manifests and any stale local receipt is
+invalidated. Missing paths without that proof still block Stop. See the
+[4.25.2 release notes](CHANGELOG.md).
+
 **Codex catalog pressure is now engineered, not tolerated (August 2026).**
 Release **4.24.1** adds an implicit-core/explicit-specialist catalog with a
 public routing skill, app-server-backed hook and skill audits, live capability

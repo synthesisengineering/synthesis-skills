@@ -34,6 +34,17 @@ import sys
 from pathlib import Path
 
 
+SYNTHESIS_HOME = Path(
+    os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis"))
+)
+PENDING_DIR = SYNTHESIS_HOME / "repo-guard" / "pending"
+CHECKPOINT_SYNC = (
+    Path(__file__).resolve().parents[2]
+    / "synthesis-repo-guard"
+    / "checkpoint_sync.py"
+)
+
+
 def run(
     repository: Path, *arguments: str, timeout: int = 60
 ) -> subprocess.CompletedProcess[str]:
@@ -68,6 +79,62 @@ def worktree_entries(repository: Path) -> list[dict[str, str]]:
     if current:
         entries.append(current)
     return entries
+
+
+def path_is_within(path: Path, root: Path) -> bool:
+    try:
+        path.resolve(strict=False).relative_to(root.resolve(strict=False))
+        return True
+    except ValueError:
+        return False
+
+
+def checkpoint_sync_path(repository: Path, worktree: Path) -> Path | None:
+    """Return a reconciler that will survive removal of the target worktree."""
+
+    candidates = [
+        repository / "skills" / "synthesis-repo-guard" / "checkpoint_sync.py",
+        CHECKPOINT_SYNC,
+    ]
+    for candidate in candidates:
+        if candidate.is_symlink() or not candidate.is_file():
+            continue
+        resolved = candidate.resolve()
+        if not path_is_within(resolved, worktree):
+            return resolved
+    return None
+
+
+def reconcile_pending_handoffs(
+    checkpoint_sync: Path,
+    repository: Path,
+    worktree: Path,
+    head: str,
+    base: str,
+    *,
+    dry_run: bool,
+) -> subprocess.CompletedProcess[str]:
+    arguments = [
+        sys.executable,
+        str(checkpoint_sync),
+        "--reconcile-retired-worktree",
+        str(worktree),
+        "--retirement-repository",
+        str(repository),
+        "--retirement-head",
+        head,
+        "--retirement-base",
+        base,
+    ]
+    if dry_run:
+        arguments.append("--dry-run")
+    return subprocess.run(
+        arguments,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
 
 
 def main() -> int:
@@ -193,10 +260,45 @@ def main() -> int:
             "have not been verified on the remote"
         )
 
+    head_result = run(worktree, "rev-parse", "HEAD")
+    if head_result.returncode != 0 or not head_result.stdout.strip():
+        return fail(head_result.stderr.strip() or "worktree HEAD is unavailable")
+    head = head_result.stdout.strip()
+
+    if PENDING_DIR.is_symlink():
+        return fail(f"pending handoff directory is a symlink: {PENDING_DIR}")
+    pending_exists = PENDING_DIR.is_dir() and any(PENDING_DIR.glob("*.json"))
+    checkpoint_sync = checkpoint_sync_path(repository, worktree)
+    if pending_exists:
+        if checkpoint_sync is None:
+            return fail(
+                "pending handoff manifests exist but their source-managed "
+                "reconciler is unavailable outside the target worktree"
+            )
+        preflight = reconcile_pending_handoffs(
+            checkpoint_sync, repository, worktree, head, base, dry_run=True
+        )
+        if preflight.returncode != 0:
+            detail = (preflight.stderr or preflight.stdout).strip()
+            return fail(f"pending handoff reconciliation preflight failed: {detail}")
+
     removed = run(repository, "worktree", "remove", str(worktree))
     if removed.returncode != 0:
         return fail(removed.stderr.strip() or "git worktree remove failed")
     print(f"Removed worktree {worktree}")
+
+    if checkpoint_sync is not None:
+        reconciled = reconcile_pending_handoffs(
+            checkpoint_sync, repository, worktree, head, base, dry_run=False
+        )
+        if reconciled.returncode != 0:
+            detail = (reconciled.stderr or reconciled.stdout).strip()
+            return fail(
+                "worktree was removed after remote verification, but pending "
+                f"handoff reconciliation failed: {detail}"
+            )
+        if reconciled.stdout.strip():
+            print(reconciled.stdout.strip())
 
     deleted = run(repository, "branch", "-d", branch)
     if deleted.returncode != 0:

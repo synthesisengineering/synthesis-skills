@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.0"
+  version: "2.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -379,7 +379,10 @@ file-sync conflict resolution is not a distributed lock.
 
 Retire merged feature worktrees with `scripts/retire_worktree.py`
 (explicit repository argument, fetch-then-verify remote ancestry, fail-closed
-on dirty or unmerged state) instead of hand-run git sequences. See
+on dirty or unmerged state) instead of hand-run git sequences. The helper also
+reconciles session-attributed paths beneath the retired worktree after removal,
+but only after the same remote-ancestry proof; unexplained missing paths remain
+blocking Stop failures. See
 [`references/active-sessions-template.md`](references/active-sessions-template.md)
 for the canonical file shape and
 [`references/parallel-agent-protocol.md`](references/parallel-agent-protocol.md)

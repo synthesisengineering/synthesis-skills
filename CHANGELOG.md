@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.25.2] - 2026-08-14
+
+### Fixed
+
+- **Worktree-retirement continuity** — the fail-closed retirement helper now
+  reconciles session manifests only after proving that the clean worktree head
+  is contained in the fetched remote base. A standalone, equally verified
+  reconciliation path repairs a removal that completed before its manifest
+  update. Unexplained missing paths continue to block Stop.
+
 ## [4.25.1] - 2026-08-14
 
 ### Fixed
