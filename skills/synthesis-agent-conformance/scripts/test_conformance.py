@@ -745,7 +745,7 @@ def test_hook_trust_requires_public_sessionstart_to_be_enabled(monkeypatch) -> N
             "hooks": [
                 {
                     "plugin_id": "synthesis-skills@test",
-                    "event": "SessionStart",
+                    "event": "sessionStart",
                     "key": "plugin:0:0",
                     "enabled": False,
                     "managed": False,
@@ -763,6 +763,37 @@ def test_hook_trust_requires_public_sessionstart_to_be_enabled(monkeypatch) -> N
     )
 
     assert public.ok is False
+
+
+def test_hook_trust_accepts_protocol_sessionstart_event(monkeypatch) -> None:
+    monkeypatch.setattr(
+        MODULE,
+        "codex_hook_audit",
+        lambda _cwds: {
+            "status": "PASS",
+            "pending_review": 0,
+            "errors": [],
+            "hooks": [
+                {
+                    "plugin_id": "synthesis-skills@test",
+                    "event": "sessionStart",
+                    "key": "plugin:0:0",
+                    "enabled": True,
+                    "managed": False,
+                    "trust_status": "trusted",
+                    "current_hash": "sha256:test",
+                }
+            ],
+        },
+    )
+
+    checks = MODULE.hook_trust_checks(Path("/tmp"))
+    public = next(
+        check for check in checks
+        if check.name == "hook-trust.codex-public-sessionstart"
+    )
+
+    assert public.ok is True
 
 
 def test_instruction_budget_reserves_space(
@@ -791,6 +822,27 @@ def test_instruction_budget_reserves_space(
         check for check in checks if check.name == "instruction-budget.codex-bytes"
     )
     assert not budget.ok
+
+
+def test_instruction_budget_requires_generated_user_tail_sentinel(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    codex = home / ".codex"
+    codex.mkdir(parents=True)
+    (codex / "config.toml").write_text(
+        "project_doc_max_bytes = 10000\n", encoding="utf-8"
+    )
+    (codex / "AGENTS.md").write_text("truncated\n", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "AGENTS.md").write_text("project\n", encoding="utf-8")
+
+    checks = MODULE.instruction_budget_checks(repo, home)
+    sentinel = next(
+        check for check in checks
+        if check.name == "instruction-budget.user-tail-sentinel"
+    )
+
+    assert sentinel.ok is False
 
 
 def test_instruction_budget_counts_root_to_target_override_chain(tmp_path: Path) -> None:

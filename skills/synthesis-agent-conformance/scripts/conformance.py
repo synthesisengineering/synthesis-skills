@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -11,7 +12,6 @@ import re
 import subprocess
 import sys
 import tempfile
-import tomllib
 import uuid
 from graphlib import CycleError, TopologicalSorter
 from dataclasses import asdict, dataclass
@@ -70,9 +70,9 @@ DEFAULT_PUBLIC_CLAUDE_SESSIONSTART_RECEIPT = (
 DEFAULT_PRIVATE_CODEX_SESSIONSTART_RECEIPT = (
     Path.home()
     / ".synthesis"
-    / "agent-control"
+    / "agent-conformance"
     / "live"
-    / "codex-sessionstart.json"
+    / "private-sessionstart-codex.json"
 )
 DEFAULT_CAPABILITY_EVIDENCE = (
     Path.home()
@@ -740,7 +740,7 @@ def hook_trust_checks(cwd: Path) -> list[Check]:
         if isinstance(hook, dict)
         and hook.get("plugin_id")
         and str(hook.get("plugin_id")).startswith("synthesis-skills@")
-        and hook.get("event") == "SessionStart"
+        and str(hook.get("event") or "").casefold() == "sessionstart"
     ]
     if status == "UNKNOWN":
         public_ok = None
@@ -1055,16 +1055,21 @@ def _codex_instruction_limit(home: Path) -> int:
 
 def _codex_instruction_fallbacks(home: Path) -> list[str]:
     try:
-        payload = tomllib.loads(
-            (home / ".codex" / "config.toml").read_text(encoding="utf-8")
+        text = (home / ".codex" / "config.toml").read_text(encoding="utf-8")
+        match = re.search(
+            r"^project_doc_fallback_filenames\s*=\s*(\[[^\]]*\])",
+            text,
+            re.MULTILINE | re.DOTALL,
         )
-        values = payload.get("project_doc_fallback_filenames", [])
+        if not match:
+            return []
+        values = ast.literal_eval(match.group(1))
         if not isinstance(values, list) or not all(
             isinstance(value, str) and value for value in values
         ):
             return []
         return values
-    except (OSError, tomllib.TOMLDecodeError):
+    except (OSError, SyntaxError, ValueError):
         return []
 
 
@@ -1122,6 +1127,18 @@ def instruction_budget_checks(repo_root: Path, home: Path | None = None) -> list
         "instruction-budget.codex-bytes",
         total <= limit - reserve,
         f"{total} bytes across {len(existing)} file(s); limit={limit}; required reserve={reserve}",
+    )
+    user_agents = home / ".codex" / "AGENTS.md"
+    try:
+        generated = user_agents.read_text(encoding="utf-8")
+        sentinel_ok = "<!-- synthesis-agent-rules:end -->" in generated[-2048:]
+    except OSError:
+        sentinel_ok = False
+    add(
+        checks,
+        "instruction-budget.user-tail-sentinel",
+        sentinel_ok,
+        f"tail sentinel in {user_agents}",
     )
     return checks
 
