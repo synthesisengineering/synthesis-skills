@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -150,14 +150,25 @@ For `owner-only` repos:
 - If any non-owner remote exists, abort with an error and alert the user
 - These repos exist per ADR-013 (workspace-private repos); the `-private` suffix is also a discovery protocol filter (ADR-014)
 
-### Session-End Check
+### Local session end and remote handoff
 
-Every AI coding session should end with all repos committed and pushed. Use `synthesis-repo-guard` to verify — and, since its v2.0.0, to self-heal: `checkpoint_sync.py` auto-commits+pushes the configured private context-repo class at workflow events (agent turn end, console writes), so mac-sync's day-boundary sweep normally finds those repos already clean.
+Ordinary Claude Code and Codex turn boundaries target LOCAL_READY, not a remote push. Synthesis-repo-guard records session-attributed edit manifests and Stop receipts without changing Git. Same-machine switching therefore needs no commit or network call.
 
-- If repo-guard reports clean: session can end safely.
-- If repo-guard reports dirty: the detail is in `~/.synthesis/repo-guard/last-report.txt` and the synthesis-console `/sync` page (audible/banner alerts are deliberately generic — counts only, never repo or client names). Commit and push per the report, or run a full mac-sync.
+- If repo-guard reports local state: another client on this machine can recover it.
+- If repo-guard reports unattributed or unsafe state: inspect the detailed report and repair the local handoff before switching clients.
 
-Configure repo-guard hooks per the `synthesis-repo-guard` skill (Claude Code, Codex, Cursor, synthesis-console). Mac-sync remains the full multi-machine operation and the sweep for out-of-class repos (source code, public repos) that checkpoint automation deliberately never touches.
+Configure repo-guard hooks per the synthesis-repo-guard skill. Mac-sync owns cross-machine publication and source-repository policy; repo-guard owns attribution, local receipts, and exact private-context publication.
+
+#### Remote-handoff mode
+
+Invoke this mode before changing computers. It refreshes the coordination lease, updates project tiers from working-tree truth, reads pending manifests, publishes owned source paths under each repository policy, flushes exact private-context paths, and verifies remote readiness. Source paths that are dirty, ahead, behind, detached, or lack an upstream keep the handoff blocked. A pr-required repository remains gated by its review policy.
+
+Run remote-mode context doctor and continuity conformance for every project being transferred, then run the full repo detector and verify intended remote heads. Report REMOTE_READY only when no relevant pending manifest remains. Day-end performs this same transition automatically. The destination computer runs the pull side first, verifies fast-forward state and lease ownership, then uses the normal Session Start Protocol.
+
+The source-machine gate runs the checkpoint flush, context doctor with
+readiness `remote`, and continuity conformance with readiness `remote`, in that
+order after source repositories are published. The destination repeats remote
+continuity after fetching and fast-forwarding.
 
 ---
 
@@ -292,8 +303,12 @@ Only proceed with the pull operation when the placeholder list is empty. If the 
 
 When drafting a one-time action that involves running mac-sync on a different Mac (e.g., "the second Mac should now pull what the first Mac just pushed"):
 
-1. **On the source Mac, BEFORE drafting the handoff prompt:** run `brctl monitor --wait-uploaded -t 300 "$ICLOUD_BASE"` and confirm upload complete. Only then is it safe to send the prompt.
-2. **In the handoff prompt itself:** include the download trigger + placeholder poll above as the FIRST step on the destination Mac, before any pull operation.
+1. **On the source Mac:** complete remote-handoff mode and obtain
+   `REMOTE_READY` for the project and its repositories.
+2. **Before drafting the handoff prompt:** run `brctl monitor --wait-uploaded -t 300 "$ICLOUD_BASE"` and confirm upload complete.
+3. **In the handoff prompt itself:** include the download trigger and
+   placeholder poll as the first destination step, then fetch, fast-forward,
+   and run remote continuity before project work resumes.
 
 These two together close the two-stage gap.
 
@@ -422,7 +437,7 @@ Maintain a **manifest file** (`git-repos.yaml`) that caches discovered repos, th
 
 1. **ALWAYS fetch first** — run `git fetch origin` before checking any status
 2. **NEVER force push** — always use regular `git push`
-3. **NEVER silently auto-commit** — always show uncommitted files and ask before committing. Uncommitted changes are unsynced state; ignoring them defeats the purpose of the sync. Group files into separate commits by topic — never bundle unrelated files
+3. **Never sweep uncommitted work** — ordinary sync reports dirty files. In explicit remote-handoff or day-end mode, commit only session-attributed paths authorized by the repository workflow. Exact private-context batching uses synthesis-repo-guard. Unattributed, overlapping, or policy-gated paths block REMOTE_READY.
 4. **NEVER bypass hooks without explicit permission** — if a pre-commit hook blocks a commit, STOP and ask the user. Never use `--no-verify` on your own. If the user approves bypassing for a specific commit, that approval does not extend to other commits
 5. **Sanitize ALL commit messages** — never include people's names, company names, project codenames, article titles, or meeting topics in commit messages. Use generic descriptions like "Add meeting transcript", "Update context", "Add new blog post". Git history is persistent and can leak confidential information
 6. **Push automatically if ahead** — if working tree is clean and repo is ahead, push without asking

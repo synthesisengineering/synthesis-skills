@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.21.0"
+  version: "2.22.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,17 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.22.0 — Local continuity during the day; remote readiness at day-end
+
+Routine turns, day-start, and mid-day sync keep the filesystem-backed project
+record current and rely on session-attributed local receipts. They do not
+create Git commits or network pushes merely to switch Claude Code and Codex on
+one machine. Day-end is the batched cross-machine publication boundary: it
+publishes owned source work under repository policy, flushes exact private
+project-context paths, runs remote-mode doctor and conformance, and verifies
+remote heads. An interrupted task remains locally recoverable from its edit
+manifest even when Stop never ran.
 
 ## v2.21.0 — Inbox hygiene joins the morning sync, scoped to the seat
 
@@ -326,7 +337,7 @@ The LLM has no clock and its sense of "today" can drift across conversation gaps
 - [ ] Invoke the `synthesis-checkpoint` skill on any project whose cached state may be stale — it is the codified protocol for this verification.
 - [ ] **Protection-health check (v2.15.0):** run `python3 ~/.synthesis/git-hooks/_load_config.py --doctor`. It verifies the commit-boundary policy engine end to end: config parses, every pattern is valid for both `re` and `grep -E`, `core.hooksPath` is wired, the installed engine matches the skill source (drift detection), and the cwd repo's classification. **A protective control that nobody monitors is one that is quietly broken** — this check exists because a dependency failure once disabled scanning silently while commits kept passing. If the doctor reports UNHEALTHY, surface it in the brief as urgent and fix before any commit-bearing work; the v2 engine fails closed, so an unhealthy engine means commits will be blocked, not unprotected.
 - [ ] **Message-guard health check (v2.15.1):** run `python3 <synthesis-message-guard-root>/scripts/message_guard.py --doctor`. It verifies the pre-send correspondence gate end to end: patterns config parses, positive/negative scan controls pass, the PreToolUse wiring covers the send/draft tool family, and the state dir is writable. Same rationale as the git-hooks check above: a protective control that nobody monitors is quietly broken. The guard fails closed, so UNHEALTHY means sends will be blocked, not unprotected — fix before any correspondence work.
-- [ ] **Context-integrity check (v2.16.0):** run `python3 <synthesis-context-lifecycle-root>/scripts/context_doctor.py --quiet`. It audits every project in every configured source for the defects that break a cold resumption: missing tiers, budget overruns, an index.yaml status that disagrees with the project's own CONTEXT.md, `last_session` fields that git history contradicts, and uncommitted or unpushed context. Same rationale as the two guards above, applied to the layer they all rest on — the durable record is what lets another agent or another machine pick the work up, and until today it was the only protective layer whose health nobody could check. Exit 2 means the doctor could not establish ground truth; treat that exactly like an UNHEALTHY guard. Defects are not urgent in the way an unhealthy commit gate is, so surface the count in the brief and fix the active project's defects before working it.
+- [ ] **Context-integrity check (v2.16.0):** run `python3 <synthesis-context-lifecycle-root>/scripts/context_doctor.py --quiet --readiness local`. It audits every project in every configured source for the defects that break a cold resumption: missing tiers, budget overruns, an index.yaml status that disagrees with the project's own CONTEXT.md, `last_session` fields that git history contradicts, while surfacing uncommitted or unpushed context as local-only warnings. Same rationale as the two guards above, applied to the layer they all rest on — the durable record is what lets another agent or another machine pick the work up, and until today it was the only protective layer whose health nobody could check. Exit 2 means the doctor could not establish ground truth; treat that exactly like an UNHEALTHY guard. Defects are not urgent in the way an unhealthy commit gate is, so surface the count in the brief and fix the active project's defects before working it.
 - [ ] **Dual-client parity check (v2.18.0):** run `python3 <synthesis-agent-conformance-root>/scripts/conformance.py parity` (from the SOURCE checkout, or pass `--source-root <synthesis-skills repo>`). Filesystem-only and fast: it verifies the two source manifests agree, both clients have the plugin installed, both clients carry the SAME newest version, and that version matches source main. This is the daily layer of the dual-runtime guarantee — CI enforces source parity and the release protocol documents the dual refresh, but only this check notices the day a release reaches one client and not the other. Any FAIL is a drift that gets fixed in this step (refresh the stale marketplace/plugin), not noted for later.
 - [ ] **Day-end state read (v2.14.0):** read `~/.synthesis/day-end/state.json` and report the last day-end (date + mode) in the day plan's header or brief. If the most recent workday's day-end is missing, say so explicitly — visible skips are recoverable skips. Update `last_day_start` in the same file as part of this ritual.
 - [ ] **Weekly-review-owed check (v2.14.0):** if today is on/after the most recent Friday AND `last_weekly_review` predates that Friday, the Weekly Loose-Ends Review is owed — run the Day-End Step 10 scan in THIS session (either ritual direction, any mode) and update `last_weekly_review`. If a `synthesis-catchup-ledger` sweep already ran on/after that Friday, record its date instead of re-scanning — the ledger supersedes the review for its window.
@@ -765,7 +776,7 @@ The day-start checklist does a full sync. The user will ask for syncs repeatedly
 
 The key discipline encoded in that skill: **every sync must re-read ALL threads with replies from today**, not just fetch new channel-level messages. Thread replies don't appear as channel messages — skipping thread re-reads causes stale action plans and duplicate message sends.
 
-**Commit after every sync.** Any sync that creates or updates transcript files, daily plans, or context files must commit and push those changes in the same invocation. See the "Commit Protocol" section below. Do not defer to day-end — the day-end checklist may not run on a given day, and the value of the transcript is lost if it never reaches the remote.
+**Record after every sync.** Any sync that creates or updates transcripts, daily plans, or context files must leave session-attributed local state. Day-start and mid-day sync do not push merely to make same-machine client switching work; day-end and explicit remote handoff publish the batch.
 
 ---
 
@@ -773,7 +784,7 @@ The key discipline encoded in that skill: **every sync must re-read ALL threads 
 
 Use this variant when the user signals they are not actively working ("I'm on vacation", "observer mode", "just keeping up", "don't want to send messages"). Common phrasings: "do the modified ritual", "do what you did the last few days", "stay in observer mode".
 
-Observer mode is NOT a reduced-effort version of the day-start checklist. It is a specific pattern that combines sync + context + commit WITHOUT the active-work steps.
+Observer mode is a specific sync and context pattern. Its changes become LOCAL_READY immediately and REMOTE_READY at day-end or explicit remote handoff.
 
 ### Steps
 
@@ -787,7 +798,7 @@ Observer mode is NOT a reduced-effort version of the day-start checklist. It is 
    - DO include: "Things to Know for Return" section with 5-10 items
    - DO include: any decisions, incidents, product signals, or concerns that would be hard to catch up on later
 5. **Update CONTEXT.md** and session archive with the day's events. Follow the context lifecycle skill's archival protocol if needed.
-6. **Commit and push** all files touched in this invocation. See Commit Protocol below. Scope strictly to the repos where files were actually modified.
+6. **Record local handoff state** for files touched in this invocation. Publish them only in day-end or explicit remote-handoff mode.
 
 ### What Observer Mode Skips (Deliberately)
 
@@ -805,11 +816,12 @@ From the normal Day-End:
 - Transcript capture
 - Daily plan creation (in observer format)
 - CONTEXT.md + session archive updates
-- **Commit and push in the same invocation** — this is the most commonly missed step in modified rituals. Observer mode does not commit less than active mode; it commits exactly the same.
+- **Attributed local persistence** — observer mode records every changed file;
+  its batch reaches the remote at day-end or explicit remote handoff.
 
 ### Why This Is Codified
 
-When observer mode is reinvented per conversation ("do the thing you did yesterday"), the agent makes judgment calls about which steps matter. The commit step is the most often dropped because it feels like a day-end concern. This skill now states explicitly: commit-and-push is part of every observer-mode invocation, not a deferred step.
+When observer mode is reinvented per conversation, the agent often drops durable state. The rule is now explicit: every observer run leaves attributed local state, while day-end or remote-handoff mode owns publication.
 
 ---
 
@@ -839,6 +851,12 @@ The Weekly Loose-Ends Review (Step 10) attaches to whichever ritual runs first o
 ### 2. Source-Code Sync
 
 End-of-day code sync ensures local main/develop reflects everything that landed during the day and that tomorrow's day-start begins from a clean, current state. Run the same source-code sync as Day-Start Step 3a — same workspace repo list, same fetch + fast-forward semantics, same surfacing of divergence.
+
+- [ ] Read the pending repo-guard manifests first. For every recorded source
+  path owned by this ritual session, run its required tests, inspect the staged
+  index, commit only attributed paths, and push under the repository's branch,
+  review, and deployment policy. Do not mutate another active claim. Any path
+  that cannot be published keeps the affected project below `REMOTE_READY`.
 
 - [ ] For every repo the workspace manifest marks for sync (`<workspace>/.agents/repos.yaml` `ritual_sync: yes`; fallback: the `AGENTS.md` table's Yes rows — the complete set, no activity judgment; v2.12.1/v2.13.0): `git fetch --all`, then `git pull --ff-only` on each long-running branch (typically `main` and `develop`).
 - [ ] Surface any branches that are diverged or have local-only commits not yet pushed. These are decisions to make NOW, not at next day-start, so the agent can act on them while context is fresh.
@@ -905,10 +923,7 @@ may be wrong by hours or days. Re-anchor before writing.
 - [ ] Update CONTEXT.md with day's progress and new state. Refresh the "Last session" field with today's verified date. Update "Recent Sessions" with a one-line summary.
 - [ ] Update MEMORY.md if current state info is stale (version numbers, environment status, team assignments).
 - [ ] Update `last_session` date in `index.yaml` for each active project worked on today — use today's verified date.
-- [ ] **Active-project context gate (v2.18.0, fail-closed):** run `python3 <synthesis-context-lifecycle-root>/scripts/context_doctor.py --project <active-project-path>` for EACH project worked today. Defects BLOCK this step: the session that made the record defective is the session that can fix it in minutes, so fix and re-run to clean before continuing. Do not close the day with a defective active-project record — an unfixed defect re-surfaces at every subsequent SessionStart until repaired, so skipping the gate saves nothing. (Corpus-wide findings from the day-start run stay report-only; this gate is scoped to the projects this session actually touched.)
-- [ ] Commit context changes per the Commit Protocol below — separate commit per logical group (project context updates, lessons learned, etc.). Use `git add <specific-files>`, NOT `git add -A`.
-- [ ] **Push and verify.** Run `git push` for each modified repo, then run `git log origin/main..HEAD` to confirm the local HEAD reached origin. If the output is non-empty, the push did not land — investigate (network failure, branch protection rule, merge conflict) and re-push. Do NOT assume "git push said success" means the commits are durable on the remote.
-- [ ] Push updates to any shared ai-knowledge repos if modified. Same push-verify step applies.
+- [ ] **Local context gate:** run context_doctor.py --project <active-project-path> --readiness local for every project worked today. Structural defects block; expected local-only Git state remains visible.
 - [ ] **Write the day-end state (v2.14.0):** update `~/.synthesis/day-end/state.json` (atomic temp+rename) and append one line to `~/.synthesis/day-end/history.jsonl` — date, ritual direction, mode, outcome, and the send-or-release counts. Every mode writes state, observer included; day-start rituals update their own fields the same way.
 
 ### 8. Skills Maintenance
@@ -961,55 +976,42 @@ This step exists because work falls through the cracks during a week. A missed c
 - [ ] Add a `## Weekly Loose-Ends Review` section to today's (Friday's) daily plan. Structure: scan summary at top (count of items by classification + per-source breakdown), then the explicit STILL RELEVANT list (these are what Monday picks up), then OBSOLETE-with-reason list (audit trail), then AMBIGUOUS list (decision queue for the user).
 - [ ] If items in STILL RELEVANT need to be tracked across the weekend, populate today's daily plan `## Carried Items` section. (Monday's plan, when created, will pull from there as part of normal day-start.)
 - [ ] Annotate OBSOLETE items in their ORIGINAL source files (not in this review section) so they get marked once and stay marked.
-- [ ] Commit + push the daily plan and any annotated source files per the Commit Protocol below.
+- [ ] Leave every changed plan and annotation session-attributed; Step 11 publishes the final day-end batch.
 
 **Failure mode to avoid:** writing a `## Weekly Loose-Ends Review` section header without actually scanning the sources. The value is in the scan. If sources have not been read in this invocation, do not write the section — note "Weekly Loose-Ends Review skipped — scan not performed this invocation" in the plan and surface the gap to the user.
 
 **Idempotency:** if a Friday review was missed and the agent runs this step on a later weekday, the scan still works because it's date-bounded (past 14 calendar days from today), not weekday-bounded. The Friday-default is about WHEN it normally fires; the scan output is meaningful on any day.
 
-### 11. Repo Guard — Final Verification
+### 11. Remote Readiness and Final Verification
 
-**This step is mandatory and must be the last step before ending any session.**
+**This step is mandatory and is the final mutating day-end step.**
 
-- [ ] Run `repo_sync_check.py` (from `synthesis-repo-guard` skill) across the full workspace.
-- [ ] If ANY repos are dirty or unpushed, resolve them before ending: commit and push, or explicitly decide to discard.
-- [ ] Zero untracked files, zero uncommitted changes, zero unpushed commits. No exceptions.
+- [ ] Re-read the lease-backed coordination board. Do not mutate paths held by another active session; report them as active local work rather than defects in this ritual.
+- [ ] Publish every pending source path owned by this ritual under its repository policy. Inspect status and the staged index before each exact-path commit; run required tests and normal hooks.
+- [ ] Run `checkpoint_sync.py --flush-pending`. Any retained relevant manifest blocks day-end remote readiness.
+- [ ] For every project worked today, run `context_doctor.py --project <path> --readiness remote` and `conformance.py continuity --project <path> --readiness remote`. Require PASS.
+- [ ] Run `repo_sync_check.py` across the full workspace. Every path owned by this ritual must be clean and upstream-current. Dirty state protected by another active coordination claim is reported and left untouched.
+- [ ] Verify intended remote heads independently. Record `REMOTE_READY` in day-end state only when the project gates pass; otherwise record `blocked` with the local recovery state intact.
 
-This is not the same as steps 7-9. Those steps commit specific known changes. This step is the **verification gate** that catches anything those steps missed — files from earlier in the session, changes in repos you forgot about, installed skill copies that were changed without source updates. The gate must pass before the session ends.
+This gate distinguishes incomplete publication from legitimate parallel work. It never sweeps another session, discards local changes, bypasses hooks, or turns a local-only pass into a cross-machine claim.
 
 ---
 
-## Commit Protocol — Apply to Every Ritual Invocation
+## Ritual Persistence Protocol
 
-Every ritual invocation — day-start, mid-day sync, day-end, or observer mode — must commit and push any context, transcript, plan, or reference files it modifies. This is not deferred; it happens at the point of modification.
+Day-start, mid-day sync, and observer mode leave their writes session-attributed and locally recoverable. They do not commit or push merely to preserve same-machine continuity. Day-end and explicit remote-handoff mode publish the batch.
 
-### Scope Rule: Only Commit Repos Touched in This Invocation
+### Local mode
 
-This is a hard rule to prevent unintended commits of unrelated work:
+Track every file this invocation changes. Update project tiers before a natural pause and release or narrow coordination claims. PostToolUse manifests and Stop receipts provide automatic local continuity; an interrupted run remains recoverable from its manifest plus Git status and diff.
 
-1. **Track** which files this invocation created or modified. The agent's own action history is the source of truth — do not infer scope from `git status`, which may include unrelated work in progress.
-2. **Group** those files by their containing repo.
-3. **For each repo touched:** `git add <specific files>` (never `git add -A`, never `git add .`), then commit, then push.
-4. **Never touch** repos where this invocation did not create or modify files, even if they are dirty. That work belongs to another session.
+### Remote mode
 
-**Example:** A daily ritual for Project A updates `projects/project-a/CONTEXT.md` and creates `daily-plans/YYYY-MM-DD.md`. If the user also has uncommitted work in `projects/project-b/` from a different session, the ritual does NOT commit that. Only the files this invocation touched.
+Publish source paths first under each repository branch, review, test, and deployment policy. Then flush exact private-context paths through synthesis-repo-guard. Before each source commit, inspect the full staged index and include only attributed paths. Never use broad staging, never touch another active claim, and never bypass hooks.
 
-### Pre-Commit Hook Failures
+Commit messages follow the global hygiene rule: generic in public and private repositories, with no sensitive names, titles, rationale, or prior values. Git history is not a session transcript.
 
-If a pre-commit hook flags sensitive content:
-- If the destination repo is PRIVATE and the content is intentional (shared reference docs, meeting transcripts, strategic planning copies), use `git commit --no-verify` only after confirming with the user.
-- If the destination repo is PUBLIC, stop. Sanitize the content or exclude the file. Never bypass hooks to push sensitive content to a public repo.
-- If the content is unexpectedly sensitive (credentials, tokens, personal data leaked into a config), investigate before deciding. Do not commit.
-
-### Commit Message Standards
-
-- Reflect the actual changes ("Project week N: context, daily plans, transcripts") not generic filler ("Update files").
-- For private repos, be specific. For public repos, use generic messages that don't reveal restricted names, article titles, or client-specific details.
-- Include `Co-Authored-By` trailer when appropriate.
-
-### Verification Is Separate from Commit
-
-`synthesis-repo-guard` is a **detector** across the workspace — it reports dirty repos. It is NOT a committer. Use it as a final verification gate at session end to catch anything missed, not as the primary commit mechanism.
+Remote publication is complete only when remote-mode context doctor and continuity conformance pass, intended remote heads are verified, and no relevant pending manifest remains.
 
 ---
 

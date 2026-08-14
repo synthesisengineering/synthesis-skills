@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.2"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -26,8 +26,9 @@ Verify five planes:
    trust state. Never infer or write trust state.
 3. **Live:** client-specific receipts created by genuine lifecycle events. A
    static script probe is not live evidence.
-4. **Continuity:** coordination leases, active pointers, pushed project state,
-   and bidirectional handoff exercises.
+4. **Continuity:** coordination leases, active pointers, attributed local
+   working state, explicit remote publication, and bidirectional handoff
+   exercises.
 5. **Capability:** authenticated read-only outcomes and explicitly supported,
    unsupported, or unverifiable product surfaces.
 
@@ -97,12 +98,19 @@ Run:
 ```bash
 python3 scripts/conformance.py handoff --project <project-directory>
 python3 scripts/conformance.py pointer --project <project-directory>
+python3 scripts/conformance.py continuity \
+  --project <project-directory> --readiness local
+python3 scripts/conformance.py continuity \
+  --project <project-directory> --readiness remote
 ```
 
-The check verifies the project structure, current context fields, plan link,
-git repository, and active-project pointer. Then open the project in the other
-client and confirm its SessionStart or PostCompact context names the same phase,
-status, plan, and next action.
+`pointer` verifies a live owner's leased cache. Local continuity verifies that
+Claude and Codex reconstruct identical project state with no pointer, accepts a
+current Stop receipt as `LOCAL_READY`, and accepts an attributed manifest as
+`LOCAL_RECOVERABLE` after interruption. Remote continuity additionally requires
+no pending manifest and a clean upstream-current project record. Then open the
+project in the other client and confirm its SessionStart or first named-project
+turn recovers the same state.
 
 ### 5. Close the loop
 
@@ -126,6 +134,11 @@ behavior-producing implementation. The script:
 
 - verifies the local clock;
 - reads the active-project pointer;
+- discovers a stopped project directly when the task directory is inside its
+  durable project tree;
+- when neither route identifies a project, instructs the receiving agent to
+  resolve the user's named project through the git-tracked registry and run
+  the Session Start Protocol automatically;
 - verifies that the project still exists;
 - extracts the current phase, status, plan, and next actions from durable files;
 - emits a compact context anchor;
@@ -140,6 +153,12 @@ Codex hook trust is a separate human-controlled check within installed state:
 `hook-trust` queries
 Codex app-server's read-only `hooks/list` API for the current normalized hash,
 source owner, and trust reason, and never edits `hooks.state`.
+
+The active pointer is deliberately not synchronized as one global current
+project. Parallel root sessions may work on different projects. Same-machine
+cross-client continuity consumes project files plus attributed working-tree
+state. Cross-computer continuity requires the explicit `REMOTE_READY`
+transition and a fast-forwarded destination checkout.
 
 ## Skill catalog contract
 

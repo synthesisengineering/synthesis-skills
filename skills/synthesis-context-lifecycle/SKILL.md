@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.5.0"
+  version: "1.7.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -314,6 +314,35 @@ python3 <skill-root>/scripts/conformance.py activate \
 The pointer accelerates SessionStart and PostCompact recovery. It is a cache;
 the project files and git history remain authoritative.
 
+### Seamless client and computer switching
+
+Rajiv never has to run this protocol or save state manually. The working agent
+owns the checkpoint before it yields. A normal stopped-task transition is:
+
+1. the agent updates `CONTEXT.md`, stable `REFERENCE.md` facts, the current
+   session log, and the controlling plan as the work changes;
+2. the client adapter records the exact context paths changed by that session;
+3. Stop hashes the attributed files into a local receipt without committing or
+   using the network; an interruption before Stop leaves the manifest plus Git
+   working-tree state as `LOCAL_RECOVERABLE` evidence;
+4. an explicit remote handoff or day-end publishes source work under repository
+   policy and batches exact private-context paths before the destination
+   computer fast-forwards; and
+5. when Rajiv names the project, the receiving client resolves it through the
+   git-tracked `projects/index.yaml` and runs this Session Start Protocol
+   automatically.
+
+A valid live pointer accelerates the same-client case. Its absence after claim
+release is normal and must not block recovery from the durable record. A single
+global durable "current project" marker is prohibited because independent
+Claude Code and Codex tasks may own different projects simultaneously.
+
+The guarantee has explicit boundaries: do not switch while a task is still
+running; an offline origin can preserve a local checkpoint but cannot make it
+available on another computer; divergence, a behind checkout, missing
+authentication, and overlapping claims must surface visibly instead of being
+called seamless.
+
 **Why this order matters.** Steps 1 and 2 establish ground truth from external sources (OS clock, git). Step 3 reads the cache. Step 4 reads the most recent narrative. The order means by the time you act, you have verified facts AND the project's own framing — and you have noticed any discrepancy between them.
 
 **Visible to the user.** Show the verification step in your first response of the session. Example:
@@ -349,7 +378,7 @@ Long conversations cause context drift. The mid-session refresh protocol re-sync
 3. Re-read CONTEXT.md from disk
 4. Re-read the latest sessions/YYYY-MM.md entry
 5. Reconcile: where does in-context memory disagree with disk/git? Report the discrepancy in the next response.
-6. If CONTEXT.md is stale, update it. Commit and push the correction separately.
+6. If CONTEXT.md is stale, update it and preserve session-attributed local evidence. Publish it during explicit remote handoff or day-end.
 
 **Compaction detection signals.** Context-window compaction (the harness summarizing older turns) is opaque — you cannot reliably detect when it happened. Treat these as red flags suggesting compaction may have occurred:
 
@@ -396,11 +425,11 @@ Archive when ANY of these conditions are true:
    - CONTEXT.md ≤150 lines
    - No information lost (everything archived before removal)
    - Cross-references updated (CONTEXT.md points to REFERENCE.md and sessions/)
-8. **Commit AND push** with message: "Maintain context: archive sessions, extract reference facts". Stage only the files this invocation modified — do not `git add -A`. See the Commit Protocol section below for the full rule.
+8. **Record local readiness.** The client edit hook attributes the changed files automatically. Commit and push during an explicit remote handoff or day-end, scoped to the exact files and repository policy.
 
 **CRITICAL: Archive FIRST, then delete. NEVER delete content from CONTEXT.md before confirming it exists in sessions/ or REFERENCE.md. Two-phase commit: write to destination, verify, then remove from source.**
 
-**ALSO CRITICAL: Commit-and-push is part of this protocol, not an afterthought.** Every non-trivial context modification (archival or otherwise) must be committed and pushed in the same invocation. See the Commit Protocol section for scoping rules.
+**ALSO CRITICAL: local continuity and remote readiness are different states.** Do not create a network commit after every context edit. Keep the local tiers current, and publish them through explicit remote handoff or day-end.
 
 ### Decision Tree: Where Does This Content Belong?
 
@@ -514,7 +543,8 @@ python3 <skill>/scripts/context_doctor.py            # all sources from console.
 python3 <skill>/scripts/context_doctor.py --source ~/kb   # explicit source roots
 python3 <skill>/scripts/context_doctor.py --project ~/kb/projects/alpha
 python3 <skill>/scripts/context_doctor.py --json     # for consoles and rituals
-python3 <skill>/scripts/context_doctor.py --quiet    # exit code + one line
+python3 <skill>/scripts/context_doctor.py --quiet --readiness local
+python3 <skill>/scripts/context_doctor.py --project ~/kb/projects/alpha --readiness remote
 ```
 
 What it checks:
@@ -525,7 +555,7 @@ What it checks:
 | Budgets | CONTEXT.md ≤150 active / ≤80 completed; REFERENCE.md ≤300 (warning) |
 | Cross-tier agreement | index.yaml status agrees with the CONTEXT.md header; completed projects carry `completed_date`; indexed projects have directories and vice versa |
 | Freshness | index.yaml `last_session` and the CONTEXT.md header agree with real git history |
-| Durability | no uncommitted project files; tier files actually **tracked** by git, not merely clean; a remote and upstream exist and the branch is pushed |
+| Durability | tier files are tracked by git; local mode reports recoverable uncommitted or ahead state as warnings; remote mode requires a clean upstream-current branch |
 | Disclosure | anything unverifiable is reported rather than skipped — unreadable status headers and freshness that cannot be established both surface as findings |
 
 Exit codes follow the guard contract: `0` healthy, `1` defects found, `2` the doctor could not establish ground truth. The third is the important one — an unreadable source or a source outside git exits 2 rather than reporting health, because a check that cannot run must never look like a check that passed.
@@ -536,9 +566,9 @@ Exit codes follow the guard contract: `0` healthy, `1` defects found, `2` the do
 
 **The report cache.** Every full-corpus run writes its JSON report to `$SYNTHESIS_HOME/context-doctor/last-report.json` (v1.2.0+), so fast surfaces — SessionStart hooks, console pages — can show the latest corpus state without paying for a fresh audit. Single-project runs never touch the cache: a one-project result must not masquerade as corpus state. Suppress with `--no-report-cache`.
 
-**Enforcement posture (decided 2026-08-03).** Fail-closed for the actor, report-only for the bystander. At day-end (and any session close-out), `context_doctor.py --project <path>` must be CLEAN for every project the session worked — defects block the close and get fixed on the spot, because the session that made the record defective can repair it in minutes. Corpus-wide findings stay report-only at day-start and SessionStart: gating one session on another project's legacy debt manufactures false alarms, and false alarms train bypass. An unfixed active-project defect is not silently droppable — it re-surfaces at every subsequent SessionStart until repaired.
+**Enforcement posture.** Day-start and ordinary same-machine handoffs use `--readiness local`: structural defects still fail, while attributed uncommitted or ahead state is visible as a warning. Explicit cross-machine handoff and day-end use `--readiness remote` for every project worked and fail closed until its context is committed, pushed, and upstream-current. Corpus-wide findings remain report-only.
 
-**Where it runs.** A doctor nobody runs is the same as no doctor. It is wired into: day-start Step 1 (full corpus, report-only, refreshes the cache), day-end Step 7 (per-worked-project, fail-closed), SessionStart surfacing (active project live + corpus from cache), and the synthesis console's Context Integrity page. The `--json` output is stable for those consumers.
+**Where it runs.** Day-start refreshes the corpus cache in local mode. Day-end and explicit remote handoff run per-project remote mode. SessionStart and Synthesis Console surface the cached result. The JSON output includes its readiness mode so a local pass cannot masquerade as remote readiness.
 
 ---
 
@@ -565,31 +595,56 @@ Stage 3 is the 80/20 solution that makes long-running AI-assisted projects susta
 
 ---
 
-## Commit Protocol — Not Optional
+## Local Continuity and Remote Readiness Protocol
 
-Context files are only useful if they reach the remote repository. Every invocation that creates or modifies context files (CONTEXT.md, REFERENCE.md, session archives, daily plans, transcripts) must commit and push those changes before the invocation ends.
+Context is maintained continuously, but it is not published after every
+prompt or response. The system exposes two honest states:
 
-This is not deferred to "end of day" or "end of session." Treat it as part of the same action: if you wrote to a context file, you also commit and push it. Interactive sessions span multiple turns and may not have a clean "end" — so the commit must happen at the point of modification, not at some later checkpoint that may never arrive.
+- **LOCAL_READY:** project tiers and working-tree edits are available on the
+  shared local filesystem. PostToolUse records every repository edit in a
+  client-session manifest; Stop adds an atomic content receipt. Claude Code
+  and Codex can switch on the same machine without a commit or network call.
+- **LOCAL_RECOVERABLE:** an interrupted task left its edit manifest but never
+  reached Stop. The receiving client reads project files, Git status and diff,
+  the controlling plan, and the manifest before continuing.
+- **REMOTE_READY:** source repositories are clean and upstream-current;
+  private project context has been committed and pushed in exact-path batches;
+  pending manifests are retired; remote-mode context doctor and conformance
+  pass.
 
-### Scope Rule: Only Commit Repos Touched in This Invocation
+### Automatic same-machine handoff
 
-Never run workspace-wide commit or push operations. Only commit repos where this specific invocation created or modified files. If the user has other uncommitted work in unrelated repos (personal projects, other workspaces, unrelated branches), leave those alone — they belong to other sessions.
+Before a natural pause, the agent updates CONTEXT.md, REFERENCE.md, the
+current session log, plan artifacts, and index.yaml as the work requires. It
+releases or narrows coordination claims. The hooks record local evidence.
+Rajiv does not run a lifecycle command, save state manually, or wait for a
+network commit before opening the project in the other client.
 
-The pattern:
-1. Track which files THIS invocation modified (the agent's own action history is the source of truth).
-2. Group those files by containing repo.
-3. For each containing repo: `git add` ONLY those specific files (never `git add -A` or `git add .`), commit, push.
-4. Never touch repos where you did not create or modify files in this invocation.
+A new client resolves the named project from projects/index.yaml, reads the
+durable tiers and linked plan, then treats Git status and diff as newer truth
+than cached prose. If a task was interrupted, it reconstructs the incomplete
+work from the attributed manifest and working tree rather than discarding it.
 
-### Why Point-of-Modification, Not Session-End
+### Explicit cross-machine handoff
 
-Context that exists only on one machine is invisible to the next session on a different machine. The entire point of structured context is cross-session continuity — uncommitted context breaks that guarantee.
+Before changing computers, invoke synthesis-mac-sync in remote-handoff mode.
+That workflow checks coordination, refreshes project tiers, publishes source
+repositories under their own branch and review policies, flushes exact private
+context paths, runs the doctor and conformance in remote mode, and verifies
+upstream equality. Day-end performs the same transition automatically.
 
-Deferring commits to session-end has three failure modes:
-1. **Session never ends cleanly.** Long-running conversations resume across days; a "session-end" hook may never fire.
-2. **Modified ritual modes skip the day-end checklist.** Mid-day syncs, vacation/observer catch-ups, and partial rituals update context without running the full day-end sequence. If commit is only in day-end, these updates never ship.
-3. **Multiple invocations compound uncommitted work.** By the time someone notices, there's a week of context changes stranded on one machine.
+On the destination computer, synchronize repositories first, verify no
+divergence or overlapping lease, then resume through the normal Session Start
+Protocol. Offline, behind, diverged, or policy-blocked state is not
+REMOTE_READY and must be reported explicitly.
 
-### Verification
+### Scope and index safety
 
-Use `synthesis-repo-guard` as a detector across the workspace (reports dirty repos) but NEVER as a committer. The commit step must be explicit and per-repo-scoped to this invocation's actual changes. See `synthesis-repo-guard` for session-end hook integration — that hook should alert and surface dirty repos, not blanket-commit them.
+Never run a workspace-wide commit over dirty files. Remote publication uses
+only session-attributed context paths. Source repos follow their own branch,
+review, and deployment policies. Before every commit, inspect status and the
+staged index; do not include another session's paths. Never bypass hooks.
+
+Use synthesis-repo-guard for local receipts and pending publication;
+synthesis-agent-conformance `continuity --readiness local|remote` for the two
+gates; and context_doctor with the matching readiness mode.

@@ -1,11 +1,11 @@
 ---
 name: synthesis-repo-guard
-description: "Workspace git-sync guard: detects uncommitted/unpushed repos, reports through confidentiality-safe channels (generic audio/banner + detailed report files + synthesis-console tile), and auto-heals private context repos at workflow events via checkpoint_sync.py. Works with any AI coding tool (Claude Code, Codex, Cursor, etc.) or standalone. Use when asked to: repo guard, check repos, session end check, sync check, repo status, workspace status, checkpoint sync, auto-commit context repos."
+description: "Workspace git-sync guard: detects unsynced repos, records session-attributed local handoff receipts, and batches private project-context commits for explicit remote handoff or day-end. Reports through confidentiality-safe channels."
 license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -14,7 +14,7 @@ metadata:
 
 ## The Problem
 
-AI coding assistants and project-management tooling create and modify files continuously. When a session ends — completion, timeout, closed window — uncommitted or unpushed changes are stranded on that machine, breaking the multi-machine sync chain. Tools that write files *outside* agent sessions (a project console writing status markers, manual edits) never commit at all.
+AI coding assistants and project-management tooling create and modify files continuously. A stopped task needs lightweight same-machine recovery immediately, while another computer needs a deliberate publication boundary. Treating both cases as an automatic commit creates noisy history and network latency; treating neither creates invisible local-only state. Tools that write files *outside* agent sessions (a project console writing status markers, manual edits) need the same attribution contract.
 
 v1 of this skill detected stranded state and alerted with a count ("N repositories have unsynced changes"). Two failures emerged in practice:
 
@@ -27,9 +27,11 @@ v1 of this skill detected stranded state and alerted with a count ("N repositori
 |-------|-----------|-----|
 | Detector | `repo_sync_check.py` (scan) | Find dirty / ahead / behind / detached repos under a workspace root |
 | Messenger | `repo_sync_check.py` (output) | Generic audio/banner ping + detailed report files + console tile data |
-| Remediator | `checkpoint_sync.py` | Auto-commit + push the configured private context-repo class at workflow events |
+| Checkpointer | `checkpoint_sync.py` | Record local handoffs; batch exact context paths at explicit remote-sync events |
 
-End state: routine changes are checkpointed silently, an always-on synthesis-console tile shows ambient status, and audible/banner alerts fire only for states automation cannot heal (blocked pre-commit hook, divergence, out-of-class dirt, stale lock) — rare, and always actionable.
+End state: same-computer client switching is filesystem-local and fast.
+Cross-computer publication is batched and explicit. The synthesis-console shows
+ambient status, and alerts remain rare and actionable.
 
 ## Confidentiality rule for alert surfaces (ABSOLUTE)
 
@@ -45,36 +47,53 @@ End state: routine changes are checkpointed silently, an always-on synthesis-con
 
 `repo_sync_check.py` **detects and never modifies** — correct scope: every repo in the workspace.
 
-Commits happen in exactly two sanctioned ways:
+There are two separate readiness transitions:
 
-1. **Per-invocation agent commits** (unchanged rule): an agent commits only the files IT modified in the current invocation — never workspace-wide, never other sessions' work. See `synthesis-daily-rituals` "Commit Protocol".
-2. **`checkpoint_sync.py`** — the deliberate, narrowly-scoped exception: it auto-commits repos in the configured **auto-sync class only** (private, single-writer context repos whose history is an operational log), protected by a runtime guard (below). Source-code repos and shared/public repos are structurally out of reach.
+1. **Local handoff:** PostToolUse records structured edits by one client session; paired shell snapshots add net-new formatter, generator, and bulk-rewrite output without claiming unchanged pre-existing dirty paths. Stop writes an atomic receipt with branch, HEAD, file state, and content hashes. It performs no Git commit and no network call. If the client is interrupted before Stop, the pending manifest makes the work LOCAL_RECOVERABLE on the same filesystem.
+2. **Remote handoff:** the flush-pending command batches only private project-context paths into exact-path commits. Source paths remain owned by their repository workflow and must already be clean and equal to their upstream before manifests retire.
 
-## The remediator: event-driven, never scheduled
+## The checkpointer: local by default, remote by explicit event
 
-`checkpoint_sync.py` runs ONLY at workflow events — moments when the user is demonstrably present and the machine awake:
+`checkpoint_sync.py` runs at workflow events:
 
-- **AI-tool turn/session end** (throttled via stamp file, default 10 min): catches agent sessions — and manual edits too, since sessions are usually live.
-- **After a console cockpit write:** the console calls `checkpoint_sync.py --repo <written-file> --now`, so producers own their commits through the one shared mechanism.
-- **Rituals / mac-sync:** the existing day-boundary sweeps.
+- **AI-tool Stop:** writes a local receipt for that client session. A Stop
+  with no attributed repository changes is a cheap no-op.
+- **After a console cockpit write:** `--repo <written-file> --now` records
+  a local producer manifest and receipt.
+- **Day-end / mac-sync:** `--flush-pending` publishes exact private-context
+  paths after the owning workflows publish any source paths.
 
-**Deliberately NOT a launchd/cron job.** Wall-clock daemons run detached from presence: they race the same repos across machines and create close-the-lid anxiety. Event-driven runs execute on the origin machine seconds after the change — which also shrinks multi-machine divergence windows, because work is pushed before you switch machines. (Read-only polling — the console tile refreshing — is exempt: interrupting a read is harmless.)
+**Deliberately not a launchd or cron job.** Wall-clock mutation can race
+repositories across machines. Local receipts follow edit events; remote
+mutation occurs only when the user invokes cross-machine sync or as part of
+day-end. Read-only console polling remains safe.
 
 ### The auto-sync class + runtime guard
 
-Config `~/.synthesis/checkpoint-sync.yaml` (copy `checkpoint-sync.example.yaml`) lists the class by explicit path and glob. Membership criteria: private, single-writer knowledge/context repos (personal ai-knowledge repos, `*-<person>-private` workspace repos, daily plans). Never source-code repos, never shared/public repos.
+Config `~/.synthesis/checkpoint-sync.yaml` (copy `checkpoint-sync.example.yaml`) lists the class by explicit path and glob. Membership criteria: private knowledge/context repos (personal ai-knowledge repos, `*-<person>-private` workspace repos, daily plans). A configured checkout's isolated git worktrees inherit membership through their shared git-common-dir identity. Never source-code repos, never shared/public repos.
 
 **The runtime remote guard is independent of config:** a repo is touched only if EVERY push remote starts with an allowed prefix (your private GitHub namespace). A glob that accidentally matches a repo with a client/org remote is excluded at run time, every time — config declares intent; the guard verifies reality. Empty `allowed_remote_prefixes` fails closed.
 
 ### Safety properties
 
-- Ordering: `add -A` → `commit` → `fetch` → push **only if fast-forward**.
-- Distinct commit author (e.g. "Synthesis Checkpoint") — automated checkpoints are always distinguishable from curated commits.
-- Divergence → the commit stays local (durable, resolvable) + alert. Never rebase, never force-push.
-- Pre-commit hooks run normally; a rejection aborts that repo with an alert. **Never `--no-verify`.**
-- Quiescence: skip repos with files modified in the last N minutes (default 15) — no mid-thought commits. `--now` bypasses this for producer writes that are known-complete.
-- Stale `index.lock` (>10 min): reported, never deleted.
-- Interruption-safe by construction: runs at interactive moments; an interrupted git op doesn't corrupt a repo (killed pushes are retryable; sleep suspends rather than kills).
+- Stop never commits, pushes, fetches, stages, or changes branches.
+- Shell attribution compares pre/post Git state and fails closed when its
+  pre-tool snapshot is absent, unsafe, or belongs to another session.
+- Remote publication orders exact-path context commit, fetch, then
+  fast-forward push. Existing staged or dirty files outside the manifest
+  remain untouched.
+- A distinct commit author identifies batched remote-context commits.
+- Divergence leaves the exact commit and manifest local and reports the
+  block. Never rebase or force-push.
+- Pre-commit hooks run normally. Never bypass them.
+- Source paths and remotely publishable context paths are distinct fields
+  in each client-session manifest.
+- A first commit on a feature branch publishes that exact branch with an
+  upstream.
+- Active and stale Git index locks are reported and never deleted.
+- A successful edit leaves a manifest even if Stop never runs. Remote
+  publication retains manifests until source and context paths are verified
+  upstream-current.
 
 ---
 
@@ -90,21 +109,24 @@ Config `~/.synthesis/checkpoint-sync.yaml` (copy `checkpoint-sync.example.yaml`)
 # Generic attention ping if dirty (mute-aware)
 ./repo_sync_check.py --speak --notify --dirty-only
 
-# What would the checkpoint do right now?
+# Preview pending remote publication
 ./checkpoint_sync.py --dry-run
 
-# Throttled sweep (what the turn-end hook runs)
+# Record a same-machine Stop receipt
 ./checkpoint_sync.py --hook --quiet --notify
 
-# Producer mode: checkpoint the repo containing a just-written file
+# Record a just-written producer file locally
 ./checkpoint_sync.py --repo ~/workspaces/example/daily-plans/today.md --now
+
+# Publish pending project context after source repos are upstream-current
+./checkpoint_sync.py --flush-pending
 ```
 
 ### Exit codes (both scripts)
 
 | Code | repo_sync_check.py | checkpoint_sync.py |
 |------|--------------------|--------------------|
-| 0 | all clean & synced | nothing needed / all healed |
+| 0 | all clean & synced | requested readiness reached |
 | 1 | repos need attention | alerts raised (detail in state file) |
 | 2 | error | error |
 
@@ -124,7 +146,8 @@ Config `~/.synthesis/checkpoint-sync.yaml` (copy `checkpoint-sync.example.yaml`)
 
 ### Claude Code (`~/.claude/settings.json`)
 
-Turn-end remediation (throttled — cheap no-op most turns) plus optional session-end verification:
+Turn-end remediation of the current session's attributed context paths plus
+optional session-end verification:
 
 ```json
 {
@@ -151,7 +174,9 @@ Turn-end remediation (throttled — cheap no-op most turns) plus optional sessio
   "timeout": 120 } ] } ] } }
 ```
 
-The throttle stamp is shared across tools — multiple agents coexist without duplicate runs.
+Each client session has its own hashed pending manifest under
+`~/.synthesis/repo-guard/pending/`. Multiple agents can therefore coexist
+without one hook committing, publishing, or overwriting another session's files.
 
 ### Cursor (`.cursor/settings.json`)
 
@@ -163,8 +188,8 @@ The throttle stamp is shared across tools — multiple agents coexist without du
 
 - **Always-on sync tile:** polls `repo_sync_check.py --json --quiet` (read-only; lid-safe) and renders `checkpoint-state.json` outcomes.
 - **Quiet-audio toggle button:** creates/removes `~/.synthesis/quiet-audio`.
-- **"Sync now" button:** `checkpoint_sync.py --no-throttle` (throttle bypassed; quiescence still honored).
-- **Producer commits:** after writing a plan marker, the console fires `checkpoint_sync.py --repo <file> --now`.
+- **"Sync now" button:** `checkpoint_sync.py --no-throttle`, an explicit remote-context handoff alias.
+- **Producer receipts:** after writing a plan marker, the console records local state with `--repo <file> --now`.
 
 ### Scheduled execution — read-only only
 
@@ -174,8 +199,8 @@ If a tool supports no hooks at all, a scheduled **detector** run (`repo_sync_che
 
 ## Relationship to Other Skills
 
-- **synthesis-mac-sync** — the full multi-machine sync operation (config files, credentials, all repos, with user approval). Repo-guard keeps context repos continuously clean so mac-sync's day-boundary sweep mostly finds nothing; run mac-sync when the report shows out-of-class problems or when switching machines.
-- **synthesis-context-lifecycle / synthesis-daily-rituals** — those skills commit their own changes at the point of modification (the primary mechanism). checkpoint_sync is the safety net beneath them; `repo_sync_check.py` is the final verification gate at day-end.
+- **synthesis-mac-sync** — the full multi-machine sync operation (config files, credentials, all repos, with user approval). Repo-guard keeps same-machine work recoverable; mac-sync owns the explicit cross-machine publication transition.
+- **synthesis-context-lifecycle / synthesis-daily-rituals** — those skills keep local project state current during work and publish it through remote handoff or day-end. `repo_sync_check.py` is the final day-end verification gate.
 
 ---
 
@@ -187,13 +212,16 @@ repo_sync_check.py [--workspace W] [--max-depth N] [--quiet] [--json]
                    [--report-dir D] [--no-report]
 
 checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
-                   [--no-throttle] [--dry-run] [--quiet] [--json]
+                   [--flush-pending] [--no-throttle] [--dry-run]
+                   [--quiet] [--json]
                    [--speak] [--notify]
 ```
 
 - `--speak/--notify/--alert` are generic + mute-aware on both scripts.
-- `checkpoint_sync --repo` accepts any path inside a repo (resolved via `git rev-parse --show-toplevel`).
-- `--hook` honors the shared throttle; `--now` bypasses throttle + quiescence (producer mode); `--no-throttle` bypasses throttle only (manual button).
+- `checkpoint_sync --repo` records one configured producer path locally; it does not commit or use the network.
+- `--hook` consumes the calling session's JSON hook payload and never falls
+  back to a workspace-wide mutation. `--flush-pending` is the explicit
+  remote-context transition; `--no-throttle` is its console compatibility alias.
 
 ---
 
@@ -201,13 +229,14 @@ checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
 
 1. **Zero AI and zero external dependencies** — Python stdlib + git CLI (PyYAML used if present, minimal built-in parser otherwise)
 2. **LLM-agnostic** — same scripts for Claude Code, Codex, Cursor, console, or manual use
-3. **Detector never modifies; remediator modifies only the guarded auto-sync class**
+3. **Detector never modifies; Stop is local-only; remote publication modifies only exact guarded context paths**
 4. **Identifying names (repo, workspace, client) never on audio/banner surfaces** — counts and pointers only
-5. **Mutation is event-driven; only reads may poll**
+5. **Remote mutation is explicit or day-end; only reads may poll**
 6. **Fail closed, never force** — empty guard config disables; divergence/hook-failures stop and alert
 7. **Composable** — exit codes, JSON output, shared state files
 
 ## Changelog
 
+- **2.1.0 (2026-08-14):** separates LOCAL_READY and REMOTE_READY. Stop records atomic client-session receipts without Git or network mutation; interruption leaves a recoverable manifest; explicit remote handoff batches exact private-context paths only after source paths are upstream-current. Adds worktree identity, first-branch publication, generic commit messages, staged-index isolation, and integration fixtures.
 - **2.0.0 (2026-07-08):** three-layer redesign. Generic-only audio/banner (confidentiality rule), `~/.synthesis/quiet-audio` mute flag, report files + history, remediation hints, new `checkpoint_sync.py` (event-driven auto-commit/push: runtime remote guard, quiescence, shared throttle, ff-only push, distinct author, stale-lock detection), synthesis-console integration contract, scheduled-mutation explicitly disallowed. Origin: 2026-07-08 design review (lesson: alert-channel confidentiality + event-driven checkpoints).
 - **1.1.0:** detector + count-only audio alerts.

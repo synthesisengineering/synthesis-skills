@@ -14,7 +14,7 @@ a pass.
 | Source | Is the canonical implementation internally valid? | manifests, schemas, unit tests, license and metadata checks |
 | Installed | Did the intended version reach this client? | native plugin listing, immutable cache version, source-to-install hashes |
 | Live | Did the client execute the behavior in a real session? | fresh client-specific hook receipt, actual skill registry response |
-| Continuity | Can another session recover the work safely? | durable project files, active pointer, lease ownership, pushed commits |
+| Continuity | Can another session recover the work safely? | local edit manifests and receipts, durable project files, active pointer, lease ownership, remote publication receipts |
 | Capability | Can the runtime perform the authenticated operation? | read-only connector handshake with timestamp and explicit status |
 
 Statuses are `PASS`, `FAIL`, `UNKNOWN`, or `UNSUPPORTED`. `UNKNOWN` means the
@@ -62,7 +62,7 @@ Reference contracts:
 
 ## Durable project continuity
 
-A runtime integration reads and writes the same committed project structure:
+A runtime integration reads and writes the same filesystem-backed project structure:
 
 ```text
 projects/<slug>/
@@ -80,6 +80,16 @@ Two sessions may work at once when they use different worktrees and
 non-overlapping source claims. The coordination board is an advisory interface
 backed by an atomic remote lease, not an invitation to edit the Markdown file
 directly.
+
+Continuity has two independently reported states. `LOCAL_READY` means the
+project record and attributed working-tree edits are recoverable by another
+client on the same filesystem; Stop must not commit or use the network.
+`LOCAL_RECOVERABLE` means a successful edit manifest survived an interrupted
+task even though no Stop receipt exists. `REMOTE_READY` additionally requires
+source repositories and exact-path project-context commits to be clean and
+equal to fetched upstreams, with no pending manifests. Day-end and explicit
+remote-handoff sync create that state; a local pass may never be presented as a
+cross-machine pass.
 
 ## Capability probes
 

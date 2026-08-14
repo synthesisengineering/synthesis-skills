@@ -5,14 +5,14 @@ license: "CC0-1.0"
 depends_on: ["synthesis-daily-rituals", "synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "0.2.1"
+  version: "0.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Catch-up Ledger
 
-**Version 0.2.1** (2026-07-09)
+**Version 0.3.0** (2026-08-14)
 
 > **Consumer note (v0.2.0):** synthesis-console v0.14+ renders ledgers live at
 > `/ledger` — it classifies H2 sections by the heading keywords used in this
@@ -127,9 +127,9 @@ Location: `{action_plan_repo}/catchup-ledgers/YYYY-MM-DD.md` (sibling convention
 - EXPIRED lessons that generalize beyond the period get promoted to the lessons directory; period-specific ones stay in the ledger.
 - Update the ratchet marker so the next sweep is incremental.
 
-### Step 6 — Commit
+### Step 6 — Record readiness
 
-Commit and push the ledger (and any annotated sources) in the same invocation, per the standard commit protocol: stage only files this invocation touched, never `git add -A`.
+Leave the ledger and annotated sources session-attributed and locally receipted. Publish their exact paths during explicit remote handoff or day-end under the repository policy; never use broad staging.
 
 ## Tone requirements for the ledger
 

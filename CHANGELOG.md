@@ -4,6 +4,29 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.25.0] - 2026-08-14
+
+### Added
+
+- **Two-state project continuity** — local-ready and local-recoverable evidence
+  support same-machine Claude Code and Codex switching without per-turn Git or
+  network activity; remote-ready provides the explicit cross-machine gate.
+- **Continuity conformance** — local and remote readiness checks verify edit
+  attribution, Stop receipts, repository state, and upstream equality.
+
+### Changed
+
+- **Project lifecycle** — SessionStart resolves named projects from the tracked
+  registry when no leased pointer exists; Stop records local content receipts;
+  explicit remote handoff and day-end publish the attributed batch.
+- **Context doctor** — local mode keeps structural defects fail-closed while
+  reporting recoverable Git state as warnings; remote mode remains strict.
+
+### Fixed
+
+- **Interrupted-task recovery** — a PostToolUse manifest remains sufficient
+  evidence to reconstruct unfinished work when a task never reaches Stop.
+
 ## [4.24.2] - 2026-08-14
 
 ### Fixed

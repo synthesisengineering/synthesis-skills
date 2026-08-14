@@ -24,8 +24,9 @@ v2 (three-layer redesign: detector / messenger / remediator):
     detail belongs only in pull channels (report files, synthesis-console).
   - MUTE FLAG: --speak/--alert/--notify honor ~/.synthesis/quiet-audio
     (created/removed by the synthesis-console toggle; or `touch` it manually).
-  - REMEDIATOR: companion script checkpoint_sync.py auto-commits+pushes the
-    configured private context-repo class at workflow events. See SKILL.md.
+  - CHECKPOINTER: companion script checkpoint_sync.py records local handoff
+    receipts at Stop and publishes exact private-context paths only during an
+    explicit remote handoff or day-end. See SKILL.md.
 
 Exit codes:
   0 — All repos clean and synced

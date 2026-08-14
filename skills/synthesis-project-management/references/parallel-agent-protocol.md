@@ -23,9 +23,10 @@ machine:
    directory creates a worktree of the wrong repository).
 4. **Work.** Heartbeat at checkpoints; keep the plan file current at phase
    boundaries — it is the artifact that survives a crash (see "Digests").
-5. **Close.** Commit and push durable state, message affected sessions,
-   release the claim, and retire merged worktrees with
-   `retire_worktree.py`, never by hand.
+5. **Close.** Update durable project tiers, create the local handoff receipt,
+   message affected sessions, release the claim, and retire merged worktrees
+   with `retire_worktree.py`, never by hand. Publish the attributed batch
+   only for explicit remote handoff or day-end.
 
 ## Digests — what survives a crash
 
@@ -49,7 +50,7 @@ Different projects may run at the same time. Each session:
 3. uses an isolated worktree when another live session touches the same
    repository;
 4. heartbeats at checkpoints; and
-5. commits project state and releases its claims before pausing.
+5. updates project state, leaves attributed local evidence, and releases its claims before pausing; remote publication belongs to explicit handoff or day-end.
 
 Claims remain resource-based. Two different synthesis projects can still
 conflict when they edit the same repository or home configuration, so project
