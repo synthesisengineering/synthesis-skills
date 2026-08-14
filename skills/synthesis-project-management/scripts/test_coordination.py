@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import threading
 from pathlib import Path
 
 
@@ -75,6 +76,123 @@ def test_claim_conflict_message_heartbeat_and_release(tmp_path: Path) -> None:
     table = MODULE.rows(board.read_text(encoding="utf-8"))
     assert next(row for row in table if row.id == "A").status == "released"
     assert next(row for row in table if row.id == "B").status == "active"
+
+
+def test_release_leaves_pointer_without_matching_board_lease(tmp_path: Path) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    claim = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="repo/**",
+    )
+    assert MODULE.command_claim(claim) == 0
+    pointer = tmp_path / "active-project.json"
+    pointer.write_text(
+        json.dumps(
+            {
+                "owner_session": "A",
+                "owner_lease": "https://example.test/other.git",
+                "project": "/tmp/project-a",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert MODULE.command_release(
+        args(board, id="A", active_project_file=pointer)
+    ) == 0
+
+    assert pointer.exists()
+    assert not (tmp_path / "active-project-history").exists()
+
+
+def test_matching_session_and_lease_recoverably_archive_pointer(tmp_path: Path) -> None:
+    pointer = tmp_path / "active-project.json"
+    lease = "https://example.test/coordination.git"
+    pointer.write_text(
+        json.dumps(
+            {
+                "owner_session": "A",
+                "owner_lease": lease,
+                "project": "/tmp/project-a",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    archived = MODULE.archive_owned_pointer(pointer, "A", lease)
+
+    assert archived is not None and archived.is_file()
+    assert not pointer.exists()
+    assert json.loads(archived.read_text(encoding="utf-8"))["project"] == "/tmp/project-a"
+
+
+def test_archive_filename_is_safe_for_separator_bearing_session_id(tmp_path: Path) -> None:
+    pointer = tmp_path / "active-project.json"
+    lease = "https://example.test/coordination.git"
+    session_id = "agent/../../other|session"
+    pointer.write_text(
+        json.dumps({"owner_session": session_id, "owner_lease": lease}),
+        encoding="utf-8",
+    )
+
+    archived = MODULE.archive_owned_pointer(pointer, session_id, lease)
+
+    assert archived is not None and archived.is_file()
+    assert archived.parent == tmp_path / "active-project-history"
+    assert "/" not in archived.name
+    assert "|" not in archived.name
+
+
+def test_release_refuses_symlinked_active_pointer_archive(tmp_path: Path) -> None:
+    pointer = tmp_path / "active-project.json"
+    lease = "https://example.test/coordination.git"
+    pointer.write_text(
+        json.dumps({"owner_session": "A", "owner_lease": lease}),
+        encoding="utf-8",
+    )
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (tmp_path / "active-project-history").symlink_to(outside, target_is_directory=True)
+
+    try:
+        MODULE.archive_owned_pointer(pointer, "A", lease)
+    except ValueError as exc:
+        assert "archive must not be a symlink" in str(exc)
+    else:
+        raise AssertionError("symlinked archive root was accepted")
+    assert pointer.is_file()
+
+
+def test_release_rechecks_owner_after_waiting_for_pointer_writer(tmp_path: Path) -> None:
+    pointer = tmp_path / "active-project.json"
+    lease = "https://example.test/coordination.git"
+    pointer.write_text(
+        json.dumps({"owner_session": "A", "owner_lease": lease}),
+        encoding="utf-8",
+    )
+    result: list[Path | None] = []
+    done = threading.Event()
+
+    def release_a() -> None:
+        result.append(MODULE.archive_owned_pointer(pointer, "A", lease))
+        done.set()
+
+    with MODULE.locked_pointer(pointer):
+        thread = threading.Thread(target=release_a)
+        thread.start()
+        assert not done.wait(0.1)
+        pointer.write_text(
+            json.dumps({"owner_session": "B", "owner_lease": lease}),
+            encoding="utf-8",
+        )
+
+    thread.join(timeout=2)
+    assert done.is_set()
+    assert result == [None]
+    assert json.loads(pointer.read_text(encoding="utf-8"))["owner_session"] == "B"
 
 
 def test_different_projects_and_worktrees_run_in_parallel(tmp_path: Path) -> None:

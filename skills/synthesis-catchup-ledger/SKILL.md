@@ -1,6 +1,13 @@
 ---
 name: synthesis-catchup-ledger
 description: "Reconcile pending, missed, and incomplete commitments after any gap in the daily-ritual cadence (travel, family visits, crunch weeks). Sweeps daily plans, transcripts, and project context over an arbitrary window; classifies every surfaced item (including expired-for-learning); produces a dated catch-up ledger document; routes survivors without flooding the daily plan. Use when asked to: catch up on missed tasks, sweep pending items, catch-up ledger, reconcile backlog, what did I miss, post-vacation catch-up, falling behind recovery."
+license: "CC0-1.0"
+depends_on: ["synthesis-daily-rituals", "synthesis-project-management", "synthesis-context-lifecycle"]
+metadata:
+  author: "Rajiv Pant"
+  version: "0.2.1"
+  source_repo: "github.com/synthesisengineering/synthesis-skills"
+  source_type: "public"
 ---
 
 # Synthesis Catch-up Ledger

@@ -2,6 +2,7 @@
 name: synthesis-message-guard
 description: Fail-closed pre-send enforcement for agent-drafted correspondence. A PreToolUse hook blocks every message-sending or draft-creating tool call unless the outgoing text passes a deterministic register scan AND a fresh, single-use grounding ledger — sha256-bound to the exact message — attests that the composing agent read the full thread, searched prior correspondence, and mapped every factual claim to a source. Use when setting up, debugging, or composing under the guard; when a send is blocked; or when asked about message grounding, voice enforcement, or pre-send gates.
 license: "Apache-2.0"
+depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
   version: "1.1.0"

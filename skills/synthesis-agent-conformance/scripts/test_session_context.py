@@ -64,7 +64,9 @@ def test_build_includes_active_coordination(tmp_path: Path) -> None:
     assert "verify claims before writes" in message
 
 
-def test_build_warns_when_project_record_is_stale(tmp_path: Path, monkeypatch) -> None:
+def test_build_rejects_incomplete_or_unleased_pointer(
+    tmp_path: Path, monkeypatch
+) -> None:
     project = tmp_path / "project"
     project.mkdir()
     (project / "CONTEXT.md").write_text(
@@ -81,12 +83,125 @@ def test_build_warns_when_project_record_is_stale(tmp_path: Path, monkeypatch) -
         "record_freshness",
         lambda path: (False, "project record is 3 commit(s) behind fetched origin/main"),
     )
-    message = MODULE.build(pointer, tmp_path / "no-board.md")
-    assert "RECORD STALENESS WARNING" in message
-    assert "3 commit(s) behind" in message
+    try:
+        MODULE.build(pointer, tmp_path / "no-board.md")
+    except ValueError as exc:
+        assert "missing pointer fields" in str(exc)
+    else:
+        raise AssertionError("unsafe pointer was injected")
 
-    monkeypatch.setattr(
-        MODULE, "record_freshness", lambda path: (True, "record current")
+
+def test_live_receipt_rejects_static_probe(tmp_path: Path) -> None:
+    receipt = tmp_path / "receipt.json"
+
+    assert not MODULE.record_live_receipt({}, receipt)
+    assert not receipt.exists()
+
+
+def test_live_receipt_records_real_sessionstart_shape(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "live" / "receipt.json"
+    codex_home = tmp_path / ".codex"
+    transcript = codex_home / "sessions" / "live.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(
+        json.dumps(
+            {
+                "type": "session_meta",
+                "payload": {"id": "019fff79-5858-7993-a329-b301bccf5d31"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
     )
-    message = MODULE.build(pointer, tmp_path / "no-board.md")
-    assert "RECORD STALENESS WARNING" not in message
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("PLUGIN_ROOT", str(MODULE.SCRIPTS_DIR.parents[2]))
+    payload = {
+        "hook_event_name": "SessionStart",
+        "session_id": "019fff79-5858-7993-a329-b301bccf5d31",
+        "cwd": "/tmp/repo",
+        "source": "startup",
+        "transcript_path": str(transcript),
+    }
+
+    assert MODULE.record_live_receipt(payload, receipt)
+    recorded = json.loads(receipt.read_text(encoding="utf-8"))
+    client_receipt = receipt.with_name("receipt-codex.json")
+    assert client_receipt.is_file()
+    assert json.loads(client_receipt.read_text(encoding="utf-8")) == recorded
+    assert recorded["client"] == "codex"
+    assert recorded["session_id"] == "019fff79-5858-7993-a329-b301bccf5d31"
+    assert recorded["hook_event_name"] == "SessionStart"
+    assert recorded["plugin_version"]
+    assert recorded["provenance_env"] == "codex-transcript"
+    assert recorded["transcript_path"] == str(transcript)
+    assert Path(recorded["plugin_root"]).resolve() == MODULE.SCRIPTS_DIR.parents[2]
+    assert not list(receipt.parent.glob("*.tmp"))
+
+
+def test_claude_signal_wins_over_inherited_codex_home(tmp_path: Path, monkeypatch) -> None:
+    claude_home = tmp_path / ".claude"
+    transcript = claude_home / "projects" / "session.jsonl"
+    transcript.parent.mkdir(parents=True, exist_ok=True)
+    transcript.write_text(
+        json.dumps({"sessionId": "019fff79-5858-7993-a329-b301bccf5d32"})
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("PLUGIN_ROOT", raising=False)
+    monkeypatch.setenv("CODEX_HOME", "/tmp/codex")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(MODULE.SCRIPTS_DIR.parents[2]))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+
+    assert MODULE.client_provenance(
+        {"transcript_path": str(transcript)},
+        "019fff79-5858-7993-a329-b301bccf5d32",
+    ) == ("claude", "claude-transcript")
+
+
+def test_live_receipt_rejects_forged_payload_without_client_owned_roots(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "receipt.json"
+    monkeypatch.setenv("PLUGIN_ROOT", "/tmp/not-the-executing-plugin")
+
+    assert not MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": "019fff79-5858-7993-a329-b301bccf5d31",
+            "transcript_path": str(tmp_path / ".codex" / "sessions" / "fake.jsonl"),
+        },
+        receipt,
+    )
+    assert not receipt.exists()
+
+
+def test_live_receipt_rejects_existing_transcript_for_another_session(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "receipt.json"
+    codex_home = tmp_path / ".codex"
+    transcript = codex_home / "sessions" / "other.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(
+        json.dumps(
+            {
+                "type": "session_meta",
+                "payload": {"id": "019fff79-5858-7993-a329-b301bccf5d99"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
+    assert not MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": "019fff79-5858-7993-a329-b301bccf5d31",
+            "transcript_path": str(transcript),
+        },
+        receipt,
+    )
+    assert not receipt.exists()

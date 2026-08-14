@@ -2,8 +2,8 @@
 name: synthesis-absence-coordination
 description: Coordinate an absence end to end — vacation, conference travel, family visits, medical leave — the way a good chief of staff would. Covers the notification order that protects relationships (principals hear it from you, never from their own assistant or a group channel), coverage and reachability as required content rather than afterthoughts, recurring-meeting release, the personal-continuity tier that keeps a trainer or therapist or tutor in the loop while you travel, travel-logistics forwarding, out-of-office set AND clear, and the return sweep. All names, tiers, channels, and lead times load from a private config, so the skill is publishable and the configuration is yours. Use when planning time off, booking work travel, announcing an absence, arranging coverage, or returning from one.
 license: "Apache-2.0"
+depends_on: ["synthesis-chief-of-staff", "synthesis-agent-correspondence", "synthesis-catchup-ledger"]
 metadata:
-  depends_on: "synthesis-chief-of-staff (config source), synthesis-agent-correspondence (send paths), synthesis-catchup-ledger (return sweep)"
   author: "Rajiv Pant"
   version: "1.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"

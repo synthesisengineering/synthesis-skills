@@ -1,12 +1,15 @@
 ---
 name: synthesis-knowledge-capture
-description: Capture durable facts learned during an AI session and merge them into a long-lived OKF knowledge base — in place, deduplicated, and confidentiality-routed — instead of letting them evaporate in the transcript. Covers fact extraction, routing a fact to the right repo by confidentiality tier, scanning the corpus for every existing mention before writing, merging in place rather than blind-appending, reconciling (never blind-flipping) a fact that conflicts with the corpus, configured OKF validation, provenance logging, and handoff to synthesis-kb-edit for repository-policy-aware shipping. Use at session end, when told to "capture this," "update the knowledge base," "merge this into ai-knowledge," or when a session surfaces a corrected or new fact about people, org structure, products, decisions, or strategy.
+description: Capture durable session facts in an OKF knowledge base with corpus-wide deduplication, confidentiality routing, conflict reconciliation, provenance, validation, and repository-aware shipping through synthesis-kb-edit. Use at session end, when asked to capture or update knowledge, merge facts into ai-knowledge, or preserve corrected facts about people, organizations, products, decisions, or strategy.
 license: CC0-1.0
 depends_on:
   - synthesis-okf
   - synthesis-kb-edit
 metadata:
   author: Rajiv Pant
+  version: "1.1.0"
+  source_repo: "github.com/synthesisengineering/synthesis-skills"
+  source_type: "public"
 ---
 
 # Knowledge Capture

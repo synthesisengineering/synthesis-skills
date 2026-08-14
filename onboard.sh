@@ -1,6 +1,7 @@
 #!/bin/sh
 # synthesis-onboarding bootstrap — one command from a bare Mac to a working
-# synthesis ecosystem. Safe to re-run anytime; it updates and repairs.
+# synthesis ecosystem. Close active Claude Code and Codex sessions before a
+# re-run: the default update refreshes their versioned plugin caches.
 #
 #   curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/onboard.sh | sh
 #   curl -fsSL .../onboard.sh | sh -s -- install --with-personal-workspace alice
@@ -53,6 +54,6 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 if [ "$#" -eq 0 ]; then
-  set -- install
+  set -- update
 fi
 exec python3 "$SRC/$ENGINE_REL" "$@"

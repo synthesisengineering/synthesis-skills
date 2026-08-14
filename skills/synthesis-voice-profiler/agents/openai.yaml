@@ -2,3 +2,6 @@ interface:
   display_name: "Synthesis Voice Profiler"
   short_description: "Apply the voice profiler synthesis workflow"
   default_prompt: "Use $synthesis-voice-profiler to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false
