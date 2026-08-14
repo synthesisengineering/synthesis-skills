@@ -21,8 +21,9 @@ directory, and refuses every unsafe state:
 - the local branch is deleted with git's safe delete only, and the remote
   branch only when --delete-remote is passed.
 
-Nothing here ever uses --force variants, and nothing is removed before its
-verification passes.
+Nothing here uses unconditional force. Optional remote deletion uses only a
+commit-bound --force-with-lease compare-and-delete operation, and nothing is
+removed before its verification passes.
 """
 
 from __future__ import annotations
