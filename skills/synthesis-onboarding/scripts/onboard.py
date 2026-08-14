@@ -32,7 +32,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-ENGINE_VERSION = "1.0.1"
+ENGINE_VERSION = "1.1.0"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -399,14 +399,15 @@ def resolve_client(name):
     return None
 
 
-def plugin_enabled(client, binary):
+def plugin_record(client, binary):
     rc, out, _ = run([binary, "plugin", "list", "--json"], timeout=60)
     if rc != 0:
-        return None  # unknown — CLI unavailable or errored
+        return None, None  # unknown — CLI unavailable or errored
     try:
         entries = json.loads(out)
     except ValueError:
-        return PLUGIN_NAME in out and '"enabled": true' in out
+        enabled = PLUGIN_NAME in out and '"enabled": true' in out
+        return enabled, None
     if isinstance(entries, dict):
         # claude nests under "plugins"; codex nests under "installed"
         flat = []
@@ -419,8 +420,54 @@ def plugin_enabled(client, binary):
             continue
         ident = str(entry.get("id") or entry.get("pluginId") or "")
         if ident.startswith(PLUGIN_NAME + "@") or entry.get("name") == PLUGIN_NAME:
-            return True
-    return False
+            return True, str(entry.get("version") or "unknown")
+    return False, None
+
+
+def plugin_enabled(client, binary):
+    return plugin_record(client, binary)[0]
+
+
+def source_plugin_version():
+    root = source_root()
+    for manifest in (root / ".codex-plugin" / "plugin.json",
+                     root / ".claude-plugin" / "plugin.json"):
+        try:
+            return str(json.loads(manifest.read_text(encoding="utf-8"))["version"])
+        except (OSError, ValueError, KeyError):
+            continue
+    return None
+
+
+def expected_source_plugin_version():
+    """Return a release expectation only from an explicit/source checkout.
+
+    An onboarding engine running from an installed plugin cache describes the
+    version that is about to be replaced. Comparing the refreshed install to
+    that stale manifest would turn a successful upgrade into a false error.
+    """
+    root = source_root()
+    if os.environ.get("SYNTHESIS_ONBOARD_SOURCE_DIR") or (root / ".git").exists():
+        return source_plugin_version()
+    return None
+
+
+def refresh_plugin(client, binary):
+    """Refresh an installed native plugin without replacing it with copies."""
+    if client == "claude":
+        commands = [
+            [binary, "plugin", "marketplace", "update", MARKETPLACE_NAME],
+            [binary, "plugin", "update", "%s@%s" % (PLUGIN_NAME, MARKETPLACE_NAME)],
+        ]
+    else:
+        commands = [
+            [binary, "plugin", "marketplace", "upgrade", MARKETPLACE_NAME, "--json"]
+        ]
+    for command in commands:
+        rc, out, err = run(command, timeout=300)
+        if rc != 0:
+            return False, err.strip() or out.strip() or "exit %d" % rc
+    return True, "marketplace and installed plugin refreshed"
 
 
 def install_plugin(client, binary):
@@ -513,15 +560,79 @@ def phase_preflight(report, clients_wanted):
     return clients
 
 
-def phase_ecosystem(report, clients, dry_run, no_plugin_cli):
+def phase_ecosystem(
+    report, clients, dry_run, no_plugin_cli, refresh_native_plugins=False
+):
     """Public synthesis-skills into each present client; fallback to install.sh."""
     need_fallback = False
     for name, binary in clients.items():
         if not binary:
             continue
-        state = plugin_enabled(name, binary)
+        state, before_version = plugin_record(name, binary)
         if state is True:
-            report.add("ecosystem", OK, "%s plugin already enabled (%s)" % (PLUGIN_NAME, name))
+            if no_plugin_cli:
+                report.add(
+                    "ecosystem", OK,
+                    "%s plugin enabled for %s at %s; refresh skipped by flag" %
+                    (PLUGIN_NAME, name, before_version or "unknown version"),
+                )
+                continue
+            expected = expected_source_plugin_version()
+            if not refresh_native_plugins:
+                if expected and before_version != expected:
+                    report.add(
+                        "ecosystem", ACTION,
+                        "%s plugin for %s is %s; source is %s" %
+                        (PLUGIN_NAME, name, before_version, expected),
+                        hint=(
+                            "Close other Claude Code and Codex sessions, then run "
+                            "onboard.py update as the invoking session's last action."
+                        ),
+                    )
+                else:
+                    report.add(
+                        "ecosystem", OK,
+                        "%s plugin enabled for %s at %s" %
+                        (PLUGIN_NAME, name, before_version or "unknown version"),
+                    )
+                continue
+            if dry_run:
+                report.add(
+                    "ecosystem", CHANGED,
+                    "would refresh %s plugin for %s" % (PLUGIN_NAME, name),
+                )
+                continue
+            success, detail = refresh_plugin(name, binary)
+            if not success:
+                report.add(
+                    "ecosystem", ERROR,
+                    "%s plugin refresh failed for %s" % (PLUGIN_NAME, name),
+                    hint=detail,
+                )
+                continue
+            after_state, after_version = plugin_record(name, binary)
+            if after_state is not True:
+                report.add("ecosystem", ERROR,
+                           "%s plugin disappeared after refresh for %s" % (PLUGIN_NAME, name))
+            elif expected and after_version != expected:
+                report.add(
+                    "ecosystem", ERROR,
+                    "%s plugin for %s is %s after refresh; expected %s" %
+                    (PLUGIN_NAME, name, after_version, expected),
+                )
+            elif after_version != before_version:
+                restart = "new Claude Code session" if name == "claude" else "new Codex task"
+                report.add(
+                    "ecosystem", CHANGED,
+                    "%s plugin updated for %s: %s -> %s; start a %s to load the new registry" %
+                    (PLUGIN_NAME, name, before_version, after_version, restart),
+                )
+            else:
+                report.add(
+                    "ecosystem", OK,
+                    "%s plugin current for %s at %s; no new task needed" %
+                    (PLUGIN_NAME, name, after_version or "unknown version"),
+                )
             continue
         if no_plugin_cli:
             need_fallback = True
@@ -532,7 +643,12 @@ def phase_ecosystem(report, clients, dry_run, no_plugin_cli):
             continue
         success, detail = install_plugin(name, binary)
         if success and plugin_enabled(name, binary):
-            report.add("ecosystem", CHANGED, "%s: %s" % (name, detail))
+            restart = "new Claude Code session" if name == "claude" else "new Codex task"
+            report.add(
+                "ecosystem", CHANGED,
+                "%s: %s; start a %s to load the plugin registry" %
+                (name, detail, restart),
+            )
         else:
             need_fallback = True
             report.add("ecosystem", WARN, "%s plugin CLI route failed; using file fallback" % name,
@@ -1027,7 +1143,13 @@ def main(argv=None):
     clients = phase_preflight(report, clients_wanted)
     if clients is None:
         return finish(report, args, 2)
-    phase_ecosystem(report, clients, args.dry_run, no_plugin_cli)
+    phase_ecosystem(
+        report,
+        clients,
+        args.dry_run,
+        no_plugin_cli,
+        refresh_native_plugins=args.command == "update",
+    )
     if manifest:
         phase_org_skills(report, manifest, args.dry_run)
         phase_kbs(report, manifest, receipts, args.dry_run)

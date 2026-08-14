@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.8.0"
+  version: "1.9.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -398,10 +398,15 @@ Before pausing work that may continue in another tool:
    project:
 
    ```bash
-   python3 <skill-root>/scripts/conformance.py activate --project <project>
+   python3 <skill-root>/scripts/conformance.py activate \
+     --project <project> --session-id <coordination-session-id>
+   python3 <skill-root>/scripts/conformance.py pointer --project <project>
    python3 <skill-root>/scripts/conformance.py handoff --project <project>
    ```
-8. Release or transfer this session's coordination claims.
+8. Release or transfer this session's coordination claims. A normal release
+   recoverably moves an active-project pointer owned by that session into
+   `~/.synthesis/active-project-history/`; a pointer owned by another session is
+   untouched.
 
 When resuming work from another agent, re-run `handoff`, read CONTEXT.md and
 the linked plan, and verify git history before acting. Trust the project files

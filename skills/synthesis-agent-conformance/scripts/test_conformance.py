@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -283,21 +284,57 @@ def test_activate_and_handoff(tmp_path: Path) -> None:
     plan.mkdir(parents=True)
     (plan / "test-plan.md").write_text("# Plan\n", encoding="utf-8")
     subprocess = __import__("subprocess")
-    subprocess.run(["git", "init", str(project)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "init", "--initial-branch", "feature/test", str(project)],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(project), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(project), "config", "user.name", "Test"], check=True
+    )
+    subprocess.run(["git", "-C", str(project), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(project), "commit", "-m", "test"],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(project), "update-ref", "refs/remotes/origin/main", "HEAD"],
+        check=True,
+    )
+    board = tmp_path / "active-sessions.md"
+    now = datetime.now().astimezone().isoformat()
+    board.write_text(
+        "# Coordination\n\nSchema: v2\nLease: https://example.test/coordination.git\n"
+        "## Active sessions\n\n"
+        "| id | agent | machine | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+        f"| A | Codex | mac | test | {now} | {now} | autonomous | {project} @ feature/test | work | {project}/** | owner | active |\n\n"
+        "## Messages\n\n---\n\n## Protocol\n",
+        encoding="utf-8",
+    )
 
     pointer = tmp_path / "active.json"
-    activated = MODULE.activate(project, pointer)
+    activated = MODULE.activate(
+        project, pointer, owner_session="A", coordination_board=board
+    )
     assert all(check.ok for check in activated if check.required)
     payload = __import__("json").loads(pointer.read_text(encoding="utf-8"))
     assert payload["next"] == [
         "2. [ ] Continue the live check from verified state."
     ]
-    handoff = MODULE.handoff_checks(project, pointer)
+    handoff = MODULE.handoff_checks(project, pointer, board)
     assert all(check.ok for check in handoff if check.required)
     named = {check.name: check for check in handoff}
     assert named["handoff.payload-parity"].ok
     assert "identical context" in named["handoff.payload-parity"].detail
     assert named["handoff.record-freshness"].ok
+    pointer_results = MODULE.pointer_checks(project, pointer, board)
+    assert all(check.ok for check in pointer_results if check.required)
 
 
 def clone_pair_with_project(tmp_path: Path) -> tuple[Path, Path]:
@@ -445,3 +482,261 @@ def test_plugin_inventory_rejects_unexpected_json_shapes(monkeypatch) -> None:
     ok, detail = MODULE.plugin_inventory("codex")
     assert not ok
     assert "0 enabled" in detail
+
+
+def test_render_treats_required_unknown_as_non_success(capsys) -> None:
+    checks = [MODULE.Check("hook-live.test", None, "no receipt", True, "live")]
+
+    assert MODULE.render(checks, as_json=True) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "FAIL"
+    assert payload["checks"][0]["status"] == "UNKNOWN"
+    assert payload["checks"][0]["ok"] is None
+
+
+def test_hook_definition_checks_require_session_context(tmp_path: Path) -> None:
+    hook_file = tmp_path / "hooks" / "hooks.json"
+    hook_file.parent.mkdir()
+    hook_file.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-agent-conformance/scripts/session_context.py --format claude",
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    checks = MODULE.hook_definition_checks(tmp_path)
+
+    assert all(check.ok for check in checks)
+
+
+def test_hook_live_checks_reject_static_absence_and_accept_receipts(
+    tmp_path: Path,
+) -> None:
+    public_codex = tmp_path / "public-codex.json"
+    public_claude = tmp_path / "public-claude.json"
+    private = tmp_path / "private.json"
+    source = tmp_path / "source"
+    (source / ".codex-plugin").mkdir(parents=True)
+    (source / ".codex-plugin" / "plugin.json").write_text(
+        json.dumps({"version": "1.2.3"}), encoding="utf-8"
+    )
+    absent = MODULE.hook_live_checks(
+        public_codex, public_claude, private, source
+    )
+    assert all(check.ok is None for check in absent)
+
+    recorded_at = datetime.now(timezone.utc).isoformat()
+    public_codex.write_text(
+        json.dumps(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": "public-1",
+                "client": "codex",
+                "plugin_version": "1.2.3",
+                "recorded_at": recorded_at,
+            }
+        ),
+        encoding="utf-8",
+    )
+    public_claude.write_text(
+        json.dumps(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": "public-2",
+                "client": "claude",
+                "plugin_version": "1.2.3",
+                "recorded_at": recorded_at,
+            }
+        ),
+        encoding="utf-8",
+    )
+    private.write_text(
+        json.dumps(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": "private-1",
+                "client": "codex",
+                "recorded_at": recorded_at,
+            }
+        ),
+        encoding="utf-8",
+    )
+    present = MODULE.hook_live_checks(
+        public_codex, public_claude, private, source
+    )
+    assert all(check.ok for check in present)
+
+    stale = json.loads(public_codex.read_text(encoding="utf-8"))
+    stale["recorded_at"] = (
+        datetime.now(timezone.utc) - timedelta(hours=25)
+    ).isoformat()
+    public_codex.write_text(json.dumps(stale), encoding="utf-8")
+    expired = MODULE.hook_live_checks(
+        public_codex, public_claude, private, source
+    )
+    assert next(
+        check for check in expired
+        if check.name == "hook-live.public-codex-sessionstart"
+    ).ok is False
+
+
+def test_hook_trust_requires_public_sessionstart_to_be_enabled(monkeypatch) -> None:
+    monkeypatch.setattr(
+        MODULE,
+        "codex_hook_audit",
+        lambda _cwds: {
+            "status": "PASS",
+            "pending_review": 0,
+            "errors": [],
+            "hooks": [
+                {
+                    "plugin_id": "synthesis-skills@test",
+                    "event": "SessionStart",
+                    "key": "plugin:0:0",
+                    "enabled": False,
+                    "managed": False,
+                    "trust_status": "trusted",
+                    "current_hash": "sha256:test",
+                }
+            ],
+        },
+    )
+
+    checks = MODULE.hook_trust_checks(Path("/tmp"))
+    public = next(
+        check for check in checks
+        if check.name == "hook-trust.codex-public-sessionstart"
+    )
+
+    assert public.ok is False
+
+
+def test_instruction_budget_reserves_space_and_requires_tail_sentinel(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    codex = home / ".codex"
+    codex.mkdir(parents=True)
+    (codex / "config.toml").write_text(
+        "project_doc_max_bytes = 10000\n", encoding="utf-8"
+    )
+    (codex / "AGENTS.md").write_text(
+        "x" * 5000 + "\n<!-- synthesis-agent-rules:end -->\n",
+        encoding="utf-8",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "AGENTS.md").write_text("y" * 500, encoding="utf-8")
+
+    checks = MODULE.instruction_budget_checks(repo, home)
+    assert all(check.ok for check in checks)
+
+    (repo / "AGENTS.md").write_text("y" * 1200, encoding="utf-8")
+    checks = MODULE.instruction_budget_checks(repo, home)
+    budget = next(
+        check for check in checks if check.name == "instruction-budget.codex-bytes"
+    )
+    assert not budget.ok
+
+
+def test_catalog_checks_enforce_installed_count_parity(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    write_manifests(source)
+    write_skill(source, "synthesis-one")
+    home = tmp_path / "home"
+    for client in ("claude", "codex"):
+        cache = (
+            home
+            / f".{client}"
+            / "plugins"
+            / "cache"
+            / "marketplace"
+            / "synthesis-skills"
+            / "1.0.0"
+            / "skills"
+            / "synthesis-one"
+        )
+        cache.mkdir(parents=True)
+        (cache / "SKILL.md").write_text("test", encoding="utf-8")
+
+    monkeypatch.setattr(
+        MODULE,
+        "codex_skill_catalog_audit",
+        lambda source_root, home=None: {
+            "status": "PASS",
+            "discovered_skill_count": 1,
+            "skill_count": 1,
+            "full_cost_tokens": 100,
+            "budget_tokens": 2_000,
+            "model": "test-model",
+            "errors": [],
+        },
+    )
+
+    checks = MODULE.catalog_checks(source, home)
+
+    assert all(check.ok for check in checks)
+
+
+def test_surface_checks_report_ide_as_explicitly_unsupported(tmp_path: Path) -> None:
+    write_manifests(tmp_path)
+
+    checks = MODULE.surface_checks(tmp_path)
+    by_name = {check.name: check for check in checks}
+
+    assert by_name["surface.claude-code"].status == "PASS"
+    assert by_name["surface.codex-desktop"].status == "PASS"
+    assert by_name["surface.codex-cli"].status == "PASS"
+    assert by_name["surface.codex-ide"].status == "UNSUPPORTED"
+    assert not by_name["surface.codex-ide"].required
+
+
+def test_five_plane_vocabulary_is_stable() -> None:
+    checks: list[MODULE.Check] = []
+    for name in (
+        "source.schema",
+        "parity.clients",
+        "hook-live.codex",
+        "pointer.owner",
+        "capability.codex-cli.repository",
+    ):
+        MODULE.add(checks, name, True, "ok")
+
+    assert [check.plane for check in checks] == [
+        "source",
+        "installed",
+        "live",
+        "continuity",
+        "capability",
+    ]
+
+
+def test_render_atomically_writes_the_same_structured_evidence(
+    tmp_path: Path, capsys
+) -> None:
+    report = tmp_path / "evidence" / "last-report.json"
+    checks = [MODULE.Check("source.test", True, "ok", plane="source")]
+
+    assert MODULE.render(checks, True, report) == 0
+
+    stdout = json.loads(capsys.readouterr().out)
+    cached = json.loads(report.read_text(encoding="utf-8"))
+    assert stdout == cached
+    assert cached["checks"][0]["plane"] == "source"
+    assert not list(report.parent.glob("last-report.json.*.tmp"))

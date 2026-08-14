@@ -1,15 +1,11 @@
 ---
 name: synthesis-executive-communication
 description: >
-  Translate technical work into communications that non-technical executives can absorb and act on.
-  For CTOs, CPOs, and product/engineering leaders writing to CEOs, business-unit presidents, CFOs,
-  and business peers — progress reports, status updates, board-adjacent documents, and everyday
-  upward or lateral messages. Covers the every-noun persona test, the six-category kill-list
-  (unexplained codenames, workflow vocabulary, insider praise, defect counts, and more),
-  mechanism-to-consequence translation, and the structure of an upward report that earns trust.
-  Use when asked to: write exec update, upward progress report, executive summary,
-  translate for a non-technical audience, put this in business terms, report to the CEO,
-  status update for leadership, de-jargon this, board update, write for a business executive.
+  Translate technical work into clear, actionable communication for CEOs, CFOs, business-unit
+  leaders, boards, and other non-technical executives. Applies persona tests, de-jargoning,
+  mechanism-to-consequence translation, and trusted upward-report structure. Use for executive
+  updates, progress reports, executive summaries, board updates, leadership status, business-term
+  translations, or any technical message to a business audience.
 license: "CC0-1.0"
 depends_on: []
 metadata:

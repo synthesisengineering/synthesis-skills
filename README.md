@@ -2,7 +2,22 @@
 
 Proven AI agent skills for code review, content creation, project management, and more. Built on the [Agent Skills](https://agentskills.io) open standard and portable across Claude Code, OpenAI Codex, Cursor, GitHub Copilot, and other capable agents.
 
+Synthesis engineering is the durable layer beneath capable agent clients:
+portable methods, version-controlled project state, concurrent-session
+coordination, safety policy, and live runtime evidence. It complements native
+clients instead of replacing them. Read [why it exists](docs/why-synthesis-engineering.md),
+the [runtime integration contract](docs/runtime-integration.md), and the
+[contributor guide](CONTRIBUTING.md).
+
 ## What's new
+
+**Codex catalog pressure is now engineered, not tolerated (August 2026).**
+Release **4.24.0** adds an implicit-core/explicit-specialist catalog with a
+public routing skill, app-server-backed hook and skill audits, live capability
+evidence, leased active-project validation, session-safe plugin refresh semantics,
+and an explicit supported-surface matrix. Claude Code keeps its complete
+native trigger behavior; Codex keeps every specialist explicitly available
+with measurable prompt reserve. See the [4.24.0 release notes](CHANGELOG.md).
 
 **Release surfaces can no longer drift apart (August 2026).** Conformance
 gains `source.changelog-version-parity` **(4.23.0)**: both plugin manifests
@@ -178,8 +193,9 @@ curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skil
 The `synthesis-onboarding` engine converges your machine: plugin installed
 into whichever of Claude Code / Codex is present, optional
 `ai-knowledge-<workspace>` scaffold, verified by its built-in doctor.
-Re-running is always safe — it updates and repairs, and never overwrites
-files you edited. Organizations layer their own knowledge bases and shared
+Close active Claude Code and Codex sessions before re-running the bootstrap;
+it explicitly updates versioned plugin caches, repairs the remaining setup,
+and never overwrites files you edited. Organizations layer their own knowledge bases and shared
 skills on the same engine with one declarative manifest (no installer code);
 see `skills/synthesis-onboarding/references/org-manifest.md`.
 
@@ -197,6 +213,22 @@ codex plugin add synthesis-skills@synthesis-engineering
 claude plugin marketplace add synthesisengineering/synthesis-skills
 claude plugin install synthesis-skills@synthesis-engineering
 ```
+
+| Client surface | Support |
+|---|---|
+| Claude Code | First-class native plugin |
+| ChatGPT Codex desktop | First-class native plugin |
+| Codex CLI | First-class native plugin |
+| Codex IDE extension | Explicitly unsupported: the IDE does not load plugins, and installing duplicate public user-skill copies would collide with desktop/CLI |
+| Generic chat-only products | Unsupported for filesystem-backed execution; published prompts or copied text are not runtime parity |
+
+Skill registries are task-scoped. After a plugin version changes, preserve the
+durable project checkpoint and start a new Claude Code session or Codex task;
+an already-running task cannot acquire the new registry. Native plugin refresh
+also replaces a versioned cache used by hook commands, so close other live
+sessions before running `onboard.py update`, and make the update the invoking
+session's last action. `install` and `doctor` do not refresh an existing native
+plugin.
 
 The Codex package also restores the active synthesis project after context
 compaction. Run `synthesis-agent-conformance` to verify both runtime

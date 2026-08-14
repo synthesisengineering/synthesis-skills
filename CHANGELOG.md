@@ -4,6 +4,62 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.24.0] - 2026-08-13
+
+### Added
+
+- **New `synthesis-skill-router`** — keeps specialist workflows explicitly
+  invocable in Codex while routing natural-language requests to their exact
+  skill bodies. Claude Code retains its complete native trigger catalog.
+- **`synthesis-agent-conformance`** — five evidence planes and dedicated
+  checks for hook definitions, human trust, genuine SessionStart receipts,
+  the resolved Codex catalog budget, instruction reserve, leased
+  active-project pointers, authenticated capability evidence, and supported
+  product surfaces. Read-only Codex app-server adapters ask `hooks/list` and
+  `skills/list` for runtime truth.
+- **Capability evidence ledger** — sanitized, timestamped PASS, FAIL, UNKNOWN,
+  and UNSUPPORTED outcomes for Claude Code, Codex desktop, and Codex CLI.
+- **Client-specific live receipts** — public plugin SessionStart evidence is
+  recorded separately for Claude Code and Codex, so one client's successful
+  start cannot be mistaken for the other's.
+- **Public integration and contributor system** — rationale, five-plane
+  runtime contract, governance, issue templates, pull-request evidence gates,
+  runtime stewardship, and contribution lanes for skills, adapters,
+  accessibility, documentation, and compatibility fixtures.
+
+### Changed
+
+- **Skill discovery** — OpenAI-specific metadata now divides the public
+  catalog into an implicit core and explicit specialists. The supported
+  272,000-token Codex configuration projects to 3,405 of its 5,440-token
+  catalog budget while all skills remain enabled.
+- **`synthesis-onboarding`** — `update` explicitly refreshes installed native
+  plugins, verifies the exact version when run from source, and states the
+  new-session/new-task boundary. Ordinary install and doctor runs leave live
+  versioned caches untouched. Claude Code, Codex desktop, and Codex CLI are
+  first-class; Codex IDE is reported as unsupported instead of inheriting a
+  false plugin-parity claim.
+- **`synthesis-project-management`** — active-project pointers carry their
+  coordination owner, lease, worktree, branch, plan, and source commit;
+  releasing the owner recoverably archives the pointer.
+- **`synthesis-checkpoint`** — compares the task's SessionStart plugin receipt
+  with source and installed truth before claiming that a registry is current.
+
+### Fixed
+
+- **`synthesis-meeting-transcripts`** — workspace-MCP doctor distinguishes
+  service absence from restricted observability, parses curl exit and HTTP
+  status independently, and rejects the former double-`000` false success.
+- **Active project injection** — SessionStart now refuses missing plans or
+  worktrees, released or expired owners, non-owner context roles, wrong
+  worktree claims, symlinked or out-of-tree paths, stale branch or commit
+  identity, and checkouts behind local `origin/main`.
+- **Concurrent evidence writes** — capability ledgers, conformance reports,
+  and client SessionStart receipts use unique atomic replacements; the
+  read-modify-write capability ledger also holds a cross-process lock.
+- **App-server response handling** — malformed `hooks/list` and `skills/list`
+  payloads become explicit unknown evidence instead of unclassified errors.
+
 ## [4.23.0] - 2026-08-13
 
 ### Added

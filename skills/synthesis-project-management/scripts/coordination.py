@@ -19,6 +19,7 @@ from pathlib import Path
 
 
 DEFAULT_BOARD = Path.home() / ".synthesis" / "coordination" / "active-sessions.md"
+DEFAULT_ACTIVE_PROJECT = Path.home() / ".synthesis" / "active-project.json"
 SCHEMA_VERSION = 2
 TABLE_COLUMNS = (
     "id",
@@ -785,8 +786,39 @@ def command_release(args) -> int:
     except RuntimeError as exc:
         print(f"coordination release failed: {exc}", file=sys.stderr)
         return 10
+    pointer = getattr(args, "active_project_file", None)
+    if pointer is not None:
+        try:
+            archived = archive_owned_pointer(Path(pointer), args.id)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(
+                f"coordination release completed, but active-project archival failed: {exc}",
+                file=sys.stderr,
+            )
+            return 11
+        if archived:
+            print(f"Archived released session's active-project pointer: {archived}")
     print(f"Released session {args.id}.")
     return 0
+
+
+def archive_owned_pointer(pointer: Path, owner_session: str) -> Path | None:
+    """Recoverably clear the pointer when its coordination owner releases."""
+    if not pointer.exists():
+        return None
+    if pointer.is_symlink():
+        raise ValueError(f"active-project pointer must not be a symlink: {pointer}")
+    payload = json.loads(pointer.read_text(encoding="utf-8"))
+    if payload.get("owner_session") != owner_session:
+        return None
+    archive = pointer.parent / "active-project-history"
+    if archive.is_symlink():
+        raise ValueError(f"active-project archive must not be a symlink: {archive}")
+    archive.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%f%z")
+    destination = archive / f"{stamp}-{sanitize(owner_session)}.json"
+    os.replace(pointer, destination)
+    return destination
 
 
 def command_message(args) -> int:
@@ -976,6 +1008,9 @@ def parser() -> argparse.ArgumentParser:
     heartbeat.add_argument("--id", required=True)
     release = commands.add_parser("release")
     release.add_argument("--id", required=True)
+    release.add_argument(
+        "--active-project-file", type=Path, default=DEFAULT_ACTIVE_PROJECT
+    )
     message = commands.add_parser("message")
     message.add_argument("--from", dest="sender", required=True)
     message.add_argument("--to", required=True)

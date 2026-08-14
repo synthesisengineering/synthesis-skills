@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -109,6 +109,14 @@ and git.
 If there's a planning artifact (a plan file, a design doc, a checklist) referenced from CONTEXT.md — re-read it.
 
 ### Step 5 — Reconcile and report
+
+Before reporting, if `synthesis-agent-conformance` is installed, run its
+`hook-live`, `catalog`, and `instruction-budget` modes against the current
+source/repository. Compare the latest SessionStart receipt's plugin version
+with current source and installed truth. A mismatch means this task has a stale
+startup registry: save the durable checkpoint and require a new Claude Code
+session or Codex task. Do not describe an in-place cache update as a task
+reload.
 
 In one short paragraph in the next response to the user, state:
 - Today's verified date and time

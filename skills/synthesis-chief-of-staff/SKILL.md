@@ -1,6 +1,6 @@
 ---
 name: synthesis-chief-of-staff
-description: Operating doctrine for an AI agent acting as a principal's chief of staff and executive assistant. Covers the gatekeeping posture (the principal's time is the scarcest resource; asks are triaged, not obeyed), scheduling protocol (times are proposed from the principal's calendar on the principal's terms), meeting-request triage tiers, meeting quality bar, correspondence posture, the calendar-guardian protocols (next-day/week/month look-ahead reviews, overcommitment checks, id-tracked holds that shield open time against same-day and last-minute meetings), travel protocol, and the follow-up ledger. All personal specifics load from a private preferences file. Use when scheduling on a principal's behalf, triaging meeting requests, drafting replies that touch the calendar, reviewing a day or week ahead, defending open calendar time, planning travel, or performing any chief-of-staff or executive-assistant duty.
+description: Act as a principal's chief of staff and executive assistant. Protects the principal's time through meeting triage, calendar-aware scheduling, look-ahead reviews, overcommitment checks, tracked holds, travel planning, correspondence posture, and a follow-up ledger; personal rules load from private preferences. Use for scheduling, meeting requests, calendar-related replies, calendar defense, travel, or any chief-of-staff and executive-assistant duty.
 ---
 
 # Chief of Staff

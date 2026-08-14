@@ -1,18 +1,11 @@
 ---
 name: synthesis-agent-correspondence
 description: >
-  How AI agents compose and send correspondence — Slack, email, or any other channel — on a
-  human principal's behalf, honestly. The model is three lanes on one axis, how much of the
-  principal is in the words: principal-direct (their words, their hands — no disclosure),
-  assistant-lane (their words, the agent's hands — a single authorship signature), and bot-lane
-  (their direction, the agent's words — a handled-for-me signature). Review depth (exact-text /
-  per-message directive / standing direction / autonomous) is internal governance, not
-  recipient-facing disclosure. Covers the persona-registry config schema, the binding
-  bot-vs-assistant archetype, channel disclosure facts (Slack forces a visible send-tag; most
-  other channels don't), and the three compose/send gates. Use when asked to: agent
-  correspondence, message signature, disclosure lane, persona registry, send on my behalf,
-  compose as my agent, standing-direction send, my words vs my direction, ghostwriting
-  disclosure, bot vs assistant persona, agent branding, outbound message gate.
+  Compose and send honest agent correspondence across Slack, email, and other channels. Defines
+  principal-direct, assistant, and bot lanes; review-depth governance; persona configuration;
+  disclosure signatures; and compose/send gates. Use for agent correspondence, sending on a
+  principal's behalf, message signatures, disclosure lanes, persona registries, agent branding,
+  standing-direction sends, ghostwriting disclosure, or outbound-message gates.
 license: "Apache-2.0"
 depends_on: []
 metadata:

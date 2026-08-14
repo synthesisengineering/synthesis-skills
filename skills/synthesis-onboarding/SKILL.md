@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.1"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -56,7 +56,7 @@ manifest. See `references/org-manifest.md`.
 onboard.py install [--manifest PATH] [--dry-run] [--json]
                    [--clients claude,codex] [--no-plugin-cli]
                    [--with-personal-workspace NAME]
-onboard.py update          # alias of install
+onboard.py update          # explicit native-plugin refresh + install convergence
 onboard.py doctor  [--manifest PATH] [--json]
 onboard.py init-workspace --workspace NAME [--remote URL]
 onboard.py uninstall [--dry-run]
@@ -71,7 +71,7 @@ engine could not establish ground truth (no git, invalid manifest).
 | Phase | Behavior |
 |-------|----------|
 | preflight | Verify git (guides through `xcode-select --install` if missing); detect clients via `SYNTHESIS_CLAUDE_BIN`/`SYNTHESIS_CODEX_BIN` → PATH → well-known locations (incl. the ChatGPT app's bundled codex). Absent clients are skipped, not fatal. |
-| ecosystem | Ensure the `synthesis-skills` plugin is enabled per present client (`claude plugin marketplace add` + `plugin install`; codex `plugin add`). Any CLI failure falls back to the repo's `install.sh` direct copies. |
+| ecosystem | `install` adds a missing native plugin and checks an existing one without replacing its live cache. `update` explicitly refreshes existing native plugins, verifies the resulting version when running from a source checkout, and states whether a new Claude Code session or Codex task is required. A first installation may use the repo's direct-copy fallback when a client lacks the plugin CLI; an installed native plugin is never replaced by duplicate copies. |
 | org-skills | For each manifest `skills_repos` entry: SSH-first clone/refresh into the engine cache, then delegate to that repo's own installer with its source pinned to the fresh cache. A cache that cannot refresh stops the step (`SYNTHESIS_ONBOARD_ALLOW_STALE=1` overrides, loudly). |
 | knowledge-bases | Clone to `~/workspaces/<org-workspace>/<name>`, or **adopt** an existing clone found by matching remotes (never moved). Superseded remotes are repointed to the manifest primary (`git remote set-url`). Fast-forward pull when clean. When the repo ships `.githooks` and no global hooks engine is active, wire repo-local `core.hooksPath` so protective hooks run on fresh clones. Auth failures print the manifest's `auth_help` and mark the step "needs you" — the run continues and the re-run completes it. |
 | workspace | Generate `~/workspaces/<org-workspace>/AGENTS.md` (+ `CLAUDE.md` = `@AGENTS.md`): the welcome, what-you-can-ask list, KB contract pointers. |
@@ -87,6 +87,15 @@ current content matches its receipt is engine-owned and may be updated
 person edited is **never overwritten** — the engine warns and moves on.
 `uninstall` removes only receipt-owned files (archived first) and never
 touches knowledge-base clones or plugins.
+
+## Safe plugin upgrades
+
+Run `onboard.py update` only after closing other Claude Code sessions and
+Codex tasks that use this marketplace, and make it the invoking session's last
+action before starting a new session/task. Native clients resolve plugin hooks
+to versioned cache paths; replacing that cache can invalidate hook commands
+already loaded by another live session. Ordinary `install` and `doctor` runs
+never refresh an existing native plugin.
 
 ## Scaffolding a personal knowledge workspace
 
@@ -127,6 +136,17 @@ this scaffolds the container so day one needs no hand-wiring.
   authoritative source/runtime/handoff verification.
 - **synthesis-project-management / context-lifecycle** — define the
   workspace shape that `init-workspace` scaffolds.
+
+## Supported client surfaces
+
+- Claude Code, ChatGPT Codex desktop, and Codex CLI are first-class native
+  plugin surfaces.
+- Codex IDE is reported as `UNSUPPORTED`: it does not load plugins, and its
+  shared user-skill roots cannot hold a second public copy without creating
+  duplicate definitions in desktop/CLI.
+- A plugin change is visible only in a newly started session/task. Preserve the
+  synthesis checkpoint before switching; do not ask an existing task to
+  pretend it reloaded its startup registry.
 
 ## Safety rules
 

@@ -91,20 +91,32 @@ if [ -n "$UNIT" ]; then
 fi
 
 # ------------------------------------------------------------ supervisor state
+SUPERVISOR_UNKNOWN=0
 if [ "$OS" = "Darwin" ] && [ -f "$UNIT" ]; then
-  ENTRY="$(launchctl list 2>/dev/null | grep 'com\.rajivpant\.workspace-mcp' || true)"
-  if [ -z "$ENTRY" ]; then
-    fail "LaunchAgent is not loaded" "launchctl bootstrap gui/\$UID '$UNIT'"
-  else
-    LAST_EXIT="$(echo "$ENTRY" | awk '{print $2}')"
-    if [ "$LAST_EXIT" = "0" ] || [ "$LAST_EXIT" = "-" ]; then
-      ok "LaunchAgent loaded (last exit: $LAST_EXIT)"
+  LAUNCH_OUTPUT="$(launchctl print "gui/$UID/com.rajivpant.workspace-mcp" 2>&1)"
+  LAUNCH_EXIT=$?
+  if [ "$LAUNCH_EXIT" -eq 0 ]; then
+    LAST_EXIT="$(printf '%s\n' "$LAUNCH_OUTPUT" | sed -n 's/^[[:space:]]*last exit code = //p' | head -1)"
+    STATE="$(printf '%s\n' "$LAUNCH_OUTPUT" | sed -n 's/^[[:space:]]*state = //p' | head -1)"
+    if [ -z "$LAST_EXIT" ] || [ "$LAST_EXIT" = "0" ] || [ "$STATE" = "running" ]; then
+      ok "LaunchAgent loaded (state: ${STATE:-unknown}; last exit: ${LAST_EXIT:-not reported})"
     else
-      # 78 is EX_CONFIG from sysexits.h — almost always the stale-path case.
       HINT="check $HOME/Library/Logs/workspace-mcp/launchd-stderr.log"
       [ "$LAST_EXIT" = "78" ] && HINT="EX_CONFIG — usually a stale unit path; re-run ./install-autostart.sh"
       fail "LaunchAgent last exit status $LAST_EXIT" "$HINT"
     fi
+  elif printf '%s' "$LAUNCH_OUTPUT" | grep -Eqi \
+    'operation not permitted|permission denied|not privileged|could not connect|input/output error'; then
+    SUPERVISOR_UNKNOWN=1
+    unknown "launchd state is not visible in this execution environment" \
+            "run the doctor in an unrestricted local shell"
+  elif printf '%s' "$LAUNCH_OUTPUT" | grep -Eqi \
+    'could not find service|service.*not found|no such process'; then
+    fail "LaunchAgent is not loaded" "launchctl bootstrap gui/\$UID '$UNIT'"
+  else
+    SUPERVISOR_UNKNOWN=1
+    unknown "launchd state could not be established (exit $LAUNCH_EXIT)" \
+            "$(printf '%s' "$LAUNCH_OUTPUT" | head -1)"
   fi
 elif [ "$OS" = "Linux" ] && [ -f "$UNIT" ]; then
   if systemctl --user is-active --quiet workspace-mcp.service 2>/dev/null; then
@@ -142,17 +154,37 @@ fi
 if [ "$LISTENING" = "1" ]; then
   ok "listening on port $PORT"
 elif [ "$LISTENING" = "0" ]; then
-  fail "nothing listening on port $PORT" "./start.sh, or fix the unit above"
+  if [ "$SUPERVISOR_UNKNOWN" = "1" ]; then
+    unknown "port $PORT visibility is inconclusive in this execution environment" \
+            "run the doctor in an unrestricted local shell"
+  else
+    fail "nothing listening on port $PORT" "./start.sh, or fix the unit above"
+  fi
 fi
 
 if command -v curl >/dev/null 2>&1 && [ "$LISTENING" = "1" ]; then
   # An MCP streamable-http endpoint rejects a plain GET. Any HTTP status
-  # means the server answered; only 000 (no connection) is a real failure.
-  CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 "http://localhost:$PORT/mcp" 2>/dev/null || echo 000)"
-  if [ "$CODE" = "000" ]; then
+  # means the server answered. Preserve curl's exit code independently: the
+  # old `curl ... || echo 000` form could turn one failure into `000000` and
+  # accidentally classify it as a nonzero HTTP response.
+  CURL_OUTPUT="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 6 "http://localhost:$PORT/mcp" 2>&1)"
+  CURL_EXIT=$?
+  if [ "$CURL_EXIT" -ne 0 ]; then
+    if printf '%s' "$CURL_OUTPUT" | grep -Eqi \
+      'operation not permitted|permission denied|not allowed'; then
+      unknown "endpoint reachability is blocked by this execution environment" \
+              "run the doctor in an unrestricted local shell"
+    else
+      fail "port $PORT is open but the endpoint did not respond (curl exit $CURL_EXIT)" \
+           "check the server log"
+    fi
+  elif ! printf '%s' "$CURL_OUTPUT" | grep -Eq '^[0-9]{3}$'; then
+    unknown "curl returned a malformed HTTP status: $CURL_OUTPUT" \
+            "verify the curl binary and run again"
+  elif [ "$CURL_OUTPUT" = "000" ]; then
     fail "port $PORT is open but the endpoint did not respond" "check the server log"
   else
-    ok "endpoint responding (HTTP $CODE)"
+    ok "endpoint responding (HTTP $CURL_OUTPUT)"
   fi
 fi
 

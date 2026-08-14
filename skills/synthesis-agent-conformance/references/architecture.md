@@ -64,11 +64,18 @@ Required properties:
 
 - protective hooks fail closed when their dependencies cannot load;
 - every hook source is version-controlled;
-- a health command verifies config, source, trust, and a simulated event;
+- health commands report source, installed state, live delivery, continuity,
+  and capability as separate planes;
 - plugin-relative paths replace absolute references to a project checkout;
 - SessionStart establishes verified time and project state;
 - post-compaction recovery reloads the active plan where supported;
 - Stop/SessionEnd checks durable state without silently mutating unrelated repos.
+
+Codex hook definitions outside managed policy require human hash review. Query
+the client-owned `hooks/list` response for the normalized current hash and trust
+reason; do not duplicate its private hashing algorithm or write its trust file.
+A simulated hook event verifies a script contract, not client delivery. Live
+delivery requires a receipt that can be created only from a real event payload.
 
 ## 5. Durable project handoff
 
@@ -83,8 +90,10 @@ projects/index.yaml
 ```
 
 An active-project pointer may accelerate discovery, but it never overrides
-those files. A receiving agent must verify the project path and git history,
-read the current context and plan, and resume the recorded next action.
+those files. It records the owning coordination session and lease URL,
+worktree, branch, and source commit. A receiving agent must compare those fields
+with disk, verify project path and git history, read the current context and
+plan, and resume the recorded next action.
 
 Concurrent root sessions add two invariants:
 
@@ -103,11 +112,12 @@ timestamp-winner whole-file synchronization for client configuration that also
 contains volatile marketplace data, trust hashes, caches, or machine-specific
 paths. Apply an owned-key overlay and validate the merged runtime state.
 
-Git provides durable cross-machine handoff. The default live coordination board
-uses an OS file lock and is authoritative only for processes sharing that
-filesystem. File synchronization does not provide distributed mutual
-exclusion; simultaneous cross-machine writes to the same resources require a
-separately verified compare-and-swap coordination backend.
+Git provides durable cross-machine handoff. The coordination board is
+lease-backed by a dedicated private repository ref and mutations use
+compare-and-swap semantics. Local file locking protects same-machine writers;
+the remote lease protects cross-machine writers. Mutations fail closed when the
+remote is configured but unreachable. File synchronization alone is never a
+distributed lock.
 
 ## 7. Conformance contract
 
@@ -116,11 +126,16 @@ The ecosystem passes only when:
 - instructions are discoverable without personal fallback filenames;
 - each public skill appears once per client;
 - private installed copies match source;
-- hook health checks and simulated events pass;
+- hook definitions pass, every enabled Codex hook is managed or human-trusted,
+  and required clients have genuine live-event receipts;
+- instruction files retain budget headroom and a verified tail sentinel;
+- source and installed skill catalogs agree within their description budget;
+- Codex's full resolved catalog fits its model-dependent 2% budget through an
+  implicit core, explicit specialists, and a natural-language routing skill;
 - configured and authenticated connector states are named separately;
 - the same project phase, status, plan, and next action are recovered in both
   clients;
 - active sessions have non-overlapping claims and isolated git state, with no
   more than one context owner per project;
-- cross-machine bootstrap reproduces the canonical plane and all required
+- cross-machine bootstrap reproduces canonical source and all required
   adapters without overwriting runtime-owned state.

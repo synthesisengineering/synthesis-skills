@@ -344,7 +344,10 @@ do_install() {
         echo "  Use './install.sh status' before install/update to review drift first."
     fi
     prune_backups
-    echo "Restart your AI assistant to pick up the new skills."
+    echo "Skill discovery is session-scoped:"
+    echo "  Claude Code: start a new session after this run changes its plugin or fallback copies."
+    echo "  Codex: start a new task after this run changes its plugin or fallback copies."
+    echo "Existing sessions keep the registry they loaded at startup."
 
     # Validate dependencies in the first target directory
     FIRST_TARGET=""

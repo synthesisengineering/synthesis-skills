@@ -5,10 +5,16 @@ license: "Apache-2.0"
 metadata:
   depends_on: "synthesis-daily-rituals (optional integration)"
   author: "Rajiv Pant"
-  version: "0.6.0"
+  version: "0.6.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
+
+## v0.6.1 — The heartbeat distinguishes absence from invisibility
+
+v0.6.1 makes the doctor classify restricted LaunchAgent visibility as
+unverifiable, separates curl transport failure from HTTP status, and prevents a
+double-`000` response from being accepted as health.
 
 ## v0.6.0 — The optional auto-start service gets a heartbeat
 

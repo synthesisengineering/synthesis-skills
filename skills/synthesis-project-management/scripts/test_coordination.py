@@ -77,6 +77,48 @@ def test_claim_conflict_message_heartbeat_and_release(tmp_path: Path) -> None:
     assert next(row for row in table if row.id == "B").status == "active"
 
 
+def test_release_recoverably_archives_owned_active_pointer(tmp_path: Path) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    claim = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="repo/**",
+    )
+    assert MODULE.command_claim(claim) == 0
+    pointer = tmp_path / "active-project.json"
+    pointer.write_text(
+        json.dumps({"owner_session": "A", "project": "/tmp/project-a"}),
+        encoding="utf-8",
+    )
+
+    assert MODULE.command_release(
+        args(board, id="A", active_project_file=pointer)
+    ) == 0
+
+    assert not pointer.exists()
+    archived = list((tmp_path / "active-project-history").glob("*-A.json"))
+    assert len(archived) == 1
+    assert json.loads(archived[0].read_text(encoding="utf-8"))["project"] == "/tmp/project-a"
+
+
+def test_release_refuses_symlinked_active_pointer_archive(tmp_path: Path) -> None:
+    pointer = tmp_path / "active-project.json"
+    pointer.write_text(json.dumps({"owner_session": "A"}), encoding="utf-8")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (tmp_path / "active-project-history").symlink_to(outside, target_is_directory=True)
+
+    try:
+        MODULE.archive_owned_pointer(pointer, "A")
+    except ValueError as exc:
+        assert "archive must not be a symlink" in str(exc)
+    else:
+        raise AssertionError("symlinked archive root was accepted")
+    assert pointer.is_file()
+
+
 def test_different_projects_and_worktrees_run_in_parallel(tmp_path: Path) -> None:
     board = tmp_path / "active-sessions.md"
     first = claim_args(

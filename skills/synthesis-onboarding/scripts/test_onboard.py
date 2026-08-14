@@ -14,6 +14,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parent
 ENGINE = SCRIPTS / "onboard.py"
@@ -211,6 +212,78 @@ class ParserTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             onboard.validate_manifest(
                 {"version": 1, "org": {"id": "x", "workspace": "x"}, "bogus": 1}, "t")
+
+
+class PluginTests(unittest.TestCase):
+    def test_plugin_record_reads_codex_and_claude_versions(self):
+        codex = {"installed": [{
+            "pluginId": "synthesis-skills@synthesis-engineering",
+            "name": "synthesis-skills",
+            "version": "4.24.0",
+            "enabled": True,
+        }]}
+        claude = [{
+            "id": "synthesis-skills@synthesis-engineering",
+            "version": "4.24.0",
+            "enabled": True,
+        }]
+        with patch.object(onboard, "run", return_value=(0, json.dumps(codex), "")):
+            self.assertEqual(onboard.plugin_record("codex", "codex"), (True, "4.24.0"))
+        with patch.object(onboard, "run", return_value=(0, json.dumps(claude), "")):
+            self.assertEqual(onboard.plugin_record("claude", "claude"), (True, "4.24.0"))
+
+    def test_refresh_plugin_uses_each_clients_native_update_contract(self):
+        with patch.object(onboard, "run", return_value=(0, "", "")) as runner:
+            self.assertTrue(onboard.refresh_plugin("codex", "codex")[0])
+            self.assertEqual(
+                runner.call_args_list[0].args[0],
+                ["codex", "plugin", "marketplace", "upgrade", "synthesis-engineering", "--json"],
+            )
+        with patch.object(onboard, "run", return_value=(0, "", "")) as runner:
+            self.assertTrue(onboard.refresh_plugin("claude", "claude")[0])
+            self.assertEqual(runner.call_count, 2)
+            self.assertEqual(
+                runner.call_args_list[1].args[0],
+                ["claude", "plugin", "update", "synthesis-skills@synthesis-engineering"],
+            )
+
+    def test_install_does_not_replace_an_existing_live_plugin_cache(self):
+        report = onboard.Report(as_json=True)
+        with patch.object(onboard, "plugin_record", return_value=(True, "4.23.0")), \
+             patch.object(onboard, "expected_source_plugin_version", return_value="4.24.0"), \
+             patch.object(onboard, "refresh_plugin") as refresh:
+            onboard.phase_ecosystem(
+                report,
+                {"codex": "codex"},
+                dry_run=False,
+                no_plugin_cli=False,
+                refresh_native_plugins=False,
+            )
+        refresh.assert_not_called()
+        self.assertEqual(report.steps[0]["status"], onboard.ACTION)
+        self.assertIn("onboard.py update", report.steps[0]["hint"])
+
+    def test_update_refreshes_and_accepts_newer_version_from_old_plugin_cache(self):
+        report = onboard.Report(as_json=True)
+        with patch.object(
+            onboard,
+            "plugin_record",
+            side_effect=[(True, "4.23.0"), (True, "4.24.0")],
+        ), patch.object(
+            onboard, "expected_source_plugin_version", return_value=None
+        ), patch.object(
+            onboard, "refresh_plugin", return_value=(True, "refreshed")
+        ) as refresh:
+            onboard.phase_ecosystem(
+                report,
+                {"codex": "codex"},
+                dry_run=False,
+                no_plugin_cli=False,
+                refresh_native_plugins=True,
+            )
+        refresh.assert_called_once_with("codex", "codex")
+        self.assertEqual(report.steps[0]["status"], onboard.CHANGED)
+        self.assertIn("4.23.0 -> 4.24.0", report.steps[0]["detail"])
 
 
 class EngineTests(unittest.TestCase):

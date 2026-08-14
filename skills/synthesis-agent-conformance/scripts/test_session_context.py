@@ -64,7 +64,9 @@ def test_build_includes_active_coordination(tmp_path: Path) -> None:
     assert "verify claims before writes" in message
 
 
-def test_build_warns_when_project_record_is_stale(tmp_path: Path, monkeypatch) -> None:
+def test_build_rejects_incomplete_or_unleased_pointer(
+    tmp_path: Path, monkeypatch
+) -> None:
     project = tmp_path / "project"
     project.mkdir()
     (project / "CONTEXT.md").write_text(
@@ -81,12 +83,41 @@ def test_build_warns_when_project_record_is_stale(tmp_path: Path, monkeypatch) -
         "record_freshness",
         lambda path: (False, "project record is 3 commit(s) behind fetched origin/main"),
     )
-    message = MODULE.build(pointer, tmp_path / "no-board.md")
-    assert "RECORD STALENESS WARNING" in message
-    assert "3 commit(s) behind" in message
+    try:
+        MODULE.build(pointer, tmp_path / "no-board.md")
+    except ValueError as exc:
+        assert "missing pointer fields" in str(exc)
+    else:
+        raise AssertionError("unsafe pointer was injected")
 
-    monkeypatch.setattr(
-        MODULE, "record_freshness", lambda path: (True, "record current")
-    )
-    message = MODULE.build(pointer, tmp_path / "no-board.md")
-    assert "RECORD STALENESS WARNING" not in message
+
+def test_live_receipt_rejects_static_probe(tmp_path: Path) -> None:
+    receipt = tmp_path / "receipt.json"
+
+    assert not MODULE.record_live_receipt({}, receipt)
+    assert not receipt.exists()
+
+
+def test_live_receipt_records_real_sessionstart_shape(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "live" / "receipt.json"
+    monkeypatch.setenv("PLUGIN_ROOT", "/tmp/plugin")
+    payload = {
+        "hook_event_name": "SessionStart",
+        "session_id": "session-123",
+        "cwd": "/tmp/repo",
+        "source": "startup",
+    }
+
+    assert MODULE.record_live_receipt(payload, receipt)
+    recorded = json.loads(receipt.read_text(encoding="utf-8"))
+    client_receipt = receipt.with_name("receipt-codex.json")
+    assert client_receipt.is_file()
+    assert json.loads(client_receipt.read_text(encoding="utf-8")) == recorded
+    assert recorded["client"] == "codex"
+    assert recorded["session_id"] == "session-123"
+    assert recorded["hook_event_name"] == "SessionStart"
+    assert recorded["plugin_version"]
+    assert recorded["plugin_root"].endswith("synthesis-skills-codex-first-upgrade")
+    assert not list(receipt.parent.glob("*.tmp"))
