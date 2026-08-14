@@ -1783,7 +1783,10 @@ def continuity_readiness_checks(
             checks,
             "continuity.local-state",
             True,
-            "LOCAL_READY: project record is clean and readable on this machine",
+            (
+                "LOCAL_READY: project record is clean and readable on this "
+                "machine; no attributed task edits require a Stop receipt"
+            ),
         )
 
     if readiness == "local":
@@ -1861,8 +1864,6 @@ def continuity_readiness_checks(
             "--left-right",
             "--count",
             f"{upstream.stdout.strip()}...HEAD",
-            "--",
-            str(project),
         ]
     )
     parts = counts.stdout.split()

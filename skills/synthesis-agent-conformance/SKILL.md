@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.0"
+  version: "1.2.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -105,12 +105,15 @@ python3 scripts/conformance.py continuity \
 ```
 
 `pointer` verifies a live owner's leased cache. Local continuity verifies that
-Claude and Codex reconstruct identical project state with no pointer, accepts a
-current Stop receipt as `LOCAL_READY`, and accepts an attributed manifest as
+Claude and Codex reconstruct identical project state with no pointer. A clean,
+readable record with no attributed task edits is `LOCAL_READY` without creating
+empty evidence. When a task changes repository files, a current Stop receipt is
+required for `LOCAL_READY`; the attributed manifest without that receipt is
 `LOCAL_RECOVERABLE` after interruption. Remote continuity additionally requires
-no pending manifest and a clean upstream-current project record. Then open the
-project in the other client and confirm its SessionStart or first named-project
-turn recovers the same state.
+no pending manifest and complete branch-head equality with the fetched upstream,
+not merely equality for commits touching the project subdirectory. Then open
+the project in the other client and confirm its SessionStart or first
+named-project turn recovers the same state.
 
 ### 5. Close the loop
 

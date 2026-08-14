@@ -4,11 +4,24 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.25.1] - 2026-08-14
+
+### Fixed
+
+- **Remote-readiness integrity** — continuity conformance compares complete
+  branch heads with the fetched upstream, so an unpublished commit outside the
+  project subdirectory cannot produce a false `REMOTE_READY` result.
+- **Local evidence semantics** — a stopped task with attributed edits requires
+  its current content receipt; a clean no-edit task does not create empty
+  evidence. Documentation and conformance now state the same contract.
+- **Readiness naming** — local-ready, local-recoverable, and remote-ready are
+  consistently described as three states.
+
 ## [4.25.0] - 2026-08-14
 
 ### Added
 
-- **Two-state project continuity** — local-ready and local-recoverable evidence
+- **Three-state project continuity** — local-ready and local-recoverable evidence
   support same-machine Claude Code and Codex switching without per-turn Git or
   network activity; remote-ready provides the explicit cross-machine gate.
 - **Continuity conformance** — local and remote readiness checks verify edit

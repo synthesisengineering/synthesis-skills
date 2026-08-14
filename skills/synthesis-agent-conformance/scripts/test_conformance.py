@@ -646,6 +646,31 @@ def test_remote_continuity_requires_clean_published_project(tmp_path: Path) -> N
     assert any("REMOTE_READY" in check.detail for check in checks)
 
 
+def test_remote_continuity_rejects_unpublished_commit_outside_project(
+    tmp_path: Path,
+) -> None:
+    project, _stale = clone_pair_with_project(tmp_path)
+    repo = project.parents[1]
+    unrelated = repo / "unrelated.md"
+    unrelated.write_text("not published\n", encoding="utf-8")
+    subprocess = __import__("subprocess")
+    subprocess.run(["git", "-C", str(repo), "add", "unrelated.md"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "--quiet", "-m", "unpublished"],
+        check=True,
+    )
+
+    checks = MODULE.continuity_readiness_checks(
+        project, "remote", tmp_path / "empty-state"
+    )
+
+    remote = next(
+        check for check in checks if check.name == "continuity.remote-upstream"
+    )
+    assert not remote.ok
+    assert "ahead=1" in remote.detail
+
+
 def test_runtime_checks_fail_structurally_when_binaries_absent(monkeypatch) -> None:
     monkeypatch.setattr(MODULE, "resolve_client_binary", lambda name: None)
 
