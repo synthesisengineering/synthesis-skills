@@ -4,7 +4,7 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [4.24.0] - 2026-08-13
+## [4.24.0] - 2026-08-14
 
 ### Added
 
@@ -63,8 +63,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   payloads become explicit unknown evidence instead of unclassified errors;
   malformed nested hook rows cannot collapse into an empty PASS.
 - **Live SessionStart provenance** — public receipts require a UUID session,
-  an existing client-owned transcript, and the exact enabled immutable plugin
-  root; missing source-version truth fails the live plane closed.
+  a client-owned transcript that declares that same session, and the exact
+  enabled immutable plugin root; private control-plane receipts require the
+  same transcript binding, and missing source-version truth fails the live
+  plane closed.
+- **Installed catalog parity** — exact-version Claude and Codex caches must
+  match the source skills tree by content digest, including scripts and
+  OpenAI policy metadata; matching names or file counts cannot mask drift.
+- **Portable handoff state** — active-project validation rejects dirty project
+  records and commits not reachable from a fetched remote ref, so another
+  client or machine can recover the recorded state.
+- **Coordination pointer archives** — arbitrary session identifiers are encoded
+  into filesystem-safe basenames and cannot create nested archive paths.
+- **Skill dependency contracts** — source conformance rejects missing or cyclic
+  dependencies; the daily-ritual and Slack-sync graph is now acyclic.
 
 ## [4.23.0] - 2026-08-13
 

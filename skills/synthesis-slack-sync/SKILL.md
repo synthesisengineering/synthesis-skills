@@ -2,7 +2,7 @@
 name: synthesis-slack-sync
 description: "Slack channel sync protocol for AI-assisted workflows. Reads channels and threads via Slack MCP, saves to local transcript files in workspace-scoped repos, and updates person-scoped daily action plans. Handles mid-day re-syncs with thread staleness detection. Use when asked to: slack sync, sync from slack, check slack, read channels, sync messages, sync transcripts, what's new on slack."
 license: "CC0-1.0"
-depends_on: ["synthesis-daily-rituals", "synthesis-project-management"]
+depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
   version: "3.3.1"

@@ -105,7 +105,16 @@ def test_live_receipt_records_real_sessionstart_shape(
     codex_home = tmp_path / ".codex"
     transcript = codex_home / "sessions" / "live.jsonl"
     transcript.parent.mkdir(parents=True)
-    transcript.write_text("", encoding="utf-8")
+    transcript.write_text(
+        json.dumps(
+            {
+                "type": "session_meta",
+                "payload": {"id": "019fff79-5858-7993-a329-b301bccf5d31"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
     monkeypatch.setenv("PLUGIN_ROOT", str(MODULE.SCRIPTS_DIR.parents[2]))
     payload = {
@@ -135,14 +144,19 @@ def test_claude_signal_wins_over_inherited_codex_home(tmp_path: Path, monkeypatc
     claude_home = tmp_path / ".claude"
     transcript = claude_home / "projects" / "session.jsonl"
     transcript.parent.mkdir(parents=True, exist_ok=True)
-    transcript.write_text("", encoding="utf-8")
+    transcript.write_text(
+        json.dumps({"sessionId": "019fff79-5858-7993-a329-b301bccf5d32"})
+        + "\n",
+        encoding="utf-8",
+    )
     monkeypatch.delenv("PLUGIN_ROOT", raising=False)
     monkeypatch.setenv("CODEX_HOME", "/tmp/codex")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(MODULE.SCRIPTS_DIR.parents[2]))
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
 
     assert MODULE.client_provenance(
-        {"transcript_path": str(transcript)}
+        {"transcript_path": str(transcript)},
+        "019fff79-5858-7993-a329-b301bccf5d32",
     ) == ("claude", "claude-transcript")
 
 
@@ -157,6 +171,36 @@ def test_live_receipt_rejects_forged_payload_without_client_owned_roots(
             "hook_event_name": "SessionStart",
             "session_id": "019fff79-5858-7993-a329-b301bccf5d31",
             "transcript_path": str(tmp_path / ".codex" / "sessions" / "fake.jsonl"),
+        },
+        receipt,
+    )
+    assert not receipt.exists()
+
+
+def test_live_receipt_rejects_existing_transcript_for_another_session(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "receipt.json"
+    codex_home = tmp_path / ".codex"
+    transcript = codex_home / "sessions" / "other.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(
+        json.dumps(
+            {
+                "type": "session_meta",
+                "payload": {"id": "019fff79-5858-7993-a329-b301bccf5d99"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
+    assert not MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": "019fff79-5858-7993-a329-b301bccf5d31",
+            "transcript_path": str(transcript),
         },
         receipt,
     )

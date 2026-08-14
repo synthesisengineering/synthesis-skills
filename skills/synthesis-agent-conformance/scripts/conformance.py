@@ -13,6 +13,7 @@ import sys
 import tempfile
 import tomllib
 import uuid
+from graphlib import CycleError, TopologicalSorter
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,6 +44,7 @@ from active_project import (
 )
 from codex_hook_audit import audit as codex_hook_audit
 from codex_skill_catalog import audit as codex_skill_catalog_audit
+from live_receipt import transcript_binds_session
 from project_context import next_actions, record_freshness
 from pointer_lock import locked_pointer
 
@@ -316,6 +318,7 @@ def source_checks(source_root: Path) -> list[Check]:
 
     skill_dirs = sorted(path.parent for path in skills_root.glob("*/SKILL.md"))
     names: list[str] = []
+    dependency_graph: dict[str, list[str]] = {}
     prompt_visible: set[str] = set()
     for skill_dir in skill_dirs:
         try:
@@ -342,6 +345,10 @@ def source_checks(source_root: Path) -> list[Check]:
                 contract_ok,
                 f"license={license_id}; depends_on={dependencies}; metadata={metadata}",
             )
+            if isinstance(dependencies, list) and all(
+                isinstance(dependency, str) for dependency in dependencies
+            ):
+                dependency_graph[declared] = dependencies
             names.append(declared)
             interface = skill_dir / "agents" / "openai.yaml"
             if not interface.is_file():
@@ -388,6 +395,29 @@ def source_checks(source_root: Path) -> list[Check]:
 
     duplicates = sorted({name for name in names if names.count(name) > 1})
     add(checks, "source.skill-names-unique", not duplicates, ", ".join(duplicates) or f"{len(names)} skills")
+    missing_dependencies = sorted(
+        f"{skill}->{dependency}"
+        for skill, dependencies in dependency_graph.items()
+        for dependency in dependencies
+        if dependency not in dependency_graph
+    )
+    add(
+        checks,
+        "source.dependencies-present",
+        not missing_dependencies,
+        ", ".join(missing_dependencies) or "all declared dependencies exist",
+    )
+    try:
+        tuple(TopologicalSorter(dependency_graph).static_order())
+        dependency_cycle = None
+    except CycleError as exc:
+        dependency_cycle = " -> ".join(str(value) for value in exc.args[1])
+    add(
+        checks,
+        "source.dependencies-acyclic",
+        dependency_cycle is None,
+        dependency_cycle or "dependency graph is acyclic",
+    )
     if "synthesis-skill-router" in names:
         add(
             checks,
@@ -763,23 +793,12 @@ def _receipt_check(
             valid_session_id = False
         ok = bool(event == "SessionStart" and valid_session_id)
         if expected_client is not None:
-            ok = ok and client == expected_client
-        actual_version = payload.get("plugin_version")
-        if expected_plugin_version is not None:
             ok = bool(
                 ok
-                and actual_version == expected_plugin_version
+                and client == expected_client
                 and provenance == f"{expected_client}-transcript"
                 and transcript_path
-                and plugin_root
             )
-            if expected_plugin_root is None:
-                ok = False
-            else:
-                try:
-                    ok = ok and Path(str(plugin_root)).resolve() == expected_plugin_root.resolve()
-                except OSError:
-                    ok = False
             transcript_root = Path(
                 os.environ.get(
                     "CODEX_HOME" if expected_client == "codex" else "CLAUDE_CONFIG_DIR",
@@ -789,9 +808,30 @@ def _receipt_check(
             try:
                 transcript = Path(str(transcript_path)).expanduser()
                 transcript.resolve().relative_to(transcript_root.resolve())
-                ok = ok and transcript.is_absolute() and transcript.is_file()
+                ok = bool(
+                    ok
+                    and transcript.is_absolute()
+                    and transcript.is_file()
+                    and transcript_binds_session(
+                        transcript, expected_client, str(session_id)
+                    )
+                )
             except (OSError, ValueError):
                 ok = False
+        actual_version = payload.get("plugin_version")
+        if expected_plugin_version is not None:
+            ok = bool(
+                ok
+                and actual_version == expected_plugin_version
+                and plugin_root
+            )
+            if expected_plugin_root is None:
+                ok = False
+            else:
+                try:
+                    ok = ok and Path(str(plugin_root)).resolve() == expected_plugin_root.resolve()
+                except OSError:
+                    ok = False
         recorded_at = payload.get("recorded_at")
         age_seconds: float | None = None
         try:
@@ -972,11 +1012,14 @@ def catalog_checks(source_root: Path, home: Path | None = None) -> list[Check]:
                 )
                 continue
             installed_count = len(list((cache / "skills").glob("*/SKILL.md")))
+            source_digest = directory_digest(source_root / "skills")
+            installed_digest = directory_digest(cache / "skills")
             add(
                 checks,
                 f"catalog.{client}-cache",
-                installed_count == len(skills),
-                f"version={source_version}; source={len(skills)} installed={installed_count}; {cache}",
+                installed_count == len(skills) and installed_digest == source_digest,
+                f"version={source_version}; source={len(skills)} installed={installed_count}; "
+                f"source_digest={source_digest}; installed_digest={installed_digest}; {cache}",
             )
     runtime = codex_skill_catalog_audit(source_root, home=home)
     runtime_status = str(runtime.get("status") or "UNKNOWN")

@@ -129,6 +129,23 @@ def test_matching_session_and_lease_recoverably_archive_pointer(tmp_path: Path) 
     assert json.loads(archived.read_text(encoding="utf-8"))["project"] == "/tmp/project-a"
 
 
+def test_archive_filename_is_safe_for_separator_bearing_session_id(tmp_path: Path) -> None:
+    pointer = tmp_path / "active-project.json"
+    lease = "https://example.test/coordination.git"
+    session_id = "agent/../../other|session"
+    pointer.write_text(
+        json.dumps({"owner_session": session_id, "owner_lease": lease}),
+        encoding="utf-8",
+    )
+
+    archived = MODULE.archive_owned_pointer(pointer, session_id, lease)
+
+    assert archived is not None and archived.is_file()
+    assert archived.parent == tmp_path / "active-project-history"
+    assert "/" not in archived.name
+    assert "|" not in archived.name
+
+
 def test_release_refuses_symlinked_active_pointer_archive(tmp_path: Path) -> None:
     pointer = tmp_path / "active-project.json"
     lease = "https://example.test/coordination.git"

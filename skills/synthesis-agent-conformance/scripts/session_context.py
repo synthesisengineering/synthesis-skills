@@ -19,6 +19,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 from project_context import extract, next_actions, record_freshness
 from active_project import load_and_validate
+from live_receipt import transcript_binds_session
 
 
 DEFAULT_POINTER = Path.home() / ".synthesis" / "active-project.json"
@@ -72,8 +73,10 @@ def plugin_identity() -> tuple[str | None, str]:
     return None, str(root)
 
 
-def client_provenance(payload: dict[str, object]) -> tuple[str, str] | None:
-    """Identify the client from its owned, existing transcript path."""
+def client_provenance(
+    payload: dict[str, object], session_id: str
+) -> tuple[str, str] | None:
+    """Identify the client from a transcript bound to the claimed session."""
     transcript = Path(str(payload.get("transcript_path") or "")).expanduser()
     candidates = (
         (
@@ -94,7 +97,8 @@ def client_provenance(payload: dict[str, object]) -> tuple[str, str] | None:
             transcript.resolve().relative_to(transcript_root.resolve())
         except (OSError, ValueError):
             continue
-        return client, f"{client}-transcript"
+        if transcript_binds_session(transcript, client, session_id):
+            return client, f"{client}-transcript"
     return None
 
 
@@ -113,7 +117,7 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
         uuid.UUID(session_id)
     except ValueError:
         return False
-    provenance = client_provenance(payload)
+    provenance = client_provenance(payload, session_id)
     if provenance is None:
         return False
     version, plugin_root = plugin_identity()

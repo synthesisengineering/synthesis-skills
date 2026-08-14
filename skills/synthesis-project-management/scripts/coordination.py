@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import fcntl
 import json
 import os
@@ -830,7 +831,12 @@ def archive_owned_pointer(
             raise ValueError(f"active-project archive must not be a symlink: {archive}")
         archive.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%f%z")
-        destination = archive / f"{stamp}-{sanitize(owner_session)}.json"
+        visible = re.sub(r"[^A-Za-z0-9._-]+", "-", owner_session).strip("._-")
+        visible = (visible or "session")[:40]
+        digest = hashlib.sha256(owner_session.encode("utf-8")).hexdigest()[:12]
+        destination = archive / f"{stamp}-{visible}-{digest}.json"
+        if destination.parent.resolve() != archive.resolve():
+            raise ValueError("active-project archive destination escaped its root")
         os.replace(pointer, destination)
         return destination
 

@@ -220,6 +220,25 @@ def validate(
             issues.append(f"owner session heartbeat is invalid: {owner_state['heartbeat']!r}")
 
     if worktree.is_dir():
+        project_status = _run(
+            [
+                "git",
+                "-C",
+                str(worktree),
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+                "--",
+                str(project),
+            ]
+        )
+        if project_status.returncode != 0:
+            issues.append(
+                "project cleanliness check failed: "
+                + (project_status.stderr.strip() or f"exit={project_status.returncode}")
+            )
+        elif project_status.stdout.strip():
+            issues.append("project record has uncommitted or untracked changes")
         head = _run(["git", "-C", str(worktree), "rev-parse", "HEAD"])
         branch = _run(["git", "-C", str(worktree), "branch", "--show-current"])
         if head.returncode != 0:
@@ -247,6 +266,27 @@ def validate(
                 issues.append(
                     "pointer ancestry check failed: "
                     + (ancestry.stderr.strip() or f"exit={ancestry.returncode}")
+                )
+            remote_refs = _run(
+                [
+                    "git",
+                    "-C",
+                    str(worktree),
+                    "for-each-ref",
+                    "--format=%(refname)",
+                    "--contains",
+                    actual_head,
+                    "refs/remotes/",
+                ]
+            )
+            if remote_refs.returncode != 0:
+                issues.append(
+                    "remote reachability check failed: "
+                    + (remote_refs.stderr.strip() or f"exit={remote_refs.returncode}")
+                )
+            elif not remote_refs.stdout.strip():
+                issues.append(
+                    f"worktree HEAD {actual_head} is not reachable from any fetched remote ref"
                 )
         actual_branch = branch.stdout.strip()
         if branch.returncode != 0 or actual_branch != payload.get("branch"):

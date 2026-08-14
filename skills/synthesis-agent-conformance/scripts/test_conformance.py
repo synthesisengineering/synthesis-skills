@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -117,6 +118,32 @@ def test_source_checks_fail_when_changelog_trails_manifests(tmp_path: Path) -> N
     )
     assert not parity.ok
     assert "changelog=0.9.0" in parity.detail
+
+
+def test_source_checks_reject_dependency_cycles(tmp_path: Path) -> None:
+    write_manifests(tmp_path)
+    write_skill(tmp_path, "synthesis-one")
+    write_skill(tmp_path, "synthesis-two")
+    one = tmp_path / "skills" / "synthesis-one" / "SKILL.md"
+    two = tmp_path / "skills" / "synthesis-two" / "SKILL.md"
+    one.write_text(
+        one.read_text(encoding="utf-8").replace(
+            "depends_on: []", 'depends_on: ["synthesis-two"]'
+        ),
+        encoding="utf-8",
+    )
+    two.write_text(
+        two.read_text(encoding="utf-8").replace(
+            "depends_on: []", 'depends_on: ["synthesis-one"]'
+        ),
+        encoding="utf-8",
+    )
+
+    checks = MODULE.source_checks(tmp_path)
+
+    cycle = next(check for check in checks if check.name == "source.dependencies-acyclic")
+    assert cycle.ok is False
+    assert "synthesis-one" in cycle.detail
 
 
 def test_source_checks_fail_closed_without_changelog(tmp_path: Path) -> None:
@@ -572,10 +599,35 @@ def test_hook_live_checks_reject_static_absence_and_accept_receipts(
     transcripts = {
         "codex": codex_home / "sessions" / "public-1.jsonl",
         "claude": claude_home / "projects" / "public-2.jsonl",
+        "private": codex_home / "sessions" / "private.jsonl",
     }
     for transcript in transcripts.values():
-        transcript.parent.mkdir(parents=True)
-        transcript.write_text("", encoding="utf-8")
+        transcript.parent.mkdir(parents=True, exist_ok=True)
+    transcripts["codex"].write_text(
+        json.dumps(
+            {
+                "type": "session_meta",
+                "payload": {"id": "019fff79-5858-7993-a329-b301bccf5d31"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    transcripts["claude"].write_text(
+        json.dumps({"sessionId": "019fff79-5858-7993-a329-b301bccf5d32"})
+        + "\n",
+        encoding="utf-8",
+    )
+    transcripts["private"].write_text(
+        json.dumps(
+            {
+                "type": "session_meta",
+                "payload": {"id": "019fff79-5858-7993-a329-b301bccf5d33"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
     monkeypatch.setattr(
@@ -627,6 +679,8 @@ def test_hook_live_checks_reject_static_absence_and_accept_receipts(
                 "hook_event_name": "SessionStart",
                 "session_id": "019fff79-5858-7993-a329-b301bccf5d33",
                 "client": "codex",
+                "provenance_env": "codex-transcript",
+                "transcript_path": str(transcripts["private"]),
                 "recorded_at": recorded_at,
             }
         ),
@@ -805,7 +859,7 @@ def test_capability_checks_reject_incomplete_or_misattributed_evidence(
     assert "detail must contain 1-500 characters" in target.detail
 
 
-def test_catalog_checks_enforce_installed_count_parity(
+def test_catalog_checks_enforce_installed_content_parity(
     tmp_path: Path, monkeypatch
 ) -> None:
     source = tmp_path / "source"
@@ -814,7 +868,7 @@ def test_catalog_checks_enforce_installed_count_parity(
     write_skill(source, "synthesis-one")
     home = tmp_path / "home"
     for client in ("claude", "codex"):
-        cache = (
+        cache_root = (
             home
             / f".{client}"
             / "plugins"
@@ -822,11 +876,8 @@ def test_catalog_checks_enforce_installed_count_parity(
             / "marketplace"
             / "synthesis-skills"
             / "1.0.0"
-            / "skills"
-            / "synthesis-one"
         )
-        cache.mkdir(parents=True)
-        (cache / "SKILL.md").write_text("test", encoding="utf-8")
+        shutil.copytree(source / "skills", cache_root / "skills")
 
     monkeypatch.setattr(
         MODULE,
@@ -845,6 +896,26 @@ def test_catalog_checks_enforce_installed_count_parity(
     checks = MODULE.catalog_checks(source, home)
 
     assert all(check.ok for check in checks)
+
+    drifted = (
+        home
+        / ".codex"
+        / "plugins"
+        / "cache"
+        / "marketplace"
+        / "synthesis-skills"
+        / "1.0.0"
+        / "skills"
+        / "synthesis-one"
+        / "agents"
+        / "openai.yaml"
+    )
+    drifted.write_text("policy:\n  allow_implicit_invocation: false\n", encoding="utf-8")
+
+    checks = MODULE.catalog_checks(source, home)
+    codex_cache = next(check for check in checks if check.name == "catalog.codex-cache")
+    assert codex_cache.ok is False
+    assert "source_digest=" in codex_cache.detail
 
 
 def test_surface_checks_report_ide_as_explicitly_unsupported(tmp_path: Path) -> None:

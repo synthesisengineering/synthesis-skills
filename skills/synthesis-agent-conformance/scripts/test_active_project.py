@@ -159,14 +159,42 @@ def test_pointer_rejects_symlinked_or_outside_project_paths(tmp_path: Path) -> N
     assert any("controlling plan is outside project directory" in issue for issue in issues)
 
 
-def test_pointer_accepts_head_descended_from_recorded_commit(tmp_path: Path) -> None:
+def test_pointer_accepts_pushed_head_descended_from_recorded_commit(tmp_path: Path) -> None:
+    payload, board = fixture(tmp_path)
+    worktree = Path(str(payload["worktree"]))
+    (worktree / "next.txt").write_text("next\n", encoding="utf-8")
+    git(worktree, "add", "next.txt")
+    git(worktree, "commit", "-m", "next")
+    git(
+        worktree,
+        "update-ref",
+        "refs/remotes/origin/feature/test",
+        git(worktree, "rev-parse", "HEAD"),
+    )
+
+    assert validate(payload, board, refresh_lease=False) == []
+
+
+def test_pointer_rejects_unpushed_head(tmp_path: Path) -> None:
     payload, board = fixture(tmp_path)
     worktree = Path(str(payload["worktree"]))
     (worktree / "next.txt").write_text("next\n", encoding="utf-8")
     git(worktree, "add", "next.txt")
     git(worktree, "commit", "-m", "next")
 
-    assert validate(payload, board, refresh_lease=False) == []
+    issues = validate(payload, board, refresh_lease=False)
+
+    assert any("not reachable from any fetched remote ref" in issue for issue in issues)
+
+
+def test_pointer_rejects_dirty_project_record(tmp_path: Path) -> None:
+    payload, board = fixture(tmp_path)
+    plan = Path(str(payload["plan"]))
+    plan.write_text("# Changed but uncommitted\n", encoding="utf-8")
+
+    issues = validate(payload, board, refresh_lease=False)
+
+    assert any("project record has uncommitted" in issue for issue in issues)
 
 
 def test_pointer_rejects_prefix_only_workspace_claim(tmp_path: Path) -> None:
