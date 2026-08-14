@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections import Counter
 from pathlib import Path
@@ -17,11 +18,18 @@ MAX_DESCRIPTION_CHARS = 1_024
 ALIAS_INSTRUCTION_RESERVE_TOKENS = 256
 
 
-def _configured_model(home: Path) -> str | None:
+def _codex_home(home: Path | None = None) -> Path:
+    if home is not None:
+        return home / ".codex"
+    configured = os.environ.get("CODEX_HOME")
+    return Path(configured).expanduser() if configured else Path.home() / ".codex"
+
+
+def _configured_model(home: Path | None = None) -> str | None:
     try:
         match = re.search(
             r'^model\s*=\s*"([^"]+)"\s*$',
-            (home / ".codex" / "config.toml").read_text(encoding="utf-8"),
+            (_codex_home(home) / "config.toml").read_text(encoding="utf-8"),
             re.MULTILINE,
         )
     except OSError:
@@ -29,12 +37,12 @@ def _configured_model(home: Path) -> str | None:
     return match.group(1) if match else None
 
 
-def _context_window(home: Path, model: str | None) -> int | None:
+def _context_window(home: Path | None, model: str | None) -> int | None:
     if not model:
         return None
     try:
         payload = json.loads(
-            (home / ".codex" / "models_cache.json").read_text(encoding="utf-8")
+            (_codex_home(home) / "models_cache.json").read_text(encoding="utf-8")
         )
     except (OSError, ValueError):
         return None
@@ -112,7 +120,6 @@ def normalized_audit(
     result: dict[str, object], *, home: Path | None = None,
     expected_skill_names: set[str] | None = None,
 ) -> dict[str, object]:
-    home = home or Path.home()
     data = result.get("data", [])
     if not isinstance(data, list):
         raise ValueError("skills/list data is not a list")

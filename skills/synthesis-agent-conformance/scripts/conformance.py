@@ -20,6 +20,14 @@ from pathlib import Path
 from typing import Iterable
 
 try:
+    import tomllib
+except ImportError:  # Python 3.9/3.10 compatibility
+    try:
+        import tomli as tomllib  # type: ignore[no-redef]
+    except ImportError:  # pragma: no cover - exercised with Apple Python 3.9
+        tomllib = None  # type: ignore[assignment]
+
+try:
     import yaml
 except ImportError:  # pragma: no cover - exercised by dependency health checks
     yaml = None
@@ -543,6 +551,24 @@ def direct_public_copies(home: Path) -> list[str]:
 PLUGIN_NAME = "synthesis-skills"
 
 
+def _client_config_dir(client: str, home: Path | None = None) -> Path:
+    """Resolve the active client configuration directory.
+
+    An explicit ``home`` is a test/embedding override for the user's home
+    directory. Without it, honor each client's supported environment variable
+    before falling back to the documented default.
+    """
+    if home is not None:
+        return home / f".{client}"
+    variable = "CODEX_HOME" if client == "codex" else "CLAUDE_CONFIG_DIR"
+    configured = os.environ.get(variable)
+    return (
+        Path(configured).expanduser()
+        if configured
+        else Path.home() / f".{client}"
+    )
+
+
 def _version_key(version: str) -> tuple:
     parts = []
     for piece in re.split(r"[.\-+]", version):
@@ -579,7 +605,7 @@ def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
     binaries required, and it fails on drift rather than describing it.
     """
     checks: list[Check] = []
-    home = home or Path.home()
+    home = home or None
 
     # A plugin cache is a COPY of the source, pinned at its own version.
     # Comparing installed clients against a cache would compare them against
@@ -615,15 +641,16 @@ def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
     source_version = next(iter(manifest_values)) if len(manifest_values) == 1 else None
 
     installed: dict[str, str | None] = {
-        "claude": newest_cached_plugin_version(home / ".claude"),
-        "codex": newest_cached_plugin_version(home / ".codex"),
+        "claude": newest_cached_plugin_version(_client_config_dir("claude", home)),
+        "codex": newest_cached_plugin_version(_client_config_dir("codex", home)),
     }
     for client, version in installed.items():
         add(
             checks,
             f"parity.{client}-installed",
             version is not None,
-            version or f"no {PLUGIN_NAME} in {home}/.{client}/plugins/cache",
+            version
+            or f"no {PLUGIN_NAME} in {_client_config_dir(client, home)}/plugins/cache",
         )
 
     both = all(installed.values())
@@ -866,7 +893,7 @@ def _enabled_plugin_root(
     client: str, version: str, home: Path | None = None
 ) -> Path | None:
     """Return the enabled client's immutable cache root for one exact version."""
-    home = home or Path.home()
+    client_home = _client_config_dir(client, home)
     binary = resolve_client_binary(client)
     if not binary:
         return None
@@ -898,7 +925,15 @@ def _enabled_plugin_root(
         and item.get("enabled")
         and str(item.get("version")) == version
     ]
-    return _plugin_cache_path(home, client, version) if len(matches) == 1 else None
+    if len(matches) != 1:
+        return None
+    install_path = matches[0].get("installPath")
+    if install_path:
+        return Path(str(install_path))
+    marketplace = matches[0].get("marketplaceName")
+    if not marketplace:
+        return None
+    return _plugin_cache_path(client_home, version, str(marketplace))
 
 
 def hook_live_checks(
@@ -954,18 +989,17 @@ def hook_live_checks(
     return checks
 
 
-def _plugin_cache_path(home: Path, client: str, version: str) -> Path | None:
-    cache = home / f".{client}" / "plugins" / "cache"
-    if not cache.is_dir():
-        return None
-    matches = sorted(cache.glob(f"*/{PLUGIN_NAME}/{version}"))
-    return matches[-1] if matches else None
+def _plugin_cache_path(
+    client_home: Path, version: str, marketplace: str
+) -> Path | None:
+    candidate = client_home / "plugins" / "cache" / marketplace / PLUGIN_NAME / version
+    return candidate if candidate.is_dir() else None
 
 
 def catalog_checks(source_root: Path, home: Path | None = None) -> list[Check]:
     """Check source/install parity and Codex's resolved prompt catalog budget."""
     checks: list[Check] = []
-    home = home or Path.home()
+    home = home or None
     skills = sorted((source_root / "skills").glob("*/SKILL.md"))
     descriptions: list[tuple[str, int]] = []
     for skill in skills:
@@ -1002,7 +1036,7 @@ def catalog_checks(source_root: Path, home: Path | None = None) -> list[Check]:
         add(checks, "catalog.source-version", False, str(exc))
     if source_version:
         for client in ("claude", "codex"):
-            cache = _plugin_cache_path(home, client, source_version)
+            cache = _enabled_plugin_root(client, source_version, home)
             if cache is None:
                 add(
                     checks,
@@ -1040,43 +1074,77 @@ def catalog_checks(source_root: Path, home: Path | None = None) -> list[Check]:
     return checks
 
 
-def _codex_instruction_limit(home: Path) -> int:
-    config = home / ".codex" / "config.toml"
-    try:
-        match = re.search(
-            r"^project_doc_max_bytes\s*=\s*(\d+)\s*$",
-            config.read_text(encoding="utf-8"),
-            re.MULTILINE,
+def _fallback_codex_config(text: str) -> dict[str, object]:
+    """Parse the two required top-level TOML values on Python without tomllib."""
+    values: dict[str, object] = {}
+    integer = re.search(
+        r"(?m)^\s*project_doc_max_bytes\s*=\s*([+-]?[0-9][0-9_]*)\s*(?:#.*)?$",
+        text,
+    )
+    if integer:
+        raw = integer.group(1)
+        try:
+            values["project_doc_max_bytes"] = int(raw.replace("_", ""))
+        except ValueError as exc:
+            raise ValueError("project_doc_max_bytes is not a TOML integer") from exc
+    elif re.search(r"(?m)^\s*project_doc_max_bytes\s*=", text):
+        raise ValueError("project_doc_max_bytes is not a supported TOML integer")
+
+    array = re.search(
+        r"(?ms)^\s*project_doc_fallback_filenames\s*=\s*(\[[^\]]*\])\s*(?:#.*)?$",
+        text,
+    )
+    if array:
+        try:
+            values["project_doc_fallback_filenames"] = ast.literal_eval(array.group(1))
+        except (SyntaxError, ValueError) as exc:
+            raise ValueError(
+                "project_doc_fallback_filenames is not a TOML string array"
+            ) from exc
+    elif re.search(r"(?m)^\s*project_doc_fallback_filenames\s*=", text):
+        raise ValueError(
+            "project_doc_fallback_filenames is not a supported TOML string array"
         )
-        return int(match.group(1)) if match else 32_768
-    except OSError:
-        return 32_768
+    return values
 
 
-def _codex_instruction_fallbacks(home: Path) -> list[str]:
+def _codex_config(codex_home: Path) -> dict[str, object]:
+    config = codex_home / "config.toml"
     try:
-        text = (home / ".codex" / "config.toml").read_text(encoding="utf-8")
-        match = re.search(
-            r"^project_doc_fallback_filenames\s*=\s*(\[[^\]]*\])",
-            text,
-            re.MULTILINE | re.DOTALL,
-        )
-        if not match:
-            return []
-        values = ast.literal_eval(match.group(1))
-        if not isinstance(values, list) or not all(
-            isinstance(value, str) and value for value in values
-        ):
-            return []
-        return values
-    except (OSError, SyntaxError, ValueError):
-        return []
+        text = config.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    except OSError as exc:
+        raise ValueError(f"cannot read {config}: {exc}") from exc
+    try:
+        parsed = tomllib.loads(text) if tomllib is not None else _fallback_codex_config(text)
+    except Exception as exc:
+        raise ValueError(f"invalid Codex TOML at {config}: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(f"invalid Codex TOML root at {config}")
+    return parsed
 
 
-def _codex_instruction_chain(repo_root: Path, home: Path) -> list[Path]:
+def _codex_instruction_limit(codex_home: Path) -> int:
+    value = _codex_config(codex_home).get("project_doc_max_bytes", 32_768)
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError("project_doc_max_bytes must be a positive TOML integer")
+    return value
+
+
+def _codex_instruction_fallbacks(codex_home: Path) -> list[str]:
+    values = _codex_config(codex_home).get("project_doc_fallback_filenames", [])
+    if not isinstance(values, list) or not all(
+        isinstance(value, str) and value for value in values
+    ):
+        raise ValueError("project_doc_fallback_filenames must be a TOML string array")
+    return values
+
+
+def _codex_instruction_chain(repo_root: Path, codex_home: Path) -> list[Path]:
     """Resolve Codex's user file and root-to-cwd scoped instruction chain."""
     chain: list[Path] = []
-    user_root = home / ".codex"
+    user_root = codex_home
     for name in ("AGENTS.override.md", "AGENTS.md"):
         candidate = user_root / name
         if candidate.is_file():
@@ -1103,7 +1171,7 @@ def _codex_instruction_chain(repo_root: Path, home: Path) -> list[Path]:
     names = [
         "AGENTS.override.md",
         "AGENTS.md",
-        *_codex_instruction_fallbacks(home),
+        *_codex_instruction_fallbacks(codex_home),
     ]
     for directory in directories:
         for name in names:
@@ -1117,10 +1185,14 @@ def _codex_instruction_chain(repo_root: Path, home: Path) -> list[Path]:
 def instruction_budget_checks(repo_root: Path, home: Path | None = None) -> list[Check]:
     """Measure the instructions Codex may concatenate before task content."""
     checks: list[Check] = []
-    home = home or Path.home()
-    existing = _codex_instruction_chain(repo_root, home)
+    codex_home = _client_config_dir("codex", home)
+    try:
+        existing = _codex_instruction_chain(repo_root, codex_home)
+        limit = _codex_instruction_limit(codex_home)
+    except ValueError as exc:
+        add(checks, "instruction-budget.codex-config", False, str(exc))
+        return checks
     total = sum(path.stat().st_size for path in existing)
-    limit = _codex_instruction_limit(home)
     reserve = 4_096
     add(
         checks,
@@ -1128,7 +1200,7 @@ def instruction_budget_checks(repo_root: Path, home: Path | None = None) -> list
         total <= limit - reserve,
         f"{total} bytes across {len(existing)} file(s); limit={limit}; required reserve={reserve}",
     )
-    user_agents = home / ".codex" / "AGENTS.md"
+    user_agents = codex_home / "AGENTS.md"
     try:
         generated = user_agents.read_text(encoding="utf-8")
         sentinel_ok = "<!-- synthesis-agent-rules:end -->" in generated[-2048:]

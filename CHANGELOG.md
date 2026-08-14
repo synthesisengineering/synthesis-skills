@@ -70,6 +70,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **Installed catalog parity** — exact-version Claude and Codex caches must
   match the source skills tree by content digest, including scripts and
   OpenAI policy metadata; matching names or file counts cannot mask drift.
+- **Installed evidence resolution** — conformance honors `CODEX_HOME` and
+  `CLAUDE_CONFIG_DIR`, parses valid TOML integer forms without changing the
+  Apple Python 3.9 floor, fails closed on invalid instruction configuration,
+  and binds catalog and live-receipt checks to the marketplace reported by
+  the enabled plugin inventory rather than an arbitrary same-version cache.
 - **Portable handoff state** — active-project validation rejects dirty project
   records and commits not reachable from a fetched remote ref, so another
   client or machine can recover the recorded state.

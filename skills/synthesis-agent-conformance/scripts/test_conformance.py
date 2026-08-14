@@ -824,6 +824,46 @@ def test_instruction_budget_reserves_space(
     assert not budget.ok
 
 
+def test_instruction_budget_parses_valid_toml_integer_forms(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    codex = home / ".codex"
+    codex.mkdir(parents=True)
+    (codex / "AGENTS.md").write_text(
+        "rules\n<!-- synthesis-agent-rules:end -->\n", encoding="utf-8"
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "AGENTS.md").write_text("project\n", encoding="utf-8")
+
+    for declaration in (
+        "project_doc_max_bytes = 10_000\n",
+        "project_doc_max_bytes = 10000 # documented cap\n",
+    ):
+        (codex / "config.toml").write_text(declaration, encoding="utf-8")
+        checks = MODULE.instruction_budget_checks(repo, home)
+        budget = next(
+            check for check in checks
+            if check.name == "instruction-budget.codex-bytes"
+        )
+        assert "limit=10000" in budget.detail
+
+
+def test_instruction_budget_fails_closed_on_invalid_toml(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    codex = home / ".codex"
+    codex.mkdir(parents=True)
+    (codex / "config.toml").write_text(
+        'project_doc_max_bytes = "large"\n', encoding="utf-8"
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    checks = MODULE.instruction_budget_checks(repo, home)
+
+    assert [check.name for check in checks] == ["instruction-budget.codex-config"]
+    assert checks[0].ok is False
+
+
 def test_instruction_budget_requires_generated_user_tail_sentinel(tmp_path: Path) -> None:
     home = tmp_path / "home"
     codex = home / ".codex"
@@ -944,6 +984,19 @@ def test_catalog_checks_enforce_installed_content_parity(
             "errors": [],
         },
     )
+    monkeypatch.setattr(
+        MODULE,
+        "_enabled_plugin_root",
+        lambda client, version, home=None: (
+            home
+            / f".{client}"
+            / "plugins"
+            / "cache"
+            / "marketplace"
+            / "synthesis-skills"
+            / version
+        ),
+    )
 
     checks = MODULE.catalog_checks(source, home)
 
@@ -968,6 +1021,83 @@ def test_catalog_checks_enforce_installed_content_parity(
     codex_cache = next(check for check in checks if check.name == "catalog.codex-cache")
     assert codex_cache.ok is False
     assert "source_digest=" in codex_cache.detail
+
+
+def test_enabled_codex_root_binds_to_inventory_marketplace(
+    tmp_path: Path, monkeypatch
+) -> None:
+    home = tmp_path / "home"
+    selected = (
+        home
+        / ".codex"
+        / "plugins"
+        / "cache"
+        / "selected-marketplace"
+        / "synthesis-skills"
+        / "1.0.0"
+    )
+    alternate = (
+        home
+        / ".codex"
+        / "plugins"
+        / "cache"
+        / "zzz-alternate"
+        / "synthesis-skills"
+        / "1.0.0"
+    )
+    selected.mkdir(parents=True)
+    alternate.mkdir(parents=True)
+
+    class Result:
+        returncode = 0
+        stdout = json.dumps(
+            {
+                "installed": [
+                    {
+                        "name": "synthesis-skills",
+                        "enabled": True,
+                        "version": "1.0.0",
+                        "marketplaceName": "selected-marketplace",
+                    }
+                ]
+            }
+        )
+        stderr = ""
+
+    monkeypatch.setattr(MODULE, "resolve_client_binary", lambda _client: "/codex")
+    monkeypatch.setattr(MODULE, "run", lambda *args, **kwargs: Result())
+
+    assert MODULE._enabled_plugin_root("codex", "1.0.0", home) == selected
+
+
+def test_client_config_dirs_honor_supported_environment_variables(
+    tmp_path: Path, monkeypatch
+) -> None:
+    codex_home = tmp_path / "custom-codex"
+    claude_home = tmp_path / "custom-claude"
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+
+    assert MODULE._client_config_dir("codex") == codex_home
+    assert MODULE._client_config_dir("claude") == claude_home
+
+
+def test_parity_uses_configured_client_homes(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    write_manifests(source)
+    codex_home = tmp_path / "custom-codex"
+    claude_home = tmp_path / "custom-claude"
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+    for client_home in (codex_home, claude_home):
+        (client_home / "plugins" / "cache" / "market" / "synthesis-skills" / "1.0.0").mkdir(
+            parents=True
+        )
+
+    checks = MODULE.parity_checks(source)
+
+    assert all(check.ok for check in checks)
 
 
 def test_surface_checks_report_ide_as_explicitly_unsupported(tmp_path: Path) -> None:

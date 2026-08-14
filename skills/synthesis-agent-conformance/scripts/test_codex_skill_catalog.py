@@ -82,3 +82,27 @@ def test_resolved_catalog_fails_when_expected_skill_is_missing(tmp_path: Path) -
 
     assert audit["status"] == "FAIL"
     assert audit["missing_skill_names"] == ["missing-skill"]
+
+
+def test_catalog_budget_honors_codex_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    codex_home = tmp_path / "custom-codex"
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text(
+        'model = "custom-model"\n', encoding="utf-8"
+    )
+    (codex_home / "models_cache.json").write_text(
+        json.dumps(
+            {"models": [{"slug": "custom-model", "context_window": 80_000}]}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    root = tmp_path / "skills"
+    skill = _skill(root, "visible-skill")
+
+    audit = normalized_audit({"data": [{"skills": [skill], "errors": []}]})
+
+    assert audit["model"] == "custom-model"
+    assert audit["context_window"] == 80_000
