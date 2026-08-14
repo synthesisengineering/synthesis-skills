@@ -109,6 +109,10 @@ PROMPT_VISIBLE_PUBLIC_SKILLS = {
     "synthesis-skill-router",
     "synthesis-thinking-framework",
 }
+SOURCE_SCAN_SELF_EXCLUSIONS = {
+    Path("skills/synthesis-agent-conformance/scripts/conformance.py"),
+    Path("skills/synthesis-agent-conformance/scripts/test_conformance.py"),
+}
 
 
 @dataclass
@@ -471,10 +475,12 @@ def source_checks(source_root: Path) -> list[Check]:
         rel_parts = path.relative_to(source_root).parts
         if ".git" in rel_parts or ".claude" in rel_parts:
             return False
-        if path.resolve() in (
-            SCRIPT_PATH,
-            SCRIPT_PATH.with_name("test_conformance.py"),
-        ):
+        # The checker may execute from an installed plugin while auditing a
+        # separate canonical checkout. Exclude the checker definitions by
+        # their source-root-relative identities, not by the running copy's
+        # absolute path, so embedded forbidden-pattern fixtures never become
+        # false source defects.
+        if Path(*rel_parts) in SOURCE_SCAN_SELF_EXCLUSIONS:
             return False
         return path.suffix in {".md", ".py", ".sh", ".yaml", ".yml", ".json"}
 

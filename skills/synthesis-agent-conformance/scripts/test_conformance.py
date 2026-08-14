@@ -249,6 +249,46 @@ def test_placeholder_workspace_paths_are_allowed(tmp_path: Path) -> None:
     assert personal.ok
 
 
+def test_source_scans_exclude_checker_definitions_by_relative_identity(
+    tmp_path: Path,
+) -> None:
+    write_manifests(tmp_path)
+    write_skill(tmp_path, "synthesis-test")
+    checker_dir = (
+        tmp_path
+        / "skills"
+        / "synthesis-agent-conformance"
+        / "scripts"
+    )
+    checker_dir.mkdir(parents=True)
+    fixtures = (
+        '~/.claude/skills/synthesis-fixture\n'
+        'synthesis-skills/synthesis-fixture\n'
+        '~/workspaces/someone/synthesis-skills/skills\n'
+    )
+    (checker_dir / "conformance.py").write_text(fixtures, encoding="utf-8")
+    (checker_dir / "test_conformance.py").write_text(fixtures, encoding="utf-8")
+
+    checks = MODULE.source_checks(tmp_path)
+
+    relevant = {
+        check.name: check
+        for check in checks
+        if check.name
+        in {
+            "source.no-client-copy-paths",
+            "source.no-old-source-layout",
+            "source.no-personal-workspace-paths",
+        }
+    }
+    assert set(relevant) == {
+        "source.no-client-copy-paths",
+        "source.no-old-source-layout",
+        "source.no-personal-workspace-paths",
+    }
+    assert all(check.ok for check in relevant.values())
+
+
 def test_instruction_adapter(tmp_path: Path) -> None:
     (tmp_path / "AGENTS.md").write_text("# Rules\n", encoding="utf-8")
     (tmp_path / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
