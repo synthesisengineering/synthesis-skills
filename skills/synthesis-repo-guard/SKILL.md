@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.0"
+  version: "2.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -56,8 +56,9 @@ There are two separate readiness transitions:
 
 `checkpoint_sync.py` runs at workflow events:
 
-- **AI-tool Stop:** writes a local receipt for that client session. A Stop
-  with no attributed repository changes is a cheap no-op.
+- **AI-tool Stop:** writes a local receipt when that client session has
+  attributed repository changes. A Stop with no attributed repository changes
+  is a cheap no-op because there is no new file state to preserve.
 - **After a console cockpit write:** `--repo <written-file> --now` records
   a local producer manifest and receipt.
 - **Day-end / mac-sync:** `--flush-pending` publishes exact private-context
@@ -237,6 +238,7 @@ checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
 
 ## Changelog
 
-- **2.1.0 (2026-08-14):** separates LOCAL_READY and REMOTE_READY. Stop records atomic client-session receipts without Git or network mutation; interruption leaves a recoverable manifest; explicit remote handoff batches exact private-context paths only after source paths are upstream-current. Adds worktree identity, first-branch publication, generic commit messages, staged-index isolation, and integration fixtures.
+- **2.1.1 (2026-08-14):** clarifies that a clean no-edit task needs no empty receipt and that remote readiness compares complete branch heads rather than project-path history.
+- **2.1.0 (2026-08-14):** separates local and remote readiness. Stop records atomic client-session receipts without Git or network mutation; interruption leaves a recoverable manifest; explicit remote handoff batches exact private-context paths only after source paths are upstream-current. Adds worktree identity, first-branch publication, generic commit messages, staged-index isolation, and integration fixtures.
 - **2.0.0 (2026-07-08):** three-layer redesign. Generic-only audio/banner (confidentiality rule), `~/.synthesis/quiet-audio` mute flag, report files + history, remediation hints, new `checkpoint_sync.py` (event-driven auto-commit/push: runtime remote guard, quiescence, shared throttle, ff-only push, distinct author, stale-lock detection), synthesis-console integration contract, scheduled-mutation explicitly disallowed. Origin: 2026-07-08 design review (lesson: alert-channel confidentiality + event-driven checkpoints).
 - **1.1.0:** detector + count-only audio alerts.

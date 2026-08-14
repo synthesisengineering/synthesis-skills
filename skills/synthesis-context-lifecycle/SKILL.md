@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.7.0"
+  version: "1.7.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -598,16 +598,19 @@ Stage 3 is the 80/20 solution that makes long-running AI-assisted projects susta
 ## Local Continuity and Remote Readiness Protocol
 
 Context is maintained continuously, but it is not published after every
-prompt or response. The system exposes two honest states:
+prompt or response. The system exposes three honest states:
 
 - **LOCAL_READY:** project tiers and working-tree edits are available on the
   shared local filesystem. PostToolUse records every repository edit in a
-  client-session manifest; Stop adds an atomic content receipt. Claude Code
-  and Codex can switch on the same machine without a commit or network call.
+  client-session manifest; Stop adds an atomic content receipt when such edits
+  exist. A clean task with no project-file edits needs no empty receipt. Claude
+  Code and Codex can switch on the same machine without a commit or network
+  call.
 - **LOCAL_RECOVERABLE:** an interrupted task left its edit manifest but never
   reached Stop. The receiving client reads project files, Git status and diff,
   the controlling plan, and the manifest before continuing.
-- **REMOTE_READY:** source repositories are clean and upstream-current;
+- **REMOTE_READY:** complete source-repository branch heads are clean and
+  equal to their fetched upstreams;
   private project context has been committed and pushed in exact-path batches;
   pending manifests are retired; remote-mode context doctor and conformance
   pass.
