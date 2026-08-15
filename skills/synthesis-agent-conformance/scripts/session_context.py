@@ -19,7 +19,11 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 from project_context import extract, next_actions, record_freshness
 from active_project import load_and_validate
-from live_receipt import transcript_binds_session
+from live_receipt import (
+    claude_root_transcript_path,
+    transcript_binding_state,
+    transcript_binds_session,
+)
 
 
 DEFAULT_POINTER = Path.home() / ".synthesis" / "active-project.json"
@@ -100,9 +104,41 @@ def client_provenance(
             transcript.resolve().relative_to(transcript_root.resolve())
         except (OSError, ValueError):
             continue
+        if client == "claude" and not claude_root_transcript_path(
+            transcript, transcript_root, session_id
+        ):
+            continue
         if transcript_binds_session(transcript, client, session_id):
             return client, f"{client}-transcript"
     return None
+
+
+def deferred_claude_provenance(
+    payload: dict[str, object], session_id: str
+) -> tuple[str, str] | None:
+    """Validate Claude's transcript destination before its first JSONL write.
+
+    Claude invokes SessionStart hooks before it creates or populates the
+    transcript named in the hook payload.  The receipt can therefore preserve
+    the client-delivered event before the binding exists, while conformance
+    still requires that exact client-owned transcript to bind the session id
+    before accepting the evidence.
+    """
+    transcript_text = str(payload.get("transcript_path") or "")
+    transcript = Path(transcript_text).expanduser()
+    claude_root = Path(
+        os.environ.get("CLAUDE_CONFIG_DIR", str(Path.home() / ".claude"))
+    ).expanduser()
+    if not transcript_text or not claude_root_transcript_path(
+        transcript, claude_root, session_id
+    ):
+        return None
+    if transcript_binding_state(transcript, "claude", session_id) not in {
+        "pending",
+        "bound",
+    }:
+        return None
+    return "claude", "claude-transcript"
 
 
 def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
@@ -122,9 +158,18 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
         return False
     provenance = client_provenance(payload, session_id)
     if provenance is None:
+        provenance = deferred_claude_provenance(payload, session_id)
+    if provenance is None:
         return False
     version, plugin_root = plugin_identity()
     client, provenance_env = provenance
+    transcript = Path(str(payload.get("transcript_path") or "")).expanduser()
+    binding_state = transcript_binding_state(transcript, client, session_id)
+    if binding_state != "bound" and not (
+        client == "claude" and binding_state == "pending"
+    ):
+        return False
+    transcript_bound_at_record = binding_state == "bound"
     receipt = {
         "hook_event_name": event,
         "session_id": session_id,
@@ -132,6 +177,7 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
         "cwd": payload.get("cwd"),
         "source": payload.get("source"),
         "transcript_path": payload.get("transcript_path"),
+        "transcript_bound_at_record": transcript_bound_at_record,
         "provenance_env": provenance_env,
         "plugin_version": version,
         "plugin_root": plugin_root,

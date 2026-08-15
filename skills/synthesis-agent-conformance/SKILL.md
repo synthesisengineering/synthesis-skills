@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.1"
+  version: "1.2.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -146,9 +146,15 @@ behavior-producing implementation. The script:
 - extracts the current phase, status, plan, and next actions from durable files;
 - emits a compact context anchor;
 - writes atomic generic and client-specific live receipts only when the client
-  supplies a genuine `SessionStart` event and session id. Release conformance
-  requires current public-plugin receipts from both Claude Code and Codex,
-  plus the private Codex control-plane receipt.
+  supplies a genuine `SessionStart` event and session id. Claude may name its
+  client-owned transcript before creating its first JSONL record; the receipt
+  preserves that lifecycle event and records whether the binding existed at
+  hook time. Release conformance still requires the exact transcript to bind
+  the same session UUID. Claude evidence must use the canonical
+  `projects/<encoded-cwd>/<session-id>.jsonl` root shape; subagent descendants,
+  symlinks, and contradictory UUID declarations fail closed. Current
+  public-plugin receipts from both Claude Code and Codex, plus the private
+  Codex control-plane receipt, are required.
 
 Claude calls the same script from its native `SessionStart` hook. Client hook
 configuration remains an adapter; the context-producing behavior is shared.

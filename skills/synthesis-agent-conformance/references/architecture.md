@@ -75,7 +75,13 @@ Codex hook definitions outside managed policy require human hash review. Query
 the client-owned `hooks/list` response for the normalized current hash and trust
 reason; do not duplicate its private hashing algorithm or write its trust file.
 A simulated hook event verifies a script contract, not client delivery. Live
-delivery requires a receipt that can be created only from a real event payload.
+delivery requires a receipt from a real event payload and a matching
+client-owned transcript. Claude Code may create the transcript after its
+SessionStart hook returns, so receipt creation and transcript binding are a
+two-phase assertion; conformance accepts it only after both are true. Claude
+root-session evidence additionally requires the canonical
+`projects/<encoded-cwd>/<session-id>.jsonl` shape because subagent transcripts
+also carry their parent session UUID.
 
 ## 5. Durable project handoff
 

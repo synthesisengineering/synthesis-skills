@@ -53,7 +53,10 @@ from active_project import (
 from codex_hook_audit import audit as codex_hook_audit
 from codex_skill_catalog import audit as codex_skill_catalog_audit
 from capability_evidence import sanitize_detail
-from live_receipt import transcript_binds_session
+from live_receipt import (
+    claude_root_transcript_path,
+    transcript_binds_session,
+)
 from project_context import next_actions, record_freshness
 from pointer_lock import locked_pointer
 
@@ -857,6 +860,7 @@ def _receipt_check(
         client = payload.get("client")
         provenance = payload.get("provenance_env")
         transcript_path = payload.get("transcript_path")
+        transcript_bound_at_record = payload.get("transcript_bound_at_record")
         plugin_root = payload.get("plugin_root")
         try:
             uuid.UUID(str(session_id))
@@ -884,6 +888,12 @@ def _receipt_check(
                     ok
                     and transcript.is_absolute()
                     and transcript.is_file()
+                    and (
+                        expected_client != "claude"
+                        or claude_root_transcript_path(
+                            transcript, transcript_root, str(session_id)
+                        )
+                    )
                     and transcript_binds_session(
                         transcript, expected_client, str(session_id)
                     )
@@ -919,6 +929,7 @@ def _receipt_check(
             f"plugin_version={actual_version}; expected_plugin_version={expected_plugin_version}; "
             f"plugin_root={plugin_root}; expected_plugin_root={expected_plugin_root}; "
             f"provenance_env={provenance}; transcript_path={transcript_path}; "
+            f"transcript_bound_at_record={transcript_bound_at_record}; "
             f"recorded_at={recorded_at}; age_seconds="
             f"{int(age_seconds) if age_seconds is not None else 'invalid'}"
         )

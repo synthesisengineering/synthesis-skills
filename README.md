@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Claude Code SessionStart evidence follows the real lifecycle (August 2026).**
+Release **4.25.3** records the genuine hook event even when Claude creates its
+transcript immediately after the hook returns. Acceptance still requires that
+exact client-owned transcript to bind the same session UUID, so a static script
+probe cannot satisfy the live gate. See the [4.25.3 release notes](CHANGELOG.md).
+
 **Verified cleanup is part of continuity (August 2026).** Release **4.25.2**
 makes worktree retirement a resumable handoff transaction. One lifecycle lock
 spans durable intent, removal, manifest reconciliation, and receipt

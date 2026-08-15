@@ -4,6 +4,20 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.25.3] - 2026-08-15
+
+### Fixed
+
+- **`synthesis-agent-conformance` v1.2.2 — Claude Code live SessionStart
+  evidence** — preserve the client-delivered
+  receipt when Claude names its client-owned transcript before creating or
+  populating the JSONL file. The receipt records whether the binding existed
+  at hook time; conformance still fails closed until that exact transcript
+  binds the same session UUID. Canonical root-transcript shape validation
+  rejects subagent descendants, symlinks, and existing contradictory UUIDs.
+  Static script output without a real matching client transcript remains
+  insufficient.
+
 ## [4.25.2] - 2026-08-14
 
 ### Fixed

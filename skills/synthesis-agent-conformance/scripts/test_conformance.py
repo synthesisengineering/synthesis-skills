@@ -782,7 +782,10 @@ def test_hook_live_checks_reject_static_absence_and_accept_receipts(
     claude_home = tmp_path / ".claude"
     transcripts = {
         "codex": codex_home / "sessions" / "public-1.jsonl",
-        "claude": claude_home / "projects" / "public-2.jsonl",
+        "claude": claude_home
+        / "projects"
+        / "workspace"
+        / "019fff79-5858-7993-a329-b301bccf5d32.jsonl",
         "private": codex_home / "sessions" / "private.jsonl",
     }
     for transcript in transcripts.values():
@@ -887,6 +890,173 @@ def test_hook_live_checks_reject_static_absence_and_accept_receipts(
         check for check in expired
         if check.name == "hook-live.public-codex-sessionstart"
     ).ok is False
+
+
+def test_deferred_claude_receipt_requires_eventual_transcript_binding(
+    tmp_path: Path, monkeypatch
+) -> None:
+    claude_home = tmp_path / ".claude"
+    session_id = "019fff79-5858-7993-a329-b301bccf5d36"
+    transcript = claude_home / "projects" / "workspace" / f"{session_id}.jsonl"
+    transcript.parent.mkdir(parents=True)
+    installed_root = tmp_path / "plugin" / "1.2.3"
+    installed_root.mkdir(parents=True)
+    receipt = tmp_path / "public-sessionstart-claude.json"
+    receipt.write_text(
+        json.dumps(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": session_id,
+                "client": "claude",
+                "plugin_version": "1.2.3",
+                "plugin_root": str(installed_root),
+                "provenance_env": "claude-transcript",
+                "transcript_path": str(transcript),
+                "transcript_bound_at_record": False,
+                "recorded_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+
+    before: list[MODULE.Check] = []
+    MODULE._receipt_check(
+        before,
+        "hook-live.public-claude-sessionstart",
+        receipt,
+        expected_client="claude",
+        expected_plugin_version="1.2.3",
+        expected_plugin_root=installed_root,
+    )
+    assert before[0].ok is False
+
+    transcript.write_text(
+        json.dumps({"sessionId": "019fff79-5858-7993-a329-b301bccf5d99"})
+        + "\n",
+        encoding="utf-8",
+    )
+    conflicting: list[MODULE.Check] = []
+    MODULE._receipt_check(
+        conflicting,
+        "hook-live.public-claude-sessionstart",
+        receipt,
+        expected_client="claude",
+        expected_plugin_version="1.2.3",
+        expected_plugin_root=installed_root,
+    )
+    assert conflicting[0].ok is False
+
+    transcript.write_text(
+        json.dumps({"sessionId": session_id}) + "\n",
+        encoding="utf-8",
+    )
+    after: list[MODULE.Check] = []
+    MODULE._receipt_check(
+        after,
+        "hook-live.public-claude-sessionstart",
+        receipt,
+        expected_client="claude",
+        expected_plugin_version="1.2.3",
+        expected_plugin_root=installed_root,
+    )
+    assert after[0].ok is True
+
+
+def test_claude_receipt_rejects_subagent_transcript_with_parent_uuid(
+    tmp_path: Path, monkeypatch
+) -> None:
+    claude_home = tmp_path / ".claude"
+    session_id = "019fff79-5858-7993-a329-b301bccf5d40"
+    transcript = (
+        claude_home
+        / "projects"
+        / "workspace"
+        / session_id
+        / "subagents"
+        / "agent-a1.jsonl"
+    )
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(
+        json.dumps({"sessionId": session_id, "agentId": "a1"}) + "\n",
+        encoding="utf-8",
+    )
+    installed_root = tmp_path / "plugin" / "1.2.3"
+    installed_root.mkdir(parents=True)
+    receipt = tmp_path / "public-sessionstart-claude.json"
+    receipt.write_text(
+        json.dumps(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": session_id,
+                "client": "claude",
+                "plugin_version": "1.2.3",
+                "plugin_root": str(installed_root),
+                "provenance_env": "claude-transcript",
+                "transcript_path": str(transcript),
+                "recorded_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+
+    checks: list[MODULE.Check] = []
+    MODULE._receipt_check(
+        checks,
+        "hook-live.public-claude-sessionstart",
+        receipt,
+        expected_client="claude",
+        expected_plugin_version="1.2.3",
+        expected_plugin_root=installed_root,
+    )
+    assert checks[0].ok is False
+
+
+def test_claude_receipt_rejects_lexical_parent_transcript_path(
+    tmp_path: Path, monkeypatch
+) -> None:
+    claude_home = tmp_path / ".claude"
+    session_id = "019fff79-5858-7993-a329-b301bccf5d44"
+    (claude_home / "projects").mkdir(parents=True)
+    actual_transcript = claude_home / f"{session_id}.jsonl"
+    actual_transcript.write_text(
+        json.dumps({"sessionId": session_id}) + "\n",
+        encoding="utf-8",
+    )
+    lexical_transcript = (
+        claude_home / "projects" / ".." / f"{session_id}.jsonl"
+    )
+    installed_root = tmp_path / "plugin" / "1.2.3"
+    installed_root.mkdir(parents=True)
+    receipt = tmp_path / "public-sessionstart-claude.json"
+    receipt.write_text(
+        json.dumps(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": session_id,
+                "client": "claude",
+                "plugin_version": "1.2.3",
+                "plugin_root": str(installed_root),
+                "provenance_env": "claude-transcript",
+                "transcript_path": str(lexical_transcript),
+                "recorded_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+
+    checks: list[MODULE.Check] = []
+    MODULE._receipt_check(
+        checks,
+        "hook-live.public-claude-sessionstart",
+        receipt,
+        expected_client="claude",
+        expected_plugin_version="1.2.3",
+        expected_plugin_root=installed_root,
+    )
+    assert checks[0].ok is False
 
 
 def test_public_hook_live_checks_do_not_require_private_control_plane(

@@ -195,6 +195,7 @@ def test_live_receipt_records_real_sessionstart_shape(
     assert recorded["hook_event_name"] == "SessionStart"
     assert recorded["plugin_version"]
     assert recorded["provenance_env"] == "codex-transcript"
+    assert recorded["transcript_bound_at_record"] is True
     assert recorded["transcript_path"] == str(transcript)
     assert Path(recorded["plugin_root"]).resolve() == MODULE.SCRIPTS_DIR.parents[2]
     assert not list(receipt.parent.glob("*.tmp"))
@@ -202,11 +203,11 @@ def test_live_receipt_records_real_sessionstart_shape(
 
 def test_claude_signal_wins_over_inherited_codex_home(tmp_path: Path, monkeypatch) -> None:
     claude_home = tmp_path / ".claude"
-    transcript = claude_home / "projects" / "session.jsonl"
+    session_id = "019fff79-5858-7993-a329-b301bccf5d32"
+    transcript = claude_home / "projects" / "workspace" / f"{session_id}.jsonl"
     transcript.parent.mkdir(parents=True, exist_ok=True)
     transcript.write_text(
-        json.dumps({"sessionId": "019fff79-5858-7993-a329-b301bccf5d32"})
-        + "\n",
+        json.dumps({"sessionId": session_id}) + "\n",
         encoding="utf-8",
     )
     monkeypatch.delenv("PLUGIN_ROOT", raising=False)
@@ -216,8 +217,216 @@ def test_claude_signal_wins_over_inherited_codex_home(tmp_path: Path, monkeypatc
 
     assert MODULE.client_provenance(
         {"transcript_path": str(transcript)},
-        "019fff79-5858-7993-a329-b301bccf5d32",
+        session_id,
     ) == ("claude", "claude-transcript")
+
+
+def test_live_receipt_preserves_claude_event_before_transcript_exists(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "receipt.json"
+    claude_home = tmp_path / ".claude"
+    session_id = "019fff79-5858-7993-a329-b301bccf5d34"
+    transcript = claude_home / "projects" / "workspace" / f"{session_id}.jsonl"
+    transcript.parent.mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+
+    assert MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "cwd": "/tmp/repo",
+            "source": "startup",
+            "transcript_path": str(transcript),
+        },
+        receipt,
+    )
+    recorded = json.loads(receipt.read_text(encoding="utf-8"))
+    assert recorded["client"] == "claude"
+    assert recorded["provenance_env"] == "claude-transcript"
+    assert recorded["transcript_bound_at_record"] is False
+    assert receipt.with_name("receipt-claude.json").is_file()
+
+    transcript.write_text(
+        json.dumps({"sessionId": session_id}) + "\n",
+        encoding="utf-8",
+    )
+    assert MODULE.client_provenance(
+        {"transcript_path": str(transcript)}, session_id
+    ) == ("claude", "claude-transcript")
+
+
+def test_live_receipt_preserves_empty_claude_transcript_until_binding(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "receipt.json"
+    claude_home = tmp_path / ".claude"
+    session_id = "019fff79-5858-7993-a329-b301bccf5d37"
+    transcript = claude_home / "projects" / "workspace" / f"{session_id}.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.touch()
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+
+    assert MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "transcript_path": str(transcript),
+        },
+        receipt,
+    )
+    recorded = json.loads(receipt.read_text(encoding="utf-8"))
+    assert recorded["transcript_bound_at_record"] is False
+
+
+def test_live_receipt_rejects_conflicting_claude_transcript_without_overwrite(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "receipt.json"
+    receipt.write_text('{"preserve": true}\n', encoding="utf-8")
+    claude_home = tmp_path / ".claude"
+    session_id = "019fff79-5858-7993-a329-b301bccf5d38"
+    transcript = claude_home / "projects" / "workspace" / f"{session_id}.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(
+        json.dumps({"sessionId": "019fff79-5858-7993-a329-b301bccf5d99"})
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+
+    assert not MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "transcript_path": str(transcript),
+        },
+        receipt,
+    )
+    assert json.loads(receipt.read_text(encoding="utf-8")) == {"preserve": True}
+
+
+def test_live_receipt_rejects_transcript_that_conflicts_during_recording(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "receipt.json"
+    receipt.write_text('{"preserve": true}\n', encoding="utf-8")
+    claude_home = tmp_path / ".claude"
+    session_id = "019fff79-5858-7993-a329-b301bccf5d42"
+    transcript = claude_home / "projects" / "workspace" / f"{session_id}.jsonl"
+    transcript.parent.mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+    states = iter(("pending", "conflicting"))
+    monkeypatch.setattr(MODULE, "transcript_binding_state", lambda *args: next(states))
+
+    assert not MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "transcript_path": str(transcript),
+        },
+        receipt,
+    )
+    assert json.loads(receipt.read_text(encoding="utf-8")) == {"preserve": True}
+
+
+def test_deferred_claude_receipt_rejects_lexical_parent_directory(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "receipt.json"
+    claude_home = tmp_path / ".claude"
+    session_id = "019fff79-5858-7993-a329-b301bccf5d43"
+    transcript = claude_home / "projects" / ".." / f"{session_id}.jsonl"
+    claude_home.mkdir()
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+
+    assert not MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "transcript_path": str(transcript),
+        },
+        receipt,
+    )
+    assert not receipt.exists()
+
+
+def test_live_receipt_rejects_claude_subagent_transcript(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "receipt.json"
+    claude_home = tmp_path / ".claude"
+    session_id = "019fff79-5858-7993-a329-b301bccf5d39"
+    transcript = (
+        claude_home
+        / "projects"
+        / "workspace"
+        / session_id
+        / "subagents"
+        / "agent-a1.jsonl"
+    )
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(
+        json.dumps({"sessionId": session_id, "agentId": "a1"}) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+
+    assert not MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "transcript_path": str(transcript),
+        },
+        receipt,
+    )
+    assert not receipt.exists()
+
+
+def test_live_receipt_rejects_symlinked_claude_root_transcript(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "receipt.json"
+    claude_home = tmp_path / ".claude"
+    session_id = "019fff79-5858-7993-a329-b301bccf5d41"
+    target = tmp_path / "real.jsonl"
+    target.write_text(
+        json.dumps({"sessionId": session_id}) + "\n",
+        encoding="utf-8",
+    )
+    transcript = claude_home / "projects" / "workspace" / f"{session_id}.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.symlink_to(target)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+
+    assert not MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "transcript_path": str(transcript),
+        },
+        receipt,
+    )
+    assert not receipt.exists()
+
+
+def test_deferred_claude_receipt_rejects_path_outside_client_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "receipt.json"
+    claude_home = tmp_path / ".claude"
+    claude_home.mkdir()
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+
+    assert not MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": "019fff79-5858-7993-a329-b301bccf5d35",
+            "transcript_path": str(tmp_path / "outside.jsonl"),
+        },
+        receipt,
+    )
+    assert not receipt.exists()
 
 
 def test_live_receipt_rejects_forged_payload_without_client_owned_roots(
