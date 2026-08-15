@@ -169,7 +169,10 @@ def test_live_receipt_records_real_sessionstart_shape(
         json.dumps(
             {
                 "type": "session_meta",
-                "payload": {"id": "019fff79-5858-7993-a329-b301bccf5d31"},
+                "payload": {
+                    "id": "019fff79-5858-7993-a329-b301bccf5d31",
+                    "session_id": "019fff79-5858-7993-a329-b301bccf5d31",
+                },
             }
         )
         + "\n",
@@ -199,6 +202,43 @@ def test_live_receipt_records_real_sessionstart_shape(
     assert recorded["transcript_path"] == str(transcript)
     assert Path(recorded["plugin_root"]).resolve() == MODULE.SCRIPTS_DIR.parents[2]
     assert not list(receipt.parent.glob("*.tmp"))
+
+
+def test_live_receipt_rejects_codex_subagent_transcript(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "receipt.json"
+    codex_home = tmp_path / ".codex"
+    root_session_id = "019fff79-5858-7993-a329-b301bccf5d45"
+    subagent_id = "01a00767-fe9f-7543-b996-a6bd625f9645"
+    transcript = codex_home / "sessions" / "subagent.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(
+        json.dumps(
+            {
+                "type": "session_meta",
+                "payload": {
+                    "id": subagent_id,
+                    "session_id": root_session_id,
+                    "source": {"subagent": "review"},
+                    "thread_source": "subagent",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
+    assert not MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": root_session_id,
+            "transcript_path": str(transcript),
+        },
+        receipt,
+    )
+    assert not receipt.exists()
 
 
 def test_claude_signal_wins_over_inherited_codex_home(tmp_path: Path, monkeypatch) -> None:

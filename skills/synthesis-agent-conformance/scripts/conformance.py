@@ -906,7 +906,10 @@ def _receipt_check(
                 ok
                 and actual_version == expected_plugin_version
                 and plugin_root
+                and isinstance(transcript_bound_at_record, bool)
             )
+            if expected_client == "codex":
+                ok = bool(ok and transcript_bound_at_record is True)
             if expected_plugin_root is None:
                 ok = False
             else:

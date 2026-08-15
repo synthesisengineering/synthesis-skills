@@ -840,6 +840,7 @@ def test_hook_live_checks_reject_static_absence_and_accept_receipts(
                 "plugin_root": str(installed_roots["codex"]),
                 "provenance_env": "codex-transcript",
                 "transcript_path": str(transcripts["codex"]),
+                "transcript_bound_at_record": True,
                 "recorded_at": recorded_at,
             }
         ),
@@ -855,6 +856,7 @@ def test_hook_live_checks_reject_static_absence_and_accept_receipts(
                 "plugin_root": str(installed_roots["claude"]),
                 "provenance_env": "claude-transcript",
                 "transcript_path": str(transcripts["claude"]),
+                "transcript_bound_at_record": True,
                 "recorded_at": recorded_at,
             }
         ),
@@ -877,6 +879,43 @@ def test_hook_live_checks_reject_static_absence_and_accept_receipts(
         public_codex, public_claude, private, source
     )
     assert all(check.ok for check in present)
+
+    valid_codex = json.loads(public_codex.read_text(encoding="utf-8"))
+    invalid_codex = dict(valid_codex)
+    invalid_codex["transcript_bound_at_record"] = False
+    public_codex.write_text(json.dumps(invalid_codex), encoding="utf-8")
+    invalid_codex_checks = MODULE.hook_live_checks(
+        public_codex, public_claude, private, source
+    )
+    assert next(
+        check for check in invalid_codex_checks
+        if check.name == "hook-live.public-codex-sessionstart"
+    ).ok is False
+
+    missing_codex_flag = dict(valid_codex)
+    missing_codex_flag.pop("transcript_bound_at_record")
+    public_codex.write_text(json.dumps(missing_codex_flag), encoding="utf-8")
+    missing_codex_checks = MODULE.hook_live_checks(
+        public_codex, public_claude, private, source
+    )
+    assert next(
+        check for check in missing_codex_checks
+        if check.name == "hook-live.public-codex-sessionstart"
+    ).ok is False
+    public_codex.write_text(json.dumps(valid_codex), encoding="utf-8")
+
+    valid_claude = json.loads(public_claude.read_text(encoding="utf-8"))
+    invalid_claude = dict(valid_claude)
+    invalid_claude["transcript_bound_at_record"] = "true"
+    public_claude.write_text(json.dumps(invalid_claude), encoding="utf-8")
+    invalid_claude_checks = MODULE.hook_live_checks(
+        public_codex, public_claude, private, source
+    )
+    assert next(
+        check for check in invalid_claude_checks
+        if check.name == "hook-live.public-claude-sessionstart"
+    ).ok is False
+    public_claude.write_text(json.dumps(valid_claude), encoding="utf-8")
 
     stale = json.loads(public_codex.read_text(encoding="utf-8"))
     stale["recorded_at"] = (
@@ -994,6 +1033,7 @@ def test_claude_receipt_rejects_subagent_transcript_with_parent_uuid(
                 "plugin_root": str(installed_root),
                 "provenance_env": "claude-transcript",
                 "transcript_path": str(transcript),
+                "transcript_bound_at_record": True,
                 "recorded_at": datetime.now(timezone.utc).isoformat(),
             }
         ),
@@ -1040,6 +1080,7 @@ def test_claude_receipt_rejects_lexical_parent_transcript_path(
                 "plugin_root": str(installed_root),
                 "provenance_env": "claude-transcript",
                 "transcript_path": str(lexical_transcript),
+                "transcript_bound_at_record": True,
                 "recorded_at": datetime.now(timezone.utc).isoformat(),
             }
         ),
