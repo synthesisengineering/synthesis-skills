@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.2"
+  version: "1.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -86,6 +86,12 @@ The command writes a local pointer only. `CONTEXT.md`, `REFERENCE.md`,
 `sessions/`, and plan artifacts remain the source of truth. The pointer records
 the owning session and coordination-board lease URL, plus its worktree,
 branch, and source commit; `pointer` verifies those fields against disk.
+Activation and pointer validation share the local-continuity record contract:
+uncommitted project edits are acceptable exactly when session-attributed
+pending manifests record every dirty path, and any unattributed path fails
+closed. A live owner holding an attributed stopped-task record
+(`LOCAL_READY` or `LOCAL_RECOVERABLE`) can therefore activate without
+committing first.
 
 Before activation writes, read and claim the source areas on
 `~/.synthesis/coordination/active-sessions.md`. Conformance validates the board
