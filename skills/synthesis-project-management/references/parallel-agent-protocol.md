@@ -15,9 +15,11 @@ machine:
    controlling plan. Trust `git log`, not cached prose; a
    `handoff.record-freshness` failure or a SessionStart staleness warning
    means pull the checkout before believing anything the record says.
-2. **Claim.** Register an unused session id with your exact machine,
-   project, worktree/branch, resource claims, and context role — owner for
-   the project's canonical context, contributor for a bounded slice.
+2. **Claim.** Let the helper allocate a UUIDv7 session identity and its compact
+   and speakable aliases while registering your exact machine, project,
+   worktree/branch, resource claims, and context role — owner for the project's
+   canonical context, contributor for a bounded slice. A migrated letter is a
+   legacy alias, not a claim.
 3. **Isolate.** Create worktrees only after the claim, always naming the
    repository explicitly (a `cd`-dependent worktree command in the wrong
    directory creates a worktree of the wrong repository).
@@ -45,7 +47,7 @@ to record decisions is a second place for the record to drift.
 Different projects may run at the same time. Each session:
 
 1. reads the coordination board and its own project context;
-2. registers a unique session id, machine, project id, worktree/branch pair,
+2. registers a unique UUIDv7 session identity, machine, project id, worktree/branch pair,
    context role, and source-area claims;
 3. uses an isolated worktree when another live session touches the same
    repository;
@@ -66,7 +68,7 @@ Same-project parallelism uses a single-writer/multiple-contributor model:
 - contributors do not edit `CONTEXT.md`, `REFERENCE.md`, `sessions/`, the
   controlling plan, or `projects/index.yaml`; and
 - every contributor writes a session-specific artifact under
-  `resources/artifacts/contributions/<session-id>.md`.
+  `resources/artifacts/contributions/<compact-session-id>.md`.
 
 The contribution artifact records:
 
@@ -79,7 +81,7 @@ The contribution artifact records:
 Use this shape:
 
 ```markdown
-# Contribution — <session id>
+# Contribution — <compact session id>
 
 **Project:** <project id>
 **Claim:** <resource globs>

@@ -49,6 +49,7 @@ from active_project import (
     load_and_validate,
     porcelain_paths,
     project_pending_manifests,
+    resolve_session as resolve_coordination_session,
     sessions as coordination_sessions,
     validate as validate_active_project,
 )
@@ -63,6 +64,7 @@ from live_receipt import (
 )
 from project_context import next_actions, record_freshness
 from pointer_lock import locked_pointer
+from coordination_schema import SCHEMA_VERSION as COORDINATION_SCHEMA_VERSION
 
 DEFAULT_SOURCE_ROOT = SCRIPT_PATH.parents[3]
 DEFAULT_ACTIVE_PROJECT = Path.home() / ".synthesis" / "active-project.json"
@@ -1388,8 +1390,11 @@ def coordination_checks(board: Path, *, required: bool = True) -> list[Check]:
     table_ok = all(
         column in text
         for column in (
-            "Schema: v2",
-            "| id |",
+            f"Schema: v{COORDINATION_SCHEMA_VERSION}",
+            "| session uuid |",
+            "| compact id |",
+            "| speakable id v1 |",
+            "| legacy id |",
             "| machine |",
             "| project |",
             "| heartbeat |",
@@ -1487,7 +1492,11 @@ def activate(
     lease = lease_url(coordination_board)
     owner = owner_session or os.environ.get("SYNTHESIS_SESSION_ID")
     active_owners = coordination_sessions(coordination_board)
-    owner_state = active_owners.get(owner or "")
+    try:
+        owner_state = resolve_coordination_session(active_owners, owner or "")
+    except ValueError as exc:
+        add(checks, "handoff.pointer-owner", False, str(exc))
+        return checks
     if not lease:
         add(checks, "handoff.pointer-owner", False, "coordination lease unavailable")
         return checks
@@ -1504,6 +1513,7 @@ def activate(
             f"active coordination owner required; requested={owner or 'missing'}",
         )
         return checks
+    owner = owner_state["session_uuid"]
     payload = {
         **summary,
         "activated_at": datetime.now(timezone.utc).isoformat(),
@@ -2185,7 +2195,10 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--active-project-file", type=Path, default=DEFAULT_ACTIVE_PROJECT)
     result.add_argument(
         "--session-id",
-        help="Coordination-board session id recorded as active pointer owner.",
+        help=(
+            "Coordination-board UUID, compact, speakable, or legacy selector; "
+            "the active pointer records the resolved UUID."
+        ),
     )
     result.add_argument(
         "--public-codex-sessionstart-receipt",

@@ -113,7 +113,10 @@ doctor path that does not mutate an existing plugin cache.
 1. `install` converges missing configuration without replacing a live cache.
 2. `doctor` reads source, installed state, and live evidence separately.
 3. `update` is explicit. Close active sessions, checkpoint work, update through
-   each client's native command, and start new sessions afterward.
+   each client's native command, then restart the client. Resume the same root
+   conversation only when an exact current-plugin SessionStart receipt and
+   loaded registry prove the restart took effect; create a new
+   conversation/task only if that proof fails or rehydration is unsupported.
 4. Installed copies are never edited as source.
 5. Local modifications are archived recoverably before replacement.
 

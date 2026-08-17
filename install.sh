@@ -345,9 +345,9 @@ do_install() {
     fi
     prune_backups
     echo "Skill discovery is session-scoped:"
-    echo "  Claude Code: start a new session after this run changes its plugin or fallback copies."
-    echo "  Codex: start a new task after this run changes its plugin or fallback copies."
-    echo "Existing sessions keep the registry they loaded at startup."
+    echo "  Restart Claude Code or Codex after this run changes plugin or fallback copies."
+    echo "  Resume the same root conversation only after its exact SessionStart receipt and loaded registry match the installed version."
+    echo "  Start a new conversation/task only if restart verification fails or rehydration is unsupported."
 
     # Validate dependencies in the first target directory
     FIRST_TARGET=""

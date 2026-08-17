@@ -4,6 +4,40 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.28.0] - 2026-08-17
+
+### Added
+
+- **`synthesis-project-management` v2.3.0 — durable UUIDv7 session identity** —
+  coordination schema v3 stores a full UUIDv7 plus compact Crockford Base32
+  and speakable word-number aliases that encode the same 60 random bits.
+  Claims remain resource paths attached to a session. The lease-backed
+  allocator checks collisions inside the compare-and-swap transaction; every
+  command and active-project consumer accepts the UUID, compact, speakable, or
+  migrated legacy selector.
+- **Atomic v1/v2 board migration** — `coordination.py migrate` assigns all
+  historical rows their canonical and human-facing identities while retaining
+  letters under an explicit `legacy id` column and preserving messages. The
+  versioned offline vocabulary vendors the MIT-licensed BIP-39 English list
+  with a pinned digest and exact round-trip tests.
+
+### Changed
+
+- **`synthesis-checkpoint` v1.5.0 — receipt-based restart recovery** — a stale
+  startup registry now asks for a genuine client process restart first. The
+  same root conversation continues only when a new transcript-bound
+  SessionStart event proves the current plugin version/root and loaded skill
+  metadata; a new conversation/task is required only when rehydration is
+  unsupported or that verification fails.
+- **`synthesis-onboarding` v1.2.0 — correct post-update guidance** — installer
+  output and documentation distinguish installed cache replacement from the
+  subsequent lifecycle reload and state the same restart-first verification
+  ladder for Claude Code and Codex.
+- **`synthesis-agent-conformance` v1.5.0 — coordination schema v3** — source,
+  SessionStart, pointer activation, and semantic doctor paths resolve every
+  identity representation to the canonical UUID; newly activated pointers no
+  longer persist a compact, speakable, or legacy selector.
+
 ## [4.27.0] - 2026-08-17
 
 ### Added

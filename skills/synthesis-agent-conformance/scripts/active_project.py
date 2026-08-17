@@ -18,6 +18,21 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+PROJECT_MANAGEMENT_SCRIPTS_DIR = (
+    Path(__file__).resolve().parents[2]
+    / "synthesis-project-management"
+    / "scripts"
+)
+if str(PROJECT_MANAGEMENT_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_MANAGEMENT_SCRIPTS_DIR))
+
+from coordination_schema import (
+    SessionIdentity,
+    parse_table_rows,
+    row_identity,
+    selector_matches,
+)
+
 TERMINAL_STATUSES = {"released", "complete", "completed", "closed"}
 
 
@@ -147,26 +162,44 @@ def sessions(board: Path) -> dict[str, dict[str, str]]:
     except OSError:
         return {}
     result: dict[str, dict[str, str]] = {}
-    inside = False
-    for line in text.splitlines():
-        if line.strip() == "## Active sessions":
-            inside = True
-            continue
-        if inside and line.startswith("## "):
-            break
-        if not inside or not line.startswith("|"):
-            continue
-        columns = [re.sub(r"[*`]", "", value).strip() for value in line.split("|")[1:-1]]
-        if len(columns) != 12 or columns[0] in {"id", "----"} or set(columns[0]) == {"-"}:
-            continue
-        result[columns[0]] = {
-            "heartbeat": columns[5],
-            "workspace": columns[7],
-            "areas": columns[9],
-            "context_role": columns[10],
-            "status": columns[11].lower(),
+    for row in parse_table_rows(text):
+        identity = row_identity(row)
+        state = {
+            "session_uuid": identity.session_uuid or identity.legacy_id,
+            "compact_id": identity.compact_id,
+            "speakable_id": identity.speakable_id,
+            "legacy_id": identity.legacy_id,
+            "heartbeat": row.get("heartbeat", row.get("started", "")),
+            "workspace": row.get("workspace(s) / branch", ""),
+            "areas": row.get("claimed areas (advisory lock)", ""),
+            "context_role": row.get("context role", "none").lower(),
+            "status": row.get("status", "").lower(),
         }
+        for selector in identity.selectors():
+            result[selector] = state
     return result
+
+
+def resolve_session(
+    states: dict[str, dict[str, str]], selector: str
+) -> dict[str, str] | None:
+    """Resolve UUID, compact, speakable, or legacy forms without ambiguity."""
+    direct = states.get(selector)
+    if direct is not None:
+        return direct
+    matches: dict[int, dict[str, str]] = {}
+    for state in states.values():
+        identity = SessionIdentity(
+            state["session_uuid"],
+            state["compact_id"],
+            state["speakable_id"],
+            state["legacy_id"],
+        )
+        if selector_matches(identity, selector):
+            matches[id(state)] = state
+    if len(matches) > 1:
+        raise ValueError(f"ambiguous coordination session selector: {selector}")
+    return next(iter(matches.values())) if matches else None
 
 
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
@@ -309,7 +342,11 @@ def validate(
         )
 
     owner = str(payload["owner_session"])
-    owner_state = sessions(board).get(owner)
+    try:
+        owner_state = resolve_session(sessions(board), owner)
+    except ValueError as exc:
+        issues.append(str(exc))
+        owner_state = None
     if not owner_state or owner_state["status"] in TERMINAL_STATUSES:
         issues.append(f"owner session is not active: {owner}")
     else:

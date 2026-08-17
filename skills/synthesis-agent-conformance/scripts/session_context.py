@@ -27,9 +27,17 @@ except ImportError:  # pragma: no cover - POSIX only
 SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
+PROJECT_MANAGEMENT_SCRIPTS_DIR = (
+    Path(__file__).resolve().parents[2]
+    / "synthesis-project-management"
+    / "scripts"
+)
+if str(PROJECT_MANAGEMENT_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_MANAGEMENT_SCRIPTS_DIR))
 
 from project_context import extract, next_actions, record_freshness
 from active_project import load_and_validate
+from coordination_schema import display_id, parse_table_rows, row_identity
 from live_receipt import (
     claude_root_transcript_path,
     latest_receipt_paths,
@@ -279,27 +287,14 @@ def active_session_ids(board: Path) -> list[str]:
     ):
         raise ValueError(f"coordination board schema is invalid: {board}")
     active = []
-    in_table = False
-    for line in text.splitlines():
-        if line.strip() == "## Active sessions":
-            in_table = True
-            continue
-        if in_table and line.startswith("## "):
-            break
-        if not in_table or not line.startswith("|"):
-            continue
-        columns = [re.sub(r"[*`]", "", value).strip() for value in line.split("|")[1:-1]]
-        if len(columns) not in {7, 12} or columns[0] in {"id", "----"}:
-            continue
-        if set(columns[0]) == {"-"}:
-            continue
-        if columns[-1].lower() not in {
+    for row in parse_table_rows(text):
+        if row.get("status", "").lower() not in {
             "released",
             "complete",
             "completed",
             "closed",
         }:
-            active.append(columns[0])
+            active.append(display_id(row_identity(row)))
     return active
 
 
