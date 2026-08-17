@@ -4,6 +4,25 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.29.0] - 2026-08-17
+
+### Added
+
+- **`synthesis-daily-rituals` v2.23.0 — distributed ritual execution (desk and
+  workers)** — the ritual can fan its per-workspace sync labor out while the
+  output stays singular. A private workers registry declares which workspace
+  seats run workers and where each writes; every worker ends by writing a
+  structured summary artifact (schema, path convention, coverage and gaps
+  fields, fixed body sections) defined in the new
+  `references/ritual-worker-contract.md`. The desk — the ritual-home seat —
+  folds the newest artifact per workspace instead of loading workspace detail
+  inline, owns cross-workspace conflict reconciliation, and opens every brief
+  with a mandatory coverage line. Workers never message the desk
+  (worker→file, desk→file): a missing artifact is the legible "not covered"
+  signal. Absent registry = classic single-session ritual, unchanged. The
+  contract is client-neutral by construction — any agent client or a human can
+  produce a conforming artifact or act as the desk.
+
 ## [4.28.1] - 2026-08-17
 
 ### Fixed

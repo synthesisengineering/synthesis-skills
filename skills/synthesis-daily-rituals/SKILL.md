@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.22.0"
+  version: "2.23.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,21 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.23.0 — Distributed ritual execution: desk and workers
+
+The ritual can now fan its sync labor out per workspace while its output stays singular.
+One seat — the **desk**, the ritual's home — frames the day and produces the single brief;
+each workspace runs its labor as a **worker** that writes a structured summary artifact to
+a declared path, and the desk folds artifacts instead of loading workspace detail inline.
+Workers never message the desk: **worker→file, desk→file** — an artifact survives whether
+or not anyone was listening, and a missing artifact is itself the legible "not covered"
+signal. The full schema, path convention, registry format, desk obligations, and failure
+semantics live in [`references/ritual-worker-contract.md`](references/ritual-worker-contract.md);
+the operative rules are in "Distributed ritual execution" below. Every brief now carries a
+mandatory **coverage line**. Design record: the ritual-home seat's 2026-08-11 distributed-
+ritual-architecture artifact (decisions: output never distributes; fan out execution,
+converge presentation).
 
 ## v2.22.0 — Local continuity during the day; remote readiness at day-end
 
@@ -323,9 +338,39 @@ These values are user-specific. Update them for your environment.
 
 ---
 
+## Distributed ritual execution — desk and workers (v2.23.0)
+
+Applies whenever a workers registry exists (default `~/.synthesis/ritual/workers.yaml`;
+absent registry = classic single-session ritual, no behavior change). Contract:
+[`references/ritual-worker-contract.md`](references/ritual-worker-contract.md).
+
+- **The desk is the registry's `desk_seat`** — the ritual home. Only the desk produces the
+  daily plan. One brief, one to-do list, one console; if a run produces more than one
+  brief, the design has failed.
+- **Each `active` worker executes its workspace's own checklist steps** (the syncs, the
+  repo pass, the workspace-side triage below) in one of two modes, equally valid: an
+  attended session rooted in that workspace, or a desk-dispatched subagent in an isolated
+  context. Either way it ends by writing the contract artifact to its registered
+  `artifact_dir` — that write IS the worker's completion.
+- **The desk folds, never re-derives.** At every desk pass (day-start, mid-day, day-end)
+  read the newest artifact per (workspace, run_type) for today, reconcile across
+  workspaces — cross-workspace calendar and commitment conflicts are visible only here and
+  are the desk's explicit responsibility — and produce the one brief.
+- **The coverage line is mandatory and comes first** in every brief: each registered
+  workspace as folded (run_type + finish time), **pending**, or **not scheduled**
+  (`on-demand`/`dormant` per the registry). A registered-active workspace with no fresh
+  artifact is reported *not covered* — never reconstructed from stale artifacts or desk
+  guesswork.
+- **Context isolation is the point.** The desk does not load a workspace's channels,
+  repos, or transcripts inline; workers do not see each other or the combined picture.
+  Reconciliation belongs to the desk alone (the parallel-dispatch rule from
+  synthesis-project-management, applied to the day itself).
+
 ## Day-Start Checklist
 
-Execute in this order (each step depends on the one before it).
+Execute in this order (each step depends on the one before it). **Distributed mode:** each
+worker runs its workspace's steps and files its artifact; the desk runs Steps 1 and 8–10
+and folds worker artifacts per the section above.
 
 ### 1. Temporal & State Verification — RUN FIRST, every day
 
@@ -826,6 +871,10 @@ When observer mode is reinvented per conversation, the agent often drops durable
 ---
 
 ## Day-End Checklist
+
+**Distributed mode (v2.23.0):** each worker runs its workspace's close steps and files a
+`day-end` artifact; the desk folds artifacts, runs the guardian review and the publication
+boundary, and writes the one close-out with its coverage line.
 
 ### Day-End Modes (v2.14.0) — ask first, every time
 
