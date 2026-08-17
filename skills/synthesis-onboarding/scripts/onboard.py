@@ -628,10 +628,10 @@ def phase_ecosystem(
                     (PLUGIN_NAME, name, after_version, expected),
                 )
             elif after_version != before_version:
-                restart = "new Claude Code session" if name == "claude" else "new Codex task"
+                restart = "restart Claude Code" if name == "claude" else "restart Codex"
                 report.add(
                     "ecosystem", CHANGED,
-                    "%s plugin updated for %s: %s -> %s; start a %s to load the new registry" %
+                    "%s plugin updated for %s: %s -> %s; %s, resume the same root conversation, and verify its exact current-plugin SessionStart receipt plus loaded registry; create a new conversation/task only if that verification fails" %
                     (PLUGIN_NAME, name, before_version, after_version, restart),
                 )
             else:
@@ -650,10 +650,10 @@ def phase_ecosystem(
             continue
         success, detail = install_plugin(name, binary)
         if success and plugin_enabled(name, binary):
-            restart = "new Claude Code session" if name == "claude" else "new Codex task"
+            restart = "restart Claude Code" if name == "claude" else "restart Codex"
             report.add(
                 "ecosystem", CHANGED,
-                "%s: %s; start a %s to load the plugin registry" %
+                "%s: %s; %s, resume the same root conversation, and verify its exact current-plugin SessionStart receipt plus loaded registry; create a new conversation/task only if that verification fails" %
                 (name, detail, restart),
             )
         else:

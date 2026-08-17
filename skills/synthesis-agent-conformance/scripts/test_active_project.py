@@ -11,6 +11,7 @@ from pathlib import Path
 
 import active_project
 from active_project import load_and_validate, validate
+from coordination_schema import identity_from_uuid
 
 
 def git(repo: Path, *args: str) -> str:
@@ -60,13 +61,16 @@ def fixture(tmp_path: Path) -> tuple[dict[str, object], Path]:
     head = git(worktree, "rev-parse", "HEAD")
     git(worktree, "update-ref", "refs/remotes/origin/main", head)
     now = datetime.now().astimezone()
+    identity = identity_from_uuid(
+        "019fff79-5858-7993-a329-b301bccf5d62", legacy_id="A"
+    )
     board = tmp_path / "active-sessions.md"
     board.write_text(
-        "# Coordination\n\nSchema: v2\nLease: https://example.test/coordination.git\n"
+        "# Coordination\n\nSchema: v3\nLease: https://example.test/coordination.git\n"
         "## Active sessions\n\n"
-        "| id | agent | machine | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |\n"
-        "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
-        f"| A | Codex | mac | test | {now.isoformat()} | {now.isoformat()} | autonomous | {worktree} @ feature/test | work | {project}/** | owner | active |\n\n"
+        "| session uuid | compact id | speakable id v1 | legacy id | agent | machine | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+        f"| {identity.session_uuid} | {identity.compact_id} | {identity.speakable_id} | A | Codex | mac | test | {now.isoformat()} | {now.isoformat()} | autonomous | {worktree} @ feature/test | work | {project}/** | owner | active |\n\n"
         "## Messages\n\n---\n\n## Protocol\n",
         encoding="utf-8",
     )
@@ -76,7 +80,7 @@ def fixture(tmp_path: Path) -> tuple[dict[str, object], Path]:
         "worktree": str(worktree),
         "branch": "feature/test",
         "source_commit": head,
-        "owner_session": "A",
+        "owner_session": identity.session_uuid,
         "owner_lease": "https://example.test/coordination.git",
     }
     return payload, board
@@ -86,6 +90,21 @@ def test_valid_pointer_has_no_issues(tmp_path: Path) -> None:
     payload, board = fixture(tmp_path)
 
     assert validate(payload, board, refresh_lease=False) == []
+
+
+def test_pointer_owner_accepts_every_exact_session_selector(tmp_path: Path) -> None:
+    payload, board = fixture(tmp_path)
+    state = next(iter(active_project.sessions(board).values()))
+
+    for selector in (
+        state["session_uuid"],
+        state["compact_id"],
+        state["compact_id"].upper().replace("0", "O"),
+        state["speakable_id"],
+        state["legacy_id"],
+    ):
+        payload["owner_session"] = selector
+        assert validate(payload, board, refresh_lease=False) == []
 
 
 def test_pointer_rejects_missing_plan_worktree_and_wrong_owner(tmp_path: Path) -> None:

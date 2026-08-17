@@ -17,6 +17,8 @@ MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
+from coordination_schema import identity_from_uuid
+
 
 def test_next_actions_prefers_unchecked_items() -> None:
     context = (
@@ -66,6 +68,27 @@ def test_build_includes_active_coordination(tmp_path: Path) -> None:
     assert "session(s): A" in message
     assert "B" not in message
     assert "verify claims before writes" in message
+
+
+def test_build_displays_compact_v3_session_identity(tmp_path: Path) -> None:
+    board = tmp_path / "active-sessions.md"
+    identity = identity_from_uuid(
+        "019fff79-5858-7993-a329-b301bccf5d62", legacy_id="AX"
+    )
+    board.write_text(
+        "# Coordination\n\nSchema: v3\n\n## Active sessions\n\n"
+        "| session uuid | compact id | speakable id v1 | legacy id | agent | machine | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+        f"| {identity.session_uuid} | {identity.compact_id} | {identity.speakable_id} | AX | Codex | mac | project-a | now | now | interactive | /tmp/a @ feature/a | work | repo-a/** | owner | active |\n\n"
+        "## Messages\n\n---\n\n## Protocol\n",
+        encoding="utf-8",
+    )
+
+    message = MODULE.build(tmp_path / "missing-pointer.json", board)
+
+    assert f"session(s): {identity.compact_id}" in message
+    assert identity.session_uuid not in message
+    assert "AX" not in message
 
 
 def test_build_without_pointer_explains_automatic_named_project_recovery(

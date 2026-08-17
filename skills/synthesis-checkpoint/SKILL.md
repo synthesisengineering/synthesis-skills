@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.4.0"
+  version: "1.5.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -126,9 +126,25 @@ record can no longer be reverified from live artifacts. Never replace the
 current-health result with the selected historical result.
 
 Compare this task's own SessionStart receipt plugin version with current source
-and installed truth. A mismatch means this task has a stale startup registry:
-save the durable checkpoint and require a new Claude Code session or Codex
-task. Do not describe an in-place cache update as a task reload.
+and installed truth. A mismatch means this task has a stale startup registry.
+Save the durable checkpoint, then use a receipt-based recovery ladder:
+
+1. Ask the user to restart the current agentic client and resume this same
+   root conversation when that client can rehydrate an existing task.
+2. After restart, require a genuine transcript-bound SessionStart event for
+   the same root-session UUID, current plugin version, and enabled immutable
+   plugin root; also confirm the loaded skill metadata matches installed
+   truth.
+3. Continue in the same conversation when all of those checks pass. The
+   process restart is a genuine lifecycle reload even though the transcript
+   identity is preserved.
+4. Require a new Claude Code conversation or Codex task only when restart is
+   unsupported, the same-session receipt is absent or mismatched, the
+   transcript identity changes unexpectedly, or the loaded registry remains
+   stale.
+
+Installing or copying a cache in place is not itself a reload. The evidence
+comes from the subsequent client lifecycle event, not from the installer.
 
 In one short paragraph in the next response to the user, state:
 - Today's verified date and time

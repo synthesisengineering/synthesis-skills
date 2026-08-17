@@ -108,6 +108,13 @@ Concurrent root sessions add two invariants:
 - one session owns canonical project context while same-project contributors
   write separate reconciliation artifacts.
 
+Coordination session identity is provider-neutral. The lease-backed board uses
+a full UUIDv7 for durable ownership and stores compact Crockford Base32 plus
+speakable word-number aliases derived from the same 60 random bits. Claude,
+Codex, and other adapters accept any exact representation, resolve it to the
+UUID, and keep resource claims separate from identity. Pre-v3 letters remain
+explicit migration aliases only.
+
 Tool-native threads remain views of the work. The synthesis project files and
 verified git history remain the record.
 

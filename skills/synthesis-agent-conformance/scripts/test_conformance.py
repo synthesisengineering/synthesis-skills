@@ -18,6 +18,40 @@ MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
+from coordination_schema import identity_from_uuid
+
+
+COORDINATION_HEADER = (
+    "| session uuid | compact id | speakable id v1 | legacy id | agent | "
+    "machine | project | started | heartbeat | mode | workspace(s) / branch | "
+    "goal | claimed areas (advisory lock) | context role | status |\n"
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+)
+
+
+def coordination_row(
+    session_uuid: str,
+    legacy: str,
+    agent: str,
+    machine: str,
+    project: str,
+    started: str,
+    heartbeat: str,
+    mode: str,
+    workspace: str,
+    goal: str,
+    areas: str,
+    role: str,
+    status: str,
+) -> str:
+    identity = identity_from_uuid(session_uuid, legacy_id=legacy)
+    return (
+        f"| {identity.session_uuid} | {identity.compact_id} | "
+        f"{identity.speakable_id} | {legacy} | {agent} | {machine} | "
+        f"{project} | {started} | {heartbeat} | {mode} | {workspace} | "
+        f"{goal} | {areas} | {role} | {status} |\n"
+    )
+
 
 def write_skill(root: Path, name: str) -> None:
     skill = root / "skills" / name
@@ -302,10 +336,10 @@ def test_coordination_board_schema(tmp_path: Path) -> None:
     board = tmp_path / "active-sessions.md"
     board.write_text(
         "# Coordination\n\n"
-        "Schema: v2\n\n"
+        "Schema: v3\n\n"
         "## Active sessions\n\n"
-        "| id | agent | machine | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |\n"
-        "|---|---|---|---|---|---|---|---|---|---|---|---|\n\n"
+        + COORDINATION_HEADER
+        + "\n"
         "## Messages\n\n---\n\n## Protocol\n",
         encoding="utf-8",
     )
@@ -319,12 +353,20 @@ def test_coordination_board_rejects_semantic_conflict(tmp_path: Path) -> None:
     board = tmp_path / "active-sessions.md"
     board.write_text(
         "# Coordination\n\n"
-        "Schema: v2\n\n"
+        "Schema: v3\n\n"
         "## Active sessions\n\n"
-        "| id | agent | machine | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |\n"
-        "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
-        "| A | Claude | host-a | shared | 2026-07-30T10:00:00-04:00 | 2026-07-30T10:00:00-04:00 | interactive | /tmp/a/repo @ feature/a | work | repo/** | owner | active |\n"
-        "| B | Codex | host-b | shared | 2026-07-30T10:00:00-04:00 | 2026-07-30T10:00:00-04:00 | autonomous | /tmp/b/repo @ feature/b | work | repo/file.md | owner | active |\n\n"
+        + COORDINATION_HEADER
+        + coordination_row(
+            "019fff79-5858-7993-a329-b301bccf5d62", "A", "Claude", "host-a",
+            "shared", "2026-07-30T10:00:00-04:00", "2026-07-30T10:00:00-04:00",
+            "interactive", "/tmp/a/repo @ feature/a", "work", "repo/**", "owner", "active",
+        )
+        + coordination_row(
+            "019fff79-5858-7993-a329-b301bccf5d63", "B", "Codex", "host-b",
+            "shared", "2026-07-30T10:00:00-04:00", "2026-07-30T10:00:00-04:00",
+            "autonomous", "/tmp/b/repo @ feature/b", "work", "repo/file.md", "owner", "active",
+        )
+        + "\n"
         "## Messages\n\n---\n\n## Protocol\n",
         encoding="utf-8",
     )
@@ -383,11 +425,15 @@ def test_activate_and_handoff(tmp_path: Path, monkeypatch) -> None:
     board = tmp_path / "active-sessions.md"
     now = datetime.now().astimezone().isoformat()
     board.write_text(
-        "# Coordination\n\nSchema: v2\nLease: https://example.test/coordination.git\n"
+        "# Coordination\n\nSchema: v3\nLease: https://example.test/coordination.git\n"
         "## Active sessions\n\n"
-        "| id | agent | machine | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |\n"
-        "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
-        f"| A | Codex | mac | test | {now} | {now} | autonomous | {project} @ feature/test | work | {project}/** | owner | active |\n\n"
+        + COORDINATION_HEADER
+        + coordination_row(
+            "019fff79-5858-7993-a329-b301bccf5d62", "A", "Codex", "mac", "test",
+            now, now, "autonomous", f"{project} @ feature/test", "work",
+            f"{project}/**", "owner", "active",
+        )
+        + "\n"
         "## Messages\n\n---\n\n## Protocol\n",
         encoding="utf-8",
     )

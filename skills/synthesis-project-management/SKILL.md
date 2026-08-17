@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.2.0"
+  version: "2.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -290,10 +290,11 @@ board for concurrent Claude Code, Codex, Cursor, or other root sessions:
 ~/.synthesis/coordination/active-sessions.md
 ```
 
-The board lives outside any repository a session may restructure. Its v2 schema
+The board lives outside any repository a session may restructure. Its v3 schema
 records:
 
-- `## Active sessions` — session id, agent, machine, synthesis project,
+- `## Active sessions` — canonical UUIDv7, compact and speakable exact aliases,
+  any migrated legacy mapping, agent, machine, synthesis project,
   start/heartbeat times, mode, isolated worktree/branch pairs, goal, claimed
   area globs, context role, and status;
 - `## Messages` — append-only, addressed handoffs between sessions; and
@@ -307,7 +308,7 @@ python3 <synthesis-project-management-root>/scripts/coordination.py status
 
 # Claim one or more source areas
 python3 <synthesis-project-management-root>/scripts/coordination.py claim \
-  --id B --agent "OpenAI Codex" \
+  --agent "OpenAI Codex" \
   --project establish-codex-first-class-synthesis \
   --mode autonomous --context-role owner \
   --goal "Cross-client conformance" \
@@ -315,16 +316,28 @@ python3 <synthesis-project-management-root>/scripts/coordination.py claim \
   --area "synthesis-skills/**" --area "ai-knowledge-*/projects/**"
 
 # Refresh the lease timestamp at every checkpoint
-python3 <synthesis-project-management-root>/scripts/coordination.py heartbeat --id B
+python3 <synthesis-project-management-root>/scripts/coordination.py heartbeat \
+  --session s-6adk-06yc-yqb2
 
 # Leave an asynchronous handoff
 printf '%s\n' "Source checks pass; live install awaits authorization." |
   python3 <synthesis-project-management-root>/scripts/coordination.py message \
-    --from B --to A
+    --from s-6adk-06yc-yqb2 --to crater-sunset-alone-okay-23907
 
 # Release every claim at session end
-python3 <synthesis-project-management-root>/scripts/coordination.py release --id B
+python3 <synthesis-project-management-root>/scripts/coordination.py release \
+  --session s-6adk-06yc-yqb2
 ```
+
+The claim command normally allocates the identity. It prints the canonical
+UUIDv7, compact `s-xxxx-xxxx-xxxx` form, and speakable
+`word-word-word-word-00000` form. All three select the same session. Letters
+such as `A`, `AL`, or `AX` are legacy session aliases—not claims. Claims are
+the resource paths supplied through `--area`. `migrate` upgrades v1/v2 rows
+atomically and keeps each letter under `legacy id`; new durable pointers use
+the UUID. See
+[`references/session-identity.md`](references/session-identity.md) for the bit
+layout, word-list version, collision boundary, and lookup contract.
 
 Rules:
 
@@ -414,7 +427,7 @@ state by hand:
 
    ```bash
    python3 <skill-root>/scripts/conformance.py activate \
-     --project <project> --session-id <coordination-session-id>
+     --project <project> --session-id <coordination-session-uuid-or-alias>
    python3 <skill-root>/scripts/conformance.py pointer --project <project>
    python3 <skill-root>/scripts/conformance.py continuity \
      --project <project> --readiness local

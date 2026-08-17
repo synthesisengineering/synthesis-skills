@@ -4,7 +4,10 @@ import importlib.util
 import json
 import sys
 import threading
+import uuid
 from pathlib import Path
+
+import pytest
 
 
 MODULE_PATH = Path(__file__).with_name("coordination.py")
@@ -42,6 +45,100 @@ def claim_args(
     )
 
 
+def test_uuidv7_aliases_are_exact_reversible_views_of_random_material() -> None:
+    first = uuid.UUID("019fff79-5858-7993-a329-b301bccf5d62")
+    # Change only the 48-bit millisecond timestamp. The human aliases must not
+    # inherit it.
+    second = uuid.UUID(int=(first.int & ((1 << 80) - 1)) | (0x123456789ABC << 80))
+
+    first_identity = MODULE.new_identity([])
+    assert uuid.UUID(first_identity.session_uuid).version == 7
+    token = MODULE.new_identity.__globals__["alias_token"](
+        first_identity.session_uuid
+    )
+    schema = sys.modules["coordination_schema"]
+    assert schema.decode_compact(first_identity.compact_id) == token
+    assert schema.decode_speakable(first_identity.speakable_id) == token
+    assert schema.identity_from_uuid(first).compact_id == schema.identity_from_uuid(second).compact_id
+    assert schema.identity_from_uuid(first).speakable_id == schema.identity_from_uuid(second).speakable_id
+
+
+def test_word_alias_v1_is_fixed_and_unambiguous() -> None:
+    schema = sys.modules["coordination_schema"]
+    words = schema.session_words()
+
+    assert len(words) == len(set(words)) == 2048
+    assert len({word[:4] for word in words}) == 2048
+
+
+def test_claim_without_human_supplied_id_allocates_all_identities(tmp_path: Path) -> None:
+    board = tmp_path / "active-sessions.md"
+    request = claim_args(
+        board,
+        session_id="placeholder",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="repo-a/**",
+    )
+    request.id = None
+
+    assert MODULE.command_claim(request) == 0
+    [session] = MODULE.rows(board.read_text(encoding="utf-8"))
+    assert uuid.UUID(session.session_uuid).version == 7
+    assert session.compact_id.startswith("s-")
+    assert session.speakable_id.count("-") == 4
+    assert session.legacy_id == ""
+
+
+def test_every_identity_form_selects_the_same_session(tmp_path: Path) -> None:
+    board = tmp_path / "active-sessions.md"
+    request = claim_args(
+        board,
+        session_id="AX",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="repo-a/**",
+    )
+    assert MODULE.command_claim(request) == 0
+    [session] = MODULE.rows(board.read_text(encoding="utf-8"))
+
+    for selector in (
+        session.session_uuid,
+        session.compact_id,
+        session.speakable_id,
+        session.legacy_id,
+    ):
+        assert MODULE.command_heartbeat(args(board, id=selector)) == 0
+    assert MODULE.command_release(args(board, id=session.speakable_id)) == 0
+    assert MODULE.rows(board.read_text(encoding="utf-8"))[0].status == "released"
+
+
+def test_unmatched_strong_selector_does_not_create_a_session(tmp_path: Path) -> None:
+    board = tmp_path / "active-sessions.md"
+    first = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="repo-a/**",
+    )
+    assert MODULE.command_claim(first) == 0
+    [session] = MODULE.rows(board.read_text(encoding="utf-8"))
+    replacement = session.compact_id[:-1] + (
+        "0" if session.compact_id[-1] != "0" else "1"
+    )
+    second = claim_args(
+        board,
+        session_id=replacement,
+        project="project-b",
+        workspace="/tmp/worktree-b @ feature/b",
+        area="repo-b/**",
+    )
+
+    assert MODULE.command_claim(second) == 10
+    assert len(MODULE.rows(board.read_text(encoding="utf-8"))) == 1
+
+
 def test_claim_conflict_message_heartbeat_and_release(tmp_path: Path) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     first = claim_args(
@@ -74,8 +171,8 @@ def test_claim_conflict_message_heartbeat_and_release(tmp_path: Path) -> None:
     assert MODULE.command_release(args(board, id="A")) == 0
     assert MODULE.command_claim(second) == 0
     table = MODULE.rows(board.read_text(encoding="utf-8"))
-    assert next(row for row in table if row.id == "A").status == "released"
-    assert next(row for row in table if row.id == "B").status == "active"
+    assert next(row for row in table if row.legacy_id == "A").status == "released"
+    assert next(row for row in table if row.legacy_id == "B").status == "active"
 
 
 def test_release_leaves_pointer_without_matching_board_lease(tmp_path: Path) -> None:
@@ -338,9 +435,12 @@ def test_v1_board_migrates_without_losing_messages(tmp_path: Path) -> None:
     assert MODULE.command_migrate(args(board)) == 0
     text = board.read_text(encoding="utf-8")
     migrated = MODULE.rows(text)
-    assert "Schema: v2" in text
+    assert "Schema: v3" in text
     assert "Keep this handoff." in text
-    assert migrated[0].id == "A"
+    assert uuid.UUID(migrated[0].session_uuid).version == 7
+    assert migrated[0].legacy_id == "A"
+    assert migrated[0].compact_id.startswith("s-")
+    assert migrated[0].speakable_id.count("-") == 4
     assert migrated[0].project == "unknown"
     assert migrated[0].claims == ["repo-a/**"]
 
@@ -368,7 +468,7 @@ def test_status_json_reports_stale_legacy_session(tmp_path: Path, capsys) -> Non
     assert payload["sessions"][0]["stale"] is True
 
 
-def test_doctor_accepts_valid_v2_board(tmp_path: Path) -> None:
+def test_doctor_accepts_valid_v3_board(tmp_path: Path) -> None:
     board = tmp_path / "active-sessions.md"
     assert MODULE.command_claim(
         claim_args(
@@ -381,6 +481,35 @@ def test_doctor_accepts_valid_v2_board(tmp_path: Path) -> None:
     ) == 0
 
     assert MODULE.command_doctor(args(board)) == 0
+
+
+def test_doctor_rejects_alias_not_derived_from_uuid(tmp_path: Path) -> None:
+    board = tmp_path / "active-sessions.md"
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo-a/**",
+        )
+    ) == 0
+    text = board.read_text(encoding="utf-8")
+    [session] = MODULE.rows(text)
+    replacement = session.compact_id[:-1] + (
+        "0" if session.compact_id[-1] != "0" else "1"
+    )
+    board.write_text(text.replace(session.compact_id, replacement), encoding="utf-8")
+
+    assert MODULE.command_doctor(args(board)) == 1
+
+
+def test_allocator_rejects_cross_representation_alias_collision() -> None:
+    first = MODULE.new_identity([], legacy_id="A")
+
+    # The allocator treats a Crockford-equivalent legacy alias as occupied.
+    with pytest.raises(ValueError, match="already in use"):
+        MODULE.new_identity([first], legacy_id=first.compact_id.upper())
 
 
 def test_message_accepts_annotated_protocol_heading(tmp_path: Path) -> None:
@@ -522,7 +651,7 @@ def test_lease_shares_claims_across_machines(tmp_path: Path) -> None:
     assert MODULE.command_claim(retried) == 0
 
     table = MODULE.rows(machine2.read_text(encoding="utf-8"))
-    by_id = {row.id: row for row in table}
+    by_id = {row.legacy_id: row for row in table}
     assert by_id["A"].status == "released"
     assert by_id["B"].status == "active"
     assert by_id["C"].status == "active"
@@ -559,7 +688,7 @@ def test_lease_compare_and_swap_retries_after_concurrent_advance(
     assert MODULE.command_claim(first) == 0
 
     table = MODULE.rows(machine1.read_text(encoding="utf-8"))
-    identifiers = {row.id for row in table}
+    identifiers = {row.legacy_id for row in table}
     assert identifiers == {"A", "X"}
 
 
@@ -724,7 +853,7 @@ def test_declared_board_without_config_refuses_mutation(tmp_path: Path) -> None:
     )
     assert MODULE.command_claim(late) == 10
     table = MODULE.rows(machine1.read_text(encoding="utf-8"))
-    assert {row.id for row in table} == {"A"}
+    assert {row.legacy_id for row in table} == {"A"}
 
     assert MODULE.command_doctor(args(machine1)) == 1
 

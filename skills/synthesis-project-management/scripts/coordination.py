@@ -23,39 +23,29 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from pointer_lock import locked_pointer
+from coordination_schema import (
+    SCHEMA_VERSION,
+    V1_COLUMNS,
+    V2_COLUMNS,
+    V3_COLUMNS,
+    SessionIdentity,
+    display_id,
+    identity_lookup_keys,
+    new_identity,
+    selector_keys,
+    selector_matches,
+    validate_identity,
+)
 
 
 DEFAULT_BOARD = Path.home() / ".synthesis" / "coordination" / "active-sessions.md"
 DEFAULT_ACTIVE_PROJECT = Path.home() / ".synthesis" / "active-project.json"
-SCHEMA_VERSION = 2
-TABLE_COLUMNS = (
-    "id",
-    "agent",
-    "machine",
-    "project",
-    "started",
-    "heartbeat",
-    "mode",
-    "workspace(s) / branch",
-    "goal",
-    "claimed areas (advisory lock)",
-    "context role",
-    "status",
-)
+TABLE_COLUMNS = V3_COLUMNS
 TABLE_HEADER = (
     "| " + " | ".join(TABLE_COLUMNS) + " |\n"
     + "|"
     + "|".join("---" for _ in TABLE_COLUMNS)
     + "|"
-)
-V1_COLUMNS = (
-    "id",
-    "agent",
-    "started",
-    "mode",
-    "goal",
-    "claimed areas (advisory lock)",
-    "status",
 )
 TERMINAL_STATUSES = {"released", "complete", "completed", "closed"}
 CONTEXT_RESERVED_PATTERNS = (
@@ -70,7 +60,10 @@ CONTEXT_RESERVED_PATTERNS = (
 
 @dataclass
 class Session:
-    id: str
+    session_uuid: str
+    compact_id: str
+    speakable_id: str
+    legacy_id: str
     agent: str
     machine: str
     project: str
@@ -83,9 +76,30 @@ class Session:
     context_role: str
     status: str
 
+    @property
+    def identity(self) -> SessionIdentity:
+        return SessionIdentity(
+            self.session_uuid,
+            self.compact_id,
+            self.speakable_id,
+            self.legacy_id,
+        )
+
+    @property
+    def id(self) -> str:
+        """Canonical machine id, or the legacy selector on an unmigrated row."""
+        return self.session_uuid or self.legacy_id
+
+    @property
+    def label(self) -> str:
+        return display_id(self.identity)
+
     def cells(self) -> list[str]:
         return [
-            self.id,
+            self.session_uuid,
+            self.compact_id,
+            self.speakable_id,
+            self.legacy_id,
             self.agent,
             self.machine,
             self.project,
@@ -229,7 +243,7 @@ def parse_cells(line: str) -> list[str] | None:
     if not cells:
         return None
     first = plain(cells[0])
-    if first == "id" or set(first) == {"-"}:
+    if first in {"id", "session uuid"} or set(first) == {"-"}:
         return None
     return cells
 
@@ -237,7 +251,28 @@ def parse_cells(line: str) -> list[str] | None:
 def session_from_cells(cells: list[str]) -> Session:
     if len(cells) == len(TABLE_COLUMNS):
         return Session(
-            id=plain(cells[0]),
+            session_uuid=plain(cells[0]),
+            compact_id=plain(cells[1]),
+            speakable_id=plain(cells[2]),
+            legacy_id=plain(cells[3]),
+            agent=plain(cells[4]),
+            machine=plain(cells[5]),
+            project=plain(cells[6]),
+            started=plain(cells[7]),
+            heartbeat=plain(cells[8]),
+            mode=plain(cells[9]),
+            workspaces=split_values(cells[10]),
+            goal=plain(cells[11]),
+            claims=split_values(cells[12]),
+            context_role=plain(cells[13]).lower(),
+            status=plain(cells[14]).lower(),
+        )
+    if len(cells) == len(V2_COLUMNS):
+        return Session(
+            session_uuid="",
+            compact_id="",
+            speakable_id="",
+            legacy_id=plain(cells[0]),
             agent=plain(cells[1]),
             machine=plain(cells[2]),
             project=plain(cells[3]),
@@ -253,7 +288,10 @@ def session_from_cells(cells: list[str]) -> Session:
     if len(cells) == len(V1_COLUMNS):
         started = plain(cells[2])
         return Session(
-            id=plain(cells[0]),
+            session_uuid="",
+            compact_id="",
+            speakable_id="",
+            legacy_id=plain(cells[0]),
             agent=plain(cells[1]),
             machine="unknown",
             project="unknown",
@@ -268,8 +306,51 @@ def session_from_cells(cells: list[str]) -> Session:
         )
     raise ValueError(
         f"active-session row has {len(cells)} columns; expected "
-        f"{len(TABLE_COLUMNS)}"
+        f"{len(TABLE_COLUMNS)}, {len(V2_COLUMNS)}, or {len(V1_COLUMNS)}"
     )
+
+
+def with_identity(session: Session, identity: SessionIdentity) -> Session:
+    return Session(
+        session_uuid=identity.session_uuid,
+        compact_id=identity.compact_id,
+        speakable_id=identity.speakable_id,
+        legacy_id=identity.legacy_id,
+        agent=session.agent,
+        machine=session.machine,
+        project=session.project,
+        started=session.started,
+        heartbeat=session.heartbeat,
+        mode=session.mode,
+        workspaces=session.workspaces,
+        goal=session.goal,
+        claims=session.claims,
+        context_role=session.context_role,
+        status=session.status,
+    )
+
+
+def ensure_identities(sessions: list[Session]) -> list[Session]:
+    """Assign UUIDv7 identities once, preserving legacy selectors explicitly."""
+    identities = [session.identity for session in sessions if session.session_uuid]
+    migrated: list[Session] = []
+    for session in sessions:
+        if session.session_uuid:
+            migrated.append(session)
+            continue
+        identity = new_identity(identities, legacy_id=session.legacy_id)
+        identities.append(identity)
+        migrated.append(with_identity(session, identity))
+    return migrated
+
+
+def find_session(sessions: list[Session], selector: str) -> Session | None:
+    matches = [
+        session for session in sessions if selector_matches(session.identity, selector)
+    ]
+    if len(matches) > 1:
+        raise RuntimeError(f"ambiguous session selector: {selector}")
+    return matches[0] if matches else None
 
 
 def rows(text: str) -> list[Session]:
@@ -311,6 +392,7 @@ def stale(session: Session, minutes: int) -> bool:
 
 
 def replace_table(text: str, sessions: list[Session]) -> str:
+    sessions = ensure_identities(sessions)
     rendered = [TABLE_HEADER]
     rendered.extend(
         "| " + " | ".join(sanitize(value) for value in session.cells()) + " |"
@@ -614,14 +696,23 @@ def locked_update(board: Path, operation) -> None:
 
 def validate_sessions(sessions: list[Session]) -> list[str]:
     problems: list[str] = []
-    seen_ids: set[str] = set()
+    seen_selectors: dict[tuple[str, object], str] = {}
     for session in sessions:
-        if session.id in seen_ids:
-            problems.append(f"duplicate session id: {session.id}")
-        seen_ids.add(session.id)
+        if session.session_uuid:
+            for issue in validate_identity(session.identity):
+                problems.append(f"session {session.label}: {issue}")
+        for normalized in identity_lookup_keys(session.identity):
+            previous = seen_selectors.get(normalized)
+            if previous is not None:
+                problems.append(
+                    f"duplicate or ambiguous session selector: {normalized[1]} "
+                    f"({previous}, {session.label})"
+                )
+            else:
+                seen_selectors[normalized] = session.label
         if session.context_role not in {"owner", "contributor", "none"}:
             problems.append(
-                f"session {session.id} has invalid context role: "
+                f"session {session.label} has invalid context role: "
                 f"{session.context_role}"
             )
     live = [session for session in sessions if active(session)]
@@ -630,21 +721,21 @@ def validate_sessions(sessions: list[Session]) -> list[str]:
             for claim in left.claims:
                 if claims_context(claim):
                     problems.append(
-                        f"session {left.id} is a contributor but claims context: {claim}"
+                        f"session {left.label} is a contributor but claims context: {claim}"
                     )
         for right in live[index + 1 :]:
             for left_claim in left.claims:
                 for right_claim in right.claims:
                     if overlaps(left_claim, right_claim):
                         problems.append(
-                            f"{left.id}:{left_claim} overlaps "
-                            f"{right.id}:{right_claim}"
+                            f"{left.label}:{left_claim} overlaps "
+                            f"{right.label}:{right_claim}"
                         )
             for left_workspace in left.workspaces:
                 for right_workspace in right.workspaces:
                     if workspace_conflict(left_workspace, right_workspace):
                         problems.append(
-                            f"{left.id} and {right.id} share workspace or branch: "
+                            f"{left.label} and {right.label} share workspace or branch: "
                             f"{left_workspace} / {right_workspace}"
                         )
             if (
@@ -654,7 +745,7 @@ def validate_sessions(sessions: list[Session]) -> list[str]:
                 and right.context_role == "owner"
             ):
                 problems.append(
-                    f"{left.id} and {right.id} both own context for {left.project}"
+                    f"{left.label} and {right.label} both own context for {left.project}"
                 )
     return problems
 
@@ -681,6 +772,8 @@ def command_status(args) -> int:
         "sessions": [
             {
                 **asdict(session),
+                "id": session.id,
+                "display_id": session.label,
                 "stale": stale(session, args.stale_after_minutes),
             }
             for session in sessions
@@ -694,7 +787,7 @@ def command_status(args) -> int:
         for session in sessions:
             if stale(session, args.stale_after_minutes):
                 print(
-                    f"STALE active session {session.id}: heartbeat "
+                    f"STALE active session {session.label}: heartbeat "
                     f"{session.heartbeat}",
                     file=sys.stderr,
                 )
@@ -718,15 +811,36 @@ def command_claim(args) -> int:
             )
             return 10
 
+    claimed: dict[str, SessionIdentity] = {}
+
     def operation(content: str) -> str:
-        current = rows(content)
+        current = ensure_identities(rows(content))
         now = timestamp()
-        existing_self = next(
-            (session for session in current if session.id == args.id),
-            None,
+        selector = getattr(args, "id", None)
+        existing_self = find_session(current, selector) if selector else None
+        if (
+            selector
+            and existing_self is None
+            and not all(kind == "legacy" for kind, _ in selector_keys(selector))
+        ):
+            raise RuntimeError(
+                "strong session selector was not found; omit --session to "
+                "allocate a new identity or use an unused legacy label"
+            )
+        identity = (
+            existing_self.identity
+            if existing_self is not None
+            else new_identity(
+                (session.identity for session in current),
+                legacy_id=selector or "",
+            )
         )
+        claimed["identity"] = identity
         replacement = Session(
-            id=args.id,
+            session_uuid=identity.session_uuid,
+            compact_id=identity.compact_id,
+            speakable_id=identity.speakable_id,
+            legacy_id=identity.legacy_id,
             agent=args.agent,
             machine=args.machine,
             project=args.project,
@@ -740,7 +854,11 @@ def command_claim(args) -> int:
             status="active",
         )
         prospective = [
-            replacement if session.id == args.id else session for session in current
+            replacement
+            if existing_self is not None
+            and session.session_uuid == existing_self.session_uuid
+            else session
+            for session in current
         ]
         if existing_self is None:
             prospective.append(replacement)
@@ -754,39 +872,50 @@ def command_claim(args) -> int:
     except RuntimeError as exc:
         print(f"coordination claim refused: {exc}", file=sys.stderr)
         return 10
-    print(f"Claimed {', '.join(requested)} for session {args.id}.")
+    identity = claimed["identity"]
+    legacy = f"; legacy={identity.legacy_id}" if identity.legacy_id else ""
+    print(
+        f"Claimed {', '.join(requested)} for session {identity.compact_id} "
+        f"({identity.speakable_id}; uuid={identity.session_uuid}{legacy})."
+    )
     return 0
 
 
 def command_heartbeat(args) -> int:
+    updated: dict[str, SessionIdentity] = {}
+
     def operation(content: str) -> str:
-        current = rows(content)
-        for session in current:
-            if session.id == args.id:
-                if not active(session):
-                    raise RuntimeError(f"session is not active: {args.id}")
-                session.heartbeat = timestamp()
-                return replace_table(content, current)
-        raise RuntimeError(f"session not found: {args.id}")
+        current = ensure_identities(rows(content))
+        session = find_session(current, args.id)
+        if session is None:
+            raise RuntimeError(f"session not found: {args.id}")
+        if not active(session):
+            raise RuntimeError(f"session is not active: {args.id}")
+        session.heartbeat = timestamp()
+        updated["identity"] = session.identity
+        return replace_table(content, current)
 
     try:
         locked_update(args.board, operation)
     except RuntimeError as exc:
         print(f"coordination heartbeat failed: {exc}", file=sys.stderr)
         return 10
-    print(f"Heartbeat updated for session {args.id}.")
+    print(f"Heartbeat updated for session {updated['identity'].compact_id}.")
     return 0
 
 
 def command_release(args) -> int:
+    released: dict[str, SessionIdentity] = {}
+
     def operation(content: str) -> str:
-        current = rows(content)
-        for session in current:
-            if session.id == args.id:
-                session.status = "released"
-                session.heartbeat = timestamp()
-                return replace_table(content, current)
-        raise RuntimeError(f"session not found: {args.id}")
+        current = ensure_identities(rows(content))
+        session = find_session(current, args.id)
+        if session is None:
+            raise RuntimeError(f"session not found: {args.id}")
+        session.status = "released"
+        session.heartbeat = timestamp()
+        released["identity"] = session.identity
+        return replace_table(content, current)
 
     try:
         locked_update(args.board, operation)
@@ -797,7 +926,9 @@ def command_release(args) -> int:
     if pointer is not None:
         try:
             board_lease = declared_lease(args.board.read_text(encoding="utf-8"))
-            archived = archive_owned_pointer(Path(pointer), args.id, board_lease)
+            archived = archive_owned_pointer(
+                Path(pointer), released["identity"], board_lease
+            )
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             print(
                 f"coordination release completed, but active-project archival failed: {exc}",
@@ -806,12 +937,12 @@ def command_release(args) -> int:
             return 11
         if archived:
             print(f"Archived released session's active-project pointer: {archived}")
-    print(f"Released session {args.id}.")
+    print(f"Released session {released['identity'].compact_id}.")
     return 0
 
 
 def archive_owned_pointer(
-    pointer: Path, owner_session: str, owner_lease: str | None
+    pointer: Path, owner_session: SessionIdentity | str, owner_lease: str | None
 ) -> Path | None:
     """Recoverably clear the pointer when its coordination owner releases."""
     with locked_pointer(pointer):
@@ -820,9 +951,15 @@ def archive_owned_pointer(
         if pointer.is_symlink():
             raise ValueError(f"active-project pointer must not be a symlink: {pointer}")
         payload = json.loads(pointer.read_text(encoding="utf-8"))
+        identity = (
+            owner_session
+            if isinstance(owner_session, SessionIdentity)
+            else SessionIdentity("", "", "", owner_session)
+        )
+        pointer_owner = str(payload.get("owner_session") or "")
         if (
             owner_lease is None
-            or payload.get("owner_session") != owner_session
+            or not selector_matches(identity, pointer_owner)
             or payload.get("owner_lease") != owner_lease
         ):
             return None
@@ -831,9 +968,10 @@ def archive_owned_pointer(
             raise ValueError(f"active-project archive must not be a symlink: {archive}")
         archive.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%f%z")
-        visible = re.sub(r"[^A-Za-z0-9._-]+", "-", owner_session).strip("._-")
+        owner_value = identity.session_uuid or pointer_owner
+        visible = re.sub(r"[^A-Za-z0-9._-]+", "-", owner_value).strip("._-")
         visible = (visible or "session")[:40]
-        digest = hashlib.sha256(owner_session.encode("utf-8")).hexdigest()[:12]
+        digest = hashlib.sha256(owner_value.encode("utf-8")).hexdigest()[:12]
         destination = archive / f"{stamp}-{visible}-{digest}.json"
         if destination.parent.resolve() != archive.resolve():
             raise ValueError("active-project archive destination escaped its root")
@@ -848,8 +986,15 @@ def command_message(args) -> int:
         return 2
 
     def operation(content: str) -> str:
+        current = rows(content)
+        sender = find_session(current, args.sender)
+        recipient = find_session(current, args.to)
+        sender_label = sender.label if sender is not None else sanitize(args.sender)
+        recipient_label = (
+            recipient.label if recipient is not None else sanitize(args.to)
+        )
         heading = (
-            f"### → {sanitize(args.to)}, from {sanitize(args.sender)} — {timestamp()}"
+            f"### → {recipient_label}, from {sender_label} — {timestamp()}"
         )
         block = f"{heading}\n\n{body.strip()}\n\n"
         marker = re.search(
@@ -871,7 +1016,10 @@ def command_message(args) -> int:
 
 def command_migrate(args) -> int:
     def operation(content: str) -> str:
-        migrated = rows(content)
+        migrated = ensure_identities(rows(content))
+        problems = validate_sessions(migrated)
+        if problems:
+            raise RuntimeError("; ".join(problems))
         return replace_table(content, migrated)
 
     try:
@@ -1006,7 +1154,17 @@ def parser() -> argparse.ArgumentParser:
     status.add_argument("--strict", action="store_true")
     status.add_argument("--stale-after-minutes", type=int, default=240)
     claim = commands.add_parser("claim")
-    claim.add_argument("--id", required=True)
+    claim.add_argument(
+        "--id",
+        "--session",
+        dest="id",
+        help=(
+            "Existing UUID, compact, speakable, or legacy selector. Omit to "
+            "allocate a new UUIDv7 identity; an unmatched plain label is "
+            "preserved as a legacy alias during migration, while an unmatched "
+            "strong selector fails closed."
+        ),
+    )
     claim.add_argument("--agent", required=True)
     claim.add_argument("--machine", default=socket.gethostname())
     claim.add_argument("--project", required=True)
@@ -1025,9 +1183,9 @@ def parser() -> argparse.ArgumentParser:
         required=True,
     )
     heartbeat = commands.add_parser("heartbeat")
-    heartbeat.add_argument("--id", required=True)
+    heartbeat.add_argument("--id", "--session", dest="id", required=True)
     release = commands.add_parser("release")
-    release.add_argument("--id", required=True)
+    release.add_argument("--id", "--session", dest="id", required=True)
     release.add_argument(
         "--active-project-file", type=Path, default=DEFAULT_ACTIVE_PROJECT
     )

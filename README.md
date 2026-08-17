@@ -253,9 +253,14 @@ claude plugin install synthesis-skills@synthesis-engineering
 | Codex IDE extension | Explicitly unsupported: the IDE does not load plugins, and installing duplicate public user-skill copies would collide with desktop/CLI |
 | Generic chat-only products | Unsupported for filesystem-backed execution; published prompts or copied text are not runtime parity |
 
-Skill registries are task-scoped. After a plugin version changes, preserve the
-durable project checkpoint and start a new Claude Code session or Codex task;
-an already-running task cannot acquire the new registry. Native plugin refresh
+Skill registries are loaded by the client lifecycle. After a plugin version
+changes, preserve the durable project checkpoint, restart Claude Code or Codex,
+and resume the same root conversation when the client supports it. Continue
+there only after an exact same-session, transcript-bound SessionStart receipt
+names the current plugin version and enabled immutable root and the loaded skill
+metadata matches installed truth. Start a new conversation/task only when that
+restart verification fails or the client cannot rehydrate an existing task.
+Installing a cache in place is not a lifecycle reload. Native plugin refresh
 also replaces a versioned cache used by hook commands, so close other live
 sessions before running `onboard.py update`, and make the update the invoking
 session's last action. `install` and `doctor` do not refresh an existing native
