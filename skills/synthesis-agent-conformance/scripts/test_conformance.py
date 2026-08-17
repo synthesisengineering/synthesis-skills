@@ -575,8 +575,7 @@ def test_payload_parity_reports_broken_pointer(tmp_path: Path) -> None:
     assert "payload failed" in detail
 
 
-def test_stopped_handoff_passes_without_active_pointer(tmp_path: Path) -> None:
-    subprocess = __import__("subprocess")
+def write_stopped_project(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     project = repo / "projects" / "demo"
     plan = project / "resources" / "artifacts" / "demo-plan.md"
@@ -607,6 +606,11 @@ def test_stopped_handoff_passes_without_active_pointer(tmp_path: Path) -> None:
         ["git", "-C", str(repo), "update-ref", "refs/remotes/origin/main", "HEAD"],
         check=True,
     )
+    return project
+
+
+def test_stopped_handoff_passes_without_active_pointer(tmp_path: Path) -> None:
+    project = write_stopped_project(tmp_path)
 
     checks = MODULE.handoff_checks(
         project,
@@ -618,6 +622,29 @@ def test_stopped_handoff_passes_without_active_pointer(tmp_path: Path) -> None:
     named = {check.name: check for check in checks}
     assert named["handoff.stopped-task-payload"].ok
     assert named["handoff.pointer-cache"].ok
+
+
+def test_aggregate_pointer_scope_accepts_documented_cache_absence(
+    tmp_path: Path,
+) -> None:
+    project = write_stopped_project(tmp_path)
+    pointer = tmp_path / "missing-pointer.json"
+
+    aggregate = MODULE.pointer_checks(
+        project,
+        pointer,
+        tmp_path / "missing-board.md",
+        require_pointer=False,
+    )
+    explicit = MODULE.pointer_checks(
+        project,
+        pointer,
+        tmp_path / "missing-board.md",
+    )
+
+    assert all(check.ok for check in aggregate if check.required)
+    assert "pointer.schema" not in {check.name for check in aggregate}
+    assert not {check.name: check for check in explicit}["pointer.schema"].ok
 
 
 def test_local_continuity_recovers_interrupted_attributed_edits(tmp_path: Path) -> None:

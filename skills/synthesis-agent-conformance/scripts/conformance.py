@@ -1928,9 +1928,17 @@ def pointer_checks(
     project: Path,
     pointer: Path,
     coordination_board: Path = DEFAULT_COORDINATION_BOARD,
+    require_pointer: bool = True,
 ) -> list[Check]:
-    """Validate pointer content, ownership, and checkout identity."""
+    """Validate pointer content, ownership, and checkout identity.
+
+    The explicit ``pointer`` command requires the cache. The aggregate ``all``
+    command accepts its documented absence and validates stopped-task handoff
+    instead; an existing malformed pointer still fails in both scopes.
+    """
     checks = handoff_checks(project, pointer, coordination_board)
+    if not require_pointer and not pointer.exists():
+        return checks
     try:
         payload = json.loads(pointer.read_text(encoding="utf-8"))
     except Exception as exc:
@@ -2327,6 +2335,7 @@ def main() -> int:
                 args.project.resolve(),
                 args.active_project_file.expanduser(),
                 args.coordination_board.expanduser(),
+                require_pointer=args.command == "pointer",
             )
         )
     if args.command == "handoff":

@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.28.1] - 2026-08-17
+
+### Fixed
+
+- **Aggregate local continuity without an active pointer** — the complete
+  conformance command now honors the stopped-task contract when the optional
+  active-project cache is absent. The explicit `pointer` command remains
+  strict, and an existing malformed pointer still fails in every scope.
+
 ## [4.28.0] - 2026-08-17
 
 ### Added
