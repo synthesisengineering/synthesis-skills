@@ -57,6 +57,8 @@ from codex_skill_catalog import audit as codex_skill_catalog_audit
 from capability_evidence import sanitize_detail
 from live_receipt import (
     claude_root_transcript_path,
+    receipt_registry_root,
+    session_receipt_path,
     transcript_binds_session,
 )
 from project_context import next_actions, record_freshness
@@ -853,9 +855,12 @@ def _receipt_check(
     expected_client: str | None = None,
     expected_plugin_version: str | None = None,
     expected_plugin_root: Path | None = None,
-    max_age_hours: int = 24,
+    max_age_hours: int | None = 24,
+    receipt_scope: str = "latest",
 ) -> None:
     try:
+        if path.is_symlink():
+            raise ValueError(f"receipt path is a symlink: {path}")
         payload = json.loads(path.read_text(encoding="utf-8"))
         event = payload.get("hook_event_name")
         session_id = payload.get("session_id")
@@ -926,11 +931,19 @@ def _receipt_check(
             if recorded.tzinfo is None:
                 recorded = recorded.replace(tzinfo=timezone.utc)
             age_seconds = (datetime.now(timezone.utc) - recorded).total_seconds()
-            ok = ok and -300 <= age_seconds <= max_age_hours * 60 * 60
+            ok = bool(
+                ok
+                and age_seconds >= -300
+                and (
+                    max_age_hours is None
+                    or age_seconds <= max_age_hours * 60 * 60
+                )
+            )
         except ValueError:
             ok = False
         detail = (
-            f"receipt={path}; client={client}; session_id={session_id}; "
+            f"scope={receipt_scope}; receipt={path}; client={client}; "
+            f"session_id={session_id}; "
             f"plugin_version={actual_version}; expected_plugin_version={expected_plugin_version}; "
             f"plugin_root={plugin_root}; expected_plugin_root={expected_plugin_root}; "
             f"provenance_env={provenance}; transcript_path={transcript_path}; "
@@ -944,7 +957,8 @@ def _receipt_check(
             checks,
             name,
             None,
-            f"no live receipt at {path}; static probes are not accepted",
+            f"scope={receipt_scope}; no live receipt at {path}; "
+            "static probes are not accepted",
         )
     except Exception as exc:
         add(checks, name, False, f"{path}: {exc}")
@@ -1003,8 +1017,10 @@ def hook_live_checks(
     private_codex_receipt: Path | None = None,
     source_root: Path = DEFAULT_SOURCE_ROOT,
     home: Path | None = None,
+    codex_receipt_session_id: str | None = None,
+    claude_receipt_session_id: str | None = None,
 ) -> list[Check]:
-    """Require receipts produced only by genuine SessionStart payloads."""
+    """Require genuine latest or exact-session SessionStart evidence."""
     checks: list[Check] = []
     try:
         source_version = str(
@@ -1024,21 +1040,73 @@ def hook_live_checks(
         return checks
     codex_root = _enabled_plugin_root("codex", source_version, home)
     claude_root = _enabled_plugin_root("claude", source_version, home)
+    try:
+        selected_codex = (
+            session_receipt_path(
+                public_codex_receipt,
+                "codex",
+                codex_receipt_session_id,
+                expected_plugin_version=source_version,
+                expected_plugin_root=codex_root,
+            )
+            if codex_receipt_session_id
+            else public_codex_receipt
+        )
+        selected_claude = (
+            session_receipt_path(
+                public_claude_receipt,
+                "claude",
+                claude_receipt_session_id,
+                expected_plugin_version=source_version,
+                expected_plugin_root=claude_root,
+            )
+            if claude_receipt_session_id
+            else public_claude_receipt
+        )
+    except ValueError as exc:
+        add(checks, "hook-live.receipt-registry", False, str(exc))
+        return checks
+    if codex_receipt_session_id and selected_codex is None:
+        selected_codex = (
+            receipt_registry_root(public_codex_receipt, "codex")
+            / "codex"
+            / codex_receipt_session_id
+            / "*.json"
+        )
+    if claude_receipt_session_id and selected_claude is None:
+        selected_claude = (
+            receipt_registry_root(public_claude_receipt, "claude")
+            / "claude"
+            / claude_receipt_session_id
+            / "*.json"
+        )
     _receipt_check(
         checks,
         "hook-live.public-codex-sessionstart",
-        public_codex_receipt,
+        selected_codex,
         expected_client="codex",
         expected_plugin_version=source_version,
         expected_plugin_root=codex_root,
+        max_age_hours=None if codex_receipt_session_id else 24,
+        receipt_scope=(
+            f"session:{codex_receipt_session_id}"
+            if codex_receipt_session_id
+            else "latest"
+        ),
     )
     _receipt_check(
         checks,
         "hook-live.public-claude-sessionstart",
-        public_claude_receipt,
+        selected_claude,
         expected_client="claude",
         expected_plugin_version=source_version,
         expected_plugin_root=claude_root,
+        max_age_hours=None if claude_receipt_session_id else 24,
+        receipt_scope=(
+            f"session:{claude_receipt_session_id}"
+            if claude_receipt_session_id
+            else "latest"
+        ),
     )
     if private_codex_receipt is not None:
         _receipt_check(
@@ -2135,6 +2203,20 @@ def parser() -> argparse.ArgumentParser:
         help="Opt in to a private control-plane SessionStart receipt check.",
     )
     result.add_argument(
+        "--codex-receipt-session-id",
+        help=(
+            "Select preserved public Codex SessionStart evidence for this exact "
+            "session instead of the current latest pointer."
+        ),
+    )
+    result.add_argument(
+        "--claude-receipt-session-id",
+        help=(
+            "Select preserved public Claude SessionStart evidence for this exact "
+            "session instead of the current latest pointer."
+        ),
+    )
+    result.add_argument(
         "--capability-evidence",
         type=Path,
         default=DEFAULT_CAPABILITY_EVIDENCE,
@@ -2155,6 +2237,13 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = parser().parse_args()
+    if args.command != "hook-live" and (
+        args.codex_receipt_session_id or args.claude_receipt_session_id
+    ):
+        raise SystemExit(
+            "exact receipt session selectors are valid only with hook-live; "
+            "the all command always measures current latest health"
+        )
     checks: list[Check] = []
     if args.command in {"source", "all"}:
         checks.extend(source_checks(args.source_root.resolve()))
@@ -2175,6 +2264,8 @@ def main() -> int:
                 if args.private_codex_sessionstart_receipt
                 else None,
                 args.source_root.resolve(),
+                codex_receipt_session_id=args.codex_receipt_session_id,
+                claude_receipt_session_id=args.claude_receipt_session_id,
             )
         )
     if args.command in {"catalog", "all"}:

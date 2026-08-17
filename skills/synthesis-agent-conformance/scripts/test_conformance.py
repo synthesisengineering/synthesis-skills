@@ -8,6 +8,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 
 MODULE_PATH = Path(__file__).with_name("conformance.py")
 SPEC = importlib.util.spec_from_file_location("conformance", MODULE_PATH)
@@ -1000,6 +1002,230 @@ def test_deferred_claude_receipt_requires_eventual_transcript_binding(
         expected_plugin_root=installed_root,
     )
     assert after[0].ok is True
+
+
+def test_hook_live_distinguishes_latest_drift_from_preserved_session_evidence(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "source"
+    (source / ".codex-plugin").mkdir(parents=True)
+    (source / ".codex-plugin" / "plugin.json").write_text(
+        json.dumps({"version": "1.2.3"}), encoding="utf-8"
+    )
+    installed_roots = {
+        "codex": tmp_path / "codex-cache" / "1.2.3",
+        "claude": tmp_path / "claude-cache" / "1.2.3",
+    }
+    for root in installed_roots.values():
+        root.mkdir(parents=True)
+    monkeypatch.setattr(
+        MODULE,
+        "_enabled_plugin_root",
+        lambda client, version, home=None: installed_roots[client],
+    )
+
+    codex_home = tmp_path / ".codex"
+    claude_home = tmp_path / ".claude"
+    codex_session = "019fff79-5858-7993-a329-b301bccf5d61"
+    accepted_claude_session = "019fff79-5858-7993-a329-b301bccf5d62"
+    unrelated_claude_session = "019fff79-5858-7993-a329-b301bccf5d63"
+    codex_transcript = codex_home / "sessions" / f"{codex_session}.jsonl"
+    accepted_transcript = (
+        claude_home
+        / "projects"
+        / "workspace"
+        / f"{accepted_claude_session}.jsonl"
+    )
+    unrelated_transcript = (
+        claude_home
+        / "projects"
+        / "workspace"
+        / f"{unrelated_claude_session}.jsonl"
+    )
+    codex_transcript.parent.mkdir(parents=True)
+    accepted_transcript.parent.mkdir(parents=True)
+    codex_transcript.write_text(
+        json.dumps(
+            {"type": "session_meta", "payload": {"id": codex_session}}
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    accepted_transcript.write_text(
+        json.dumps({"sessionId": accepted_claude_session}) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+
+    public_codex = tmp_path / "public-sessionstart-codex.json"
+    public_claude = tmp_path / "public-sessionstart-claude.json"
+    now = datetime.now(timezone.utc).isoformat()
+    public_codex.write_text(
+        json.dumps(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": codex_session,
+                "client": "codex",
+                "plugin_version": "1.2.3",
+                "plugin_root": str(installed_roots["codex"]),
+                "provenance_env": "codex-transcript",
+                "transcript_path": str(codex_transcript),
+                "transcript_bound_at_record": True,
+                "recorded_at": now,
+            }
+        ),
+        encoding="utf-8",
+    )
+    public_claude.write_text(
+        json.dumps(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": unrelated_claude_session,
+                "client": "claude",
+                "plugin_version": "1.2.3",
+                "plugin_root": str(installed_roots["claude"]),
+                "provenance_env": "claude-transcript",
+                "transcript_path": str(unrelated_transcript),
+                "transcript_bound_at_record": False,
+                "recorded_at": now,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def store_event(
+        latest: Path,
+        *,
+        client: str,
+        session_id: str,
+        event_id: str,
+        version: str,
+        plugin_root: Path,
+        transcript: Path,
+        age_hours: int,
+    ) -> Path:
+        event = (
+            MODULE.receipt_registry_root(latest, client)
+            / client
+            / session_id
+            / f"{event_id}.json"
+        )
+        event.parent.mkdir(parents=True, exist_ok=True)
+        event.write_text(
+            json.dumps(
+                {
+                    "receipt_schema": 2,
+                    "receipt_event_id": event_id,
+                    "hook_event_name": "SessionStart",
+                    "session_id": session_id,
+                    "client": client,
+                    "plugin_version": version,
+                    "plugin_root": str(plugin_root),
+                    "provenance_env": f"{client}-transcript",
+                    "transcript_path": str(transcript),
+                    "transcript_bound_at_record": True,
+                    "recorded_at": (
+                        datetime.now(timezone.utc) - timedelta(hours=age_hours)
+                    ).isoformat(),
+                }
+            ),
+            encoding="utf-8",
+        )
+        return event
+
+    accepted_claude_event = store_event(
+        public_claude,
+        client="claude",
+        session_id=accepted_claude_session,
+        event_id="019fff79-5858-7993-a329-b301bccf5d64",
+        version="1.2.3",
+        plugin_root=installed_roots["claude"],
+        transcript=accepted_transcript,
+        age_hours=48,
+    )
+    store_event(
+        public_claude,
+        client="claude",
+        session_id=accepted_claude_session,
+        event_id="019fff79-5858-7993-a329-b301bccf5d65",
+        version="1.2.4",
+        plugin_root=tmp_path / "claude-cache" / "1.2.4",
+        transcript=accepted_transcript,
+        age_hours=1,
+    )
+    accepted_codex_event = store_event(
+        public_codex,
+        client="codex",
+        session_id=codex_session,
+        event_id="019fff79-5858-7993-a329-b301bccf5d66",
+        version="1.2.3",
+        plugin_root=installed_roots["codex"],
+        transcript=codex_transcript,
+        age_hours=48,
+    )
+    store_event(
+        public_codex,
+        client="codex",
+        session_id=codex_session,
+        event_id="019fff79-5858-7993-a329-b301bccf5d67",
+        version="1.2.4",
+        plugin_root=tmp_path / "codex-cache" / "1.2.4",
+        transcript=codex_transcript,
+        age_hours=1,
+    )
+
+    latest = MODULE.hook_live_checks(
+        public_codex, public_claude, source_root=source
+    )
+    latest_claude = next(
+        check
+        for check in latest
+        if check.name == "hook-live.public-claude-sessionstart"
+    )
+    assert latest_claude.ok is False
+    assert "scope=latest" in latest_claude.detail
+
+    accepted = MODULE.hook_live_checks(
+        public_codex,
+        public_claude,
+        source_root=source,
+        codex_receipt_session_id=codex_session,
+        claude_receipt_session_id=accepted_claude_session,
+    )
+    assert all(check.ok for check in accepted)
+    accepted_claude = next(
+        check
+        for check in accepted
+        if check.name == "hook-live.public-claude-sessionstart"
+    )
+    assert f"scope=session:{accepted_claude_session}" in accepted_claude.detail
+    assert f"receipt={accepted_claude_event}" in accepted_claude.detail
+    accepted_codex = next(
+        check
+        for check in accepted
+        if check.name == "hook-live.public-codex-sessionstart"
+    )
+    assert f"scope=session:{codex_session}" in accepted_codex.detail
+    assert f"receipt={accepted_codex_event}" in accepted_codex.detail
+
+
+def test_exact_receipt_selectors_cannot_replace_all_current_health(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "conformance.py",
+            "all",
+            "--claude-receipt-session-id",
+            "019fff79-5858-7993-a329-b301bccf5d62",
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="only with hook-live"):
+        MODULE.main()
 
 
 def test_claude_receipt_rejects_subagent_transcript_with_parent_uuid(

@@ -11,6 +11,13 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Accepted SessionStart evidence is no longer a singleton (August 2026).**
+Release **4.27.0** preserves every genuine Claude Code and Codex SessionStart
+under its client and session identity, while retaining separate monotonic
+latest pointers for current-health checks. Conformance can now reverify exact
+accepted sessions without hiding drift in the newest unrelated start. See the
+[4.27.0 release notes](CHANGELOG.md).
+
 **The pointer and continuity share one stopped-task contract (August 2026).**
 Release **4.26.0** lets the active-project pointer accept the same
 session-attributed uncommitted record that local continuity accepts, so a live

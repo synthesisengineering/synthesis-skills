@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.0"
+  version: "1.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -56,6 +56,25 @@ python3 scripts/conformance.py coordination
 python3 scripts/conformance.py capabilities --repo-root <repo>
 python3 scripts/conformance.py surfaces
 ```
+
+`hook-live` without selectors answers the current-health question: it checks
+the newest Claude and Codex receipt pointers and keeps the 24-hour freshness
+gate. To reverify a release or handoff against its exact accepted sessions,
+select the preserved event records explicitly:
+
+```bash
+python3 scripts/conformance.py hook-live \
+  --claude-receipt-session-id <claude-session-uuid> \
+  --codex-receipt-session-id <codex-session-uuid>
+```
+
+Do not substitute one scope for the other. A newer unrelated start may make
+current health fail without erasing an earlier accepted event; an accepted
+session check does not establish that the newest global start is healthy.
+Preserved events are local runtime evidence and have no automatic age-based
+deletion. Exact-session checks waive only the 24-hour freshness limit; they
+still require the original client-owned transcript, matching session UUID,
+plugin version, and exact plugin root to validate.
 
 Use `--json` for a machine-readable report. Each check carries a plane and one
 of PASS, FAIL, WARN, UNKNOWN, or UNSUPPORTED. A required UNKNOWN fails the
@@ -151,16 +170,21 @@ behavior-producing implementation. The script:
 - verifies that the project still exists;
 - extracts the current phase, status, plan, and next actions from durable files;
 - emits a compact context anchor;
-- writes atomic generic and client-specific live receipts only when the client
-  supplies a genuine `SessionStart` event and session id. Claude may name its
+- appends an immutable event record for every genuine `SessionStart`, then
+  advances atomic generic and client-specific latest pointers monotonically.
+  Exact-session conformance reads the event registry, so a later unrelated
+  start cannot erase the addressability of accepted evidence. Claude may name its
   client-owned transcript before creating its first JSONL record; the receipt
   preserves that lifecycle event and records whether the binding existed at
   hook time. Release conformance still requires the exact transcript to bind
   the same session UUID. Claude evidence must use the canonical
   `projects/<encoded-cwd>/<session-id>.jsonl` root shape; subagent descendants,
-  symlinks, and contradictory UUID declarations fail closed. Current
-  public-plugin receipts from both Claude Code and Codex, plus the private
-  Codex control-plane receipt, are required.
+  symlinks, and contradictory UUID declarations fail closed. Current-health
+  checks still require the latest public-plugin receipts from both Claude Code
+  and Codex. Release and handoff reverification must select the exact durable
+  session UUIDs rather than trusting whichever global receipt happens to be
+  newest. The private Codex control-plane receipt remains a separate opt-in
+  check.
 
 Claude calls the same script from its native `SessionStart` hook. Client hook
 configuration remains an adapter; the context-producing behavior is shared.

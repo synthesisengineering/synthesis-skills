@@ -3,7 +3,11 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import pytest
 
 
 MODULE_PATH = Path(__file__).with_name("session_context.py")
@@ -201,7 +205,129 @@ def test_live_receipt_records_real_sessionstart_shape(
     assert recorded["transcript_bound_at_record"] is True
     assert recorded["transcript_path"] == str(transcript)
     assert Path(recorded["plugin_root"]).resolve() == MODULE.SCRIPTS_DIR.parents[2]
+    event_path = (
+        receipt.parent
+        / "receipt-events"
+        / "codex"
+        / payload["session_id"]
+        / f"{recorded['receipt_event_id']}.json"
+    )
+    assert event_path.is_file()
+    assert json.loads(event_path.read_text(encoding="utf-8")) == recorded
     assert not list(receipt.parent.glob("*.tmp"))
+
+
+def test_live_receipt_preserves_prior_session_when_latest_advances(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "live" / "public-sessionstart.json"
+    codex_home = tmp_path / ".codex"
+    first_session = "019fff79-5858-7993-a329-b301bccf5d51"
+    second_session = "019fff79-5858-7993-a329-b301bccf5d52"
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
+    def record(session_id: str) -> None:
+        transcript = codex_home / "sessions" / f"{session_id}.jsonl"
+        transcript.parent.mkdir(parents=True, exist_ok=True)
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "session_meta",
+                    "payload": {"id": session_id, "session_id": session_id},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        assert MODULE.record_live_receipt(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": session_id,
+                "source": "startup",
+                "transcript_path": str(transcript),
+            },
+            receipt,
+        )
+
+    record(first_session)
+    first_events = list(
+        (receipt.parent / "public-sessionstart-events" / "codex" / first_session)
+        .glob("*.json")
+    )
+    assert len(first_events) == 1
+    first_contents = first_events[0].read_bytes()
+
+    record(second_session)
+
+    assert first_events[0].read_bytes() == first_contents
+    second_events = list(
+        (receipt.parent / "public-sessionstart-events" / "codex" / second_session)
+        .glob("*.json")
+    )
+    assert len(second_events) == 1
+    assert (
+        json.loads(receipt.read_text(encoding="utf-8"))["session_id"]
+        == second_session
+    )
+    client_latest = receipt.with_name("public-sessionstart-codex.json")
+    assert (
+        json.loads(client_latest.read_text(encoding="utf-8"))["session_id"]
+        == second_session
+    )
+
+
+def test_latest_receipt_pointer_never_moves_backward(tmp_path: Path) -> None:
+    destination = tmp_path / "latest.json"
+    newer = {
+        "receipt_event_id": "019fff79-5858-7993-a329-b301bccf5d71",
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    older = {
+        "receipt_event_id": "019fff79-5858-7993-a329-b301bccf5d72",
+        "recorded_at": (
+            datetime.now(timezone.utc) - timedelta(minutes=1)
+        ).isoformat(),
+    }
+    MODULE.atomic_json_write(destination, newer)
+
+    MODULE._write_latest_if_newer(destination, older)
+
+    assert json.loads(destination.read_text(encoding="utf-8")) == newer
+
+
+def test_live_receipt_rejects_symlinked_event_registry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "live" / "public-sessionstart.json"
+    receipt.parent.mkdir(parents=True)
+    target = tmp_path / "outside-events"
+    target.mkdir()
+    (receipt.parent / "public-sessionstart-events").symlink_to(
+        target, target_is_directory=True
+    )
+    codex_home = tmp_path / ".codex"
+    session_id = "019fff79-5858-7993-a329-b301bccf5d73"
+    transcript = codex_home / "sessions" / f"{session_id}.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(
+        json.dumps({"type": "session_meta", "payload": {"id": session_id}})
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
+    with pytest.raises(ValueError, match="receipt registry path is unsafe"):
+        MODULE.record_live_receipt(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": session_id,
+                "transcript_path": str(transcript),
+            },
+            receipt,
+        )
+
+    assert not receipt.exists()
+    assert not list(target.iterdir())
 
 
 def test_live_receipt_rejects_codex_subagent_transcript(
@@ -317,6 +443,46 @@ def test_live_receipt_preserves_empty_claude_transcript_until_binding(
     )
     recorded = json.loads(receipt.read_text(encoding="utf-8"))
     assert recorded["transcript_bound_at_record"] is False
+
+
+def test_same_claude_session_retains_pending_and_bound_events(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "live" / "public-sessionstart.json"
+    claude_home = tmp_path / ".claude"
+    session_id = "019fff79-5858-7993-a329-b301bccf5d74"
+    transcript = claude_home / "projects" / "workspace" / f"{session_id}.jsonl"
+    transcript.parent.mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+    payload = {
+        "hook_event_name": "SessionStart",
+        "session_id": session_id,
+        "source": "startup",
+        "transcript_path": str(transcript),
+    }
+
+    assert MODULE.record_live_receipt(payload, receipt)
+    time.sleep(0.002)
+    transcript.write_text(
+        json.dumps({"sessionId": session_id}) + "\n", encoding="utf-8"
+    )
+    payload["source"] = "resume"
+    assert MODULE.record_live_receipt(payload, receipt)
+
+    event_directory = (
+        receipt.parent / "public-sessionstart-events" / "claude" / session_id
+    )
+    events = list(event_directory.glob("*.json"))
+    assert len(events) == 2
+    selected = sys.modules["live_receipt"].session_receipt_path(
+        receipt.with_name("public-sessionstart-claude.json"),
+        "claude",
+        session_id,
+    )
+    assert selected is not None
+    selected_payload = json.loads(selected.read_text(encoding="utf-8"))
+    assert selected_payload["source"] == "resume"
+    assert selected_payload["transcript_bound_at_record"] is True
 
 
 def test_live_receipt_rejects_conflicting_claude_transcript_without_overwrite(
