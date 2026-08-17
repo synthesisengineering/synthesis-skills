@@ -12,6 +12,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 ## What's new
 
 **Accepted SessionStart evidence is no longer a singleton (August 2026).**
+Release **4.29.0** adds distributed ritual execution to the daily rituals: a
+desk seat folds per-workspace worker artifacts into one daily brief with a
+mandatory coverage line, under a client-neutral worker-artifact contract
+(workers write files, the desk reads files — absence of an artifact is itself
+the signal). See the [4.29.0 release notes](CHANGELOG.md).
+
 Release **4.27.0** preserves every genuine Claude Code and Codex SessionStart
 under its client and session identity, while retaining separate monotonic
 latest pointers for current-health checks. Conformance can now reverify exact
