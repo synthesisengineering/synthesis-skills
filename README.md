@@ -11,6 +11,15 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**The pointer and continuity share one stopped-task contract (August 2026).**
+Release **4.26.0** lets the active-project pointer accept the same
+session-attributed uncommitted record that local continuity accepts, so a live
+owner can activate mid-handoff without an off-contract commit. Unattributed
+edits still fail closed, the attribution primitives are shared so the two
+contracts cannot drift, and board workspace claims may carry their
+conventional parenthetical annotations. See the
+[4.26.0 release notes](CHANGELOG.md).
+
 **Claude Code SessionStart evidence follows the real lifecycle (August 2026).**
 Release **4.25.3** records the genuine hook event even when Claude creates its
 transcript immediately after the hook returns. Acceptance still requires that

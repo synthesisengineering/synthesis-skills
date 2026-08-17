@@ -47,6 +47,8 @@ from client_binaries import missing_binary_detail, resolve_client_binary
 from active_project import (
     lease_url,
     load_and_validate,
+    porcelain_paths,
+    project_pending_manifests,
     sessions as coordination_sessions,
     validate as validate_active_project,
 )
@@ -1617,44 +1619,6 @@ def stopped_payload_parity(
     return True, "Claude and Codex reconstruct the same durable record without a pointer"
 
 
-def _manifest_records_project(data: dict[str, object], project: Path) -> bool:
-    project_root = project.resolve()
-    values = data.get("remote_paths", data.get("paths", []))
-    if not isinstance(values, list):
-        return False
-    for value in values:
-        try:
-            Path(str(value)).expanduser().resolve(strict=False).relative_to(project_root)
-            return True
-        except (OSError, ValueError):
-            continue
-    return False
-
-
-def project_pending_manifests(project: Path, state_root: Path) -> list[tuple[Path, dict]]:
-    pending = state_root / "pending"
-    found: list[tuple[Path, dict]] = []
-    if not pending.is_dir():
-        return found
-    for path in sorted(pending.glob("*.json")):
-        if path.is_symlink():
-            raise ValueError(f"pending handoff manifest is a symlink: {path}")
-        data = json.loads(path.read_text(encoding="utf-8"))
-        session_id = data.get("session_id")
-        if not isinstance(session_id, str) or not session_id:
-            raise ValueError(f"pending handoff manifest has no session id: {path}")
-        if not isinstance(data.get("paths"), list):
-            raise ValueError(f"pending handoff manifest paths are invalid: {path}")
-        if "remote_paths" in data and not isinstance(data.get("remote_paths"), list):
-            raise ValueError(f"pending handoff manifest remote_paths are invalid: {path}")
-        expected = hashlib.sha256(session_id.encode("utf-8")).hexdigest() + ".json"
-        if path.name != expected:
-            raise ValueError(f"pending handoff manifest name mismatch: {path}")
-        if _manifest_records_project(data, project):
-            found.append((path, data))
-    return found
-
-
 def _file_receipt_matches(item: dict[str, object]) -> bool:
     path = Path(str(item.get("path") or "")).expanduser()
     state = item.get("state")
@@ -1705,20 +1669,6 @@ def valid_local_receipt(session_id: str, state_root: Path) -> bool:
         return True
     except (OSError, ValueError, TypeError):
         return False
-
-
-def porcelain_paths(output: str, repo_root: Path) -> set[Path]:
-    paths: set[Path] = set()
-    for line in output.splitlines():
-        if len(line) < 4:
-            continue
-        value = line[3:]
-        if " -> " in value:
-            value = value.split(" -> ", 1)[1]
-        value = value.strip().strip('"')
-        if value:
-            paths.add((repo_root / value).resolve(strict=False))
-    return paths
 
 
 def continuity_readiness_checks(

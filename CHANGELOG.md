@@ -4,6 +4,27 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.26.0] - 2026-08-17
+
+### Changed
+
+- **`synthesis-agent-conformance` v1.3.0 — pointer activation accepts the
+  attributed stopped-task record** — the active-project pointer and local
+  continuity now share one record contract. `activate` and pointer validation
+  accept uncommitted project edits exactly when session-attributed pending
+  manifests record every dirty path (the `LOCAL_READY` /
+  `LOCAL_RECOVERABLE` states), and keep failing closed on any unattributed
+  path or unreadable manifest. Previously activation rejected the same
+  attributed dirty record that local continuity accepted, so a live owner
+  mid-switch could not hold a pointer without an off-contract commit. The
+  attribution primitives (`porcelain_paths`, `project_pending_manifests`,
+  `unattributed_dirty_issues`) now live in `active_project.py` and the
+  continuity checks import them, so the two contracts cannot drift apart; a
+  regression test asserts their agreement on the same fixtures. Workspace
+  claims on the coordination board may carry the conventional trailing
+  parenthetical annotation — `repo @ branch (new branch)` — without breaking
+  exact worktree/branch matching.
+
 ## [4.25.3] - 2026-08-15
 
 ### Fixed

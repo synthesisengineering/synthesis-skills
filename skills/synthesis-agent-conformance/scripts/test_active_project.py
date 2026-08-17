@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from datetime import datetime, timedelta
@@ -20,6 +21,28 @@ def git(repo: Path, *args: str) -> str:
         text=True,
     )
     return result.stdout.strip()
+
+
+def attribute(
+    tmp_path: Path, paths: list[Path], session_id: str = "fixture-session-0001"
+) -> Path:
+    """Write a session-attributed pending manifest covering the given paths."""
+    state_root = tmp_path / "repo-guard"
+    pending = state_root / "pending"
+    pending.mkdir(parents=True, exist_ok=True)
+    name = hashlib.sha256(session_id.encode("utf-8")).hexdigest() + ".json"
+    (pending / name).write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": session_id,
+                "paths": [str(path) for path in paths],
+                "remote_paths": [str(path) for path in paths],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return state_root
 
 
 def fixture(tmp_path: Path) -> tuple[dict[str, object], Path]:
@@ -187,14 +210,92 @@ def test_pointer_rejects_unpushed_head(tmp_path: Path) -> None:
     assert any("not reachable from any fetched remote ref" in issue for issue in issues)
 
 
-def test_pointer_rejects_dirty_project_record(tmp_path: Path) -> None:
+def test_pointer_rejects_unattributed_dirty_project_record(tmp_path: Path) -> None:
     payload, board = fixture(tmp_path)
     plan = Path(str(payload["plan"]))
     plan.write_text("# Changed but uncommitted\n", encoding="utf-8")
 
-    issues = validate(payload, board, refresh_lease=False)
+    issues = validate(
+        payload, board, refresh_lease=False, state_root=tmp_path / "repo-guard"
+    )
 
-    assert any("project record has uncommitted" in issue for issue in issues)
+    assert any(
+        "no session-attributed pending manifest" in issue for issue in issues
+    )
+
+
+def test_pointer_accepts_attributed_dirty_project_record(tmp_path: Path) -> None:
+    payload, board = fixture(tmp_path)
+    plan = Path(str(payload["plan"]))
+    plan.write_text("# Attributed uncommitted progress\n", encoding="utf-8")
+    state_root = attribute(tmp_path, [plan])
+
+    assert validate(payload, board, refresh_lease=False, state_root=state_root) == []
+
+
+def test_pointer_rejects_partially_attributed_dirty_record(tmp_path: Path) -> None:
+    payload, board = fixture(tmp_path)
+    plan = Path(str(payload["plan"]))
+    plan.write_text("# Attributed uncommitted progress\n", encoding="utf-8")
+    stray = plan.parent / "stray-note.md"
+    stray.write_text("# Nothing attributes this file\n", encoding="utf-8")
+    state_root = attribute(tmp_path, [plan])
+
+    issues = validate(payload, board, refresh_lease=False, state_root=state_root)
+
+    assert any(
+        "unattributed uncommitted or untracked changes" in issue
+        and "stray-note.md" in issue
+        for issue in issues
+    )
+
+
+def test_pointer_agrees_with_local_continuity_classification(tmp_path: Path) -> None:
+    import conformance
+
+    payload, board = fixture(tmp_path)
+    project = Path(str(payload["project"]))
+    plan = Path(str(payload["plan"]))
+    plan.write_text("# Attributed uncommitted progress\n", encoding="utf-8")
+    state_root = attribute(tmp_path, [plan])
+
+    continuity = conformance.continuity_readiness_checks(
+        project, "local", state_root=state_root
+    )
+    accepted = any(
+        check.name == "continuity.local-state" and check.ok for check in continuity
+    )
+    issues = validate(payload, board, refresh_lease=False, state_root=state_root)
+
+    assert accepted and issues == []
+
+    stray = plan.parent / "stray-note.md"
+    stray.write_text("# Nothing attributes this file\n", encoding="utf-8")
+    continuity = conformance.continuity_readiness_checks(
+        project, "local", state_root=state_root
+    )
+    rejected = any(
+        check.name == "continuity.local-state" and not check.ok
+        for check in continuity
+    )
+    issues = validate(payload, board, refresh_lease=False, state_root=state_root)
+
+    assert rejected and any(
+        "unattributed uncommitted or untracked changes" in issue for issue in issues
+    )
+
+
+def test_workspace_claim_tolerates_parenthetical_annotation(tmp_path: Path) -> None:
+    payload, board = fixture(tmp_path)
+    worktree = str(payload["worktree"])
+    board.write_text(
+        board.read_text(encoding="utf-8").replace(
+            f"{worktree} @ feature/test", f"{worktree} @ feature/test (new branch)"
+        ),
+        encoding="utf-8",
+    )
+
+    assert validate(payload, board, refresh_lease=False) == []
 
 
 def test_pointer_rejects_prefix_only_workspace_claim(tmp_path: Path) -> None:

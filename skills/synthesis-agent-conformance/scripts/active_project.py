@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
-"""Validation primitives for the leased active-project pointer."""
+"""Validation primitives for the leased active-project pointer.
+
+The pointer and same-machine continuity share one record contract: an
+uncommitted project edit is acceptable exactly when a session-attributed
+pending manifest records it. The attribution primitives live here so the
+pointer validator and the continuity checks cannot drift apart.
+"""
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -11,6 +19,114 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 TERMINAL_STATUSES = {"released", "complete", "completed", "closed"}
+
+
+def repo_guard_state_root() -> Path:
+    """Root of the session-attributed local handoff state."""
+    return (
+        Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis")))
+        / "repo-guard"
+    )
+
+
+def porcelain_paths(output: str, repo_root: Path) -> set[Path]:
+    """Resolve `git status --porcelain=v1` lines to absolute paths."""
+    paths: set[Path] = set()
+    for line in output.splitlines():
+        if len(line) < 4:
+            continue
+        value = line[3:]
+        if " -> " in value:
+            value = value.split(" -> ", 1)[1]
+        value = value.strip().strip('"')
+        if value:
+            paths.add((repo_root / value).resolve(strict=False))
+    return paths
+
+
+def manifest_records_project(data: dict[str, object], project: Path) -> bool:
+    """True when a pending manifest records any path inside the project."""
+    project_root = project.resolve()
+    values = data.get("remote_paths", data.get("paths", []))
+    if not isinstance(values, list):
+        return False
+    for value in values:
+        try:
+            Path(str(value)).expanduser().resolve(strict=False).relative_to(
+                project_root
+            )
+            return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
+def project_pending_manifests(
+    project: Path, state_root: Path
+) -> list[tuple[Path, dict]]:
+    """Validated pending session manifests that record this project."""
+    pending = state_root / "pending"
+    found: list[tuple[Path, dict]] = []
+    if not pending.is_dir():
+        return found
+    for path in sorted(pending.glob("*.json")):
+        if path.is_symlink():
+            raise ValueError(f"pending handoff manifest is a symlink: {path}")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        session_id = data.get("session_id")
+        if not isinstance(session_id, str) or not session_id:
+            raise ValueError(f"pending handoff manifest has no session id: {path}")
+        if not isinstance(data.get("paths"), list):
+            raise ValueError(f"pending handoff manifest paths are invalid: {path}")
+        if "remote_paths" in data and not isinstance(data.get("remote_paths"), list):
+            raise ValueError(
+                f"pending handoff manifest remote_paths are invalid: {path}"
+            )
+        expected = hashlib.sha256(session_id.encode("utf-8")).hexdigest() + ".json"
+        if path.name != expected:
+            raise ValueError(f"pending handoff manifest name mismatch: {path}")
+        if manifest_records_project(data, project):
+            found.append((path, data))
+    return found
+
+
+def unattributed_dirty_issues(
+    project: Path,
+    repo_root: Path,
+    porcelain_output: str,
+    state_root: Path,
+) -> list[str]:
+    """Apply the local-continuity attribution rule to a dirty project record.
+
+    Same-machine continuity accepts a stopped or interrupted task whose
+    uncommitted project edits are all recorded by session-attributed pending
+    manifests (`LOCAL_READY` with a current Stop receipt, `LOCAL_RECOVERABLE`
+    without one). The pointer accepts exactly that state. Any dirty path
+    without an attributed manifest still fails closed.
+    """
+    dirty = porcelain_paths(porcelain_output, repo_root)
+    try:
+        manifests = project_pending_manifests(project, state_root)
+    except (OSError, ValueError, TypeError) as exc:
+        return [f"project attribution check failed: {exc}"]
+    if not manifests:
+        return [
+            "project record has uncommitted or untracked changes with no "
+            "session-attributed pending manifest"
+        ]
+    attributed = {
+        Path(str(value)).expanduser().resolve(strict=False)
+        for _, data in manifests
+        for value in data.get("paths", [])
+    }
+    unattributed = sorted(dirty - attributed)
+    if unattributed:
+        preview = ", ".join(str(path) for path in unattributed[:5])
+        return [
+            "project record has unattributed uncommitted or untracked changes: "
+            + preview
+        ]
+    return []
 
 
 def lease_url(board: Path) -> str | None:
@@ -122,7 +238,10 @@ def _workspace_claims(value: str) -> list[tuple[Path, str]]:
         if " @ " not in clean:
             continue
         path, branch = clean.rsplit(" @ ", 1)
-        claims.append((Path(path.strip()).expanduser(), branch.strip()))
+        # Board rows conventionally annotate entries — "repo @ branch (new
+        # branch)". The trailing parenthetical is commentary, not branch name.
+        branch = re.sub(r"\s*\([^()]*\)$", "", branch.strip())
+        claims.append((Path(path.strip()).expanduser(), branch))
     return claims
 
 
@@ -133,6 +252,7 @@ def validate(
     stale_after_minutes: int = 240,
     now: datetime | None = None,
     refresh_lease: bool = True,
+    state_root: Path | None = None,
 ) -> list[str]:
     """Return every reason the pointer is unsafe to inject."""
     issues: list[str] = []
@@ -232,8 +352,10 @@ def validate(
                 "git",
                 "-C",
                 str(worktree),
+                "-c",
+                "core.quotePath=false",
                 "status",
-                "--porcelain",
+                "--porcelain=v1",
                 "--untracked-files=all",
                 "--",
                 str(project),
@@ -245,7 +367,22 @@ def validate(
                 + (project_status.stderr.strip() or f"exit={project_status.returncode}")
             )
         elif project_status.stdout.strip():
-            issues.append("project record has uncommitted or untracked changes")
+            toplevel = _run(
+                ["git", "-C", str(worktree), "rev-parse", "--show-toplevel"]
+            )
+            repo_root = (
+                Path(toplevel.stdout.strip())
+                if toplevel.returncode == 0 and toplevel.stdout.strip()
+                else worktree
+            )
+            issues.extend(
+                unattributed_dirty_issues(
+                    project,
+                    repo_root,
+                    project_status.stdout,
+                    repo_guard_state_root() if state_root is None else state_root,
+                )
+            )
         head = _run(["git", "-C", str(worktree), "rev-parse", "HEAD"])
         branch = _run(["git", "-C", str(worktree), "branch", "--show-current"])
         if head.returncode != 0:
@@ -319,7 +456,11 @@ def validate(
 
 
 def load_and_validate(
-    pointer: Path, board: Path, *, stale_after_minutes: int = 240
+    pointer: Path,
+    board: Path,
+    *,
+    stale_after_minutes: int = 240,
+    state_root: Path | None = None,
 ) -> tuple[dict[str, object], list[str]]:
     if pointer.is_symlink():
         return {}, [f"active-project pointer must not be a symlink: {pointer}"]
@@ -328,5 +469,8 @@ def load_and_validate(
     except Exception as exc:
         return {}, [f"active-project pointer is unreadable: {pointer}: {exc}"]
     return payload, validate(
-        payload, board, stale_after_minutes=stale_after_minutes
+        payload,
+        board,
+        stale_after_minutes=stale_after_minutes,
+        state_root=state_root,
     )
