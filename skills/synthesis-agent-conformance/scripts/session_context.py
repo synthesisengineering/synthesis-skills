@@ -10,8 +10,19 @@ import re
 import sys
 import tempfile
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows only
+    fcntl = None
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX only
+    msvcrt = None
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
@@ -21,8 +32,12 @@ from project_context import extract, next_actions, record_freshness
 from active_project import load_and_validate
 from live_receipt import (
     claude_root_transcript_path,
+    latest_receipt_paths,
+    receipt_event_path,
+    receipt_recorded_order,
     transcript_binding_state,
     transcript_binds_session,
+    validate_receipt_event_directory,
 )
 
 
@@ -62,6 +77,57 @@ def atomic_json_write(destination: Path, payload: dict[str, object]) -> None:
     finally:
         if temporary_name and os.path.exists(temporary_name):
             os.unlink(temporary_name)
+
+
+@contextmanager
+def receipt_registry_lock(destination: Path):
+    """Serialize event creation and monotonic latest-pointer updates."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.parent.is_symlink():
+        raise ValueError(
+            f"receipt registry parent is a symlink: {destination.parent}"
+        )
+    lock_path = destination.parent / f".{destination.stem}-events.lock"
+    if lock_path.is_symlink():
+        raise ValueError(f"receipt registry lock is a symlink: {lock_path}")
+    with lock_path.open("a+b") as handle:
+        if fcntl is not None:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        elif msvcrt is not None:  # pragma: no cover - Windows only
+            if handle.seek(0, os.SEEK_END) == 0:
+                handle.write(b"\0")
+                handle.flush()
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+        else:  # pragma: no cover - unsupported Python platform
+            raise RuntimeError("receipt registry locking is unavailable")
+        try:
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            elif msvcrt is not None:  # pragma: no cover - Windows only
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+def _write_latest_if_newer(
+    destination: Path, receipt: dict[str, object]
+) -> None:
+    if destination.exists():
+        if destination.is_symlink() or not destination.is_file():
+            raise ValueError(f"latest receipt path is unsafe: {destination}")
+        try:
+            current = json.loads(destination.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"latest receipt is unreadable: {destination}") from exc
+        if not isinstance(current, dict):
+            raise ValueError(f"latest receipt is not an object: {destination}")
+        if receipt_recorded_order(
+            current, destination
+        ) >= receipt_recorded_order(receipt, destination):
+            return
+    atomic_json_write(destination, receipt)
 
 
 def plugin_identity() -> tuple[str | None, str]:
@@ -170,7 +236,10 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
     ):
         return False
     transcript_bound_at_record = binding_state == "bound"
+    event_id = str(uuid.uuid4())
     receipt = {
+        "receipt_schema": 2,
+        "receipt_event_id": event_id,
         "hook_event_name": event,
         "session_id": session_id,
         "client": client,
@@ -183,13 +252,20 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
         "plugin_root": plugin_root,
         "recorded_at": datetime.now(timezone.utc).isoformat(),
     }
-    destinations = [destination]
-    if client in {"claude", "codex"} and not destination.stem.endswith(f"-{client}"):
-        destinations.append(
-            destination.with_name(f"{destination.stem}-{client}{destination.suffix}")
-        )
-    for receipt_path in destinations:
-        atomic_json_write(receipt_path, receipt)
+    generic_latest, client_latest = latest_receipt_paths(destination, client)
+    event_path = receipt_event_path(
+        client_latest,
+        client=client,
+        session_id=session_id,
+        event_id=event_id,
+    )
+    with receipt_registry_lock(generic_latest):
+        validate_receipt_event_directory(client_latest, client, session_id)
+        if event_path.exists():
+            raise FileExistsError(f"receipt event already exists: {event_path}")
+        atomic_json_write(event_path, receipt)
+        _write_latest_if_newer(client_latest, receipt)
+        _write_latest_if_newer(generic_latest, receipt)
     return True
 
 

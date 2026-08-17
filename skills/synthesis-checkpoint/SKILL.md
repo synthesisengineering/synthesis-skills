@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.0"
+  version: "1.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -41,7 +41,11 @@ Invoke synthesis-checkpoint when any of these conditions fire:
 **Triggered by the agent's own self-monitoring:**
 - Before generating any time-interval claim ("N days ago", "yesterday", "last session", "this week")
 - Before quoting any project status from cached memory
-- After a noticeable gap in conversation (model can check `date` to compare against perceived time)
+- After at least 10 minutes between user turns when the client exposes message
+  timestamps. Ten minutes is the default freshness boundary: long enough to
+  avoid checkpointing ordinary back-and-forth, short enough to catch another
+  client session changing shared state. If timestamps are unavailable, any
+  resume/continue phrasing after an apparent pause triggers the checkpoint.
 - After ~25 substantive tool calls, regardless of perceived need
 - When the model says or thinks "I don't recall" about a recent decision
 - When a file read reveals content the model didn't expect (state drift signal)
@@ -112,11 +116,19 @@ If there's a planning artifact (a plan file, a design doc, a checklist) referenc
 
 Before reporting, if `synthesis-agent-conformance` is installed, run its
 `hook-live`, `catalog`, and `instruction-budget` modes against the current
-source/repository. Compare the latest SessionStart receipt's plugin version
-with current source and installed truth. A mismatch means this task has a stale
-startup registry: save the durable checkpoint and require a new Claude Code
-session or Codex task. Do not describe an in-place cache update as a task
-reload.
+source/repository. The unqualified `hook-live` result is current global health.
+If the durable release or handoff record names accepted Claude and Codex
+session UUIDs, also run `hook-live` with
+`--claude-receipt-session-id` and `--codex-receipt-session-id`. Report the two
+scopes separately: a newer unrelated receipt can fail current health without
+revoking preserved accepted evidence, while an exact-session failure means the
+record can no longer be reverified from live artifacts. Never replace the
+current-health result with the selected historical result.
+
+Compare this task's own SessionStart receipt plugin version with current source
+and installed truth. A mismatch means this task has a stale startup registry:
+save the durable checkpoint and require a new Claude Code session or Codex
+task. Do not describe an in-place cache update as a task reload.
 
 In one short paragraph in the next response to the user, state:
 - Today's verified date and time

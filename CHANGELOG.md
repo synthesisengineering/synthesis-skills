@@ -4,6 +4,30 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.27.0] - 2026-08-17
+
+### Added
+
+- **`synthesis-agent-conformance` v1.4.0 — retained SessionStart evidence** —
+  every genuine Claude Code or Codex SessionStart now creates a preserved
+  per-session event before monotonic latest pointers advance. `hook-live`
+  keeps its unqualified current-health semantics and adds exact Claude and
+  Codex session selectors for release and handoff reverification. A later
+  unrelated start can therefore surface current drift without making an
+  earlier accepted session unreachable. Event identity, transcript binding,
+  plugin version/root, UUID shape, atomicity, and fail-closed registry parsing
+  remain part of the live-evidence gate.
+
+### Changed
+
+- **`synthesis-checkpoint` v1.4.0 — explicit evidence scopes** — checkpoint
+  recovery reports current global hook health separately from any exact
+  accepted-session evidence named by the durable project record. Neither scope
+  may stand in for the other. A ten-minute inter-turn pause is the default
+  automatic freshness boundary when timestamps are available, and installed
+  plugin changes still require a genuinely fresh client task before live
+  acceptance.
+
 ## [4.26.0] - 2026-08-17
 
 ### Changed
