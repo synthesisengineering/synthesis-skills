@@ -116,6 +116,7 @@ PROMPT_VISIBLE_PUBLIC_SKILLS = {
     "synthesis-checkpoint",
     "synthesis-code-planning",
     "synthesis-context-lifecycle",
+    "synthesis-grounding-discipline",
     "synthesis-implementation-integrity",
     "synthesis-project-management",
     "synthesis-skill-router",
