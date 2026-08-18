@@ -84,7 +84,18 @@ python3 skills/synthesis-agent-conformance/scripts/conformance.py coordination
 - Update the concise release note in `README.md`.
 - Use a feature branch and a review request for non-trivial changes.
 - Merge only after every required check passes.
-- Update both installed marketplaces from committed `main` and rerun runtime
-  conformance.
+- **Ship with the gated release script**, which runs the required checks,
+  publishes to every push remote, installs into both clients using each
+  client's own commands, and verifies each client twice — its CLI report and
+  the manifest at the path it loads:
+
+  ```bash
+  python3 skills/synthesis-skills-manager/scripts/release.py --repo-root .
+  ```
+
+  A release is not complete until both clients are confirmed current; the
+  script exits non-zero otherwise. Use `--install-only` to recover drift or
+  provision a new machine. Publishing by hand is still possible, but then the
+  install step is yours to remember — which is the gap the script closes.
 
 See `CONTRIBUTING.md` for contribution structure and licensing.
