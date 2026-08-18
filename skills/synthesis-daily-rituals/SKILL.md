@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.24.0"
+  version: "2.24.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,14 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.24.1 — Fragment placement and consumer obligations
+
+Clarifies two points in the plan-separation contract that adopters hit immediately: a
+workspace's fragment belongs in the individual's **private** repository (not the
+organization-shared one) when a workspace carries both, and a consumer that merges
+fragments for display must never cache merged output back into the person-side store and
+must render an unresolved pointer as an explicit marker rather than dropping it.
 
 ## v2.24.0 — Plan storage separation: workspace fragments, person-side shell
 

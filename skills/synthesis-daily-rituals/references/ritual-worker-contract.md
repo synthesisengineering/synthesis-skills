@@ -149,9 +149,20 @@ person-side repository defeats that with every day it accretes.
   timeline ("committed — see fragment") with all titles resolved from fragments at display
   time. The default shell carries titles; strictness is a per-person policy choice, made
   once and recorded in the workers registry as `shell: default | strict`.
+- **Shared vs private repositories.** A workspace often carries two repositories: one
+  shared with colleagues in that organization, and one private to the individual. The
+  fragment belongs in the **private** one — it is the individual's own working record of
+  the engagement (their triage, judgments, drafts, and read of what matters), and it sits
+  beside the other material that is theirs alone about that organization. Both live under
+  the same workspace directory, so both are removed by the same deletion; the distinction
+  governs who may read the fragment while the engagement is live, not erasure.
 - **Who writes what:** each worker writes only its own artifact/fragment (in its own
   claimed area); the desk writes only the shell. The desk never copies fragment content
   into the shell — it reads, reconciles, and points.
+- **Consumers render, never relocate.** A tool that merges fragments for display must not
+  cache merged output back into the person-side store, and must render an unresolved
+  pointer as an explicit marker rather than omitting it silently — a deleted workspace or
+  a worker that never ran has to stay visible as such.
 - Historical plan files that predate this separation stay as they are until a deliberate
   migration project splits them; the contract governs plans produced after adoption.
 

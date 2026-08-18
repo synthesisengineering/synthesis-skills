@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.30.1] - 2026-08-17
+
+### Changed
+
+- **`synthesis-daily-rituals` v2.24.1** — plan-separation contract clarifies that a
+  workspace's plan fragment belongs in the individual's private repository when a
+  workspace carries both a shared and a private one, and that consumers merging
+  fragments for display must not cache merged output person-side and must render
+  unresolved pointers as explicit markers rather than omitting them.
+
 ## [4.30.0] - 2026-08-17
 
 ### Added
