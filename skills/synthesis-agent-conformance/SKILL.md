@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.5.1"
+  version: "1.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -213,3 +213,10 @@ that OpenAI-specific prompt policy and retains its native trigger behavior.
 
 Read [references/architecture.md](references/architecture.md) when designing or
 changing an installation, plugin package, hook set, or cross-machine sync.
+
+## Instruction-kernel pattern
+
+Read [references/instruction-kernel-pattern.md](references/instruction-kernel-pattern.md)
+when an always-loaded instruction file approaches its budget or rules migrate
+to skill, hook, or config homes: the thin-kernel structure, the four
+enforcement classes, the not-weakening proof obligation, and the budget gate.

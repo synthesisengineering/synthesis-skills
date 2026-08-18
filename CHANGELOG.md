@@ -4,6 +4,51 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.32.0] - 2026-08-18
+
+### Added
+
+- **NEW skill: `synthesis-grounding-discipline` v1.0.0** — evidence and
+  provenance discipline for AI-agent output; the truth-side companion to
+  synthesis-anti-shortcuts' effort-side discipline. An eleven-rule catalog in
+  four groups (record only what a source surfaced; caches are not truth;
+  proving absence; grounding writes and deletions): anti-confabulation, quote
+  provenance, cache-vs-truth with a verifying-command-class table,
+  runtime-vs-IaC as distinct truths, evidence-in-hand before theorizing,
+  conventions-are-corpus-claims, negative-findings-need-a-positive-control,
+  truncated-output-is-a-pointer, zero-results-are-never-absence,
+  search-first/verify-paths, and file-and-process safety (including
+  cleanup-sentinel and recursive-delete-target invariants). Each entry carries
+  an anonymized production incident vignette and a compliance procedure; a
+  closing self-check compresses the catalog.
+
+- **`synthesis-agent-conformance` v1.6.0 — instruction-kernel pattern
+  reference** (`references/instruction-kernel-pattern.md`): keeping an
+  always-loaded instruction file small and enforceable — the three-part thin
+  kernel (identity + invariants, routing table, enforcement declarations), the
+  four enforcement classes, the not-weakening proof obligation, the fail-closed
+  budget gate with warn band, and homes-first/kernel-last migration mechanics.
+
+### Changed
+
+- **`synthesis-anti-shortcuts` v1.1.0** — sub-agent dispatch hygiene gains the
+  brief-size cap: at most five deliverables per dispatch, with the
+  late-failure shape oversized briefs produce; split substantial phases at
+  dispatch time. Added to both SKILL.md §4 and
+  `references/sub-agent-hygiene.md`.
+
+- **`synthesis-context-lifecycle` v1.8.0** — new "Repo Families and Deletion
+  Units" section: the permanent knowledge root vs per-engagement private repos
+  as deletion units, the write-time routing test, the asymmetric misplacement
+  failures, the generic ALWAYS-PRESERVE class, count-never-itemize
+  inventories, and instance specifics declared in private configuration.
+
+- **`synthesis-slack-sync` v3.4.0** — the transcripts-first rule gains the
+  question-shape trigger (verification questions are lookups wearing a
+  different hat) and the zero-result absence protocol (bounded direct reads
+  with stated bounds; re-run modifier-bearing queries without the modifier
+  before trusting a null), cross-linked to synthesis-grounding-discipline.
+
 ## [4.31.0] - 2026-08-17
 
 ### Added

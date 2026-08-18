@@ -59,6 +59,12 @@ A clean brief contains four sections:
 
 A sub-agent that reads this brief knows the full size of the job, knows what is in scope, knows what cannot appear in its pros list, and knows how its work will be verified. The license to leave work undone is removed.
 
+### The Size Cap
+
+A brief carries **at most five deliverables**. This is a hard dispatch control, not a style preference: oversized briefs reliably fail, and they fail in the worst way — late. The sub-agent spends its execution budget working through the list, reaches verification with too little left, and either stalls against the platform's dispatch timeout or returns partial work with the remainder self-reported as follow-up. A seven-deliverable brief (substrate code + API + UI + config + tests + docs + verification) is not one dispatch; it is two or three.
+
+Split substantial phases into focused dispatches — parallel where independent, sequenced where dependent — and plan the split **at dispatch time**, not after the first stall. An oversized brief produces the same half-applied work that costume vocabulary licenses; the timeout just supplies a different excuse.
+
 ---
 
 ## Part 2: Acceptance

@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.3.1"
+  version: "3.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -15,6 +15,20 @@ metadata:
 A protocol for syncing Slack channels and threads to local transcript files using Slack MCP. Designed for AI-assisted workflows where an agent reads Slack on behalf of a user, saves transcripts locally, and updates a daily action plan.
 
 This skill provides the **protocol** — the sync methodology, thread re-reading discipline, transcript format, and action plan update rules. A per-project **config file** provides the specifics: which channels, which paths, which DMs. Prefer `.agents/slack-sync.yaml`; existing `.claude/slack-sync.yaml` configs remain supported.
+
+## v3.4.0 — Question-shape trigger + zero-result absence protocol
+
+v3.4.0 (2026-08-18) hardens the transcripts-first rule at the two seams where it
+historically failed to fire. First, the **question-shape trigger**: verification
+questions ("did X get sent?", "did anyone reply?", "did that happen?") are
+historical lookups wearing a different hat — the rule triggers on the question
+shape, never on whether the task felt like a lookup. Second, **a zero-result
+search is never evidence of absence**: absence claims require a bounded direct
+channel read with the bounds stated in the finding, and any null from a
+modifier-bearing query must be re-run without the modifier before it is trusted.
+Both sections live inside the "NEVER Use Slack Search API" block; the general
+evidence discipline is cross-linked to the new synthesis-grounding-discipline
+skill.
 
 ## v3.3.1 — Runtime-resolved checker
 
@@ -224,6 +238,21 @@ The Slack search API has indexing delays (recent messages don't appear), misses 
 **The only valid uses of the Slack MCP API are:**
 1. Syncing NEW messages during this protocol (Steps 1-3)
 2. Reading a specific thread by TS that was never synced locally
+
+### The question-shape trigger
+
+**This rule covers VERIFICATION, not just "lookups."** "Did X get sent?", "did anyone reply?", "is this claim true?", "did that actually happen?" are all historical lookups wearing a different hat. The trigger is the QUESTION SHAPE — anything answered by finding-or-not-finding a past message — never whether the task felt like a lookup when it started.
+
+The distinction was paid for: the rule once failed to fire precisely because the work was framed as "verifying a suspicious claim" rather than "looking something up." The agent ran four workspace searches, got four zeros, and reported two true events as fabricated. One of them sat in the exact channel it had searched for, posted shortly before the search — hidden behind a silently-failing query modifier and an oversized result file that was never opened before concluding. Transcripts-first would have found it in one `Grep`.
+
+### A zero-result search is NEVER evidence of absence
+
+Not weak evidence — none. The search index lags, misses thread replies, and fails silently on malformed modifiers: a `from:@Display Name` modifier with a space in it returns zero instead of erroring. Two protocols follow:
+
+- **To establish that something did not happen,** use a bounded direct read: `slack_read_channel` with an explicit `oldest`/`latest` window on the specific channel, or `slack_read_thread` on the known parent. State the bounds in the finding — "not present in #channel between t1 and t2" — never the unbounded "didn't happen."
+- **Before trusting any null result from a modifier-bearing query** (`from:`, `in:`, `to:`), re-run it without the modifier. If the unmodified query finds results the modified one missed, the modifier was broken, and every zero it produced is uninterpretable.
+
+Absence claims are a grounding problem: a negative result is only evidence if the instrument could have produced a positive one. The general discipline — positive controls, scoped negative findings, truncated-output rules — lives in [synthesis-grounding-discipline](../synthesis-grounding-discipline/SKILL.md); this section is its Slack instance.
 
 ---
 

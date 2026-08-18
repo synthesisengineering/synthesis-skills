@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Grounding Discipline"
+  short_description: "Apply the grounding discipline synthesis workflow"
+  default_prompt: "Use $synthesis-grounding-discipline to apply this workflow to the current task."

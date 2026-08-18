@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -92,6 +92,8 @@ Phrases that should NOT appear in a sub-agent dispatch brief:
 - "Surgical change"
 
 Replacement framing names the job at full size. Instead of "tint the chrome from accent-A to accent-B, keep diffs minimal," say "apply the new accent everywhere it semantically belongs; the existing layout is the canvas, the accent is the new layer." The sub-agent now has license to do the full job, not a partial one.
+
+Brief size is the second dispatch control. A brief carries at most five deliverables. Larger briefs reliably fail — the sub-agent exhausts its execution budget in late-stage verification and stalls against the platform's dispatch timeout, or returns partial work with the remainder self-reported as follow-up. A seven-deliverable brief (substrate code + API + UI + config + tests + docs + verification) is not one dispatch; it is two or three. Split substantial phases into focused dispatches, run in parallel or in sequence, and plan the split up front — at dispatch time, not after the first stall. The failure is symmetric with the vocabulary rule: an oversized brief produces the same half-applied work that costume vocabulary licenses, with the timeout supplying the excuse.
 
 Full dispatch protocol lives in [`references/sub-agent-hygiene.md`](references/sub-agent-hygiene.md).
 
