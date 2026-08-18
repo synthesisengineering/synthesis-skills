@@ -4,6 +4,25 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.30.0] - 2026-08-17
+
+### Added
+
+- **`synthesis-daily-rituals` v2.24.0 — plan storage separation** — the daily
+  plan stops copying workspace content into the person-side repository. Each
+  workspace's worker artifact doubles as its plan fragment (already stored in
+  the workspace-private repository); the person-side plan becomes a shell:
+  coverage line, the principal's own timeline, minimal cross-workspace conflict
+  references, the permanent personal section, and pointer lines to fragments.
+  Consumers merge fragments into the converged view at display time, so
+  presentation stays singular while storage separates. Motivation: erasing an
+  organization's data by deleting its workspace folders — a hard requirement in
+  regulated environments and clean hygiene everywhere. The contract's new "Plan
+  storage separation" section states the erasure boundary honestly (content
+  never persists outside workspace folders; names as references do) and adds a
+  strict-shell mode for regimes that treat event titles as erasable data.
+  Historical mixed plan files are left to a deliberate migration.
+
 ## [4.29.0] - 2026-08-17
 
 ### Added
