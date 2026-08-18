@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -71,6 +71,7 @@ Choose the narrowest matching workflow, then read its sibling `SKILL.md` complet
 
 - Structure a non-trivial decision: `../synthesis-thinking-framework/SKILL.md`
 - Explore independent expert branches: `../synthesis-tree-of-thought/SKILL.md`
-- Detect shortcut reasoning: `../synthesis-anti-shortcuts/SKILL.md`
+- Detect shortcut reasoning: `../synthesis-anti-shortcuts/SKILL.md`; the effort side, where output does less than the work requires
+- Verify a claim, check quote provenance, or prove an absence: `../synthesis-grounding-discipline/SKILL.md`; the truth side, where output claims more than the evidence supports
 
 Do not substitute this routing summary for the selected skill's instructions.

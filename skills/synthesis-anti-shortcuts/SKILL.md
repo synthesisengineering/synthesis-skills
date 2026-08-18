@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -151,6 +151,7 @@ A reader who installs only this skill can apply the methodology end-to-end. The 
 
 This skill is methodology. It pairs naturally with the synthesis skills that produce the artifacts it audits.
 
+- **[synthesis-grounding-discipline](../synthesis-grounding-discipline/SKILL.md)** — The truth-side companion. This skill catches output that does less than the work requires; grounding discipline catches output that claims more than the evidence supports — confabulated events, quotes with no tool-surfaced source, stale cached facts, absences established by a broken probe. One output can fail both at once: a fabricated "already handled" is a shortcut and a grounding failure in the same sentence.
 - **[synthesis-thinking-framework](../synthesis-thinking-framework/SKILL.md)** — Foundational reasoning methodology. The constraint-first protocol is a specialization of first-principles thinking applied to the option-evaluation step.
 - **[synthesis-code-planning](../synthesis-code-planning/SKILL.md)** — Multi-approach evaluation for code tasks. This skill's constraint-first protocol slots in as the first step before the approach-generation step in code-planning.
 - **[synthesis-implementation-integrity](../synthesis-implementation-integrity/SKILL.md)** — Post-implementation verification. This skill catches shortcuts before they're built; implementation-integrity catches incomplete work after it's built. Use both.

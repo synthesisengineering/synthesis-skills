@@ -4,6 +4,35 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.34.0] - 2026-08-18
+
+### Fixed
+
+- **`synthesis-skill-router` v1.1.0 — routes grounding requests correctly.**
+  The router had no entry for `synthesis-grounding-discipline`, so requests to
+  verify evidence, check provenance, or establish an absence resolved to
+  `synthesis-anti-shortcuts` — the wrong skill by the new skill's own framing.
+  The two are now distinguished explicitly on both bullets: anti-shortcuts is
+  the effort-side discipline, grounding-discipline the truth-side one.
+
+- **`README.md` — catalog and release notes reconciled.** The skill catalog
+  listed 43 rows against 57 skill directories; all 14 missing skills are added
+  and the table now matches the tree exactly in both directions. Release notes
+  for 4.31.0 through 4.33.0 were never added despite the repo's own
+  contribution rules requiring it; they are in. A headline about SessionStart
+  evidence had been orphaned from its 4.27.0 paragraph by later prepends and is
+  reattached.
+
+### Changed
+
+- **`synthesis-autopilot` v1.1.0** — `synthesis-grounding-discipline` added to
+  `depends_on` and the composed-skills table. An autonomous run states facts
+  without a human checking each one, which is exactly where evidence discipline
+  earns its place.
+
+- **`synthesis-anti-shortcuts` v1.1.1** — names grounding-discipline as its
+  truth-side companion, making a link that was one-directional reciprocal.
+
 ## [4.33.0] - 2026-08-18
 
 ### Changed

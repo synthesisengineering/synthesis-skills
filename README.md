@@ -11,7 +11,46 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
-**Accepted SessionStart evidence is no longer a singleton (August 2026).**
+**A plan shell has to speak the renderer's vocabulary (August 2026).** Release
+**4.33.0** closes a quiet failure in `synthesis-daily-rituals` **v2.24.2**:
+renderers classify plan sections by heading vocabulary, so a shell written with
+invented headings still renders — as undifferentiated prose — while every typed
+region the reader actually works from comes up empty. The plan looks blank
+precisely when it is full. Shells now reuse the established headings for any
+region they populate and confine novelty to the coverage block and pointer
+lines, with producer and consumer required to change together. See the
+[4.33.0 release notes](CHANGELOG.md).
+
+**Grounding discipline: the truth side of agent output (August 2026).** New
+`synthesis-grounding-discipline` skill **v1.0.0** is the companion to
+`synthesis-anti-shortcuts`: where anti-shortcuts stops output that does less
+than the work requires, this stops output that claims more than the evidence
+supports. Eleven rules in four groups — record only what a source surfaced
+(anti-confabulation, quote provenance), caches are not truth (re-verify before
+propagating, with a verifying-command-class table; runtime and IaC as distinct
+layers; read the artifact in hand before theorizing; count the corpus before
+writing "dominant"), proving absence (positive controls, truncated output as a
+pointer rather than content, zero search results as no evidence at all), and
+grounding writes and deletions (verify the path first; move-verify-delete,
+independently validated recursive targets, non-path cleanup sentinels) — each
+carrying an anonymized production incident. The same release adds the
+instruction-kernel pattern reference to `synthesis-agent-conformance`
+**v1.6.0**, a five-deliverable brief-size cap to `synthesis-anti-shortcuts`
+**v1.1.0**, repo families and deletion units to `synthesis-context-lifecycle`
+**v1.8.0**, and the question-shape trigger plus zero-result absence protocol to
+`synthesis-slack-sync` **v3.4.0**. See the
+[4.32.0 release notes](CHANGELOG.md).
+
+**A release ships or it fails, with nothing in between (August 2026).** Release
+**4.31.0** puts the whole cross-client release behind one fail-closed command in
+`synthesis-skills-manager` **v2.1.0**: preflight, the required checks, publish
+to every configured push remote, install into both clients using each client's
+own commands, verify. Each client is verified twice — what its CLI reports, and
+the plugin manifest at the path the CLI says it loads — because a client can
+report the intended version while the tree it loads is stale, which is exactly
+the drift a report-only check passes green. See the
+[4.31.0 release notes](CHANGELOG.md).
+
 Release **4.30.0** separates daily-plan storage by organization: workspace plan
 content lives in each workspace's private repository (the worker artifact
 doubles as the plan fragment) while the person-side plan is a shell that
@@ -24,6 +63,7 @@ mandatory coverage line, under a client-neutral worker-artifact contract
 (workers write files, the desk reads files — absence of an artifact is itself
 the signal). See the [4.29.0 release notes](CHANGELOG.md).
 
+**Accepted SessionStart evidence is no longer a singleton (August 2026).**
 Release **4.27.0** preserves every genuine Claude Code and Codex SessionStart
 under its client and session identity, while retaining separate monotonic
 latest pointers for current-health checks. Conformance can now reverify exact
@@ -342,6 +382,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | `synthesis-code-audit` | 10-dimension quality scan of code diffs with scored PASS/WARNING/FAIL verdicts |
 | `synthesis-pr-review` | Delta review methodology with security scanning and AI-analysis verification |
 | `synthesis-review-triage` | PR queue prioritization: scoring, author-response detection, and review routing |
+| `synthesis-bitbucket` | Bitbucket Cloud through the open-source bkt CLI: PR lifecycle, repo and branch reads, auth setup, gh-to-bkt command map |
 | `synthesis-code-integration` | Adopt-and-adapt pattern for integrating multi-contributor code with cherry-pick safety |
 | `synthesis-code-planning` | Structured multi-approach evaluation before coding |
 | `synthesis-preplan` | Architecture-decision pre-planning: locks design choices via a Q&A loop, then hands off to a commit-by-commit plan |
@@ -351,6 +392,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 ### Content Creation
 | Skill | Description |
 |-------|-------------|
+| `synthesis-reader-briefing` | Pre-writing reader briefing: catches insider context collapse before internal source material becomes a public draft |
 | `synthesis-article-writing` | Two-phase workflow: research/validation then strategic writing |
 | `synthesis-content-distribution` | Strategic content sharing and distribution across platforms with quick-start templates |
 | `synthesis-link-research` | Find authoritative links for people, organizations, and entities |
@@ -360,23 +402,30 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 |-------|-------------|
 | `synthesis-content-quality` | v4.0 slop-detection methodology: model-family fingerprinting (8 families), substance-and-depth tests, two-axis calibration, compounding archive |
 | `synthesis-fact-checking` | v2.0 fact-checking with 9 new protocols: nested attribution, composite quotes, paraphrase drift, citation laundering, AI-synthetic sources, tool-specific hallucination signatures |
+| `synthesis-writing-pitfalls` | Human-authored bad-writing patterns: cringe, throat-clearing, caveat overload, cliché reliance, stilted formality |
+| `synthesis-writing-craft` | Positive principles from the writing-craft tradition: sentence-level craft, pacing, voice, structure, revision |
 | `synthesis-article-refresh` | Refresh old blog posts while maintaining temporal integrity |
 
 ### Communication
 | Skill | Description |
 |-------|-------------|
 | `synthesis-agent-correspondence` | How AI agents compose and send correspondence on a human's behalf — the three-lane authorship model (my words / my words via my agent / my agent under my direction), a persona-registry schema with binding archetypes, channel disclosure facts, and the compose/send gates |
+| `synthesis-message-guard` | Fail-closed pre-send hook: a deterministic register scan plus a message-bound grounding ledger gate every send and draft |
 | `synthesis-concise-messaging` | High-Five Habit — condense messages to 5 sentences or less |
 | `synthesis-executive-communication` | Translate technical work for non-technical executives — the every-noun test, the six-category kill-list, and upward-report structure for CTOs and product/engineering leaders |
+| `synthesis-absence-coordination` | Coordinate an absence as a handoff: notification order, coverage and reachability, personal-continuity tier, return sweep |
 
 ### Project Management
 | Skill | Description |
 |-------|-------------|
 | `synthesis-autopilot` | Autonomous-execution mode for explicitly delegated work: plan-file protocol, batched decisions, standing gates preserved |
 | `synthesis-agent-conformance` | Cross-agent control plane: native plugin/runtime checks, instruction migration, lifecycle-hook health, and durable handoff verification |
-| `synthesis-context-lifecycle` | Three-tier context architecture for managing AI working memory, with agent attribution for multi-agent provenance |
+| `synthesis-context-lifecycle` | Three-tier context architecture for managing AI working memory, with agent attribution for multi-agent provenance and repo families as per-engagement deletion units |
+| `synthesis-checkpoint` | Mid-session refresh and drift recovery: verified date, project state from disk, git history, concurrent-session claims |
 | `synthesis-project-management` | Lightweight PM system for human-agent collaboration, with cross-agent handoff, agent attribution, and parallel sub-agent dispatch protocols |
 | `synthesis-daily-rituals` | Day-start and day-end checklists with dependency-ordered rituals |
+| `synthesis-catchup-ledger` | Reconcile missed and incomplete commitments after a gap in the ritual cadence into a dated catch-up ledger |
+| `synthesis-chief-of-staff` | Chief-of-staff duty: meeting triage, calendar-aware scheduling, look-ahead reviews, overcommitment checks, tracked holds |
 
 ### Knowledge Bases
 
@@ -390,7 +439,9 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | Skill | Description |
 |-------|-------------|
 | `synthesis-anti-shortcuts` | Deterministic enforcement of anti-shortcut discipline: costume-vocabulary catalog, constraint-first protocol, sub-agent hygiene, case studies |
+| `synthesis-grounding-discipline` | Evidence and provenance catalog, the truth-side companion to anti-shortcuts: anti-confabulation, quote provenance, cache-vs-truth, absence proof, safe writes and deletions |
 | `synthesis-content-framing` | Content framing with topic, sophistication, and engagement gates |
+| `synthesis-disclosure-policy` | Two-category disclosure governance: published-precedent facts vs unapproved disclosures, with a precedent ledger, surface classes, and five decision tests |
 
 ### Reasoning & Templates
 | Skill | Description |
@@ -399,6 +450,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | `synthesis-voice-profiler` | Generate a structured writing voice profile from samples for agent instruction files |
 | `synthesis-tree-of-thought` | Multi-expert collaborative reasoning technique |
 | `synthesis-llm-setup` | Configure Claude Projects, ChatGPT GPTs, and Gemini Gems |
+| `synthesis-model-tiers` | Cross-provider model-tier convention: three role labels resolved to current model IDs, so nothing hardcodes a model name |
 | `synthesis-creative-writer` | Creative writer persona template |
 | `synthesis-technical-advisor` | Technical advisor persona template |
 
@@ -410,8 +462,10 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | `synthesis-mac-sync` | Multi-Mac config sync via iCloud with git repo sync and machine inventory |
 | `synthesis-meeting-transcripts` | Fetch AI-generated meeting notes and transcripts into local working files |
 | `synthesis-repo-guard` | Workspace sync guard: detect unsynced repos, confidentiality-safe alerts, event-driven checkpoint auto-commits for private context repos |
-| `synthesis-slack-sync` | Slack channel sync protocol: read channels, threads, DMs to local transcripts |
+| `synthesis-slack-sync` | Slack channel sync protocol: read channels, threads, DMs to local transcripts, with transcripts-first verification and bounded reads for absence claims |
 | `synthesis-skills-manager` | Agent-native skill installer: drift detection, synthesis merge, provenance tracking |
+| `synthesis-onboarding` | One-command installer and doctor for the ecosystem: plugin install, knowledge-base scaffold, org manifest, idempotent re-runs |
+| `synthesis-skill-router` | Route a request to the narrowest matching skill while keeping specialist metadata out of a bounded prompt |
 
 ### Background Instructions
 | Skill | Description |

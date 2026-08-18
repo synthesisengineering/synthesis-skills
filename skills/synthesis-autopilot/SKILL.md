@@ -2,10 +2,10 @@
 name: synthesis-autopilot
 description: "Execute an explicitly delegated whole task autonomously using the thinking framework, durable plan and context, checkpoints, anti-shortcut discipline, and implementation-integrity gate. Activate only for clear end-to-end delegation such as 'autopilot this,' 'take care of this for me,' 'handle this end to end,' or 'complete all phases autonomously'; never infer it from a single-step approval, discussion of autonomy, or ambiguous wording."
 license: "Apache-2.0"
-depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-implementation-integrity", "synthesis-project-management"]
+depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -164,6 +164,7 @@ Nothing above is specific to software. The mode runs the same for engineering, r
 | synthesis-context-lifecycle | Durable memory: CONTEXT.md, sessions/, archival | Natural checkpoints; session end |
 | synthesis-thinking-framework | Decision quality on open, important calls | Decision protocol, class 2 |
 | synthesis-anti-shortcuts | Solution quality; dispatch and acceptance hygiene | Every draft, plan, brief, and sub-agent return |
+| synthesis-grounding-discipline | Claim quality: provenance, cache re-verification, absence proof | Every recorded fact and status claim; before any write or deletion |
 | synthesis-implementation-integrity | Verification before completion claims | Before "done"; per-phase for high-stakes phases |
 
 Each dependency works standalone. This mode is the sequencing that makes them one behavior: delegate once, and the stack runs itself.
