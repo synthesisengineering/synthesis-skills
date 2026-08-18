@@ -117,6 +117,44 @@ workers:
 `active` workers appear in every coverage line. `on-demand` workers appear only on days
 they run. `dormant` workers are skipped entirely and never counted against coverage.
 
+## Plan storage separation — fragments and the shell (added 2026-08-17; schema unchanged)
+
+The separation the artifact path already enforces for *sync* content extends to the daily
+plan itself, for one reason: **organizational data must be erasable by deleting the
+organization's workspace folders.** A person who parts ways with an organization — or is
+required by that organization's policy (banks, governments, regulated institutions commonly
+mandate this) to purge its data on exit — must be able to remove the workspace's
+repositories and be done. A converged plan file that copies workspace content into the
+person-side repository defeats that with every day it accretes.
+
+- **The worker artifact doubles as the workspace's plan fragment.** Its body sections
+  (Decisions needed, Calendar & conflicts, On your behalf, Waiting on others, Brief,
+  Backlog deltas) are exactly the plan-facing content for that workspace, already stored in
+  the workspace-private repository. No second file, no copy.
+- **The person-side daily plan is a SHELL**, holding only person-scoped and structural
+  content: the coverage line; the day's timeline (the principal's time is person-scoped
+  data — one calendar, one life); cross-workspace conflicts stated at the minimum
+  cross-reference needed; the permanent personal section; person-scoped carryover; and
+  **pointer lines** to each workspace's fragment instead of inlined workspace content.
+- **Pointer convention:** a coverage-line or section entry references the fragment as
+  `<workspace> → <artifact path>`. Consumers that cannot resolve pointers still show a
+  legible shell; consumers that can (a console, a rendering tool) merge fragments into the
+  one view at **display time**. Converged presentation, separated storage — the "one brief,
+  one list, one console" constraint governs the view, not the files.
+- **The erasure boundary, stated honestly:** deleting a workspace's folders removes all its
+  *content*. The shell (and the person repository's git history) retains workspace *names*,
+  dangling pointers, and the principal's own timeline. Content never persists outside the
+  workspace folders; names as references do. Regimes that treat even event titles or the
+  organization's name as erasable data should run a **strict shell**: generic labels in the
+  timeline ("committed — see fragment") with all titles resolved from fragments at display
+  time. The default shell carries titles; strictness is a per-person policy choice, made
+  once and recorded in the workers registry as `shell: default | strict`.
+- **Who writes what:** each worker writes only its own artifact/fragment (in its own
+  claimed area); the desk writes only the shell. The desk never copies fragment content
+  into the shell — it reads, reconciles, and points.
+- Historical plan files that predate this separation stay as they are until a deliberate
+  migration project splits them; the contract governs plans produced after adoption.
+
 ## Failure semantics
 
 - Worker fails mid-run → it still writes its artifact with `status: failed` rows and a

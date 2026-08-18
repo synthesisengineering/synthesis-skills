@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.23.0"
+  version: "2.24.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,21 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.24.0 — Plan storage separation: workspace fragments, person-side shell
+
+Organizational data must be erasable by deleting the organization's workspace folders —
+a hard requirement in regulated environments (banks, government, contract exits) and good
+hygiene everywhere. The daily plan therefore stops copying workspace content into the
+person-side repository: **the worker artifact doubles as that workspace's plan fragment**
+(it already holds the plan-facing sections, in the workspace-private repo), and the
+person-side plan becomes a **shell** — coverage line, the principal's own timeline,
+minimal cross-workspace conflict references, the permanent personal section, and pointer
+lines to fragments. Consumers merge at display time; presentation stays converged
+("one brief") while storage separates. The erasure boundary and the strict-shell option
+for title-level erasure are specified in
+[`references/ritual-worker-contract.md`](references/ritual-worker-contract.md) ("Plan
+storage separation"). Pre-existing mixed plan files are left to a deliberate migration.
 
 ## v2.23.0 — Distributed ritual execution: desk and workers
 
@@ -365,6 +380,10 @@ absent registry = classic single-session ritual, no behavior change). Contract:
   repos, or transcripts inline; workers do not see each other or the combined picture.
   Reconciliation belongs to the desk alone (the parallel-dispatch rule from
   synthesis-project-management, applied to the day itself).
+- **Storage separates; presentation converges (v2.24.0).** The plan the desk writes is a
+  SHELL: person-scoped content plus pointers to each workspace's fragment (= its artifact).
+  Workspace content is never copied into the person-side repository, so deleting a
+  workspace's folders erases its data. Contract section: "Plan storage separation."
 
 ## Day-Start Checklist
 

@@ -12,6 +12,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 ## What's new
 
 **Accepted SessionStart evidence is no longer a singleton (August 2026).**
+Release **4.30.0** separates daily-plan storage by organization: workspace plan
+content lives in each workspace's private repository (the worker artifact
+doubles as the plan fragment) while the person-side plan is a shell that
+consumers merge at display time — so leaving an organization means deleting its
+folders, with no plan residue. See the [4.30.0 release notes](CHANGELOG.md).
+
 Release **4.29.0** adds distributed ritual execution to the daily rituals: a
 desk seat folds per-workspace worker artifacts into one daily brief with a
 mandatory coverage line, under a client-neutral worker-artifact contract
