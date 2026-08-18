@@ -4,6 +4,22 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.35.0] - 2026-08-18
+
+### Added
+
+- **`synthesis-inbox-cleanup` v1.6.0 — impersonation scanning** — a read-only
+  adversarial pass (`scripts/scan_impersonation.py`) for a gap that was
+  structural, not incidental: every disposition class sorts mail by
+  desirability, so hostile mail had no cell in the taxonomy and a tidy sweep
+  walked past it. Flags display-name brand impersonation where the sending
+  domain does not belong to the claimed brand — the pattern behind live
+  campaigns that send through authenticated bulk-mail carriers and put the
+  spoofed brand only in the display name, defeating "the domain checks out"
+  as a safety verdict. Reports only; removal stays human-reviewed. Also adds
+  the standing rule that a human sender is not the same as your mail, for
+  catch-all domains where real people's misdirected threads accumulate.
+
 ## [4.34.0] - 2026-08-18
 
 ### Fixed
