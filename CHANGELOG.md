@@ -4,6 +4,26 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.31.0] - 2026-08-17
+
+### Added
+
+- **`synthesis-skills-manager` v2.1.0 — gated cross-client release script**
+  (`scripts/release.py`) — sequences a release behind one fail-closed command:
+  preflight (both manifests agree, newest CHANGELOG entry matches, tree clean,
+  repo root is a checkout and not an installed cache) → the required checks →
+  publish to every configured push remote → install into both clients with each
+  client's own commands → verify. Codex's marketplace snapshot is upgraded
+  before installing from it, because installing without that step ships the
+  previous release while appearing to succeed.
+
+  Each client is verified **twice**: what its CLI reports, and the plugin
+  manifest at the path the CLI says it loads. A client can report the intended
+  version while the tree it loads is stale, so a report-only check passes green
+  through exactly the drift the script exists to catch; `test_release.py` pins
+  that case as a required failure. `--install-only` recovers drift or provisions
+  a new machine; `--dry-run` prints the plan without mutating anything.
+
 ## [4.30.1] - 2026-08-17
 
 ### Changed

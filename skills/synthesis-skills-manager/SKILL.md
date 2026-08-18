@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -235,6 +235,53 @@ compares methodology, and resolves conflicts in source. Deterministic installers
 and conformance scripts own copying, manifests, checksums, and health checks.
 
 The `install.sh` scripts in each repo serve as bootstrap/fallback installers for environments without an AI agent. They handle the mechanical parts (copy, provenance, checksums) but cannot do synthesis merge — they overwrite on conflict. Drift detection covers the whole skill directory (scripts, references, data tables — not just SKILL.md); every drifted copy is saved to `${XDG_CACHE_HOME:-~/.cache}/<repo-name>-backups/<UTC-run-stamp>/<target>/<skill>/` before overwrite, and the end-of-run warning names each drifted skill and the backup path. Backups are pruned to the 10 most recent runs.
+
+## `release.py` — the gated cross-client plugin release
+
+For the **public plugin**, steps 3–7 of the protocol below are automated by
+`scripts/release.py`, which exists because that sequence has exactly one
+failure mode that matters and it is silent: the repository is the plugin (the
+marketplace manifests carry no version and point at `./`), so pushing IS
+publishing — but each client keeps a **version-pinned installation that does
+not follow the remote**. A pushed-but-uninstalled release leaves the running
+clients behind their own source with nothing visibly wrong.
+
+```bash
+python3 skills/synthesis-skills-manager/scripts/release.py --repo-root .
+python3 .../release.py --dry-run       # print the plan, mutate nothing
+python3 .../release.py --check-only    # preflight + required checks, no publish
+python3 .../release.py --install-only  # refresh + verify clients (new machine, drift recovery)
+```
+
+The sequence, each stage gating the next:
+
+**preflight → required checks → publish → install both clients → verify**
+
+- **Preflight** refuses to proceed unless both plugin manifests agree, the
+  newest CHANGELOG entry matches them, and the tree is clean. It also refuses
+  to run against an installed cache mistaken for the source checkout.
+- **Publish** pushes `main` to *every* configured push remote.
+- **Install** uses each client's own commands, in the order each client
+  requires. For Codex that means `plugin marketplace upgrade` **before**
+  `plugin add`, because Codex installs *from* its git marketplace snapshot —
+  skipping the upgrade installs the previous release while appearing to
+  succeed.
+- **Verify** is the point of the whole script, and it checks each client
+  **twice**: what the CLI reports, and the plugin manifest at the path the CLI
+  says it loads. Agreement of both with the source version is the only pass.
+
+### Why a client's own version report is not sufficient evidence
+
+A client can report the intended version while the tree it actually loads is
+older — a stale marketplace snapshot, a partial install, or a hand-made cache
+directory all produce that state, and a report-only check passes green through
+every one of them. This was not hypothetical: it is the regression that
+motivated the script, and `test_release.py` pins it as a test that must fail
+when reported-version and on-disk-version disagree.
+
+The general rule this encodes, worth applying beyond releases: **when a
+verification asks a system to describe itself, verify the description against
+the artifact.** A self-report is a claim, not evidence.
 
 ## Source Update Protocol (NON-NEGOTIABLE)
 
