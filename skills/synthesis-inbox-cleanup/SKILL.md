@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.5.0"
+  version: "1.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   platform: "macOS (Apple Silicon and Intel)"
@@ -16,6 +16,30 @@ metadata:
 A manifest-driven email cleanup engine that scales the same human-curated rules across three account tool stacks on macOS: iCloud / generic IMAP, Microsoft 365 / outlook.com via Mail.app AppleScript, and Gmail via the workspace-mcp Gmail API (with optional native server-side filters).
 
 The engine is deterministic. Email content does not change rules at runtime. When an LLM is invoked — for new-sender categorization or for higher-risk paths like body-reading digests — sanitization defenses run first. The skill ships adversarial test fixtures so prompt-injection regressions surface in CI rather than in production.
+
+## v1.6.0 — Impersonation scanning: the taxonomy had no cell for *hostile*
+
+`scripts/scan_impersonation.py` (read-only) adds the adversarial pass the
+disposition taxonomy structurally lacked. Every existing class sorts mail by
+DESIRABILITY — marketing, newsletter, transactional, keep — so a phishing message
+is not merely misfiled by this engine, it is **invisible to it**: a sweep that only
+files things tidily walks straight past an attack.
+
+The detection is the one that catches live campaigns: **the sending domain is
+authenticated; the display name is not.** SPF/DKIM/DMARC validate the envelope
+domain and say nothing about the free-text name the mail client actually shows.
+So the high-yield phish forges no domain at all — it sends through infrastructure
+that passes every check (a survey platform, a form host) and puts the impersonated
+brand in the display name. "The domain checks out" is therefore not a safety verdict.
+
+Reports only; removal stays a human-reviewed step, because a false positive here is
+a legitimate vendor notice. Brand→domain map in
+`~/.synthesis/inbox-cleanup/impersonation.yaml`, seeded in-script.
+
+**Also recorded here as a standing rule: a human sender is not the same as your
+mail.** On a catch-all domain, misdirected business threads between real people
+are still junk for the account owner. Route recipient-based purges by the `To:`
+header (the private alias-purge path), not by whether a person wrote it.
 
 ## v1.5.0 — Workspace scoping: cleanup reach follows the seat that invokes it
 
