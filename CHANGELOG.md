@@ -4,6 +4,20 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.33.0] - 2026-08-18
+
+### Changed
+
+- **`synthesis-daily-rituals` v2.24.2 — plan shells keep the consumer's
+  section vocabulary** — storage separation governs where plan content lives,
+  not what its sections are called. Renderers classify plan sections by heading
+  vocabulary, so a shell written with invented headings still renders, as
+  undifferentiated prose, while every typed region the reader actually works
+  from comes up empty — the plan looks blank precisely when it is full. Shells
+  now reuse the established headings for any region they populate and confine
+  novelty to the coverage block and pointer lines, with producer and consumer
+  required to change together.
+
 ## [4.32.0] - 2026-08-18
 
 ### Added

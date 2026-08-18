@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.24.1"
+  version: "2.24.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,16 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.24.2 — The shell keeps the consumer's section vocabulary
+
+Separating plan storage changes where content lives, not what the sections are called.
+Renderers classify plan sections by heading vocabulary, so a shell written with invented
+headings renders as undifferentiated prose while every typed region the reader works from
+comes up empty — the plan looks blank exactly when it is full. Shells reuse the
+established headings for any region they populate and confine novelty to the coverage
+block and pointer lines; producer and consumer change together or not at all. Detail and
+origin incident: `references/ritual-worker-contract.md` ("Plan storage separation").
 
 ## v2.24.1 — Fragment placement and consumer obligations
 

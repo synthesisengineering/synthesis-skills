@@ -163,6 +163,22 @@ person-side repository defeats that with every day it accretes.
   cache merged output back into the person-side store, and must render an unresolved
   pointer as an explicit marker rather than omitting it silently — a deleted workspace or
   a worker that never ran has to stay visible as such.
+- **The shell keeps the consumer's section vocabulary.** Separating storage changes WHERE
+  plan content lives; it must not change WHAT the sections are called. Renderers classify
+  plan sections by heading vocabulary, so a shell written with invented headings still
+  renders — as undifferentiated prose — while every typed region the reader actually works
+  from (what must be done today, what needs deciding, what is drafted) comes up empty. The
+  plan looks blank precisely when it is full.
+
+  A shell therefore reuses the established headings for any region it populates
+  (decisions-needed, priority tasks, calendar, drafts, on-your-behalf, waiting-on, brief)
+  and confines its novelty to the coverage block and the pointer lines. **Producer and
+  consumer change together**, in the same session, or not at all — the same rule that
+  governs any other typed artifact with a downstream reader.
+
+  *Origin (2026-08-17/18): the first shell was written with fresh headings that read well
+  and matched nothing. The file rendered, the cockpit regions did not, and the day's plan
+  appeared empty to its only reader.*
 - Historical plan files that predate this separation stay as they are until a deliberate
   migration project splits them; the contract governs plans produced after adoption.
 
