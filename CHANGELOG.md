@@ -4,6 +4,26 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.36.0] - 2026-08-19
+
+### Changed
+
+- **`synthesis-daily-rituals` v2.25.0 — per-workspace sessions become the
+  default worker mode, and the principal is named as the dispatcher.** The
+  desk/worker split and the artifact contract are unchanged; what changes is
+  which mode is assumed. A worker now defaults to an attended session rooted in
+  its own workspace, run on that workspace's own schedule, with desk-dispatched
+  subagents demoted to an opt-in for closing everything from one place. Two
+  rules are stated explicitly: no session can start work in another, so the desk
+  reports which workspaces are owed and the human opens the one that owes; and
+  the desk never nudges, triggers, blocks on, or waits for a worker — it folds
+  what exists and reports the rest as not covered. Recorded origin: dispatch-by-
+  session-messaging went 0 for 2 (a session stale by two hours, then none
+  reachable) while the file-based artifact path delivered both times, because
+  session messaging requires the target to already be open and attended.
+  Independent close times per workspace are now documented as normal operation,
+  which the timestamped artifact schema already supported.
+
 ## [4.35.0] - 2026-08-18
 
 ### Added

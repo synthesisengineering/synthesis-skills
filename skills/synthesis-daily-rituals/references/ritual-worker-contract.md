@@ -15,11 +15,39 @@ mechanism, or a vendor.
   artifacts, reconciles them, and produces the **single** daily brief. The output never
   distributes: one brief, one to-do list, one console, regardless of worker count.
 - **Worker** — a per-workspace execution of the ritual's sync-and-triage labor, holding
-  that workspace's context only. Two equally valid modes:
-  1. an **attended session** rooted in the workspace (its own claims, its own context);
-  2. a **desk-dispatched subagent** running in an isolated context against the
-     workspace's paths.
+  that workspace's context only. Two modes, and the order matters:
+  1. **DEFAULT — an attended session rooted in the workspace**, run by the principal when
+     they are working in that workspace, on that workspace's own schedule. It holds its own
+     claims, its own context, and its own working directory.
+  2. **Opt-in — a desk-dispatched subagent** in an isolated context against the workspace's
+     paths. Useful when the principal deliberately wants everything closed from one place.
+     Never the assumed path.
   The desk never loads workspace detail inline; it reads worker summaries.
+
+- **The principal is the dispatcher.** Nothing in this contract lets one session start work
+  in another. The desk's job is to report which workspaces are owed; the human decides where
+  to go next and opens that session. This is a statement of the actual mechanism, not a
+  limitation being worked around — and it is why the substrate is files.
+
+  *Evidence (recorded because the alternative keeps looking attractive):* a desk that tried
+  to trigger workers by messaging their sessions went 0 for 2. The first attempt sent to a
+  session that had gone stale two hours earlier; the second found no reachable session at
+  all. Both times the work actually arrived through the artifact — written when the
+  principal opened that workspace and worked in it. Session messaging delivers a user turn
+  into a session that must already exist and be attended; it is a relay between
+  humans-at-keyboards, not a dispatch primitive. A design that depends on every workspace's
+  session being open and attended has relocated the multi-session overhead, not removed it.
+
+- **The desk never nudges, triggers, blocks on, or waits for a worker.** It folds what
+  exists and reports the rest as not covered. A desk pass is always complete on its own
+  terms; absent workers make it thinner and honest, never late.
+
+- **Workspaces close on independent schedules, by design.** One workspace may close at
+  18:00 and another at 23:00, or a day apart. Artifacts carry `date`, `run_type`, and real
+  timestamps precisely so this works: the desk folds the newest per (workspace, run_type)
+  whenever it runs, and refolds later passes as fragments land. A fragment filed after a
+  desk pass is not late — the next pass picks it up, and the coverage line tells the truth
+  in the meantime.
 - **Workers registry** — a private config declaring which workspace seats run workers and
   where each writes (see "Registry" below). A declared list, like the repo and surface
   lists elsewhere in this skill: the agent does not substitute its own judgment about
