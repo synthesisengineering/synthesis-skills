@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.24.2"
+  version: "2.25.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,28 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.25.0 — Per-workspace sessions are the default; the principal is the dispatcher
+
+Distributed execution keeps the desk/worker split and the artifact contract, and corrects
+which worker mode is assumed. **The default is now an attended session rooted in each
+workspace, run on that workspace's own schedule** — the mode that matches where the
+principal is actually working, with the right directory, claims, and context. Desk-
+dispatched subagents demote to an opt-in for deliberately closing everything from one place.
+
+Two rules are made explicit because their absence invited a design that cannot work.
+**The principal is the dispatcher:** no session can start work in another, so the desk
+reports which workspaces are owed and the human opens the one that owes. **The desk never
+nudges, triggers, blocks on, or waits for a worker:** it folds what exists and reports the
+rest as not covered, so a desk pass is always complete on its own terms.
+
+Origin: a desk that tried to trigger workers by messaging their sessions went 0 for 2 —
+once to a session stale by two hours, once with no reachable session at all — while the
+artifact path delivered both times. Session messaging is a relay between humans at
+keyboards, not a dispatch primitive; depending on it relocates multi-session overhead
+rather than removing it. Independent close times per workspace are likewise now stated as
+normal operation, which the timestamped artifact schema already supported. Detail:
+`references/ritual-worker-contract.md`.
 
 ## v2.24.2 — The shell keeps the consumer's section vocabulary
 
@@ -381,10 +403,19 @@ absent registry = classic single-session ritual, no behavior change). Contract:
   daily plan. One brief, one to-do list, one console; if a run produces more than one
   brief, the design has failed.
 - **Each `active` worker executes its workspace's own checklist steps** (the syncs, the
-  repo pass, the workspace-side triage below) in one of two modes, equally valid: an
-  attended session rooted in that workspace, or a desk-dispatched subagent in an isolated
-  context. Either way it ends by writing the contract artifact to its registered
-  `artifact_dir` — that write IS the worker's completion.
+  repo pass, the workspace-side triage below). **The default mode is an attended session
+  rooted in that workspace**, run when the principal is working there, on that workspace's
+  own schedule; a desk-dispatched subagent is the opt-in alternative for closing everything
+  from one place. Either way the worker ends by writing the contract artifact to its
+  registered `artifact_dir` — that write IS the worker's completion.
+- **The principal is the dispatcher; the desk never triggers a worker.** No session can
+  start work in another. The desk reports which workspaces are owed and the human opens the
+  session that owes one. Attempts to dispatch by messaging sessions failed twice for the
+  same structural reason — the target must already be open and attended — while the
+  file-based path delivered both times. Contract: "The principal is the dispatcher."
+- **Workspaces close on independent schedules.** Artifacts carry timestamps and `run_type`
+  so the desk folds newest-per-workspace at any pass and refolds as later fragments land.
+  Closing one workspace in the evening and another the next morning is normal operation.
 - **The desk folds, never re-derives.** At every desk pass (day-start, mid-day, day-end)
   read the newest artifact per (workspace, run_type) for today, reconcile across
   workspaces — cross-workspace calendar and commitment conflicts are visible only here and
