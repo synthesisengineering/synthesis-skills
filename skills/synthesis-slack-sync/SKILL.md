@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.4.0"
+  version: "3.5.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -15,6 +15,17 @@ metadata:
 A protocol for syncing Slack channels and threads to local transcript files using Slack MCP. Designed for AI-assisted workflows where an agent reads Slack on behalf of a user, saves transcripts locally, and updates a daily action plan.
 
 This skill provides the **protocol** — the sync methodology, thread re-reading discipline, transcript format, and action plan update rules. A per-project **config file** provides the specifics: which channels, which paths, which DMs. Prefer `.agents/slack-sync.yaml`; existing `.claude/slack-sync.yaml` configs remain supported.
+
+## v3.5.0 — Backfills and archive imports
+
+v3.5.0 (2026-08-19) adds a section for the operation a windowed sync is not: reading a
+conversation to its first message. Retrieval rules (page to the true beginning and report the
+earliest date as proof, expand every thread, name a partial capture by its date range rather
+than "full history") sit alongside the rule that matters more — **everything in a backfill is
+history and reads present-tense, so nothing in it may be reported as currently open without
+reconciling against newer material already held.** Origin: a backfill reported a colleague's
+settled employment arrangement as a six-week-old open loop, to the person who had settled it,
+while a calendar query run two hours earlier already showed the completed account migration.
 
 ## v3.4.0 — Question-shape trigger + zero-result absence protocol
 
@@ -253,6 +264,36 @@ Not weak evidence — none. The search index lags, misses thread replies, and fa
 - **Before trusting any null result from a modifier-bearing query** (`from:`, `in:`, `to:`), re-run it without the modifier. If the unmodified query finds results the modified one missed, the modifier was broken, and every zero it produced is uninterpretable.
 
 Absence claims are a grounding problem: a negative result is only evidence if the instrument could have produced a positive one. The general discipline — positive controls, scoped negative findings, truncated-output rules — lives in [synthesis-grounding-discipline](../synthesis-grounding-discipline/SKILL.md); this section is its Slack instance.
+
+
+### Backfills and archive imports
+
+A backfill — reading a conversation to its first message rather than to a window — is a
+different operation from a sync, and it fails differently.
+
+**Retrieval.** Page until the source says there are no more messages; a page limit or a date
+bound is not the beginning. Report the **earliest message's actual date** per conversation, so
+the reader can tell you reached the start rather than that a cursor quit early. Expand every
+thread: replies do not appear in channel history, and skipping them is the standard way a
+backfill silently loses half a conversation. Preserve raw user IDs beside resolved names.
+
+**Naming and framing.** A backfill file states the span it covers and the date it was captured.
+When a conversation is *partly* captured already, name the new file by its date range rather
+than "full history" — that name claims a completeness it does not have.
+
+**The analysis rule, which matters more than the retrieval.** Everything in a backfill is
+history, and it all reads present-tense. **Do not report anything from it as currently open
+without reconciling against newer material already held locally.** A conversation that stops is
+not a question that stayed unanswered — the thread often continued somewhere else. Scope every
+finding to where you looked ("unanswered in this conversation through <date>"), and title the
+output by what it establishes: a list of where conversations stopped, not a list of open loops.
+The general discipline, with the incident that produced it, is entry 12 of
+[synthesis-grounding-discipline](../synthesis-grounding-discipline/SKILL.md).
+
+Candidate open items surfaced this way are exactly what
+[synthesis-catchup-ledger](../synthesis-catchup-ledger/SKILL.md) exists to classify — route them
+through its still-relevant / obsolete / ambiguous triage rather than reporting them raw.
+
 
 ---
 

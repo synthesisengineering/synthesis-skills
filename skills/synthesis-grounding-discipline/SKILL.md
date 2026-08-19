@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -35,7 +35,9 @@ This skill is that set. Each catalog entry names the rule, the failure shape it 
 
 ## The Catalog
 
-Eleven rules in four groups: record only what a source surfaced; treat caches as caches; prove absence properly; ground writes and deletions.
+Twelve rules in five groups: record only what a source surfaced; treat caches as caches; prove absence properly; ground writes and deletions; and read archives as history.
+
+> **Entry numbers are load-bearing.** Other documents cite these rules by number (`§7–9`, `§10`, `§11`). New entries are **appended**, never inserted — renumbering silently repoints every existing citation to a different real rule, which is worse than a broken link because it still resolves.
 
 ---
 
@@ -162,6 +164,57 @@ Name the verifying command class for the claim:
 
 ---
 
+### Part 5 — Archives and Imports
+
+#### 12. Archived History Is Not Current State
+
+**The rule.** When you import a body of past material — a channel backfilled to its first
+message, an exported mailbox, a migrated ticket system, a document archive — every item in it
+arrives with the same present-tense voice, and none of it is evidence about today. Before
+reporting anything from an import as **currently** open, unresolved, or unanswered, reconcile
+it against the newest material you already hold on the same subject. If the newest thing you
+can find is inside the import itself, you have not checked — you have only observed that the
+import ends.
+
+**The failure shape.** Seven conversations were backfilled to their true first messages. The
+retrieval was careful: paged to the beginning, threads expanded, credentials redacted. It then
+produced a list headed "things nobody has seen," and the top item traced a colleague's
+employment arrangement through several stages to a request for documents, a "will send soon,"
+and then silence — reported as the largest open loop in the set, six weeks stale.
+
+It was finished. The arrangement had been settled deliberately, her email had already migrated
+to the new domain, and she was preparing to tell her team that week. The correction came from
+the person who had resolved it — being told his own colleague's settled employment was an
+unresolved loop.
+
+The contradicting evidence was already in hand. A calendar query run two hours earlier had
+returned **both** email domains in a single response: the new one on meetings she had recreated,
+the old one on stale invitations. That is the fingerprint of a completed account migration, and
+it went unread.
+
+**The discipline.**
+- **Newest-in-this-file is not newest-anywhere.** A conversation ending is not a story ending.
+  The thread may have continued in another channel, in email, in a meeting, or in a decision
+  nobody posted back. Grep the corpus for the people and terms involved before calling anything
+  open; it costs seconds.
+- **Scope the claim to where you looked.** "Unanswered in this conversation through <date>" is
+  honest and useful. "Nobody has seen this" is a claim about every channel, every meeting and
+  every person, and it is almost never supported. This is entry 7 applied to imports.
+- **Title the output by what it establishes.** A list produced from an import is a list of
+  **where conversations stopped**, not a list of what is unresolved. Named accurately it stays
+  useful; named the other way it manufactures work.
+- **Stamp the import.** Every archive file states the span it covers and the date it was
+  captured, so a later reader cannot mistake its newest message for the present.
+- **Raise the bar for personnel and commercial matters.** Calling someone's employment,
+  pay, or contract terms unresolved when it is settled asks them to re-litigate finished work
+  and signals that the record cannot be trusted. The subject almost always knows the answer and
+  will notice the check was skipped.
+
+**The tell.** When an import produces a list of open items, ask how many were checked against
+anything outside the file they came from. If the answer is none, that is not a findings list.
+
+---
+
 ## The Self-Check
 
 Before sending any output that states a fact, records an event, or claims an absence:
@@ -177,6 +230,7 @@ Before sending any output that states a fact, records an event, or claims an abs
 9. **Every zero-result search:** followed by a bounded direct read with stated bounds?
 10. **Every write target:** located and identity-verified with a command?
 11. **Every destructive operation:** target validated independently, sentinel non-path-typed, move-verify-delete order respected?
+12. **Every claim drawn from an archive or backfill:** reconciled against the newest material held elsewhere, and scoped to where you actually looked?
 
 If any answer is wrong, fix the grounding before sending — not after.
 

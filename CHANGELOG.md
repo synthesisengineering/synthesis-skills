@@ -4,6 +4,36 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.37.0] - 2026-08-19
+
+### Added
+
+- **`synthesis-grounding-discipline` v1.1.0 — entry 12, "Archived history is not
+  current state."** Imported material — a channel backfilled to its first message,
+  an exported mailbox, a migrated tracker — arrives with every item in the same
+  present-tense voice and none of it is evidence about today. The rule: reconcile
+  against the newest material already held before reporting anything from an import
+  as currently open; if the newest thing you can find is inside the import, you have
+  only observed that the import ends. Scope findings to where you looked, title the
+  output by what it establishes (where conversations *stopped*, not what is
+  unresolved), stamp every archive with its span and capture date, and raise the bar
+  for personnel and commercial matters, where calling a settled thing unresolved asks
+  someone to re-litigate finished work.
+
+  The catalog intro now also states that **entry numbers are load-bearing** — other
+  documents cite these rules by number, so new entries are appended rather than
+  inserted. Renumbering silently repoints existing citations to different real rules,
+  which is worse than a broken link because it still resolves.
+
+- **`synthesis-slack-sync` v3.5.0 — backfills and archive imports.** A backfill is a
+  different operation from a windowed sync and fails differently. Retrieval rules
+  (page to the true beginning and report the earliest date as proof; expand every
+  thread, since replies never appear in channel history; name a partial capture by
+  its date range rather than "full history") plus the analysis rule that matters
+  more: nothing from a backfill may be reported as currently open without
+  reconciliation. Candidate items route through `synthesis-catchup-ledger`'s triage
+  rather than being reported raw.
+
 ## [4.36.0] - 2026-08-19
 
 ### Changed
