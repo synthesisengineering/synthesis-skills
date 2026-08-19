@@ -4,6 +4,23 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.38.0] - 2026-08-19
+
+### Added
+
+- **`synthesis-daily-rituals` v2.26.0 — lead-time meeting preps.** Same-day prep
+  packs are right for routine meetings and structurally wrong for high-stakes
+  ones: prep written minutes before a strategy-bearing 1:1 summarizes what the
+  agent has been processing lately, not what the counterpart cares about.
+  Workspaces declare `.agents/meeting-preps.yaml` (title/attendee matchers,
+  `business_days_ahead`, and the durable `sources` the prep must be built from);
+  generation rides the Calendar Guardian's tomorrow-review in every mode
+  including Quick Close, Day-Start verifies and regenerates, the owed-weekly
+  scan flags the coming week, and **a rescheduled flagged meeting triggers an
+  immediate refresh at detection time** — reschedules being exactly when prep is
+  most likely stale and most likely skipped. Packs state their own basis so a
+  researched pack is distinguishable from a summary of recent activity.
+
 ## [4.37.0] - 2026-08-19
 
 ### Added

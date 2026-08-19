@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.25.0"
+  version: "2.26.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,56 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.26.0 — Lead-time meeting preps: high-stakes meetings get prepared a business day ahead
+
+Same-day prep packs (v2.12.0) are right for routine meetings and structurally wrong for
+high-stakes ones: a strategy-bearing 1:1 prepared minutes before it starts gets a summary of
+what the *agent* has been processing lately, not what the *counterpart* cares about —
+recency bias with a deadline. The origin incident: an exec weekly was rescheduled onto the
+current day, prep was requested sixteen minutes before the start, and the first draft led
+with the week's loudest workstream instead of the principals' stated mandate; there was no
+time to research either half. Preparing one business day ahead is what allows reading the
+prior meeting's transcript, checking the mandate sources, and thinking strategically.
+
+A workspace opts in by declaring **`.agents/meeting-preps.yaml`**:
+
+```yaml
+# .agents/meeting-preps.yaml — lead-time prep declarations (v1)
+lead_time_preps:
+  - name: exec-weekly            # slug used in the prep-pack filename
+    title_contains: "Weekly - Principal and Exec"   # calendar title match (case-insensitive)
+    attendees_any: [exec@example.com]               # OR-matched; either matcher may be omitted
+    business_days_ahead: 1
+    sources:                     # what the prep MUST be built from (the durable record)
+      - prior-meeting-transcript # open loops and commitments from last time
+      - mandate-sources          # the documents/transcripts where this person stated their priorities
+      - project-contexts         # CONTEXTs naming the attendee or the meeting's subjects
+```
+
+Four rules, enforced by the ritual steps below:
+
+1. **Generation is owed at the day-end BEFORE the meeting's business day** (Step 4a) — the
+   Calendar Guardian's tomorrow-review already looks at the right day in every mode
+   including Quick Close, so the prep rides the review that is already mandatory. Day-Start
+   Step 6 verifies presence for today's flagged meetings and regenerates stale packs; the
+   owed-weekly week-ahead scan flags any flagged meeting in the coming week so multi-day
+   research can start early.
+2. **A reschedule triggers an immediate refresh at detection time.** A flagged meeting that
+   MOVES onto today or tomorrow does not wait for the next ritual — whichever sync detects
+   the move regenerates the prep then. Reschedules are precisely when prep is most likely
+   to be stale and most likely to be skipped.
+3. **Prep is built from the durable record, not from session memory.** The declared
+   `sources` are read fresh: the prior meeting's transcript for open commitments, the
+   counterpart's own stated priorities from mandate sources, and project state. The
+   structural point of the lead time is that this reading takes longer than the minutes
+   before a meeting provide — a prep that skips the sources has not used the lead time.
+4. **The pack states its own basis.** Its header lists which declared sources were read and
+   the date of the newest one, so a reader can tell a researched pack from a summary of
+   recent activity. The v2.12.0 file contract (path, filename, H1/When/Who) is unchanged —
+   this section governs *when* and *from what*, not the format.
+
+Workspaces without the config keep v2.12.0 behavior unchanged.
 
 ## v2.25.0 — Per-workspace sessions are the default; the principal is the dispatcher
 
@@ -560,6 +610,9 @@ invokes it (the inbox-cleanup skill's workspace-scope contract):
   holds ledger. Same-day requests route through triage (VIP tiers pass per
   config; everything else becomes a proposed later slot). Check prep exists for
   every meeting today; surface unanswered RSVPs and prep gaps as decisions.
+  **Lead-time meetings (v2.26.0):** a flagged meeting today whose pack is missing or
+  predates a reschedule is regenerated NOW from its declared sources — and the gap is
+  named in the brief, because it means the owed day-end generation was missed.
 - [ ] Update the action plan throughout the day as tasks complete or change — it is a living document, not a static morning capture.
 - [ ] **Always include a clickable link to the action plan file** in your response when creating, updating, or referencing it. Use the absolute path in markdown link format: `[2026-03-23.md](/absolute/path/to/daily-plans/2026-03-23.md)`. Never use relative paths — they don't resolve in the IDE.
 
@@ -1009,6 +1062,11 @@ its evening cadence.
   step's parent pass picks them up. A warning without candidates is not done.
 - [ ] Anything only the principal can decide → one line each in the plan's
   decisions region. Tomorrow's calendar picture → the plan's calendar section.
+- [ ] **Lead-time prep packs (v2.26.0):** when `.agents/meeting-preps.yaml` exists, generate
+  or refresh the prep pack for every flagged meeting whose lead window includes tomorrow —
+  built from the declared `sources` (prior transcript, mandate sources, project contexts),
+  per the v2.26.0 rules. This runs in every mode including Quick Close, because it rides
+  the tomorrow-review that already does.
 
 - [ ] Collect today's decay-tagged drafts (every `**Decays:**` line in today's plan) plus unanswered threads from today.
 - [ ] For each item, one of three outcomes — nothing decay-tagged carries silently past its date: **send now** (with the user's one-tap approval; nothing sends without them), **re-date** with a stated reason on the Decays line, or **release** (strike through with a one-line why).
@@ -1066,7 +1124,9 @@ This step exists because work falls through the cracks during a week. A missed c
   owed-weekly review, so a skipped Friday still gets caught by the same gating:
   - **Week ahead:** sweep all configured calendars for collisions, overcommitted
     days (config thresholds), unanswered RSVPs, and prep-less meetings — while
-    there is still time to move things. Candidates-to-move come with drafted
+    there is still time to move things. Flag every lead-time meeting
+    (`.agents/meeting-preps.yaml`) in the coming week so research that needs
+    more than a day starts early (v2.26.0). Candidates-to-move come with drafted
     notes, same contract as the nightly review.
   - **Month ahead:** scan for anything needing lead time — travel, conferences,
     deadlines, visits. Any commitment that should start an absence-coordination
