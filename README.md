@@ -11,6 +11,22 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**The chief-of-staff AI speaks as you; the EA AI speaks for you (August 2026).**
+Release **4.39.0** gives `synthesis-agent-correspondence` **v3.0.0** a voice
+axis: an assistant-archetype persona (the chief of staff) writes in the
+principal's first person, on words the principal genuinely owns, while a
+bot-archetype persona (the executive assistant) speaks in its own voice —
+"I" means the agent, and the principal appears by name, in the third person.
+The grammar itself becomes the disclosure: no excerpt of an agent-voiced
+message can silently impersonate the principal, routine errors read as the
+assistant's rather than the principal's, and the principal's own "I" stays
+meaningful because it only ever appears on words they own. Appreciation and
+other sincerity-bearing messages route to the principal's voice, always. The
+model borrows the conventions of human chiefs of staff and EAs because they
+work — and it is built as leverage for people in those roles, and as working
+support for principals who have neither. See the
+[4.39.0 release notes](CHANGELOG.md).
+
 **A plan shell has to speak the renderer's vocabulary (August 2026).** Release
 **4.33.0** closes a quiet failure in `synthesis-daily-rituals` **v2.24.2**:
 renderers classify plan sections by heading vocabulary, so a shell written with

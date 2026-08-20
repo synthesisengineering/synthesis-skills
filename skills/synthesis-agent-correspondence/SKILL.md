@@ -2,15 +2,17 @@
 name: synthesis-agent-correspondence
 description: >
   Compose and send honest agent correspondence across Slack, email, and other channels. Defines
-  principal-direct, assistant, and bot lanes; review-depth governance; persona configuration;
-  disclosure signatures; and compose/send gates. Use for agent correspondence, sending on a
-  principal's behalf, message signatures, disclosure lanes, persona registries, agent branding,
-  standing-direction sends, ghostwriting disclosure, or outbound-message gates.
+  principal-direct, assistant, and bot lanes; the voice axis (chief-of-staff personas speak as
+  the principal, executive-assistant personas speak as themselves); review-depth governance;
+  persona configuration; disclosure signatures; and compose/send gates. Use for agent
+  correspondence, sending on a principal's behalf, message signatures, disclosure lanes, persona
+  registries, agent branding, agent voice, third-person agent messages, standing-direction
+  sends, ghostwriting disclosure, or outbound-message gates.
 license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "3.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -33,7 +35,7 @@ Every outgoing message answers two questions: **whose words are these**, and **w
 |---|---|---|---|
 | **Principal-direct** | The principal's | The principal | **None.** Nothing to disclose, on any channel — regardless of how much AI research, drafting, or polish went into it. The principal read every word and performed the send; that is the ghostwritten letter the principal signs. |
 | **Assistant lane** | The principal's — composed, dictated, or edited to the point of genuine ownership | The agent | **A single authorship signature**: the principal wrote this, working through the named agent. One line, one meaning, no variants. |
-| **Bot lane** | The agent's, under the principal's direction — per-message instruction or standing rules | The agent | **A handled-for-me signature**: the named agent handled this under the principal's direction, and the principal reads every reply. Wording may reflect how deep the direction ran. |
+| **Bot lane** | The agent's, under the principal's direction — per-message instruction or standing rules | The agent | **The persona's own signature**: the named agent introduces itself, states the principal's direction, and promises the principal reads every reply. Wording may reflect how deep the direction ran. The body speaks in the persona's own voice (see the voice axis below). |
 
 The lanes are peers on a ladder, not tiers of one system stacked on another. A recipient who has seen two or three messages learns the legend without being taught:
 
@@ -50,6 +52,74 @@ The assistant lane's signature makes a strong claim: *these are my words.* That 
 ### The bot lane spans direction depths
 
 The bot lane honestly covers everything from "the principal told the agent what to say and glanced at the result" to "the agent acted on standing rules" to — where a principal explicitly builds toward it — "the agent read the incoming message and handled it." What varies across that range is internal governance (next section), not the lane. The signature always claims the same two things: the agent produced the words under the principal's direction, and the principal sees the replies.
+
+## The voice axis — the archetype also binds the narrator (v3.0.0)
+
+The lane says whose words a message carries. The voice axis says who **speaks** — and the two
+must agree, because the grammatical person of a message is a disclosure the recipient reads in
+every sentence, whether or not it was designed as one.
+
+**The staff analogy that decides it.** A chief of staff is authorized to speak *as* the
+principal: drafts go out in the principal's first person, under the principal's ownership. An
+executive assistant speaks in their own voice *for* the principal's office: "Alex is traveling
+this week; I've moved your 2:00." Both are honest, both are centuries-old convention, and
+recipients parse each instantly. The archetypes map onto exactly this split:
+
+- An **`assistant`**-archetype persona is the chief of staff. Its messages are written in the
+  **principal's first person**, because the entry condition of its lane is that the words ARE
+  the principal's. "I" means the principal.
+- A **`bot`**-archetype persona is the executive assistant. Its messages are written in the
+  **persona's own voice**: the persona says "I" about itself and refers to the principal by
+  name, in the third person. It writes in the register the principal trained it to use — the
+  principal's clarity, brevity, and style rules — minus the principal's "I."
+
+**The analogy honors these professions; it does not replace them.** Chiefs of staff and
+executive assistants are skilled roles this system borrows its conventions from precisely
+because they work. A principal who has a human chief of staff or EA should expect these
+personas to make that person more effective — absorbing the mechanical load so the human's
+judgment, relationships, and taste go further. A principal who has neither gets a working
+approximation of support they otherwise lack entirely. In both cases the agent extends the
+office; it does not compete with anyone in it.
+
+**Why this is worth enforcing rather than leaving to taste:**
+
+1. **Grammar is the disclosure that survives.** Signatures are the most skippable part of a
+   message — truncated in previews, dropped from forwards, cut from quoted replies. A message
+   written in the persona's own voice is self-disclosing in every sentence; no excerpt of it
+   can silently impersonate the principal.
+2. **It creates an error-absorption layer, which widens safe autonomy.** When an assistant's
+   note gets a detail wrong, the social reading is "the assistant got it wrong; the principal
+   will fix it." When a first-person "I" message is wrong, the principal said something false.
+   The riskier a mistake in the principal's own mouth, the narrower the autonomous lane must
+   be — so the persona's own voice is what lets `standing_direction` carry more. Ownership
+   never transfers (the principal answers for the system), and the hard content limits do not
+   loosen; only the social cost of a routine error drops.
+3. **It protects the currency of the principal's first person.** When every sentence that says
+   "I" was genuinely owned by the principal, the "I" stays meaningful. Bot-lane messages that
+   perform the principal's voice on unreviewed words quietly debase it.
+
+**The upgraded legend — pronouns become the protocol:**
+
+> **First person ⟺ the principal's ownership (principal-direct or assistant lane). The
+> persona's own voice ⟺ the agent's words (bot lane).** The signature confirms what the
+> grammar already said.
+
+**Bot-voice composition rules:**
+
+- The persona says "I" for itself and names the principal in the third person. Establish the
+  narrator **early** — a reference to the principal by name in the first sentence or two —
+  never only in the signature, since the message arrives from the principal's own account.
+- For a recipient who has never seen the persona, open with one identifying clause ("This is
+  Acme-Bot, Alex's AI assistant —"). Identification is not a process banner: what stays
+  banned is apologetic process-framing as the opener, not a staff member saying who they are.
+- The persona relays facts, logistics, and decisions the principal actually made. It never
+  characterizes the principal's unstated opinions or feelings ("Alex thinks…", "Alex would be
+  happy to…" — says who?), never negotiates substance, and escalates rather than improvises.
+- **Sincerity classes require the principal's voice.** Appreciation, kudos, condolences, and
+  anything whose value is the personal relationship lose their worth through an intermediary —
+  "Alex appreciates the quick turnaround" is distinctly colder than "thank you." Those route
+  to the principal-direct or assistant lane even when low-stakes. This yields the practical
+  lane test: **would it sound right coming from a staff assistant? If not, route up.**
 
 ## Review depth — internal governance, not disclosure
 
@@ -103,21 +173,29 @@ A fuller, commented template is in [`references/persona-registry.example.yaml`](
 - **`url`** — the persona's reference link, if it has one.
 - **`scope`** — free text describing when this persona is used. Define as many personas as match how you actually operate — one per venture, separate work and personal identities, multiple bot brands for different audiences. Every persona still maps to exactly one lane via its archetype.
 
-### Archetype is binding — it selects the lane, not just the tone
+### Archetype is binding — it selects the lane and the narrator, not just the tone
 
-`archetype` is the schema's highest-leverage field, and in this skill's first version it only set the signature's register. That undersold it. The archetype **is** the lane assignment:
+`archetype` is the schema's highest-leverage field. In this skill's first version it only set
+the signature's register; v2 made it the lane assignment; v3 makes it bind the narrator too:
 
-- An **`assistant`**-archetype persona exists for assistant-lane sends only. Its signature centers the principal as author, the tool as instrument — *"I wrote this with my Acme-Assistant"* — and it has **one** signature, because the lane has one meaning. Using it requires exact-text ownership, always.
-- A **`bot`**-archetype persona exists for bot-lane sends. Its signature centers the tool as actor under direction — *"my Acme-Bot handled this one for me — I read every reply"* — and may carry variants reflecting review depth, since the lane honestly spans several.
+- An **`assistant`**-archetype persona exists for assistant-lane sends only. The body is the
+  principal's first person, and its signature centers the principal as author, the tool as
+  instrument — *"I wrote this with my Acme-Assistant"* — **one** signature, because the lane
+  has one meaning. Using it requires exact-text ownership, always.
+- A **`bot`**-archetype persona exists for bot-lane sends. The body is the persona's own
+  voice, and its signature is written the same way — the persona introducing itself and
+  making the loop-closing promise on the principal's behalf. It may carry variants reflecting
+  review depth, since the lane honestly spans several. One narrator per message: a bot-voice
+  body with a principal-voice signature flips the narrator mid-message, and recipients notice.
 
-Generic signature examples:
+Generic signature examples (a principal named Alex):
 
 | Lane / depth | Example signature |
 |---|---|
 | Assistant lane (always `exact_text`) | `🧞 _I wrote this with my [Acme-Assistant](https://acme-assistant.example/)_` |
-| Bot lane, `exact_text` approved | `🤖 _composed and sent with my [Acme-Bot](https://acme-bot.example/)_` |
-| Bot lane, `standing_direction` | `🤖 _my [Acme-Bot](https://acme-bot.example/) handled this one for me — I read every reply_` |
-| Bot lane, sent ahead of review (rare) | `🤖 _drafted by my [Acme-Bot](https://acme-bot.example/) at my direction — I haven't reviewed the details yet and will follow up myself_` |
+| Bot lane, `exact_text` approved | `🤖 _I'm [Acme-Bot](https://acme-bot.example/), Alex's AI assistant — Alex approved this message before I sent it_` |
+| Bot lane, `standing_direction` | `🤖 _I'm [Acme-Bot](https://acme-bot.example/), Alex's AI assistant, sent under standing direction — Alex reads every reply_` |
+| Bot lane, sent ahead of review (rare) | `🤖 _I'm [Acme-Bot](https://acme-bot.example/), Alex's AI assistant — Alex hasn't reviewed the details yet and will follow up personally_` |
 
 ## Channel disclosure is a fact, not a preference
 
@@ -152,9 +230,11 @@ Approval of text is not approval of staleness. Immediately before transmitting: 
 5. **Wire the three gates to your own voice/style skill(s)**, and to `synthesis-message-guard` if you want fail-closed enforcement rather than a convention that depends on being remembered. If your guard has brand-integrity patterns, make them lane-aware: block each persona's emoji when its own branding is absent, rather than banning an emoji outright.
 6. **Keep the private layer thin.** It should hold only what's actually yours — names, exact signature wording, org-specific routing rules — and reference this skill for the mechanism. Duplicating the mechanism into the private layer is how the two drift apart.
 
-## Migrating from v1 of this skill
+## Migrating from earlier versions of this skill
 
-v1 organized everything around three review tiers as the recipient-facing system, with archetype as tone. v2 inverts that: the **lane** (principal-direct / assistant / bot) is the recipient-facing system, review depth is internal governance, and archetype is binding. If you built on v1: your `reviewed`/`standing_direction`/`unreviewed_substantive` tiers map directly onto the review-depth column (`exact_text` / `standing_direction` / bot-lane-ahead-of-review), your bot persona's signatures carry over unchanged, and the only breaking change is that an assistant persona now has exactly one signature — its former standing-direction and unreviewed variants were incoherent cells, and any traffic that used them belongs to the bot persona.
+**v1 → v2.** v1 organized everything around three review tiers as the recipient-facing system, with archetype as tone. v2 inverts that: the **lane** (principal-direct / assistant / bot) is the recipient-facing system, review depth is internal governance, and archetype is binding. Your `reviewed`/`standing_direction`/`unreviewed_substantive` tiers map directly onto the review-depth column (`exact_text` / `standing_direction` / bot-lane-ahead-of-review); the only breaking change is that an assistant persona has exactly one signature — its former standing-direction and unreviewed variants were incoherent cells, and any traffic that used them belongs to the bot persona.
+
+**v2 → v3.** v2 had bot personas write in the principal's first person, disclosing agency only in the signature. v3 binds voice to archetype: bot personas speak as themselves, assistant personas as the principal. Three consequences for adopters. (1) Bot signatures rewrite from the principal's voice ("my Acme-Bot handled this…") into the persona's ("I'm Acme-Bot, Alex's AI assistant…") — one narrator per message. (2) Sincerity classes (appreciation, kudos, condolences, relationship-touching messages) leave the bot lane: their value requires the principal's own voice, so they route to principal-direct or assistant even when low-stakes. (3) If a fail-closed register guard bans third-person agent phrasing wholesale (a v2-era rule), retarget it to servile relay-framing only ("Alex would like me to…", "on behalf of Alex" as an opener) — plain statements about the principal are now the bot lane's canonical voice, and an unretargeted guard will block every compliant send.
 
 ## Related
 

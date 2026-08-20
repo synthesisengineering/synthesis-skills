@@ -4,6 +4,31 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.39.0] - 2026-08-20
+
+### Changed
+
+- **`synthesis-agent-correspondence` v3.0.0 — the voice axis: archetype binds the
+  narrator.** Bot-archetype personas now speak in their own voice — the persona
+  says "I" about itself and names the principal in the third person — while
+  assistant-archetype personas speak as the principal. The model follows the
+  executive-staff convention the skill was always grounded in: a chief of staff
+  is authorized to speak *as* the principal; an executive assistant speaks in
+  their own voice *for* the principal's office. Grammar becomes the disclosure
+  that survives forwarding and quoting; routine errors read as the assistant's
+  rather than putting false words in the principal's mouth, which is what lets
+  standing direction safely carry more; and the principal's first person stays
+  meaningful because it appears only on words the principal owns. Sincerity
+  classes (appreciation, kudos, condolences, relationship-touching messages)
+  route to principal-voice lanes even when low-stakes. Bot-lane signature
+  examples rewritten in the persona's voice — one narrator per message. Includes
+  a v2→v3 migration section covering signature rewrites, sincerity re-routing,
+  and retargeting fail-closed register guards that banned third-person agent
+  phrasing wholesale. The analogy honors the professions it borrows from: these
+  personas are leverage for human chiefs of staff and EAs, and working support
+  for principals who have neither — the agent extends the office, never
+  competes with it.
+
 ## [4.38.0] - 2026-08-19
 
 ### Added
