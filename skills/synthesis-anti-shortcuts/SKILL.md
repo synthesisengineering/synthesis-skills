@@ -50,7 +50,7 @@ Each costume sounds reasonable in isolation. Each is the same shortcut wearing d
 
 ## The Methodology
 
-Seven procedures, applied in order on non-trivial work. Each is small. Together they catch the pattern before it ships.
+Eight procedures, applied in order on non-trivial work. Each is small. Together they catch the pattern before it ships.
 
 ### 1. The Constraint-First Protocol
 
@@ -120,7 +120,25 @@ Before sending any draft analysis, recommendation, or implementation plan:
 
 The scanner at `scripts/scan_output.py` automates step 1. The classification at step 2 is judgment; the catalog at [`references/costume-vocabulary.md`](references/costume-vocabulary.md) supports it.
 
-### 7. The Maintenance Loop
+### 7. The Capability-Limit Probe
+
+When a tool call fails, classify the failure before reporting it. There are two kinds, and they call for opposite responses.
+
+- A **guardrail** is deliberate: a permission the user withheld, a safety gate, an approval step, an action reserved for a human. Never route around it. Reporting it and stopping is the correct outcome.
+- A **capability gap** is incidental: an unconfigured app, an ungranted scope, an unset credential, a feature the current transport does not expose. It is a problem to solve, not a boundary to respect.
+
+Treating the second like the first is the shortcut. It wears the costume of discipline - "I won't work around that" sounds principled - while delivering less than the task required. Agents holding strong, correct rules about not bypassing governance gates are the most prone to it, because the rule generalizes itself onto plumbing where it does not belong.
+
+On a capability gap, before reporting:
+
+1. **Name the exact mechanism that failed** - the error, the missing scope, the absent configuration. "It didn't work" is not a diagnosis.
+2. **Enumerate the alternative paths.** Another tool that reaches the same surface; another transport; an interface the user is already authenticated to; a configuration change that would unblock the primary path permanently rather than once.
+3. **Separate what you can do from what only the user can do.** Console changes, credential grants and admin approvals belong to the user; determining precisely which change is needed belongs to you. Handing over a diagnosis is help; handing over the problem is not.
+4. **Report options with a recommendation, never the limitation alone.** If a workaround carries risk, surface it and let the user decide. Silently considering and discarding a workaround is the same failure in a quieter form.
+
+The test: would a capable colleague, told "the connector can't send," have stopped there? If the honest answer is that they would have asked "then what else can?", the report was premature.
+
+### 8. The Maintenance Loop
 
 The catalog grows. When a new costume appears in production output, the loop is:
 

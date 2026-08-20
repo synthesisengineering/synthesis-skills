@@ -319,3 +319,38 @@ When a new costume appears in production output, three steps:
 3. Add the phrase to the scanner's embedded catalog in [`../scripts/scan_output.py`](../scripts/scan_output.py) if it should fire automatically.
 
 The methodology is durable. The catalog grows.
+
+---
+
+## Category 8: `capability_surrender`
+
+A tool call fails for a fixable reason - an unconfigured app, an ungranted scope, a transport that
+does not expose the feature - and the agent reports the failure as a settled boundary instead of
+diagnosing it. The shortcut is skipping the search for an alternative path.
+
+This category is the inverse-risk twin of governance discipline. An agent correctly told never to
+bypass an approval gate generalizes that rule onto plumbing, and the resulting sentence reads as
+principle rather than avoidance. Judge by the object: a withheld permission is a guardrail, an
+unconfigured API is a gap. See SKILL.md section 7, The Capability-Limit Probe.
+
+### `not something I'll work around` / `won't work around that`
+
+Principled about a governance gate, evasive about a configuration error. Before this sentence can
+stand, name what failed and what else reaches the same surface.
+
+### `blocked at the API level` / `hit a limitation` / `hard limit`
+
+Stated as terminal without a diagnosis. An API-level block usually names its own remedy in the error
+body; quote the mechanism, then say what would unblock it.
+
+### `not possible right now` / `there's no way to`
+
+An absence claim about capability, which needs the same evidence as any other absence claim: what was
+tried, what surfaces were checked, what would have to change. Bare, it is a guess wearing a verdict.
+
+### `you'll have to do this manually` / `you'd need to do that yourself`
+
+Legitimate when the action is genuinely reserved to the user - credentials, console access, an
+approval only they can give. A shortcut when it arrives before any alternative was explored, or
+without naming the specific change that would remove the need next time.
+
