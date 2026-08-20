@@ -4,6 +4,33 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.40.0] - 2026-08-20
+
+### Added
+
+- `synthesis-project-management` v2.4.0: the **project-name contradiction
+  guard** in Project Discovery. When a request names a project that
+  contradicts the session's own evidence — the conversation's established
+  project, the chat or session name, the active-project pointer, the task's
+  working directory — the agent surfaces the contradiction and asks a
+  one-line clarifying question instead of silently resolving to the name.
+  Names are one signal, not an override: humans navigate many
+  similarly-named projects, and sibling projects in one program share
+  vocabulary. Silent resolution stays correct only when name and session
+  evidence agree, or the session carries no project evidence at all. Origin:
+  a misnamed sibling project sent an entire working session's output to the
+  wrong project's records while the intended project's ask went unfulfilled.
+  Companion Common Mistakes row added.
+
+### Changed
+
+- `synthesis-agent-conformance` v1.6.1: the SessionStart stopped-task
+  recovery guidance carries the same exception — automatic resolution of a
+  user-named project now explicitly excludes the case where the name
+  contradicts the session's established context, closing the gap where the
+  emitted guidance instructed the exact behavior the discovery protocol now
+  forbids.
+
 ## [4.39.0] - 2026-08-20
 
 ### Changed

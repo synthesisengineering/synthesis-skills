@@ -11,6 +11,19 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**A named project is one signal, not an override (August 2026).** Release
+**4.40.0** adds the project-name contradiction guard to
+`synthesis-project-management` **v2.4.0**: when a request names a project
+that contradicts the session's own evidence — its established conversation,
+session name, active-project pointer, or working directory — the agent asks
+a one-line clarifying question instead of silently switching. Humans
+navigate many similarly-named projects, and sibling projects share
+vocabulary; a wrong silent resolution sends a whole session's work to the
+wrong project's records. The SessionStart recovery guidance
+(`synthesis-agent-conformance` v1.6.1) now carries the same exception, so
+the emitted guidance can no longer instruct the behavior the discovery
+protocol forbids. See the [4.40.0 release notes](CHANGELOG.md).
+
 **The chief-of-staff AI speaks as you; the EA AI speaks for you (August 2026).**
 Release **4.39.0** gives `synthesis-agent-correspondence` **v3.0.0** a voice
 axis: an assistant-archetype persona (the chief of staff) writes in the
