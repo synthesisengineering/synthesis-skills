@@ -4,6 +4,28 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.41.0] - 2026-08-20
+
+### Added
+
+- `synthesis-anti-shortcuts`: **The Capability-Limit Probe** (methodology
+  procedure 7; the maintenance loop moves to 8). Distinguishes a *guardrail* -
+  a withheld permission, a safety gate, an action reserved for a human, which
+  must never be routed around - from a *capability gap* - an unconfigured app,
+  an ungranted scope, a transport that does not expose the feature, which is a
+  problem to solve. Treating the second like the first wears the costume of
+  discipline while delivering less than the task required, and agents holding
+  strong, correct rules about not bypassing governance gates are the most
+  prone to it. On a capability gap: name the exact mechanism that failed,
+  enumerate alternative paths, separate what the agent can do from what only
+  the user can do, and report options with a recommendation rather than the
+  limitation alone.
+- `synthesis-anti-shortcuts/references/costume-vocabulary.md`: category 8
+  `capability_surrender`, covering "not something I'll work around", "blocked
+  at the X level" / "hit a limitation", "not possible right now" / "there's no
+  way to", and premature "you'll have to do this manually" - the last exempt
+  when the action is genuinely reserved to the user.
+
 ## [4.40.0] - 2026-08-20
 
 ### Added
