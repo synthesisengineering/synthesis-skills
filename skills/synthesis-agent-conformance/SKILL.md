@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.6.0"
+  version: "1.6.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---

@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.3.0"
+  version: "2.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -494,10 +494,29 @@ When a user mentions a project:
 
 1. Read `projects/index.yaml`
 2. Match user's phrase against project `name`, `description`, `id`, `tags`
-3. If match found, read the project's `CONTEXT.md`
-4. Summarize current state and next steps
-5. **Re-verify scope before dispatching work, especially for a paused project.** CONTEXT.md's "N items remaining" (or any count a plan document asserts is current) is a claim made at write time, not a live query — it goes stale the moment anything else touches the same corpus, even a workstream that has nothing to do with this project and doesn't know it exists. Before batch-dispatching agents against a stated scope, re-derive it from live state with a cheap direct check (`find`, `grep`, `wc -l` against the actual files or repos) rather than trusting the document's count. This is cheapest immediately before dispatch — the highest-leverage moment to catch drift, before agent-hours are spent at the wrong scope — and it applies even within a single session, since a count computed early in a long run can go stale by the time a later phase acts on it. If the recount disagrees with the document, update the document in the same pass rather than silently working around the discrepancy. (Distinct from context-lifecycle's Session Start Protocol, which verifies CONTEXT.md's own freshness against this project's git log — that catches a stale *file*; this catches a stale *scope claim* that can drift even when the file itself looks current.)
-6. Begin work from where it left off
+3. **Check the match against the session's own context before switching.** A
+   session usually carries project evidence of its own: the conversation's
+   established project, the chat or session name, the active-project pointer,
+   the task's working directory. When the named project *contradicts* that
+   evidence — the phrase matches project X while everything about the session
+   says project Y — surface the contradiction and ask; never silently resolve
+   to the name. Project names are typed by humans navigating many
+   similarly-named projects, and sibling projects in one program often share
+   vocabulary, so a name is one signal, not an override. A one-line question
+   ("This session has been working project Y — did you mean X, or should this
+   stay in Y?") costs seconds; a silent wrong resolution sends a full
+   session's work to the wrong project's records and leaves the right
+   project's ask unfulfilled. Resolve without asking only when the name and
+   the session's evidence agree, or when the session carries no project
+   evidence at all (fresh session, no pointer, neutral directory). Origin:
+   2026-08-20 — a request that misnamed a sibling project was resolved over
+   the session's own identity, and an entire working session landed in the
+   wrong project.
+4. If match found (and confirmed where step 3 required it), read the
+   project's `CONTEXT.md`
+5. Summarize current state and next steps
+6. **Re-verify scope before dispatching work, especially for a paused project.** CONTEXT.md's "N items remaining" (or any count a plan document asserts is current) is a claim made at write time, not a live query — it goes stale the moment anything else touches the same corpus, even a workstream that has nothing to do with this project and doesn't know it exists. Before batch-dispatching agents against a stated scope, re-derive it from live state with a cheap direct check (`find`, `grep`, `wc -l` against the actual files or repos) rather than trusting the document's count. This is cheapest immediately before dispatch — the highest-leverage moment to catch drift, before agent-hours are spent at the wrong scope — and it applies even within a single session, since a count computed early in a long run can go stale by the time a later phase acts on it. If the recount disagrees with the document, update the document in the same pass rather than silently working around the discrepancy. (Distinct from context-lifecycle's Session Start Protocol, which verifies CONTEXT.md's own freshness against this project's git log — that catches a stale *file*; this catches a stale *scope claim* that can drift even when the file itself looks current.)
+7. Begin work from where it left off
 
 ---
 
@@ -514,6 +533,7 @@ When a user mentions a project:
 | Trusting a paused project's stated remaining-scope count | Batch-dispatches the wrong amount of work — wastes agent-hours on already-done items, or silently leaves new items undone | Re-derive the count from live disk/repo state immediately before dispatch, even when the document looks current |
 | Bare `git commit` in a repo where sub-agents dispatch concurrently | Sweeps another agent's staged work into your commit | `git status --short` / `git diff --cached --name-only` before every commit; commit only your own paths |
 | Editing before reading or claiming the coordination board | Two root sessions overwrite or invalidate each other's work | Read at SessionStart/checkpoint; claim source-area globs before writes |
+| Resolving a named project over the session's own contradicting context | A full session's work lands in the wrong project's records while the intended project's ask goes unfulfilled | When the name and the session's evidence disagree, ask a one-line clarifying question before switching (Project Discovery step 3) |
 
 ---
 

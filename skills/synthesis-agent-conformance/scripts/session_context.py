@@ -406,7 +406,12 @@ def build(
                 "Stopped-task recovery remains available: when the user names a "
                 "synthesis project, resolve it from the git-tracked projects/index.yaml "
                 "and run the Session Start Protocol automatically; never ask the user "
-                "to run a context-lifecycle command or save state manually."
+                "to run a context-lifecycle command or save state manually. One "
+                "exception to automatic resolution: if the named project contradicts "
+                "this session's own established context (its prior conversation, "
+                "active project, or task directory), surface the contradiction and "
+                "confirm which project is meant before switching - never silently "
+                "resolve the name over the session's evidence."
             )
         return "\n".join(lines)
 
