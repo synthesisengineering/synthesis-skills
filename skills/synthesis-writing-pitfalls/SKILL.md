@@ -111,6 +111,10 @@ This is distinct from the AI-typical "exhausted metaphor" pattern (covered in `s
 
 **Article register in a social media post** is the dominant modern variant of this pitfall, and its symptoms are now common enough to be cataloged separately. They include: third-person narration of first-person experience ("the site" / "the audit" / "the fix" where it should be "my site" / "my audit" / "my fix"); formal severity labels imported from source material (CRITICAL / HIGH / MEDIUM in a conversational post); essay structure markers ("first", "second", "the principle", "the takeaway", "in summary"); no first-person pronouns in posts about the author's own work; no closing engagement; sentences over 25 words without compression; over-smoothed prose with no rhythmic variation. The same writer's voice should sound different in articles vs social posts — same person, different mode. See [`synthesis-content-quality`](../synthesis-content-quality/SKILL.md) criteria 38-41 for the AI-detectable variants and [`synthesis-content-distribution`](../synthesis-content-distribution/SKILL.md) "Social register vs article register" for the rationale and the expectation gap that drives the failure.
 
+The current canonical social-register locators are A3-SR-001 through A3-SR-005. The older criteria 38-41 wording above remains as a historical locator for readers of earlier versions.
+
+23. **Unnecessary editorial intervention** [HIGH] — Editing that makes accurate, purposeful prose longer, more generic, more symmetrical, or less recognizably the writer's own without correcting a concrete problem. Fix: require every edit to name the defect it repairs. Preserve a strong sentence when the proposed change has no demonstrable gain.
+
 For deeper examples and fix guidance on each pattern, see [`references/detailed-pitfalls.md`](references/detailed-pitfalls.md).
 
 ## Detection Process
@@ -174,6 +178,8 @@ A pattern that is a clear pitfall in a personal blog post may be neutral or appr
 ## Distinct from AI-Pattern Detection
 
 This skill catches HUMAN-SOURCE failures. For AI-generation patterns (saturated vocabulary clustering, exhausted metaphors as structural filler, the concierge tone, hyperbolic subheadings, the rule of three, mechanical transitions, etc.), use [`synthesis-content-quality`](../synthesis-content-quality/SKILL.md). The two skills together cover the bad-writing landscape from both root-cause directions.
+
+Surface prose alone does not establish authorship. Classify the observable pattern, explain its effect, and revise the prose; do not convert a stylistic cue into a claim that a human or a model wrote it.
 
 For positive principles (what to DO instead of what to avoid), use [`synthesis-writing-craft`](../synthesis-writing-craft/SKILL.md).
 

@@ -55,6 +55,17 @@ Three categories of AI-collaborated content:
 
 The goal is quality assessment. Detection requires pattern recognition across multiple indicators. No single indicator proves AI generation definitively, and many AI-collaborated pieces are excellent content.
 
+### Four-axis inference boundary (August 2026 additive prototype)
+
+Keep four outputs separate in every review:
+
+1. **Editorial quality:** what helps or harms the reader and what revision is needed.
+2. **Model-shaped style observation:** which dated, task-sensitive patterns appear, with counterexamples and alternative explanations.
+3. **Technical provenance:** what a provider mark, credential, or authorized detector establishes for the exact model and surface.
+4. **Authorship:** who wrote or edited the text and which tools participated.
+
+The first two can be assessed from prose. The latter two require external provenance evidence. No word, punctuation choice, rhythm, pattern count, combined-signal fingerprint, or detector score in this catalog establishes authorship by itself. Provider-family attribution is dated research, not the primary editorial verdict.
+
 ## Zones and Detector Modes
 
 The LLM produces a single continuous token stream. It does not structurally separate "conversational wrapper" from "produced artifact." But RLHF training systematically produces a three-zone shape: warm opener, substantive body, warm closer. Patterns concentrate in different zones at different rates.
@@ -81,6 +92,8 @@ Each pattern in the catalog carries an explicit zone tag. The detector workflow 
 ## The Pattern Catalog
 
 The full catalog has approximately 180 patterns organized across four sections. Each pattern carries the 14-field template plus era status (Active / Declining / Historical / Deprecated) and zone tag. Full per-pattern detail lives in [references/](references/) subfiles linked below.
+
+**Generated preservation inventory.** The August 2026 no-removals fixture counts 108 active A1 headers, 17 A2 headers, 76 A3 headers, and 86 B2 headers before historical and nonstandard records. The earlier approximation remains as a historical description; executable preservation tests use the source corpus as the baseline.
 
 ### Section A1: Model-Family Fingerprinting
 
@@ -117,6 +130,8 @@ The most useful editorial capability of v4.0 is the **A2-SUB-001 deletion test**
 
 Full detail and the five-minute editorial workflow: [references/substance-and-depth.md](references/substance-and-depth.md). Zone tag: BODY-PERSISTENT for all A2 sub-patterns (substance is about what the artifact says).
 
+**August 2026 additive entries.** `A2-SUB-018` Source-detail attenuation and `A2-SUB-019` Plausible-mechanism substitution extend the model-agnostic editorial layer. They describe loss of decisive source detail and unsupported replacement of a real mechanism; neither is an authorship cue.
+
 ### Section A3: Refreshed Pattern Catalog (the 76 criteria)
 
 The v3.1.0 catalog of 42 criteria has been refreshed with consolidated tier-shift recommendations from the unified research and supplemented with 34 net-new criteria. Total 76 criteria, renumbered thematically (no v3.1.0 number preservation per the no-backward-compat principle). Two-letter prefixes group by theme:
@@ -133,6 +148,12 @@ The v3.1.0 catalog of 42 criteria has been refreshed with consolidated tier-shif
 - **A3-SR (Social-Register), 5 criteria.** Imported spec language uppercase, article structure in social posts, third-person narration of first-person experience, lack of closing engagement, em-dashes in social posts.
 
 Full per-criterion detail with all 16 fields (14 base + era + zone): [references/detailed-criteria.md](references/detailed-criteria.md), which also includes a renumbering map from v3.1.0 numbers to the new IDs.
+
+**August 2026 additive entries.** `A3-SS-010` Disproportionate structure and `A3-FA-009` Voice normalization record two cross-model editorial harms without assigning them to a provider family.
+
+**August 2026 current-model prototypes.** `A3-SS-011` Current-Claude deliverable padding, `A3-TF-008` Current tool/XML/reference residue, `A3-BT-014` text-only intent without authorized action, `A3-FA-010` private working-language leakage, and `A3-FA-011` non-material work/correction chronology extend the catalog additively. They use dated model-and-surface scope, preserve counterexamples, publish no prevalence estimates, and never establish authorship alone. `A3-BT-013` remains reserved as the legacy system-prompt-bleed locator.
+
+The dated evidence ledger and controlled-test quarantine live in [references/current-model-candidates.md](references/current-model-candidates.md). Candidates in quarantine are research inputs, not active tells.
 
 ## The Cross-Cutting Layer
 
@@ -197,6 +218,8 @@ Ask: artifact-only or full-response? Apply the corresponding pattern subset (zon
 - Family-specific signatures: `<think>` tag leakage (DeepSeek-R1), CJK punctuation slips (Qwen), language-mixing (DeepSeek).
 - System-prompt artifact bleed (catalog entry A3-BT-013).
 
+The current canonical locator for system-prompt artifact bleed is `A3-TF-006`; retain `A3-BT-013` as the legacy locator until Rajiv explicitly approves a replacement.
+
 If any present: very likely unedited AI output.
 
 ### Step 3: Apply combined-signal fingerprints
@@ -223,6 +246,10 @@ Combine the per-step signals into a confidence assessment. Per-family attributio
 - Does other work by this author show similar patterns?
 - Is the publication known for quality control?
 - Was AI assistance disclosed? If so, are the patterns consistent with declared methodology?
+
+### Required finding record
+
+For every flagged pattern, report: the exact observed span or structure; the editorial impact in this artifact; evidence status and applicable model/surface/date when relevant; counterexamples and ordinary-human explanations; and a concrete repair. End prose-only reviews with `Authorship not established from prose cues.` Do not convert inherited SSWP, base-rate, or combined-signal estimates into an authorship probability.
 
 ## What This Framework Does NOT Catch On Its Own
 
@@ -353,6 +380,8 @@ Before flagging a piece as AI-generated based on uniform-paragraphs + restricted
 
 If none, the piece is likely non-native English human writing. Do not flag.
 
+Also test against known-human strong and weak prose, dialect, translated and multilingual prose, accessibility-oriented plain language, formulaic professional genres, and mixed human/model editing. Do not manufacture errors or irregularity to make writing seem human.
+
 ### The Human Touch Test
 
 Before publishing AI-assisted content:
@@ -377,6 +406,7 @@ This skill is the AI-pattern-and-substance arm of the writing-quality family:
 - [`synthesis-voice-profiler`](../synthesis-voice-profiler/SKILL.md): Generate a structured voice profile.
 - [`synthesis-fact-checking`](../synthesis-fact-checking/SKILL.md) v2.0: Companion skill for citation, quote, and source verification with per-family hallucination signatures.
 - [`synthesis-clean-text`](../synthesis-clean-text/SKILL.md): Remove watermarks and statistical fingerprints from generated text.
+- [`synthesis-text-provenance`](../synthesis-text-provenance/SKILL.md): Select hosted or local/open-weight generation paths, preserve manifests, audit text integrity, and report authorized provenance signals. It does not treat editorial rewriting as verified removal of a provider mark.
 
 ## References
 
