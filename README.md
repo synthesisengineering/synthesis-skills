@@ -11,6 +11,15 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Durable-context edits fail closed (August 2026).** Release **4.45.0** adds
+`context_edit.py` to `synthesis-context-lifecycle`. A hand-rolled
+`str.replace()` against a project record asserts nothing — when another agent
+has rewritten the anchored region, the edit silently no-ops while the script
+still reports success, and the stale record then passes every
+committed-versus-git check. The helper refuses a missing, ambiguous, or
+no-op edit without writing, writes atomically, and re-reads the file to
+confirm the change landed. See the [4.45.0 release notes](CHANGELOG.md).
+
 **Managed runtime choice and verified model updates (August 2026).** Release
 **4.44.0** keeps Ollama as the default while adding an LM Studio adapter for
 catalog planning, exact downloads, JSON inventory, and runtime-metadata

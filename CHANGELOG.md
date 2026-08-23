@@ -4,6 +4,32 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.45.0] - 2026-08-23
+
+### Added
+
+- **`synthesis-context-lifecycle` v1.9.0 — fail-closed durable-context edits.**
+  New `scripts/context_edit.py` replaces hand-rolled `str.replace()` when a
+  script edits `CONTEXT.md`, `REFERENCE.md`, or a session log. A bare replace
+  asserts nothing: when an anchor no longer matches — because another agent
+  legitimately rewrote that region between sessions — the edit silently becomes
+  a no-op while the surrounding "updated" message stays false. The result gets
+  committed, and record-versus-git checks still pass, because the file *is*
+  committed; it is simply not current. This is an unverified success claim
+  about the agent's own action, a class nothing else in the system checks,
+  because a claim about one's own completed action has no natural contradictor.
+
+  The helper refuses, without writing, when the anchor is absent, matches a
+  different number of times than declared, would leave the file
+  byte-identical, would exceed a stated line budget, or targets a symlink. It
+  writes atomically and then re-reads the file to confirm the change reached
+  disk. No flag makes a missing anchor succeed; `--dry-run` still refuses a bad
+  one. `replace_once` and `set_field` are importable for use from Python.
+
+  `SKILL.md` gains a mandatory section for scripted edits, with the two rules a
+  tool cannot enforce alone: re-read a record before editing it when another
+  agent may have touched it, and never report success you did not verify.
+
 ## [4.44.0] - 2026-08-23
 
 ### Added
