@@ -35,6 +35,13 @@ Version 1.0 implements this contract for Ollama. Hugging Face GGUF ids remain
 Ollama artifacts after import, so the inventory records the full runtime name
 and resolved Ollama digest in addition to upstream and publisher metadata.
 
+For Hugging Face registry timeouts after all large layers are present, the
+adapter may use Ollama's supported local multi-GGUF create path. The catalog
+pins the registry manifest URL plus each GGUF model/projector layer's full
+digest, media type, and size. The adapter re-hashes every cached layer, creates
+same-volume temporary hard links, imports the directory, removes the links,
+and then applies the normal runtime identity and inventory gates.
+
 ## Schema evolution
 
 Catalog and inventory schemas carry integer `schema_version` fields. A future

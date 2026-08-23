@@ -123,6 +123,14 @@ def atomic_text_write(path: Path, value: str) -> None:
         temporary_path.unlink(missing_ok=True)
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(8 * 1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def command_output(arguments: list[str], timeout: int = 8) -> str | None:
     try:
         result = subprocess.run(
@@ -614,6 +622,54 @@ def validate_catalog(catalog: dict[str, Any]) -> list[dict[str, Any]]:
             isinstance(role, str) and role for role in artifact["roles"]
         ):
             raise LocalModelError(f"{artifact_id}.roles must be non-empty strings")
+        fallback = artifact.get("local_import_fallback")
+        if fallback is not None:
+            if artifact["distribution_channel"] != "huggingface-gguf":
+                raise LocalModelError(
+                    f"{artifact_id}.local_import_fallback is only valid for huggingface-gguf"
+                )
+            if not isinstance(fallback, dict):
+                raise LocalModelError(f"{artifact_id}.local_import_fallback must be an object")
+            validate_https_url(
+                fallback.get("registry_manifest_url"),
+                f"{artifact_id}.local_import_fallback.registry_manifest_url",
+            )
+            layers = fallback.get("gguf_layers")
+            if not isinstance(layers, list) or not layers:
+                raise LocalModelError(
+                    f"{artifact_id}.local_import_fallback.gguf_layers must be non-empty"
+                )
+            media_types: list[str] = []
+            layer_digests: set[str] = set()
+            for layer in layers:
+                if not isinstance(layer, dict):
+                    raise LocalModelError(f"{artifact_id} fallback layer must be an object")
+                media_type = layer.get("media_type")
+                if media_type not in {
+                    "application/vnd.ollama.image.model",
+                    "application/vnd.ollama.image.projector",
+                }:
+                    raise LocalModelError(f"{artifact_id} fallback layer has unsafe media type")
+                layer_digest = layer.get("digest")
+                if not isinstance(layer_digest, str) or not re.fullmatch(
+                    r"sha256:[0-9a-f]{64}", layer_digest
+                ):
+                    raise LocalModelError(f"{artifact_id} fallback layer has invalid digest")
+                size_bytes = layer.get("size_bytes")
+                if (
+                    not isinstance(size_bytes, int)
+                    or isinstance(size_bytes, bool)
+                    or size_bytes <= 0
+                ):
+                    raise LocalModelError(f"{artifact_id} fallback layer has invalid size")
+                if layer_digest in layer_digests:
+                    raise LocalModelError(f"{artifact_id} fallback layer digest is duplicated")
+                layer_digests.add(layer_digest)
+                media_types.append(media_type)
+            if media_types.count("application/vnd.ollama.image.model") != 1:
+                raise LocalModelError(f"{artifact_id} fallback must contain exactly one model")
+            if media_types.count("application/vnd.ollama.image.projector") > 1:
+                raise LocalModelError(f"{artifact_id} fallback has multiple projectors")
     return artifacts
 
 
@@ -1044,12 +1100,86 @@ def update_inventory(
     return inventory
 
 
+def model_store_from_profile(profile: dict[str, Any]) -> Path:
+    value = profile.get("storage", {}).get("model_store")
+    if not isinstance(value, str) or not value:
+        raise LocalModelError("Resolved model store is absent from the machine profile")
+    if value == "~":
+        return Path.home()
+    if value.startswith("~/"):
+        return Path.home() / value[2:]
+    path = Path(value)
+    if not path.is_absolute():
+        raise LocalModelError("Resolved model store path must be absolute or home-relative")
+    return path
+
+
+def import_cached_gguf_layers(
+    artifact: dict[str, Any],
+    profile: dict[str, Any],
+    executable: str,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> None:
+    fallback = artifact.get("local_import_fallback")
+    if not isinstance(fallback, dict):
+        raise LocalModelError(f"{artifact['id']} has no catalog-pinned local import fallback")
+    layers = fallback.get("gguf_layers")
+    if not isinstance(layers, list) or not layers:
+        raise LocalModelError(f"{artifact['id']} fallback has no GGUF layers")
+    store = model_store_from_profile(profile).expanduser().resolve(strict=False)
+    blobs = store / "blobs"
+    import_parent = store.parent / ".synthesis-local-model-imports"
+    reject_symlink_components(store, blobs, import_parent)
+    import_parent.mkdir(parents=True, exist_ok=True)
+    reject_symlink_components(import_parent)
+    with tempfile.TemporaryDirectory(prefix=f"{artifact['id']}-", dir=import_parent) as value:
+        import_dir = Path(value)
+        for index, layer in enumerate(layers):
+            digest = layer["digest"].removeprefix("sha256:")
+            source = blobs / f"sha256-{digest}"
+            reject_symlink_components(source)
+            if not source.is_file() or source.is_symlink():
+                raise LocalModelError(
+                    f"Catalog-pinned fallback blob is absent for {artifact['id']}: {digest}"
+                )
+            observed_size = source.stat().st_size
+            if observed_size != layer["size_bytes"]:
+                raise LocalModelError(
+                    f"Fallback blob size mismatch for {artifact['id']}: {digest}"
+                )
+            if sha256_file(source) != digest:
+                raise LocalModelError(
+                    f"Fallback blob digest mismatch for {artifact['id']}: {digest}"
+                )
+            suffix = (
+                "model"
+                if layer["media_type"] == "application/vnd.ollama.image.model"
+                else "projector"
+            )
+            destination = import_dir / f"{index:02d}-{suffix}.gguf"
+            os.link(source, destination)
+        modelfile = import_dir / "Modelfile"
+        atomic_text_write(modelfile, f"FROM {import_dir}\n")
+        created = runner(
+            [executable, "create", artifact["runtime_model"], "-f", str(modelfile)],
+            check=False,
+            text=True,
+            shell=False,
+        )
+        if created.returncode != 0:
+            raise LocalModelError(
+                f"Ollama local import failed for {artifact['id']} with exit code "
+                f"{created.returncode}"
+            )
+
+
 def perform_install(
     plan: dict[str, Any],
     artifacts: list[dict[str, Any]],
     profile: dict[str, Any],
     state_dir: Path,
     label: str | None,
+    recover_cached: bool = False,
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> dict[str, Any]:
     if not plan["ready"]:
@@ -1061,16 +1191,29 @@ def perform_install(
     installed: dict[str, dict[str, Any]] = {}
     for selection in plan["selections"]:
         artifact = by_id[selection["artifact_id"]]
-        result = runner(
-            [executable, "pull", artifact["runtime_model"]],
-            check=False,
-            text=True,
-            shell=False,
-        )
-        if result.returncode != 0:
-            raise LocalModelError(
-                f"Ollama pull failed for {artifact['id']} with exit code {result.returncode}"
+        if recover_cached:
+            if not artifact.get("local_import_fallback"):
+                raise LocalModelError(
+                    f"{artifact['id']} has no catalog-pinned cached-layer recovery"
+                )
+            import_cached_gguf_layers(artifact, profile, executable, runner)
+            installation_method = "catalog-pinned-local-import"
+        else:
+            installation_method = "ollama-pull"
+            result = runner(
+                [executable, "pull", artifact["runtime_model"]],
+                check=False,
+                text=True,
+                shell=False,
             )
+            if result.returncode != 0:
+                if not artifact.get("local_import_fallback"):
+                    raise LocalModelError(
+                        f"Ollama pull failed for {artifact['id']} with exit code "
+                        f"{result.returncode}"
+                    )
+                import_cached_gguf_layers(artifact, profile, executable, runner)
+                installation_method = "catalog-pinned-local-import"
         metadata = find_installed(artifact["runtime_model"], ollama_tags())
         if metadata is None:
             raise LocalModelError(
@@ -1091,6 +1234,7 @@ def perform_install(
             "verified_at": utc_now(),
             "runtime": "ollama",
             "runtime_version": profile["runtimes"]["ollama"]["version"],
+            "installation_method": installation_method,
             **safe,
         }
         update_inventory(state_dir, profile, plan["selections"], installed, label)
@@ -1223,6 +1367,11 @@ def build_parser() -> argparse.ArgumentParser:
     add_common(install_parser)
     install_parser.add_argument("--artifact", action="append", default=[])
     install_parser.add_argument("--yes", action="store_true")
+    install_parser.add_argument(
+        "--recover-cached",
+        action="store_true",
+        help="Skip acquisition and import only catalog-pinned cached GGUF layers",
+    )
     install_parser.add_argument("--machine-label")
 
     inventory_parser = commands.add_parser("inventory", help="Register or refresh this machine mapping")
@@ -1294,10 +1443,24 @@ def main(argv: list[str] | None = None) -> int:
             if args.artifact:
                 plan = plan_explicit(artifacts, args.artifact, profile, policy)
             if not args.yes:
-                emit({"execute": False, "authorization_required": True, "plan": plan})
+                emit(
+                    {
+                        "execute": False,
+                        "authorization_required": True,
+                        "recovery": (
+                            "catalog-pinned-cached-layers" if args.recover_cached else None
+                        ),
+                        "plan": plan,
+                    }
+                )
                 return 0 if plan["ready"] else 2
             result = perform_install(
-                plan, artifacts, profile, args.state_dir.expanduser(), args.machine_label
+                plan,
+                artifacts,
+                profile,
+                args.state_dir.expanduser(),
+                args.machine_label,
+                recover_cached=args.recover_cached,
             )
             emit({"execute": True, "plan": plan, **result})
             return 0

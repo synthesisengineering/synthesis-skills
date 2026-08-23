@@ -27,6 +27,12 @@ inventory captures the digest resolved after installation.
 6. Run the planner against 16, 24, 32, 64, 96, and 128 GiB fixtures.
 7. Record the user-visible catalog change in the plugin release notes.
 
+For a Hugging Face artifact with local-import recovery, fetch its public
+Ollama-compatible registry manifest and pin only GGUF model/projector layers.
+Record each full digest, media type, and byte size plus the manifest URL. Do not
+pin a layer from terminal progress output or infer it from a repository file
+name.
+
 ## Retirement
 
 Mark a removed or superseded artifact `retired`; do not delete its record while

@@ -53,6 +53,21 @@
       "quality_rank": 40,
       "roles": ["writing", "coding", "professional-work"],
       "expected_digest_prefix": null,
+      "local_import_fallback": {
+        "registry_manifest_url": "https://huggingface.co/v2/bartowski/Qwen3.8-27B-GGUF/manifests/Q4_K_M",
+        "gguf_layers": [
+          {
+            "digest": "sha256:e103abf9d914d1d7b2f2592f055f2759a71195c350a01c135f71aaae86bca52b",
+            "media_type": "application/vnd.ollama.image.model",
+            "size_bytes": 17772537440
+          },
+          {
+            "digest": "sha256:cb0a71fe9b84af2552fc6260acf8e9773a29d115c683aba01c72a7ac537b212b",
+            "media_type": "application/vnd.ollama.image.projector",
+            "size_bytes": 927607008
+          }
+        ]
+      },
       "status": "verified"
     },
     {
@@ -79,6 +94,21 @@
       "quality_rank": 50,
       "roles": ["high-quality-writing", "coding", "professional-work"],
       "expected_digest_prefix": null,
+      "local_import_fallback": {
+        "registry_manifest_url": "https://huggingface.co/v2/bartowski/Qwen3.8-27B-GGUF/manifests/Q8_0",
+        "gguf_layers": [
+          {
+            "digest": "sha256:a830e736efa71ce29589ff20b8713333a427e0d46ab774723be23800ad54362d",
+            "media_type": "application/vnd.ollama.image.model",
+            "size_bytes": 29116388960
+          },
+          {
+            "digest": "sha256:cb0a71fe9b84af2552fc6260acf8e9773a29d115c683aba01c72a7ac537b212b",
+            "media_type": "application/vnd.ollama.image.projector",
+            "size_bytes": 927607008
+          }
+        ]
+      },
       "status": "verified"
     },
     {
@@ -157,6 +187,16 @@
       "quality_rank": 40,
       "roles": ["long-context", "writing", "reasoning"],
       "expected_digest_prefix": null,
+      "local_import_fallback": {
+        "registry_manifest_url": "https://huggingface.co/v2/bartowski/moonshotai_Kimi-Linear-48B-A3B-Instruct-GGUF/manifests/Q4_K_M",
+        "gguf_layers": [
+          {
+            "digest": "sha256:a1a7d865370652221f937163f7e94c99e1f114861335ba4f8666606843f1620f",
+            "media_type": "application/vnd.ollama.image.model",
+            "size_bytes": 30061058720
+          }
+        ]
+      },
       "status": "verified"
     },
     {
@@ -183,6 +223,16 @@
       "quality_rank": 50,
       "roles": ["high-quality-long-context", "writing", "reasoning"],
       "expected_digest_prefix": null,
+      "local_import_fallback": {
+        "registry_manifest_url": "https://huggingface.co/v2/bartowski/moonshotai_Kimi-Linear-48B-A3B-Instruct-GGUF/manifests/Q6_K",
+        "gguf_layers": [
+          {
+            "digest": "sha256:d44b7f92fe57bca9e034456a576a530b57f036c85f9ce615f90bc3e6827fae9a",
+            "media_type": "application/vnd.ollama.image.model",
+            "size_bytes": 40460212128
+          }
+        ]
+      },
       "status": "verified"
     },
     {

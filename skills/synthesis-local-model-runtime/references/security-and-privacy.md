@@ -29,6 +29,11 @@ Do not infer that a symlink points somewhere safe from its visible prefix.
   runtime returns none.
 - Preserve partial-download diagnostics, but do not write a false installed
   record.
+- A registry-timeout recovery must use only catalog-pinned cached GGUF layers,
+  verify their full SHA-256 digests and exact sizes, and create same-volume
+  temporary hard links. `--recover-cached` must skip acquisition rather than
+  retrying the failed registry request. Never accept a filename or a completed
+  progress bar as content verification.
 
 ## Local API
 

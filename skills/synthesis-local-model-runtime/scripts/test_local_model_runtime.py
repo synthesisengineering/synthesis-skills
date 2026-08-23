@@ -225,6 +225,190 @@ class RuntimeTests(unittest.TestCase):
                 )
             self.assertFalse((Path(directory) / "machines.json").exists())
 
+    def test_failed_registry_pull_uses_pinned_cached_gguf_import(self):
+        _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
+        artifact = dict(
+            next(item for item in artifacts if item["id"] == "qwen3.8-27b-q8-0")
+        )
+        model_bytes = b"GGUF-model-fixture"
+        projector_bytes = b"GGUF-projector-fixture"
+        model_digest = runtime.hashlib.sha256(model_bytes).hexdigest()
+        projector_digest = runtime.hashlib.sha256(projector_bytes).hexdigest()
+        artifact["local_import_fallback"] = {
+            "registry_manifest_url": "https://example.test/manifest",
+            "gguf_layers": [
+                {
+                    "digest": f"sha256:{model_digest}",
+                    "media_type": "application/vnd.ollama.image.model",
+                    "size_bytes": len(model_bytes),
+                },
+                {
+                    "digest": f"sha256:{projector_digest}",
+                    "media_type": "application/vnd.ollama.image.projector",
+                    "size_bytes": len(projector_bytes),
+                },
+            ],
+        }
+        plan = {
+            "ready": True,
+            "blockers": [],
+            "selections": [{"artifact_id": artifact["id"]}],
+        }
+
+        class Result:
+            def __init__(self, returncode):
+                self.returncode = returncode
+
+        calls = []
+
+        def runner(arguments, **_kwargs):
+            calls.append(arguments)
+            if arguments[1] == "pull":
+                return Result(1)
+            self.assertEqual(arguments[1], "create")
+            modelfile = Path(arguments[-1])
+            imported = sorted(modelfile.parent.glob("*.gguf"))
+            self.assertEqual([path.read_bytes() for path in imported], [model_bytes, projector_bytes])
+            self.assertIn(f"FROM {modelfile.parent}", modelfile.read_text(encoding="utf-8"))
+            return Result(0)
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime.shutil, "which", return_value="/usr/local/bin/ollama"
+        ), mock.patch.object(
+            runtime,
+            "ollama_tags",
+            return_value=[
+                {
+                    "name": artifact["runtime_model"],
+                    "digest": "resolved-local-import-digest",
+                    "size": len(model_bytes) + len(projector_bytes),
+                    "details": {"format": "gguf", "quantization_level": "Q8_0"},
+                }
+            ],
+        ):
+            root = Path(directory)
+            store = root / "models"
+            blobs = store / "blobs"
+            blobs.mkdir(parents=True)
+            (blobs / f"sha256-{model_digest}").write_bytes(model_bytes)
+            (blobs / f"sha256-{projector_digest}").write_bytes(projector_bytes)
+            profile = fixture_profile()
+            profile["storage"]["model_store"] = str(store)
+            result = runtime.perform_install(
+                plan,
+                [artifact],
+                profile,
+                root / "state",
+                None,
+                runner=runner,
+            )
+            installed = result["installed"][artifact["id"]]
+            self.assertEqual(
+                installed["installation_method"], "catalog-pinned-local-import"
+            )
+            self.assertEqual([call[1] for call in calls], ["pull", "create"])
+
+    def test_explicit_cached_recovery_skips_registry_pull(self):
+        _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
+        artifact = dict(
+            next(item for item in artifacts if item["id"] == "qwen3.8-27b-q8-0")
+        )
+        model_bytes = b"GGUF-cached-recovery-fixture"
+        digest = runtime.hashlib.sha256(model_bytes).hexdigest()
+        artifact["local_import_fallback"] = {
+            "registry_manifest_url": "https://example.test/manifest",
+            "gguf_layers": [
+                {
+                    "digest": f"sha256:{digest}",
+                    "media_type": "application/vnd.ollama.image.model",
+                    "size_bytes": len(model_bytes),
+                }
+            ],
+        }
+        plan = {
+            "ready": True,
+            "blockers": [],
+            "selections": [{"artifact_id": artifact["id"]}],
+        }
+
+        class Result:
+            returncode = 0
+
+        calls = []
+
+        def runner(arguments, **_kwargs):
+            calls.append(arguments)
+            self.assertEqual(arguments[1], "create")
+            return Result()
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime.shutil, "which", return_value="/usr/local/bin/ollama"
+        ), mock.patch.object(
+            runtime,
+            "ollama_tags",
+            return_value=[
+                {
+                    "name": artifact["runtime_model"],
+                    "digest": "resolved-cached-recovery-digest",
+                    "size": len(model_bytes),
+                    "details": {"format": "gguf", "quantization_level": "Q8_0"},
+                }
+            ],
+        ):
+            root = Path(directory)
+            store = root / "models"
+            blobs = store / "blobs"
+            blobs.mkdir(parents=True)
+            (blobs / f"sha256-{digest}").write_bytes(model_bytes)
+            profile = fixture_profile()
+            profile["storage"]["model_store"] = str(store)
+            result = runtime.perform_install(
+                plan,
+                [artifact],
+                profile,
+                root / "state",
+                None,
+                recover_cached=True,
+                runner=runner,
+            )
+            installed = result["installed"][artifact["id"]]
+            self.assertEqual(
+                installed["installation_method"], "catalog-pinned-local-import"
+            )
+            self.assertEqual([call[1] for call in calls], ["create"])
+
+    def test_cached_gguf_import_rejects_digest_mismatch(self):
+        _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
+        artifact = dict(
+            next(item for item in artifacts if item["id"] == "qwen3.8-27b-q8-0")
+        )
+        expected = runtime.hashlib.sha256(b"expected").hexdigest()
+        artifact["local_import_fallback"] = {
+            "registry_manifest_url": "https://example.test/manifest",
+            "gguf_layers": [
+                {
+                    "digest": f"sha256:{expected}",
+                    "media_type": "application/vnd.ollama.image.model",
+                    "size_bytes": len(b"tampered"),
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = root / "models"
+            blobs = store / "blobs"
+            blobs.mkdir(parents=True)
+            (blobs / f"sha256-{expected}").write_bytes(b"tampered")
+            profile = fixture_profile()
+            profile["storage"]["model_store"] = str(store)
+            with self.assertRaises(runtime.LocalModelError):
+                runtime.import_cached_gguf_layers(
+                    artifact,
+                    profile,
+                    "/usr/local/bin/ollama",
+                    runner=mock.Mock(),
+                )
+
     def test_benchmark_bounds_fail_before_network(self):
         _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
         with self.assertRaises(runtime.LocalModelError):

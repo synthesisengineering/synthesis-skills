@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.0.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -35,6 +35,9 @@ every workload.
 7. Run bounded functional and performance checks one model at a time. Unload
    each model after testing.
 8. Update the per-machine inventory only after verified state transitions.
+9. When a Hugging Face registry pull fails after catalog-pinned GGUF layers are
+   cached, permit the deterministic local-import recovery only after every full
+   digest and exact size matches. Never import an unpinned partial download.
 
 ## Quick start
 
@@ -58,6 +61,23 @@ python3 scripts/local_model_runtime.py install \
   --artifact glm-4.7-flash-q8-0 \
   --yes
 ```
+
+If an authorized Hugging Face pull already cached every catalog-pinned GGUF
+layer but failed during final registry metadata retrieval, inspect the dry run
+and then recover without repeating the network request:
+
+```bash
+python3 scripts/local_model_runtime.py install \
+  --artifact qwen3.8-27b-q8-0 \
+  --recover-cached
+python3 scripts/local_model_runtime.py install \
+  --artifact qwen3.8-27b-q8-0 \
+  --recover-cached \
+  --yes
+```
+
+Recovery fails closed unless every required cached layer matches the catalog's
+full SHA-256 digest and exact byte size.
 
 To verify and benchmark an installed artifact:
 
@@ -87,6 +107,10 @@ python3 scripts/local_model_runtime.py benchmark \
   the artifact publisher, then capture the resolved local digest.
 - Never silently replace a requested artifact or quantization. A changed plan
   requires a new visible diff.
+- A local-import recovery preserves the catalog artifact id and runtime model
+  name but records `catalog-pinned-local-import` as the installation method.
+  It is a recovery path for verified cached layers, not another acquisition
+  channel.
 
 ## Storage guard
 
