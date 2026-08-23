@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.8.0"
+  version: "1.9.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -392,6 +392,48 @@ When any of these fire, run the Mid-Session Refresh Protocol unconditionally.
 **Delegation.** When the `synthesis-checkpoint` skill is available, prefer invoking it — it is the canonical codification of this protocol, runs the same steps every time, and produces consistent visible output the user can spot. Use the inline fallback only when synthesis-checkpoint is not loaded.
 
 ---
+
+## Editing a Durable Context File — MANDATORY for scripted edits
+
+A scripted edit to `CONTEXT.md`, `REFERENCE.md`, or a session log is an
+assertion that a specific change was made. A bare `str.replace()` asserts
+nothing: when an anchor no longer matches — because another agent legitimately
+rewrote that region between sessions — the replacement silently becomes a
+no-op while the surrounding "updated" message stays cheerful and false. The
+result is committed, and record-versus-git checks still pass, because the file
+is committed. It is simply not current.
+
+**Never hand-roll replacement logic against a durable context file.** Use
+`scripts/context_edit.py`, which fails closed:
+
+```bash
+python3 scripts/context_edit.py set-field --file CONTEXT.md \
+  --field Phase --value "Round 3 complete"
+
+python3 scripts/context_edit.py replace --file CONTEXT.md \
+  --anchor "$OLD" --replacement "$NEW" [--count N] [--max-lines 150]
+
+python3 scripts/context_edit.py insert-before --file sessions/2026-08.md \
+  --anchor "## 2026-08-20" --text "$NEW_ENTRY"
+```
+
+It refuses, without writing, when the anchor is absent, when it matches a
+different number of times than declared, when the replacement would leave the
+file byte-identical, when the result would exceed a stated line budget, or when
+the target is a symlink. It writes atomically and then re-reads the file to
+confirm the change is actually on disk. There is no flag that makes a missing
+anchor succeed. `--dry-run` previews without writing and still refuses a bad
+anchor. Import `replace_once` or `set_field` to use it from Python.
+
+Two companion rules, because the tool cannot enforce them alone:
+
+- **Re-read before editing.** When re-taking a claim on a project another
+  agent may have touched, read the current file and build anchors from what it
+  says now — never from strings you remember writing. Alternating agents on
+  one `CONTEXT.md` is a standing pattern in cross-agent work, not an accident.
+- **Never report success you did not verify.** A message saying a record was
+  updated is a claim about your own action, and nothing else in the system
+  checks it.
 
 ## The Archival Protocol
 
