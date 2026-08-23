@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.43.4] - 2026-08-23
+
+### Fixed
+
+- `synthesis-local-model-runtime` **v1.0.4** now disables reasoning traces by
+  default in bounded benchmarks and records the setting in each receipt. This
+  keeps the token budget focused on the requested final response for
+  thinking-capable models; `--think` remains an explicit opt-in.
+
 ## [4.43.3] - 2026-08-23
 
 ### Fixed

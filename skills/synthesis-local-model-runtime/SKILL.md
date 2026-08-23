@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.3"
+  version: "1.0.4"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -93,6 +93,11 @@ python3 scripts/local_model_runtime.py benchmark \
   --artifact qwen3.8-27b-q8-0 \
   --output-dir /path/outside/the/source/repository
 ```
+
+Benchmarks set the Ollama `think` field to `false` by default so a bounded token
+budget measures the requested final response. Pass `--think` only when the
+reasoning trace is itself the workload under evaluation; the receipt records
+the chosen mode.
 
 ## Recommendation rules
 

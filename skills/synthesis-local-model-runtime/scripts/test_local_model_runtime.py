@@ -461,6 +461,22 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaises(runtime.LocalModelError):
             runtime.benchmark_artifact(artifacts[0], None, "test", 0, 8192)
 
+    def test_benchmark_disables_thinking_by_default_and_records_it(self):
+        _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
+        response = {
+            "response": "bounded final response",
+            "done_reason": "stop",
+            "eval_count": 3,
+            "eval_duration": 1_000_000_000,
+        }
+        with mock.patch.object(runtime, "api_json", return_value=response) as api:
+            receipt = runtime.benchmark_artifact(
+                artifacts[0], None, "test prompt", 16, 8192
+            )
+        request = api.call_args.args[1]
+        self.assertIs(request["think"], False)
+        self.assertIs(receipt["think"], False)
+
     def test_resolve_enforces_current_machine_selection_and_installation(self):
         _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
         artifact_id = "qwen3-8b-q8-0"
