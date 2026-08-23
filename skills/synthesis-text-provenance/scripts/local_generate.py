@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
+import math
 import os
 import sys
 import tempfile
@@ -142,6 +143,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", required=True)
     parser.add_argument("--prompt-file", required=True)
     parser.add_argument("--system-file")
+    parser.add_argument(
+        "--runtime-receipt",
+        help="native runtime receipt to bind cryptographically into the manifest",
+    )
     parser.add_argument("--output-file", required=True)
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--temperature", type=float, default=0.7)
@@ -156,11 +161,34 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     output_path = Path(args.output_file)
     manifest_path = Path(args.manifest)
+    receipt_path = Path(args.runtime_receipt) if args.runtime_receipt else None
     if output_path.resolve() == manifest_path.resolve():
         print("local generation error: output and manifest paths must differ", file=sys.stderr)
         return 2
+    input_paths = [Path(args.prompt_file)]
+    if args.system_file:
+        input_paths.append(Path(args.system_file))
+    if receipt_path is not None:
+        input_paths.append(receipt_path)
+    for target_name, target in (("output", output_path), ("manifest", manifest_path)):
+        if any(target.resolve() == source.resolve() for source in input_paths):
+            print(
+                f"local generation error: {target_name} path must differ from every input path",
+                file=sys.stderr,
+            )
+            return 2
     try:
+        if not math.isfinite(args.temperature) or args.temperature < 0:
+            raise ValueError("temperature must be a finite non-negative number")
+        if isinstance(args.max_tokens, bool) or args.max_tokens <= 0:
+            raise ValueError("max-tokens must be a positive integer")
+        if not math.isfinite(args.timeout) or args.timeout <= 0:
+            raise ValueError("timeout must be a finite positive number")
         classification = endpoint_class(args.endpoint, args.allow_non_loopback)
+        if classification.startswith("local_") and not args.runtime_receipt:
+            raise ValueError("local generation requires --runtime-receipt")
+        if receipt_path is not None and not receipt_path.is_file():
+            raise ValueError(f"runtime receipt is not a regular file: {receipt_path}")
         payload = build_request(args)
         result = call_endpoint(args, payload)
         content, returned_model, response_metadata = extract_content(result)
@@ -179,6 +207,7 @@ def main(argv: list[str] | None = None) -> int:
             model_requested=args.model,
             model_returned=returned_model,
             runtime=args.runtime,
+            runtime_receipt_file=receipt_path,
             endpoint_class=classification,
             prompt_file=Path(args.prompt_file),
             output_file=output_path,

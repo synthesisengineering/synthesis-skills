@@ -11,6 +11,22 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Writing quality and text provenance are separate axes (August 2026).**
+Release **4.42.0** keeps every prior writing pattern and actionable rule while
+adding nine editorial criteria for current source-loss, structure, residue,
+voice, and agent-chronology failures. `synthesis-content-quality` **v4.1.0**
+now separates quality, model-shaped style observation, technical provenance,
+and authorship; inherited numerical detector claims remain available as dated
+research hypotheses, not measured probabilities. A hash-bound semantic
+preservation test makes any future removal or factual correction explicit.
+
+The new `synthesis-text-provenance` **v1.0.0** records self-hashed manifests,
+native runtime receipts, direct-parent lineage, local/open-weight one-shot
+generation, and non-mutating text-integrity audits. It can document what a
+generation path and an authorized detector establish; it will not defeat a
+provider mark, optimize rewriting against a detector, disguise authorship, or
+promise that text is watermark-free. See the [4.42.0 release notes](CHANGELOG.md).
+
 **A named project is one signal, not an override (August 2026).** Release
 **4.40.0** adds the project-name contradiction guard to
 `synthesis-project-management` **v2.4.0**: when a request names a project

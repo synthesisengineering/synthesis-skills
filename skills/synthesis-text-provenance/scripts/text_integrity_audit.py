@@ -98,16 +98,30 @@ def read_input(path: str) -> tuple[str, bytes, dict[str, Any] | None]:
     else:
         source = Path(path)
         before = source.stat()
-        raw = source.read_bytes()
+        first_read = source.read_bytes()
+        first_hash = hashlib.sha256(first_read).hexdigest()
+        second_read = source.read_bytes()
+        second_hash = hashlib.sha256(second_read).hexdigest()
         after = source.stat()
+        if first_hash != second_hash:
+            raise ValueError(
+                "input changed between two complete reads: "
+                f"first SHA-256 {first_hash}, second SHA-256 {second_hash}"
+            )
+        raw = second_read
+        metadata_unchanged = (
+            before.st_size == after.st_size and before.st_mtime_ns == after.st_mtime_ns
+        )
         state = {
             "size_before": before.st_size,
             "size_after": after.st_size,
             "mtime_ns_before": before.st_mtime_ns,
             "mtime_ns_after": after.st_mtime_ns,
-            "unchanged_during_audit": (
-                before.st_size == after.st_size and before.st_mtime_ns == after.st_mtime_ns
-            ),
+            "sha256_first_read": first_hash,
+            "sha256_second_read": second_hash,
+            "full_read_hashes_match": True,
+            "metadata_unchanged": metadata_unchanged,
+            "unchanged_during_audit": metadata_unchanged and first_hash == second_hash,
         }
     try:
         text = raw.decode("utf-8-sig")
@@ -137,6 +151,11 @@ def human_report(path: str, report: dict[str, Any]) -> str:
         )
     lines.append(report["interpretation"])
     if report.get("file_state") is not None:
+        lines.append(
+            "Full-read SHA-256 assertion: "
+            f"{report['file_state']['sha256_first_read']} == "
+            f"{report['file_state']['sha256_second_read']} (pass)"
+        )
         lines.append(
             "File state unchanged during audit: "
             + ("yes" if report["file_state"]["unchanged_during_audit"] else "no")

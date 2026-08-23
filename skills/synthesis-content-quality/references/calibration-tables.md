@@ -2,7 +2,9 @@
 
 Companion to [SKILL.md](../SKILL.md). The per-pattern calibration data the skill's confidence-based evaluation depends on.
 
-This file holds the v4.0 calibration anchor set: signal-strength-when-present (SSWP) scores, base rates by model family, zone-conditional base-rate splits, the ESL safe-harbor mechanical rule, and the quarterly re-calibration discipline that keeps the catalog honest as model behaviour shifts. Sources are cited where empirical anchors exist; estimates are explicitly labeled and accompanied by a reasoning chain.
+This file preserves the v4.0 calibration hypothesis set: signal-strength-when-present (SSWP) scores, base-rate estimates by model family, zone-conditional splits, the ESL safe-harbor rule, and the recalibration design. The inherited numerical tables were not generated from a preserved labeled corpus and are not operational detector performance. A citation beside a row may support a related phenomenon without supporting that row's probability or model-specific rate.
+
+> **August 2026 correction.** SSWP is not `P(AI | pattern)`. A posterior probability requires a population prior and measured likelihoods for AI output and relevant human comparison classes. Read every SSWP and BR number below as a dated, unvalidated hypothesis unless the row identifies the exact model, surface, task distribution, sample size, collection date, comparator corpus, and calculation. Do not aggregate these values into an authorship probability, threshold an individual, or advertise false-positive performance from them. The pattern catalog and safe-harbor remain active; the unsupported calibration claims do not.
 
 Recency floor: **2026-05**. Patterns from older models carry Era-status tags (Active, Declining, Historical, Deprecated). See [historical-patterns.md](historical-patterns.md) for full retired-pattern entries; see [bibliography.md](bibliography.md) for full source list.
 
@@ -14,7 +16,7 @@ Recency floor: **2026-05**. Patterns from older models carry Era-status tags (Ac
 
 A single pattern observation does not justify a single confidence number. Calibration in this catalog is two-axis:
 
-1. **Signal-strength-when-present (SSWP).** Conditional probability that text containing the pattern is AI-generated, ignoring the prior probability of AI versus human. SSWP is what we mean when we say "this marker is HIGH-confidence." Tiers:
+1. **Signal-strength-when-present (SSWP, legacy label).** An ordinal hypothesis about how salient a pattern may be in a bounded comparison. It is not a conditional probability and cannot ignore the population prior while remaining `P(AI | pattern)`. The inherited numerical bands are retained for research continuity, while the plain-language labels are non-probabilistic editorial tiers:
 
    | SSWP | Qualitative tier | Plain-English reading |
    |------|------------------|------------------------|
@@ -23,7 +25,7 @@ A single pattern observation does not justify a single confidence number. Calibr
    | 0.40 to 0.60 | moderate / medium | The marker contributes evidence but is not by itself sufficient. |
    | below 0.40 | ambient / low | The marker is observable but provides weak standalone evidence; it earns weight only in cluster. |
 
-2. **Base rate in unedited AI output (BR).** The percentage of unedited AI outputs from a given family that contain the pattern. Tiers:
+2. **Base rate in unedited AI output (BR, legacy estimates unless fully identified).** The intended quantity is the percentage of unedited outputs in a specified model/surface/task corpus that contain the pattern. A family name without that sampling frame is not a measured base rate. The inherited bands remain as hypotheses:
 
    | BR | Tier | Plain-English reading |
    |----|------|------------------------|
@@ -43,14 +45,14 @@ For body-zone patterns the two values are equal. For wrapper-only patterns BR-ar
 
 ### Empirical or Estimated label
 
-Every entry carries one of two provenance labels:
+Every inherited entry carries one of two provenance labels. These labels classify the claimed source type; they do not by themselves validate the row's numerical value:
 
-- **Empirical** anchors the number in a published measurement. Citation is required (Kobak 2406.07016, Liang 2304.02819, Walters and Wilder 2023, Chelli JMIR 2024, Buchanan/Hill/Shapoval Sage 2024, Plagiarism Today June 2025 verified, etc.).
-- **Estimated** acknowledges no public measurement exists. Reasoning chain is included. Estimates are reviewed quarterly.
+- **Empirical** means a published measurement is cited. The measurement must match the row's claimed variable, population, model, surface, and date before the number can be reused.
+- **Estimated** means no matching measurement was preserved. Treat the number as a hypothesis, regardless of whether a reasoning chain is present.
 
 ### Recency floor and per-pattern era
 
-All measurements treat 2026-05 as the recency floor for "current" frontier models. Patterns from older models are flagged Historical with explicit dating. The compounding-archive principle applies: patterns are never removed; they retire with their era-of-prevalence metadata intact.
+The inherited tables used 2026-05 as their recency floor. They are therefore a historical snapshot, not current calibration for August 2026 model labels. Patterns from older models remain with explicit dating under the compounding-archive principle.
 
 ---
 

@@ -4,6 +4,45 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.42.0] - 2026-08-23
+
+### Added
+
+- `synthesis-text-provenance` **v1.0.0**: a provider-neutral provenance
+  workflow for hosted and local/open-weight text generation. It records a
+  canonical self-hashed schema-2 manifest, hash-bound native runtime receipts,
+  path-free direct-parent lineage, one-shot OpenAI-compatible generation, and
+  non-mutating Unicode and normalization audits. The skill refuses watermark
+  defeat, detector-guided rewriting, disguised authorship, and unsupported
+  watermark-free claims.
+- Nine additive content-quality criteria for source-detail and causal-mechanism
+  loss, disproportionate structure, current deliverable padding, tool and
+  reference residue, intent-only stopping, voice normalization, private
+  working-language leakage, and non-material work chronology. Current-model
+  overlays are dated, task- and surface-bounded, unmeasured for prevalence, and
+  never establish authorship.
+- A semantic no-removals gate that freezes every pre-release writing-rule line
+  in order. The only replacements permitted are exact SHA-256-bound factual
+  corrections in a separately reviewed allowlist; additions remain allowed.
+
+### Changed
+
+- `synthesis-content-quality` **v4.1.0** separates editorial quality,
+  model-shaped style observations, technical provenance, and authorship. It
+  preserves the complete historical catalog while correcting unsupported
+  false-positive rates, probability semantics, provider certainty, and the
+  stale universal text-watermark statement.
+- `synthesis-writing-pitfalls` **v1.1.0** adds unnecessary editorial
+  intervention; `synthesis-writing-craft` **v1.1.0** adds source-mechanism,
+  voice, proportional-structure, and edit-materiality principles.
+- `synthesis-clean-text` **v2.0.0** keeps the no-hidden-marker production policy
+  and adds an enforceability boundary: characters and declared lineage are
+  inspectable, while an undisclosed statistical mark cannot be verified or
+  removed by ordinary prose revision.
+- `synthesis-skill-router` **v1.2.0** routes integrity, lineage, generation
+  receipt, and provenance requests to `synthesis-text-provenance` without
+  implying authorship or watermark absence.
+
 ## [4.41.0] - 2026-08-20
 
 ### Added

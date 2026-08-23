@@ -13,7 +13,7 @@ license: CC0-1.0
 depends_on: []
 metadata:
   author: Rajiv Pant
-  version: 4.0.0
+  version: 4.1.0
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -178,12 +178,12 @@ Full per-criterion attribution: [references/calibration-tables.md](references/ca
 
 ### B2: Combined-Signal Fingerprints
 
-The v3.1.0 heuristic ("5+ medium-confidence indicators equals very likely AI") is replaced with 86 specific combinations where co-occurrence is a stronger signal than count. Combined-signal detection drops false-positive rates by an order of magnitude versus count-based detection.
+The v3.1.0 heuristic ("5+ medium-confidence indicators equals very likely AI") is replaced with 86 specific combinations where co-occurrence can be more informative than a raw count. The inherited catalog's exact false-positive estimates were not produced from a preserved labeled corpus and must not be treated as measured performance. Keep the combinations as editorial and research hypotheses; validate them on the target genre and population before making any provenance inference.
 
 High-yield combos to know:
 
-- **`B2-COMBO-001` ChatGPT 4o tell.** Saturated vocab + exhausted metaphors + section-ending summary. False-positive rate below 1 percent at full co-occurrence.
-- **`B2-COMBO-003` Claude.ai default.** Em-dashes (high density) + bulleted bolded lead-ins + uniform paragraph length. False-positive rate below 0.5 percent. Strongest single-family fingerprint as of 2026-05.
+- **`B2-COMBO-001` ChatGPT 4o research combination.** Saturated vocab + exhausted metaphors + section-ending summary. The inherited below-1-percent estimate is unvalidated and non-operational.
+- **`B2-COMBO-003` Claude.ai research combination.** Em-dashes (high density) + bulleted bolded lead-ins + uniform paragraph length. The inherited below-0.5-percent estimate is unvalidated and non-operational.
 - **`B2-COMBO-007` Fake-expertise stack.** Vague attribution + hallucinated citation + generic insight. Definitive when the citation can be verified absent.
 - **`B2-COMBO-010` ESL false-positive trap (NEGATIVE marker).** Uniform paragraph length + restricted vocabulary + heavy transitions. The cornerstone signature for AI is also the cornerstone signature for non-native English writing per Liang et al. 2023. This combination is a **NEGATIVE marker**: do not flag as AI unless combined with at least one register-specific AI marker (saturated vocabulary cluster, em-dash density, system-prompt artifact, chatbot reflex).
 
@@ -193,8 +193,8 @@ Full catalog of all 86 combos: [references/combined-signal-fingerprints.md](refe
 
 Each criterion is split into two axes:
 
-- **SSWP (Signal Strength When Present).** A 0.0 to 1.0 score representing the conditional probability that text containing the pattern is AI-generated. SSWP above 0.85 is "smoking gun"; 0.6 to 0.85 is "strong"; 0.4 to 0.6 is "moderate"; below 0.4 is "ambient."
-- **BR (Base Rate).** Per-family percentage. Split for zone-conditional patterns into BR-artifact-body and BR-full-response.
+- **SSWP (legacy Signal Strength When Present).** An inherited ordinal research score, not `P(AI | pattern)` and not an authorship probability. A posterior probability requires a population prior plus a measured likelihood for AI and relevant human comparison classes. Preserve the old 0.0-to-1.0 values as dated hypotheses until a labeled corpus supports recalibration; use the qualitative editorial tier, evidence status, context, and counterexamples in reviews.
+- **BR (legacy Base Rate).** A dated per-family occurrence estimate, split for zone-conditional patterns into BR-artifact-body and BR-full-response. Treat an entry as measured only when its exact model, surface, task distribution, sample size, collection date, and source are preserved; otherwise it is an unvalidated estimate.
 
 The split reveals that some widely cited markers (em-dash density) have very high signal strength but plummeting base rate in newer GPT models, while others (uniform paragraph length) have moderate signal strength but very high base rate that overlaps with ESL writing.
 
@@ -210,7 +210,7 @@ Full per-family per-criterion table: [references/calibration-tables.md](referenc
 
 Ask: artifact-only or full-response? Apply the corresponding pattern subset (zone tags filter the catalog).
 
-### Step 2: Check for smoking-gun indicators (SSWP above 0.85)
+### Step 2: Check for high-salience defects (legacy SSWP above 0.85)
 
 - Placeholder text or chatbot artifacts (A3-TF).
 - Hallucinated citations or fabricated DOIs (A3-CS).
@@ -220,7 +220,7 @@ Ask: artifact-only or full-response? Apply the corresponding pattern subset (zon
 
 The current canonical locator for system-prompt artifact bleed is `A3-TF-006`; retain `A3-BT-013` as the legacy locator until Rajiv explicitly approves a replacement.
 
-If any present: very likely unedited AI output.
+If any are present, confirm the literal technical or factual defect and repair it. Some residues can establish that a tool or workflow touched the artifact, but none establishes who wrote the surrounding prose.
 
 ### Step 3: Apply combined-signal fingerprints
 
@@ -234,7 +234,7 @@ Run the deletion test (`A2-SUB-001`), the specificity test (`A2-SUB-002`), and t
 
 ### Step 5: Check ESL safe-harbor
 
-If the piece's signature is uniform paragraphs + restricted vocabulary + heavy transitions, check whether any register-specific AI marker is also present. If not, the piece is likely non-native English human writing; do NOT flag as AI.
+If the piece's signature is uniform paragraphs + restricted vocabulary + heavy transitions, check whether any register-specific model-shaped marker is also present. With or without corroboration, do not infer authorship from the prose. The safe-harbor exists to prevent ordinary multilingual or non-native-English writing from being mislabeled.
 
 ### Step 6: Assess overall pattern
 
@@ -272,7 +272,7 @@ These do NOT reliably signal AI generation:
 - **Common phrases.** "Rich cultural heritage" exists in human writing too.
 - **Em dashes alone.** Professional writers use them frequently. The signal is density combined with other markers, weighted per family (HIGH for Claude, LOW for Llama, declining for GPT-5.1+).
 - **Technical terminology.** Experts naturally use jargon.
-- **Watermarking detection.** No frontier model uses reliable text watermarking as of 2026-05. Claims of watermark-based detection are unreliable.
+- **Watermarking and provenance.** Provider text-marking deployments and detector access are model-, surface-, and date-specific. A disclosed mark or authorized detector result is technical provenance evidence with stated limitations; prose cues and ordinary rewriting cannot verify that a statistical mark is absent. Use `synthesis-text-provenance` and current primary provider documentation.
 - **AI detectors as authority.** Pangram, GPTZero, Originality, Copyleaks, Turnitin all produce useful signals but should never be the sole basis for a determination. The Liang ESL bias finding applies to most commercial detectors.
 
 ## Systematic Revision Process for Creators
@@ -405,7 +405,7 @@ This skill is the AI-pattern-and-substance arm of the writing-quality family:
 - [`synthesis-article-refresh`](../synthesis-article-refresh/SKILL.md): Refresh and revitalize older articles.
 - [`synthesis-voice-profiler`](../synthesis-voice-profiler/SKILL.md): Generate a structured voice profile.
 - [`synthesis-fact-checking`](../synthesis-fact-checking/SKILL.md) v2.0: Companion skill for citation, quote, and source verification with per-family hallucination signatures.
-- [`synthesis-clean-text`](../synthesis-clean-text/SKILL.md): Remove watermarks and statistical fingerprints from generated text.
+- [`synthesis-clean-text`](../synthesis-clean-text/SKILL.md): Enforce clean-character and no-hidden-marker requirements, audit inspectable text properties, and state the boundary on unverifiable statistical marks.
 - [`synthesis-text-provenance`](../synthesis-text-provenance/SKILL.md): Select hosted or local/open-weight generation paths, preserve manifests, audit text integrity, and report authorized provenance signals. It does not treat editorial rewriting as verified removal of a provider mark.
 
 ## References

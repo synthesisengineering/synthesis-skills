@@ -8,9 +8,10 @@ description: >
   what a provenance signal can or cannot prove. Do not use to defeat provider
   marks, evade detectors, or disguise AI authorship.
 license: Apache-2.0
+depends_on: []
 metadata:
   author: Rajiv Pant
-  version: 0.1.0
+  version: 1.0.0
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -131,6 +132,7 @@ python3 scripts/provenance_manifest.py create \
   --provider local \
   --model example-model \
   --runtime ollama \
+  --runtime-receipt ollama-metadata.json \
   --endpoint-class local_loopback \
   --prompt-file prompt.txt \
   --output-file output.txt \
@@ -139,6 +141,11 @@ python3 scripts/provenance_manifest.py create \
 python3 scripts/provenance_manifest.py validate provenance.json
 python3 scripts/provenance_manifest.py verify provenance.json
 ```
+
+For an edited or derived output, add each direct parent with
+`--parent-manifest parent.json` during creation and pass the same explicit
+parent manifest to `verify`. Parent links contain hashes and record IDs, not
+paths; verification never follows a path stored by a parent.
 
 The full schema and field semantics are in
 [`references/provenance-manifest.md`](references/provenance-manifest.md).
@@ -154,17 +161,29 @@ python3 scripts/text_integrity_audit.py article.txt --format json --fail-on-find
 ```
 
 The script reports code points, positions, normalization differences, hashes,
-and line-ending counts. It never writes a cleaned copy.
+and line-ending counts. For a file, it performs two complete byte reads and
+refuses the audit if their SHA-256 hashes differ. Standard input is necessarily
+single-read. The script never writes a cleaned copy.
 
 ### 6. Run local generation when it satisfies the policy
 
-For an already running loopback OpenAI-compatible endpoint:
+For an already running loopback OpenAI-compatible endpoint, capture the native
+runtime receipt first. The bundled metadata helper supports Ollama:
+
+```bash
+python3 scripts/ollama_metadata.py \
+  --model example-model \
+  --output ollama-metadata.json
+```
+
+Then bind that receipt into the one-shot generation manifest:
 
 ```bash
 python3 scripts/local_generate.py \
   --endpoint http://127.0.0.1:11434/v1/chat/completions \
   --provider local \
   --runtime ollama \
+  --runtime-receipt ollama-metadata.json \
   --model example-model \
   --prompt-file prompt.txt \
   --output-file output.txt \
@@ -174,15 +193,6 @@ python3 scripts/local_generate.py \
 The runner records one generation. It does not call a detector, regenerate
 selectively, or optimize against provenance results. Non-loopback endpoints are
 rejected unless the operator passes `--allow-non-loopback` deliberately.
-
-For Ollama, capture a bounded native runtime receipt in the same evidence
-bundle:
-
-```bash
-python3 scripts/ollama_metadata.py \
-  --model example-model \
-  --output ollama-metadata.json
-```
 
 The receipt preserves the runtime version, model digest, size, quantization,
 license and template hashes, selected model metadata, and declared unknowns.
@@ -209,7 +219,9 @@ the evidence establishes only a narrower technical fact.
 - [ ] Exact model, surface, runtime, and collection date are recorded.
 - [ ] Hosted versus local selection follows the stated requirement.
 - [ ] Raw input/output and hashes are preserved before editing.
-- [ ] Manifest validation and hash verification pass.
+- [ ] Native runtime receipt is hash-bound for local generation.
+- [ ] Manifest validation, self-hash, file hashes, and direct-parent lineage
+      verification pass.
 - [ ] Detector access and authorization are recorded, if used.
 - [ ] No detector result was used as an optimization loop.
 - [ ] Positive and negative conclusions are bounded to the evidence.
