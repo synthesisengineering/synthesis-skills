@@ -166,6 +166,32 @@ class PrivacyAndStorageTests(unittest.TestCase):
             mode = os.stat(state / "machine-id").st_mode & 0o777
             self.assertEqual(mode, 0o600)
 
+    def test_install_transitions_merge_selections_but_refresh_replaces(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            first = [{"artifact_id": "qwen3-8b-q8-0"}]
+            second = [{"artifact_id": "glm-4.7-flash-q4-k-m"}]
+            runtime.update_inventory(
+                state,
+                fixture_profile(),
+                first,
+                merge_selections=True,
+            )
+            merged = runtime.update_inventory(
+                state,
+                fixture_profile(),
+                second,
+                merge_selections=True,
+            )
+            record = next(iter(merged["machines"].values()))
+            self.assertEqual(
+                record["selections"],
+                ["qwen3-8b-q8-0", "glm-4.7-flash-q4-k-m"],
+            )
+            refreshed = runtime.update_inventory(state, fixture_profile(), second)
+            record = next(iter(refreshed["machines"].values()))
+            self.assertEqual(record["selections"], ["glm-4.7-flash-q4-k-m"])
+
     def test_inventory_rejects_symlinked_state_root(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

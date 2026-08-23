@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.2"
+  version: "1.0.3"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -35,6 +35,8 @@ every workload.
 7. Run bounded functional and performance checks one model at a time. Unload
    each model after testing.
 8. Update the per-machine inventory only after verified state transitions.
+   Separate installation commands merge their verified selections; an
+   explicit inventory refresh replaces selections with the current plan.
 9. When a Hugging Face registry pull fails after catalog-pinned GGUF layers are
    cached, permit the deterministic local-import recovery only after every full
    digest and exact size matches. Never import an unpinned partial download.

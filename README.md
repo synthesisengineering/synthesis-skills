@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Separate installs preserve the complete machine selection (August 2026).**
+Release **4.43.3** makes installation transitions merge each verified artifact
+into the machine's selected set. Explicit inventory refreshes still replace
+that set with the current policy plan. See the
+[4.43.3 release notes](CHANGELOG.md).
+
 **Cached recovery now accounts for Ollama normalization (August 2026).**
 Release **4.43.2** makes the recovery receipt distinguish zero network transfer
 from possible runtime-layer materialization. Hard links avoid a separate
