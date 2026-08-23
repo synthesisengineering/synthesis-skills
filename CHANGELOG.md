@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.43.3] - 2026-08-23
+
+### Fixed
+
+- `synthesis-local-model-runtime` **v1.0.3** now merges verified selections
+  across separate installation commands. Installing several explicitly named
+  artifacts one at a time no longer leaves only the last artifact resolvable;
+  an explicit inventory refresh still replaces the selection set with the
+  current policy plan.
+
 ## [4.43.2] - 2026-08-23
 
 ### Fixed

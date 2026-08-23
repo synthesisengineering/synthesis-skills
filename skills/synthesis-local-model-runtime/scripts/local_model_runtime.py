@@ -1069,6 +1069,8 @@ def update_inventory(
     selections: list[dict[str, Any]],
     installed: dict[str, dict[str, Any]] | None = None,
     label: str | None = None,
+    *,
+    merge_selections: bool = False,
 ) -> dict[str, Any]:
     identifier = machine_id(state_dir)
     inventory_path = state_dir / "machines.json"
@@ -1085,11 +1087,19 @@ def update_inventory(
     previous_installed = previous.get("installed", {})
     if not isinstance(previous_installed, dict):
         raise LocalModelError("Current machine installed-artifact map is invalid")
+    selection_ids = [item["artifact_id"] for item in selections]
+    if merge_selections:
+        previous_selections = previous.get("selections", [])
+        if not isinstance(previous_selections, list) or not all(
+            isinstance(item, str) and item for item in previous_selections
+        ):
+            raise LocalModelError("Current machine selection list is invalid")
+        selection_ids = list(dict.fromkeys([*previous_selections, *selection_ids]))
     record = {
         "label": label if label is not None else previous.get("label"),
         "updated_at": utc_now(),
         "profile": profile,
-        "selections": [item["artifact_id"] for item in selections],
+        "selections": selection_ids,
         "installed": dict(previous_installed),
     }
     if installed:
@@ -1260,7 +1270,14 @@ def perform_install(
             "installation_method": installation_method,
             **safe,
         }
-        update_inventory(state_dir, profile, plan["selections"], installed, label)
+        update_inventory(
+            state_dir,
+            profile,
+            plan["selections"],
+            installed,
+            label,
+            merge_selections=True,
+        )
     return {"installed": installed, "inventory": display_path(state_dir / "machines.json")}
 
 

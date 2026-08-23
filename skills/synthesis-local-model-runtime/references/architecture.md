@@ -15,6 +15,10 @@
 6. **Inventory:** an atomic map from an opaque locally generated machine id to
    the safe profile, intended selections, and resolved installed artifacts.
 
+Installation transitions merge selections so an explicit one-model command
+cannot erase earlier verified choices. A deliberate inventory refresh replaces
+the selection set with the policy's current recommendation.
+
 The catalog predicts. The runtime receipt establishes what is present. The
 benchmark establishes what happened in one bounded run. Keep these claims
 separate.
