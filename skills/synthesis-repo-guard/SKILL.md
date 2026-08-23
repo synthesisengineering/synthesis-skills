@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.2.0"
+  version: "2.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -126,6 +126,9 @@ Config `~/.synthesis/checkpoint-sync.yaml` (copy `checkpoint-sync.example.yaml`)
 
 # Publish pending project context after source repos are upstream-current
 ./checkpoint_sync.py --flush-pending
+
+# Publish and retire one exact session without inspecting unrelated sessions
+./checkpoint_sync.py --flush-session <session-id>
 ```
 
 ### Exit codes (both scripts)
@@ -218,7 +221,8 @@ repo_sync_check.py [--workspace W] [--max-depth N] [--quiet] [--json]
                    [--report-dir D] [--no-report]
 
 checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
-                   [--flush-pending] [--no-throttle] [--dry-run]
+                   [--flush-pending | --flush-session SESSION_ID]
+                   [--no-throttle] [--dry-run]
                    [--prepare-worktree-retirement PATH
                     --retirement-repository REPO --retirement-head SHA
                     --retirement-remote REMOTE --retirement-base REMOTE_REF]
@@ -235,6 +239,11 @@ checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
 - `--hook` consumes the calling session's JSON hook payload and never falls
   back to a workspace-wide mutation. `--flush-pending` is the explicit
   remote-context transition; `--no-throttle` is its console compatibility alias.
+- `--flush-session` applies the same remote-readiness gates to one manifest
+  selected by its exact session id. It does not read, validate, publish, or
+  delete any other session manifest. Use it when unrelated pending work must
+  remain recoverable while one fully published session transitions to
+  `REMOTE_READY`.
 
 ---
 
@@ -250,6 +259,10 @@ checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
 
 ## Changelog
 
+- **2.3.0 (2026-08-23):** adds a fail-closed exact-session remote handoff that
+  retires one verified manifest without coupling it to unrelated pending
+  sessions; preserves global flush behavior and fsyncs successful manifest
+  retirement.
 - **2.2.0 (2026-08-14):** makes retirement a lifecycle-locked, remote-pinned,
   fsynced, resumable transaction across manifests and receipts; resumes with
   the intent's exact content-addressed reconciler and compare-binds optional

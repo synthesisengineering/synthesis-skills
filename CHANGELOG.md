@@ -4,6 +4,28 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.43.0] - 2026-08-23
+
+### Added
+
+- `synthesis-local-model-runtime` **v1.0.0**: a privacy-safe hardware profiler,
+  dated multi-tier model catalog, policy-driven fit planner, dry-run-first
+  Ollama installer, atomic per-machine inventory, exact model resolver, runtime
+  verification, and bounded benchmark receipts. The profiler uses an allowlist
+  and never records serials, hardware UUIDs, hostnames, or account data; the
+  storage guard rejects iCloud, workspace, repository, and declared protected
+  roots. The initial catalog covers practical Qwen, GLM, Kimi, and DeepSeek
+  artifacts from 16 to 128 GiB machines while keeping upstream ownership,
+  quantization publishers, base lineage, and resolved local digests separate.
+
+### Changed
+
+- `synthesis-repo-guard` **v2.3.0** adds `--flush-session <session-id>` for a
+  fail-closed, exact-session remote handoff. It applies the existing source and
+  context readiness gates to one manifest without reading, publishing, or
+  deleting unrelated sessions, removing the global all-or-nothing coupling
+  while preserving the existing batch command.
+
 ## [4.42.0] - 2026-08-23
 
 ### Added

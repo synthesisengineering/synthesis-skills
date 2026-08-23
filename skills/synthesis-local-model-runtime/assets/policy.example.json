@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "required_families": ["qwen", "glm", "kimi", "deepseek"],
+  "excluded_organizations": [],
+  "excluded_base_families": [],
+  "excluded_artifacts": [],
+  "artifact_overrides": {},
+  "allow_minimum_memory_fit": false,
+  "memory_headroom_gib": 16,
+  "minimum_free_disk_after_install_gib": 40,
+  "planning_context_tokens": 32768,
+  "protected_roots": []
+}

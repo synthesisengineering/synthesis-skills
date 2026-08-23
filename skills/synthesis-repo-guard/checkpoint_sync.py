@@ -37,6 +37,7 @@ Examples:
   ./checkpoint_sync.py --hook --quiet        # same-machine Stop receipt
   ./checkpoint_sync.py --repo ~/x/plan.md --now   # local producer receipt
   ./checkpoint_sync.py --flush-pending       # explicit remote handoff
+  ./checkpoint_sync.py --flush-session ID    # exact-session remote handoff
   ./checkpoint_sync.py --dry-run             # preview remote handoff
 """
 
@@ -1070,11 +1071,10 @@ def local_handoff_checkpoint(payload: dict, cfg: dict) -> tuple[list[dict], Path
         return _local_handoff_checkpoint_unlocked(payload, cfg)
 
 
-def _flush_all_pending_unlocked(
-    cfg: dict, *, dry_run: bool
+def _flush_pending_manifests_unlocked(
+    cfg: dict, manifests: list[Path], *, dry_run: bool
 ) -> tuple[list[dict], list[Path]]:
-    """Batch every pending session into one exact-path commit per repository."""
-    manifests = sorted(PENDING_DIR.glob("*.json")) if PENDING_DIR.is_dir() else []
+    """Publish and retire exactly the supplied pending manifests."""
     all_paths: list[Path] = []
     source_paths: list[Path] = []
     valid_manifests: list[Path] = []
@@ -1135,6 +1135,7 @@ def _flush_all_pending_unlocked(
         if not dry_run and valid_manifests and not any(result.get("alert") for result in results):
             for manifest in valid_manifests:
                 manifest.unlink(missing_ok=True)
+            fsync_directory(PENDING_DIR)
         return results, valid_manifests
     finally:
         for lock in reversed(locks):
@@ -1142,9 +1143,65 @@ def _flush_all_pending_unlocked(
             lock.close()
 
 
+def _flush_all_pending_unlocked(
+    cfg: dict, *, dry_run: bool
+) -> tuple[list[dict], list[Path]]:
+    """Batch every pending session into one exact-path commit per repository."""
+    manifests = sorted(PENDING_DIR.glob("*.json")) if PENDING_DIR.is_dir() else []
+    return _flush_pending_manifests_unlocked(cfg, manifests, dry_run=dry_run)
+
+
 def flush_all_pending(cfg: dict, *, dry_run: bool) -> tuple[list[dict], list[Path]]:
     with lifecycle_lock():
         return _flush_all_pending_unlocked(cfg, dry_run=dry_run)
+
+
+def flush_pending_session(
+    cfg: dict, session_id: str, *, dry_run: bool
+) -> tuple[list[dict], list[Path]]:
+    """Publish and retire one exact session without inspecting unrelated manifests."""
+    if not isinstance(session_id, str) or not session_id.strip():
+        return [
+            {
+                "repo": "unknown",
+                "name": "pending-session",
+                "action": "failed",
+                "alert": "session id must be a non-empty string",
+            }
+        ], []
+    if len(session_id.encode("utf-8")) > 512 or any(
+        ord(character) < 32 for character in session_id
+    ):
+        return [
+            {
+                "repo": "unknown",
+                "name": "pending-session",
+                "action": "failed",
+                "alert": "session id contains unsafe characters or exceeds 512 bytes",
+            }
+        ], []
+    manifest = pending_manifest_path(session_id)
+    with lifecycle_lock():
+        validate_state_paths(PENDING_DIR, manifest)
+        if manifest.is_symlink():
+            return [
+                {
+                    "repo": str(manifest),
+                    "name": "pending-session",
+                    "action": "failed",
+                    "alert": "pending manifest is a symlink",
+                }
+            ], [manifest]
+        if not manifest.exists():
+            return [
+                {
+                    "repo": str(manifest),
+                    "name": "pending-session",
+                    "action": "session-clean",
+                    "alert": None,
+                }
+            ], []
+        return _flush_pending_manifests_unlocked(cfg, [manifest], dry_run=dry_run)
 
 
 def source_paths_remote_ready(paths: list[Path]) -> list[dict]:
@@ -1378,6 +1435,12 @@ def main() -> int:
         help="Commit and push all session-attributed context paths for remote handoff",
     )
     ap.add_argument(
+        "--flush-session",
+        default=None,
+        metavar="SESSION_ID",
+        help="Commit, push, and retire one exact session manifest without inspecting other sessions",
+    )
+    ap.add_argument(
         "--reconcile-retired-worktree",
         type=Path,
         default=None,
@@ -1450,6 +1513,20 @@ def main() -> int:
     if sum(retirement_modes) > 1:
         if not args.quiet:
             print("checkpoint_sync: choose exactly one retirement mode", file=sys.stderr)
+        return 2
+
+    if args.flush_session is not None and (
+        args.hook
+        or args.repo is not None
+        or args.flush_pending
+        or args.no_throttle
+        or any(retirement_modes)
+    ):
+        if not args.quiet:
+            print(
+                "checkpoint_sync: --flush-session cannot be combined with another lifecycle mode",
+                file=sys.stderr,
+            )
         return 2
 
     if args.complete_worktree_retirement is not None:
@@ -1525,6 +1602,43 @@ def main() -> int:
                     line = f"{result['name']}: {result['action']}"
                     if result.get("files") is not None:
                         line += f" ({result['files']} path(s))"
+                    if result.get("alert"):
+                        line += f"  ⚠ {result['alert']}"
+                    print(line)
+        return 1 if alerts else 0
+
+    if args.flush_session is not None:
+        results, manifests = flush_pending_session(
+            cfg, args.flush_session, dry_run=args.dry_run
+        )
+        alerts = [result for result in results if result.get("alert")]
+        readiness = (
+            "BLOCKED"
+            if alerts
+            else ("REMOTE_READY" if manifests else "CLEAN")
+        )
+        if not args.dry_run:
+            atomic_json(
+                REMOTE_HANDOFF_STATE,
+                {
+                    "schema_version": 1,
+                    "readiness": readiness,
+                    "scope": "session",
+                    "session_id": args.flush_session,
+                    "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                    "manifests": [str(path) for path in manifests],
+                    "results": results,
+                },
+            )
+        if alerts:
+            generic_alert_ping(len(alerts), speak=args.speak, notify=args.notify)
+        if not args.quiet:
+            if args.json:
+                print(json.dumps({"readiness": readiness, "results": results}, indent=2))
+            else:
+                print(f"session remote handoff: {readiness}")
+                for result in results:
+                    line = f"{result['name']}: {result['action']}"
                     if result.get("alert"):
                         line += f"  ⚠ {result['alert']}"
                     print(line)
