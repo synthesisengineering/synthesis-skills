@@ -1319,6 +1319,7 @@ def benchmark_artifact(
     prompt: str,
     num_predict: int,
     num_ctx: int,
+    think: bool = False,
 ) -> dict[str, Any]:
     if num_predict <= 0 or num_predict > 2048:
         raise LocalModelError("num-predict must be between 1 and 2048")
@@ -1330,6 +1331,7 @@ def benchmark_artifact(
             "model": artifact["runtime_model"],
             "prompt": prompt,
             "stream": False,
+            "think": think,
             "keep_alive": 0,
             "options": {
                 "temperature": 0,
@@ -1357,6 +1359,7 @@ def benchmark_artifact(
         "output_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
         "num_predict": num_predict,
         "num_ctx": num_ctx,
+        "think": think,
         "done_reason": response.get("done_reason"),
         "load_duration_ns": response.get("load_duration"),
         "prompt_eval_count": response.get("prompt_eval_count"),
@@ -1438,6 +1441,11 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_parser.add_argument("--output-dir", type=Path)
     benchmark_parser.add_argument("--num-predict", type=int, default=256)
     benchmark_parser.add_argument("--num-ctx", type=int, default=8192)
+    benchmark_parser.add_argument(
+        "--think",
+        action="store_true",
+        help="Include model reasoning when the reasoning trace is the benchmark workload",
+    )
     return parser
 
 
@@ -1534,7 +1542,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             emit(
                 benchmark_artifact(
-                    artifact, args.output_dir, prompt, args.num_predict, args.num_ctx
+                    artifact,
+                    args.output_dir,
+                    prompt,
+                    args.num_predict,
+                    args.num_ctx,
+                    think=args.think,
                 )
             )
             return 0

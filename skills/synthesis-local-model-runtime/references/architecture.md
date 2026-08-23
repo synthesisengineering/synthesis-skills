@@ -23,6 +23,10 @@ The catalog predicts. The runtime receipt establishes what is present. The
 benchmark establishes what happened in one bounded run. Keep these claims
 separate.
 
+Bounded final-response benchmarks disable optional model thinking by default
+and record the setting. Reasoning-trace evaluation is an explicit opt-in
+because it changes both the workload and token-budget interpretation.
+
 ## Runtime adapter contract
 
 An adapter must implement:

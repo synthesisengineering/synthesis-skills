@@ -11,6 +11,11 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Benchmarks spend their budget on the final response (August 2026).** Release
+**4.43.4** disables reasoning traces by default for bounded local samples and
+records that choice in the receipt. Operators can still opt in with `--think`.
+See the [4.43.4 release notes](CHANGELOG.md).
+
 **Separate installs preserve the complete machine selection (August 2026).**
 Release **4.43.3** makes installation transitions merge each verified artifact
 into the machine's selected set. Explicit inventory refreshes still replace
