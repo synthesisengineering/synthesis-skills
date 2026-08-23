@@ -11,6 +11,13 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Runtime configuration is part of model fit (August 2026).** Release
+**4.43.6** detects Ollama KV-cache incompatibilities during planning. Its
+dry-run-first Homebrew adapter can apply one validated setting with a private
+backup, health check, and rollback. Benchmark receipts also reject truncated
+responses and reasoning markup that leaks through a disabled-thinking request. See the
+[4.43.6 release notes](CHANGELOG.md).
+
 **Empty final responses fail closed in provenance runs (August 2026).** Release
 **4.43.5** prevents a thinking model from producing a valid provenance manifest
 for zero bytes of final text. The local OpenAI-compatible runner also records

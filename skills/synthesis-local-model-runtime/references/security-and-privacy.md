@@ -43,3 +43,16 @@ Do not infer that a symlink points somewhere safe from its visible prefix.
 Generation and metadata calls use loopback HTTP only. The executable has no
 option to send prompts to a remote host. A future remote adapter is a separate
 capability and requires its own disclosure and credential review.
+
+HTTP error bodies are preserved only up to a fixed bound so architecture and
+cache incompatibilities remain diagnosable without allowing an unbounded local
+service response into logs.
+
+## Runtime service changes
+
+Runtime configuration is dry-run-first and requires `--yes`. The Homebrew
+adapter rejects symlinks, foreign ownership, unexpected labels, unexpected
+commands, and values outside its KV-cache allowlist. It writes atomically,
+stores the original plist under the private state directory, and restores that
+original if unload, reload, or health verification fails. It never edits the
+Homebrew formula or a system-wide service.

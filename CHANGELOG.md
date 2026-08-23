@@ -4,6 +4,22 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.43.6] - 2026-08-23
+
+### Fixed
+
+- `synthesis-local-model-runtime` **v1.0.5** now treats effective Ollama
+  KV-cache configuration as a model-fit constraint. Kimi Linear artifacts
+  declare their `f16` requirement; an incompatible Homebrew service blocks the
+  plan instead of failing only at generation time.
+- A dry-run-first `configure-ollama` command validates the standard current-user
+  Homebrew LaunchAgent, backs it up, applies one allowlisted KV-cache setting,
+  reloads it, proves loopback health, and rolls back on failure. Ollama HTTP
+  error bodies are retained with a fixed size bound for actionable diagnostics.
+- Benchmark receipts now distinguish a complete final response from a bounded
+  performance sample. A length stop or raw `<think>` markup in a
+  reasoning-disabled run is preserved but cannot pass the final-response gate.
+
 ## [4.43.5] - 2026-08-23
 
 ### Fixed

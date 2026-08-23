@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.4"
+  version: "1.0.5"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -25,7 +25,8 @@ every workload.
 2. Validate the bundled catalog before using it:
    `scripts/local_model_runtime.py catalog`.
 3. Load any local policy and create a dry-run plan. Recommendation applies
-   exclusions first, then hard memory and storage gates, then quality ordering.
+   exclusions first, then hard memory, storage, and runtime-configuration
+   gates, then quality ordering.
 4. Present the exact artifacts, quantizations, distribution channels, disk
    estimate, remaining free space, runtime prerequisites, and reasons.
 5. Install only after the user authorizes the downloads. `install` is dry-run
@@ -97,7 +98,27 @@ python3 scripts/local_model_runtime.py benchmark \
 Benchmarks set the Ollama `think` field to `false` by default so a bounded token
 budget measures the requested final response. Pass `--think` only when the
 reasoning trace is itself the workload under evaluation; the receipt records
-the chosen mode.
+the chosen mode. The receipt rejects length-stopped output and detects raw
+`<think>` markup. When reasoning was requested off, leaked markup is preserved
+as evidence but is not accepted as a final-response benchmark.
+
+Some model architectures require a specific Ollama KV-cache representation.
+The planner compares catalog requirements with the effective service setting
+and blocks an incompatible plan. On a macOS Homebrew service, inspect the
+validated change before applying it:
+
+```bash
+python3 scripts/local_model_runtime.py configure-ollama \
+  --kv-cache-type f16
+python3 scripts/local_model_runtime.py configure-ollama \
+  --kv-cache-type f16 \
+  --yes
+```
+
+The mutating command accepts only the standard current-user Homebrew
+LaunchAgent with the expected label and `ollama serve` command. It writes a
+private backup, changes one allowlisted environment value, reloads the service,
+waits for a healthy loopback API, and restores the prior plist if reload fails.
 
 ## Recommendation rules
 
@@ -191,4 +212,7 @@ into an evasion or watermark-removal loop.
 - A failed pull never creates an installed inventory record.
 - A model absent from the runtime after a reported pull is a failure.
 - A functional check and a benchmark are separate. Preserve both results.
+- Installed metadata is not a functional pass. A model that cannot generate
+  under the effective runtime configuration remains unusable until that
+  incompatibility is resolved and the bounded benchmark passes.
 - If disk, runtime, or model state changes after planning, rerun the plan.
