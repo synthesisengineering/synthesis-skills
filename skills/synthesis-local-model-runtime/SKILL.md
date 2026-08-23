@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.1"
+  version: "1.0.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -77,7 +77,10 @@ python3 scripts/local_model_runtime.py install \
 ```
 
 Recovery fails closed unless every required cached layer matches the catalog's
-full SHA-256 digest and exact byte size.
+full SHA-256 digest and exact byte size. Its receipt reports zero network
+transfer separately from worst-case additional runtime materialization. Ollama
+may normalize the GGUF into a new runtime layer and retain the original cache;
+hard links eliminate only a separate staging copy.
 
 To verify and benchmark an installed artifact:
 
@@ -111,6 +114,8 @@ python3 scripts/local_model_runtime.py benchmark \
   name but records `catalog-pinned-local-import` as the installation method.
   It is a recovery path for verified cached layers, not another acquisition
   channel.
+- Never equate zero recovery download with zero disk growth. Budget the exact
+  cached-layer total as worst-case additional runtime materialization.
 
 ## Storage guard
 

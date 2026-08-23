@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.43.2] - 2026-08-23
+
+### Fixed
+
+- `synthesis-local-model-runtime` **v1.0.2** reports cached recovery as a
+  zero-network operation with explicit worst-case runtime materialization.
+  Ollama can normalize a verified GGUF into a new runtime layer and retain the
+  original registry cache, so recovery plans no longer imply that hard-linked
+  staging prevents all model-sized disk growth.
+
 ## [4.43.1] - 2026-08-23
 
 ### Fixed
@@ -12,7 +22,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   Face Ollama registry transaction after the large GGUF layers are already
   cached. Catalog-pinned layer digests, media types, and exact sizes gate a
   supported local multi-GGUF import; every layer is re-hashed, hard links avoid
-  a second model-sized copy, temporary import links are removed, and the
+  a separate staging copy, temporary import links are removed, and the
   runtime-resolved model identity is verified before inventory is updated.
 
 ## [4.43.0] - 2026-08-23

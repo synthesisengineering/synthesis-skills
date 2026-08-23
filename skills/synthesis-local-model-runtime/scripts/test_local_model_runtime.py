@@ -377,6 +377,27 @@ class RuntimeTests(unittest.TestCase):
             )
             self.assertEqual([call[1] for call in calls], ["create"])
 
+    def test_cached_recovery_receipt_separates_network_and_runtime_disk(self):
+        _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
+        artifact = next(
+            item for item in artifacts if item["id"] == "qwen3.8-27b-q8-0"
+        )
+        plan = {
+            "selections": [{"artifact_id": artifact["id"]}],
+        }
+        receipt = runtime.cached_recovery_receipt(plan, artifacts)
+        expected = round(
+            sum(
+                layer["size_bytes"]
+                for layer in artifact["local_import_fallback"]["gguf_layers"]
+            )
+            / runtime.GIB,
+            2,
+        )
+        self.assertEqual(receipt["network_download_gib"], 0.0)
+        self.assertEqual(receipt["possible_additional_runtime_gib"], expected)
+        self.assertIn("retain", receipt["cache_retention"])
+
     def test_cached_gguf_import_rejects_digest_mismatch(self):
         _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
         artifact = dict(
