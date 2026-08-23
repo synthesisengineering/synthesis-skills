@@ -362,6 +362,20 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 class LocalRunnerTests(unittest.TestCase):
+    def test_rejects_empty_final_content(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must contain final text"):
+            lg.extract_content(
+                {
+                    "model": "thinking-model",
+                    "choices": [
+                        {
+                            "finish_reason": "length",
+                            "message": {"content": "  \n"},
+                        }
+                    ],
+                }
+            )
+
     def test_rejects_non_loopback_by_default(self) -> None:
         with self.assertRaises(ValueError):
             lg.endpoint_class("https://example.com/v1/chat/completions", False)
@@ -445,6 +459,7 @@ class LocalRunnerTests(unittest.TestCase):
                     "--output-file", str(output),
                     "--manifest", str(manifest),
                     "--seed", "7",
+                    "--reasoning-effort", "none",
                 ])
                 self.assertEqual(0, code)
                 self.assertEqual("A recorded local response.\n", output.read_text(encoding="utf-8"))
@@ -459,6 +474,7 @@ class LocalRunnerTests(unittest.TestCase):
                 self.assertEqual(pm.sha256_file(receipt), data["runtime_receipt"]["sha256"])
                 self.assertEqual([], pm.verify_manifest_files(manifest, data))
                 self.assertEqual("requested-test-model", _Handler.received["model"])
+                self.assertEqual("none", _Handler.received["reasoning_effort"])
         finally:
             server.shutdown()
             server.server_close()

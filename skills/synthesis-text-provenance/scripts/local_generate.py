@@ -75,6 +75,8 @@ def build_request(args: argparse.Namespace) -> dict[str, Any]:
     }
     if args.seed is not None:
         request["seed"] = args.seed
+    if args.reasoning_effort is not None:
+        request["reasoning_effort"] = args.reasoning_effort
     return request
 
 
@@ -113,6 +115,8 @@ def extract_content(result: dict[str, Any]) -> tuple[str, str | None, dict[str, 
         raise ValueError("endpoint response lacks choices[0].message.content") from exc
     if not isinstance(content, str):
         raise ValueError("choices[0].message.content must be a string")
+    if not content.strip():
+        raise ValueError("choices[0].message.content must contain final text")
     returned_model = result.get("model")
     if returned_model is not None and not isinstance(returned_model, str):
         raise ValueError("response model must be a string or absent")
@@ -152,6 +156,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--max-tokens", type=int, default=2048)
     parser.add_argument("--seed", type=int)
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=("none", "low", "medium", "high"),
+        help="optional OpenAI-compatible reasoning control",
+    )
     parser.add_argument("--timeout", type=float, default=300.0)
     parser.add_argument("--note", action="append", default=[])
     return parser
@@ -197,6 +206,7 @@ def main(argv: list[str] | None = None) -> int:
             "temperature": args.temperature,
             "max_tokens": args.max_tokens,
             "seed": args.seed,
+            "reasoning_effort": args.reasoning_effort,
             "system_prompt_supplied": bool(args.system_file),
             "reported_response": response_metadata,
         }

@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Empty final responses fail closed in provenance runs (August 2026).** Release
+**4.43.5** prevents a thinking model from producing a valid provenance manifest
+for zero bytes of final text. The local OpenAI-compatible runner also records
+an explicit reasoning-effort request. See the
+[4.43.5 release notes](CHANGELOG.md).
+
 **Benchmarks spend their budget on the final response (August 2026).** Release
 **4.43.4** disables reasoning traces by default for bounded local samples and
 records that choice in the receipt. Operators can still opt in with `--think`.

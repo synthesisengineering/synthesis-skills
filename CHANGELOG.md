@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.43.5] - 2026-08-23
+
+### Fixed
+
+- `synthesis-text-provenance` **v1.0.1** now rejects an empty or
+  whitespace-only final response instead of sealing a zero-byte output as a
+  successful generation. Its OpenAI-compatible runner also accepts an explicit
+  `--reasoning-effort` control and records that request parameter, allowing
+  Ollama thinking models to reserve the bounded output budget for final text.
+
 ## [4.43.4] - 2026-08-23
 
 ### Fixed

@@ -15,6 +15,8 @@ contract intentionally has no detector-feedback or rewrite loop.
 - endpoint URL;
 - native runtime-receipt file for local generation;
 - temperature, maximum output tokens, and optional seed;
+- optional OpenAI-compatible reasoning effort (`none`, `low`, `medium`, or
+  `high`);
 - output path and manifest path.
 
 ## Model-selection evidence
@@ -45,6 +47,9 @@ The endpoint must return JSON with:
 The returned model field may be absent. Record `null`; do not infer it from the
 request. Record `finish_reason`, `usage`, and `system_fingerprint` when the
 endpoint returns them; an absent field remains `null`.
+`choices[0].message.content` must contain non-whitespace final text. A response
+that exhausts its allowance in reasoning and returns no final content is a
+failed generation, not valid zero-byte evidence.
 
 ## Endpoint safety
 
