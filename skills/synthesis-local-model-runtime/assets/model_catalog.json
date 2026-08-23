@@ -184,6 +184,11 @@
       "recommended_memory_gib": 64,
       "planning_context_tokens": 32768,
       "minimum_runtime_version": "0.30.0",
+      "runtime_requirements": {
+        "ollama_kv_cache_types": [
+          "f16"
+        ]
+      },
       "quality_rank": 40,
       "roles": ["long-context", "writing", "reasoning"],
       "expected_digest_prefix": null,
@@ -220,6 +225,11 @@
       "recommended_memory_gib": 80,
       "planning_context_tokens": 32768,
       "minimum_runtime_version": "0.30.0",
+      "runtime_requirements": {
+        "ollama_kv_cache_types": [
+          "f16"
+        ]
+      },
       "quality_rank": 50,
       "roles": ["high-quality-long-context", "writing", "reasoning"],
       "expected_digest_prefix": null,

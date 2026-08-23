@@ -2,9 +2,9 @@
 
 ## Layers
 
-1. **Safe profile:** read-only hardware, storage, and runtime facts. The output
-   schema deliberately has no field for a hostname, serial, hardware UUID,
-   account, or network address.
+1. **Safe profile:** read-only hardware, storage, runtime, and effective
+   serving-configuration facts. The output schema deliberately has no field
+   for a hostname, serial, hardware UUID, account, or network address.
 2. **Catalog:** dated, reviewable artifact facts. An entry identifies the
    upstream model and the separately accountable quantization publisher.
 3. **Policy:** local choices such as required families, excluded organizations,
@@ -23,9 +23,16 @@ The catalog predicts. The runtime receipt establishes what is present. The
 benchmark establishes what happened in one bounded run. Keep these claims
 separate.
 
+Runtime fit includes configuration, not just the executable version. Catalog
+entries may constrain the Ollama KV-cache types that can represent their head
+dimensions. The planner blocks a mismatch before installation or use.
+
 Bounded final-response benchmarks disable optional model thinking by default
 and record the setting. Reasoning-trace evaluation is an explicit opt-in
-because it changes both the workload and token-budget interpretation.
+because it changes both the workload and token-budget interpretation. A clean
+final-response pass requires a non-empty stop-completed response. Raw thinking
+markup makes a reasoning-disabled run non-accepted even when final prose follows;
+the original output remains unchanged for diagnosis.
 
 ## Runtime adapter contract
 
@@ -38,6 +45,15 @@ An adapter must implement:
 - resolved artifact metadata including a local digest or content identity;
 - a loopback-only bounded generation call;
 - explicit unload.
+
+The macOS Homebrew configuration adapter is narrower than the serving adapter.
+It accepts only the expected current-user LaunchAgent label and two-argument
+`ollama serve` command, changes only an allowlisted KV-cache value, creates a
+private backup, reloads through `launchctl`, and proves API health. A failed
+reload restores the original plist. Because Ollama exposes the KV-cache type as
+a global service setting, the planner evaluates every selected artifact against
+the same effective value. Re-profile after Homebrew upgrades or service
+regeneration.
 
 Version 1.0 implements this contract for Ollama. Hugging Face GGUF ids remain
 Ollama artifacts after import, so the inventory records the full runtime name

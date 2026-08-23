@@ -29,6 +29,8 @@ SKILL_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CATALOG = SKILL_ROOT / "assets" / "model_catalog.json"
 DEFAULT_STATE_DIR = Path.home() / ".synthesis" / "local-models"
 OLLAMA_API = "http://127.0.0.1:11434"
+HOMEBREW_OLLAMA_LABEL = "homebrew.mxcl.ollama"
+OLLAMA_KV_CACHE_TYPES = {"f16", "q8_0", "q4_0"}
 GIB = 1024**3
 CATALOG_SCHEMA = 1
 POLICY_SCHEMA = 1
@@ -118,6 +120,26 @@ def atomic_text_write(path: Path, value: str) -> None:
             stream.write(value)
             stream.flush()
             os.fsync(stream.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def atomic_bytes_write(path: Path, value: bytes, mode: int | None = None) -> None:
+    reject_symlink_components(path.parent, path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    reject_symlink_components(path.parent, path)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary_path = Path(temporary)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(value)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if mode is not None:
+            os.chmod(temporary_path, mode)
         os.replace(temporary_path, path)
     finally:
         temporary_path.unlink(missing_ok=True)
@@ -262,12 +284,23 @@ def validate_model_store(store: Path, explicit_roots: list[str] | None = None) -
     return [display_path(root) for root in protected_roots(explicit_roots)]
 
 
-def macos_homebrew_ollama_store() -> Path | None:
+def macos_homebrew_ollama_service() -> tuple[Path, dict[str, Any]] | None:
     plist_path = Path.home() / "Library" / "LaunchAgents" / "homebrew.mxcl.ollama.plist"
     try:
+        reject_symlink_components(plist_path.parent, plist_path)
         payload = plistlib.loads(plist_path.read_bytes())
     except (FileNotFoundError, plistlib.InvalidFileException, OSError):
         return None
+    if not isinstance(payload, dict):
+        return None
+    return plist_path, payload
+
+
+def macos_homebrew_ollama_store() -> Path | None:
+    service = macos_homebrew_ollama_service()
+    if service is None:
+        return None
+    _, payload = service
     environment = payload.get("EnvironmentVariables", {})
     if not isinstance(environment, dict):
         return None
@@ -435,8 +468,42 @@ def api_json(path: str, payload: dict[str, Any] | None = None, timeout: int = 5)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            body = exc.read().decode("utf-8", errors="replace")
+        except OSError:
+            body = ""
+        detail = body.strip()[:2000] or str(exc)
+        raise LocalModelError(
+            f"Ollama loopback API returned HTTP {exc.code} for {path}: {detail}"
+        ) from exc
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         raise LocalModelError(f"Ollama loopback API unavailable for {path}: {exc}") from exc
+
+
+def ollama_service_configuration() -> dict[str, Any]:
+    if platform.system() == "Darwin":
+        service = macos_homebrew_ollama_service()
+        if service is not None:
+            _, payload = service
+            environment = payload.get("EnvironmentVariables", {})
+            if isinstance(environment, dict):
+                return {
+                    "source": "homebrew-service",
+                    "kv_cache_type": str(
+                        environment.get("OLLAMA_KV_CACHE_TYPE") or "f16"
+                    ),
+                    "flash_attention": str(
+                        environment.get("OLLAMA_FLASH_ATTENTION") or "0"
+                    ),
+                }
+    return {
+        "source": "process-environment"
+        if os.environ.get("OLLAMA_KV_CACHE_TYPE")
+        else "runtime-default",
+        "kv_cache_type": os.environ.get("OLLAMA_KV_CACHE_TYPE", "f16"),
+        "flash_attention": os.environ.get("OLLAMA_FLASH_ATTENTION", "0"),
+    }
 
 
 def runtime_profile() -> dict[str, Any]:
@@ -460,6 +527,7 @@ def runtime_profile() -> dict[str, Any]:
             "available": bool(ollama),
             "version": api_version or ollama_version,
             "api_reachable": api_reachable,
+            "configuration": ollama_service_configuration(),
         },
         "llama_cpp": {
             "available": bool(llama_cli),
@@ -622,6 +690,30 @@ def validate_catalog(catalog: dict[str, Any]) -> list[dict[str, Any]]:
             isinstance(role, str) and role for role in artifact["roles"]
         ):
             raise LocalModelError(f"{artifact_id}.roles must be non-empty strings")
+        requirements = artifact.get("runtime_requirements")
+        if requirements is not None:
+            if not isinstance(requirements, dict):
+                raise LocalModelError(
+                    f"{artifact_id}.runtime_requirements must be an object"
+                )
+            unknown_requirements = sorted(
+                set(requirements) - {"ollama_kv_cache_types"}
+            )
+            if unknown_requirements:
+                raise LocalModelError(
+                    f"{artifact_id}.runtime_requirements has unknown fields: "
+                    + ", ".join(unknown_requirements)
+                )
+            cache_types = requirements.get("ollama_kv_cache_types")
+            if not isinstance(cache_types, list) or not cache_types:
+                raise LocalModelError(
+                    f"{artifact_id}.runtime_requirements.ollama_kv_cache_types "
+                    "must be a non-empty list"
+                )
+            if any(value not in OLLAMA_KV_CACHE_TYPES for value in cache_types):
+                raise LocalModelError(
+                    f"{artifact_id} has an unsupported Ollama KV cache requirement"
+                )
         fallback = artifact.get("local_import_fallback")
         if fallback is not None:
             if artifact["distribution_channel"] != "huggingface-gguf":
@@ -744,6 +836,16 @@ def artifact_fit(artifact: dict[str, Any], profile: dict[str, Any], policy: dict
             f"runtime {artifact['runtime']} {runtime.get('version') or 'unknown'} is below "
             f"{artifact['minimum_runtime_version']}"
         )
+    requirements = artifact.get("runtime_requirements", {})
+    allowed_cache_types = requirements.get("ollama_kv_cache_types")
+    if allowed_cache_types:
+        current_cache_type = runtime.get("configuration", {}).get("kv_cache_type")
+        if current_cache_type not in allowed_cache_types:
+            runtime_blockers.append(
+                f"runtime {artifact['runtime']} KV cache is "
+                f"{current_cache_type or 'unknown'}; artifact requires one of "
+                f"{', '.join(allowed_cache_types)}"
+            )
     return {
         "fit": fit,
         "blockers": blockers + runtime_blockers,
@@ -819,6 +921,7 @@ def recommend(
                 "fit": fit["fit"],
                 "effective_memory_gib": fit["effective_memory_gib"],
                 "minimum_runtime_version": candidate["minimum_runtime_version"],
+                "runtime_requirements": candidate.get("runtime_requirements", {}),
                 "roles": candidate["roles"],
             }
         )
@@ -899,6 +1002,7 @@ def plan_explicit(
                 "fit": fit["fit"],
                 "effective_memory_gib": fit.get("effective_memory_gib"),
                 "minimum_runtime_version": artifact["minimum_runtime_version"],
+                "runtime_requirements": artifact.get("runtime_requirements", {}),
                 "roles": artifact["roles"],
             }
         )
@@ -1345,6 +1449,20 @@ def benchmark_artifact(
     if not isinstance(response, dict) or not isinstance(response.get("response"), str):
         raise LocalModelError("Ollama generation returned an unexpected response")
     output = response["response"]
+    done_reason = response.get("done_reason")
+    reasoning_markup = bool(re.search(r"</?think(?:\s[^>]*)?>", output, re.IGNORECASE))
+    final_after_reasoning = False
+    if reasoning_markup:
+        closing_tags = list(re.finditer(r"</think\s*>", output, re.IGNORECASE))
+        final_after_reasoning = bool(
+            closing_tags and output[closing_tags[-1].end() :].strip()
+        )
+    final_response_complete = bool(
+        output.strip()
+        and done_reason == "stop"
+        and (not reasoning_markup or final_after_reasoning)
+    )
+    accepted = final_response_complete and (think or not reasoning_markup)
     eval_count = response.get("eval_count")
     eval_duration = response.get("eval_duration")
     tokens_per_second = None
@@ -1360,7 +1478,11 @@ def benchmark_artifact(
         "num_predict": num_predict,
         "num_ctx": num_ctx,
         "think": think,
-        "done_reason": response.get("done_reason"),
+        "done_reason": done_reason,
+        "reasoning_markup_detected": reasoning_markup,
+        "reasoning_suppression_honored": None if think else not reasoning_markup,
+        "final_response_complete": final_response_complete,
+        "accepted": accepted,
         "load_duration_ns": response.get("load_duration"),
         "prompt_eval_count": response.get("prompt_eval_count"),
         "prompt_eval_duration_ns": response.get("prompt_eval_duration"),
@@ -1383,6 +1505,151 @@ def benchmark_artifact(
         receipt["output_path"] = str(output_path)
         receipt["receipt_path"] = str(receipt_path)
     return receipt
+
+
+def validate_homebrew_ollama_service(
+    path: Path, payload: dict[str, Any]
+) -> tuple[list[str], dict[str, Any]]:
+    reject_symlink_components(path.parent, path)
+    if path.stat().st_uid != os.getuid():
+        raise LocalModelError("Homebrew Ollama service is not owned by the current user")
+    if payload.get("Label") != HOMEBREW_OLLAMA_LABEL:
+        raise LocalModelError("Unexpected Homebrew Ollama service label")
+    arguments = payload.get("ProgramArguments")
+    if (
+        not isinstance(arguments, list)
+        or len(arguments) != 2
+        or not isinstance(arguments[0], str)
+        or Path(arguments[0]).name != "ollama"
+        or arguments[1] != "serve"
+    ):
+        raise LocalModelError("Unexpected Homebrew Ollama service command")
+    environment = payload.get("EnvironmentVariables", {})
+    if not isinstance(environment, dict):
+        raise LocalModelError("Homebrew Ollama service environment is malformed")
+    return arguments, dict(environment)
+
+
+def wait_for_ollama_api(timeout: float = 30.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            response = api_json("/api/version", timeout=2)
+            if isinstance(response, dict) and response.get("version"):
+                return True
+        except LocalModelError:
+            pass
+        time.sleep(0.25)
+    return False
+
+
+def configure_homebrew_ollama(
+    kv_cache_type: str,
+    execute: bool,
+    state_dir: Path,
+    *,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    waiter: Callable[[], bool] = wait_for_ollama_api,
+) -> dict[str, Any]:
+    if platform.system() != "Darwin":
+        raise LocalModelError("Homebrew Ollama service configuration is macOS-only")
+    if kv_cache_type not in OLLAMA_KV_CACHE_TYPES:
+        raise LocalModelError(
+            "kv-cache-type must be one of: " + ", ".join(sorted(OLLAMA_KV_CACHE_TYPES))
+        )
+    service = macos_homebrew_ollama_service()
+    if service is None:
+        raise LocalModelError("Standard Homebrew Ollama LaunchAgent was not found")
+    plist_path, payload = service
+    _, environment = validate_homebrew_ollama_service(plist_path, payload)
+    current = str(environment.get("OLLAMA_KV_CACHE_TYPE") or "f16")
+    plan = {
+        "schema_version": 1,
+        "execute": execute,
+        "service": HOMEBREW_OLLAMA_LABEL,
+        "service_path": display_path(plist_path),
+        "current_kv_cache_type": current,
+        "desired_kv_cache_type": kv_cache_type,
+        "changed": current != kv_cache_type,
+        "authorization_required": not execute and current != kv_cache_type,
+    }
+    if not execute or current == kv_cache_type:
+        return plan
+
+    original = plist_path.read_bytes()
+    original_mode = plist_path.stat().st_mode & 0o777
+    backup_name = (
+        "homebrew.mxcl.ollama."
+        + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        + ".plist"
+    )
+    backup_path = state_dir.expanduser() / "backups" / backup_name
+    atomic_bytes_write(backup_path, original, 0o600)
+
+    updated = plistlib.loads(original)
+    updated_environment = dict(updated.get("EnvironmentVariables", {}))
+    updated_environment["OLLAMA_KV_CACHE_TYPE"] = kv_cache_type
+    updated["EnvironmentVariables"] = updated_environment
+    updated_bytes = plistlib.dumps(updated, fmt=plistlib.FMT_XML, sort_keys=True)
+    domain = f"gui/{os.getuid()}"
+
+    def launchctl(arguments: list[str]) -> subprocess.CompletedProcess[str]:
+        return runner(
+            ["launchctl", *arguments],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            shell=False,
+        )
+
+    def restore_original() -> subprocess.CompletedProcess[str]:
+        launchctl(["bootout", domain, str(plist_path)])
+        atomic_bytes_write(plist_path, original, original_mode)
+        return launchctl(["bootstrap", domain, str(plist_path)])
+
+    atomic_bytes_write(plist_path, updated_bytes, original_mode)
+    bootout = launchctl(["bootout", domain, str(plist_path)])
+    if bootout.returncode != 0:
+        atomic_bytes_write(plist_path, original, original_mode)
+        raise LocalModelError(
+            "Could not unload the Homebrew Ollama service; restored its plist: "
+            + (bootout.stderr.strip() or bootout.stdout.strip() or "unknown launchctl error")
+        )
+    bootstrap = launchctl(["bootstrap", domain, str(plist_path)])
+    if bootstrap.returncode != 0:
+        restored = restore_original()
+        if restored.returncode != 0:
+            raise LocalModelError(
+                "Could not reload Ollama or restart the restored service; manual service "
+                "recovery is required. Initial error: "
+                + (bootstrap.stderr.strip() or bootstrap.stdout.strip() or "unknown")
+                + "; restore error: "
+                + (restored.stderr.strip() or restored.stdout.strip() or "unknown")
+            )
+        raise LocalModelError(
+            "Could not reload the Homebrew Ollama service; restored its prior configuration: "
+            + (bootstrap.stderr.strip() or bootstrap.stdout.strip() or "unknown launchctl error")
+        )
+    if not waiter():
+        restored = restore_original()
+        if restored.returncode != 0 or not waiter():
+            raise LocalModelError(
+                "Ollama did not become healthy and the restored service did not recover; "
+                "manual service recovery is required"
+            )
+        raise LocalModelError(
+            "Ollama did not become healthy after reload; restored its prior configuration"
+        )
+    plan.update(
+        {
+            "applied_at": utc_now(),
+            "backup_path": display_path(backup_path),
+            "authorization_required": False,
+            "runtime_healthy": True,
+        }
+    )
+    return plan
 
 
 def add_common(parser: argparse.ArgumentParser) -> None:
@@ -1446,6 +1713,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Include model reasoning when the reasoning trace is the benchmark workload",
     )
+    configure_parser = commands.add_parser(
+        "configure-ollama",
+        help="Plan or apply a validated Homebrew Ollama KV-cache setting",
+    )
+    add_common(configure_parser)
+    configure_parser.add_argument(
+        "--kv-cache-type", choices=sorted(OLLAMA_KV_CACHE_TYPES), required=True
+    )
+    configure_parser.add_argument("--yes", action="store_true")
     return parser
 
 
@@ -1471,6 +1747,15 @@ def main(argv: list[str] | None = None) -> int:
                     "families": families,
                     "status": "valid",
                 }
+            )
+            return 0
+        if args.command == "configure-ollama":
+            emit(
+                configure_homebrew_ollama(
+                    args.kv_cache_type,
+                    args.yes,
+                    args.state_dir.expanduser(),
+                )
             )
             return 0
         if args.command == "resolve":
@@ -1540,17 +1825,16 @@ def main(argv: list[str] | None = None) -> int:
                 if args.prompt_file
                 else "Explain one practical benefit and one limitation of running an open-weight language model locally."
             )
-            emit(
-                benchmark_artifact(
-                    artifact,
-                    args.output_dir,
-                    prompt,
-                    args.num_predict,
-                    args.num_ctx,
-                    think=args.think,
-                )
+            receipt = benchmark_artifact(
+                artifact,
+                args.output_dir,
+                prompt,
+                args.num_predict,
+                args.num_ctx,
+                think=args.think,
             )
-            return 0
+            emit(receipt)
+            return 0 if receipt["accepted"] else 2
         raise LocalModelError(f"Unknown command: {args.command}")
     except LocalModelError as exc:
         emit({"error": str(exc), "status": "blocked"})

@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 import os
 import tempfile
@@ -19,7 +20,16 @@ def fixture_profile(memory=128, free=2000, version="0.31.2"):
         "memory": {"total_gib": memory, "unified": True},
         "storage": {"model_store": "~/.ollama/models", "free_gib": free},
         "runtimes": {
-            "ollama": {"available": True, "version": version, "api_reachable": True}
+            "ollama": {
+                "available": True,
+                "version": version,
+                "api_reachable": True,
+                "configuration": {
+                    "source": "test",
+                    "kv_cache_type": "f16",
+                    "flash_attention": "1",
+                },
+            }
         },
     }
 
@@ -86,6 +96,20 @@ class RecommendationTests(unittest.TestCase):
         plan = runtime.recommend(self.artifacts, fixture_profile(version="0.23.2"), policy)
         self.assertFalse(plan["ready"])
         self.assertIn("below 0.30.0", " ".join(plan["blockers"]))
+
+    def test_kimi_requires_compatible_ollama_kv_cache(self):
+        policy = dict(runtime.DEFAULT_POLICY)
+        policy.update(
+            {
+                "required_families": ["kimi"],
+                "artifact_overrides": {"kimi": "kimi-linear-48b-a3b-q6-k"},
+            }
+        )
+        profile = fixture_profile()
+        profile["runtimes"]["ollama"]["configuration"]["kv_cache_type"] = "q8_0"
+        plan = runtime.recommend(self.artifacts, profile, policy)
+        self.assertFalse(plan["ready"])
+        self.assertIn("requires one of f16", " ".join(plan["blockers"]))
 
     def test_disk_reserve_blocks_oversized_batch(self):
         policy = dict(runtime.DEFAULT_POLICY)
@@ -476,6 +500,139 @@ class RuntimeTests(unittest.TestCase):
         request = api.call_args.args[1]
         self.assertIs(request["think"], False)
         self.assertIs(receipt["think"], False)
+        self.assertTrue(receipt["accepted"])
+        self.assertTrue(receipt["reasoning_suppression_honored"])
+
+    def test_benchmark_rejects_unsuppressed_reasoning_markup(self):
+        _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
+        response = {
+            "response": "<think>private trace</think>final response",
+            "done_reason": "stop",
+            "eval_count": 8,
+            "eval_duration": 1_000_000_000,
+        }
+        with mock.patch.object(runtime, "api_json", return_value=response):
+            receipt = runtime.benchmark_artifact(
+                artifacts[0], None, "test prompt", 16, 8192
+            )
+        self.assertTrue(receipt["final_response_complete"])
+        self.assertFalse(receipt["reasoning_suppression_honored"])
+        self.assertFalse(receipt["accepted"])
+
+    def test_benchmark_rejects_length_stop_without_final_response(self):
+        _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
+        response = {
+            "response": "<think>unfinished private trace",
+            "done_reason": "length",
+            "eval_count": 16,
+            "eval_duration": 1_000_000_000,
+        }
+        with mock.patch.object(runtime, "api_json", return_value=response):
+            receipt = runtime.benchmark_artifact(
+                artifacts[0], None, "test prompt", 16, 8192, think=True
+            )
+        self.assertFalse(receipt["final_response_complete"])
+        self.assertFalse(receipt["accepted"])
+
+    def test_api_http_error_preserves_bounded_runtime_detail(self):
+        error = runtime.urllib.error.HTTPError(
+            "http://127.0.0.1:11434/api/generate",
+            500,
+            "Internal Server Error",
+            {},
+            io.BytesIO(b'{"error":"KV cache mismatch"}'),
+        )
+        with mock.patch.object(runtime.urllib.request, "urlopen", side_effect=error):
+            with self.assertRaisesRegex(runtime.LocalModelError, "KV cache mismatch"):
+                runtime.api_json("/api/generate", {"model": "test"})
+
+    def test_homebrew_ollama_configuration_dry_run_does_not_write(self):
+        payload = {
+            "Label": runtime.HOMEBREW_OLLAMA_LABEL,
+            "ProgramArguments": ["/opt/homebrew/bin/ollama", "serve"],
+            "EnvironmentVariables": {"OLLAMA_KV_CACHE_TYPE": "q8_0"},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            plist = Path(directory) / "homebrew.mxcl.ollama.plist"
+            original = runtime.plistlib.dumps(payload)
+            plist.write_bytes(original)
+            with mock.patch.object(runtime.platform, "system", return_value="Darwin"), mock.patch.object(
+                runtime, "macos_homebrew_ollama_service", return_value=(plist, payload)
+            ):
+                result = runtime.configure_homebrew_ollama(
+                    "f16", False, Path(directory) / "state"
+                )
+            self.assertTrue(result["authorization_required"])
+            self.assertEqual(plist.read_bytes(), original)
+
+    def test_homebrew_ollama_configuration_applies_and_backs_up(self):
+        payload = {
+            "Label": runtime.HOMEBREW_OLLAMA_LABEL,
+            "ProgramArguments": ["/opt/homebrew/bin/ollama", "serve"],
+            "EnvironmentVariables": {
+                "OLLAMA_FLASH_ATTENTION": "1",
+                "OLLAMA_KV_CACHE_TYPE": "q8_0",
+            },
+        }
+        calls = []
+
+        def runner(arguments, **_kwargs):
+            calls.append(arguments)
+            return runtime.subprocess.CompletedProcess(arguments, 0, "", "")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plist = root / "homebrew.mxcl.ollama.plist"
+            original = runtime.plistlib.dumps(payload)
+            plist.write_bytes(original)
+            with mock.patch.object(runtime.platform, "system", return_value="Darwin"), mock.patch.object(
+                runtime, "macos_homebrew_ollama_service", return_value=(plist, payload)
+            ):
+                result = runtime.configure_homebrew_ollama(
+                    "f16", True, root / "state", runner=runner, waiter=lambda: True
+                )
+            updated = runtime.plistlib.loads(plist.read_bytes())
+            self.assertEqual(
+                updated["EnvironmentVariables"]["OLLAMA_KV_CACHE_TYPE"], "f16"
+            )
+            backups = list((root / "state" / "backups").glob("*.plist"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(backups[0].read_bytes(), original)
+            self.assertTrue(result["runtime_healthy"])
+            self.assertEqual([call[1] for call in calls], ["bootout", "bootstrap"])
+
+    def test_homebrew_ollama_configuration_rolls_back_failed_reload(self):
+        payload = {
+            "Label": runtime.HOMEBREW_OLLAMA_LABEL,
+            "ProgramArguments": ["/opt/homebrew/bin/ollama", "serve"],
+            "EnvironmentVariables": {"OLLAMA_KV_CACHE_TYPE": "q8_0"},
+        }
+        calls = []
+
+        def runner(arguments, **_kwargs):
+            calls.append(arguments)
+            returncode = 1 if len(calls) == 2 else 0
+            return runtime.subprocess.CompletedProcess(
+                arguments, returncode, "", "reload failed" if returncode else ""
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plist = root / "homebrew.mxcl.ollama.plist"
+            original = runtime.plistlib.dumps(payload)
+            plist.write_bytes(original)
+            with mock.patch.object(runtime.platform, "system", return_value="Darwin"), mock.patch.object(
+                runtime, "macos_homebrew_ollama_service", return_value=(plist, payload)
+            ):
+                with self.assertRaisesRegex(runtime.LocalModelError, "restored"):
+                    runtime.configure_homebrew_ollama(
+                        "f16", True, root / "state", runner=runner, waiter=lambda: True
+                    )
+            self.assertEqual(plist.read_bytes(), original)
+            self.assertEqual(
+                [call[1] for call in calls],
+                ["bootout", "bootstrap", "bootout", "bootstrap"],
+            )
 
     def test_resolve_enforces_current_machine_selection_and_installation(self):
         _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
