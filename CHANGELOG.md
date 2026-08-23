@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.43.1] - 2026-08-23
+
+### Fixed
+
+- `synthesis-local-model-runtime` **v1.0.1** can recover from a failed Hugging
+  Face Ollama registry transaction after the large GGUF layers are already
+  cached. Catalog-pinned layer digests, media types, and exact sizes gate a
+  supported local multi-GGUF import; every layer is re-hashed, hard links avoid
+  a second model-sized copy, temporary import links are removed, and the
+  runtime-resolved model identity is verified before inventory is updated.
+
 ## [4.43.0] - 2026-08-23
 
 ### Added

@@ -11,8 +11,16 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Registry timeouts do not waste completed GGUF downloads (August 2026).**
+Release **4.43.1** adds a catalog-pinned local-import recovery to
+`synthesis-local-model-runtime` **v1.0.1**. If a Hugging Face registry
+transaction fails after its GGUF layers are cached, the installer verifies
+every full digest and size, uses Ollama's supported multi-file importer without
+duplicating model-sized data, and records the resolved local identity only
+after success. See the [4.43.1 release notes](CHANGELOG.md).
+
 **Local model selection is a measured machine decision (August 2026).** Release
-**4.43.0** adds `synthesis-local-model-runtime` **v1.0.0**: a privacy-safe
+**4.43.0** added `synthesis-local-model-runtime` **v1.0.0**: a privacy-safe
 profiler, dated artifact catalog, machine-fit planner, dry-run-first installer,
 per-computer inventory, exact resolver, and bounded benchmark receipts. It
 keeps model weights out of iCloud and source workspaces, records upstream model
