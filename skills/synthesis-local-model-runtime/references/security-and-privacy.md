@@ -34,6 +34,9 @@ Do not infer that a symlink points somewhere safe from its visible prefix.
   temporary hard links. `--recover-cached` must skip acquisition rather than
   retrying the failed registry request. Never accept a filename or a completed
   progress bar as content verification.
+- Do not delete a retained registry blob from the runtime-owned store. Report
+  it as possible reclaimable cache; cleanup requires a separate, bounded
+  reference audit and explicit authorization.
 
 ## Local API
 

@@ -41,6 +41,9 @@ pins the registry manifest URL plus each GGUF model/projector layer's full
 digest, media type, and size. The adapter re-hashes every cached layer, creates
 same-volume temporary hard links, imports the directory, removes the links,
 and then applies the normal runtime identity and inventory gates.
+The hard links eliminate a separate staging copy. Ollama may still normalize a
+GGUF into a new runtime layer and retain the registry cache, so the recovery
+receipt budgets the full layer total as possible additional disk use.
 
 ## Schema evolution
 

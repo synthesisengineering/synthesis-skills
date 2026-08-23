@@ -1173,6 +1173,29 @@ def import_cached_gguf_layers(
             )
 
 
+def cached_recovery_receipt(
+    plan: dict[str, Any], artifacts: list[dict[str, Any]]
+) -> dict[str, Any]:
+    by_id = {artifact["id"]: artifact for artifact in artifacts}
+    layer_bytes = 0
+    for selection in plan["selections"]:
+        artifact = by_id[selection["artifact_id"]]
+        fallback = artifact.get("local_import_fallback")
+        if not isinstance(fallback, dict):
+            raise LocalModelError(
+                f"{artifact['id']} has no catalog-pinned cached-layer recovery"
+            )
+        layer_bytes += sum(layer["size_bytes"] for layer in fallback["gguf_layers"])
+    return {
+        "mode": "catalog-pinned-cached-layers",
+        "network_download_gib": 0.0,
+        "possible_additional_runtime_gib": round(layer_bytes / GIB, 2),
+        "cache_retention": (
+            "Ollama may retain registry cache after materializing normalized runtime layers"
+        ),
+    }
+
+
 def perform_install(
     plan: dict[str, Any],
     artifacts: list[dict[str, Any]],
@@ -1442,14 +1465,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "install":
             if args.artifact:
                 plan = plan_explicit(artifacts, args.artifact, profile, policy)
+            recovery = (
+                cached_recovery_receipt(plan, artifacts) if args.recover_cached else None
+            )
             if not args.yes:
                 emit(
                     {
                         "execute": False,
                         "authorization_required": True,
-                        "recovery": (
-                            "catalog-pinned-cached-layers" if args.recover_cached else None
-                        ),
+                        "recovery": recovery,
                         "plan": plan,
                     }
                 )
@@ -1462,7 +1486,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.machine_label,
                 recover_cached=args.recover_cached,
             )
-            emit({"execute": True, "plan": plan, **result})
+            emit({"execute": True, "recovery": recovery, "plan": plan, **result})
             return 0
         if args.command == "inventory":
             if not args.save:

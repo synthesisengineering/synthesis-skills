@@ -11,13 +11,19 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Cached recovery now accounts for Ollama normalization (August 2026).**
+Release **4.43.2** makes the recovery receipt distinguish zero network transfer
+from possible runtime-layer materialization. Hard links avoid a separate
+staging copy, but Ollama may normalize the GGUF into a model-sized runtime layer
+and retain the registry cache. See the [4.43.2 release notes](CHANGELOG.md).
+
 **Registry timeouts do not waste completed GGUF downloads (August 2026).**
 Release **4.43.1** adds a catalog-pinned local-import recovery to
 `synthesis-local-model-runtime` **v1.0.1**. If a Hugging Face registry
 transaction fails after its GGUF layers are cached, the installer verifies
 every full digest and size, uses Ollama's supported multi-file importer without
-duplicating model-sized data, and records the resolved local identity only
-after success. See the [4.43.1 release notes](CHANGELOG.md).
+a separate staging copy, and records the resolved local identity only after
+success. See the [4.43.1 release notes](CHANGELOG.md).
 
 **Local model selection is a measured machine decision (August 2026).** Release
 **4.43.0** added `synthesis-local-model-runtime` **v1.0.0**: a privacy-safe
