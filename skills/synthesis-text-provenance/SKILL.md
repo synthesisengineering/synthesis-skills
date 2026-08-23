@@ -11,7 +11,7 @@ license: Apache-2.0
 depends_on: []
 metadata:
   author: Rajiv Pant
-  version: 1.0.0
+  version: 1.0.1
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -185,6 +185,7 @@ python3 scripts/local_generate.py \
   --runtime ollama \
   --runtime-receipt ollama-metadata.json \
   --model example-model \
+  --reasoning-effort none \
   --prompt-file prompt.txt \
   --output-file output.txt \
   --manifest provenance.json
@@ -193,6 +194,10 @@ python3 scripts/local_generate.py \
 The runner records one generation. It does not call a detector, regenerate
 selectively, or optimize against provenance results. Non-loopback endpoints are
 rejected unless the operator passes `--allow-non-loopback` deliberately.
+An empty or whitespace-only final response is a failed generation and produces
+no output or manifest. `--reasoning-effort` is optional because not every
+OpenAI-compatible endpoint implements it; when supplied, it is included in the
+request and manifest parameters.
 
 The receipt preserves the runtime version, model digest, size, quantization,
 license and template hashes, selected model metadata, and declared unknowns.
