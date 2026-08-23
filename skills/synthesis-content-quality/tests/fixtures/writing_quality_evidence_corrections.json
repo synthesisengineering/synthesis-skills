@@ -1,0 +1,422 @@
+{
+  "schema_version": 1,
+  "baseline_revision": "5e6dbcde1d9f8d18abf68e10cf06551310e4a7d1",
+  "policy": "Only the exact evidence corrections enumerated here may replace baseline nonblank lines. Every other baseline line remains byte-identical and ordered; additions remain allowed.",
+  "corrections": [
+    {
+      "path": "skills/synthesis-clean-text/SKILL.md",
+      "baseline_nonblank_start": 2,
+      "original_text": [
+        "description: \"Produce text without watermarking patterns, invisible characters, or statistical fingerprints that identify text as AI-generated. Use when generating clean text, avoiding watermarks, addressing AI detection concerns, or producing text generation output that should be free of hidden markers.\""
+      ],
+      "original_sha256": [
+        "c0dd8ded16a4257cf9184a0e39c8b5db40a822bf03837697e85af51d95ede771"
+      ],
+      "replacement_text": [
+        "description: \"Enforce clean-text and no-hidden-marker requirements, audit inspectable characters and provenance, and state the verification boundary for statistical text marks. Use when generating clean text, checking hidden characters, addressing watermark concerns, or selecting a controlled generation path.\""
+      ],
+      "replacement_sha256": [
+        "b24b6c70f1d02a07d5dd8b50d420996417ad50826a98fdbe639b2556a0d88642"
+      ],
+      "reason": "Correct an unsupported universal watermark-verification guarantee while preserving the clean-text requirement."
+    },
+    {
+      "path": "skills/synthesis-clean-text/SKILL.md",
+      "baseline_nonblank_start": 8,
+      "original_text": [
+        "  version: \"1.0.0\""
+      ],
+      "original_sha256": [
+        "02c58a598e11e52a613e887b2f538dd9941f71f4339b5b92851bda64e3eb708f"
+      ],
+      "replacement_text": [
+        "  version: \"2.0.0\""
+      ],
+      "replacement_sha256": [
+        "e0c11295c4a73e927621918a6daed0a03738a038c01a849cf74aa4c443f990bf"
+      ],
+      "reason": "Record the intentional capability-boundary release version."
+    },
+    {
+      "path": "skills/synthesis-clean-text/SKILL.md",
+      "baseline_nonblank_start": 13,
+      "original_text": [
+        "Produce text that is free of any form of watermarking, invisible characters, or statistical patterns that could identify the text as AI-generated."
+      ],
+      "original_sha256": [
+        "e572d56929e2b4dfddaf5ce036a601997a0201b581f43d803ae1ce457a195911"
+      ],
+      "replacement_text": [
+        "Set and audit the requirement that generated text contain no hidden markers, invisible-character identifiers, or intentional statistical provenance signals. Report separately what the active generation path and available checks can actually establish.",
+        "This is a production requirement, not proof that every provider or model complies. Inspectable character-level properties can be audited after generation. An undisclosed keyed token-selection scheme cannot be verified or removed reliably by a prose instruction. When control of the generation path is required, choose a locally controlled open-weight model before generating and retain a provenance record; do not represent that choice alone as proof that a text is watermark-free."
+      ],
+      "replacement_sha256": [
+        "abdae1509389a323a9f1acbd3e2c600497ad8f87cf4300ec9a2101099609a1a9",
+        "0ece24591ad78198531b6619a21d3ce1735d110af15385943acaad887049b2bb"
+      ],
+      "reason": "Correct an unsupported universal watermark-verification guarantee while preserving the clean-text requirement."
+    },
+    {
+      "path": "skills/synthesis-clean-text/SKILL.md",
+      "baseline_nonblank_start": 29,
+      "original_text": [
+        "This skill produces watermark-free, fingerprint-free output. For detecting AI-generation patterns in finished prose (the inverse direction: identifying machine-shaped writing), see the companion [`synthesis-content-quality`](../synthesis-content-quality/SKILL.md) v4.0. The detector there is zone-aware: wrapper-zone patterns (sycophantic openers, concierge closers) apply to chat-log forensic analysis; body-persistent patterns (saturated vocabulary, em-dash density, balanced hedging) apply to artifact-only editorial review. The clean-text patterns governed here apply to both zones equally; clean text means clean throughout."
+      ],
+      "original_sha256": [
+        "e539421ec5b07913eceb3a19958f3e13f52601f0ae9da5321c48b0be5b49c18c"
+      ],
+      "replacement_text": [
+        "This skill enforces a watermark-free, fingerprint-free output policy and audits the parts of that policy that are technically inspectable. For detecting model-shaped patterns in finished prose, see the companion [`synthesis-content-quality`](../synthesis-content-quality/SKILL.md). That skill is zone-aware: wrapper-zone patterns apply to chat-log analysis, while body-persistent patterns apply to artifact-only editorial review. Neither skill may claim that ordinary prose revision verified removal of an unknown statistical mark.",
+        "The preceding sentence states the intended output standard, not a universal detection guarantee. Use [`synthesis-text-provenance`](../synthesis-text-provenance/SKILL.md) for auditable model choice, immutable source/output hashes, non-mutating text-integrity inspection, and bounded capability claims."
+      ],
+      "replacement_sha256": [
+        "8dd877e999a092255b717e63c7ceb94c4413c4406cd017c21439f8122b05e724",
+        "c3f68cbce9aeb07e4a6eb617e61551f24c06fe6989dcc32c5bea154f10e9fd0e"
+      ],
+      "reason": "Correct an unsupported universal removal guarantee while preserving the clean-text policy and companion linkage."
+    },
+    {
+      "path": "skills/synthesis-content-quality/SKILL.md",
+      "baseline_nonblank_start": 109,
+      "original_text": [
+        "The v3.1.0 heuristic (\"5+ medium-confidence indicators equals very likely AI\") is replaced with 86 specific combinations where co-occurrence is a stronger signal than count. Combined-signal detection drops false-positive rates by an order of magnitude versus count-based detection."
+      ],
+      "original_sha256": [
+        "c5fc14d741db60829ca0f5612266bcacc6d223d15b61357677fd14530017700c"
+      ],
+      "replacement_text": [
+        "The v3.1.0 heuristic (\"5+ medium-confidence indicators equals very likely AI\") is replaced with 86 specific combinations where co-occurrence can be more informative than a raw count. The inherited catalog's exact false-positive estimates were not produced from a preserved labeled corpus and must not be treated as measured performance. Keep the combinations as editorial and research hypotheses; validate them on the target genre and population before making any provenance inference."
+      ],
+      "replacement_sha256": [
+        "3583c773203eb948f6dc4163d3634b2a17b3e49a0184ce542885c06b2be96625"
+      ],
+      "reason": "Correct an unsupported performance claim while preserving all 86 combined-signal hypotheses."
+    },
+    {
+      "path": "skills/synthesis-content-quality/SKILL.md",
+      "baseline_nonblank_start": 111,
+      "original_text": [
+        "- **`B2-COMBO-001` ChatGPT 4o tell.** Saturated vocab + exhausted metaphors + section-ending summary. False-positive rate below 1 percent at full co-occurrence.",
+        "- **`B2-COMBO-003` Claude.ai default.** Em-dashes (high density) + bulleted bolded lead-ins + uniform paragraph length. False-positive rate below 0.5 percent. Strongest single-family fingerprint as of 2026-05."
+      ],
+      "original_sha256": [
+        "222573fe4aac1a27f8b25ce72a6c4c26be2f7ef294069ac900d5869c0000b1ea",
+        "4fe817b4a076f1bdaca5f520e341a748968ee390fae155cfd6fda311f8bc09fc"
+      ],
+      "replacement_text": [
+        "- **`B2-COMBO-001` ChatGPT 4o research combination.** Saturated vocab + exhausted metaphors + section-ending summary. The inherited below-1-percent estimate is unvalidated and non-operational.",
+        "- **`B2-COMBO-003` Claude.ai research combination.** Em-dashes (high density) + bulleted bolded lead-ins + uniform paragraph length. The inherited below-0.5-percent estimate is unvalidated and non-operational."
+      ],
+      "replacement_sha256": [
+        "cec3fc6f495ac8cbf6b2c40eecce839403f8872d6a755f87182016a2aa7ec728",
+        "958e9a105294b8b83aec38d2fb841d489996c09f8096e1067178067c3bce5f0c"
+      ],
+      "reason": "Correct unsupported exact false-positive and provider-attribution claims while preserving both constituent combinations."
+    },
+    {
+      "path": "skills/synthesis-content-quality/SKILL.md",
+      "baseline_nonblank_start": 118,
+      "original_text": [
+        "- **SSWP (Signal Strength When Present).** A 0.0 to 1.0 score representing the conditional probability that text containing the pattern is AI-generated. SSWP above 0.85 is \"smoking gun\"; 0.6 to 0.85 is \"strong\"; 0.4 to 0.6 is \"moderate\"; below 0.4 is \"ambient.\"",
+        "- **BR (Base Rate).** Per-family percentage. Split for zone-conditional patterns into BR-artifact-body and BR-full-response."
+      ],
+      "original_sha256": [
+        "31c7c6b55270f7ed49292a7636c1b73b6ec14121f9f56ae053aaf62e52ca29d9",
+        "7f9285f0e143bee2519536bd69d174241865521706f9017a551fe83e357bc50c"
+      ],
+      "replacement_text": [
+        "- **SSWP (legacy Signal Strength When Present).** An inherited ordinal research score, not `P(AI | pattern)` and not an authorship probability. A posterior probability requires a population prior plus a measured likelihood for AI and relevant human comparison classes. Preserve the old 0.0-to-1.0 values as dated hypotheses until a labeled corpus supports recalibration; use the qualitative editorial tier, evidence status, context, and counterexamples in reviews.",
+        "- **BR (legacy Base Rate).** A dated per-family occurrence estimate, split for zone-conditional patterns into BR-artifact-body and BR-full-response. Treat an entry as measured only when its exact model, surface, task distribution, sample size, collection date, and source are preserved; otherwise it is an unvalidated estimate."
+      ],
+      "replacement_sha256": [
+        "45b84300d4ae88fbbb430eb330a22cff1546e45410a94616438c7d968018f005",
+        "a8e494f31c0c20860e2fb39c6984ed480c9a348a42427116348a3c151ef3bedb"
+      ],
+      "reason": "Correct an invalid posterior-probability definition while preserving the legacy score and editorial tiers."
+    },
+    {
+      "path": "skills/synthesis-content-quality/SKILL.md",
+      "baseline_nonblank_start": 127,
+      "original_text": [
+        "### Step 2: Check for smoking-gun indicators (SSWP above 0.85)"
+      ],
+      "original_sha256": [
+        "d9322cef696abf9c31991216c1179eaafba1c7b879e6a942b80ec5f811466a0f"
+      ],
+      "replacement_text": [
+        "### Step 2: Check for high-salience defects (legacy SSWP above 0.85)"
+      ],
+      "replacement_sha256": [
+        "4b86e1ff5fc942d005fa34cb3511805b915791934e19c89f0fc0257e28ac3a96"
+      ],
+      "reason": "Correct an unsupported certainty label while preserving the high-salience defect check."
+    },
+    {
+      "path": "skills/synthesis-content-quality/SKILL.md",
+      "baseline_nonblank_start": 133,
+      "original_text": [
+        "If any present: very likely unedited AI output."
+      ],
+      "original_sha256": [
+        "5d41586f87619a73458cf210c0cba115093e0c35e64bc61e5742dd3e3a222a3e"
+      ],
+      "replacement_text": [
+        "The current canonical locator for system-prompt artifact bleed is `A3-TF-006`; retain `A3-BT-013` as the legacy locator until Rajiv explicitly approves a replacement.",
+        "If any are present, confirm the literal technical or factual defect and repair it. Some residues can establish that a tool or workflow touched the artifact, but none establishes who wrote the surrounding prose."
+      ],
+      "replacement_sha256": [
+        "527f248ad89080ec486357a20f067888b40e663b64319dad5eed7447c38a6f99",
+        "52343582d9fc3ee098d1044e6cd6c5960a5bd9e21b9f121aac1569e06d7b234d"
+      ],
+      "reason": "Correct an unsupported authorship inference while preserving and strengthening the literal-defect repair rule."
+    },
+    {
+      "path": "skills/synthesis-content-quality/SKILL.md",
+      "baseline_nonblank_start": 140,
+      "original_text": [
+        "If the piece's signature is uniform paragraphs + restricted vocabulary + heavy transitions, check whether any register-specific AI marker is also present. If not, the piece is likely non-native English human writing; do NOT flag as AI."
+      ],
+      "original_sha256": [
+        "c45a34510a7780e6168bda5d54a0045a032c299125b710d7e22875dd4d9f89a2"
+      ],
+      "replacement_text": [
+        "If the piece's signature is uniform paragraphs + restricted vocabulary + heavy transitions, check whether any register-specific model-shaped marker is also present. With or without corroboration, do not infer authorship from the prose. The safe-harbor exists to prevent ordinary multilingual or non-native-English writing from being mislabeled."
+      ],
+      "replacement_sha256": [
+        "8d3a6f7a3dfa97243aac96b0b41b3792cc42b92ed1b51d260800db41652d8b16"
+      ],
+      "reason": "Remove an unsupported human-authorship inference while preserving the multilingual safe-harbor."
+    },
+    {
+      "path": "skills/synthesis-content-quality/SKILL.md",
+      "baseline_nonblank_start": 163,
+      "original_text": [
+        "- **Watermarking detection.** No frontier model uses reliable text watermarking as of 2026-05. Claims of watermark-based detection are unreliable."
+      ],
+      "original_sha256": [
+        "c638ffa3555191538f17a40565591e10f37d9e76a14e9e272571a23b552ea023"
+      ],
+      "replacement_text": [
+        "- **Watermarking and provenance.** Provider text-marking deployments and detector access are model-, surface-, and date-specific. A disclosed mark or authorized detector result is technical provenance evidence with stated limitations; prose cues and ordinary rewriting cannot verify that a statistical mark is absent. Use `synthesis-text-provenance` and current primary provider documentation."
+      ],
+      "replacement_sha256": [
+        "9d072b99da9713b37b3dcfc3470f4b63d92e14b4ebf82637730c04cc983dc833"
+      ],
+      "reason": "Replace a stale universal provider claim with a model-surface-date-specific provenance boundary."
+    },
+    {
+      "path": "skills/synthesis-content-quality/SKILL.md",
+      "baseline_nonblank_start": 255,
+      "original_text": [
+        "- [`synthesis-clean-text`](../synthesis-clean-text/SKILL.md): Remove watermarks and statistical fingerprints from generated text."
+      ],
+      "original_sha256": [
+        "a0b2e013ab7cde1985bc0f13c8a0adddc94991fb385fa2051bee702ad3f3b4c7"
+      ],
+      "replacement_text": [
+        "- [`synthesis-clean-text`](../synthesis-clean-text/SKILL.md): Enforce clean-character and no-hidden-marker requirements, audit inspectable text properties, and state the boundary on unverifiable statistical marks.",
+        "- [`synthesis-text-provenance`](../synthesis-text-provenance/SKILL.md): Select hosted or local/open-weight generation paths, preserve manifests, audit text integrity, and report authorized provenance signals. It does not treat editorial rewriting as verified removal of a provider mark."
+      ],
+      "replacement_sha256": [
+        "5199611ba270d31928e14e143420b2b6b62158a99a1f265f6103b6c0db05e2c4",
+        "53c4d9d31f9e93469577d6a9de916786e78a909131ce505534317e54ae040798"
+      ],
+      "reason": "Correct an unsupported removal claim while preserving clean-text and provenance workflow linkage."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/calibration-tables.md",
+      "baseline_nonblank_start": 2,
+      "original_text": [
+        "This file holds the v4.0 calibration anchor set: signal-strength-when-present (SSWP) scores, base rates by model family, zone-conditional base-rate splits, the ESL safe-harbor mechanical rule, and the quarterly re-calibration discipline that keeps the catalog honest as model behaviour shifts. Sources are cited where empirical anchors exist; estimates are explicitly labeled and accompanied by a reasoning chain."
+      ],
+      "original_sha256": [
+        "a6158631cea38268cf1879e63798bcdf740e14e31f9f1fdb429c2bfee2638b80"
+      ],
+      "replacement_text": [
+        "This file preserves the v4.0 calibration hypothesis set: signal-strength-when-present (SSWP) scores, base-rate estimates by model family, zone-conditional splits, the ESL safe-harbor rule, and the recalibration design. The inherited numerical tables were not generated from a preserved labeled corpus and are not operational detector performance. A citation beside a row may support a related phenomenon without supporting that row's probability or model-specific rate.",
+        "> **August 2026 correction.** SSWP is not `P(AI | pattern)`. A posterior probability requires a population prior and measured likelihoods for AI output and relevant human comparison classes. Read every SSWP and BR number below as a dated, unvalidated hypothesis unless the row identifies the exact model, surface, task distribution, sample size, collection date, comparator corpus, and calculation. Do not aggregate these values into an authorship probability, threshold an individual, or advertise false-positive performance from them. The pattern catalog and safe-harbor remain active; the unsupported calibration claims do not."
+      ],
+      "replacement_sha256": [
+        "4676daf7bdd8dc9e8018c8756e0ca2309809addb32f89c5b640914198e207195",
+        "b86110c9d9740b14e94cdc9ab77c77e235fa313400208cae7448ac3e4c5f3807"
+      ],
+      "reason": "Correct the unsupported validation status while preserving the full inherited calibration table."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/calibration-tables.md",
+      "baseline_nonblank_start": 8,
+      "original_text": [
+        "1. **Signal-strength-when-present (SSWP).** Conditional probability that text containing the pattern is AI-generated, ignoring the prior probability of AI versus human. SSWP is what we mean when we say \"this marker is HIGH-confidence.\" Tiers:"
+      ],
+      "original_sha256": [
+        "5b2db9990c01641938513dd273bcbe64388f9d463da63a394098fff0d02b35fa"
+      ],
+      "replacement_text": [
+        "1. **Signal-strength-when-present (SSWP, legacy label).** An ordinal hypothesis about how salient a pattern may be in a bounded comparison. It is not a conditional probability and cannot ignore the population prior while remaining `P(AI | pattern)`. The inherited numerical bands are retained for research continuity, while the plain-language labels are non-probabilistic editorial tiers:"
+      ],
+      "replacement_sha256": [
+        "0ec8bb242f86be54f6337de85b568a8c66869137c3cdf66a6028fee9d457b6d8"
+      ],
+      "reason": "Correct the invalid posterior-probability definition while preserving the legacy SSWP bands."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/calibration-tables.md",
+      "baseline_nonblank_start": 15,
+      "original_text": [
+        "2. **Base rate in unedited AI output (BR).** The percentage of unedited AI outputs from a given family that contain the pattern. Tiers:"
+      ],
+      "original_sha256": [
+        "81f56342a5e9c034c5cfb2dc565ba7b41cd85439c6820fbc88c8899d658cdb04"
+      ],
+      "replacement_text": [
+        "2. **Base rate in unedited AI output (BR, legacy estimates unless fully identified).** The intended quantity is the percentage of unedited outputs in a specified model/surface/task corpus that contain the pattern. A family name without that sampling frame is not a measured base rate. The inherited bands remain as hypotheses:"
+      ],
+      "replacement_sha256": [
+        "5023b2900319121e748ac542d56a113de7da89011767cf72878d2ea6f9ae8903"
+      ],
+      "reason": "Require an identified corpus for a base-rate claim while preserving the legacy BR bands."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/calibration-tables.md",
+      "baseline_nonblank_start": 28,
+      "original_text": [
+        "Every entry carries one of two provenance labels:"
+      ],
+      "original_sha256": [
+        "a7320c619326ce0c50124b2b56919783cb1783f6780d8799fb387fe15532ddec"
+      ],
+      "replacement_text": [
+        "Every inherited entry carries one of two provenance labels. These labels classify the claimed source type; they do not by themselves validate the row's numerical value:"
+      ],
+      "replacement_sha256": [
+        "1a49c2c4e3b63bd24eb97c3459d02958123d5f4e46d08e4fd30a6f89ef5c0cad"
+      ],
+      "reason": "Clarify that provenance labels do not themselves validate numerical claims."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/calibration-tables.md",
+      "baseline_nonblank_start": 29,
+      "original_text": [
+        "- **Empirical** anchors the number in a published measurement. Citation is required (Kobak 2406.07016, Liang 2304.02819, Walters and Wilder 2023, Chelli JMIR 2024, Buchanan/Hill/Shapoval Sage 2024, Plagiarism Today June 2025 verified, etc.).",
+        "- **Estimated** acknowledges no public measurement exists. Reasoning chain is included. Estimates are reviewed quarterly."
+      ],
+      "original_sha256": [
+        "b4777e9056c0e6c11777e3b488be6e854334801e12e35eb1a5e906d9a4d8705f",
+        "2f6491661bda769b05cc885ff37b6aed79c9846e02a35de4d3dd7cb65ccb5761"
+      ],
+      "replacement_text": [
+        "- **Empirical** means a published measurement is cited. The measurement must match the row's claimed variable, population, model, surface, and date before the number can be reused.",
+        "- **Estimated** means no matching measurement was preserved. Treat the number as a hypothesis, regardless of whether a reasoning chain is present."
+      ],
+      "replacement_sha256": [
+        "9a48e39a3cde4c4c206306f34e505c6a46454498b05dca112a9dc75876eaffb7",
+        "06fac4903126feb3843543dca62214f10b10cef9b28a37ce48ac4cafb818a1ad"
+      ],
+      "reason": "Correct unsupported implications of empirical and estimated labels while preserving both categories."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/calibration-tables.md",
+      "baseline_nonblank_start": 32,
+      "original_text": [
+        "All measurements treat 2026-05 as the recency floor for \"current\" frontier models. Patterns from older models are flagged Historical with explicit dating. The compounding-archive principle applies: patterns are never removed; they retire with their era-of-prevalence metadata intact."
+      ],
+      "original_sha256": [
+        "fe5f033d8357d15e6458314d013c66d6c1c6908aa6924ad81e45ed28eabf0808"
+      ],
+      "replacement_text": [
+        "The inherited tables used 2026-05 as their recency floor. They are therefore a historical snapshot, not current calibration for August 2026 model labels. Patterns from older models remain with explicit dating under the compounding-archive principle."
+      ],
+      "replacement_sha256": [
+        "257bb5d0445b95c80576f54970e55f6fbf244eba3a5888a8f4b23f3bdfff903a"
+      ],
+      "reason": "Correct a stale currentness claim while preserving the May 2026 historical snapshot."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/combined-signal-fingerprints.md",
+      "baseline_nonblank_start": 5,
+      "original_text": [
+        "The empirical consequence: combinations drop false-positive rates by an order of magnitude versus the count heuristic. The Claude Business Analysis Cluster (B2-COMBO-026) lands at 5 to 8 percent FP, versus 15 to 20 percent for a count-based 5+ heuristic on the same content. The ChatGPT 4o tell (B2-COMBO-001) lands below 1 percent at full co-occurrence."
+      ],
+      "original_sha256": [
+        "4754a6189e677c71e6643a44374d4c961b2a6f121d523d9a5be1312bf4183b52"
+      ],
+      "replacement_text": [
+        "The research hypothesis is that specified combinations may outperform a raw count because they preserve which features co-occur. The inherited false-positive numbers were not produced from a preserved labeled corpus and are not validated performance claims.",
+        "> **August 2026 correction.** Preserve every combination below as a dated research and editorial pattern, including its constituent rules and fixes. Treat every `False-positive estimate`, `definitive`, `near-deterministic`, and provider-confidence statement as an inherited, unvalidated hypothesis unless a later record supplies the exact model, surface, prompt/task distribution, human comparison corpus, sample size, labeling procedure, and calculation. Do not infer authorship from these combinations. A literal tool marker may establish tool involvement; a verified nonexistent citation establishes a factual defect. Neither identifies the author of the surrounding prose."
+      ],
+      "replacement_sha256": [
+        "c2734118f9578fd80c27e900e5f05ecbdb70d7759f4ecbfe486ce48fd019a6a5",
+        "df1e832ddc66c3ef6549affe9888e0944d0d5260efca209d16f7ab5909fa55be"
+      ],
+      "reason": "Correct unsupported false-positive performance claims while preserving every combination and fix."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/combined-signal-fingerprints.md",
+      "baseline_nonblank_start": 10,
+      "original_text": [
+        "Four combos to memorize before the rest. Each is a near-deterministic signature for a specific use case."
+      ],
+      "original_sha256": [
+        "88bd0c8159949ebd4d68c1058c57ea720a36a3b7fd48dc37275e4a9cc8d7046f"
+      ],
+      "replacement_text": [
+        "Four combinations to recognize before the rest. They are high-yield editorial research hypotheses, not near-deterministic authorship signatures."
+      ],
+      "replacement_sha256": [
+        "a0ee5e449abf841560e2cebb3cf335d6da002e954c31eb2c6b58edd2184a26c2"
+      ],
+      "reason": "Correct unsupported authorship certainty language while preserving the highlighted combinations."
+    },
+    {
+      "path": "skills/synthesis-content-quality/SKILL.md",
+      "baseline_nonblank_start": 15,
+      "original_text": [
+        "  version: 4.0.0"
+      ],
+      "original_sha256": [
+        "ebc35e599fea0b66e2973de28915adcc8365f68ffd7ba25786d78ce4fc26a984"
+      ],
+      "replacement_text": [
+        "  version: 4.1.0"
+      ],
+      "replacement_sha256": [
+        "373bd39d9cd43b3c61b875f9283210bd3d4d6341843aa3c65d3b080e8fde0d19"
+      ],
+      "reason": "Record the additive content-quality release version without changing a writing rule."
+    },
+    {
+      "path": "skills/synthesis-writing-craft/SKILL.md",
+      "baseline_nonblank_start": 13,
+      "original_text": [
+        "  version: 1.0.0"
+      ],
+      "original_sha256": [
+        "5166b41f2ab102d934fcfef507c55e6ad80510a8a2a9eda5f50f105d7486a9bf"
+      ],
+      "replacement_text": [
+        "  version: 1.1.0"
+      ],
+      "replacement_sha256": [
+        "2566afa10bfb2031d439f19efdb0ba82c759e1f1918aacdf9374a4293c1f0691"
+      ],
+      "reason": "Record the additive writing-craft release version without changing a writing rule."
+    },
+    {
+      "path": "skills/synthesis-writing-pitfalls/SKILL.md",
+      "baseline_nonblank_start": 14,
+      "original_text": [
+        "  version: 1.0.0"
+      ],
+      "original_sha256": [
+        "5166b41f2ab102d934fcfef507c55e6ad80510a8a2a9eda5f50f105d7486a9bf"
+      ],
+      "replacement_text": [
+        "  version: 1.1.0"
+      ],
+      "replacement_sha256": [
+        "2566afa10bfb2031d439f19efdb0ba82c759e1f1918aacdf9374a4293c1f0691"
+      ],
+      "reason": "Record the additive writing-pitfalls release version without changing a writing rule."
+    }
+  ]
+}

@@ -341,3 +341,17 @@ Expanded examples and fix guidance for each pattern in `synthesis-writing-pitfal
 - Match the rhythm of the venue, not just the words.
 
 **Edge case:** Deliberate register mismatch is a craft choice. A formal essay opening with a deliberately casual line can be effective. The pattern catches accidental mismatch, not intentional disruption.
+
+### 23. Unnecessary editorial intervention
+
+**What it is:** An edit that changes accurate, purposeful prose without repairing a named defect. Common forms include expanding a direct sentence into an explanation, normalizing an individual's rhythm, adding headings to a short continuous argument, forcing parallel structure, or replacing a precise detail with a smoother abstraction.
+
+**Why it fails:** Editing is an intervention, not an automatic improvement. Needless intervention can erase information, flatten voice, and introduce exactly the generic structure that later reads as machine-shaped prose.
+
+**Fix:**
+
+- Name the defect before changing the sentence: factual error, ambiguity, unsupported claim, structural misplacement, register mismatch, or a cataloged pattern.
+- Compare the revision against the original for meaning, detail, rhythm, and voice.
+- Keep the original when the revision offers no demonstrable gain.
+
+**Edge case:** A copy desk may impose a documented house style. Apply the required style change narrowly and preserve everything the rule does not require changing.

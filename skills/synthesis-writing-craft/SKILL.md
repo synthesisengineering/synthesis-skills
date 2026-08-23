@@ -11,7 +11,7 @@ license: CC0-1.0
 depends_on: []
 metadata:
   author: Rajiv Pant
-  version: 1.0.0
+  version: 1.1.0
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -73,6 +73,8 @@ This skill organizes the tradition by craft level, attributing each principle to
 
 **Build sentences around character and action.** Make the actor the grammatical subject and the action the main verb. Abstract nouns hide who did what. "There was a decision to proceed" hides the actor; "We decided to proceed" names them.
 
+**Preserve the source's causal mechanism.** When editing or summarizing, keep who acted, what changed, and why the change produced the result. A smoother sentence that replaces the mechanism with a plausible generalization is less accurate, even when it sounds polished.
+
 **Vary sentence length deliberately.** Mechanical uniformity numbs the reader. Variation creates rhythm; rhythm carries attention. Long sentences develop ideas. Short sentences land them. Mix.
 
 **Read sentences aloud.** Awkward rhythm reveals itself in the voice. Sentences that sound stiff in the ear are stiff on the page too. This is the oldest editing technique, and it still works.
@@ -91,11 +93,15 @@ This skill organizes the tradition by craft level, attributing each principle to
 
 **Write as yourself, not as the role you imagine the venue requires.** Voice is what makes prose sound like a person rather than an institution. Suppressing voice to sound "professional" usually means writing badly in a way the writer thinks sounds professional.
 
+**Protect meaningful voice variation during editing.** Do not normalize every sentence toward the editor's preferred cadence. Preserve deliberate fragments, changes in pace, characteristic diction, and unevenness that carries emphasis unless a specific defect requires intervention.
+
 **Trust the reader.** Trust that the reader can follow without being walked through every step. Trust that they will catch nuance without it being underlined. Most writing problems improve when the writer trusts the reader more. This is one of the few principles that works across virtually every genre.
 
 **If you do not believe the sentence, do not write it.** Conviction is the most reliable voice signal. Sentences the writer does not believe land flat regardless of how clever they are. The reader can tell.
 
 **Specificity beats abstraction.** A specific example beats a general claim. Three real cases beat one principle stated abstractly. This appears in Aristotle (specific examples beat universal abstractions in persuasion), in Quintilian, in 19th-century newspaper style guides, in every modern craft book on the recommended-reading list. It is the closest thing to a craft principle that always works.
+
+**Preserve decisive detail.** When shortening or reshaping source material, keep the names, quantities, constraints, sequence, and exceptions that make the claim true. Compression should remove repetition, not the evidence that distinguishes the account from a generic version of it.
 
 **Cut adverbs.** Adverbs are usually a sign the verb was not strong enough. "Walked quickly" is weaker than "hurried." "Said angrily" is weaker than "snapped." Strengthen the verb; the adverb falls away.
 
@@ -121,6 +127,8 @@ For pattern-detection of register failures, see [`synthesis-writing-pitfalls`](.
 **The lede earns the rest.** If the lede does not make the reader want to keep reading, the article does not get a chance to do its work. Spend disproportionate time on the lede.
 
 **Structure should be invisible to the reader and visible to the writer.** The writer needs an outline; the reader should not feel the outline. Headings are fine; meta-narration of the structure ("First I will discuss X, then Y, then Z") is not.
+
+**Keep structure in proportion to the material.** A short argument may need no headings. A long analysis may need several. Do not force a fixed number of sections, bullets, examples, or takeaways onto material whose natural shape is different.
 
 **Close on something worth closing on.** The closing image or sentence is what the reader carries away. Choose it deliberately. The closing is not a wrap-up; it is the resonance.
 
@@ -150,6 +158,8 @@ For pattern-detection of register failures, see [`synthesis-writing-pitfalls`](.
 
 **Cut sentences that say what was already said.** Prose accumulates redundancy as it grows. Revision exposes it. A sentence that restates the previous sentence in different words is not adding emphasis — it is taking up space.
 
+**Make every edit earn its place.** Before revising sound prose, name the problem the change solves. If the revision does not improve truth, clarity, structure, register, or rhythm, preserve the original.
+
 **Read the draft from the bottom up, sentence by sentence.** This breaks the writer's narrative attention and lets you see each sentence as a unit. Sentences that work in flow but fail in isolation are flagged. This is a copy-editing trick that has been in use for as long as there have been editors.
 
 ## Quick-Reference Principles
@@ -163,6 +173,8 @@ When pressed for time, these are the principles that produce the largest improve
 5. Vary sentence length deliberately
 6. Read aloud
 7. Trust the reader
+8. Preserve the source's mechanism and decisive details
+9. Make every edit earn its place
 
 ## Working with the Sibling Skills
 

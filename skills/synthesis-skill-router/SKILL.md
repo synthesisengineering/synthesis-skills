@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -47,6 +47,7 @@ Choose the narrowest matching workflow, then read its sibling `SKILL.md` complet
 - Write executive or very concise communication: `../synthesis-executive-communication/SKILL.md`, `../synthesis-concise-messaging/SKILL.md`
 - Profile a voice or coach creative writing: `../synthesis-voice-profiler/SKILL.md`, `../synthesis-creative-writer/SKILL.md`
 - Remove text artifacts: `../synthesis-clean-text/SKILL.md`
+- Record text integrity, lineage, generation receipts, or provenance without making authorship or watermark-absence claims: `../synthesis-text-provenance/SKILL.md`
 
 ### Knowledge and information operations
 

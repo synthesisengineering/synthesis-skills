@@ -8,7 +8,9 @@ The v3.1.0 catalog presents each criterion in isolation, with a coarse heuristic
 
 Independent occurrence of any single medium-confidence marker is consistent with skilled human writing. The signature comes from co-occurrence of independent patterns emerging from different mechanisms (RLHF reward shaping, training-data skew, system-prompt artifacts, tokenizer effects) in the same response. Random co-occurrence of unrelated medium-signal markers is rare.
 
-The empirical consequence: combinations drop false-positive rates by an order of magnitude versus the count heuristic. The Claude Business Analysis Cluster (B2-COMBO-026) lands at 5 to 8 percent FP, versus 15 to 20 percent for a count-based 5+ heuristic on the same content. The ChatGPT 4o tell (B2-COMBO-001) lands below 1 percent at full co-occurrence.
+The research hypothesis is that specified combinations may outperform a raw count because they preserve which features co-occur. The inherited false-positive numbers were not produced from a preserved labeled corpus and are not validated performance claims.
+
+> **August 2026 correction.** Preserve every combination below as a dated research and editorial pattern, including its constituent rules and fixes. Treat every `False-positive estimate`, `definitive`, `near-deterministic`, and provider-confidence statement as an inherited, unvalidated hypothesis unless a later record supplies the exact model, surface, prompt/task distribution, human comparison corpus, sample size, labeling procedure, and calculation. Do not infer authorship from these combinations. A literal tool marker may establish tool involvement; a verified nonexistent citation establishes a factual defect. Neither identifies the author of the surrounding prose.
 
 ## How to read this document
 
@@ -18,7 +20,7 @@ Zero em-dashes; alternatives used throughout: commas, parentheses, colons, sente
 
 ## Top high-yield combos (read first)
 
-Four combos to memorize before the rest. Each is a near-deterministic signature for a specific use case.
+Four combinations to recognize before the rest. They are high-yield editorial research hypotheses, not near-deterministic authorship signatures.
 
 - **B2-COMBO-001 ChatGPT 4o tell.** Saturated vocabulary plus exhausted metaphors plus section-ending summary. Canonical GPT-4o body-zone fingerprint. FP below 1 percent at full co-occurrence. Active for GPT-4o, declining post-GPT-5.1.
 - **B2-COMBO-003 Claude.ai default.** Em-dashes plus bulleted bolded lead-ins plus uniform paragraph length. Strongest single-family fingerprint in current frontier output. FP below 0.5 percent. Five independent contributors converge on this as the most reliable Claude signature.

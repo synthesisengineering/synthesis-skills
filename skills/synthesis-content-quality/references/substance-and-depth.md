@@ -372,6 +372,36 @@ Specificity dimensions to count:
 
 ## Cluster map
 
+The two August 2026 additive records appear first; the original five-cluster map follows them unchanged.
+
+### A2-SUB-018: Source-detail attenuation
+
+**Description.** A draft or edit removes the fact, condition, exception, example, or mechanism that makes a source claim distinctive and verifiable. The resulting sentence may be shorter and smoother while carrying less knowledge.
+
+**Concrete examples.** “The retry is safe only while the idempotency record and downstream charge share the same key” becomes “Idempotency makes retries safe.” “The policy applies after nine months unless the retention review blocks it” becomes “The policy will apply later.” In each case the sentence preserves the topic while losing the condition that governs the decision.
+
+**Fix or remediation.** Compare the draft with the source packet. Restore the decisive fact, exception, denominator, date, or causal step. If compression is required, remove background before removing the detail that makes the claim testable.
+
+**Metadata.** Location: summaries, edits, executive briefs, technical explanations, and source-grounded analysis. Model attribution: model-agnostic editorial failure. Signal strength: HIGH for editorial harm; not an authorship signal. Base rate: unmeasured. Causal alternatives: summarization pressure, editor overreach, context limits, source misunderstanding, or ordinary human compression. Detection difficulty: medium because it requires a source comparison. False positive risk: low when the source explicitly establishes the omitted detail; high when the source itself is ambiguous. Evidence status: accepted generic editorial category; controlled model-frequency measurement pending. Era: Active (timeless). Zone: BODY-PERSISTENT. Authorship inference: not established.
+
+---
+
+### A2-SUB-019: Plausible-mechanism substitution
+
+**Description.** The prose replaces the source-supported causal chain with a smooth, generic mechanism that sounds reasonable but is not established by the evidence. It can make a weak synthesis look more explanatory while moving it farther from the source.
+
+**Concrete examples.** A packet says a launch slipped because two named owners had incompatible approval authority; the analysis says “organizational complexity slowed execution.” A payment incident records a post-charge crash before the idempotency record completed; the explanation says “network latency caused duplicate processing.” Both substitutes are plausible, but neither preserves the load-bearing mechanism.
+
+**Fix or remediation.** Trace each causal verb to the source. Name the supported actor, state transition, dependency, or exception. If the mechanism is unknown, say what the evidence does and does not show instead of supplying the most likely general story.
+
+**Metadata.** Location: technical explanations, executive briefs, incident analysis, summaries, and fact-sensitive synthesis. Model attribution: model-agnostic editorial failure. Signal strength: HIGH for factual quality; not an authorship signal. Base rate: unmeasured. Causal alternatives: generic reasoning priors, source loss, time pressure, domain unfamiliarity, or human assumption. Detection difficulty: medium to hard because the substitute may be fluent and partly true. False positive risk: low under a closed packet; higher in open-world analysis where external evidence may support the mechanism. Evidence status: accepted generic editorial category; controlled model-frequency measurement pending. Era: Active (timeless). Zone: BODY-PERSISTENT. Authorship inference: not established.
+
+---
+
+### August 2026 cluster addendum
+
+`A2-SUB-018` and `A2-SUB-019` form a **source-fidelity cluster**. The first removes decisive information; the second fills the resulting gap with an unsupported abstraction. Run them together whenever the task is editing or closed-packet synthesis.
+
 The 17 sub-patterns cluster in five characteristic ways. One test per cluster usually surfaces the dominant failure mode without running all 17:
 
 1. **Empty-paragraph cluster:** A2-SUB-001 (deletion test), A2-SUB-005 (insight-to-word ratio), A2-SUB-015 (so what?). All measure whether a paragraph carries weight. Diagnose once with the deletion test; the others usually follow.

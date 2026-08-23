@@ -714,6 +714,47 @@ Net-new criteria total: 32 distinct entries slotted thematically. Combined with 
 
 ---
 
+### A3-SS-010: Disproportionate Structure
+
+- **Description.** Headings, bullets, recaps, labels, and report ceremony exceed the artifact's complexity or the venue's needs. The prose spends more structure on displaying organization than the ideas require.
+- **Concrete examples.** A 500-word explanation uses eight headings and a concluding checklist; a three-point note wraps each point in a titled section, bold lead-in, recap, and “key takeaway”; an answer adds a framework name to an ordinary sequence of observations.
+- **Location and register.** Explanatory articles, executive briefs, technical answers, social posts, and model-assisted edits.
+- **Model attribution.** Model-agnostic editorial category. Current-model frequency is a controlled-test question, not an active family fingerprint.
+- **Time evolution.** Timeless as an editorial failure; product and prompt defaults can change prevalence.
+- **Sources.** August 2026 accepted first-tranche editorial synthesis; controlled frequency measurement pending.
+- **Signal strength.** HIGH for editorial harm when the structure obscures or inflates simple content; not an authorship signal.
+- **Base rate.** Unmeasured.
+- **Causal hypothesis (ranked).** Alternatives include helpfulness or formatting defaults, prompt wording, genre imitation, ordinary human template use, and editor preference. Do not select one without evidence.
+- **Detection difficulty.** Easy to observe; context-sensitive to judge.
+- **False positive risk.** High in reference manuals, procedures, compliance material, and genuinely parallel complex artifacts.
+- **Fix or remediation.** Remove headings, lists, recaps, and labels until each surviving structural element helps the reader navigate a real distinction. Keep genre-required structure.
+- **Era status.** Active (timeless editorial category).
+- **Zone tag.** BODY-PERSISTENT.
+- **Evidence status.** Accepted generic editorial category; model-specific promotion not authorized.
+- **Authorship inference.** Not established.
+
+---
+
+### A3-SS-011: Current-Claude Deliverable Padding
+
+- **Description.** A report, Markdown document, handoff, or summary grows through filler sections, redundant summaries, boilerplate, unused-option surveys, overlong root explanations, or structure whose headings outweigh its substance. This is a current-family combination of existing deletion, recap, and proportional-structure failures; it is not unique to Claude.
+- **Concrete examples.** A four-question audit receives nine sections plus an executive summary and a final recap; a code-change note explains alternatives that were never viable; a handoff repeats the same outcome under “Summary,” “What changed,” and “Key takeaways”; a short fix receives a framework name and a multi-level outline.
+- **Location and register.** Reports, Markdown artifacts, summaries, documentation, pull-request descriptions, and long-session handoffs.
+- **Model attribution.** Claude Opus 5 and Claude Fable 5 are the documented current-family scope. Other models and human template use remain plausible alternatives.
+- **Time evolution.** Current-model overlay dated 2026-08; retain the generic component rules when this overlay ages.
+- **Sources.** Anthropic's current Opus 5 prompting guide names longer reports, filler sections, redundant summaries, and boilerplate. Anthropic's current Fable 5 guide names unused-option surveys, long root explanations, and over-structured descriptions. Documentary research: `2026-08-22-deeper-current-model-patterns.md`, C03.
+- **Signal strength.** HIGH for editorial harm after a task-coverage and deletion test; MEDIUM as one component of a current-Claude family assessment; never sufficient for provider attribution.
+- **Base rate.** Not published by the provider; unmeasured in this project.
+- **Causal hypothesis (ranked).** Unknown without a controlled comparison. Plausible alternatives include model defaults, broad prompts, requested comprehensiveness, house templates, and ordinary human over-structure.
+- **Detection difficulty.** Medium. Map each section to a requested question, evidentiary need, decision, or action.
+- **False positive risk.** Moderate to high for complex audits, legal analysis, reference manuals, and required templates.
+- **Fix or remediation.** Delete or merge every section that does not answer a requested question, establish evidence, resolve a decision, or enable action. Preserve complexity the task genuinely requires.
+- **Era status.** Active current-family overlay as of 2026-08.
+- **Zone tag.** BODY-PERSISTENT and FULL-RESPONSE-HANDOFF.
+- **Authorship inference.** Not established; evaluate only as an additive combined signal under the four-axis boundary.
+
+---
+
 ## Section A3-TF: Technical and Formatting
 
 ### A3-TF-001: Placeholder Text and Incomplete Elements
@@ -881,6 +922,26 @@ Net-new criteria total: 32 distinct entries slotted thematically. Combined with 
 - **Era status.** Active.
 - **Zone tag.** BODY-PERSISTENT.
 
+
+---
+
+### A3-TF-008: Current Tool, XML, and Reference Residue
+
+- **Description.** Visible output contains a tool call rendered as prose, internal XML or thinking tags, current reference placeholders, or a broken reference graph. This is deterministic technical residue when unintended; it establishes tool or workflow involvement more strongly than it establishes who wrote the surrounding prose.
+- **Concrete examples.** Visible structured tool-call arguments that never executed; internal XML or thinking-like tags; `oai_citation`, `attributableIndex`, `contentReference`, `turn0search0`, or comparable product markers; a named reference used but never defined; a reference declared but never used. UTM or referrer parameters may show a link's tool path but do not prove prose authorship.
+- **Location and register.** Published articles, copied research answers, tool-heavy transcripts, references, and footnotes.
+- **Model attribution.** Anthropic documents visible tool-call or internal-XML artifacts for Opus 5 when thinking is disabled. Current ChatGPT and other product markers are surface-specific and can survive copy-and-paste. Do not infer a model from a quoted fixture or copied link.
+- **Time evolution.** Product markers change frequently; refresh the inventory without deleting historical markers.
+- **Sources.** Anthropic's current Opus 5 prompting guide; current WikiProject AI Cleanup field evidence; documentary research `2026-08-22-deeper-current-model-patterns.md`, C05.
+- **Signal strength.** HIGH as a technical QA defect when unintended; LOW for provider or prose-authorship attribution without corroborating provenance.
+- **Base rate.** Unmeasured and surface-dependent.
+- **Causal hypothesis (ranked).** Product rendering failure, malformed tool handling, incomplete copy-and-paste, reference export bug, or intentional quotation.
+- **Detection difficulty.** Easy for literal markers; medium for reference-graph mismatches.
+- **False positive risk.** Very low for unintended literal residue; high for authorship claims.
+- **Fix or remediation.** Remove unintended residue, repair the reference graph, verify that cited sources support the claims, and correct the upstream renderer or export path. Preserve literal markers when the artifact is teaching or testing them.
+- **Era status.** Active; inventory dated 2026-08.
+- **Zone tag.** BODY-PERSISTENT and WRAPPER-ARTIFACT.
+- **Authorship inference.** Tool involvement may be supported; surrounding-text authorship is not established.
 
 ---
 
@@ -1726,6 +1787,26 @@ Net-new criteria total: 32 distinct entries slotted thematically. Combined with 
 
 ---
 
+### A3-BT-014: Text-Only Intent Without Authorized Action
+
+- **Description.** A response ends by announcing a tool call, implementation step, or other action without performing it, or asks permission that the request already supplied. `A3-BT-013` remains reserved as the legacy locator for system-prompt artifact bleed; this new entry intentionally uses 014.
+- **Concrete examples.** “I’ll update the files now” as the final sentence when no update follows; “The next step is to run the tests” when running them was in scope and safe; asking whether to continue after the user delegated the complete task.
+- **Location and register.** Full-response endings in agentic sessions. This is not an article-body fingerprint.
+- **Model attribution.** Anthropic documents the behavior as rare in deep Fable 5 sessions. Ordinary assistants and humans can also stop at intent because of missing authority, risk, interruption, or unavailable tools.
+- **Time evolution.** Current Fable 5 overlay dated 2026-08; the execution-integrity rule is timeless.
+- **Sources.** Anthropic's current Fable 5 prompting guide; documentary research `2026-08-22-deeper-current-model-patterns.md`, C04.
+- **Signal strength.** HIGH as an execution failure when authority and safe executability are established; LOW as an authorship or family signal.
+- **Base rate.** Provider describes it as rare; this project has no measured denominator.
+- **Causal hypothesis (ranked).** Unknown. Alternatives include harness failure, context pressure, missing permission, safety gates, interruption, or ordinary human deferral.
+- **Detection difficulty.** Medium because authority, reversibility, and tool availability must be checked.
+- **False positive risk.** High when the action is destructive, externally consequential, costly, or depends on missing user input.
+- **Fix or remediation.** If the action is authorized and safe, perform it and report the result. If not, name the precise blocker or approval boundary instead of promising an unperformed action.
+- **Era status.** Active operational overlay as of 2026-08.
+- **Zone tag.** WRAPPER-CLOSER and FULL-RESPONSE-ONLY.
+- **Authorship inference.** Not established.
+
+---
+
 ## Section A3-FA: Frame and Audience
 
 ### A3-FA-001: Insider Context Collapse
@@ -1912,6 +1993,67 @@ Net-new criteria total: 32 distinct entries slotted thematically. Combined with 
 
 ---
 
+### A3-FA-009: Voice Normalization During Editing
+
+- **Description.** An edit makes intelligible prose more generic by flattening idiolect, dialect, multilingual cadence, sentence-shape variation, humor, or deliberate irregularity without improving meaning, accuracy, or venue fit.
+- **Concrete examples.** A compact first-person aside becomes a formal transition; regionally natural phrasing is standardized despite being clear; a writer's alternating fragments and long sentences become uniform medium-length paragraphs; an editor adds headings and a summary to prose whose original movement was implicit.
+- **Location and register.** Editing, rewriting, copyediting, tone conversion, and mixed human/model workflows.
+- **Model attribution.** Model-agnostic preservation risk. Current-model frequency is a controlled-test question.
+- **Time evolution.** Timeless as editorial overreach; prevalence varies by prompt and editing surface.
+- **Sources.** August 2026 accepted first-tranche preservation synthesis; provenance-known human-control evaluation pending.
+- **Signal strength.** HIGH for voice preservation when changes have no named benefit; not an authorship signal.
+- **Base rate.** Unmeasured.
+- **Causal hypothesis (ranked).** Alternatives include house style, accessibility needs, editor preference, risk aversion, model-default cadence, and prompt ambiguity.
+- **Detection difficulty.** Medium. Requires the source, the edit, audience knowledge, and an explicit editing objective.
+- **False positive risk.** High when the agreed brief requires house-style normalization, accessibility changes, translation, legal clarity, or a different venue.
+- **Fix or remediation.** Revert changes that cannot name a benefit in meaning, accuracy, voice, rhythm, structure, accessibility, or venue fit. Preserve intelligible variation and obtain author approval for consequential normalization.
+- **Era status.** Active (timeless editorial category).
+- **Zone tag.** BODY-PERSISTENT.
+- **Evidence status.** Accepted preservation risk; model-specific promotion not authorized.
+- **Authorship inference.** Not established.
+
+---
+
+### A3-FA-010: Private Working-Language Leakage
+
+- **Description.** A user-facing summary or artifact relies on shorthand developed during the model's private work: arrow chains, hyphen-stacked compounds, unexplained model-created labels, local ontologies, deep implementation references, or allusions to reasoning the reader never saw. The failure is dependence on unseen context, not jargon or punctuation by itself.
+- **Concrete examples.** A handoff invokes “the RCD path” without ever defining the model-created label; a summary uses `parse→gate→hydrate` as if the reader observed the intermediate design; an artifact refers to “the second-root fix” or “the constraint-collapse layer” without introduction.
+- **Location and register.** Long-session summaries, handoffs, technical explanations, and agentic final answers.
+- **Model attribution.** Anthropic documents the behavior and mitigation for Fable 5. Practitioner reports provide only anecdotal Opus 5 corroboration. Standard technical shorthand and human team vocabulary remain ordinary alternatives.
+- **Time evolution.** Current Fable 5 overlay dated 2026-08; the audience-dependence test is timeless.
+- **Sources.** Anthropic's current Fable 5 prompting guide; documentary research `2026-08-22-deeper-current-model-patterns.md`, C01.
+- **Signal strength.** HIGH for reader-context failure; MEDIUM as a current Fable combined signal only with corroboration; never sufficient alone for attribution.
+- **Base rate.** Not published by the provider; unmeasured in this project.
+- **Causal hypothesis (ranked).** Unknown. Plausible alternatives include long-context compression, terse-output pressure, team shorthand, expert-audience assumptions, and ordinary human omission.
+- **Detection difficulty.** Medium. Extract specialized labels and ask whether each is standard for the audience, introduced in the artifact, necessary, and explained.
+- **False positive risk.** Moderate to high in architecture records, mathematical writing, and expert handoffs.
+- **Fix or remediation.** Define necessary terms on first use, replace temporary work labels with descriptive language, and remove details that depend on unseen reasoning rather than the reader's decision.
+- **Era status.** Active current-family overlay as of 2026-08.
+- **Zone tag.** FULL-RESPONSE-HANDOFF and BODY-PERSISTENT.
+- **Authorship inference.** Not established.
+
+---
+
+### A3-FA-011: Non-Material Work and Correction Chronology
+
+- **Description.** The response narrates upcoming actions, discarded options, explored roots, or self-corrections that could have been incorporated silently and do not change the reader's evidence, conclusion, decision, risk, or ability to reproduce the work. Unlike process theater, the chronology may be truthful; its failure is that it is not load-bearing.
+- **Concrete examples.** “First I considered three database engines, but I won’t discuss two of them”; a final answer recounts a typo the model noticed and corrected before presenting the result; repeated “I’ll check…” announcements before ordinary tool calls; an explanation spends more space on rejected roots than on the selected mechanism.
+- **Location and register.** Agentic wrapper updates, multi-turn corrections, final handoffs, and research narratives.
+- **Model attribution.** Anthropic documents progress narration and non-material correction narration for Opus 5 and unused-option or root elaboration for Fable 5. Audit trails, incident reports, and transparent research logs can legitimately preserve chronology.
+- **Time evolution.** Current Opus 5 and Fable 5 overlay dated 2026-08; materiality remains the durable test.
+- **Sources.** Anthropic's current Opus 5 and Fable 5 prompting guides; documentary research `2026-08-22-deeper-current-model-patterns.md`, C02.
+- **Signal strength.** HIGH for editorial waste after the materiality test; MEDIUM in a current-Claude combined assessment; never sufficient for provider attribution.
+- **Base rate.** Not published by the provider; unmeasured in this project.
+- **Causal hypothesis (ranked).** Unknown. Alternatives include transparency requirements, audit logging, model defaults, user requests for progress, and ordinary human narration.
+- **Detection difficulty.** Medium. Remove each chronology sentence and ask whether evidence, conclusion, decision, risk, or reproducibility changes.
+- **False positive risk.** Moderate in live progress updates and high in formal audit trails or incident retrospectives.
+- **Fix or remediation.** State the corrected outcome directly. Retain only chronology that changes a conclusion, decision, risk, evidence interpretation, or reproducibility.
+- **Era status.** Active current-family overlay as of 2026-08.
+- **Zone tag.** WRAPPER-UPDATE, WRAPPER-CLOSER, and FULL-RESPONSE-HANDOFF.
+- **Authorship inference.** Not established.
+
+---
+
 ## Section A3-SR: Social-register
 
 The social-register criteria apply when the artifact is a social media post (LinkedIn, Twitter/X, Threads, BlueSky, Reddit, Facebook, Instagram). Some are tolerable in articles but flag immediately in social. The thresholds differ from articles per the explanatory note in the parent SKILL.md "Social-register failures" section.
@@ -2054,4 +2196,3 @@ Entries in this file depend on patterns documented in other references/ files:
 This file documents 74 distinct entries: 42 renumbered v3.1.0 criteria plus 32 net-new entries from A3.3 of the unified bucket, with the 16-field template applied uniformly. Era status and zone tags are populated for every entry per the compounding-archive principle and the zone-conditional detection methodology in [design-considerations.md](../../ai-knowledge-rajiv/projects/synthesis-quality-skills-upgrade/resources/artifacts/design-considerations.md).
 
 Em-dash count: zero throughout. Verified via grep at write-time.
-
