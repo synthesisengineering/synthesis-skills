@@ -1,0 +1,6 @@
+interface:
+  display_name: "Synthesis Local Model Runtime"
+  short_description: "Fit and manage private local open-weight models"
+  default_prompt: "Use $synthesis-local-model-runtime to profile this computer without exposing hardware identifiers, recommend local open-weight artifacts that fit its memory and storage, and produce a dry-run installation plan with exact model ids and tradeoffs."
+policy:
+  allow_implicit_invocation: false

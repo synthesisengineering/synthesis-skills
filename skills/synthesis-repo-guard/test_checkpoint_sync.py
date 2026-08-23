@@ -110,6 +110,146 @@ def test_new_branch_is_published_and_manifest_is_removed(tmp_path: Path, monkeyp
     assert command("git", "show-ref", "--verify", "refs/remotes/origin/feature/new", cwd=repo)
 
 
+def test_exact_session_flush_ignores_and_preserves_unrelated_manifest(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo, _remote, cfg = repository(tmp_path)
+    context = repo / "projects" / "alpha" / "CONTEXT.md"
+    context.write_text("scoped\n", encoding="utf-8")
+    pending = tmp_path / "state" / "pending"
+    monkeypatch.setattr(MODULE, "PENDING_DIR", pending)
+    pending.mkdir(parents=True)
+    selected = MODULE.pending_manifest_path("session-selected")
+    selected.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": "session-selected",
+                "paths": [str(context)],
+                "remote_paths": [str(context)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    unrelated = MODULE.pending_manifest_path("session-unrelated")
+    unrelated.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": "session-unrelated",
+                "paths": [str(tmp_path / "unavailable" / "missing.md")],
+                "remote_paths": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    results, observed = MODULE.flush_pending_session(
+        cfg, "session-selected", dry_run=False
+    )
+
+    assert observed == [selected]
+    assert not any(result.get("alert") for result in results)
+    assert not selected.exists()
+    assert unrelated.exists()
+    assert command("git", "show", "HEAD:projects/alpha/CONTEXT.md", cwd=repo) == "scoped"
+
+
+def test_exact_session_dry_run_preserves_all_manifests(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo, _remote, cfg = repository(tmp_path)
+    context = repo / "projects" / "alpha" / "CONTEXT.md"
+    context.write_text("preview\n", encoding="utf-8")
+    pending = tmp_path / "state" / "pending"
+    monkeypatch.setattr(MODULE, "PENDING_DIR", pending)
+    pending.mkdir(parents=True)
+    selected = MODULE.pending_manifest_path("session-preview")
+    selected.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": "session-preview",
+                "paths": [str(context)],
+                "remote_paths": [str(context)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    unrelated = MODULE.pending_manifest_path("session-other")
+    unrelated.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": "session-other",
+                "paths": [str(context)],
+                "remote_paths": [str(context)],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    results, observed = MODULE.flush_pending_session(
+        cfg, "session-preview", dry_run=True
+    )
+
+    assert observed == [selected]
+    assert not any(result.get("alert") for result in results)
+    assert selected.exists()
+    assert unrelated.exists()
+
+
+def test_exact_session_flush_rejects_manifest_identity_mismatch(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _repo, _remote, cfg = repository(tmp_path)
+    pending = tmp_path / "state" / "pending"
+    monkeypatch.setattr(MODULE, "PENDING_DIR", pending)
+    pending.mkdir(parents=True)
+    selected = MODULE.pending_manifest_path("session-expected")
+    selected.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": "session-different",
+                "paths": [],
+                "remote_paths": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    results, observed = MODULE.flush_pending_session(
+        cfg, "session-expected", dry_run=False
+    )
+
+    assert observed == []
+    assert results[0]["action"] == "failed"
+    assert "mismatch" in results[0]["alert"]
+    assert selected.exists()
+
+
+def test_exact_session_flush_rejects_blank_or_oversized_identity(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _repo, _remote, cfg = repository(tmp_path)
+    pending = tmp_path / "state" / "pending"
+    monkeypatch.setattr(MODULE, "PENDING_DIR", pending)
+
+    blank_results, blank_manifests = MODULE.flush_pending_session(
+        cfg, "   ", dry_run=False
+    )
+    large_results, large_manifests = MODULE.flush_pending_session(
+        cfg, "é" * 257, dry_run=False
+    )
+
+    assert blank_manifests == []
+    assert blank_results[0]["action"] == "failed"
+    assert large_manifests == []
+    assert large_results[0]["action"] == "failed"
+    assert not pending.exists()
+
+
 def test_local_handoff_records_evidence_without_committing_or_pushing(
     tmp_path: Path, monkeypatch
 ) -> None:
