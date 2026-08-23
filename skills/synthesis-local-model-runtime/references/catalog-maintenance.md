@@ -9,6 +9,9 @@
 4. Total and active parameter counts kept separate for MoE models.
 5. A bounded planning context assumption.
 6. Verification date and status.
+7. For each additional managed runtime, the exact acquisition target,
+   quantization publisher, artifact source URL, format, and at least two
+   unambiguous inventory match terms.
 
 Prefer official runtime artifacts. A reputable community quantization is
 acceptable only when the catalog names the publisher separately and the local
@@ -24,8 +27,18 @@ inventory captures the digest resolved after installation.
 4. Add or update the record. Never repoint an existing catalog id to a different
    quantization.
 5. Run `local_model_runtime.py catalog` and the unit tests.
-6. Run the planner against 16, 24, 32, 64, 96, and 128 GiB fixtures.
-7. Record the user-visible catalog change in the plugin release notes.
+6. Run each managed runtime planner against 16, 24, 32, 64, 96, and 128 GiB
+   fixtures. Missing runtime targets must block or select a separately verified
+   candidate; they must never be inferred.
+7. Test each acquisition command as an argument array and verify the runtime's
+   non-mutating inventory response independently.
+8. Record the user-visible catalog change in the plugin release notes.
+
+LM Studio targets use credential-free `https://huggingface.co/` repository
+URLs with an explicit `@quantization` suffix. The `match_terms` must identify
+both the repository and quantization in `lms ls --json --variants` output. A
+single generic term such as `q8_0` is invalid because it can match unrelated
+models.
 
 For a Hugging Face artifact with local-import recovery, fetch its public
 Ollama-compatible registry manifest and pin only GGUF model/projector layers.

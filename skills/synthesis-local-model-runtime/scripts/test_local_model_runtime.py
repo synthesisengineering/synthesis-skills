@@ -29,7 +29,13 @@ def fixture_profile(memory=128, free=2000, version="0.31.2"):
                     "kv_cache_type": "f16",
                     "flash_attention": "1",
                 },
-            }
+            },
+            "lm_studio": {
+                "available": True,
+                "version": None,
+                "build_identity": "fixture-build",
+                "capabilities": dict(runtime.RUNTIME_CAPABILITIES["lm_studio"]),
+            },
         },
     }
 
@@ -42,6 +48,11 @@ class CatalogTests(unittest.TestCase):
         families = {artifact["family"] for artifact in self.artifacts}
         self.assertEqual(families, {"qwen", "glm", "kimi", "deepseek"})
         self.assertGreaterEqual(len(self.artifacts), 10)
+        self.assertEqual(self.catalog["schema_version"], 2)
+        self.assertGreaterEqual(
+            sum(runtime.runtime_target(item, "lm_studio") is not None for item in self.artifacts),
+            8,
+        )
 
     def test_duplicate_ids_fail_closed(self):
         copied = json.loads(json.dumps(self.catalog))
@@ -52,6 +63,17 @@ class CatalogTests(unittest.TestCase):
     def test_credential_bearing_source_url_is_rejected(self):
         copied = json.loads(json.dumps(self.catalog))
         copied["artifacts"][0]["artifact_source_url"] = "https://user:secret@example.test/model"
+        with self.assertRaises(runtime.LocalModelError):
+            runtime.validate_catalog(copied)
+
+    def test_lm_studio_target_requires_unambiguous_match_terms(self):
+        copied = json.loads(json.dumps(self.catalog))
+        target = next(
+            item["runtime_targets"]["lm_studio"]
+            for item in copied["artifacts"]
+            if "runtime_targets" in item
+        )
+        target["match_terms"] = ["q8_0"]
         with self.assertRaises(runtime.LocalModelError):
             runtime.validate_catalog(copied)
 
@@ -243,6 +265,279 @@ class PrivacyAndStorageTests(unittest.TestCase):
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_runtime_summary_distinguishes_managed_and_direct_choices(self):
+        profile = fixture_profile()
+        profile["runtimes"].update(
+            {
+                "llama_cpp": {"available": False},
+                "mlx_lm": {"available": True},
+            }
+        )
+        summary = runtime.runtime_summary(profile)
+        self.assertEqual(summary["default_runtime"], "ollama")
+        self.assertEqual(summary["managed_choices"], ["ollama", "lm_studio"])
+        self.assertEqual(summary["direct_choices"], ["llama_cpp", "mlx_lm"])
+        self.assertTrue(runtime.RUNTIME_CAPABILITIES["ollama"]["update"])
+        self.assertFalse(runtime.RUNTIME_CAPABILITIES["lm_studio"]["update"])
+
+    def test_lm_studio_recommendation_uses_exact_catalog_targets(self):
+        _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
+        policy = dict(runtime.DEFAULT_POLICY)
+        policy.update(
+            {
+                "required_families": ["qwen", "glm", "kimi", "deepseek"],
+                "artifact_overrides": {
+                    "qwen": "qwen3.8-27b-q8-0",
+                    "glm": "glm-4.7-flash-q8-0",
+                    "kimi": "kimi-linear-48b-a3b-q6-k",
+                    "deepseek": "deepseek-r1-32b-q8-0",
+                },
+            }
+        )
+        plan = runtime.recommend(artifacts, fixture_profile(), policy, "lm_studio")
+        self.assertTrue(plan["ready"])
+        self.assertEqual(plan["runtime"], "lm_studio")
+        self.assertTrue(
+            all(
+                selection["runtime_model"].startswith("https://huggingface.co/")
+                for selection in plan["selections"]
+            )
+        )
+
+    def test_lm_studio_missing_target_blocks_explicit_plan(self):
+        _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
+        plan = runtime.plan_explicit(
+            artifacts,
+            ["qwen3-8b-q8-0"],
+            fixture_profile(),
+            dict(runtime.DEFAULT_POLICY),
+            "lm_studio",
+        )
+        self.assertFalse(plan["ready"])
+        self.assertIn("no verified lm_studio", " ".join(plan["blockers"]))
+
+    def test_lm_studio_install_uses_noninteractive_exact_target_and_inventory(self):
+        _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
+        artifact_id = "qwen3.8-27b-q8-0"
+        plan = runtime.plan_explicit(
+            artifacts,
+            [artifact_id],
+            fixture_profile(),
+            dict(runtime.DEFAULT_POLICY),
+            "lm_studio",
+        )
+        calls = []
+
+        def runner(arguments, **kwargs):
+            calls.append((arguments, kwargs))
+            if arguments[1] == "get":
+                return runtime.subprocess.CompletedProcess(arguments, 0, "", "")
+            payload = [
+                {
+                    "modelKey": "bartowski/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q8_0.gguf",
+                    "sizeBytes": 29116388960,
+                    "architecture": "qwen",
+                    "paramsString": "27B",
+                    "quantization": "Q8_0",
+                }
+            ]
+            return runtime.subprocess.CompletedProcess(
+                arguments, 0, json.dumps(payload), ""
+            )
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime.shutil, "which", return_value="/usr/local/bin/lms"
+        ):
+            result = runtime.perform_install(
+                plan,
+                artifacts,
+                fixture_profile(),
+                Path(directory),
+                None,
+                runner=runner,
+            )
+            self.assertTrue((Path(directory) / "machines.json").exists())
+        get_call, get_kwargs = calls[0]
+        self.assertEqual(get_call[1], "get")
+        self.assertIn("@Q8_0", get_call[2])
+        self.assertEqual(get_call[-2:], ["--yes", "--gguf"])
+        self.assertFalse(get_kwargs["shell"])
+        installed = result["installed"][artifact_id]
+        self.assertEqual(installed["runtime"], "lm_studio")
+        self.assertEqual(installed["identity_strength"], "runtime-metadata")
+
+    def test_lm_studio_failed_download_does_not_write_inventory(self):
+        _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
+        plan = runtime.plan_explicit(
+            artifacts,
+            ["qwen3.8-27b-q8-0"],
+            fixture_profile(),
+            dict(runtime.DEFAULT_POLICY),
+            "lm_studio",
+        )
+
+        def runner(arguments, **_kwargs):
+            return runtime.subprocess.CompletedProcess(arguments, 7, "", "failed")
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime.shutil, "which", return_value="/usr/local/bin/lms"
+        ):
+            with self.assertRaises(runtime.LocalModelError):
+                runtime.perform_install(
+                    plan,
+                    artifacts,
+                    fixture_profile(),
+                    Path(directory),
+                    None,
+                    runner=runner,
+                )
+            self.assertFalse((Path(directory) / "machines.json").exists())
+
+    def test_lm_studio_update_is_explicitly_blocked(self):
+        with self.assertRaisesRegex(runtime.LocalModelError, "content-identity"):
+            runtime.plan_model_updates("lm_studio", ["model"], False, [])
+
+    def test_update_plan_rejects_uninstalled_model_and_supports_all(self):
+        tags = [
+            {"name": "gemma4:e4b", "digest": "a", "size": 10},
+            {"name": "gemma4:26b", "digest": "b", "size": 20},
+        ]
+        with self.assertRaisesRegex(runtime.LocalModelError, "not installed"):
+            runtime.plan_model_updates("ollama", ["gemma4:31b"], False, tags)
+        plan = runtime.plan_model_updates("ollama", [], True, tags)
+        self.assertEqual(plan["scope"], "all-installed")
+        self.assertEqual(len(plan["models"]), 2)
+
+    def test_ollama_update_records_changed_and_already_current(self):
+        before_tags = [
+            {"name": "gemma4:e4b", "digest": "old", "size": 10},
+            {"name": "gemma4:26b", "digest": "same", "size": 20},
+        ]
+        plan = runtime.plan_model_updates(
+            "ollama", ["gemma4:e4b", "gemma4:26b"], False, before_tags
+        )
+        after = iter(
+            [
+                [{"name": "gemma4:e4b", "digest": "new", "size": 11}],
+                [{"name": "gemma4:26b", "digest": "same", "size": 20}],
+            ]
+        )
+
+        def runner(arguments, **_kwargs):
+            return runtime.subprocess.CompletedProcess(arguments, 0, "", "")
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime.shutil, "which", return_value="/usr/local/bin/ollama"
+        ):
+            result = runtime.perform_ollama_updates(
+                plan,
+                Path(directory) / "state",
+                Path(directory) / "receipts",
+                runner=runner,
+                tags_provider=lambda: next(after),
+            )
+            self.assertTrue(Path(result["receipt_path"]).exists())
+        self.assertTrue(result["success"])
+        self.assertEqual(
+            [item["status"] for item in result["models"]],
+            ["updated", "already-current"],
+        )
+
+    def test_ollama_update_failure_returns_failed_receipt(self):
+        tags = [{"name": "gemma4:e4b", "digest": "old", "size": 10}]
+        plan = runtime.plan_model_updates("ollama", ["gemma4:e4b"], False, tags)
+
+        def runner(arguments, **_kwargs):
+            return runtime.subprocess.CompletedProcess(arguments, 9, "", "failed")
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime.shutil, "which", return_value="/usr/local/bin/ollama"
+        ):
+            result = runtime.perform_ollama_updates(
+                plan, Path(directory), runner=runner
+            )
+        self.assertFalse(result["success"])
+        self.assertEqual(result["models"][0]["status"], "failed")
+
+    def test_ollama_update_refreshes_matching_inventory_record(self):
+        _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
+        artifact_id = "qwen3-8b-q8-0"
+        before = {
+            "name": "qwen3:8b-q8_0",
+            "digest": "old-digest",
+            "size": 100,
+        }
+        after = {
+            "name": "qwen3:8b-q8_0",
+            "digest": "new-digest",
+            "size": 101,
+        }
+        plan = runtime.plan_model_updates(
+            "ollama", ["qwen3:8b-q8_0"], False, [before]
+        )
+
+        def runner(arguments, **_kwargs):
+            return runtime.subprocess.CompletedProcess(arguments, 0, "", "")
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime.shutil, "which", return_value="/usr/local/bin/ollama"
+        ):
+            state = Path(directory)
+            runtime.update_inventory(
+                state,
+                fixture_profile(),
+                [{"artifact_id": artifact_id}],
+                installed={
+                    artifact_id: {
+                        "runtime": "ollama",
+                        "runtime_name": "qwen3:8b-q8_0",
+                        "digest": "old-digest",
+                        "size_bytes": 100,
+                    }
+                },
+            )
+            result = runtime.perform_ollama_updates(
+                plan,
+                state,
+                runner=runner,
+                tags_provider=lambda: [after],
+            )
+            resolved = runtime.resolve_inventory_model(
+                state, artifacts, artifact_id=artifact_id
+            )
+            inventory = runtime.load_json(state / "machines.json")
+            machine = next(iter(inventory["machines"].values()))
+        self.assertTrue(result["inventory_refreshed"])
+        self.assertEqual(resolved["digest"], "new-digest")
+        self.assertEqual(
+            machine["installed"][artifact_id]["last_update"]["status"], "updated"
+        )
+
+    def test_resolve_accepts_labeled_lm_studio_metadata_identity(self):
+        _, artifacts = runtime.load_catalog(runtime.DEFAULT_CATALOG)
+        artifact_id = "qwen3.8-27b-q8-0"
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            runtime.update_inventory(
+                state,
+                fixture_profile(),
+                [{"artifact_id": artifact_id}],
+                installed={
+                    artifact_id: {
+                        "runtime": "lm_studio",
+                        "runtime_name": "bartowski/Qwen3.8-27B-GGUF/Q8_0.gguf",
+                        "identity": "metadata-identity",
+                        "identity_strength": "runtime-metadata",
+                    }
+                },
+            )
+            result = runtime.resolve_inventory_model(
+                state, artifacts, artifact_id=artifact_id
+            )
+        self.assertIsNone(result["digest"])
+        self.assertEqual(result["identity"], "metadata-identity")
+        self.assertEqual(result["identity_strength"], "runtime-metadata")
+
     def test_find_installed_normalizes_latest_only(self):
         tags = [{"name": "qwen3:8b", "digest": "abc"}]
         self.assertIsNotNone(runtime.find_installed("qwen3:8b", tags))

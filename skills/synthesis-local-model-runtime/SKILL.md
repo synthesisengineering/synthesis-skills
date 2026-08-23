@@ -1,11 +1,10 @@
 ---
 name: synthesis-local-model-runtime
-description: "Profile a computer, recommend local open-weight model artifacts that fit its real memory and storage, install approved artifacts through deterministic runtime adapters, maintain a privacy-safe per-machine inventory, and verify local inference. Use for: local models, open weights, Ollama, llama.cpp, MLX model selection, which model fits this Mac or PC, install Qwen/GLM/Kimi/DeepSeek locally, hardware profile for LLMs, model inventory, local inference benchmark."
+description: "Profile a computer, compare Ollama, LM Studio, llama.cpp, and MLX-LM, recommend local open-weight model artifacts that fit its real memory and storage, install approved artifacts through deterministic managed-runtime adapters, update installed Ollama models with before-and-after identity receipts, maintain a privacy-safe per-machine inventory, and verify local inference. Use for: local models, open weights, Ollama, LM Studio, llama.cpp, MLX model selection, model updates, which model fits this Mac or PC, install Qwen/GLM/Kimi/DeepSeek locally, hardware profile for LLMs, model inventory, local inference benchmark."
 license: "Apache-2.0"
-depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.5"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -24,21 +23,27 @@ every workload.
    serial numbers, hardware UUIDs, provisioning identifiers, or account data.
 2. Validate the bundled catalog before using it:
    `scripts/local_model_runtime.py catalog`.
-3. Load any local policy and create a dry-run plan. Recommendation applies
+3. Inspect `runtimes` and choose a managed environment. Ollama is the default;
+   LM Studio is the optional managed alternative. llama.cpp and MLX-LM are
+   reported as direct runtimes with their actual capability boundaries.
+4. Load any local policy and create a dry-run plan. Recommendation applies
    exclusions first, then hard memory, storage, and runtime-configuration
    gates, then quality ordering.
-4. Present the exact artifacts, quantizations, distribution channels, disk
+5. Present the exact artifacts, quantizations, distribution channels, disk
    estimate, remaining free space, runtime prerequisites, and reasons.
-5. Install only after the user authorizes the downloads. `install` is dry-run
+6. Install only after the user authorizes the downloads. `install` is dry-run
    unless `--yes` is supplied.
-6. Verify the runtime's resolved artifact metadata. Record what actually
+7. Verify the runtime's resolved artifact metadata. Record what actually
    installed, not what the catalog predicted.
-7. Run bounded functional and performance checks one model at a time. Unload
+8. Update installed Ollama models only through an explicit model list or
+   explicit `--all`. `update` is dry-run unless `--yes` is supplied and records
+   both identities even when the pull is an already-current no-op.
+9. Run bounded functional and performance checks one model at a time. Unload
    each model after testing.
-8. Update the per-machine inventory only after verified state transitions.
+10. Update the per-machine inventory only after verified state transitions.
    Separate installation commands merge their verified selections; an
    explicit inventory refresh replaces selections with the current plan.
-9. When a Hugging Face registry pull fails after catalog-pinned GGUF layers are
+11. When a Hugging Face registry pull fails after catalog-pinned GGUF layers are
    cached, permit the deterministic local-import recovery only after every full
    digest and exact size matches. Never import an unpinned partial download.
 
@@ -46,6 +51,7 @@ every workload.
 
 ```bash
 python3 scripts/local_model_runtime.py profile
+python3 scripts/local_model_runtime.py runtimes
 python3 scripts/local_model_runtime.py catalog
 python3 scripts/local_model_runtime.py recommend \
   --policy assets/policy.example.json
@@ -55,6 +61,22 @@ python3 scripts/local_model_runtime.py install \
 
 The final command prints a complete non-mutating plan. Repeat it with `--yes`
 only after the named artifacts and total download size are authorized.
+
+To use LM Studio instead of the default Ollama adapter, install its `lms` CLI,
+then select the runtime explicitly. The catalog must contain an exact LM Studio
+target for every requested artifact:
+
+```bash
+python3 scripts/local_model_runtime.py recommend \
+  --runtime lm_studio \
+  --policy assets/policy.example.json
+python3 scripts/local_model_runtime.py install \
+  --runtime lm_studio \
+  --artifact qwen3.8-27b-q8-0
+```
+
+The second command is a dry run. Add `--yes` only after inspecting the exact
+Hugging Face repository, quantization, publisher, and disk estimate.
 
 To install explicit catalog entries instead of policy selections:
 
@@ -94,6 +116,44 @@ python3 scripts/local_model_runtime.py benchmark \
   --artifact qwen3.8-27b-q8-0 \
   --output-dir /path/outside/the/source/repository
 ```
+
+LM Studio verification uses its JSON inventory and a catalog identity made
+from repository and quantization terms. That is a runtime-metadata identity,
+not a content digest. Ollama verification retains the stronger local digest.
+
+## Updating installed models
+
+Plan updates by naming the installed Ollama models exactly:
+
+```bash
+python3 scripts/local_model_runtime.py update \
+  --model gemma4:e4b \
+  --model gemma4:26b \
+  --model gemma4:31b
+```
+
+Execute the same plan only after inspection:
+
+```bash
+python3 scripts/local_model_runtime.py update \
+  --model gemma4:e4b \
+  --model gemma4:26b \
+  --model gemma4:31b \
+  --receipt-dir /path/outside/the/source/repository \
+  --yes
+```
+
+Use `--all` instead of repeated `--model` flags only when every installed
+Ollama model is in scope. The command rejects unknown or uninstalled names,
+uses argument-array subprocesses, re-enumerates each model after its pull, and
+compares digest and size. An unchanged digest is a successful
+`already-current` result, not an unverified assumption. A failed pull or a
+model missing after the pull makes the receipt fail.
+
+LM Studio model updates remain blocked. Its CLI supports downloads and JSON
+inventory, but the skill has no stable content identity with which to prove
+that a re-download replaced an installed model. It does not turn a download
+attempt into an update claim.
 
 Benchmarks set the Ollama `think` field to `false` by default so a bounded token
 budget measures the requested final response. Pass `--think` only when the
@@ -171,16 +231,28 @@ optional and should not contain private organization or client names.
 
 Automation should call `resolve --family <family>` before using a local model.
 Resolution succeeds only when the current opaque machine record both selects
-and verifies that artifact; it returns the exact runtime name and digest. This
-makes the mapping an enforcement input rather than a passive spreadsheet.
+and verifies that artifact; it returns the exact runtime name and the strongest
+available identity. Ollama uses a content digest. LM Studio uses a labeled
+runtime-metadata identity. This makes the mapping an enforcement input rather
+than a passive spreadsheet.
 
 ## Runtime boundary
 
-Version 1.0 implements Ollama as the installation and serving adapter,
-including Hugging Face GGUF model ids supported by current Ollama. The profile
-also detects llama.cpp and MLX-LM so a future adapter can be chosen without
-changing the machine schema. Do not claim those runtimes are installation
-targets until their adapters exist.
+Version 1.1 uses capability-graded adapters:
+
+- Ollama is the default managed runtime. It supports catalog planning,
+  installation, inventory, digest verification, bounded benchmarks, service
+  configuration, and verified updates.
+- LM Studio is an optional managed runtime. It supports catalog planning,
+  noninteractive exact downloads through `lms get`, JSON inventory, and
+  runtime-metadata verification. Verified model-content updates and the
+  skill's benchmark protocol are not supported.
+- llama.cpp and MLX-LM are substantial direct runtimes for execution and local
+  serving. The profile detects them and reports their capabilities, but the
+  skill does not own their model acquisition or lifecycle.
+
+Use `runtimes` to see both availability and capability. Never infer one
+runtime's lifecycle semantics from another runtime's popularity.
 
 Read [references/architecture.md](references/architecture.md) when extending
 the runtime or inventory schema. Read
@@ -210,7 +282,9 @@ into an evasion or watermark-removal loop.
 - Missing or malformed hardware facts remain `unknown`; never invent them.
 - A runtime below an artifact's minimum version blocks installation.
 - A failed pull never creates an installed inventory record.
+- A failed update produces a failed receipt and never claims the model changed.
 - A model absent from the runtime after a reported pull is a failure.
+- A runtime without a provable update identity remains blocked for updates.
 - A functional check and a benchmark are separate. Preserve both results.
 - Installed metadata is not a functional pass. A model that cannot generate
   under the effective runtime configuration remains unusable until that

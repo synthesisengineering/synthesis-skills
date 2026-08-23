@@ -4,6 +4,32 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.44.0] - 2026-08-23
+
+### Added
+
+- `synthesis-local-model-runtime` **v1.1.0** adds a capability-graded runtime
+  matrix. Ollama remains the default managed environment; LM Studio is an
+  optional managed adapter for catalog planning, exact noninteractive Hugging
+  Face downloads, JSON inventory, and runtime-metadata verification. llama.cpp
+  and MLX-LM are reported as direct execution and serving runtimes without
+  unsupported lifecycle claims.
+- Catalog schema 2 carries separate LM Studio repository, quantization,
+  publisher, and unambiguous inventory-match evidence for eight Qwen, GLM,
+  Kimi, and DeepSeek artifacts. Schema 1 remains readable as Ollama-only input.
+- A dry-run-first `update` command refreshes explicit installed Ollama models
+  or an explicit `--all` set. It records before-and-after digest and size,
+  distinguishes changed artifacts from already-current no-ops, writes optional
+  receipts, and refreshes matching per-machine inventory records only after
+  verified success. LM Studio updates remain blocked because its CLI does not
+  expose a stable model-content identity contract.
+
+### Changed
+
+- Runtime profiling now reports the detected capability map for Ollama,
+  LM Studio, llama.cpp, and MLX-LM. Pipx-installed MLX-LM versions are read from
+  their own interpreter environment when the entry point lacks `--version`.
+
 ## [4.43.6] - 2026-08-23
 
 ### Fixed

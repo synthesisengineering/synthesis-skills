@@ -32,9 +32,62 @@ OLLAMA_API = "http://127.0.0.1:11434"
 HOMEBREW_OLLAMA_LABEL = "homebrew.mxcl.ollama"
 OLLAMA_KV_CACHE_TYPES = {"f16", "q8_0", "q4_0"}
 GIB = 1024**3
-CATALOG_SCHEMA = 1
+SUPPORTED_CATALOG_SCHEMAS = {1, 2}
+CATALOG_SCHEMA = 2
 POLICY_SCHEMA = 1
 INVENTORY_SCHEMA = 1
+MANAGED_RUNTIMES = {"ollama", "lm_studio"}
+
+RUNTIME_CAPABILITIES: dict[str, dict[str, Any]] = {
+    "ollama": {
+        "mode": "managed",
+        "recommend": True,
+        "install": True,
+        "inventory": True,
+        "verify": True,
+        "update": True,
+        "execute": True,
+        "serve": True,
+        "benchmark": True,
+        "configuration": True,
+    },
+    "lm_studio": {
+        "mode": "managed",
+        "recommend": True,
+        "install": True,
+        "inventory": True,
+        "verify": True,
+        "update": False,
+        "execute": True,
+        "serve": True,
+        "benchmark": False,
+        "configuration": False,
+    },
+    "llama_cpp": {
+        "mode": "direct",
+        "recommend": False,
+        "install": False,
+        "inventory": False,
+        "verify": False,
+        "update": False,
+        "execute": True,
+        "serve": True,
+        "benchmark": False,
+        "configuration": False,
+    },
+    "mlx_lm": {
+        "mode": "direct",
+        "recommend": False,
+        "install": False,
+        "inventory": False,
+        "verify": False,
+        "update": False,
+        "execute": True,
+        "serve": True,
+        "benchmark": False,
+        "configuration": False,
+    },
+}
 
 FORBIDDEN_PROFILE_TERMS = {
     "serial",
@@ -182,6 +235,33 @@ def command_version(executable: str | None, *arguments: str) -> str | None:
     if not executable:
         return None
     output = command_output([executable, *arguments])
+    parsed = version_tuple(output)
+    return ".".join(str(part) for part in parsed) if parsed else None
+
+
+def python_distribution_version(
+    executable: str | None, distribution: str
+) -> str | None:
+    if not executable:
+        return None
+    try:
+        with Path(executable).open("rb") as stream:
+            first_line = stream.readline(512).decode("utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    if not first_line.startswith("#!"):
+        return None
+    interpreter = first_line[2:].strip().split()[0]
+    if not interpreter or Path(interpreter).name not in {"python", "python3"}:
+        return None
+    output = command_output(
+        [
+            interpreter,
+            "-c",
+            "import importlib.metadata as m, sys; print(m.version(sys.argv[1]))",
+            distribution,
+        ]
+    )
     parsed = version_tuple(output)
     return ".".join(str(part) for part in parsed) if parsed else None
 
@@ -508,6 +588,7 @@ def ollama_service_configuration() -> dict[str, Any]:
 
 def runtime_profile() -> dict[str, Any]:
     ollama = shutil.which("ollama")
+    lms = shutil.which("lms")
     llama_cli = shutil.which("llama-cli") or shutil.which("llama")
     mlx = shutil.which("mlx_lm.generate") or shutil.which("mlx_lm.server")
     ollama_version = command_version(ollama, "--version")
@@ -522,23 +603,80 @@ def runtime_profile() -> dict[str, Any]:
                 api_reachable = True
     except LocalModelError:
         pass
-    return {
+    lms_build_identity = None
+    if lms:
+        output = command_output([lms, "version", "--json"])
+        if output:
+            try:
+                value = json.loads(output)
+                if isinstance(value, dict):
+                    candidate = value.get("version") or value.get("commit")
+                    if isinstance(candidate, str) and candidate:
+                        lms_build_identity = candidate
+            except json.JSONDecodeError:
+                pass
+    runtimes = {
         "ollama": {
             "available": bool(ollama),
             "version": api_version or ollama_version,
             "api_reachable": api_reachable,
             "configuration": ollama_service_configuration(),
+            "adapter_status": "managed-full",
+            "capabilities": dict(RUNTIME_CAPABILITIES["ollama"]),
+        },
+        "lm_studio": {
+            "available": bool(lms),
+            "version": command_version(lms, "version"),
+            "build_identity": lms_build_identity,
+            "adapter_status": "managed-partial",
+            "capabilities": dict(RUNTIME_CAPABILITIES["lm_studio"]),
+            "update_limitation": (
+                "LM Studio does not expose a stable, scriptable model-content identity "
+                "contract that lets this skill prove an in-place update. Re-downloads are "
+                "therefore not represented as verified updates."
+            ),
         },
         "llama_cpp": {
             "available": bool(llama_cli),
             "version": command_version(llama_cli, "--version"),
-            "adapter_status": "detected-only",
+            "adapter_status": "direct-runtime",
+            "capabilities": dict(RUNTIME_CAPABILITIES["llama_cpp"]),
+            "management_guidance": (
+                "Use llama.cpp directly for GGUF execution or serving; model acquisition "
+                "and lifecycle remain the caller's responsibility."
+            ),
         },
         "mlx_lm": {
             "available": bool(mlx),
-            "version": command_version(mlx, "--version"),
-            "adapter_status": "detected-only",
+            "version": command_version(mlx, "--version")
+            or python_distribution_version(mlx, "mlx-lm"),
+            "adapter_status": "direct-runtime",
+            "capabilities": dict(RUNTIME_CAPABILITIES["mlx_lm"]),
+            "management_guidance": (
+                "Use MLX-LM directly for Apple-Silicon-native execution or serving; the "
+                "Hugging Face cache is not treated as a managed model registry."
+            ),
         },
+    }
+    return runtimes
+
+
+def runtime_summary(profile: dict[str, Any]) -> dict[str, Any]:
+    runtimes = profile.get("runtimes", {})
+    return {
+        "default_runtime": "ollama",
+        "managed_choices": ["ollama", "lm_studio"],
+        "direct_choices": ["llama_cpp", "mlx_lm"],
+        "selection_guidance": {
+            "ollama": "Default for scriptable install, inventory, verification, and updates.",
+            "lm_studio": (
+                "Optional GUI/headless managed environment with catalog-driven downloads; "
+                "verified model-content updates are not automated."
+            ),
+            "llama_cpp": "Direct GGUF execution and serving with first-class Apple Silicon support.",
+            "mlx_lm": "Direct Apple-Silicon-native execution and serving through MLX.",
+        },
+        "runtimes": runtimes,
     }
 
 
@@ -609,8 +747,77 @@ def validate_https_url(value: Any, label: str) -> None:
         raise LocalModelError(f"{label} must be a credential-free HTTPS URL")
 
 
+def runtime_target(artifact: dict[str, Any], runtime_name: str) -> dict[str, Any] | None:
+    if runtime_name == "ollama":
+        return {
+            "model": artifact["runtime_model"],
+            "minimum_version": artifact["minimum_runtime_version"],
+            "expected_digest_prefix": artifact.get("expected_digest_prefix"),
+        }
+    targets = artifact.get("runtime_targets", {})
+    target = targets.get(runtime_name) if isinstance(targets, dict) else None
+    return dict(target) if isinstance(target, dict) else None
+
+
+def validate_runtime_targets(artifact: dict[str, Any]) -> None:
+    artifact_id = artifact["id"]
+    targets = artifact.get("runtime_targets")
+    if targets is None:
+        return
+    if not isinstance(targets, dict):
+        raise LocalModelError(f"{artifact_id}.runtime_targets must be an object")
+    unknown = sorted(set(targets) - {"lm_studio"})
+    if unknown:
+        raise LocalModelError(
+            f"{artifact_id}.runtime_targets has unsupported runtimes: {', '.join(unknown)}"
+        )
+    lm_studio = targets.get("lm_studio")
+    if lm_studio is None:
+        return
+    if not isinstance(lm_studio, dict):
+        raise LocalModelError(f"{artifact_id}.runtime_targets.lm_studio must be an object")
+    if set(lm_studio) != {
+        "model",
+        "format",
+        "match_terms",
+        "artifact_publisher",
+        "artifact_source_url",
+    }:
+        raise LocalModelError(
+            f"{artifact_id}.runtime_targets.lm_studio must contain exactly model, format, "
+            "match_terms, artifact_publisher, and artifact_source_url"
+        )
+    validate_https_url(lm_studio["model"], f"{artifact_id}.runtime_targets.lm_studio.model")
+    validate_https_url(
+        lm_studio["artifact_source_url"],
+        f"{artifact_id}.runtime_targets.lm_studio.artifact_source_url",
+    )
+    if not isinstance(lm_studio["artifact_publisher"], str) or not lm_studio[
+        "artifact_publisher"
+    ]:
+        raise LocalModelError(f"{artifact_id} LM Studio artifact publisher is invalid")
+    if not str(lm_studio["model"]).startswith("https://huggingface.co/"):
+        raise LocalModelError(f"{artifact_id} LM Studio target must use huggingface.co")
+    if lm_studio["format"] not in {"gguf", "mlx"}:
+        raise LocalModelError(f"{artifact_id} LM Studio target format must be gguf or mlx")
+    match_terms = lm_studio["match_terms"]
+    if (
+        not isinstance(match_terms, list)
+        or len(match_terms) < 2
+        or not all(
+            isinstance(term, str)
+            and term == term.casefold()
+            and re.fullmatch(r"[a-z0-9._/-]+", term)
+            for term in match_terms
+        )
+    ):
+        raise LocalModelError(
+            f"{artifact_id} LM Studio match_terms must have at least two safe lowercase terms"
+        )
+
+
 def validate_catalog(catalog: dict[str, Any]) -> list[dict[str, Any]]:
-    if catalog.get("schema_version") != CATALOG_SCHEMA:
+    if catalog.get("schema_version") not in SUPPORTED_CATALOG_SCHEMAS:
         raise LocalModelError(f"Unsupported catalog schema: {catalog.get('schema_version')}")
     artifacts = catalog.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
@@ -655,7 +862,7 @@ def validate_catalog(catalog: dict[str, Any]) -> list[dict[str, Any]]:
             raise LocalModelError(f"Duplicate artifact id: {artifact_id}")
         seen.add(artifact_id)
         if artifact["runtime"] != "ollama":
-            raise LocalModelError(f"Unsupported runtime in 1.0 catalog: {artifact['runtime']}")
+            raise LocalModelError(f"Unsupported legacy runtime in catalog: {artifact['runtime']}")
         runtime_model = artifact["runtime_model"]
         if not isinstance(runtime_model, str) or re.search(r"\s|://|@", runtime_model):
             raise LocalModelError(f"Unsafe runtime model id for {artifact_id}")
@@ -690,6 +897,7 @@ def validate_catalog(catalog: dict[str, Any]) -> list[dict[str, Any]]:
             isinstance(role, str) and role for role in artifact["roles"]
         ):
             raise LocalModelError(f"{artifact_id}.roles must be non-empty strings")
+        validate_runtime_targets(artifact)
         requirements = artifact.get("runtime_requirements")
         if requirements is not None:
             if not isinstance(requirements, dict):
@@ -811,7 +1019,12 @@ def runtime_satisfies(current: str | None, minimum: str) -> bool:
     return bool(current_tuple and minimum_tuple and current_tuple >= minimum_tuple)
 
 
-def artifact_fit(artifact: dict[str, Any], profile: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any]:
+def artifact_fit(
+    artifact: dict[str, Any],
+    profile: dict[str, Any],
+    policy: dict[str, Any],
+    runtime_name: str = "ollama",
+) -> dict[str, Any]:
     total_memory = profile.get("memory", {}).get("total_gib")
     if not isinstance(total_memory, (int, float)):
         return {"fit": "blocked", "blockers": ["system memory is unknown"]}
@@ -828,21 +1041,37 @@ def artifact_fit(artifact: dict[str, Any], profile: dict[str, Any], policy: dict
             f"({artifact['minimum_memory_gib']} GiB minimum) after headroom; {effective:.2f} GiB available"
         )
     runtime_blockers: list[str] = []
-    runtime = profile.get("runtimes", {}).get(artifact["runtime"], {})
-    if not runtime.get("available"):
-        runtime_blockers.append(f"runtime {artifact['runtime']} is not installed")
-    elif not runtime_satisfies(runtime.get("version"), artifact["minimum_runtime_version"]):
+    target = runtime_target(artifact, runtime_name)
+    if runtime_name not in MANAGED_RUNTIMES:
         runtime_blockers.append(
-            f"runtime {artifact['runtime']} {runtime.get('version') or 'unknown'} is below "
-            f"{artifact['minimum_runtime_version']}"
+            f"runtime {runtime_name} is a direct runtime and has no managed catalog adapter"
+        )
+    if target is None:
+        runtime_blockers.append(
+            f"artifact has no verified {runtime_name} catalog target"
+        )
+    runtime = profile.get("runtimes", {}).get(runtime_name, {})
+    if not runtime.get("available"):
+        runtime_blockers.append(f"runtime {runtime_name} is not installed")
+    minimum_version = target.get("minimum_version") if target else None
+    if (
+        runtime.get("available")
+        and isinstance(minimum_version, str)
+        and not runtime_satisfies(runtime.get("version"), minimum_version)
+    ):
+        runtime_blockers.append(
+            f"runtime {runtime_name} {runtime.get('version') or 'unknown'} is below "
+            f"{minimum_version}"
         )
     requirements = artifact.get("runtime_requirements", {})
-    allowed_cache_types = requirements.get("ollama_kv_cache_types")
+    allowed_cache_types = (
+        requirements.get("ollama_kv_cache_types") if runtime_name == "ollama" else None
+    )
     if allowed_cache_types:
         current_cache_type = runtime.get("configuration", {}).get("kv_cache_type")
         if current_cache_type not in allowed_cache_types:
             runtime_blockers.append(
-                f"runtime {artifact['runtime']} KV cache is "
+                f"runtime {runtime_name} KV cache is "
                 f"{current_cache_type or 'unknown'}; artifact requires one of "
                 f"{', '.join(allowed_cache_types)}"
             )
@@ -855,8 +1084,13 @@ def artifact_fit(artifact: dict[str, Any], profile: dict[str, Any], policy: dict
 
 
 def recommend(
-    artifacts: list[dict[str, Any]], profile: dict[str, Any], policy: dict[str, Any]
+    artifacts: list[dict[str, Any]],
+    profile: dict[str, Any],
+    policy: dict[str, Any],
+    runtime_name: str = "ollama",
 ) -> dict[str, Any]:
+    if runtime_name not in MANAGED_RUNTIMES:
+        raise LocalModelError(f"Unsupported managed runtime: {runtime_name}")
     excluded_orgs = {item.casefold() for item in policy["excluded_organizations"]}
     excluded_bases = {item.casefold() for item in policy["excluded_base_families"]}
     excluded_artifacts = set(policy["excluded_artifacts"])
@@ -889,9 +1123,15 @@ def recommend(
                 continue
             candidates = [candidate]
         evaluated: list[tuple[dict[str, Any], dict[str, Any]]] = [
-            (candidate, artifact_fit(candidate, profile, policy)) for candidate in candidates
+            (candidate, artifact_fit(candidate, profile, policy, runtime_name))
+            for candidate in candidates
         ]
-        fitting = [item for item in evaluated if item[1]["fit"] in {"recommended", "constrained"}]
+        fitting = [
+            item
+            for item in evaluated
+            if item[1]["fit"] in {"recommended", "constrained"}
+            and item[1]["runtime_ready"]
+        ]
         if not fitting:
             reasons = []
             for candidate, fit in evaluated:
@@ -913,7 +1153,8 @@ def recommend(
             {
                 "artifact_id": candidate["id"],
                 "family": family,
-                "runtime_model": candidate["runtime_model"],
+                "runtime": runtime_name,
+                "runtime_model": runtime_target(candidate, runtime_name)["model"],
                 "quantization": candidate["quantization"],
                 "distribution_channel": candidate["distribution_channel"],
                 "artifact_publisher": candidate["artifact_publisher"],
@@ -950,7 +1191,10 @@ def recommend(
             "model_store": profile.get("storage", {}).get("model_store"),
             "free_disk_gib": free_disk,
             "ollama_version": profile.get("runtimes", {}).get("ollama", {}).get("version"),
+            "selected_runtime": runtime_name,
+            "selected_runtime_version": profile.get("runtimes", {}).get(runtime_name, {}).get("version"),
         },
+        "runtime": runtime_name,
         "planning_context_tokens": policy["planning_context_tokens"],
         "selections": selections,
         "family_failures": family_failures,
@@ -962,8 +1206,14 @@ def recommend(
 
 
 def plan_explicit(
-    artifacts: list[dict[str, Any]], ids: list[str], profile: dict[str, Any], policy: dict[str, Any]
+    artifacts: list[dict[str, Any]],
+    ids: list[str],
+    profile: dict[str, Any],
+    policy: dict[str, Any],
+    runtime_name: str = "ollama",
 ) -> dict[str, Any]:
+    if runtime_name not in MANAGED_RUNTIMES:
+        raise LocalModelError(f"Unsupported managed runtime: {runtime_name}")
     if len(ids) != len(set(ids)):
         raise LocalModelError("Explicit artifact ids must be unique")
     by_id = {artifact["id"]: artifact for artifact in artifacts}
@@ -989,12 +1239,14 @@ def plan_explicit(
         if artifact["base_family"].casefold() in excluded_bases:
             policy_reasons.append("base family is excluded by policy")
         blockers.extend(f"{artifact_id}: {reason}" for reason in policy_reasons)
-        fit = artifact_fit(artifact, profile, explicit_policy)
+        fit = artifact_fit(artifact, profile, explicit_policy, runtime_name)
+        target = runtime_target(artifact, runtime_name)
         selected.append(
             {
                 "artifact_id": artifact_id,
                 "family": artifact["family"],
-                "runtime_model": artifact["runtime_model"],
+                "runtime": runtime_name,
+                "runtime_model": target["model"] if target else None,
                 "quantization": artifact["quantization"],
                 "distribution_channel": artifact["distribution_channel"],
                 "artifact_publisher": artifact["artifact_publisher"],
@@ -1025,7 +1277,10 @@ def plan_explicit(
             "model_store": profile.get("storage", {}).get("model_store"),
             "free_disk_gib": free,
             "ollama_version": profile.get("runtimes", {}).get("ollama", {}).get("version"),
+            "selected_runtime": runtime_name,
+            "selected_runtime_version": profile.get("runtimes", {}).get(runtime_name, {}).get("version"),
         },
+        "runtime": runtime_name,
         "planning_context_tokens": policy["planning_context_tokens"],
         "selections": selected,
         "family_failures": {},
@@ -1069,6 +1324,356 @@ def safe_runtime_metadata(model: dict[str, Any]) -> dict[str, Any]:
         "parameter_size": details.get("parameter_size"),
         "quantization_level": details.get("quantization_level"),
     }
+
+
+def _flatten_lm_studio_models(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise LocalModelError("LM Studio model inventory must be a JSON array")
+    flattened: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        model = item.get("model")
+        variants = item.get("variants")
+        if isinstance(model, dict):
+            flattened.append(model)
+        else:
+            flattened.append(item)
+        if isinstance(variants, list):
+            flattened.extend(variant for variant in variants if isinstance(variant, dict))
+    return flattened
+
+
+def lm_studio_models(
+    executable: str | None = None,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> list[dict[str, Any]]:
+    resolved = executable or shutil.which("lms")
+    if not resolved:
+        raise LocalModelError("LM Studio CLI (lms) is not installed")
+    try:
+        result = runner(
+            [resolved, "ls", "--json", "--variants"],
+            check=False,
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=60,
+            shell=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise LocalModelError(f"LM Studio inventory could not run: {exc}") from exc
+    if result.returncode != 0:
+        raise LocalModelError(
+            f"LM Studio inventory failed with exit code {result.returncode}"
+        )
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise LocalModelError("LM Studio inventory returned invalid JSON") from exc
+    return _flatten_lm_studio_models(payload)
+
+
+def _privacy_safe_model_key(value: Any) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    if value.startswith("/") or value.startswith("~"):
+        return Path(value).name
+    return value
+
+
+def safe_lm_studio_metadata(model: dict[str, Any]) -> dict[str, Any]:
+    metadata = {
+        "runtime_name": _privacy_safe_model_key(
+            model.get("modelKey") or model.get("model_key") or model.get("path")
+        ),
+        "size_bytes": model.get("sizeBytes") or model.get("size_bytes"),
+        "format": model.get("format") or model.get("compatibilityType"),
+        "family": model.get("architecture"),
+        "parameter_size": model.get("paramsString") or model.get("parameterSize"),
+        "quantization_level": model.get("quantization") or model.get("quantizationName"),
+    }
+    return metadata
+
+
+def lm_studio_metadata_identity(metadata: dict[str, Any]) -> str:
+    runtime_name = metadata.get("runtime_name")
+    size_bytes = metadata.get("size_bytes")
+    if not isinstance(runtime_name, str) or not runtime_name:
+        raise LocalModelError("LM Studio inventory entry has no safe runtime name")
+    if not isinstance(size_bytes, int) or isinstance(size_bytes, bool) or size_bytes <= 0:
+        raise LocalModelError("LM Studio inventory entry has no valid model size")
+    encoded = json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def find_lm_studio_installed(
+    target: dict[str, Any], models: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    terms = target.get("match_terms")
+    if not isinstance(terms, list) or not terms:
+        raise LocalModelError("LM Studio target has no validated match terms")
+    matches: list[dict[str, Any]] = []
+    for model in models:
+        candidates = [
+            model.get("modelKey"),
+            model.get("model_key"),
+            model.get("path"),
+            model.get("displayName"),
+            model.get("quantization"),
+            model.get("quantizationName"),
+        ]
+        haystack = " ".join(value for value in candidates if isinstance(value, str)).casefold()
+        if all(term in haystack for term in terms):
+            matches.append(model)
+    if len(matches) > 1:
+        raise LocalModelError(
+            "LM Studio inventory contains multiple models matching the catalog identity"
+        )
+    return matches[0] if matches else None
+
+
+def validate_ollama_model_name(value: str) -> None:
+    if not re.fullmatch(
+        r"[A-Za-z0-9][A-Za-z0-9._/-]*(?::[A-Za-z0-9][A-Za-z0-9._-]*)?",
+        value,
+    ):
+        raise LocalModelError(f"Unsafe Ollama model name: {value!r}")
+
+
+def plan_model_updates(
+    runtime_name: str,
+    model_names: list[str],
+    update_all: bool,
+    tags: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    if runtime_name != "ollama":
+        if runtime_name == "lm_studio":
+            raise LocalModelError(
+                "LM Studio model updates are blocked because the runtime does not expose "
+                "a stable content-identity contract that this skill can verify"
+            )
+        raise LocalModelError(f"Runtime {runtime_name} has no managed update adapter")
+    if bool(model_names) == bool(update_all):
+        raise LocalModelError("Choose explicit --model values or --all, but not both")
+    installed = tags if tags is not None else ollama_tags()
+    if update_all:
+        names = [safe_runtime_metadata(model).get("runtime_name") for model in installed]
+        requested = sorted(
+            {name for name in names if isinstance(name, str) and name},
+            key=str.casefold,
+        )
+    else:
+        requested = list(model_names)
+    if not requested:
+        raise LocalModelError("No installed Ollama models were selected for update")
+    if len({normalize_model_name(name) for name in requested}) != len(requested):
+        raise LocalModelError("Update model names must be unique")
+    models: list[dict[str, Any]] = []
+    for name in requested:
+        validate_ollama_model_name(name)
+        found = find_installed(name, installed)
+        if found is None:
+            raise LocalModelError(f"Ollama model is not installed: {name}")
+        safe = safe_runtime_metadata(found)
+        if not isinstance(safe.get("digest"), str) or not safe["digest"]:
+            raise LocalModelError(f"Ollama returned no content digest for {name}")
+        if (
+            not isinstance(safe.get("size_bytes"), int)
+            or isinstance(safe["size_bytes"], bool)
+            or safe["size_bytes"] <= 0
+        ):
+            raise LocalModelError(f"Ollama returned no valid model size for {name}")
+        resolved_name = safe.get("runtime_name")
+        if not isinstance(resolved_name, str) or not resolved_name:
+            raise LocalModelError(f"Ollama returned no resolved name for {name}")
+        validate_ollama_model_name(resolved_name)
+        models.append(
+            {
+                "runtime_name": resolved_name,
+                "action": "ollama pull",
+                "remote_change": "unknown-until-pull",
+                "before": safe,
+            }
+        )
+    return {
+        "schema_version": 1,
+        "generated_at": utc_now(),
+        "runtime": "ollama",
+        "execute": False,
+        "authorization_required": True,
+        "scope": "all-installed" if update_all else "explicit",
+        "models": models,
+    }
+
+
+def refresh_inventory_after_ollama_updates(
+    state_dir: Path, results: list[dict[str, Any]]
+) -> bool:
+    inventory_path = state_dir / "machines.json"
+    machine_path = state_dir / "machine-id"
+    if not inventory_path.exists() or not machine_path.exists():
+        return False
+    identifier = existing_machine_id(state_dir)
+    inventory = load_json(inventory_path)
+    if inventory.get("schema_version") != INVENTORY_SCHEMA:
+        raise LocalModelError("Unsupported inventory schema")
+    machines = inventory.get("machines")
+    record = machines.get(identifier) if isinstance(machines, dict) else None
+    if not isinstance(record, dict):
+        return False
+    installed = record.get("installed")
+    if not isinstance(installed, dict):
+        raise LocalModelError("Current machine installed-artifact map is invalid")
+    by_name = {
+        normalize_model_name(result["runtime_name"]): result
+        for result in results
+        if result.get("status") in {"updated", "already-current"}
+    }
+    changed = False
+    for installation in installed.values():
+        if not isinstance(installation, dict) or installation.get("runtime") != "ollama":
+            continue
+        runtime_name = installation.get("runtime_name")
+        if not isinstance(runtime_name, str):
+            continue
+        result = by_name.get(normalize_model_name(runtime_name))
+        if not result:
+            continue
+        after = result["after"]
+        installation.update(after)
+        installation["last_update"] = {
+            "checked_at": result["checked_at"],
+            "status": result["status"],
+            "changed": result["changed"],
+        }
+        changed = True
+    if changed:
+        record["updated_at"] = utc_now()
+        inventory["updated_at"] = utc_now()
+        atomic_json_write(inventory_path, inventory)
+    return changed
+
+
+def perform_ollama_updates(
+    plan: dict[str, Any],
+    state_dir: Path,
+    receipt_dir: Path | None = None,
+    *,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    tags_provider: Callable[[], list[dict[str, Any]]] = ollama_tags,
+) -> dict[str, Any]:
+    if plan.get("runtime") != "ollama" or not isinstance(plan.get("models"), list):
+        raise LocalModelError("Invalid Ollama update plan")
+    executable = shutil.which("ollama")
+    if not executable:
+        raise LocalModelError("Ollama executable is not installed")
+    results: list[dict[str, Any]] = []
+    for planned in plan["models"]:
+        name = planned.get("runtime_name")
+        if not isinstance(name, str):
+            raise LocalModelError("Update plan contains no validated runtime model name")
+        validate_ollama_model_name(name)
+        try:
+            result = runner(
+                [executable, "pull", name],
+                check=False,
+                capture_output=True,
+                text=True,
+                stdin=subprocess.DEVNULL,
+                timeout=7200,
+                shell=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            results.append(
+                {
+                    "runtime_name": name,
+                    "status": "failed-runtime",
+                    "changed": False,
+                    "checked_at": utc_now(),
+                    "before": planned["before"],
+                }
+            )
+            break
+        checked_at = utc_now()
+        if result.returncode != 0:
+            results.append(
+                {
+                    "runtime_name": name,
+                    "status": "failed",
+                    "changed": False,
+                    "checked_at": checked_at,
+                    "exit_code": result.returncode,
+                    "before": planned["before"],
+                }
+            )
+            break
+        found = find_installed(name, tags_provider())
+        if found is None:
+            results.append(
+                {
+                    "runtime_name": name,
+                    "status": "failed-verification",
+                    "changed": False,
+                    "checked_at": checked_at,
+                    "exit_code": 0,
+                    "before": planned["before"],
+                }
+            )
+            break
+        after = safe_runtime_metadata(found)
+        if not isinstance(after.get("digest"), str) or not after["digest"]:
+            results.append(
+                {
+                    "runtime_name": name,
+                    "status": "failed-verification",
+                    "changed": False,
+                    "checked_at": checked_at,
+                    "exit_code": 0,
+                    "before": planned["before"],
+                }
+            )
+            break
+        before = planned["before"]
+        changed = (
+            before.get("digest") != after.get("digest")
+            or before.get("size_bytes") != after.get("size_bytes")
+        )
+        results.append(
+            {
+                "runtime_name": name,
+                "status": "updated" if changed else "already-current",
+                "changed": changed,
+                "checked_at": checked_at,
+                "exit_code": 0,
+                "before": before,
+                "after": after,
+            }
+        )
+    success = len(results) == len(plan["models"]) and all(
+        result["status"] in {"updated", "already-current"} for result in results
+    )
+    inventory_refreshed = refresh_inventory_after_ollama_updates(state_dir, results)
+    receipt = {
+        "schema_version": 1,
+        "created_at": utc_now(),
+        "runtime": "ollama",
+        "scope": plan.get("scope"),
+        "success": success,
+        "models": results,
+        "inventory_refreshed": inventory_refreshed,
+    }
+    if receipt_dir is not None:
+        destination = receipt_dir.expanduser().resolve(strict=False)
+        if path_within(destination, SKILL_ROOT):
+            raise LocalModelError("Update receipt directory cannot be inside the skill source")
+        destination.mkdir(parents=True, exist_ok=True)
+        reject_symlink_components(destination)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        receipt_path = destination / f"ollama-update-{stamp}.json"
+        atomic_json_write(receipt_path, receipt)
+        receipt["receipt_path"] = display_path(receipt_path)
+    return receipt
 
 
 def machine_id(state_dir: Path) -> str:
@@ -1152,10 +1757,14 @@ def resolve_inventory_model(
         raise LocalModelError(f"Artifact {artifact_id} is selected but not verified as installed")
     runtime_name = installation.get("runtime_name")
     digest = installation.get("digest")
+    identity = digest or installation.get("identity")
+    identity_strength = installation.get("identity_strength") or (
+        "content-digest" if digest else None
+    )
     if not isinstance(runtime_name, str) or not runtime_name:
         raise LocalModelError(f"Artifact {artifact_id} has no resolved runtime name")
-    if not isinstance(digest, str) or not digest:
-        raise LocalModelError(f"Artifact {artifact_id} has no resolved digest")
+    if not isinstance(identity, str) or not identity:
+        raise LocalModelError(f"Artifact {artifact_id} has no resolved identity")
     return {
         "machine_id": identifier,
         "catalog_id": artifact_id,
@@ -1163,6 +1772,8 @@ def resolve_inventory_model(
         "runtime": installation.get("runtime"),
         "runtime_name": runtime_name,
         "digest": digest,
+        "identity": identity,
+        "identity_strength": identity_strength,
         "verified_at": installation.get("verified_at"),
     }
 
@@ -1310,6 +1921,85 @@ def cached_recovery_receipt(
     }
 
 
+def perform_lm_studio_install(
+    plan: dict[str, Any],
+    artifacts: list[dict[str, Any]],
+    profile: dict[str, Any],
+    state_dir: Path,
+    label: str | None,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> dict[str, Any]:
+    if not plan["ready"]:
+        raise LocalModelError("Installation plan is blocked: " + "; ".join(plan["blockers"]))
+    executable = shutil.which("lms")
+    if not executable:
+        raise LocalModelError("LM Studio CLI (lms) is not installed")
+    by_id = {artifact["id"]: artifact for artifact in artifacts}
+    installed: dict[str, dict[str, Any]] = {}
+    for selection in plan["selections"]:
+        artifact = by_id[selection["artifact_id"]]
+        target = runtime_target(artifact, "lm_studio")
+        if target is None:
+            raise LocalModelError(
+                f"{artifact['id']} has no verified LM Studio catalog target"
+            )
+        arguments = [executable, "get", target["model"], "--yes"]
+        arguments.append("--gguf" if target["format"] == "gguf" else "--mlx")
+        try:
+            result = runner(
+                arguments,
+                check=False,
+                capture_output=True,
+                text=True,
+                stdin=subprocess.DEVNULL,
+                timeout=7200,
+                shell=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise LocalModelError(
+                f"LM Studio download could not run for {artifact['id']}: {exc}"
+            ) from exc
+        if result.returncode != 0:
+            raise LocalModelError(
+                f"LM Studio download failed for {artifact['id']} with exit code {result.returncode}"
+            )
+        found = find_lm_studio_installed(
+            target, lm_studio_models(executable=executable, runner=runner)
+        )
+        if found is None:
+            raise LocalModelError(
+                f"LM Studio reported success but {artifact['id']} is absent from its JSON inventory"
+            )
+        safe = safe_lm_studio_metadata(found)
+        identity = lm_studio_metadata_identity(safe)
+        installed[artifact["id"]] = {
+            "catalog_id": artifact["id"],
+            "upstream_model": artifact["upstream_model"],
+            "artifact_publisher": target["artifact_publisher"],
+            "artifact_source_url": target["artifact_source_url"],
+            "distribution_channel": "huggingface-gguf",
+            "verified_at": utc_now(),
+            "runtime": "lm_studio",
+            "runtime_version": profile["runtimes"]["lm_studio"].get("version"),
+            "runtime_build_identity": profile["runtimes"]["lm_studio"].get(
+                "build_identity"
+            ),
+            "installation_method": "lm-studio-get",
+            "identity": identity,
+            "identity_strength": "runtime-metadata",
+            **safe,
+        }
+        update_inventory(
+            state_dir,
+            profile,
+            plan["selections"],
+            installed,
+            label,
+            merge_selections=True,
+        )
+    return {"installed": installed, "inventory": display_path(state_dir / "machines.json")}
+
+
 def perform_install(
     plan: dict[str, Any],
     artifacts: list[dict[str, Any]],
@@ -1319,6 +2009,15 @@ def perform_install(
     recover_cached: bool = False,
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> dict[str, Any]:
+    runtime_name = plan.get("runtime", "ollama")
+    if runtime_name == "lm_studio":
+        if recover_cached:
+            raise LocalModelError("Cached GGUF recovery is only available for Ollama")
+        return perform_lm_studio_install(
+            plan, artifacts, profile, state_dir, label, runner
+        )
+    if runtime_name != "ollama":
+        raise LocalModelError(f"Unsupported managed runtime: {runtime_name}")
     if not plan["ready"]:
         raise LocalModelError("Installation plan is blocked: " + "; ".join(plan["blockers"]))
     executable = shutil.which("ollama")
@@ -1359,6 +2058,10 @@ def perform_install(
         safe = safe_runtime_metadata(metadata)
         expected = artifact.get("expected_digest_prefix")
         digest = safe.get("digest")
+        if not isinstance(digest, str) or not digest:
+            raise LocalModelError(
+                f"Resolved Ollama metadata for {artifact['id']} has no content digest"
+            )
         if expected and (not isinstance(digest, str) or not digest.startswith(expected)):
             raise LocalModelError(
                 f"Resolved digest for {artifact['id']} does not match catalog prefix {expected}"
@@ -1386,32 +2089,67 @@ def perform_install(
 
 
 def verify_artifacts(
-    ids: list[str], artifacts: list[dict[str, Any]], profile: dict[str, Any]
+    ids: list[str],
+    artifacts: list[dict[str, Any]],
+    profile: dict[str, Any],
+    runtime_name: str = "ollama",
 ) -> dict[str, Any]:
     by_id = {artifact["id"]: artifact for artifact in artifacts}
     unknown = [artifact_id for artifact_id in ids if artifact_id not in by_id]
     if unknown:
         raise LocalModelError(f"Unknown artifact id(s): {', '.join(unknown)}")
-    tags = ollama_tags()
+    if runtime_name not in MANAGED_RUNTIMES:
+        raise LocalModelError(f"Unsupported managed runtime: {runtime_name}")
+    tags = ollama_tags() if runtime_name == "ollama" else []
+    lm_models = lm_studio_models() if runtime_name == "lm_studio" else []
     results: dict[str, Any] = {}
     for artifact_id in ids:
         artifact = by_id[artifact_id]
-        found = find_installed(artifact["runtime_model"], tags)
+        target = runtime_target(artifact, runtime_name)
+        if target is None:
+            results[artifact_id] = {
+                "installed": False,
+                "verified": False,
+                "blocker": f"artifact has no verified {runtime_name} catalog target",
+            }
+            continue
+        found = (
+            find_installed(target["model"], tags)
+            if runtime_name == "ollama"
+            else find_lm_studio_installed(target, lm_models)
+        )
         if not found:
             results[artifact_id] = {"installed": False, "verified": False}
             continue
-        metadata = safe_runtime_metadata(found)
-        expected = artifact.get("expected_digest_prefix")
+        metadata = (
+            safe_runtime_metadata(found)
+            if runtime_name == "ollama"
+            else safe_lm_studio_metadata(found)
+        )
+        expected = target.get("expected_digest_prefix")
         digest = metadata.get("digest")
         digest_match = None if expected is None else bool(
             isinstance(digest, str) and digest.startswith(expected)
         )
+        identity = (
+            digest if runtime_name == "ollama" else lm_studio_metadata_identity(metadata)
+        )
         results[artifact_id] = {
             "installed": True,
-            "verified": digest_match is not False,
+            "verified": (
+                bool(isinstance(digest, str) and digest)
+                and digest_match is not False
+                if runtime_name == "ollama"
+                else True
+            ),
+            "runtime": runtime_name,
             "expected_digest_prefix": expected,
             "expected_digest_match": digest_match,
-            "runtime_version": profile["runtimes"]["ollama"]["version"],
+            "runtime_version": profile["runtimes"][runtime_name].get("version"),
+            "identity": identity,
+            "identity_strength": (
+                "content-digest" if runtime_name == "ollama" else "runtime-metadata"
+            ),
             **metadata,
         }
     return {"verified_at": utc_now(), "artifacts": results}
@@ -1667,14 +2405,25 @@ def build_parser() -> argparse.ArgumentParser:
     profile_parser = commands.add_parser("profile", help="Print a privacy-safe hardware profile")
     add_common(profile_parser)
 
+    runtimes_parser = commands.add_parser(
+        "runtimes", help="Show managed and direct runtime choices and capabilities"
+    )
+    add_common(runtimes_parser)
+
     catalog_parser = commands.add_parser("catalog", help="Validate and summarize the model catalog")
     add_common(catalog_parser)
 
     recommend_parser = commands.add_parser("recommend", help="Recommend one fitting artifact per family")
     add_common(recommend_parser)
+    recommend_parser.add_argument(
+        "--runtime", choices=sorted(MANAGED_RUNTIMES), default="ollama"
+    )
 
     install_parser = commands.add_parser("install", help="Plan or execute approved model installation")
     add_common(install_parser)
+    install_parser.add_argument(
+        "--runtime", choices=sorted(MANAGED_RUNTIMES), default="ollama"
+    )
     install_parser.add_argument("--artifact", action="append", default=[])
     install_parser.add_argument("--yes", action="store_true")
     install_parser.add_argument(
@@ -1691,7 +2440,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     verify_parser = commands.add_parser("verify", help="Verify installed runtime metadata")
     add_common(verify_parser)
+    verify_parser.add_argument(
+        "--runtime", choices=sorted(MANAGED_RUNTIMES), default="ollama"
+    )
     verify_parser.add_argument("--artifact", action="append", required=True)
+
+    update_parser = commands.add_parser(
+        "update", help="Plan or execute a verified update of installed models"
+    )
+    add_common(update_parser)
+    update_parser.add_argument(
+        "--runtime", choices=sorted(MANAGED_RUNTIMES), default="ollama"
+    )
+    update_scope = update_parser.add_mutually_exclusive_group(required=True)
+    update_scope.add_argument("--model", action="append", default=[])
+    update_scope.add_argument("--all", action="store_true")
+    update_parser.add_argument("--yes", action="store_true")
+    update_parser.add_argument("--receipt-dir", type=Path)
 
     resolve_parser = commands.add_parser(
         "resolve", help="Resolve an allowed installed model for this exact machine"
@@ -1736,6 +2501,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "profile":
             emit(profile)
             return 0
+        if args.command == "runtimes":
+            emit(runtime_summary(profile))
+            return 0
         if args.command == "catalog":
             families = sorted({artifact["family"] for artifact in artifacts if artifact["status"] == "verified"})
             emit(
@@ -1745,6 +2513,14 @@ def main(argv: list[str] | None = None) -> int:
                     "verified_on": catalog.get("verified_on"),
                     "artifact_count": len(artifacts),
                     "families": families,
+                    "managed_runtimes": sorted(MANAGED_RUNTIMES),
+                    "runtime_target_counts": {
+                        runtime_name: sum(
+                            runtime_target(artifact, runtime_name) is not None
+                            for artifact in artifacts
+                        )
+                        for runtime_name in sorted(MANAGED_RUNTIMES)
+                    },
                     "status": "valid",
                 }
             )
@@ -1768,13 +2544,30 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
             return 0
-        plan = recommend(artifacts, profile, policy)
+        if args.command == "update":
+            update_plan = plan_model_updates(
+                args.runtime, args.model, args.all
+            )
+            if not args.yes:
+                emit(update_plan)
+                return 0
+            receipt = perform_ollama_updates(
+                update_plan,
+                args.state_dir.expanduser(),
+                args.receipt_dir,
+            )
+            emit({"execute": True, **receipt})
+            return 0 if receipt["success"] else 2
+        selected_runtime = getattr(args, "runtime", "ollama")
+        plan = recommend(artifacts, profile, policy, selected_runtime)
         if args.command == "recommend":
             emit(plan)
             return 0 if plan["ready"] else 2
         if args.command == "install":
             if args.artifact:
-                plan = plan_explicit(artifacts, args.artifact, profile, policy)
+                plan = plan_explicit(
+                    artifacts, args.artifact, profile, policy, selected_runtime
+                )
             recovery = (
                 cached_recovery_receipt(plan, artifacts) if args.recover_cached else None
             )
@@ -1812,7 +2605,9 @@ def main(argv: list[str] | None = None) -> int:
             emit(inventory)
             return 0
         if args.command == "verify":
-            result = verify_artifacts(args.artifact, artifacts, profile)
+            result = verify_artifacts(
+                args.artifact, artifacts, profile, selected_runtime
+            )
             emit(result)
             return 0 if all(item["verified"] for item in result["artifacts"].values()) else 2
         if args.command == "benchmark":

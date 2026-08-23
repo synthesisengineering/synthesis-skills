@@ -11,6 +11,14 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Managed runtime choice and verified model updates (August 2026).** Release
+**4.44.0** keeps Ollama as the default while adding an LM Studio adapter for
+catalog planning, exact downloads, JSON inventory, and runtime-metadata
+verification. llama.cpp and MLX-LM appear as direct runtimes with accurate
+capability boundaries. `synthesis-local-model-runtime` **v1.1.0** also adds
+dry-run-first Ollama updates with explicit scope and before-and-after identity
+receipts. See the [4.44.0 release notes](CHANGELOG.md).
+
 **Runtime configuration is part of model fit (August 2026).** Release
 **4.43.6** detects Ollama KV-cache incompatibilities during planning. Its
 dry-run-first Homebrew adapter can apply one validated setting with a private
@@ -555,7 +563,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | `synthesis-inbox-cleanup` | Manifest-driven email cleanup across iCloud / generic IMAP (Python), Microsoft 365 / outlook.com (Mail.app AppleScript), and Gmail (workspace-mcp API + native server-side filters). Public engine + private rules. Ships with prompt-injection defenses and adversarial test fixtures for any LLM-augmented path. macOS. |
 | `synthesis-mac-sync` | Multi-Mac config sync via iCloud with git repo sync and machine inventory |
 | `synthesis-meeting-transcripts` | Fetch AI-generated meeting notes and transcripts into local working files |
-| `synthesis-local-model-runtime` | Privacy-safe hardware profiling, catalog-driven local model fit, dry-run-first installation, per-machine mapping, exact resolution, and bounded benchmarks |
+| `synthesis-local-model-runtime` | Privacy-safe hardware profiling, Ollama and LM Studio managed adapters, direct-runtime discovery, catalog-driven fit, dry-run-first installation and updates, per-machine mapping, exact resolution, and bounded Ollama benchmarks |
 | `synthesis-repo-guard` | Workspace sync guard: detect unsynced repos, confidentiality-safe alerts, local receipts, batch publication, and exact-session remote handoff |
 | `synthesis-slack-sync` | Slack channel sync protocol: read channels, threads, DMs to local transcripts, with transcripts-first verification and bounded reads for absence claims |
 | `synthesis-skills-manager` | Agent-native skill installer: drift detection, synthesis merge, provenance tracking |

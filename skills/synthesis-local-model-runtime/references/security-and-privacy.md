@@ -27,6 +27,12 @@ Do not infer that a symlink points somewhere safe from its visible prefix.
 - A pull is successful only after the runtime enumerates the artifact.
 - Capture the resolved digest. Do not claim an expected digest matched when the
   runtime returns none.
+- Treat LM Studio's allowlisted metadata hash as `runtime-metadata`, never as a
+  content digest. Multiple catalog matches are an error.
+- Model updates require an explicit installed name list or explicit `--all`,
+  remain dry-run without `--yes`, and re-enumerate after every native pull.
+  Record identical digest and size as `already-current`; do not infer freshness
+  from command success alone.
 - Preserve partial-download diagnostics, but do not write a false installed
   record.
 - A registry-timeout recovery must use only catalog-pinned cached GGUF layers,
@@ -37,6 +43,11 @@ Do not infer that a symlink points somewhere safe from its visible prefix.
 - Do not delete a retained registry blob from the runtime-owned store. Report
   it as possible reclaimable cache; cleanup requires a separate, bounded
   reference audit and explicit authorization.
+
+LM Studio downloads use only catalog-owned Hugging Face targets through
+`lms get ... --yes --gguf` or `--mlx`. Policy files cannot inject model URLs.
+The adapter parses `lms ls --json --variants`, emits only allowlisted metadata,
+and removes absolute path prefixes before inventory output.
 
 ## Local API
 
