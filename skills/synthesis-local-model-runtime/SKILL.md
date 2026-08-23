@@ -2,6 +2,7 @@
 name: synthesis-local-model-runtime
 description: "Profile a computer, compare Ollama, LM Studio, llama.cpp, and MLX-LM, recommend local open-weight model artifacts that fit its real memory and storage, install approved artifacts through deterministic managed-runtime adapters, update installed Ollama models with before-and-after identity receipts, maintain a privacy-safe per-machine inventory, and verify local inference. Use for: local models, open weights, Ollama, LM Studio, llama.cpp, MLX model selection, model updates, which model fits this Mac or PC, install Qwen/GLM/Kimi/DeepSeek locally, hardware profile for LLMs, model inventory, local inference benchmark."
 license: "Apache-2.0"
+depends_on: []
 metadata:
   author: "Rajiv Pant"
   version: "1.1.0"
