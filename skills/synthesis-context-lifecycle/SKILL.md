@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.10.0"
+  version: "1.11.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -117,6 +117,8 @@ For session history: see [sessions/](sessions/)
 
 - **Production:** [version, deployment status]
 - **Blockers:** [if any]
+
+*State as of: YYYY-MM-DD (round N)*  ← as-of marker; see Editing below
 
 ## What's Next — Prioritized
 
@@ -434,6 +436,32 @@ the context doctor fails a project whose header describes an older state than
 its own session log (`header-currency`), including same-day staleness where
 date comparison sees nothing. Each field is judged separately, so a fresh
 `Phase` cannot mask a stale `Last session`.
+
+**Body currency.** Header freshness is necessary, not sufficient: three
+real defects advanced the header while `Current State` kept routing agents to
+superseded work — and a current header above stale operational sections is a
+*stronger* false receipt than an obviously stale file. Operational sections
+(`## Current State`, `## What's Next`) therefore end with an as-of marker:
+
+```markdown
+*State as of: 2026-08-24 (round 14)*
+```
+
+The marker converts prose currency into the structured comparison the header
+already gets. With it in place: the doctor fails a section whose marker lags
+the session log (`body-currency`); `context_edit.py` refuses a header advance
+that leaves a marker behind (`--allow-stale-body` records an override); and
+advancing a marker while its section's prose is byte-identical requires
+`--state-reviewed`, which records the assertion that the section was re-read
+and still holds — a silent bump would recreate the header defect one level
+down. Markerless records are reported as *unverifiable*, never as clean.
+
+The completion signal is deliberately honest: every gated edit's success line
+names the body state (`as-of markers current`, `body lags`, or `body currency
+unverifiable`). A tool that mechanizes the easy half of a task and prints
+unqualified success for it manufactures a completion signal for partial work
+— that mechanism-shaped failure caused all three real occurrences, and the
+signal is the part of this design that addresses it.
 
 Two companion rules, because the tool cannot enforce them alone:
 

@@ -11,12 +11,17 @@ from __future__ import annotations
 from pathlib import Path
 
 from context_currency import (
+    STALENESS_KINDS,
     audit_project,
     currency_findings,
     first_ordinals,
     header_incoherence,
     log_state,
 )
+
+
+def staleness(findings: list[dict]) -> list[dict]:
+    return [f for f in findings if f["kind"] in STALENESS_KINDS]
 
 
 def project(tmp_path: Path, context: str, log: str | None) -> Path:
@@ -161,7 +166,12 @@ def test_coherent_same_day_record_is_clean(tmp_path: Path) -> None:
         ROUND_10_11_LOG,
     )
 
-    assert audit_project(root) == []
+    findings = audit_project(root)
+
+    assert staleness(findings) == []
+    # Markerless ordinal-paced records surface a coverage finding, never
+    # silence: body currency cannot be verified without markers.
+    assert kinds(findings) == ["body-marker-absent"]
 
 
 def test_header_ahead_of_log_is_not_stale(tmp_path: Path) -> None:
@@ -174,7 +184,7 @@ def test_header_ahead_of_log_is_not_stale(tmp_path: Path) -> None:
 
     findings = audit_project(root)
 
-    assert kinds(findings) == ["header-ahead-of-log"]
+    assert kinds(findings) == ["body-marker-absent", "header-ahead-of-log"]
     assert currency_findings(root) == []
 
 
@@ -196,7 +206,7 @@ def test_families_never_compare_across_each_other(tmp_path: Path) -> None:
         "# S\n\n## 2026-08-23 (round 3 review)\n\nbody\n",
     )
 
-    assert audit_project(root) == []
+    assert staleness(audit_project(root)) == []
 
 
 def test_wave_family_is_covered(tmp_path: Path) -> None:

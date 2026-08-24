@@ -63,7 +63,7 @@ from pathlib import Path
 # missing the doctor must fail loudly rather than silently skip a check.
 import context_currency
 
-DOCTOR_VERSION = "1.4.0"
+DOCTOR_VERSION = "1.5.0"
 
 # Budgets from the tiered context architecture.
 CONTEXT_BUDGET_ACTIVE = 150
@@ -687,6 +687,7 @@ CHECKS = [
     "last-session-freshness",
     "context-header-freshness",
     "header-currency",
+    "body-currency",
     "uncommitted-context",
     "untracked-context",
     "unpushed-context",
@@ -858,15 +859,40 @@ def audit_project(
                 "refresh CONTEXT.md and its Last session header",
             )
 
-    # --- header currency ----------------------------------------------------
-    # "Records agree with git" means committed, not current: a header can
-    # describe an older state than the session log records — same day, so the
-    # date checks above see nothing — while every file is committed. Each
-    # header field is judged separately against the log's newest entries; a
-    # union over fields would let a fresh Phase mask a stale Last session,
-    # which is the exact failure that put this check here.
-    for message, remedy in context_currency.currency_findings(project_path):
-        audit.add("header-currency", "defect", message, remedy)
+    # --- header and body currency -------------------------------------------
+    # "Records agree with git" means committed, not current: a header or a
+    # Current-State section can describe an older state than the session log
+    # records — same day, so the date checks above see nothing — while every
+    # file is committed. Header fields are judged separately (a union let a
+    # fresh Phase mask a stale Last session), and body sections are judged by
+    # their '*State as of:*' markers, because header freshness is necessary
+    # but not sufficient: a current header above stale operational sections is
+    # a stronger false receipt than an obviously stale file.
+    for finding in context_currency.audit_project(project_path):
+        kind = finding["kind"]
+        if kind in ("header-behind-log", "header-field-stale"):
+            audit.add(
+                "header-currency",
+                "defect",
+                finding["detail"],
+                "update the stale header field with context_edit.py set-field",
+            )
+        elif kind == "body-marker-stale":
+            audit.add(
+                "body-currency",
+                "defect",
+                finding["detail"],
+                "rewrite the section for current state, then advance its "
+                "'*State as of:*' marker in the same edit",
+            )
+        elif kind == "body-marker-absent":
+            audit.add(
+                "body-currency",
+                "warning",
+                finding["detail"],
+                "add '*State as of:*' markers to Current State and What's "
+                "Next per the tiered-context template",
+            )
 
     # --- durability ---------------------------------------------------------
     dirty = uncommitted(repo_root, project_path)
