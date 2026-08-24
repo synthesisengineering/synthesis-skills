@@ -265,7 +265,8 @@ def test_last_session_may_lead_phase_with_a_note(tmp_path: Path) -> None:
 
     finish = set_field(path, field="Phase", value="Round 11 in review")
 
-    assert finish["note"] is None
+    # The completion signal always names body status on CONTEXT.md now.
+    assert "body currency unverifiable" in (finish["note"] or "")
     text = path.read_text(encoding="utf-8")
     assert "Round 11 in review" in text and "round 11, Claude" in text
 

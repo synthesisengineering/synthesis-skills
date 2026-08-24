@@ -11,6 +11,16 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Body currency: stale prose is now checkable (August 2026).** Release
+**4.47.0** extends durable-context currency from headers to the operational
+body. `Current State` and `What's Next` end with an as-of marker that the
+doctor compares against the session log, `context_edit.py` refuses a header
+advance that leaves a marker behind, and advancing a marker without changing
+the prose requires a recorded review assertion. Success output always names
+the body state — a completion signal that says less than it verified
+manufactures completion for partial work. See the
+[4.47.0 release notes](CHANGELOG.md).
+
 **Stale headers are now doctor defects (August 2026).** Release **4.46.0**
 adds per-field header-currency checking to `synthesis-context-lifecycle`: the
 context doctor fails when a `CONTEXT.md` header describes an older state than

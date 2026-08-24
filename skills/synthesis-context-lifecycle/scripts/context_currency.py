@@ -45,6 +45,11 @@ Findings (`kind` values)
   header-behind-log      Last session's date is older than the newest log date
   header-field-stale     a named header field's ordinal lags the log's current
                          ordinal in the same family
+  body-marker-stale      a section's `*State as of: ...*` marker lags the log
+                         by date or by same-family ordinal
+  body-marker-absent     an ordinal-paced record carries no as-of markers, so
+                         its body currency is unverifiable (coverage, not
+                         staleness)
   header-ahead-of-log    Last session's date is newer than any logged entry
   header-unparseable     no `**Last session:** YYYY-MM-DD` could be read
   log-missing            no dated session entries exist
@@ -80,8 +85,19 @@ LOG_ENTRY = re.compile(r"^#{2,3}\s+(\d{4}-\d{2}-\d{2})([^\n]*)", re.MULTILINE)
 # Closed family set; `\b` keeps "background" and "rounds" from matching, the
 # `[\s-]*` accepts "round 2", "round-2", and "round  2".
 ORDINAL = re.compile(r"\b(round|wave|phase|step|part)[\s-]*(\d+)\b", re.IGNORECASE)
+# Body sections that describe operational state end with an emphasis line:
+#   *State as of: 2026-08-24 (round 14)*
+# The marker converts unstructured prose currency into the structured problem
+# this module already solves. Prose without a marker cannot be judged for
+# truth; that absence is itself surfaced, because a current header above stale
+# operational sections is a stronger false receipt than an obviously stale
+# file.
+STATE_AS_OF = re.compile(
+    r"^\*State as of:\s*(\d{4}-\d{2}-\d{2})([^\n*]*)\*\s*$", re.MULTILINE
+)
+SECTION_HEADING = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 
-STALENESS_KINDS = {"header-behind-log", "header-field-stale"}
+STALENESS_KINDS = {"header-behind-log", "header-field-stale", "body-marker-stale"}
 
 
 def first_ordinals(text: str) -> dict[str, int]:
@@ -114,6 +130,25 @@ def header_incoherence(text: str) -> list[tuple[str, int, int]]:
         for family in sorted(phase.keys() & last.keys())
         if phase[family] != last[family]
     ]
+
+
+def body_markers(text: str) -> list[dict]:
+    """Every `*State as of: ...*` marker, attributed to its section heading."""
+    headings = [(m.start(), m.group(1)) for m in SECTION_HEADING.finditer(text)]
+    markers: list[dict] = []
+    for match in STATE_AS_OF.finditer(text):
+        section = "(top)"
+        for start, title in headings:
+            if start < match.start():
+                section = title
+            else:
+                break
+        markers.append({
+            "section": section,
+            "date": match.group(1),
+            "ordinals": first_ordinals(match.group(2)),
+        })
+    return markers
 
 
 def log_state(project: Path) -> tuple[str | None, str | None, dict[str, int]]:
@@ -201,6 +236,42 @@ def audit_project(project: Path) -> list[dict]:
                               f"(log date {log_date})",
                     "header_ordinal": number, "log_ordinal": current,
                 })
+
+    # Body currency — each as-of marker judged like a header field. Header
+    # freshness is necessary, not sufficient: three real occurrences advanced
+    # the header while the body kept routing agents to superseded work.
+    markers = body_markers(text)
+    for marker in markers:
+        if marker["date"] < log_date:
+            findings.append({
+                "project": str(project), "kind": "body-marker-stale",
+                "section": marker["section"],
+                "detail": f"'{marker['section']}' is marked as of "
+                          f"{marker['date']}; {log_file} records {log_date}",
+                "marker_date": marker["date"], "log_date": log_date,
+            })
+            continue
+        for family, number in sorted(marker["ordinals"].items()):
+            current = log_current.get(family)
+            if current is not None and number < current:
+                findings.append({
+                    "project": str(project), "kind": "body-marker-stale",
+                    "section": marker["section"], "family": family,
+                    "detail": f"'{marker['section']}' is marked as of "
+                              f"{family} {number}; {log_file} records "
+                              f"{family} {current}",
+                    "marker_ordinal": number, "log_ordinal": current,
+                })
+    if not markers and (
+        first_ordinals(" ".join(header_fields(text).values())) or log_current
+    ):
+        findings.append({
+            "project": str(project), "kind": "body-marker-absent",
+            "detail": "ordinal-paced record has no '*State as of: ...*' "
+                      "markers — body currency is unverifiable; a current "
+                      "header above unmarked operational sections cannot be "
+                      "distinguished from a stale one",
+        })
     return findings
 
 
@@ -212,8 +283,9 @@ def currency_findings(project: Path) -> list[tuple[str, str]]:
     add signal only where the evidence is comparable.
     """
     remedy = (
-        "update the stale header field with context_edit.py set-field; it "
-        "refuses an edit that leaves Phase and Last session disagreeing"
+        "bring the stale field or section up to date with context_edit.py — "
+        "rewrite the section prose, then advance its '*State as of:*' marker "
+        "in the same edit"
     )
     return [
         (finding["detail"], remedy)

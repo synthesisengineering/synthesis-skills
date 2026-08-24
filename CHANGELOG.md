@@ -4,6 +4,42 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.47.0] - 2026-08-24
+
+### Added
+
+- **`synthesis-context-lifecycle` v1.11.0 — body currency.** Third occurrence
+  of the stale-record defect, and the diagnosis finally names the design
+  flaw: the prior fixes addressed *header* currency, while the defect moved
+  to the *body* — `Current State` and `What's Next` kept routing agents to
+  superseded work under a fully current header, which is a stronger false
+  receipt than an obviously stale file. Worse, the edit helper had
+  mechanized the easy half of the record update and printed unqualified
+  success for it, manufacturing a completion signal for partial work.
+
+  Operational sections now end with an as-of marker —
+  `*State as of: 2026-08-24 (round 14)*` — which converts prose currency
+  into the per-field, first-ordinal comparison the header already gets:
+
+  - the context doctor (v1.5.0) fails a section whose marker lags the
+    session log (`body-currency` defect) and warns when an ordinal-paced
+    record carries no markers at all — unverifiable is reported as
+    unverifiable, never as clean;
+  - `context_edit.py` refuses a header advance that leaves a marker behind
+    (`--allow-stale-body` records an explicit override) — the control that
+    would have interrupted all three real occurrences, which each advanced
+    the header and stopped;
+  - advancing a marker while its section's prose is byte-identical requires
+    `--state-reviewed`, recording the assertion that the section was re-read
+    and still holds, so the marker cannot be bumped as mechanically as the
+    header was;
+  - every gated edit's success line now names the body state, because a
+    completion signal must say what it did not verify.
+
+  Regression fixtures derive from all three real occurrences, including the
+  third encoded verbatim from the live record in both its literal markerless
+  form (must surface as unverifiable) and its marked form (must be a
+  staleness defect while every header check passes).
 ## [4.46.0] - 2026-08-23
 
 ### Added
