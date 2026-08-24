@@ -4,6 +4,25 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.49.0] - 2026-08-24
+
+### Fixed
+
+- **`synthesis-inbox-cleanup` v1.6.1 — the engine runtime never updated.**
+  `install.sh` repointed `engine/current` with `mv -f`, but that path is a
+  symlink to a directory: `mv` followed it and deposited the staged pointer
+  *inside* the old release instead of replacing the link. Every install step
+  reported success while the runtime stayed pinned to whatever release it
+  already had, and the mismatch only surfaced at the final verification, after
+  the work appeared done. Found in production when a sweep needed
+  `resolve_scope.py` (the v1.5.0 workspace-scoping guard) and the installed
+  engine predated it, with a stray `.current.<pid>.tmp` sitting in the old
+  release directory as the tell. Fixed with `mv -fh`, which refuses to follow a
+  symlinked directory. The runtime-installer test suite gained a regression case
+  that installs twice with differing digests and asserts the pointer actually
+  moves, no staged pointer leaks into the old release, and `engine/current`
+  serves the new code — it fails without the fix.
+
 ## [4.48.0] - 2026-08-24
 
 ### Added

@@ -106,7 +106,12 @@ install_engine_runtime() {
         return 1
     fi
     ln -s "releases/$source_digest" "$link_stage"
-    mv -f "$link_stage" "$ENGINE_CURRENT"
+    # -h is load-bearing: engine/current is a symlink TO A DIRECTORY, and without
+    # it mv follows the link and deposits the staged link INSIDE the old release
+    # instead of replacing the pointer. The install then "succeeds" at every step
+    # while the runtime stays pinned to whatever release it already had. Caught
+    # 2026-08-24 with a stray .current.<pid>.tmp found inside the old release dir.
+    mv -fh "$link_stage" "$ENGINE_CURRENT"
 
     resolved_current="$(cd "$ENGINE_CURRENT" && pwd -P)"
     resolved_release="$(cd "$release_dir" && pwd -P)"

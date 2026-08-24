@@ -64,4 +64,41 @@ fi
 
 test -f "$SOURCE_SENTINEL"
 test -f "$CWD_SENTINEL"
+
+# Regression: engine/current must be REPOINTED when it already exists as a
+# symlink to a directory. Without `mv -h`, mv follows the link and deposits the
+# staged pointer INSIDE the old release, leaving the runtime pinned to the
+# previous version while every earlier install step reports success. Observed in
+# production 2026-08-24: a stale runtime missing resolve_scope.py, with a stray
+# .current.<pid>.tmp found inside the old release directory.
+REPOINT_ROOT="$TEST_ROOT/repoint"
+mkdir -p "$REPOINT_ROOT"
+SYNTHESIS_INBOX_HOME="$REPOINT_ROOT" "$SKILL_ROOT/scripts/install.sh" >/dev/null 2>&1
+OLD_TARGET=$(readlink "$REPOINT_ROOT/engine/current")
+OLD_RELEASE="$REPOINT_ROOT/engine/$OLD_TARGET"
+test -d "$OLD_RELEASE"
+
+# Force a different source digest so the installer must stage a NEW release and
+# move the pointer onto the existing symlink.
+STAGED_SOURCE="$TEST_ROOT/altered-skill"
+cp -R "$SKILL_ROOT" "$STAGED_SOURCE"
+printf '\n# regression-marker\n' >> "$STAGED_SOURCE/scripts/_lib.py"
+SYNTHESIS_INBOX_HOME="$REPOINT_ROOT" "$STAGED_SOURCE/scripts/install.sh" >/dev/null 2>&1 || {
+    echo "installer failed while repointing an existing engine/current" >&2
+    exit 1
+}
+NEW_TARGET=$(readlink "$REPOINT_ROOT/engine/current")
+if [ "$NEW_TARGET" = "$OLD_TARGET" ]; then
+    echo "engine/current was NOT repointed to the new release" >&2
+    exit 1
+fi
+if ls -A "$OLD_RELEASE" | grep -q '^\.current\.'; then
+    echo "staged pointer leaked into the old release directory" >&2
+    exit 1
+fi
+grep -q 'regression-marker' "$REPOINT_ROOT/engine/current/_lib.py" || {
+    echo "engine/current does not serve the newly installed release" >&2
+    exit 1
+}
+
 echo "inbox runtime installer tests passed"

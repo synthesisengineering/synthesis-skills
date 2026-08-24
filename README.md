@@ -11,6 +11,16 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**The engine that never updated (August 2026).** Release **4.49.0** fixes a
+silent failure in `synthesis-inbox-cleanup`'s runtime installer: it repointed
+`engine/current` with `mv -f`, but that path is a symlink to a directory, so
+`mv` followed it and dropped the staged pointer *inside* the old release rather
+than replacing the link. Installs reported success at every step while the
+runtime stayed frozen on an older engine. The fix is `mv -fh`; the more useful
+change is the regression test that installs twice with differing digests and
+asserts the pointer actually moved — the previous suite passed happily against
+the bug. See the [4.49.0 release notes](CHANGELOG.md).
+
 **Pick the tier by diagnosis, not by task size (August 2026).** Release
 **4.48.0** adds the missing half of `synthesis-model-tiers`: it mapped roles to
 model ids but never said how to pick a role. Route by whether the CAUSE is
