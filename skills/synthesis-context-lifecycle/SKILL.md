@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.9.0"
+  version: "1.10.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -424,6 +424,16 @@ the target is a symlink. It writes atomically and then re-reads the file to
 confirm the change is actually on disk. There is no flag that makes a missing
 anchor succeed. `--dry-run` previews without writing and still refuses a bad
 anchor. Import `replace_once` or `set_field` to use it from Python.
+
+The helper also refuses to *create* a stale header: an edit that leaves
+`**Phase:**` ahead of `**Last session:**` in the same ordinal family (round,
+wave, phase, step, part) is refused with both fields named —
+`--allow-header-lag` records an explicit override. Update `Last session`
+first or in the same change; it may lead `Phase` mid-update. Independently,
+the context doctor fails a project whose header describes an older state than
+its own session log (`header-currency`), including same-day staleness where
+date comparison sees nothing. Each field is judged separately, so a fresh
+`Phase` cannot mask a stale `Last session`.
 
 Two companion rules, because the tool cannot enforce them alone:
 

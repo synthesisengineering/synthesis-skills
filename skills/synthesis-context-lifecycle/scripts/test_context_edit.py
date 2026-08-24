@@ -229,6 +229,109 @@ def test_failed_edit_leaves_no_temporary_files(tmp_path: Path) -> None:
     assert sorted(p.name for p in tmp_path.iterdir()) == ["CONTEXT.md"]
 
 
+INCOHERENT = """# P
+
+**Phase:** Round 10 review complete
+**Status:** Active
+**Last session:** 2026-08-23 (round 10, Codex)
+
+## Body
+"""
+
+
+def test_phase_update_leaving_last_session_behind_is_refused(
+    tmp_path: Path,
+) -> None:
+    """The round-10/11 defect, blocked at write time: a fresh Phase over a
+    stale Last session must never reach disk silently."""
+    path = record(tmp_path, INCOHERENT)
+    before = path.read_text(encoding="utf-8")
+
+    with pytest.raises(ContextEditError, match="header incoherent"):
+        set_field(path, field="Phase", value="Round 11 — convergence call was wrong")
+
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_last_session_may_lead_phase_with_a_note(tmp_path: Path) -> None:
+    """The legitimate two-call transition: Last session updates first."""
+    path = record(tmp_path, INCOHERENT)
+
+    result = set_field(
+        path, field="Last session", value="2026-08-23 (round 11, Claude)"
+    )
+
+    assert "finish by updating Phase" in (result["note"] or "")
+
+    finish = set_field(path, field="Phase", value="Round 11 in review")
+
+    assert finish["note"] is None
+    text = path.read_text(encoding="utf-8")
+    assert "Round 11 in review" in text and "round 11, Claude" in text
+
+
+def test_allow_header_lag_records_the_override(tmp_path: Path) -> None:
+    path = record(tmp_path, INCOHERENT)
+
+    result = set_field(
+        path,
+        field="Phase",
+        value="Round 11 staged",
+        allow_header_lag=True,
+    )
+
+    assert "override --allow-header-lag recorded" in (result["note"] or "")
+
+
+def test_unrelated_edit_on_preexisting_incoherence_warns_not_blocks(
+    tmp_path: Path,
+) -> None:
+    stale = INCOHERENT.replace(
+        "**Phase:** Round 10 review complete", "**Phase:** Round 11 staged"
+    )
+    path = record(tmp_path, stale)
+
+    result = replace_once(path, anchor="## Body", replacement="## Body\n\nmore")
+
+    assert "pre-existing header incoherence" in (result["note"] or "")
+    assert "more" in path.read_text(encoding="utf-8")
+
+
+def test_non_context_files_are_not_gated(tmp_path: Path) -> None:
+    path = tmp_path / "REFERENCE.md"
+    path.write_text(
+        "**Phase:** round 11\n**Last session:** 2026-08-23 (round 10)\n",
+        encoding="utf-8",
+    )
+
+    result = replace_once(path, anchor="round 11", replacement="round 12")
+
+    assert result["note"] is None
+
+
+def test_cli_refuses_the_defect_state_with_nonzero_exit(
+    tmp_path: Path, capsys
+) -> None:
+    path = record(tmp_path, INCOHERENT)
+
+    code = main(
+        [
+            "set-field",
+            "--file",
+            str(path),
+            "--field",
+            "Phase",
+            "--value",
+            "Round 11 closed",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.out == ""
+    assert "header incoherent" in captured.err
+
+
 def test_cli_success_reports_line_count(tmp_path: Path, capsys) -> None:
     path = record(tmp_path)
 

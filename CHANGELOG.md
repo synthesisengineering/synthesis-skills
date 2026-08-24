@@ -4,6 +4,38 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.46.0] - 2026-08-23
+
+### Added
+
+- **`synthesis-context-lifecycle` v1.10.0 — durable header-currency checking.**
+  The prior currency control missed the defect it was built for, twice, and
+  this release replaces it with checked semantics rather than another patch.
+  New `scripts/context_currency.py` judges each `CONTEXT.md` header field
+  separately against the session log: a field's identity is its FIRST ordinal
+  per family (round/wave/phase/step/part), the log's current value is the max
+  across newest-date entries' identities, and fields are never unioned — the
+  failure in the shipped check was exactly that a fresh `Phase` masked a stale
+  `Last session` under a shared `max()`. Families never compare across each
+  other, and coverage limits (unparseable headers, missing logs) are reported
+  as what the check cannot see, never as staleness.
+- **The context doctor now fails on stale headers.** `context_doctor` v1.4.0
+  runs the currency check as a required `header-currency` defect, so semantic
+  staleness surfaces where every session already looks instead of in an
+  opt-in script. "Records agree with git" means committed; this check is what
+  makes it also mean current.
+- **`context_edit.py` refuses to create the defect at write time.** An edit
+  that leaves `Phase` ahead of `Last session` in the same ordinal family is
+  refused with the fields named; `--allow-header-lag` records an explicit
+  override. `Last session` may lead `Phase` (the normal two-call transition,
+  noted in output), unrelated edits on a pre-existing incoherent header warn
+  rather than block, and the read-time doctor catches whatever is left
+  lagging.
+- **Every regression fixture derives from a real defect.** The four live
+  instances — the round-10/11 union-masking miss, the round-2/3 same-day
+  miss, and the two cross-day stale records — are encoded verbatim in
+  `test_context_currency.py`, applying the artifact-derived-evidence rule to
+  this tooling itself.
 ## [4.45.0] - 2026-08-23
 
 ### Added
