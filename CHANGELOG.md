@@ -4,7 +4,7 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [4.47.0] - 2026-08-24
+## [4.48.0] - 2026-08-24
 
 ### Added
 
@@ -29,6 +29,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   New resolution rule 6: an agent that finds itself under-tiered must say so
   *before* acting rather than proceed and report a confident result — the
   failure it is least able to detect in itself afterward.
+
+## [4.47.0] - 2026-08-24
+
+### Added
 
 - **`synthesis-context-lifecycle` v1.11.0 — body currency.** Third occurrence
   of the stale-record defect, and the diagnosis finally names the design

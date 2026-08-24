@@ -11,6 +11,16 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Pick the tier by diagnosis, not by task size (August 2026).** Release
+**4.48.0** adds the missing half of `synthesis-model-tiers`: it mapped roles to
+model ids but never said how to pick a role. Route by whether the CAUSE is
+known — a settled specification is execution, while a symptom report
+("this is broken", "the file will not open") is a differential over candidate
+causes and belongs in `judgment` even when the subject is one file. Cost scales
+with the search, not the fix, and where a mistake must be undone by a more
+expensive process the cheap attempt is debt with interest. See the
+[4.48.0 release notes](CHANGELOG.md).
+
 **Body currency: stale prose is now checkable (August 2026).** Release
 **4.47.0** extends durable-context currency from headers to the operational
 body. `Current State` and `What's Next` end with an as-of marker that the
