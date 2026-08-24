@@ -8,6 +8,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ### Added
 
+- **`synthesis-model-tiers` v2.1.0 — role selection by diagnostic difficulty.**
+  The skill mapped roles to model ids but never said how to pick a role, and
+  the common misroute is sending a *small-sounding* task to a cheap tier.
+  Size is not the variable; whether the CAUSE is known is. A settled
+  specification is execution and belongs in `routine`/`bulk`; a symptom
+  report ("X isn't working", "the file won't open") is a differential over a
+  chain of candidate causes and belongs in `judgment` even when the subject
+  is one file — cost scales with the search, not the fix.
+
+  Three properties now force `judgment`, any one sufficient: the cause is
+  unknown, the blast radius includes a deliverable or durable record, or the
+  work will not be independently reviewed before it lands. Two consequences
+  are stated because they are what make this a cost rather than a
+  preference: where a mistake must be caught and undone by a more expensive
+  process the cheap attempt is debt with interest, and a plausible-sounding
+  wrong explanation transfers the whole verification burden back to the
+  human, inverting the reason for delegating.
+
+  New resolution rule 6: an agent that finds itself under-tiered must say so
+  *before* acting rather than proceed and report a confident result — the
+  failure it is least able to detect in itself afterward.
+
 - **`synthesis-context-lifecycle` v1.11.0 — body currency.** Third occurrence
   of the stale-record defect, and the diagnosis finally names the design
   flaw: the prior fixes addressed *header* currency, while the defect moved
