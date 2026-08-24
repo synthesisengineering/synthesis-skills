@@ -11,6 +11,15 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Stale headers are now doctor defects (August 2026).** Release **4.46.0**
+adds per-field header-currency checking to `synthesis-context-lifecycle`: the
+context doctor fails when a `CONTEXT.md` header describes an older state than
+the project's own session log — including same-day staleness, where date
+comparison sees nothing — and `context_edit.py` refuses to create that state
+at write time. Fields are judged separately, so a fresh `Phase` can no longer
+mask a stale `Last session`. Every regression fixture derives from a real
+defect. See the [4.46.0 release notes](CHANGELOG.md).
+
 **Durable-context edits fail closed (August 2026).** Release **4.45.0** adds
 `context_edit.py` to `synthesis-context-lifecycle`. A hand-rolled
 `str.replace()` against a project record asserts nothing — when another agent

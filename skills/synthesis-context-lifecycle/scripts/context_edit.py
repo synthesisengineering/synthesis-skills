@@ -54,9 +54,71 @@ import sys
 import tempfile
 from pathlib import Path
 
+import context_currency
+
 
 class ContextEditError(Exception):
     """A durable-context edit was refused. Nothing was written."""
+
+
+def _coherence_gate(
+    path: Path,
+    original: str,
+    edited: str,
+    allow_header_lag: bool,
+) -> str | None:
+    """Refuse an edit that creates or changes an incoherent CONTEXT.md header.
+
+    Phase and Last session describe one state and must move together. A
+    round-11 Phase over a round-10 Last session is exactly the stale-header
+    defect this tooling exists to prevent, so an edit that produces that pair
+    is refused at write time — the file is never wrong, rather than detected
+    wrong later.
+
+    Pre-existing incoherence that this edit does not touch is warned about,
+    not blocked: an unrelated body edit must not be hostage to an earlier
+    session's defect. Returns a warning string in that case, None otherwise.
+    """
+    if path.name != "CONTEXT.md":
+        return None
+    after = context_currency.header_incoherence(edited)
+    if not after:
+        return None
+    # Only Phase-ahead-of-Last-session is the defect shape: a described new
+    # state over a stale log pointer. Last session leading Phase is the normal
+    # transition while a two-call update is in flight, and the doctor's
+    # read-time field check catches a Phase left behind. A symmetric refusal
+    # would deadlock every legitimate two-call header update.
+    leading = [(f, p, l) for f, p, l in after if p > l]
+    trailing = [(f, p, l) for f, p, l in after if l > p]
+    notes: list[str] = []
+    if trailing:
+        notes.append(
+            "note: Last session now leads Phase ("
+            + "; ".join(f"{f} {l} vs {p}" for f, p, l in trailing)
+            + ") — finish by updating Phase"
+        )
+    if leading:
+        described = "; ".join(
+            f"**Phase:** says {family} {phase_n} while **Last session:** "
+            f"still says {family} {last_n}"
+            for family, phase_n, last_n in leading
+        )
+        before = context_currency.header_incoherence(original)
+        if [x for x in before if x[1] > x[2]] == leading:
+            notes.append(
+                f"warning: pre-existing header incoherence left untouched "
+                f"({described}); repair it with set-field"
+            )
+        elif allow_header_lag:
+            notes.append(f"override --allow-header-lag recorded ({described})")
+        else:
+            raise ContextEditError(
+                f"edit would leave the header incoherent: {described}.\n"
+                "Update Last session in the same change (or first), or pass "
+                "--allow-header-lag to record an explicit override."
+            )
+    return "; ".join(notes) if notes else None
 
 
 def _read(path: Path) -> str:
@@ -140,12 +202,14 @@ def replace_once(
     count: int = 1,
     max_lines: int | None = None,
     dry_run: bool = False,
+    allow_header_lag: bool = False,
 ) -> dict:
     """Apply one verified replacement to a durable context file."""
     path = Path(path)
     original = _read(path)
     edited = apply_replacement(original, anchor, replacement, count=count)
     lines = _check_budget(edited, max_lines, path)
+    note = _coherence_gate(path, original, edited, allow_header_lag)
 
     if dry_run:
         return {
@@ -154,6 +218,7 @@ def replace_once(
             "dry_run": True,
             "replacements": count,
             "lines": lines,
+            "note": note,
         }
 
     _atomic_write(path, edited)
@@ -177,6 +242,7 @@ def replace_once(
         "dry_run": False,
         "replacements": count,
         "lines": len(written.splitlines()),
+        "note": note,
     }
 
 
@@ -190,6 +256,7 @@ def set_field(
     *,
     max_lines: int | None = None,
     dry_run: bool = False,
+    allow_header_lag: bool = False,
 ) -> dict:
     """Replace a `**Field:** ...` header line, verifying it existed."""
     path = Path(path)
@@ -212,6 +279,7 @@ def set_field(
         replacement=f"**{field}:** {value}",
         max_lines=max_lines,
         dry_run=dry_run,
+        allow_header_lag=allow_header_lag,
     )
 
 
@@ -222,6 +290,7 @@ def insert_before(
     *,
     max_lines: int | None = None,
     dry_run: bool = False,
+    allow_header_lag: bool = False,
 ) -> dict:
     """Insert text immediately before an anchor, preserving the anchor.
 
@@ -237,6 +306,7 @@ def insert_before(
         replacement=f"{text}{anchor}",
         max_lines=max_lines,
         dry_run=dry_run,
+        allow_header_lag=allow_header_lag,
     )
 
 
@@ -252,6 +322,12 @@ def main(argv: list[str] | None = None) -> int:
     common.add_argument("--file", required=True, type=Path)
     common.add_argument("--max-lines", type=int, default=None)
     common.add_argument("--dry-run", action="store_true")
+    common.add_argument(
+        "--allow-header-lag",
+        action="store_true",
+        help="record an explicit override instead of refusing an edit that "
+        "leaves Phase ahead of Last session",
+    )
 
     replace = sub.add_parser("replace", parents=[common])
     replace.add_argument("--anchor", required=True)
@@ -276,6 +352,7 @@ def main(argv: list[str] | None = None) -> int:
                 text=_value(args.text),
                 max_lines=args.max_lines,
                 dry_run=args.dry_run,
+                allow_header_lag=args.allow_header_lag,
             )
         elif args.command == "replace":
             result = replace_once(
@@ -285,6 +362,7 @@ def main(argv: list[str] | None = None) -> int:
                 count=args.count,
                 max_lines=args.max_lines,
                 dry_run=args.dry_run,
+                allow_header_lag=args.allow_header_lag,
             )
         else:
             result = set_field(
@@ -293,15 +371,17 @@ def main(argv: list[str] | None = None) -> int:
                 value=_value(args.value),
                 max_lines=args.max_lines,
                 dry_run=args.dry_run,
+                allow_header_lag=args.allow_header_lag,
             )
     except ContextEditError as exc:
         print(f"context-edit refused: {exc}", file=sys.stderr)
         return 1
 
     verb = "would change" if result["dry_run"] else "changed"
+    suffix = f" [{result['note']}]" if result.get("note") else ""
     print(
         f"{verb} {result['path']}: {result['replacements']} replacement(s), "
-        f"{result['lines']} lines"
+        f"{result['lines']} lines{suffix}"
     )
     return 0
 

@@ -59,7 +59,11 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
-DOCTOR_VERSION = "1.3.0"
+# Sibling module in this scripts directory; ships with the skill. If it is
+# missing the doctor must fail loudly rather than silently skip a check.
+import context_currency
+
+DOCTOR_VERSION = "1.4.0"
 
 # Budgets from the tiered context architecture.
 CONTEXT_BUDGET_ACTIVE = 150
@@ -682,6 +686,7 @@ CHECKS = [
     "completed-date",
     "last-session-freshness",
     "context-header-freshness",
+    "header-currency",
     "uncommitted-context",
     "untracked-context",
     "unpushed-context",
@@ -852,6 +857,16 @@ def audit_project(
                 f"commit is {newest} — working memory is behind the work",
                 "refresh CONTEXT.md and its Last session header",
             )
+
+    # --- header currency ----------------------------------------------------
+    # "Records agree with git" means committed, not current: a header can
+    # describe an older state than the session log records — same day, so the
+    # date checks above see nothing — while every file is committed. Each
+    # header field is judged separately against the log's newest entries; a
+    # union over fields would let a fresh Phase mask a stale Last session,
+    # which is the exact failure that put this check here.
+    for message, remedy in context_currency.currency_findings(project_path):
+        audit.add("header-currency", "defect", message, remedy)
 
     # --- durability ---------------------------------------------------------
     dirty = uncommitted(repo_root, project_path)
