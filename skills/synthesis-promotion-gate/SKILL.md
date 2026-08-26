@@ -111,7 +111,9 @@ The surface manifest is the canonical declared renderer set. For each input cons
 each renderer, the gate computes the output route from frontmatter and the renderer's
 route template. Directory-name substring selection is forbidden. Duplicate routes,
 inputs consumed by no renderer, and expected outputs absent after the build are
-refusals. Every renderer in the manifest must have one matching `inspected_surfaces`
+refusals. Expected output paths cannot traverse symlinks; the gate never inspects bytes
+outside its isolated build root. Every renderer in the manifest must have one matching
+`inspected_surfaces`
 entry; neither side may silently contain an extra renderer.
 
 A build can contain unrelated pages. The receipt lists those as `unscoped_outputs`; it
