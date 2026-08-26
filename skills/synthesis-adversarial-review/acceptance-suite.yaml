@@ -1,0 +1,30 @@
+# AGENT HEURISTIC: this manifest shape is the generation-zero instance that R5 will
+# formalize. The controlling plan requires a manifest now but does not prescribe keys.
+schema: 1
+suite: synthesis-adversarial-review-finding-ledger
+membership: closed
+production_entry_point: scripts/finding_ledger.py
+enforcing_boundary: atomic ledger replacement after schema and transition validation
+expected_status: pass
+cases:
+  - id: ledger-init
+    fixture: scripts/test_finding_ledger.py::test_init_creates_declared_engagement
+    motivating_defect: catalogue-P0-1-principal-courier-cost-was-untracked
+  - id: classification-required
+    fixture: scripts/test_finding_ledger.py::test_add_requires_ship_classification_without_mutating
+    motivating_defect: catalogue-P0-4-ship-blocking-and-ship-improving-were-conflated
+  - id: label-outcome-separation
+    fixture: scripts/test_finding_ledger.py::test_authority_label_and_enforcement_outcome_remain_separate
+    motivating_defect: principal-boundary-unlabelled-agent-heuristic-became-a-rule
+  - id: executable-repair-state
+    fixture: scripts/test_finding_ledger.py::test_transition_requires_the_recorded_prior_state
+    motivating_defect: engagement-round-2-prose-and-source-repair-were-conflated
+  - id: follow-up-routing
+    fixture: scripts/test_finding_ledger.py::test_ship_improving_requires_follow_up_project
+    motivating_defect: catalogue-P0-4-improvements-extended-the-current-delivery
+  - id: duplicate-identity
+    fixture: scripts/test_finding_ledger.py::test_duplicate_finding_id_refuses_without_mutating
+    motivating_defect: round-36-duplicate-identities-collapsed-before-validation
+  - id: symlink-boundary
+    fixture: scripts/test_finding_ledger.py::test_symlink_ledger_is_refused
+    motivating_defect: engagement-round-1-symlink-escape
