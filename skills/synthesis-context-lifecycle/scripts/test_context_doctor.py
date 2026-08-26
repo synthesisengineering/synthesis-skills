@@ -294,6 +294,19 @@ class ContextDoctorTests(unittest.TestCase):
 
         self.assertIn("artifact-cites-missing-script", checks_in(self.fx.audit()))
 
+    def test_cross_project_script_citation_is_not_a_local_missing_script(self):
+        project = self.fx.project("alpha")
+        artifacts = project / "resources" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "result.md").write_text(
+            "See `projects/other/resources/scripts/rebuild.py`.\n",
+            encoding="utf-8",
+        )
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+
+        self.assertNotIn("artifact-cites-missing-script", checks_in(self.fx.audit()))
+
     # --- cross-tier agreement ---------------------------------------------
 
     def test_status_disagreement_is_caught(self):

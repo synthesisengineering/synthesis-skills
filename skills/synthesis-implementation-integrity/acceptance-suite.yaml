@@ -15,7 +15,7 @@ changed_surfaces:
   - path: skills/synthesis-context-lifecycle/SKILL.md
     cases: [scripts-tier-contract]
   - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
-    cases: [missing-script-warning, existing-script-accepted, symlink-script-refused]
+    cases: [missing-script-warning, existing-script-accepted, symlink-script-refused, cross-project-script-reference]
   - path: skills/synthesis-implementation-integrity/SKILL.md
     cases: [acceptance-manifest-doctrine, extract-dont-restate, authority-at-boundary]
   - path: skills/synthesis-implementation-integrity/scripts/acceptance_suite.py
@@ -97,6 +97,10 @@ cases:
     control_class: acceptance-test
     fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_artifact_cites_symlinked_script_warns
     motivating_defect: agent-heuristic-cited-script-could-resolve-outside-the-project
+  - id: cross-project-script-reference
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_cross_project_script_citation_is_not_a_local_missing_script
+    motivating_defect: agent-heuristic-cross-project-reference-was-misread-as-a-project-local-script-citation
   - id: scratchpad-sweep
     control_class: diagnostic
     fixture: scripts/test_r5_contract.py::test_checkpoint_and_autopilot_ask_the_scratchpad_sweep_question
