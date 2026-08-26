@@ -2,6 +2,7 @@
 set -eu
 
 SKILL_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+FIXTURE_ROOT="$SKILL_ROOT/tests/fixtures"
 TEST_ROOT=$(mktemp -d)
 SOURCE_SENTINEL="$SKILL_ROOT/.runtime-installer-source-sentinel"
 CWD_SENTINEL="$TEST_ROOT/cwd-sentinel"
@@ -83,7 +84,14 @@ test -d "$OLD_RELEASE"
 STAGED_SOURCE="$TEST_ROOT/altered-skill"
 cp -R "$SKILL_ROOT" "$STAGED_SOURCE"
 printf '\n# regression-marker\n' >> "$STAGED_SOURCE/scripts/_lib.py"
-SYNTHESIS_INBOX_HOME="$REPOINT_ROOT" "$STAGED_SOURCE/scripts/install.sh" >/dev/null 2>&1 || {
+PORTABLE_BIN="$TEST_ROOT/portable-bin"
+mkdir -p "$PORTABLE_BIN"
+cp "$FIXTURE_ROOT/mv-no-h" "$PORTABLE_BIN/mv"
+chmod 700 "$PORTABLE_BIN/mv"
+SYNTHESIS_TEST_REAL_MV=$(command -v mv) \
+    PATH="$PORTABLE_BIN:$PATH" \
+    SYNTHESIS_INBOX_HOME="$REPOINT_ROOT" \
+    "$STAGED_SOURCE/scripts/install.sh" >/dev/null 2>&1 || {
     echo "installer failed while repointing an existing engine/current" >&2
     exit 1
 }
