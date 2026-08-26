@@ -10,6 +10,9 @@ cases:
   - id: ledger-init
     fixture: scripts/test_finding_ledger.py::test_init_creates_declared_engagement
     motivating_defect: catalogue-P0-1-principal-courier-cost-was-untracked
+  - id: courier-crossing-budget
+    fixture: scripts/test_finding_ledger.py::test_courier_crossings_are_compare_before_write_and_budget_bounded
+    motivating_defect: catalogue-P0-1-principal-courier-crossings-had-no-auditable-mutation-path
   - id: classification-required
     fixture: scripts/test_finding_ledger.py::test_add_requires_ship_classification_without_mutating
     motivating_defect: catalogue-P0-4-ship-blocking-and-ship-improving-were-conflated

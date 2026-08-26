@@ -20,7 +20,7 @@ def run(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def initialize(path: pathlib.Path) -> None:
+def initialize(path: pathlib.Path, *, budget: int = 0) -> None:
     result = run(
         "init",
         "--file",
@@ -30,7 +30,7 @@ def initialize(path: pathlib.Path) -> None:
         "--principal-outcome",
         "Ship the accepted controls without using the principal as courier.",
         "--round-trip-budget",
-        "0",
+        str(budget),
         "--proportionality",
         "One bounded adversarial exchange; stop control growth at generation one.",
     )
@@ -71,6 +71,7 @@ def test_init_creates_declared_engagement(tmp_path: pathlib.Path) -> None:
     assert doc["engagement"]["principal_courier_round_trips"] == {
         "budget": 0,
         "count": 0,
+        "history": [],
     }
     assert doc["findings"] == []
 
@@ -178,3 +179,51 @@ def test_symlink_ledger_is_refused(tmp_path: pathlib.Path) -> None:
     result = run("validate", "--file", str(link))
     assert result.returncode != 0
     assert target.read_bytes() == before
+
+
+def test_courier_crossings_are_compare_before_write_and_budget_bounded(
+    tmp_path: pathlib.Path,
+) -> None:
+    ledger = tmp_path / "findings.yaml"
+    initialize(ledger, budget=1)
+    recorded = run(
+        "record-crossing",
+        "--file",
+        str(ledger),
+        "--expected-count",
+        "0",
+        "--evidence",
+        "Human copied one provider-boundary payload.",
+    )
+    assert recorded.returncode == 0, recorded.stderr
+    trips = yaml.safe_load(ledger.read_text(encoding="utf-8"))["engagement"][
+        "principal_courier_round_trips"
+    ]
+    assert trips["count"] == 1
+    assert trips["history"][0]["evidence"].startswith("Human copied")
+
+    before = ledger.read_bytes()
+    stale = run(
+        "record-crossing",
+        "--file",
+        str(ledger),
+        "--expected-count",
+        "0",
+        "--evidence",
+        "A stale writer must refuse.",
+    )
+    assert stale.returncode != 0
+    assert ledger.read_bytes() == before
+
+    exceeded = run(
+        "record-crossing",
+        "--file",
+        str(ledger),
+        "--expected-count",
+        "1",
+        "--evidence",
+        "This would exceed the declared budget.",
+    )
+    assert exceeded.returncode != 0
+    assert "blocked" in exceeded.stderr
+    assert ledger.read_bytes() == before
