@@ -32,6 +32,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **AGENT HEURISTIC — `synthesis-skill-router` v1.3.0** makes the prompt-hidden
   adversarial-review specialist reachable from outcome-shaped requests.
 
+### Fixed
+
+- **`synthesis-inbox-cleanup` v1.6.2 — portable atomic runtime-pointer swaps.**
+  The 4.49.0 repair used BSD-only `mv -h`; GNU `mv` rejected the option and
+  left the Linux validation workflow red. The installer now uses Python's
+  atomic `os.replace` on both macOS and Linux. Its repoint fixture models the
+  GNU refusal on every host, and the skill metadata now matches the release
+  line that 4.49.0 intended to advance.
+
 ## [4.49.0] - 2026-08-24
 
 ### Fixed

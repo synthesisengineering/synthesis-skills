@@ -106,12 +106,15 @@ install_engine_runtime() {
         return 1
     fi
     ln -s "releases/$source_digest" "$link_stage"
-    # -h is load-bearing: engine/current is a symlink TO A DIRECTORY, and without
-    # it mv follows the link and deposits the staged link INSIDE the old release
-    # instead of replacing the pointer. The install then "succeeds" at every step
-    # while the runtime stays pinned to whatever release it already had. Caught
-    # 2026-08-24 with a stray .current.<pid>.tmp found inside the old release dir.
-    mv -fh "$link_stage" "$ENGINE_CURRENT"
+    # AGENT HEURISTIC: os.replace supplies the same atomic pointer swap on macOS
+    # and Linux. BSD mv needs -h to replace a symlink to a directory, while GNU
+    # mv rejects that option.
+    python3 - "$link_stage" "$ENGINE_CURRENT" <<'PY'
+import os
+import sys
+
+os.replace(sys.argv[1], sys.argv[2])
+PY
 
     resolved_current="$(cd "$ENGINE_CURRENT" && pwd -P)"
     resolved_release="$(cd "$release_dir" && pwd -P)"
