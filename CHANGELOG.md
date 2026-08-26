@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.53.1] - 2026-08-26
+
+### Fixed
+
+- **Git-backed acceptance fixtures remain isolated from user-level Git hooks.**
+  Synthetic Git operations now disable inherited hooks, so an active global
+  coordination gate cannot block fixture setup before the behavior under test
+  runs.
+
 ## [4.53.0] - 2026-08-26
 
 ### Added

@@ -65,7 +65,7 @@ def staged_repository(tmp_path: Path) -> Path:
 
 def git(root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", *arguments],
+        ["git", "-c", "core.hooksPath=/dev/null", *arguments],
         cwd=root,
         capture_output=True,
         text=True,

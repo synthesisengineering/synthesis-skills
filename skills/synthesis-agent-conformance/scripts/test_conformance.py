@@ -412,6 +412,10 @@ def test_activate_and_handoff(tmp_path: Path, monkeypatch) -> None:
     subprocess.run(
         ["git", "-C", str(project), "config", "user.name", "Test"], check=True
     )
+    subprocess.run(
+        ["git", "-C", str(project), "config", "core.hooksPath", "/dev/null"],
+        check=True,
+    )
     subprocess.run(["git", "-C", str(project), "add", "."], check=True)
     subprocess.run(
         ["git", "-C", str(project), "commit", "-m", "test"],
@@ -505,6 +509,7 @@ def clone_pair_with_project(tmp_path: Path) -> tuple[Path, Path]:
         )
         git(clone, "config", "user.email", "test@example.com")
         git(clone, "config", "user.name", "Test")
+        git(clone, "config", "core.hooksPath", "/dev/null")
         clones.append(clone)
     writer, reader = clones
     project = writer / "projects" / "demo"
@@ -598,6 +603,10 @@ def write_stopped_project(tmp_path: Path) -> Path:
     subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], check=True)
     subprocess.run(
         ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "core.hooksPath", "/dev/null"],
         check=True,
     )
     subprocess.run(["git", "-C", str(repo), "add", "."], check=True)

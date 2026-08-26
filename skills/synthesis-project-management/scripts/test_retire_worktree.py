@@ -22,7 +22,7 @@ SPEC.loader.exec_module(MODULE)
 
 def git(cwd: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", "-C", str(cwd), *arguments],
+        ["git", "-c", "core.hooksPath=/dev/null", "-C", str(cwd), *arguments],
         capture_output=True,
         text=True,
         check=True,
