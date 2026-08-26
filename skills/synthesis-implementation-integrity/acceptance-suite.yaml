@@ -19,7 +19,7 @@ changed_surfaces:
   - path: skills/synthesis-implementation-integrity/SKILL.md
     cases: [acceptance-manifest-doctrine, extract-dont-restate, authority-at-boundary]
   - path: skills/synthesis-implementation-integrity/scripts/acceptance_suite.py
-    cases: [manifest-closed-membership, manifest-boundary-and-status, manifest-unique-cases, runner-terminal-matrix, runner-status-mismatch, enforced-gate-consumer, changed-surface-closure]
+    cases: [manifest-closed-membership, manifest-boundary-and-status, manifest-unique-cases, runner-terminal-matrix, runner-status-mismatch, enforced-gate-consumer, changed-surface-closure, manifest-root-relative, manifest-symlink-refused]
   - path: skills/synthesis-checkpoint/SKILL.md
     cases: [scratchpad-sweep]
   - path: skills/synthesis-autopilot/SKILL.md
@@ -28,8 +28,16 @@ changed_surfaces:
     cases: [category-allowlist]
   - path: skills/synthesis-skills-manager/scripts/release.py
     cases: [release-wiring]
+  - path: skills/synthesis-skills-manager/SKILL.md
+    cases: [release-wiring]
   - path: .github/workflows/validate.yml
     cases: [ci-wiring]
+  - path: .claude-plugin/plugin.json
+    cases: [release-wiring]
+  - path: .codex-plugin/plugin.json
+    cases: [release-wiring]
+  - path: CHANGELOG.md
+    cases: [release-wiring]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
 cases:
@@ -61,6 +69,14 @@ cases:
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_changed_surfaces_reference_existing_cases
     motivating_defect: engagement-changed-surfaces-reached-green-without-a-defect-pinning-fixture
+  - id: manifest-root-relative
+    control_class: acceptance-test
+    fixture: scripts/test_acceptance_suite.py::test_manifest_path_is_resolved_from_repo_root
+    motivating_defect: agent-heuristic-relative-manifest-path-depended-on-caller-working-directory
+  - id: manifest-symlink-refused
+    control_class: acceptance-test
+    fixture: scripts/test_acceptance_suite.py::test_manifest_rejects_symlinked_fixture
+    motivating_defect: agent-heuristic-fixture-could-leave-the-declared-repository-through-a-symlink
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
