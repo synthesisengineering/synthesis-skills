@@ -19,7 +19,7 @@ jobs:
       - run: python skills/synthesis-agent-conformance/scripts/conformance.py instructions --repo-root .
       - run: python -m pytest skills/synthesis-agent-conformance/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-project-management/scripts/test_coordination.py -q
-      - run: python -m pytest skills/synthesis-promotion-gate/scripts/test_*.py -q
+      - run: python -m pytest skills/synthesis-promotion-gate/scripts/ -q
       - run: python -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-onboarding/scripts/test_onboard.py -q
