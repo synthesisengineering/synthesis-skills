@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.4.0"
+  version: "2.5.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -13,6 +13,22 @@ metadata:
 # Synthesis Project Management System
 
 A lightweight project management system designed for human-agent collaboration. Optimized for context preservation across conversation sessions and context compaction events.
+
+## v2.5.0 — Staged paths enforced against coordination claims
+
+`coordination.py check-staged` compares both sides of every staged rename and
+all other staged paths with the selected active session's source-area claims.
+The exact Git worktree and branch must also appear on that session's board row.
+The authority snapshot is taken under the board lock; a lease-backed board
+passes through a compare-and-swap fence so a concurrent release is read before
+the check can issue a receipt. Equivalent filesystem spellings resolve before
+claim matching.
+An outside path refuses by default; an explicit override succeeds only after
+its reason, staged tree, repository, branch, and outside paths are appended
+atomically to `## Messages`. Every result separates its authority label from
+its enforcement outcome and names the unverified remainder. The receipt binds
+that outcome and its outside-path list alongside the staged tree. The board
+remains schema v3; this release adds no columns or sidecar state.
 
 ## Configuration
 
@@ -319,6 +335,10 @@ python3 <synthesis-project-management-root>/scripts/coordination.py claim \
 python3 <synthesis-project-management-root>/scripts/coordination.py heartbeat \
   --session s-6adk-06yc-yqb2
 
+# Verify the current index against this session's exact board claim
+python3 <synthesis-project-management-root>/scripts/coordination.py \
+  check-staged --session s-6adk-06yc-yqb2 --repository /path/to/worktree
+
 # Leave an asynchronous handoff
 printf '%s\n' "Source checks pass; live install awaits authorization." |
   python3 <synthesis-project-management-root>/scripts/coordination.py message \
@@ -328,6 +348,17 @@ printf '%s\n' "Source checks pass; live install awaits authorization." |
 python3 <synthesis-project-management-root>/scripts/coordination.py release \
   --session s-6adk-06yc-yqb2
 ```
+
+**AGENT HEURISTIC — selector precedence.** `check-staged` uses an explicit
+`--session`, then
+`SYNTHESIS_COORDINATION_SESSION`, then `owner_session` in the active-project
+pointer. The board is refreshed from its configured lease before evaluation.
+A missing/unreadable board, inactive session, detached branch, unregistered
+worktree, or unreadable index refuses. To make a deliberately exceptional
+commit, pass `--override-reason` (or set
+`SYNTHESIS_COORDINATION_OVERRIDE_REASON` when the git-hook boundary invokes
+the check); the override is not authority until its board write completes and
+the index revalidates unchanged.
 
 The claim command normally allocates the identity. It prints the canonical
 UUIDv7, compact `s-xxxx-xxxx-xxxx` form, and speakable

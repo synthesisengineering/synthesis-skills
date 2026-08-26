@@ -67,6 +67,24 @@ EOF
     exit 1
 }
 
+coordination_refused() {
+    cat >&2 <<EOF
+
+==================================================================
+  X  COMMIT BLOCKED — coordination authority refused
+==================================================================
+
+$1
+
+The configured coordination gate did not issue valid authority for
+this staged tree. Its finding and remediation appear above.
+
+Diagnose:   python3 $SIDECAR --doctor
+Board:      ${COORDINATION_BOARD:-not configured}
+EOF
+    exit 1
+}
+
 [ -f "$CONFIG" ]  || fail_closed "Config not found at $CONFIG. Run the skill's install.sh to set it up."
 [ -f "$SIDECAR" ] || fail_closed "Sidecar not found at $SIDECAR."
 
@@ -83,6 +101,179 @@ set -e
 eval "$SIDECAR_OUT"
 [ "${SYNTHESIS_SIDECAR_OK:-0}" = "1" ] || fail_closed "Sidecar output incomplete (missing OK sentinel)."
 [ -n "${ACTIVE_REGEX:-}" ] || fail_closed "Active pattern set is empty — Tier 0 must never be empty in a valid config."
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || fail_closed "Cannot resolve the Git worktree root."
+
+# A configured board promotes the advisory source-area claim to a commit
+# boundary. Without a configured board the content scanner still runs, but D6
+# requires the absent coordination control to be stated on every invocation.
+case "${COORDINATION_CHECK_STAGED:-}" in
+    1)
+        COORDINATION_RUNTIME="$HOOK_DIR/coordination.py"
+        COORDINATION_ASSET="$HOOK_DIR/../references/session-words-v1.txt.zlib.b85"
+        for dependency in coordination.py coordination_schema.py pointer_lock.py; do
+            [ -f "$HOOK_DIR/$dependency" ] || fail_closed "coordination runtime incomplete: missing $HOOK_DIR/$dependency."
+        done
+        [ -f "$COORDINATION_ASSET" ] || fail_closed "coordination runtime incomplete: missing $COORDINATION_ASSET."
+        [ -n "${COORDINATION_BOARD:-}" ] || fail_closed "Coordination control enabled without a board path."
+        COORDINATION_ARGS=(
+            --board "$COORDINATION_BOARD"
+            check-staged
+            --repository "$REPO_ROOT"
+            --json
+        )
+        if [ -n "${SYNTHESIS_COORDINATION_SESSION:-}" ]; then
+            COORDINATION_ARGS+=(--session "$SYNTHESIS_COORDINATION_SESSION")
+        fi
+        if [ -n "${SYNTHESIS_COORDINATION_OVERRIDE_REASON:-}" ]; then
+            COORDINATION_ARGS+=(--override-reason "$SYNTHESIS_COORDINATION_OVERRIDE_REASON")
+        fi
+        # AGENT HEURISTIC: the plan requires a receipt consumer but does not
+        # prescribe its transport. Parse the JSON in-process, require its
+        # boundary fields, and recompute the binding digest before continuing.
+        set +e
+        COORDINATION_OUT=$("$PYBIN" "$COORDINATION_RUNTIME" "${COORDINATION_ARGS[@]}" 2>&1)
+        COORDINATION_STATUS=$?
+        set -e
+        if [ "$COORDINATION_STATUS" -ne 0 ]; then
+            printf '%s\n' "$COORDINATION_OUT"
+            coordination_refused "coordination check-staged exited $COORDINATION_STATUS; no commit authority receipt was issued."
+        fi
+        set +e
+        COORDINATION_SUMMARY=$(printf '%s' "$COORDINATION_OUT" | \
+            COORDINATION_EXPECTED_REPOSITORY="$REPO_ROOT" \
+            COORDINATION_EXPECTED_BOARD="$COORDINATION_BOARD" \
+            "$PYBIN" -c '
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import uuid
+from pathlib import Path
+
+payload = json.load(sys.stdin)
+outcome = payload.get("enforcement_outcome")
+remainder = payload.get("unverified_remainder")
+if not isinstance(remainder, list) or not remainder:
+    raise SystemExit("missing unverified remainder")
+if outcome == "no-staged-paths":
+    if payload.get("issues_authority_receipt") or "receipt" in payload:
+        raise SystemExit("no-staged-paths result unexpectedly issued a receipt")
+    print(
+        "coordination check-staged: no-staged-paths; no authority receipt "
+        "required; unverified remainder: " + "; ".join(remainder)
+    )
+    raise SystemExit(0)
+authorizing_outcomes = {"passed-inside-claim", "recorded-override"}
+if outcome not in authorizing_outcomes:
+    raise SystemExit(f"non-authorizing enforcement outcome: {outcome!r}")
+if payload.get("issues_authority_receipt") is not True:
+    raise SystemExit("successful staged-path result issued no authority receipt")
+receipt = payload.get("receipt")
+if not isinstance(receipt, dict):
+    raise SystemExit("authority receipt is not a mapping")
+required = {
+    "binding_sha256",
+    "board_sha256",
+    "branch",
+    "enforcement_outcome",
+    "outside_paths",
+    "repository",
+    "session_uuid",
+    "staged_paths",
+    "staged_tree",
+}
+missing = sorted(required - receipt.keys())
+if missing:
+    raise SystemExit("authority receipt missing: " + ", ".join(missing))
+if not receipt["staged_paths"]:
+    raise SystemExit("authority receipt covers no staged paths")
+if receipt.get("receipt_consumer") != "synthesis-git-hooks pre-commit":
+    raise SystemExit("authority receipt names a different consumer")
+outside_paths = payload.get("outside_paths")
+if not isinstance(outside_paths, list):
+    raise SystemExit("top-level outside paths are not a list")
+if receipt["enforcement_outcome"] != outcome:
+    raise SystemExit("authority receipt enforcement outcome mismatch")
+if receipt["outside_paths"] != outside_paths:
+    raise SystemExit("authority receipt outside paths mismatch")
+if outcome == "passed-inside-claim" and outside_paths:
+    raise SystemExit("inside-claim outcome names outside paths")
+if outcome == "recorded-override":
+    if not outside_paths:
+        raise SystemExit("recorded override names no outside paths")
+    if not receipt.get("override_reason"):
+        raise SystemExit("recorded override has no bound reason")
+try:
+    session_uuid = uuid.UUID(receipt["session_uuid"])
+except (ValueError, AttributeError) as exc:
+    raise SystemExit("authority receipt has an invalid session UUID") from exc
+if session_uuid.version != 7:
+    raise SystemExit("authority receipt session identity is not UUIDv7")
+binding = receipt["binding_sha256"]
+unsigned = dict(receipt)
+del unsigned["binding_sha256"]
+canonical = json.dumps(unsigned, sort_keys=True, separators=(",", ":"))
+expected = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+if binding != expected:
+    raise SystemExit("authority receipt binding digest mismatch")
+repository = Path(os.environ["COORDINATION_EXPECTED_REPOSITORY"]).resolve()
+if Path(receipt["repository"]).resolve() != repository:
+    raise SystemExit("authority receipt repository no longer matches")
+board = Path(os.environ["COORDINATION_EXPECTED_BOARD"]).expanduser().resolve()
+if Path(receipt.get("board", "")).expanduser().resolve() != board:
+    raise SystemExit("authority receipt board no longer matches")
+if hashlib.sha256(board.read_bytes()).hexdigest() != receipt["board_sha256"]:
+    raise SystemExit("coordination board changed after receipt issuance")
+branch = subprocess.run(
+    ["git", "branch", "--show-current"],
+    cwd=repository,
+    capture_output=True,
+    text=True,
+    check=True,
+).stdout.strip()
+if branch != receipt["branch"]:
+    raise SystemExit("Git branch changed after receipt issuance")
+tree = subprocess.run(
+    ["git", "write-tree"],
+    cwd=repository,
+    capture_output=True,
+    text=True,
+    check=True,
+).stdout.strip()
+if tree != receipt["staged_tree"]:
+    raise SystemExit("Git index tree changed after receipt issuance")
+names = subprocess.run(
+    ["git", "diff", "--cached", "--name-only", "-z", "--no-renames"],
+    cwd=repository,
+    capture_output=True,
+    check=True,
+).stdout
+paths = sorted(
+    value.decode("utf-8", errors="surrogateescape")
+    for value in names.split(b"\0")
+    if value
+)
+if paths != receipt["staged_paths"]:
+    raise SystemExit("staged path universe changed after receipt issuance")
+print(
+    f"coordination check-staged: {outcome}; authority receipt consumed; "
+    "unverified remainder: " + "; ".join(remainder)
+)
+')
+        COORDINATION_RECEIPT_STATUS=$?
+        set -e
+        [ "$COORDINATION_RECEIPT_STATUS" -eq 0 ] || coordination_refused "coordination authority receipt validation failed."
+        printf '%s\n' "$COORDINATION_SUMMARY"
+        ;;
+    0)
+        echo "coordination check-staged: control absent — no coordination_board configured; commit not blocked by this control" >&2
+        ;;
+    *)
+        fail_closed "Sidecar output incomplete (invalid COORDINATION_CHECK_STAGED value)."
+        ;;
+esac
 
 # Determine which files to scan. Always exclude files that contain pattern
 # definitions by design — adding a name to the policy is the opposite of
@@ -208,7 +399,6 @@ fi
 
 # Export class for any delegated per-repo hook, then chain.
 export SYNTHESIS_REPO_CLASS="$REPO_CLASS"
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || true
 if [ -n "$REPO_ROOT" ]; then
     REPO_HOOK="$REPO_ROOT/.githooks/pre-commit"
     if [ -f "$REPO_HOOK" ] && [ -x "$REPO_HOOK" ]; then

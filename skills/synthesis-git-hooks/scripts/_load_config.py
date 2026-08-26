@@ -55,17 +55,26 @@ import warnings
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-SIDECAR_VERSION = "2.3.0"
+SIDECAR_VERSION = "2.4.0"
 REQUIRED_CONFIG_VERSION = 2
 
 DEFAULT_CONFIG = Path.home() / ".synthesis" / "git-hook-config.yaml"
 
-# The three files that constitute the engine. A directory qualifies as a
-# drift-comparison source only when it carries all of them — a partial copy
-# would let missing files pass the byte-compare loop as "no drift".
-ENGINE_FILES = ("pre-commit", "commit-msg", "_load_config.py")
+# The installed engine includes the coordination runtime because a configured
+# board turns check-staged into a fail-closed commit boundary. The source files
+# remain canonical in synthesis-project-management; source_engine_path maps the
+# dependency instead of duplicating it in this skill.
+CORE_ENGINE_FILES = ("pre-commit", "commit-msg", "_load_config.py")
+COORDINATION_ENGINE_FILES = (
+    "coordination.py",
+    "coordination_schema.py",
+    "pointer_lock.py",
+)
+ENGINE_FILES = CORE_ENGINE_FILES + COORDINATION_ENGINE_FILES
+COORDINATION_ASSET = "session-words-v1.txt.zlib.b85"
 
 SOURCE_ENV = "SYNTHESIS_GIT_HOOKS_SOURCE"
+SOURCE_POINTER_NAME = "source-path"
 
 
 class ConfigError(Exception):
@@ -566,6 +575,16 @@ def load_config(path: Path) -> dict:
             file=sys.stderr,
         )
         sys.exit(2)
+    coordination_board = config.get("coordination_board")
+    if coordination_board is not None and (
+        not isinstance(coordination_board, str) or not coordination_board.strip()
+    ):
+        print(
+            "synthesis-git-hooks: coordination_board must be a non-empty "
+            "path string when configured (fail closed)",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     problems = validate_all_patterns(config)
     if problems:
         print(
@@ -621,6 +640,14 @@ def emit_shell_vars(config: dict) -> None:
     print(f"ALLOWLIST_REGEX={shlex.quote(allowlist)}")
     print(f"DIFF_EXCLUDE_REGEX={shlex.quote(diff_excludes)}")
     print(f"CHECK_COMMIT_MSG={check_msg}")
+    coordination_board = config.get("coordination_board")
+    if coordination_board is None:
+        print("COORDINATION_CHECK_STAGED=0")
+        print("COORDINATION_BOARD=''")
+    else:
+        expanded_board = str(Path(coordination_board).expanduser())
+        print("COORDINATION_CHECK_STAGED=1")
+        print(f"COORDINATION_BOARD={shlex.quote(expanded_board)}")
     # MUST be last: the engine treats its absence as sidecar failure.
     print("SYNTHESIS_SIDECAR_OK=1")
 
@@ -643,9 +670,48 @@ def _grep_validates(pattern: str) -> Optional[str]:
     return None
 
 
+def source_engine_path(path: Path, name: str) -> Path:
+    """Map an installed filename to its canonical source path.
+
+    Direct engine bundles may carry the dependency beside the core files. In
+    the plugin/source tree, coordination stays canonical in its owning skill.
+    """
+    local = path / name
+    if name in CORE_ENGINE_FILES or local.is_file():
+        return local
+    if len(path.parents) < 2:
+        return local
+    return (
+        path.parents[1]
+        / "synthesis-project-management"
+        / "scripts"
+        / name
+    )
+
+
+def source_coordination_asset(path: Path) -> Path:
+    local = path.parent / "references" / COORDINATION_ASSET
+    if local.is_file():
+        return local
+    if len(path.parents) < 2:
+        return local
+    return (
+        path.parents[1]
+        / "synthesis-project-management"
+        / "references"
+        / COORDINATION_ASSET
+    )
+
+
+def installed_coordination_asset(hooks_path: Path) -> Path:
+    return hooks_path.parent / "references" / COORDINATION_ASSET
+
+
 def _is_engine_source(path: Path) -> bool:
-    """True when ``path`` carries every engine file (a usable drift source)."""
-    return all((path / name).is_file() for name in ENGINE_FILES)
+    """True when ``path`` resolves every engine file and required asset."""
+    return all(source_engine_path(path, name).is_file() for name in ENGINE_FILES) and (
+        source_coordination_asset(path).is_file()
+    )
 
 
 def _installed_engine_dirs(hooks_path: Optional[Path]) -> set:
@@ -682,6 +748,36 @@ def _documented_source_dirs() -> List[Path]:
     ]
 
 
+def _persisted_source_dir(
+    hooks_path: Optional[Path],
+) -> Tuple[Optional[Path], Optional[str]]:
+    """Resolve the source pointer written by the generation-zero installer."""
+    if hooks_path is None:
+        return None, None
+    pointer = hooks_path / SOURCE_POINTER_NAME
+    if not pointer.exists() and not pointer.is_symlink():
+        return None, None
+    if pointer.is_symlink() or not pointer.is_file():
+        return None, f"persisted source pointer is not a regular file: {pointer}"
+    try:
+        raw = pointer.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        return None, f"persisted source pointer is unreadable: {pointer}: {exc}"
+    lines = raw.splitlines()
+    if len(lines) != 1 or not lines[0].strip():
+        return None, f"persisted source pointer must contain one path: {pointer}"
+    candidate = Path(lines[0]).expanduser()
+    if not candidate.is_absolute():
+        return None, f"persisted source pointer must be absolute: {pointer}"
+    candidate = candidate.resolve()
+    if not _is_engine_source(candidate):
+        return None, (
+            f"persisted source pointer does not resolve an engine source: "
+            f"{pointer} -> {candidate} (fail closed)"
+        )
+    return candidate, None
+
+
 def resolve_source_dir(
     hooks_path: Optional[Path],
 ) -> Tuple[Optional[Path], Optional[str]]:
@@ -697,7 +793,9 @@ def resolve_source_dir(
     2. This script's own directory, unless it is itself an installed engine
        copy — running the doctor from a repo checkout, a worktree, or a
        client plugin cache compares the installation against that copy.
-    3. Documented locations the ecosystem's own installers create, first
+    3. The source path persisted by ``install.sh``. A present but invalid
+       pointer is a doctor problem, never a reason to fall through.
+    4. Documented locations the ecosystem's own installers create, first
        complete candidate wins.
 
     Returns ``(source_dir, problem)``. Both ``None`` means no source is
@@ -719,6 +817,11 @@ def resolve_source_dir(
     own_dir = Path(__file__).resolve().parent
     if own_dir not in installed and _is_engine_source(own_dir):
         return own_dir, None
+    persisted, persisted_problem = _persisted_source_dir(hooks_path)
+    if persisted_problem:
+        return None, persisted_problem
+    if persisted is not None:
+        return persisted, None
     for candidate in _documented_source_dirs():
         if candidate.resolve() not in installed and _is_engine_source(candidate):
             return candidate, None
@@ -766,6 +869,23 @@ def run_doctor(config_path: Path) -> int:
                     "disclosure_ledger — public-surface repos get zero "
                     "allowances, which blocks published-precedent content"
                 )
+            coordination_board = config.get("coordination_board")
+            if coordination_board is None:
+                infos.append(
+                    "coordination check-staged control absent: no "
+                    "coordination_board configured"
+                )
+            elif not isinstance(coordination_board, str) or not coordination_board.strip():
+                problems.append(
+                    "coordination_board must be a non-empty path string"
+                )
+            else:
+                board_path = Path(coordination_board).expanduser()
+                infos.append(f"coordination check-staged configured: {board_path}")
+                if not board_path.is_file():
+                    problems.append(
+                        f"configured coordination board is unavailable: {board_path}"
+                    )
         except ConfigError as exc:
             problems.append(f"config unparsable: {exc}")
 
@@ -790,6 +910,9 @@ def run_doctor(config_path: Path) -> int:
                 problems.append(f"hooksPath missing {name}: {f}")
             elif name in ("pre-commit", "commit-msg") and not os.access(f, os.X_OK):
                 problems.append(f"{f} is not executable")
+        asset = installed_coordination_asset(hp_dir)
+        if not asset.is_file():
+            problems.append(f"coordination runtime missing asset: {asset}")
     else:
         problems.append(
             "core.hooksPath is not set globally — the engine is not wired in"
@@ -809,13 +932,24 @@ def run_doctor(config_path: Path) -> int:
     elif hp_dir is not None:
         drift_found = False
         for name in ENGINE_FILES:
-            src, inst = src_dir / name, hp_dir / name
+            src, inst = source_engine_path(src_dir, name), hp_dir / name
             if inst.exists() and src.read_bytes() != inst.read_bytes():
                 drift_found = True
                 problems.append(
                     f"DRIFT: installed {name} differs from skill source "
                     f"({inst} vs {src}) — reinstall or sync back"
                 )
+        source_asset = source_coordination_asset(src_dir)
+        installed_asset = installed_coordination_asset(hp_dir)
+        if (
+            installed_asset.exists()
+            and source_asset.read_bytes() != installed_asset.read_bytes()
+        ):
+            drift_found = True
+            problems.append(
+                "DRIFT: installed coordination asset differs from skill source "
+                f"({installed_asset} vs {source_asset}) — reinstall or sync back"
+            )
         if not drift_found:
             infos.append(
                 f"installed engine matches skill source (no drift): {src_dir}"
