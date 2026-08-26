@@ -29,7 +29,7 @@ def fixture_file(root: Path) -> Path:
 
 def manifest_payload() -> dict:
     return {
-        "schema": 1,
+        "schema": 2,
         "suite": "fixture-suite",
         "membership": "closed",
         "production_entry_point": "tool.py run",

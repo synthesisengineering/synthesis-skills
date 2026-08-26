@@ -1,7 +1,7 @@
 # AGENT HEURISTIC: R5 is the first suite authored against the generalized
 # executable-manifest contract. The controlling plan specifies the required
 # semantics, while this manifest records the exact public release universe.
-schema: 1
+schema: 2
 suite: synthesis-interoperability-integrity-controls-r5
 membership: closed
 production_entry_point: scripts/acceptance_suite.py run
