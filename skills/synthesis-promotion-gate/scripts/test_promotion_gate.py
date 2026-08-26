@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from html.parser import HTMLParser
 import pathlib
 import subprocess
 import sys
@@ -51,7 +52,7 @@ def marker_policy() -> dict[str, Any]:
                 "id": "unresolved-date",
                 "threat_rationale": "A publication date placeholder rendered to a reader surface.",
                 "provenance": "engagement-round-2-two-date-blocks",
-                "positive_examples": ["<DATE>"],
+                "positive_examples": ["<DATE>", "&lt;DATE&gt;"],
                 "negative_examples": ["2026-08-26"],
                 "projections": {
                     "publishable-source": {"pattern": r"<\s*date\s*>"},
@@ -538,3 +539,195 @@ def test_symlinked_rendered_output_is_refused_instead_of_inspecting_outside_byte
     assert result.returncode == 1
     receipt = read_receipt(receipt_path)
     assert any(f["kind"] == "symlink-path" for f in receipt["findings"])
+
+
+def test_unscoped_output_refuses_before_the_whole_root_reaches_promotion(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "project"
+    config = make_project(
+        root,
+        articles=[{"directory": "clean", "slug": "clean"}],
+        outputs={
+            "articles/clean/index.html": "<p>Clean.</p>",
+            "unscoped/internal/index.html": "<h2>Publication Notes</h2>",
+        },
+    )
+    sentinel = root / "promoted.txt"
+    command = [
+        sys.executable,
+        "fixture_promote.py",
+        "{candidate_receipt}",
+        "{output_root}",
+        str(sentinel),
+    ]
+    result, receipt_path = run_gate(config, mode="enforce", promotion_command=command)
+    assert result.returncode == 1
+    assert not sentinel.exists()
+    receipt = read_receipt(receipt_path)
+    assert any(f["kind"] == "unscoped-rendered-output" for f in receipt["findings"])
+
+
+def test_promotion_consumes_a_captured_snapshot_not_a_build_childs_later_mutation(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "project"
+    config = make_project(
+        root,
+        articles=[{"directory": "clean", "slug": "clean"}],
+        outputs={},
+    )
+    (root / "fixture_build.py").write_text(
+        "import pathlib, subprocess, sys\n"
+        "target = pathlib.Path(sys.argv[1]) / 'articles/clean/index.html'\n"
+        "target.parent.mkdir(parents=True, exist_ok=True)\n"
+        "target.write_text('<p>Clean.</p>', encoding='utf-8')\n"
+        "code = \"import pathlib,time; time.sleep(0.20); pathlib.Path(%r).write_text('<h2>Publication Notes</h2>', encoding='utf-8')\" % str(target)\n"
+        "subprocess.Popen([sys.executable, '-c', code], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True, start_new_session=True)\n",
+        encoding="utf-8",
+    )
+    (root / "consume_after_delay.py").write_text(
+        "import json, pathlib, sys, time\n"
+        "candidate = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))\n"
+        "time.sleep(0.45)\n"
+        "source = pathlib.Path(sys.argv[2]) / 'articles/clean/index.html'\n"
+        "pathlib.Path(sys.argv[3]).write_text(source.read_text(encoding='utf-8'), encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    consumed = root / "consumed.html"
+    command = [
+        sys.executable,
+        "consume_after_delay.py",
+        "{candidate_receipt}",
+        "{output_root}",
+        str(consumed),
+    ]
+    result, receipt_path = run_gate(config, mode="enforce", promotion_command=command)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert consumed.read_text(encoding="utf-8") == "<p>Clean.</p>"
+    receipt = read_receipt(receipt_path)
+    assert receipt["authority_receipt"] is True
+    assert receipt["handoff"]["mode"] == "captured-content-snapshot"
+
+
+def test_each_policy_projection_must_match_a_positive_and_reject_negatives(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "project"
+    config = make_project(
+        root,
+        articles=[{"directory": "dirty", "slug": "dirty"}],
+        outputs={"articles/dirty/index.html": "<h2>Publication Notes</h2>"},
+    )
+    policy_path = root / "marker-policy.yaml"
+    policy = yaml.safe_load(policy_path.read_text(encoding="utf-8"))
+    policy["markers"][2]["projections"]["dom-heading-text"]["pattern"] = "^NEVER_MATCH$"
+    write_yaml(policy_path, policy)
+    result, receipt_path = run_gate(config)
+    assert result.returncode == 1
+    receipt = read_receipt(receipt_path)
+    assert any(f["kind"] == "invalid-marker-policy" for f in receipt["findings"])
+
+
+class DestinationHeadingOracle(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.current: list[str] | None = None
+        self.headings: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() in {f"h{level}" for level in range(1, 7)}:
+            self.current = []
+
+    def handle_data(self, data: str) -> None:
+        if self.current is not None:
+            self.current.append(data)
+
+    def finish(self) -> list[str]:
+        if self.current is not None:
+            self.headings.append("".join(self.current))
+            self.current = None
+        return self.headings
+
+
+def test_malformed_heading_that_destination_repairs_is_refused(
+    tmp_path: pathlib.Path,
+) -> None:
+    html = "<h2>Publication Notes"
+    oracle = DestinationHeadingOracle()
+    oracle.feed(html)
+    assert oracle.finish() == ["Publication Notes"]
+    config = make_project(
+        tmp_path / "project",
+        articles=[{"directory": "malformed", "slug": "malformed"}],
+        outputs={"articles/malformed/index.html": html},
+    )
+    result, receipt_path = run_gate(config)
+    assert result.returncode == 1
+    receipt = read_receipt(receipt_path)
+    assert any(f["kind"] == "rendered-representation-invalid" for f in receipt["findings"])
+
+
+def test_engine_owned_unverified_remainder_cannot_be_erased_by_config(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "project"
+    config = make_project(
+        root,
+        articles=[{"directory": "clean", "slug": "clean"}],
+        outputs={"articles/clean/index.html": "<p>Clean.</p>"},
+    )
+    doc = yaml.safe_load(config.read_text(encoding="utf-8"))
+    doc["unverified_remainder"] = "none"
+    write_yaml(config, doc)
+    result, receipt_path = run_gate(config)
+    assert result.returncode == 1
+    receipt = read_receipt(receipt_path)
+    assert isinstance(receipt["unverified_remainder"], dict)
+    assert receipt["unverified_remainder"]["engine_owned"]
+    assert any(f["kind"] == "invalid-config" for f in receipt["findings"])
+
+
+def test_clean_receipt_always_carries_structured_engine_owned_remainder(
+    tmp_path: pathlib.Path,
+) -> None:
+    config = make_project(
+        tmp_path / "project",
+        articles=[{"directory": "clean", "slug": "clean"}],
+        outputs={"articles/clean/index.html": "<p>Clean.</p>"},
+    )
+    result, receipt_path = run_gate(config)
+    assert result.returncode == 0
+    remainder = read_receipt(receipt_path)["unverified_remainder"]
+    assert remainder["engine_owned"]
+    assert remainder["repository_declared"]
+
+
+def test_shipped_acceptance_manifest_is_consumable_by_the_engine(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "project"
+    config = make_project(
+        root,
+        articles=[{"directory": "clean", "slug": "clean"}],
+        outputs={"articles/clean/index.html": "<p>Clean.</p>"},
+    )
+    (root / "acceptance.yaml").write_bytes((SKILL_ROOT / "acceptance-suite.yaml").read_bytes())
+    result, _receipt_path = run_gate(config)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_repository_acceptance_template_is_shipped_and_consumable(
+    tmp_path: pathlib.Path,
+) -> None:
+    template = SKILL_ROOT / "templates/acceptance-suite.example.yaml"
+    assert template.is_file()
+    root = tmp_path / "project"
+    config = make_project(
+        root,
+        articles=[{"directory": "clean", "slug": "clean"}],
+        outputs={"articles/clean/index.html": "<p>Clean.</p>"},
+    )
+    (root / "acceptance.yaml").write_bytes(template.read_bytes())
+    result, _receipt_path = run_gate(config)
+    assert result.returncode == 0, result.stdout + result.stderr

@@ -61,3 +61,31 @@ cases:
     control_class: acceptance-test
     fixture: scripts/test_promotion_gate.py::test_symlinked_rendered_output_is_refused_instead_of_inspecting_outside_bytes
     motivating_defect: implementation-self-review-rendered-output-could-follow-an-outside-symlink
+  - id: closed-output-universe
+    control_class: enforced-gate
+    fixture: scripts/test_promotion_gate.py::test_unscoped_output_refuses_before_the_whole_root_reaches_promotion
+    motivating_defect: r2-review-unscoped-dirty-output-crossed-the-whole-root-promotion-boundary
+  - id: captured-content-handoff
+    control_class: enforced-gate
+    fixture: scripts/test_promotion_gate.py::test_promotion_consumes_a_captured_snapshot_not_a_build_childs_later_mutation
+    motivating_defect: r2-review-build-child-mutated-output-after-revalidation
+  - id: executable-policy-examples
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_each_policy_projection_must_match_a_positive_and_reject_negatives
+    motivating_defect: r2-review-marker-examples-were-schema-only
+  - id: malformed-destination-representation
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_malformed_heading_that_destination_repairs_is_refused
+    motivating_defect: r2-review-unclosed-heading-diverged-from-destination-parsing
+  - id: engine-owned-unverified-remainder
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_engine_owned_unverified_remainder_cannot_be_erased_by_config
+    motivating_defect: r2-review-config-could-claim-no-unverified-remainder
+  - id: acceptance-schema-self-consumption
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_shipped_acceptance_manifest_is_consumable_by_the_engine
+    motivating_defect: r2-review-shipped-acceptance-manifest-failed-its-own-loader
+  - id: acceptance-instance-template
+    control_class: diagnostic
+    fixture: scripts/test_promotion_gate.py::test_repository_acceptance_template_is_shipped_and_consumable
+    motivating_defect: r2-review-required-repository-acceptance-template-was-absent
