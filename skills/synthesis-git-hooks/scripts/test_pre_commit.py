@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -602,6 +604,57 @@ def engine_copy(target: Path) -> None:
         destination.chmod(0o755)
 
 
+def r4_policy(path: Path, board: Path | None = None) -> None:
+    policy(path)
+    if board is not None:
+        path.write_text(
+            path.read_text(encoding="utf-8")
+            + f"coordination_board: '{board}'\n",
+            encoding="utf-8",
+        )
+
+
+def r4_engine_bundle(target: Path, *, coordination: bool = True) -> None:
+    engine_copy(target)
+    if not coordination:
+        return
+    coordination_source = SCRIPT_DIR.parents[1] / "synthesis-project-management" / "scripts"
+    for name in ("coordination.py", "coordination_schema.py", "pointer_lock.py"):
+        destination = target / name
+        shutil.copy2(coordination_source / name, destination)
+        destination.chmod(0o755)
+
+
+def r4_board_claim(board: Path, root: Path, engine: Path) -> str:
+    branch = run(root, "git", "branch", "--show-current").stdout.strip()
+    completed = run(
+        root,
+        sys.executable,
+        str(engine / "coordination.py"),
+        "--board",
+        str(board),
+        "claim",
+        "--session",
+        "A",
+        "--agent",
+        "test",
+        "--project",
+        "project-a",
+        "--mode",
+        "autonomous",
+        "--goal",
+        "test hook",
+        "--workspace",
+        f"{root} @ {branch}",
+        "--area",
+        f"{root}/claimed/**",
+        "--context-role",
+        "owner",
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    return "A"
+
+
 def test_source_env_override_is_authoritative(tmp_path, monkeypatch) -> None:
     source = tmp_path / "anywhere" / "scripts"
     engine_copy(source)
@@ -719,3 +772,112 @@ def test_doctor_detects_drift_end_to_end(tmp_path: Path) -> None:
     drifted = doctor()
     assert drifted.returncode == 1, drifted.stdout + drifted.stderr
     assert "DRIFT: installed pre-commit" in drifted.stdout
+
+
+def test_r4_configured_hook_blocks_outside_claim(tmp_path: Path) -> None:
+    root, environment = repository(tmp_path)
+    engine = tmp_path / "engine"
+    r4_engine_bundle(engine)
+    board = tmp_path / "coordination" / "active-sessions.md"
+    r4_board_claim(board, root, engine)
+    r4_policy(Path(environment["SYNTHESIS_GIT_HOOK_CONFIG"]), board)
+    environment["SYNTHESIS_COORDINATION_SESSION"] = "A"
+    (root / "outside.md").write_text("ordinary content\n", encoding="utf-8")
+    assert run(root, "git", "add", "outside.md").returncode == 0
+
+    completed = run(root, str(engine / "pre-commit"), env=environment)
+
+    assert completed.returncode == 1
+    assert "refused-outside-claim" in completed.stdout + completed.stderr
+    assert "COMMIT BLOCKED" in completed.stderr
+
+
+def test_r4_unconfigured_hook_reports_control_absence(tmp_path: Path) -> None:
+    root, environment = repository(tmp_path)
+    engine = tmp_path / "engine"
+    r4_engine_bundle(engine)
+    r4_policy(Path(environment["SYNTHESIS_GIT_HOOK_CONFIG"]))
+    (root / "ordinary.md").write_text("ordinary content\n", encoding="utf-8")
+    assert run(root, "git", "add", "ordinary.md").returncode == 0
+
+    completed = run(root, str(engine / "pre-commit"), env=environment)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    output = completed.stdout + completed.stderr
+    assert "coordination check-staged" in output
+    assert "control absent" in output
+    assert "commit not blocked by this control" in output
+
+
+def test_r4_configured_hook_missing_runtime_fails_closed(tmp_path: Path) -> None:
+    root, environment = repository(tmp_path)
+    engine = tmp_path / "engine"
+    r4_engine_bundle(engine, coordination=False)
+    board = tmp_path / "coordination" / "active-sessions.md"
+    r4_policy(Path(environment["SYNTHESIS_GIT_HOOK_CONFIG"]), board)
+    environment["SYNTHESIS_COORDINATION_SESSION"] = "A"
+    (root / "ordinary.md").write_text("ordinary content\n", encoding="utf-8")
+    assert run(root, "git", "add", "ordinary.md").returncode == 0
+
+    completed = run(root, str(engine / "pre-commit"), env=environment)
+
+    assert completed.returncode == 1
+    assert "coordination runtime" in completed.stderr
+    assert "COMMIT BLOCKED" in completed.stderr
+
+
+def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    environment = dict(os.environ)
+    environment["HOME"] = str(home)
+    environment["GIT_CONFIG_GLOBAL"] = str(tmp_path / "gitconfig")
+    environment["SYNTHESIS_GIT_HOOKS_SOURCE"] = str(SCRIPT_DIR)
+
+    completed = subprocess.run(
+        ["bash", str(SCRIPT_DIR / "install.sh")],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    installed = home / ".synthesis" / "git-hooks"
+    assert {path.name for path in installed.iterdir()} == {
+        "pre-commit",
+        "commit-msg",
+        "_load_config.py",
+        "coordination.py",
+        "coordination_schema.py",
+        "pointer_lock.py",
+    }
+    seeded = home / ".synthesis" / "git-hook-config.yaml"
+    assert SIDECAR.parse_simple_yaml(seeded.read_text(encoding="utf-8"))[
+        "config_version"
+    ] == 2
+
+
+def test_r4_config_sidecar_emits_board_gate(tmp_path: Path) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    config = tmp_path / "policy.yaml"
+    r4_policy(config, board)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SIDECAR_PATH),
+            "--config",
+            str(config),
+            "--emit-shell-vars",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "COORDINATION_CHECK_STAGED=1" in completed.stdout
+    assert f"COORDINATION_BOARD={shlex.quote(str(board))}" in completed.stdout
