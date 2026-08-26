@@ -34,9 +34,9 @@ changed_surfaces:
   - path: skills/synthesis-disclosure-policy/SKILL.md
     cases: [category-allowlist]
   - path: skills/synthesis-skills-manager/scripts/release.py
-    cases: [release-wiring, release-receipt-consumer]
+    cases: [release-wiring, release-receipt-consumer, release-receipt-binding]
   - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [release-wiring, release-receipt-consumer, ci-receipt-consumer]
+    cases: [release-wiring, release-receipt-consumer, release-receipt-binding, ci-receipt-consumer]
   - path: skills/synthesis-skills-manager/SKILL.md
     cases: [release-wiring]
   - path: .github/workflows/validate.yml
@@ -146,6 +146,10 @@ cases:
     control_class: enforced-gate
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_boundary_consumes_fresh_bound_acceptance_receipt
     motivating_defect: review-release-boundary-consumed-subprocess-status-without-validating-a-transaction-bound-result
+  - id: release-receipt-binding
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_receipt_validator_rejects_every_binding_mismatch
+    motivating_defect: review-consumer-could-trust-a-result-not-bound-to-the-current-transaction-manifest-or-git-tree
   - id: ci-wiring
     control_class: enforced-gate
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_repository_ci_executes_r5_integrity_suite
