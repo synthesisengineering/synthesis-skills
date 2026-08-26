@@ -184,6 +184,7 @@ def test_release_receipt_validator_rejects_every_binding_mismatch() -> None:
         "change_head": "b" * 40,
         "head_tree": "c" * 40,
         "manifest_sha256": "d" * 64,
+        "changed_paths": ["one.py"],
         "changed_paths_sha256": "e" * 64,
     }
     receipt = {
