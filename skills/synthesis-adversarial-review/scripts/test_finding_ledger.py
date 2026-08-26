@@ -227,3 +227,49 @@ def test_courier_crossings_are_compare_before_write_and_budget_bounded(
     assert exceeded.returncode != 0
     assert "blocked" in exceeded.stderr
     assert ledger.read_bytes() == before
+
+
+def test_every_success_branch_names_the_unverified_remainder(
+    tmp_path: pathlib.Path,
+) -> None:
+    ledger = tmp_path / "findings.yaml"
+    initialized = run(
+        "init",
+        "--file",
+        str(ledger),
+        "--engagement",
+        "coverage-fixture",
+        "--principal-outcome",
+        "Ship the requested artifact.",
+        "--round-trip-budget",
+        "1",
+        "--proportionality",
+        "One bounded exchange.",
+    )
+    crossed = run(
+        "record-crossing",
+        "--file",
+        str(ledger),
+        "--expected-count",
+        "0",
+        "--evidence",
+        "One declared provider-boundary crossing.",
+    )
+    added = run(*add_args(ledger))
+    transitioned = run(
+        "transition",
+        "--file",
+        str(ledger),
+        "--id",
+        "R1-F001",
+        "--from-state",
+        "challenged",
+        "--to-state",
+        "repaired-verified",
+        "--evidence",
+        "The requested artifact passed its acceptance boundary.",
+    )
+    validated = run("validate", "--file", str(ledger))
+    for result in (initialized, crossed, added, transitioned, validated):
+        assert result.returncode == 0, result.stderr
+        assert "not verified:" in result.stdout.lower()
