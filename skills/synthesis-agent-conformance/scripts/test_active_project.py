@@ -52,6 +52,7 @@ def fixture(tmp_path: Path) -> tuple[dict[str, object], Path]:
     git(worktree, "init", "--initial-branch", "feature/test")
     git(worktree, "config", "user.email", "test@example.com")
     git(worktree, "config", "user.name", "Test")
+    git(worktree, "config", "core.hooksPath", "/dev/null")
     project = worktree / "projects" / "test"
     project.mkdir(parents=True)
     plan = project / "plan.md"

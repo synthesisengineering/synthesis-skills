@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ### Fixed
 
-- **Project-management acceptance fixtures remain isolated from user-level Git hooks.**
+- **Git-backed acceptance fixtures remain isolated from user-level Git hooks.**
   Synthetic Git operations now disable inherited hooks, so an active global
   coordination gate cannot block fixture setup before the behavior under test
   runs.
