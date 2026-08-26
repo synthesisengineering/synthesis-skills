@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -240,6 +241,21 @@ def test_repository_ci_uses_receipt_consumer_with_authoritative_base() -> None:
     )
     assert "SYNTHESIS_ACCEPTANCE_CHANGE_BASE:" in workflow
     assert "github.event.pull_request.base.sha || github.event.before" in workflow
+
+
+def test_repository_ci_fetches_authoritative_base_history() -> None:
+    repository = Path(__file__).resolve().parents[3]
+    workflow = yaml.safe_load(
+        (repository / ".github" / "workflows" / "validate.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    checkout = next(
+        step
+        for step in workflow["jobs"]["conformance"]["steps"]
+        if step.get("uses") == "actions/checkout@v4"
+    )
+    assert checkout["with"]["fetch-depth"] == 0
 
 
 # AGENT HEURISTIC: these fixtures preserve the direct reviewer's concrete D4
