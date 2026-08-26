@@ -28,3 +28,15 @@ cases:
   - id: symlink-boundary
     fixture: scripts/test_finding_ledger.py::test_symlink_ledger_is_refused
     motivating_defect: engagement-round-1-symlink-escape
+  - id: principal-outcome-round-semantics
+    fixture: scripts/test_protocol_contract.py::test_review_protocol_is_principal_outcome_focused
+    motivating_defect: catalogue-P0-2-reviewer-satisfaction-replaced-the-principal-outcome
+  - id: production-topology-handoff
+    fixture: scripts/test_protocol_contract.py::test_handoff_contract_names_the_production_topology
+    motivating_defect: engagement-sidecars-and-receipts-were-treated-as-proof
+  - id: bounded-control-depth
+    fixture: scripts/test_protocol_contract.py::test_control_depth_and_sufficiency_are_bounded
+    motivating_defect: catalogue-P0-3-controls-generated-unrequested-controls
+  - id: direct-agent-orchestration
+    fixture: scripts/test_protocol_contract.py::test_autopilot_tracks_direct_dispatch_and_courier_cost
+    motivating_defect: catalogue-P0-1-more-than-twenty-principal-courier-crossings
