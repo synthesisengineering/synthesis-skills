@@ -4,6 +4,34 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.52.0] - 2026-08-26
+
+### Added
+
+- **`synthesis-meeting-transcripts` v0.7.0 — executable transcript-primary
+  sourcing.** A new checker rejects a structured summary even when its heading
+  calls it a primary transcript, classifies source grade from complete raw
+  provider-message records that pair an identifier with bounded message
+  content, and requires a record-bound permalink or `message_ts` before issuing
+  an attribution receipt. Bare or conflicting identifiers cannot establish
+  source grade. The receipt binds the
+  artifact hash and exact location; a `thread_ts` is deliberately insufficient
+  for quote-level authority. A synthetic 128-line summary fixture preserves the
+  motivating defect's structure without private content, alongside a raw-message
+  positive control and a closed executable acceptance manifest.
+- **Version-stamped transcript controls.** Both the established completeness
+  verifier and the new source-grade checker report the skill's 0.7.0 version.
+  Their standalone acceptance suite executes this parity, so the existing
+  “must match” banner is no longer an unchecked claim.
+
+### Changed
+
+- **The gated release and repository CI run both transcript boundaries and the
+  release-wiring tests that require them.** The
+  existing completeness verifier and the new primary-source gate execute before
+  either client can receive a release. Every checker result distinguishes its
+  control class and names the unverified remainder.
+
 ## [4.51.0] - 2026-08-26
 
 ### Added

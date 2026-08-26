@@ -23,9 +23,11 @@ jobs:
       - run: python -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-onboarding/scripts/test_onboard.py -q
+      - run: python -m pytest skills/synthesis-skills-manager/scripts/test_release.py -q
       # Standalone runner, not pytest: the file must stay executable from inside a
       # deployed skill directory, where pytest is not guaranteed to be installed.
       - run: python skills/synthesis-meeting-transcripts/test_verify_transcripts.py
+      - run: python skills/synthesis-meeting-transcripts/test_transcript_primary.py
       - run: sh -n install.sh onboard.sh tests/test_installer.sh
       - run: ./tests/test_installer.sh
       - run: python -m compileall -q skills

@@ -11,6 +11,17 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**A heading cannot make a summary a primary transcript (August 2026).**
+Release **4.52.0** adds an executable source-grade boundary to
+`synthesis-meeting-transcripts`. Complete raw provider-message records pair an
+identifier with bounded message content; loose or conflicting identifiers do
+not establish transcript structure. An attribution-bearing claim still needs
+an exact record-bound permalink or `message_ts` in the same hashed bytes before
+the gate issues a receipt. Structured summaries remain derived regardless of
+their filename or heading, and every result names what the checker does not
+verify.
+See the [4.52.0 release notes](CHANGELOG.md).
+
 **A successful build is not a publication-safety signal (August 2026).**
 Release **4.51.0** adds `synthesis-promotion-gate`: an isolated build and
 rendered-output boundary that computes routes from frontmatter, checks DOM
@@ -630,7 +641,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | `synthesis-git-hooks` | YAML-driven pre-commit policy: auto-classifies each repo by push remotes (personal vs strict), enforces tiered patterns for credentials and exposure-sensitive content |
 | `synthesis-inbox-cleanup` | Manifest-driven email cleanup across iCloud / generic IMAP (Python), Microsoft 365 / outlook.com (Mail.app AppleScript), and Gmail (workspace-mcp API + native server-side filters). Public engine + private rules. Ships with prompt-injection defenses and adversarial test fixtures for any LLM-augmented path. macOS. |
 | `synthesis-mac-sync` | Multi-Mac config sync via iCloud with git repo sync and machine inventory |
-| `synthesis-meeting-transcripts` | Fetch AI-generated meeting notes and transcripts into local working files |
+| `synthesis-meeting-transcripts` | Fetch transcripts and verify primary-source eligibility for attribution |
 | `synthesis-local-model-runtime` | Privacy-safe hardware profiling, Ollama and LM Studio managed adapters, direct-runtime discovery, catalog-driven fit, dry-run-first installation and updates, per-machine mapping, exact resolution, and bounded Ollama benchmarks |
 | `synthesis-repo-guard` | Workspace sync guard: detect unsynced repos, confidentiality-safe alerts, local receipts, batch publication, and exact-session remote handoff |
 | `synthesis-slack-sync` | Slack channel sync protocol: read channels, threads, DMs to local transcripts, with transcripts-first verification and bounded reads for absence claims |
