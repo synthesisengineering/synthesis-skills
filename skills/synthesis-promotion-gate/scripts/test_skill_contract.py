@@ -49,6 +49,11 @@ def test_templates_use_one_policy_and_a_complete_renderer_mapping() -> None:
     assert config["marker_policy"] == ".agents/promotion-marker-policy.yaml"
     assert config["acceptance_suite"] == ".agents/promotion-acceptance-suite.yaml"
     assert config["additional_unverified_remainder"]
+    assert config["destination_projection"]["expected_identity"] == {
+        "parser": "parse5",
+        "parser_version": "7.3.0",
+        "renderer": "astro@5.0.0",
+    }
     assert len({marker["id"] for marker in policy["markers"]}) == len(policy["markers"])
     assert {surface["renderer"] for surface in config["inspected_surfaces"]} == {
         renderer["id"] for renderer in surfaces["renderers"]
@@ -78,6 +83,26 @@ def test_all_four_repository_contract_templates_are_shipped() -> None:
         "marker-policy.example.yaml",
         "promotion-gate.example.yaml",
         "surface-manifest.example.yaml",
+    }
+
+
+def test_renderer_derived_fixture_matrix_covers_round15_grammar_planes() -> None:
+    corpus = yaml.safe_load(
+        (SKILL_ROOT / "fixtures/destination-representations.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert corpus["identity"]["parser"] == "parse5"
+    assert {
+        case["plane"] for case in corpus["cases"]
+    } >= {
+        "inline",
+        "entity",
+        "comment",
+        "attribute",
+        "code",
+        "hidden-container",
+        "malformed",
     }
 
 

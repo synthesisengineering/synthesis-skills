@@ -1,6 +1,6 @@
 ---
 name: synthesis-promotion-gate
-description: "Configure and run a fail-closed publication promotion gate that builds in isolation, derives output routes from frontmatter, inspects declared destination representations, binds receipts to exact inputs and renderer surfaces, and permits a state-changing promotion command only after immediate revalidation. Use for publication gates, outward-surface cleanliness, rendered-output inspection, publishable-range contracts, or promotion receipts."
+description: "Configure and run a fail-closed publication promotion gate that builds in isolation, derives output routes from frontmatter, consumes identity-bound representations from the destination parser or renderer, binds receipts to exact inputs and renderer surfaces, and permits a state-changing promotion command only after immediate revalidation. Use for publication gates, outward-surface cleanliness, rendered-output inspection, publishable-range contracts, or promotion receipts."
 license: "Apache-2.0"
 depends_on: ["synthesis-grounding-discipline", "synthesis-implementation-integrity"]
 metadata:
@@ -71,6 +71,16 @@ the project, and cannot traverse symlink components. The build command is an arg
 list, never a shell string, and must receive `{output_root}` so the inspected build is
 isolated from a repository's ordinary output directory.
 
+`destination_projection` is a second argument-list command. It receives one JSON batch on
+standard input containing the exact captured HTML for every route and returns the strict
+schema-1 representation batch. It must call the repository's destination parser or
+renderer; substituting a hand parser is a contract violation. Its reported parser,
+parser-version, and renderer identity must exactly match `expected_identity`. The gate
+binds the adapter command-file hashes, executes it once over the closed route universe,
+and refuses missing, duplicate, additional, malformed, or identity-mismatched projection
+rows. **AGENT HEURISTIC:** this strict adapter protocol is the generic public seam chosen
+for D2; the repository-owned adapter is the per-repository instance.
+
 Every input must contain exactly one configured publishable-range start marker and one
 end marker. The receipt binds both the whole-source hash and the extracted-range hash.
 Draft material may exist outside that range; it earns no path into a rendered output.
@@ -84,18 +94,20 @@ unresolved even if the page itself is clean.
 Name the representation actually judged. The engine supports:
 
 - `publishable-source`: the exact source bytes between the range markers;
-- `dom-text`: non-comment DOM text nodes in document order, with inline adjacency
-  preserved and no invented separators; raw-text elements are excluded explicitly;
-- `dom-heading-text`: each heading's DOM text with inline adjacency preserved;
+- `dom-text`: the destination projector's displayed-prose text regions, with inline
+  adjacency preserved and no matching invented across structural regions;
+- `dom-heading-text`: each destination-projected heading's text with inline adjacency
+  preserved;
 - `html-comments`: comment nodes, separate from displayed text;
 - `raw-page-source`: the generated HTML bytes decoded as UTF-8;
 - `sidecar-flags`: the complete text of each file matched by a configured sidecar glob.
 
-Do not label `dom-text` as browser-visible text. This implementation uses Python's
-`html.parser`, records its runtime version in the receipt, and declares its exclusions.
-Malformed monitored structures such as unclosed or mismatched headings and raw-text
-elements refuse the run because permissive destination repair can otherwise produce a
-different projection.
+Do not label `dom-text` as all browser-visible or accessible text. The projector's declared
+representation excludes accessible attributes, code, non-displayed containers, CSS
+layout, accessibility-tree computation, and client-side mutation unless a repository
+explicitly extends the protocol and acceptance corpus for those channels. The engine does
+not carry a fallback HTML parser: if the destination projection is unavailable or its
+identity differs, the run refuses.
 When a destination needs another semantic channel—accessible attributes, feed fields,
 search documents, or a renderer-specific DOM—extend the engine and add a motivating
 fixture before adding that representation to a live configuration.
@@ -139,7 +151,8 @@ A receipt binds:
 - config, marker-policy, surface-manifest, and acceptance-suite hashes;
 - whole-source, publishable-range, sidecar, build-command-file, and rendered-output hashes;
 - renderer ids and versions, exact input-to-output routes, inspected representations,
-  parser identity, build result, and promotion-command result;
+  destination projection identity and representation digests, build result, and
+  promotion-command result;
 - production entry point, enforcing boundary, receipt consumer, and explicit unverified
   remainder.
 
@@ -160,8 +173,10 @@ executable. Its generation-zero cases
 come from real promotion defects: a sensitive comment in page source, five rendered
 scaffolding defects behind a successful build, inline-tag adjacency, frontmatter route
 mismatch, a staged page the old selector never inspected, an undeclared output crossing
-the boundary, a post-build mutation, an inert policy example, parser divergence, and
-acceptance-schema drift. Run it with:
+the boundary, a post-build mutation, an inert policy example, destination-parser
+divergence, and acceptance-schema drift. The parse5-derived Round-15 fixture corpus
+compares inline, entity, comment, attribute, code, hidden-container, and malformed-input
+planes through the production projection protocol. Run it with:
 
 ```bash
 python3 -m pytest skills/synthesis-promotion-gate/scripts/test_*.py -q

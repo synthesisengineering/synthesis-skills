@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from html.parser import HTMLParser
+import hashlib
 import pathlib
 import subprocess
 import sys
@@ -12,6 +12,7 @@ import yaml
 
 SKILL_ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = pathlib.Path(__file__).with_name("promotion_gate.py")
+DESTINATION_FIXTURES = SKILL_ROOT / "fixtures/destination-representations.yaml"
 
 START = "<!-- SYNTHESIS:PUBLISHABLE:START -->"
 END = "<!-- SYNTHESIS:PUBLISHABLE:END -->"
@@ -115,6 +116,38 @@ sentinel.write_text("promoted", encoding="utf-8")
 '''
 
 
+FIXTURE_PROJECTION_SCRIPT = r'''#!/usr/bin/env python3
+import json
+import pathlib
+import sys
+
+corpus = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+request = json.load(sys.stdin)
+by_html = {case["html"]: case["representations"] for case in corpus["cases"]}
+documents = []
+for document in request.get("documents", []):
+    html = document.get("html")
+    if html not in by_html:
+        print("captured HTML is absent from the closed renderer-derived fixture corpus", file=sys.stderr)
+        raise SystemExit(7)
+    documents.append({"route": document["route"], "representations": by_html[html]})
+sys.stdout.write(json.dumps({
+    "schema": 1,
+    "identity": corpus["identity"],
+    "documents": documents,
+}, sort_keys=True))
+'''
+
+
+def destination_fixture_corpus() -> dict[str, Any]:
+    return yaml.safe_load(DESTINATION_FIXTURES.read_text(encoding="utf-8"))
+
+
+def representation_digest(values: list[str]) -> str:
+    payload = json.dumps(values, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def make_project(
     root: pathlib.Path,
     *,
@@ -139,6 +172,13 @@ def make_project(
 
     (root / "fixture_build.py").write_text(BUILD_SCRIPT, encoding="utf-8")
     (root / "fixture_promote.py").write_text(PROMOTE_SCRIPT, encoding="utf-8")
+    (root / "fixture_projection.py").write_text(
+        FIXTURE_PROJECTION_SCRIPT, encoding="utf-8"
+    )
+    corpus = destination_fixture_corpus()
+    (root / "destination-fixtures.json").write_text(
+        json.dumps(corpus, sort_keys=True), encoding="utf-8"
+    )
     build_spec: dict[str, Any] = {"outputs": outputs}
     if mutate_source:
         build_spec["mutate_path"] = str(root / mutate_source)
@@ -210,6 +250,15 @@ def make_project(
                 "output_root": "dist",
             },
             "inputs": {"root": "drafts", "globs": ["**/index.md"]},
+            "destination_projection": {
+                "command": [
+                    sys.executable,
+                    "fixture_projection.py",
+                    "destination-fixtures.json",
+                ],
+                "working_directory": ".",
+                "expected_identity": corpus["identity"],
+            },
             "publishable_range": {"start": START, "end": END, "required": True},
             "marker_policy": "marker-policy.yaml",
             "surface_manifest": "surface-manifest.yaml",
@@ -657,34 +706,10 @@ def test_policy_projection_that_matches_a_negative_example_is_refused(
     assert any(f["kind"] == "invalid-marker-policy" for f in receipt["findings"])
 
 
-class DestinationHeadingOracle(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.current: list[str] | None = None
-        self.headings: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag.lower() in {f"h{level}" for level in range(1, 7)}:
-            self.current = []
-
-    def handle_data(self, data: str) -> None:
-        if self.current is not None:
-            self.current.append(data)
-
-    def finish(self) -> list[str]:
-        if self.current is not None:
-            self.headings.append("".join(self.current))
-            self.current = None
-        return self.headings
-
-
 def test_malformed_heading_that_destination_repairs_is_refused(
     tmp_path: pathlib.Path,
 ) -> None:
     html = "<h2>Publication Notes"
-    oracle = DestinationHeadingOracle()
-    oracle.feed(html)
-    assert oracle.finish() == ["Publication Notes"]
     config = make_project(
         tmp_path / "project",
         articles=[{"directory": "malformed", "slug": "malformed"}],
@@ -693,7 +718,98 @@ def test_malformed_heading_that_destination_repairs_is_refused(
     result, receipt_path = run_gate(config)
     assert result.returncode == 1
     receipt = read_receipt(receipt_path)
-    assert any(f["kind"] == "rendered-representation-invalid" for f in receipt["findings"])
+    assert any(
+        finding.get("marker_id") == "publication-notes"
+        and finding.get("representation") == "dom-heading-text"
+        for finding in receipt["findings"]
+    )
+
+
+def test_renderer_derived_destination_fixture_matrix_is_consumed(
+    tmp_path: pathlib.Path,
+) -> None:
+    corpus = destination_fixture_corpus()
+    required_planes = {
+        "inline",
+        "entity",
+        "comment",
+        "attribute",
+        "code",
+        "hidden-container",
+        "malformed",
+    }
+    cases = {
+        case["plane"]: case
+        for case in corpus["cases"]
+        if case["plane"] in required_planes
+    }
+    assert set(cases) == required_planes
+    for plane, case in sorted(cases.items()):
+        slug = plane.replace("-", "")
+        config = make_project(
+            tmp_path / plane,
+            articles=[{"directory": slug, "slug": slug}],
+            outputs={f"articles/{slug}/index.html": case["html"]},
+        )
+        _result, receipt_path = run_gate(config)
+        receipt = read_receipt(receipt_path)
+        assert receipt["destination_projection"]["identity"] == corpus["identity"]
+        inspected = receipt["route_bijection"]["inspected"]
+        assert len(inspected) == 1
+        expected = {
+            **case["representations"],
+            "raw-page-source": [case["html"]],
+        }
+        assert inspected[0]["representation_sha256"] == {
+            name: representation_digest(values)
+            for name, values in sorted(expected.items())
+        }
+
+
+def test_destination_projection_identity_mismatch_refuses(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "project"
+    config = make_project(
+        root,
+        articles=[{"directory": "clean", "slug": "clean"}],
+        outputs={"articles/clean/index.html": "<p>Clean.</p>"},
+    )
+    doc = yaml.safe_load(config.read_text(encoding="utf-8"))
+    doc["destination_projection"]["expected_identity"]["parser_version"] = "wrong"
+    write_yaml(config, doc)
+    result, receipt_path = run_gate(config)
+    assert result.returncode == 1
+    receipt = read_receipt(receipt_path)
+    assert any(
+        finding["kind"] == "destination-projection-identity-mismatch"
+        for finding in receipt["findings"]
+    )
+
+
+def test_destination_projection_must_return_the_closed_route_universe(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "project"
+    config = make_project(
+        root,
+        articles=[{"directory": "clean", "slug": "clean"}],
+        outputs={"articles/clean/index.html": "<p>Clean.</p>"},
+    )
+    identity = destination_fixture_corpus()["identity"]
+    (root / "fixture_projection.py").write_text(
+        "import json, sys\n"
+        "json.load(sys.stdin)\n"
+        f"print(json.dumps({{'schema': 1, 'identity': {identity!r}, 'documents': []}}))\n",
+        encoding="utf-8",
+    )
+    result, receipt_path = run_gate(config)
+    assert result.returncode == 1
+    receipt = read_receipt(receipt_path)
+    assert any(
+        finding["kind"] == "destination-projection-invalid"
+        for finding in receipt["findings"]
+    )
 
 
 def test_engine_owned_unverified_remainder_cannot_be_erased_by_config(

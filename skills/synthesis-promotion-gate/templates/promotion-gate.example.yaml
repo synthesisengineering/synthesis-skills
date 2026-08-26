@@ -7,6 +7,16 @@ build:
 inputs:
   root: content/drafts
   globs: ["**/index.md"]
+# AGENT HEURISTIC: the plan requires destination-grammar consumption but does not
+# prescribe the JSON adapter protocol. This command receives the strict document batch
+# on stdin and must project it with this repository's actual renderer/parser.
+destination_projection:
+  command: [node, tools/render-promotion-channels.mjs]
+  working_directory: .
+  expected_identity:
+    parser: parse5
+    parser_version: "7.3.0"
+    renderer: astro@5.0.0
 publishable_range:
   start: "<!-- SYNTHESIS:PUBLISHABLE:START -->"
   end: "<!-- SYNTHESIS:PUBLISHABLE:END -->"

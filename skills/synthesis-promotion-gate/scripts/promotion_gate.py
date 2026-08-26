@@ -21,7 +21,6 @@ import copy
 import datetime as dt
 import fnmatch
 import hashlib
-from html.parser import HTMLParser
 import json
 import os
 import pathlib
@@ -46,8 +45,6 @@ DESTINATION_REPRESENTATIONS = {
 }
 AUXILIARY_REPRESENTATIONS = {"publishable-source", "sidecar-flags"}
 REPRESENTATIONS = DESTINATION_REPRESENTATIONS | AUXILIARY_REPRESENTATIONS
-RAW_TEXT_ELEMENTS = {"script", "style", "template", "noscript"}
-HEADING_ELEMENTS = {f"h{level}" for level in range(1, 7)}
 
 CONFIG_KEYS = {
     "schema",
@@ -60,11 +57,14 @@ CONFIG_KEYS = {
     "inspected_surfaces",
     "sidecar_flag_globs",
     "additional_unverified_remainder",
+    "destination_projection",
 }
 BUILD_KEYS = {"command", "working_directory", "output_root"}
 INPUT_KEYS = {"root", "globs"}
 RANGE_KEYS = {"start", "end", "required"}
 SURFACE_KEYS = {"renderer", "representations"}
+DESTINATION_PROJECTION_KEYS = {"command", "working_directory", "expected_identity"}
+DESTINATION_IDENTITY_KEYS = {"parser", "parser_version", "renderer"}
 RENDERER_KEYS = {
     "id",
     "version",
@@ -145,6 +145,14 @@ def require_string_list(value: Any, label: str) -> list[str]:
     return value
 
 
+def require_optional_string_list(value: Any, label: str) -> list[str]:
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) for item in value
+    ):
+        raise GateError("destination-projection-invalid", f"{label} must be a list of strings")
+    return value
+
+
 def yaml_document(path: pathlib.Path, label: str) -> dict[str, Any]:
     try:
         value = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -219,6 +227,37 @@ def load_config(path: pathlib.Path) -> tuple[pathlib.Path, dict[str, Any]]:
     require_keys(inputs, INPUT_KEYS, "inputs")
     project_path(project_root, inputs.get("root"), "inputs.root")
     require_string_list(inputs.get("globs"), "inputs.globs")
+
+    projection = require_mapping(
+        config.get("destination_projection"), "destination_projection"
+    )
+    require_keys(projection, DESTINATION_PROJECTION_KEYS, "destination_projection")
+    if set(projection) != DESTINATION_PROJECTION_KEYS:
+        raise GateError("invalid-config", "every destination_projection field is required")
+    projection_command = require_string_list(
+        projection.get("command"), "destination_projection.command"
+    )
+    if any("{" in argument or "}" in argument for argument in projection_command):
+        raise GateError(
+            "invalid-config",
+            "destination_projection.command receives JSON on stdin and cannot contain substitutions",
+        )
+    project_path(
+        project_root,
+        projection.get("working_directory"),
+        "destination_projection.working_directory",
+    )
+    identity = require_mapping(
+        projection.get("expected_identity"),
+        "destination_projection.expected_identity",
+    )
+    if set(identity) != DESTINATION_IDENTITY_KEYS:
+        raise GateError(
+            "invalid-config",
+            "destination_projection.expected_identity must declare parser, parser_version, and renderer",
+        )
+    for key in sorted(DESTINATION_IDENTITY_KEYS):
+        require_string(identity.get(key), f"destination_projection.expected_identity.{key}")
 
     range_config = require_mapping(config.get("publishable_range"), "publishable_range")
     require_keys(range_config, RANGE_KEYS, "publishable_range")
@@ -604,81 +643,118 @@ def expected_routes(
     return expected, findings
 
 
-class DeclaredHtmlProjection(HTMLParser):
-    """Exact declared projections; this is not called browser-visible text."""
+def representation_digest(values: list[str]) -> str:
+    payload = json.dumps(values, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return sha256_bytes(payload)
 
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.dom_parts: list[str] = []
-        self.comments: list[str] = []
-        self.headings: list[str] = []
-        self.structural_errors: list[str] = []
-        self._heading_stack: list[tuple[str, list[str]]] = []
-        self._raw_stack: list[str] = []
-        self._finished = False
 
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        tag = tag.lower()
-        if tag in RAW_TEXT_ELEMENTS:
-            if self._raw_stack:
-                self.structural_errors.append("nested raw-text element")
-            self._raw_stack.append(tag)
-        if tag in HEADING_ELEMENTS:
-            if self._heading_stack:
-                self.structural_errors.append("nested heading element")
-            self._heading_stack.append((tag, []))
-
-    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        tag = tag.lower()
-        if tag in RAW_TEXT_ELEMENTS or tag in HEADING_ELEMENTS:
-            self.structural_errors.append("self-closing monitored element")
-
-    def handle_endtag(self, tag: str) -> None:
-        tag = tag.lower()
-        if tag in HEADING_ELEMENTS:
-            if not self._heading_stack:
-                self.structural_errors.append("unmatched heading end tag")
-            else:
-                opened, parts = self._heading_stack.pop()
-                if opened != tag:
-                    self.structural_errors.append("mismatched heading end tag")
-                else:
-                    self.headings.append("".join(parts))
-        if tag in RAW_TEXT_ELEMENTS:
-            if not self._raw_stack:
-                self.structural_errors.append("unmatched raw-text end tag")
-            else:
-                opened = self._raw_stack.pop()
-                if opened != tag:
-                    self.structural_errors.append("mismatched raw-text end tag")
-
-    def handle_data(self, data: str) -> None:
-        if self._raw_stack:
-            return
-        self.dom_parts.append(data)
-        if self._heading_stack:
-            self._heading_stack[-1][1].append(data)
-
-    def handle_comment(self, data: str) -> None:
-        self.comments.append(data)
-
-    def finish(self) -> None:
-        if self._finished:
-            return
-        self.close()
-        if self._heading_stack:
-            self.structural_errors.append("unclosed heading element")
-        if self._raw_stack:
-            self.structural_errors.append("unclosed raw-text element")
-        self._finished = True
-
-    def representations(self, raw: str) -> dict[str, list[str]]:
-        return {
-            "dom-text": ["".join(self.dom_parts)],
-            "dom-heading-text": self.headings,
-            "html-comments": self.comments,
-            "raw-page-source": [raw],
+def project_destinations(
+    command: list[str],
+    working_directory: pathlib.Path,
+    expected_identity: dict[str, str],
+    documents: dict[str, str],
+) -> tuple[dict[str, dict[str, list[str]]], dict[str, Any]]:
+    """Consume destination-produced representations through the strict JSON protocol."""
+    request = {
+        "schema": SCHEMA,
+        "documents": [
+            {"route": route, "html": html}
+            for route, html in sorted(documents.items())
+        ],
+    }
+    try:
+        projected = subprocess.run(
+            command,
+            cwd=working_directory,
+            input=json.dumps(request, ensure_ascii=False),
+            capture_output=True,
+            text=True,
+            timeout=900,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise GateError(
+            "destination-projection-failed",
+            f"destination projection command could not complete: {type(exc).__name__}",
+        ) from exc
+    telemetry = {
+        "exit_code": projected.returncode,
+        "stdout_sha256": sha256_bytes(projected.stdout.encode("utf-8")),
+        "stderr_sha256": sha256_bytes(projected.stderr.encode("utf-8")),
+    }
+    if projected.returncode != 0:
+        raise GateError(
+            "destination-projection-failed",
+            f"destination projection command exited {projected.returncode}",
+        )
+    try:
+        response = json.loads(projected.stdout)
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise GateError(
+            "destination-projection-invalid",
+            "destination projection command returned invalid JSON",
+        ) from exc
+    response = require_mapping(response, "destination projection response")
+    if set(response) != {"schema", "identity", "documents"} or response.get("schema") != SCHEMA:
+        raise GateError(
+            "destination-projection-invalid",
+            "destination projection response must contain schema 1, identity, and documents",
+        )
+    identity = require_mapping(response.get("identity"), "destination projection identity")
+    if set(identity) != DESTINATION_IDENTITY_KEYS or not all(
+        isinstance(identity.get(key), str) and identity[key].strip()
+        for key in DESTINATION_IDENTITY_KEYS
+    ):
+        raise GateError(
+            "destination-projection-invalid",
+            "destination projection identity has an invalid shape",
+        )
+    if identity != expected_identity:
+        raise GateError(
+            "destination-projection-identity-mismatch",
+            "destination projection identity differs from the configured identity",
+        )
+    raw_documents = response.get("documents")
+    if not isinstance(raw_documents, list):
+        raise GateError(
+            "destination-projection-invalid",
+            "destination projection documents must be a list",
+        )
+    by_route: dict[str, dict[str, list[str]]] = {}
+    projected_representations = DESTINATION_REPRESENTATIONS - {"raw-page-source"}
+    for index, raw_document in enumerate(raw_documents):
+        document = require_mapping(raw_document, f"destination projection document {index}")
+        if set(document) != {"route", "representations"}:
+            raise GateError(
+                "destination-projection-invalid",
+                "each projected document must contain route and representations",
+            )
+        route = require_string(document.get("route"), "projected document route")
+        if route in by_route:
+            raise GateError(
+                "destination-projection-invalid",
+                f"destination projection duplicated route {route}",
+            )
+        representations = require_mapping(
+            document.get("representations"),
+            f"destination projection representations for {route}",
+        )
+        if set(representations) != projected_representations:
+            raise GateError(
+                "destination-projection-invalid",
+                f"destination projection for {route} has an incomplete representation set",
+            )
+        by_route[route] = {
+            name: require_optional_string_list(values, f"{route}.{name}")
+            for name, values in representations.items()
         }
+    if set(by_route) != set(documents):
+        raise GateError(
+            "destination-projection-invalid",
+            "destination projection route universe differs from the captured output universe",
+        )
+    telemetry["identity"] = identity
+    return by_route, telemetry
 
 
 def marker_findings(
@@ -777,6 +853,7 @@ def base_receipt(mode: str, config_path: pathlib.Path) -> dict[str, Any]:
         "policy": {},
         "surface_manifest": {},
         "acceptance_suite": {},
+        "destination_projection": {},
         "build": {"exit_code": None},
         "inputs": [],
         "sidecars": [],
@@ -840,12 +917,17 @@ def current_contract_identities(
     linked: list[pathlib.Path],
     inputs: list[InputArtifact],
     sidecars: list[pathlib.Path],
+    commands: dict[str, tuple[pathlib.Path, list[str]]],
 ) -> dict[str, Any]:
     return {
         "config_sha256": sha256_file(config_path),
         "linked": file_identities(project_root, linked),
         "inputs": file_identities(project_root, [item.path for item in inputs]),
         "sidecars": file_identities(project_root, sidecars),
+        "commands": {
+            name: command_identity(working_directory, command)
+            for name, (working_directory, command) in sorted(commands.items())
+        },
     }
 
 
@@ -880,6 +962,20 @@ def run_gate(
         policy_path, markers = load_policy(project_root, config)
         acceptance_path = load_acceptance(project_root, config)
         manifest_path, renderers, inspections = load_surfaces(project_root, config)
+        projection_config = config["destination_projection"]
+        projection_working_directory = project_path(
+            project_root,
+            projection_config["working_directory"],
+            "destination_projection.working_directory",
+        )
+        projection_command = list(projection_config["command"])
+        projection_identity = dict(projection_config["expected_identity"])
+        renderer_versions = {renderer["version"] for renderer in renderers}
+        if renderer_versions != {projection_identity["renderer"]}:
+            raise GateError(
+                "invalid-config",
+                "destination projection renderer identity must equal every declared renderer version",
+            )
         receipt["policy"] = {
             "path": policy_path.relative_to(project_root).as_posix(),
             "sha256": sha256_file(policy_path),
@@ -896,6 +992,13 @@ def run_gate(
         receipt["acceptance_suite"] = {
             "path": acceptance_path.relative_to(project_root).as_posix(),
             "sha256": sha256_file(acceptance_path),
+        }
+        receipt["destination_projection"] = {
+            "declared_command": projection_command,
+            "expected_identity": projection_identity,
+            "command_file_identities": command_identity(
+                projection_working_directory, projection_command
+            ),
         }
         inputs = discover_inputs(project_root, config)
         receipt["inputs"] = [item.receipt() for item in inputs]
@@ -938,6 +1041,13 @@ def run_gate(
         receipt["build"]["command_file_identities"] = command_identity(
             working_directory, raw_build_command
         )
+        command_contracts = {
+            "build": (working_directory, raw_build_command),
+            "destination_projection": (
+                projection_working_directory,
+                projection_command,
+            ),
+        }
 
         with tempfile.TemporaryDirectory(prefix="synthesis-promotion-gate-") as temporary:
             output_root = pathlib.Path(temporary) / "rendered"
@@ -948,6 +1058,7 @@ def run_gate(
                 linked,
                 inputs,
                 sidecars,
+                command_contracts,
             )
             build_command = substitute(
                 raw_build_command,
@@ -1000,6 +1111,7 @@ def run_gate(
             inspected: list[dict[str, Any]] = []
             missing: list[str] = []
             captured_outputs: dict[str, bytes] = {}
+            captured_text: dict[str, str] = {}
             expected_by_route = {item["route"]: item for item in expected}
             for route, item in expected_by_route.items():
                 output = output_root / route
@@ -1031,45 +1143,7 @@ def run_gate(
                     )
                     continue
                 captured_outputs[route] = payload
-                parser = DeclaredHtmlProjection()
-                parser.feed(raw)
-                parser.finish()
-                projected = parser.representations(raw)
-                representations = inspections[item["renderer"]]
-                inspected.append(
-                    {
-                        **item,
-                        "sha256": sha256_bytes(payload),
-                        "representations": representations,
-                        "parser": f"python-html.parser:{sys.version_info.major}.{sys.version_info.minor}",
-                    }
-                )
-                if parser.structural_errors:
-                    receipt["findings"].append(
-                        {
-                            "kind": "rendered-representation-invalid",
-                            "path": item["input"],
-                            "renderer": item["renderer"],
-                            "route": route,
-                            "message": (
-                                "declared projection found malformed monitored HTML "
-                                f"({len(parser.structural_errors)} structural error(s))"
-                            ),
-                        }
-                    )
-                for representation in representations:
-                    if representation not in DESTINATION_REPRESENTATIONS:
-                        continue
-                    receipt["findings"].extend(
-                        marker_findings(
-                            markers,
-                            representation,
-                            projected[representation],
-                            path=item["input"],
-                            renderer=item["renderer"],
-                            route=route,
-                        )
-                    )
+                captured_text[route] = raw
             receipt["route_bijection"]["inspected"] = inspected
             receipt["route_bijection"]["missing"] = missing
             actual_outputs: list[str] = []
@@ -1090,14 +1164,56 @@ def run_gate(
                     }
                 )
 
+            if set(captured_text) == set(expected_by_route):
+                projected_by_route, projection_telemetry = project_destinations(
+                    projection_command,
+                    projection_working_directory,
+                    projection_identity,
+                    captured_text,
+                )
+                receipt["destination_projection"].update(projection_telemetry)
+                for route, item in expected_by_route.items():
+                    projected = {
+                        **projected_by_route[route],
+                        "raw-page-source": [captured_text[route]],
+                    }
+                    representations = inspections[item["renderer"]]
+                    inspected.append(
+                        {
+                            **item,
+                            "sha256": sha256_bytes(captured_outputs[route]),
+                            "representations": representations,
+                            "projection_identity": projection_identity,
+                            "representation_sha256": {
+                                name: representation_digest(projected[name])
+                                for name in sorted(DESTINATION_REPRESENTATIONS)
+                            },
+                        }
+                    )
+                    for representation in representations:
+                        if representation not in DESTINATION_REPRESENTATIONS:
+                            continue
+                        receipt["findings"].extend(
+                            marker_findings(
+                                markers,
+                                representation,
+                                projected[representation],
+                                path=item["input"],
+                                renderer=item["renderer"],
+                                route=route,
+                            )
+                        )
+                receipt["route_bijection"]["inspected"] = inspected
+
             post_contract = current_contract_identities(
                 project_root,
                 config_path,
                 linked,
                 inputs,
                 sidecars,
+                command_contracts,
             )
-            for key in ("config_sha256", "linked", "inputs", "sidecars"):
+            for key in ("config_sha256", "linked", "inputs", "sidecars", "commands"):
                 if baseline[key] != post_contract[key]:
                     kind = "input-changed-during-build" if key == "inputs" else "contract-changed-during-build"
                     if not any(f["kind"] == kind for f in receipt["findings"]):
@@ -1173,6 +1289,7 @@ def run_gate(
                     linked,
                     inputs,
                     sidecars,
+                    command_contracts,
                 ),
                 "outputs": output_identities(snapshot_root, expected),
             }

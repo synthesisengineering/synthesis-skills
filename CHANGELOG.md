@@ -16,9 +16,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   with configured renderer inspections; missing outputs and inputs consumed
   by no renderer refuse the run. Symlinked config and rendered-output paths
   are refused before their targets can be inspected. The output universe is
-  closed, policy examples execute against every projection, malformed
-  monitored HTML refuses permissive parser divergence, and the shipped
-  acceptance schema is consumed by the production loader.
+  closed, policy examples execute against every projection, and the shipped
+  acceptance schema is consumed by the production loader. The engine does not
+  approximate HTML grammar: a strict command protocol consumes identity-bound
+  representations from the repository's destination parser or renderer. A
+  parse5-derived corpus executes the Round-15 inline, entity, comment,
+  attribute, code, hidden-container, and malformed-input matrix.
 - **Executable authority topology.** `check` emits a non-authoritative
   acceptance receipt. `enforce` captures each inspected output exactly once,
   passes a separate content snapshot to the supplied promotion command, and

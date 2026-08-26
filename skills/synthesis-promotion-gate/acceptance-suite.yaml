@@ -81,6 +81,18 @@ cases:
     control_class: acceptance-test
     fixture: scripts/test_promotion_gate.py::test_malformed_heading_that_destination_repairs_is_refused
     motivating_defect: r2-review-unclosed-heading-diverged-from-destination-parsing
+  - id: renderer-derived-representation-matrix
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_renderer_derived_destination_fixture_matrix_is_consumed
+    motivating_defect: engagement-round-15-inline-entity-comment-attribute-code-hidden-container-matrix
+  - id: destination-projection-identity-binding
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_destination_projection_identity_mismatch_refuses
+    motivating_defect: r2-review-parser-identity-was-not-bound-to-the-consumed-projection
+  - id: destination-projection-route-closure
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_destination_projection_must_return_the_closed_route_universe
+    motivating_defect: engagement-round-15-staged-page-never-entered-the-inspected-universe
   - id: engine-owned-unverified-remainder
     control_class: acceptance-test
     fixture: scripts/test_promotion_gate.py::test_engine_owned_unverified_remainder_cannot_be_erased_by_config
