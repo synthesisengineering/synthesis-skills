@@ -698,6 +698,7 @@ CHECKS = [
 
 
 SCRIPT_CITATION = re.compile(
+    r"(?<![A-Za-z0-9_./-])"
     r"(?P<reference>(?:resources/scripts/|\.\./scripts/)"
     r"[A-Za-z0-9_./-]*[A-Za-z0-9_-])"
 )
