@@ -177,6 +177,45 @@ def test_release_boundary_consumes_fresh_bound_acceptance_receipt(
     ]
 
 
+def test_release_receipt_validator_rejects_every_binding_mismatch() -> None:
+    expected = {
+        "transaction_id": "transaction-a",
+        "change_base": "a" * 40,
+        "change_head": "b" * 40,
+        "head_tree": "c" * 40,
+        "manifest_sha256": "d" * 64,
+        "changed_paths_sha256": "e" * 64,
+    }
+    receipt = {
+        **expected,
+        "receipt_schema": "acceptance-run-receipt-v1",
+        "receipt_consumer": "synthesis-skills-manager.release.consume-acceptance.v1",
+        "metadata_class": "acceptance-test",
+        "issues_authority_receipt": False,
+        "ok": True,
+        "coverage": {"declared": 2, "terminal": 2, "not_run": 0},
+        "cases": [{"id": "one", "matched": True}, {"id": "two", "matched": True}],
+    }
+
+    assert release.validate_acceptance_receipt(receipt, expected)[0]
+    for field in expected:
+        mutated = dict(receipt)
+        mutated[field] = "mismatch"
+        assert not release.validate_acceptance_receipt(mutated, expected)[0], field
+    for field, value in (
+        ("receipt_schema", "wrong"),
+        ("receipt_consumer", "wrong"),
+        ("metadata_class", "diagnostic"),
+        ("issues_authority_receipt", True),
+        ("ok", False),
+        ("coverage", {"declared": 2, "terminal": 1, "not_run": 1}),
+        ("cases", [{"id": "one", "matched": False}]),
+    ):
+        mutated = dict(receipt)
+        mutated[field] = value
+        assert not release.validate_acceptance_receipt(mutated, expected)[0], field
+
+
 def test_repository_ci_executes_r5_integrity_suite() -> None:
     repository = Path(__file__).resolve().parents[3]
     workflow = (repository / ".github" / "workflows" / "validate.yml").read_text(

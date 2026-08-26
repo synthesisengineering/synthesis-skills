@@ -329,4 +329,4 @@ def test_shipped_manifest_validates() -> None:
     result = json.loads(completed.stdout)
     assert result["ok"] is True
     assert result["membership"] == "closed"
-    assert result["cases_declared"] == 26
+    assert result["cases_declared"] == 27
