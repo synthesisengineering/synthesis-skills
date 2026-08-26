@@ -34,9 +34,9 @@ changed_surfaces:
   - path: skills/synthesis-disclosure-policy/SKILL.md
     cases: [category-allowlist]
   - path: skills/synthesis-skills-manager/scripts/release.py
-    cases: [release-wiring, release-receipt-consumer, release-receipt-binding]
+    cases: [release-wiring, release-receipt-consumer, release-receipt-binding, publish-boundary-expiry, publish-exact-ref, publish-authority-topology]
   - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [release-wiring, release-receipt-consumer, release-receipt-binding, ci-receipt-consumer]
+    cases: [release-wiring, release-receipt-consumer, release-receipt-binding, ci-receipt-consumer, publish-boundary-expiry, publish-exact-ref, publish-authority-topology]
   - path: skills/synthesis-skills-manager/SKILL.md
     cases: [release-wiring]
   - path: .github/workflows/validate.yml
@@ -158,3 +158,15 @@ cases:
     control_class: enforced-gate
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_repository_ci_uses_receipt_consumer_with_authoritative_base
     motivating_defect: review-ci-invoked-the-runner-directly-without-a-boundary-supplied-base-or-result-consumer
+  - id: publish-boundary-expiry
+    control_class: enforced-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_publish_refuses_when_receipt_bound_head_changes
+    motivating_defect: terminal-review-accepted-head-was-discarded-before-the-state-changing-publish-boundary
+  - id: publish-exact-ref
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_publish_dry_run_names_exact_receipt_bound_ref
+    motivating_defect: terminal-review-publish-resolved-a-mutable-main-branch-after-acceptance-consumption
+  - id: publish-authority-topology
+    control_class: enforced-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_main_carries_acceptance_authority_to_publish_boundary
+    motivating_defect: terminal-review-run-required-checks-collapsed-the-accepted-state-to-a-boolean-before-publish

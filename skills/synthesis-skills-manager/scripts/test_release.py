@@ -13,6 +13,7 @@ converts an unknown into a false assurance.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -237,6 +238,120 @@ def test_repository_ci_uses_receipt_consumer_with_authoritative_base() -> None:
     )
     assert "SYNTHESIS_ACCEPTANCE_CHANGE_BASE:" in workflow
     assert "github.event.pull_request.base.sha || github.event.before" in workflow
+
+
+# AGENT HEURISTIC: these fixtures preserve the direct reviewer's concrete D4
+# counterexample. A receipt that expires before publish is not release authority.
+def accepted_publish_fixture(tmp_path: Path) -> tuple[Path, object]:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repository)], check=True)
+    for key, value in (
+        ("user.name", "Release Fixture"),
+        ("user.email", "release@example.invalid"),
+        ("core.hooksPath", "/dev/null"),
+    ):
+        subprocess.run(
+            ["git", "-C", str(repository), "config", key, value], check=True
+        )
+    manifest = repository / release.ACCEPTANCE_MANIFEST
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text("fixture manifest\n", encoding="utf-8")
+    changed = repository / "production.py"
+    changed.write_text("BASE = True\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repository), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "commit", "-qm", "base"], check=True
+    )
+    base = subprocess.run(
+        ["git", "-C", str(repository), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    changed.write_text("ACCEPTED = True\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repository), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "commit", "-qm", "accepted"], check=True
+    )
+    expected, detail = release.acceptance_expectation(
+        repository, base, "fixture-transaction"
+    )
+    assert expected is not None, detail
+    receipt = {
+        **expected,
+        "receipt_schema": "acceptance-run-receipt-v1",
+        "receipt_consumer": release.ACCEPTANCE_CONSUMER_ID,
+        "metadata_class": "acceptance-test",
+        "issues_authority_receipt": False,
+        "ok": True,
+        "coverage": {"declared": 1, "terminal": 1, "not_run": 0},
+        "cases": [{"id": "fixture", "matched": True}],
+    }
+    authority = release.AcceptanceAuthority(
+        change_base=base, expected=expected, receipt=receipt
+    )
+    return repository, authority
+
+
+def test_publish_refuses_when_receipt_bound_head_changes(tmp_path: Path) -> None:
+    repository, authority = accepted_publish_fixture(tmp_path)
+    (repository / "undeclared.py").write_text("raise RuntimeError\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repository), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "commit", "-qm", "changed"], check=True
+    )
+
+    result = release.Result()
+    assert release.publish(repository, result, True, authority) is False
+    assert any(
+        step.name == "publish.acceptance" and not step.ok for step in result.steps
+    )
+
+
+def test_publish_dry_run_names_exact_receipt_bound_ref(tmp_path: Path) -> None:
+    repository, authority = accepted_publish_fixture(tmp_path)
+    bare = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "remote", "add", "origin", str(bare)],
+        check=True,
+    )
+
+    result = release.Result()
+    assert release.publish(repository, result, True, authority) is True
+    expected_ref = f"{authority.expected['change_head']}:refs/heads/main"
+    assert any(
+        step.name == "publish.push.origin" and expected_ref in step.detail
+        for step in result.steps
+    )
+
+
+def test_main_carries_acceptance_authority_to_publish_boundary(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    authority = object()
+    received: list[object] = []
+
+    monkeypatch.setattr(release, "preflight", lambda *_args: "9.9.9")
+    monkeypatch.setattr(
+        release, "run_required_checks", lambda *_args: authority
+    )
+
+    def publish(
+        candidate: Path,
+        result: release.Result,
+        dry_run: bool,
+        accepted: object,
+    ) -> bool:
+        received.append(accepted)
+        return result.add("publish.fixture", True)
+
+    monkeypatch.setattr(release, "publish", publish)
+    monkeypatch.setattr(release, "refresh_client", lambda *_args: True)
+
+    assert release.main(["--repo-root", str(repo), "--dry-run"]) == 0
+    assert received == [authority]
 
 
 # --- client reporting, fail-closed -----------------------------------------
