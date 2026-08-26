@@ -1,0 +1,111 @@
+# AGENT HEURISTIC: R5 is the first suite authored against the generalized
+# executable-manifest contract. The controlling plan specifies the required
+# semantics, while this manifest records the exact public release universe.
+schema: 1
+suite: synthesis-interoperability-integrity-controls-r5
+membership: closed
+production_entry_point: scripts/acceptance_suite.py run
+enforcing_boundary: release.py and repository CI before publication
+receipt_consumer: synthesis-skills-manager release.py and repository Validate CI
+expected_status: pass
+metadata_class: acceptance-test
+issues_authority_receipt: false
+unverified_remainder: historical fixture chronology, semantic adequacy outside the declared cases, installed-client parity, independent review, publication, and deployment
+changed_surfaces:
+  - path: skills/synthesis-context-lifecycle/SKILL.md
+    cases: [scripts-tier-contract]
+  - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
+    cases: [missing-script-warning, existing-script-accepted, symlink-script-refused]
+  - path: skills/synthesis-implementation-integrity/SKILL.md
+    cases: [acceptance-manifest-doctrine, extract-dont-restate, authority-at-boundary]
+  - path: skills/synthesis-implementation-integrity/scripts/acceptance_suite.py
+    cases: [manifest-closed-membership, manifest-boundary-and-status, manifest-unique-cases, runner-terminal-matrix, runner-status-mismatch, enforced-gate-consumer, changed-surface-closure]
+  - path: skills/synthesis-checkpoint/SKILL.md
+    cases: [scratchpad-sweep]
+  - path: skills/synthesis-autopilot/SKILL.md
+    cases: [scratchpad-sweep]
+  - path: skills/synthesis-disclosure-policy/SKILL.md
+    cases: [category-allowlist]
+  - path: skills/synthesis-skills-manager/scripts/release.py
+    cases: [release-wiring]
+  - path: .github/workflows/validate.yml
+    cases: [ci-wiring]
+  - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
+    cases: [shipped-manifest-self-consumption]
+cases:
+  - id: manifest-closed-membership
+    control_class: acceptance-test
+    fixture: scripts/test_acceptance_suite.py::test_manifest_rejects_open_membership
+    motivating_defect: engagement-author-written-suite-had-no-closed-declared-universe
+  - id: manifest-boundary-and-status
+    control_class: acceptance-test
+    fixture: scripts/test_acceptance_suite.py::test_manifest_requires_boundary_and_expected_status
+    motivating_defect: engagement-suite-described-tests-without-naming-the-boundary-or-terminal-expectation
+  - id: manifest-unique-cases
+    control_class: acceptance-test
+    fixture: scripts/test_acceptance_suite.py::test_manifest_rejects_duplicate_case_ids
+    motivating_defect: engagement-duplicate-probe-identities-collapsed-before-coverage-was-checked
+  - id: runner-terminal-matrix
+    control_class: acceptance-test
+    fixture: scripts/test_acceptance_suite.py::test_runner_records_every_probe_terminal_state
+    motivating_defect: engagement-crashed-attack-left-unrun-probes-indistinguishable-from-adjudicated-probes
+  - id: runner-status-mismatch
+    control_class: acceptance-test
+    fixture: scripts/test_acceptance_suite.py::test_runner_refuses_expected_status_mismatch
+    motivating_defect: engagement-exit-status-was-treated-as-coverage-and-expected-polarity
+  - id: enforced-gate-consumer
+    control_class: acceptance-test
+    fixture: scripts/test_acceptance_suite.py::test_enforced_gate_requires_receipt_consumer
+    motivating_defect: engagement-standalone-verifier-was-presented-as-enforcement-authority
+  - id: changed-surface-closure
+    control_class: acceptance-test
+    fixture: scripts/test_acceptance_suite.py::test_changed_surfaces_reference_existing_cases
+    motivating_defect: engagement-changed-surfaces-reached-green-without-a-defect-pinning-fixture
+  - id: shipped-manifest-self-consumption
+    control_class: acceptance-test
+    fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
+    motivating_defect: engagement-suite-manifest-was-a-sidecar-claim-not-consumed-by-its-own-tool
+  - id: scripts-tier-contract
+    control_class: diagnostic
+    fixture: scripts/test_r5_contract.py::test_scripts_tier_contract_is_owned_by_context_lifecycle
+    motivating_defect: intake-executable-working-state-had-no-durable-tier
+  - id: missing-script-warning
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_artifact_cites_missing_script_warns
+    motivating_defect: intake-context-doctor-reported-healthy-while-cited-working-code-was-ephemeral
+  - id: existing-script-accepted
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_artifact_cites_existing_script_passes
+    motivating_defect: agent-heuristic-missing-script-detector-could-cry-wolf-on-the-reference-layout
+  - id: symlink-script-refused
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_artifact_cites_symlinked_script_warns
+    motivating_defect: agent-heuristic-cited-script-could-resolve-outside-the-project
+  - id: scratchpad-sweep
+    control_class: diagnostic
+    fixture: scripts/test_r5_contract.py::test_checkpoint_and_autopilot_ask_the_scratchpad_sweep_question
+    motivating_defect: intake-executable-state-died-with-the-originating-session
+  - id: acceptance-manifest-doctrine
+    control_class: diagnostic
+    fixture: scripts/test_r5_contract.py::test_integrity_requires_executable_closed_acceptance_manifests
+    motivating_defect: engagement-author-written-acceptance-suite-was-trusted-as-independent-proof
+  - id: extract-dont-restate
+    control_class: diagnostic
+    fixture: scripts/test_r5_contract.py::test_integrity_requires_extract_dont_restate
+    motivating_defect: engagement-two-parsers-restated-one-author-and-shared-the-same-blind-spot
+  - id: authority-at-boundary
+    control_class: diagnostic
+    fixture: scripts/test_r5_contract.py::test_integrity_locates_authority_at_the_state_changing_boundary
+    motivating_defect: engagement-standalone-check-was-confused-with-a-required-receipt-consumer
+  - id: category-allowlist
+    control_class: diagnostic
+    fixture: scripts/test_r5_contract.py::test_disclosure_categories_preserve_attention_for_real_approval_gates
+    motivating_defect: intake-trivial-naming-gates-trained-principal-rubber-stamping
+  - id: release-wiring
+    control_class: enforced-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_execute_r5_integrity_suite
+    motivating_defect: engagement-new-acceptance-control-could-remain-outside-the-gated-release
+  - id: ci-wiring
+    control_class: enforced-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_repository_ci_executes_r5_integrity_suite
+    motivating_defect: engagement-local-release-check-and-pr-ci-could-verify-different-universes

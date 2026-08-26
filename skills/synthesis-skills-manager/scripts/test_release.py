@@ -140,6 +140,45 @@ def test_repository_ci_executes_release_wiring_tests() -> None:
     )
 
 
+def test_required_checks_execute_r5_integrity_suite() -> None:
+    commands = {name: command for name, command in release.REQUIRED_CHECKS}
+    assert commands["pytest.context-lifecycle-integrity"] == [
+        "python3",
+        "-m",
+        "pytest",
+        "skills/synthesis-context-lifecycle/scripts/",
+        "skills/synthesis-implementation-integrity/scripts/",
+        "-q",
+    ]
+    assert commands["acceptance.r5"] == [
+        "python3",
+        "skills/synthesis-implementation-integrity/scripts/acceptance_suite.py",
+        "run",
+        "--manifest",
+        "skills/synthesis-implementation-integrity/acceptance-suite.yaml",
+        "--repo-root",
+        ".",
+    ]
+
+
+def test_repository_ci_executes_r5_integrity_suite() -> None:
+    repository = Path(__file__).resolve().parents[3]
+    workflow = (repository / ".github" / "workflows" / "validate.yml").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        "python -m pytest skills/synthesis-context-lifecycle/scripts/ "
+        "skills/synthesis-implementation-integrity/scripts/ -q"
+        in workflow
+    )
+    assert (
+        "python skills/synthesis-implementation-integrity/scripts/acceptance_suite.py "
+        "run --manifest skills/synthesis-implementation-integrity/acceptance-suite.yaml "
+        "--repo-root ."
+        in workflow
+    )
+
+
 # --- client reporting, fail-closed -----------------------------------------
 
 
