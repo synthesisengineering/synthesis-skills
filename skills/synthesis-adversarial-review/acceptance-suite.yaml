@@ -40,3 +40,6 @@ cases:
   - id: direct-agent-orchestration
     fixture: scripts/test_protocol_contract.py::test_autopilot_tracks_direct_dispatch_and_courier_cost
     motivating_defect: catalogue-P0-1-more-than-twenty-principal-courier-crossings
+  - id: hidden-specialist-routing
+    fixture: scripts/test_protocol_contract.py::test_hidden_specialist_is_reachable_through_the_router
+    motivating_defect: codex-prompt-budget-hides-specialists-without-a-router-path

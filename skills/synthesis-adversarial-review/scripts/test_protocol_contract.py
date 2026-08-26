@@ -6,6 +6,7 @@ import pathlib
 SKILL_ROOT = pathlib.Path(__file__).resolve().parents[1]
 REVIEW = SKILL_ROOT / "SKILL.md"
 AUTOPILOT = SKILL_ROOT.parent / "synthesis-autopilot" / "SKILL.md"
+ROUTER = SKILL_ROOT.parent / "synthesis-skill-router" / "SKILL.md"
 
 
 def review_text() -> str:
@@ -14,6 +15,10 @@ def review_text() -> str:
 
 def autopilot_text() -> str:
     return AUTOPILOT.read_text(encoding="utf-8")
+
+
+def router_text() -> str:
+    return ROUTER.read_text(encoding="utf-8")
 
 
 def test_review_protocol_is_principal_outcome_focused() -> None:
@@ -64,3 +69,9 @@ def test_autopilot_tracks_direct_dispatch_and_courier_cost() -> None:
         "reviewer satisfaction",
     ):
         assert required in text
+
+
+def test_hidden_specialist_is_reachable_through_the_router() -> None:
+    text = router_text()
+    assert "../synthesis-adversarial-review/SKILL.md" in text
+    assert "adversarial review" in text.lower()
