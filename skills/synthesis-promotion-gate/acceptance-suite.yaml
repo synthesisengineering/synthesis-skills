@@ -73,6 +73,10 @@ cases:
     control_class: acceptance-test
     fixture: scripts/test_promotion_gate.py::test_each_policy_projection_must_match_a_positive_and_reject_negatives
     motivating_defect: r2-review-marker-examples-were-schema-only
+  - id: executable-policy-negative-examples
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_policy_projection_that_matches_a_negative_example_is_refused
+    motivating_defect: r2-review-marker-negative-examples-were-schema-only
   - id: malformed-destination-representation
     control_class: acceptance-test
     fixture: scripts/test_promotion_gate.py::test_malformed_heading_that_destination_repairs_is_refused
@@ -81,6 +85,10 @@ cases:
     control_class: acceptance-test
     fixture: scripts/test_promotion_gate.py::test_engine_owned_unverified_remainder_cannot_be_erased_by_config
     motivating_defect: r2-review-config-could-claim-no-unverified-remainder
+  - id: none-like-additional-remainder
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_additional_remainder_cannot_claim_that_nothing_is_unverified
+    motivating_defect: r2-review-config-could-deny-the-unverified-remainder
   - id: acceptance-schema-self-consumption
     control_class: acceptance-test
     fixture: scripts/test_promotion_gate.py::test_shipped_acceptance_manifest_is_consumable_by_the_engine

@@ -37,10 +37,12 @@ python3 skills/synthesis-promotion-gate/scripts/promotion_gate.py check \
 Its receipt is an `acceptance-test`, with `authority_receipt: false`.
 
 `enforce` is the production entry point. It builds into an isolated temporary root,
-inspects every frontmatter-derived route, writes a candidate receipt, re-hashes the
-contract and artifacts immediately before the boundary, then invokes the supplied
-promotion command. The command must carry both `{candidate_receipt}` and
-`{output_root}` as literal arguments; the gate substitutes their exact temporary paths.
+captures each expected output exactly once, inspects those captured bytes, closes the
+output universe, materializes a separate content snapshot, writes a candidate receipt,
+and re-hashes the contract and snapshot immediately before the boundary. It then
+invokes the supplied promotion command. The command must carry both
+`{candidate_receipt}` and `{output_root}` as literal arguments; the gate substitutes
+the exact receipt and captured-snapshot paths.
 
 ```bash
 python3 skills/synthesis-promotion-gate/scripts/promotion_gate.py enforce \
@@ -56,11 +58,13 @@ transition. The receipt withholds matched content and records a digest instead.
 
 ## Configure the Contract
 
-Start from the three files under `templates/`:
+Start from the four files under `templates/`:
 
 - `promotion-gate.example.yaml` becomes `.agents/promotion-gate.yaml`.
 - `marker-policy.example.yaml` is the one canonical marker identity and projection file.
 - `surface-manifest.example.yaml` enumerates every consuming renderer and its version.
+- `acceptance-suite.example.yaml` declares the closed, production-consumable cases for
+  the repository instance.
 
 The gate refuses unknown configuration keys. Paths are project-relative, cannot escape
 the project, and cannot traverse symlink components. The build command is an argument
@@ -89,6 +93,9 @@ Name the representation actually judged. The engine supports:
 
 Do not label `dom-text` as browser-visible text. This implementation uses Python's
 `html.parser`, records its runtime version in the receipt, and declares its exclusions.
+Malformed monitored structures such as unclosed or mismatched headings and raw-text
+elements refuse the run because permissive destination repair can otherwise produce a
+different projection.
 When a destination needs another semantic channel—accessible attributes, feed fields,
 search documents, or a renderer-specific DOM—extend the engine and add a motivating
 fixture before adding that representation to a live configuration.
@@ -100,6 +107,10 @@ negative examples, and representation-specific regex projections. Surface predic
 may differ; identity and rationale may not be copied into separate lists. This allows a
 heading-only projection to reject an internal section while ordinary prose containing
 the same words remains valid.
+
+The loader executes the canonical examples against every projection: each projection
+must match at least one positive example and must reject every negative example. A
+schema-valid but behaviorally empty projection is an invalid policy.
 
 The policy is a bounded vocabulary, not a semantic disclosure model. Keep patterns tied
 to observed pipeline scaffolding. If a proposed pattern matches ordinary language,
@@ -116,9 +127,10 @@ outside its isolated build root. Every renderer in the manifest must have one ma
 `inspected_surfaces`
 entry; neither side may silently contain an extra renderer.
 
-A build can contain unrelated pages. The receipt lists those as `unscoped_outputs`; it
-does not claim to have inspected them. If they consume the promotion inputs, add the
-renderer and routes to the surface manifest.
+The build output universe is closed: it must equal the frontmatter-derived route set.
+An additional file is `unscoped-rendered-output` and refuses the run before the output
+root can reach a promotion command. If another page belongs in the transaction, add
+its input, renderer, and route to the declared contract.
 
 ## Receipt Contract and Unverified Remainder
 
@@ -131,6 +143,11 @@ A receipt binds:
 - production entry point, enforcing boundary, receipt consumer, and explicit unverified
   remainder.
 
+The unverified remainder is structured. `engine_owned` always names limits the
+repository cannot erase; `repository_declared` adds non-empty instance-specific limits.
+Configuration can add to this remainder but cannot replace it with `none` or an
+equivalent claim.
+
 A static renderer version is a declared fact, not independently discovered runtime
 identity. Keep it current in the same change as renderer updates. The gate cannot prove
 that an unknown consumer is absent or that remote destination bytes still match after
@@ -138,10 +155,13 @@ the supplied command returns; verify those at their own boundary.
 
 ## Acceptance Discipline
 
-The shipped `acceptance-suite.yaml` is closed and executable. Its generation-zero cases
+The shipped `acceptance-suite.yaml` is closed, accepted by the production loader, and
+executable. Its generation-zero cases
 come from real promotion defects: a sensitive comment in page source, five rendered
 scaffolding defects behind a successful build, inline-tag adjacency, frontmatter route
-mismatch, and a staged page the old selector never inspected. Run it with:
+mismatch, a staged page the old selector never inspected, an undeclared output crossing
+the boundary, a post-build mutation, an inert policy example, parser divergence, and
+acceptance-schema drift. Run it with:
 
 ```bash
 python3 -m pytest skills/synthesis-promotion-gate/scripts/test_*.py -q

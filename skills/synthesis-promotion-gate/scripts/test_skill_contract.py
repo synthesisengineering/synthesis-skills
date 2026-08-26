@@ -47,6 +47,8 @@ def test_templates_use_one_policy_and_a_complete_renderer_mapping() -> None:
         (SKILL_ROOT / "templates/surface-manifest.example.yaml").read_text(encoding="utf-8")
     )
     assert config["marker_policy"] == ".agents/promotion-marker-policy.yaml"
+    assert config["acceptance_suite"] == ".agents/promotion-acceptance-suite.yaml"
+    assert config["additional_unverified_remainder"]
     assert len({marker["id"] for marker in policy["markers"]}) == len(policy["markers"])
     assert {surface["renderer"] for surface in config["inspected_surfaces"]} == {
         renderer["id"] for renderer in surfaces["renderers"]
@@ -63,6 +65,19 @@ def test_acceptance_manifest_classifies_only_boundary_cases_as_enforced() -> Non
         "refusal-precedes-state-change",
         "receipt-consumer-topology",
         "changed-input-revalidation",
+        "closed-output-universe",
+        "captured-content-handoff",
+    }
+
+
+def test_all_four_repository_contract_templates_are_shipped() -> None:
+    assert {
+        path.name for path in (SKILL_ROOT / "templates").glob("*.example.yaml")
+    } == {
+        "acceptance-suite.example.yaml",
+        "marker-policy.example.yaml",
+        "promotion-gate.example.yaml",
+        "surface-manifest.example.yaml",
     }
 
 

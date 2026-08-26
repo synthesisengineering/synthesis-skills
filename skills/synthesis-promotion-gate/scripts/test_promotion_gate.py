@@ -68,7 +68,6 @@ def marker_policy() -> dict[str, Any]:
                 "negative_examples": ["I keep publication notes beside a draft."],
                 "projections": {
                     "dom-heading-text": {"pattern": r"^\s*publication\s+notes\s*$"},
-                    "html-comments": {"pattern": r"publication\s+notes"},
                 },
             },
             {
@@ -167,10 +166,21 @@ def make_project(
         root / "acceptance.yaml",
         {
             "schema": 1,
+            "suite": "fixture-promotion-gate",
             "membership": "closed",
-            "boundary": "fixture promotion command",
+            "production_entry_point": "promotion_gate.py enforce",
+            "enforcing_boundary": "before the fixture promotion command",
+            "receipt_consumer": "fixture promotion command",
             "expected_status": "pass",
-            "cases": [{"id": "fixture", "control_class": "enforced-gate"}],
+            "unverified_remainder": "destination bytes after the fixture command returns",
+            "cases": [
+                {
+                    "id": "fixture",
+                    "control_class": "enforced-gate",
+                    "fixture": "test_promotion_gate.py::fixture",
+                    "motivating_defect": "fixture-boundary",
+                }
+            ],
         },
     )
     if sidecar is not None:
@@ -208,10 +218,9 @@ def make_project(
                 {"renderer": "fixture-html", "representations": reps}
             ],
             "sidecar_flag_globs": ["sidecars/**/*.yaml"],
-            "unverified_remainder": (
-                "Consumers omitted from the surface manifest and destination bytes "
-                "after the promotion command returns."
-            ),
+            "additional_unverified_remainder": [
+                "repository-specific consumers not yet declared by this fixture"
+            ],
         },
     )
     return root / ".agents" / "promotion-gate.yaml"
@@ -629,6 +638,25 @@ def test_each_policy_projection_must_match_a_positive_and_reject_negatives(
     assert any(f["kind"] == "invalid-marker-policy" for f in receipt["findings"])
 
 
+def test_policy_projection_that_matches_a_negative_example_is_refused(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "project"
+    config = make_project(
+        root,
+        articles=[{"directory": "dirty", "slug": "dirty"}],
+        outputs={"articles/dirty/index.html": "<h2>Publication Notes</h2>"},
+    )
+    policy_path = root / "marker-policy.yaml"
+    policy = yaml.safe_load(policy_path.read_text(encoding="utf-8"))
+    policy["markers"][2]["projections"]["dom-heading-text"]["pattern"] = "publication"
+    write_yaml(policy_path, policy)
+    result, receipt_path = run_gate(config)
+    assert result.returncode == 1
+    receipt = read_receipt(receipt_path)
+    assert any(f["kind"] == "invalid-marker-policy" for f in receipt["findings"])
+
+
 class DestinationHeadingOracle(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -701,6 +729,25 @@ def test_clean_receipt_always_carries_structured_engine_owned_remainder(
     remainder = read_receipt(receipt_path)["unverified_remainder"]
     assert remainder["engine_owned"]
     assert remainder["repository_declared"]
+
+
+def test_additional_remainder_cannot_claim_that_nothing_is_unverified(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "project"
+    config = make_project(
+        root,
+        articles=[{"directory": "clean", "slug": "clean"}],
+        outputs={"articles/clean/index.html": "<p>Clean.</p>"},
+    )
+    doc = yaml.safe_load(config.read_text(encoding="utf-8"))
+    doc["additional_unverified_remainder"] = ["none"]
+    write_yaml(config, doc)
+    result, receipt_path = run_gate(config)
+    assert result.returncode == 1
+    receipt = read_receipt(receipt_path)
+    assert receipt["unverified_remainder"]["engine_owned"]
+    assert any(f["kind"] == "invalid-config" for f in receipt["findings"])
 
 
 def test_shipped_acceptance_manifest_is_consumable_by_the_engine(

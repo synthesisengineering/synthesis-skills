@@ -13,7 +13,7 @@ markers:
   - id: unresolved-date
     threat_rationale: A date placeholder must not cross into the publishable range or rendered page.
     provenance: engagement-round-2-unresolved-date-blocks
-    positive_examples: ["<DATE>"]
+    positive_examples: ["<DATE>", "&lt;DATE&gt;"]
     negative_examples: ["2026-08-26"]
     projections:
       publishable-source:

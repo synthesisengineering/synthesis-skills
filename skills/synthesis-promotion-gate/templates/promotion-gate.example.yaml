@@ -24,4 +24,5 @@ inspected_surfaces:
       - raw-page-source
 sidecar_flag_globs:
   - sidecars/**/*.yaml
-unverified_remainder: Consumers omitted from this manifest, semantic disclosures outside this marker policy, and destination bytes after the supplied promotion command returns.
+additional_unverified_remainder:
+  - Repository-specific consumers not yet represented in this example manifest.

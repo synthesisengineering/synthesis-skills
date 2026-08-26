@@ -3,10 +3,10 @@
 
 A successful build is not a publication-safety signal. ``check`` produces an
 acceptance-test receipt and never authorizes a state change. ``enforce`` keeps the
-isolated rendered outputs alive, revalidates the exact inputs and receipt immediately
-before the supplied promotion command, and invokes that command only after every
-declared representation is clean. Only that fail-closed caller can issue an
-``enforced-gate`` receipt.
+captured rendered bytes alive in a separate content snapshot, revalidates the exact
+inputs and snapshot immediately before the supplied promotion command, and invokes
+that command only after every declared representation is clean. Only that fail-closed
+caller can issue an ``enforced-gate`` receipt.
 
 This engine detects configured promotion scaffolding. It does not decide whether
 ordinary prose is appropriate to disclose, prove that a surface manifest names an
@@ -59,7 +59,7 @@ CONFIG_KEYS = {
     "acceptance_suite",
     "inspected_surfaces",
     "sidecar_flag_globs",
-    "unverified_remainder",
+    "additional_unverified_remainder",
 }
 BUILD_KEYS = {"command", "working_directory", "output_root"}
 INPUT_KEYS = {"root", "globs"}
@@ -71,6 +71,32 @@ RENDERER_KEYS = {
     "input_globs",
     "route_template",
     "output_prefix",
+}
+ACCEPTANCE_KEYS = {
+    "schema",
+    "suite",
+    "membership",
+    "production_entry_point",
+    "enforcing_boundary",
+    "receipt_consumer",
+    "expected_status",
+    "unverified_remainder",
+    "cases",
+}
+ACCEPTANCE_CASE_KEYS = {"id", "control_class", "fixture", "motivating_defect"}
+ENGINE_UNVERIFIED_REMAINDER = [
+    "consumers absent from the declared surface manifest",
+    "semantic disclosures outside the canonical marker policy",
+    "destination bytes after the supplied promotion command returns",
+    "destination parser equivalence beyond the declared representations",
+]
+EMPTY_REMAINDER_CLAIMS = {
+    "none",
+    "n/a",
+    "na",
+    "nothing",
+    "fully verified",
+    "no remainder",
 }
 
 
@@ -113,7 +139,7 @@ def require_string(value: Any, label: str) -> str:
 
 def require_string_list(value: Any, label: str) -> list[str]:
     if not isinstance(value, list) or not value or not all(
-        isinstance(item, str) and item for item in value
+        isinstance(item, str) and item.strip() for item in value
     ):
         raise GateError("invalid-config", f"{label} must be a non-empty list of strings")
     return value
@@ -205,7 +231,15 @@ def load_config(path: pathlib.Path) -> tuple[pathlib.Path, dict[str, Any]]:
 
     for key in ("marker_policy", "surface_manifest", "acceptance_suite"):
         project_path(project_root, config.get(key), key, file_only=True)
-    require_string(config.get("unverified_remainder"), "unverified_remainder")
+    remainder = require_string_list(
+        config.get("additional_unverified_remainder"),
+        "additional_unverified_remainder",
+    )
+    if any(item.strip().casefold() in EMPTY_REMAINDER_CLAIMS for item in remainder):
+        raise GateError(
+            "invalid-config",
+            "additional_unverified_remainder cannot erase or deny the engine-owned remainder",
+        )
     if not isinstance(config.get("sidecar_flag_globs"), list) or not all(
         isinstance(item, str) and item for item in config["sidecar_flag_globs"]
     ):
@@ -252,8 +286,12 @@ def load_policy(project_root: pathlib.Path, config: dict[str, Any]) -> tuple[pat
         seen.add(marker_id)
         require_string(item["threat_rationale"], f"marker {marker_id}.threat_rationale")
         require_string(item["provenance"], f"marker {marker_id}.provenance")
-        require_string_list(item["positive_examples"], f"marker {marker_id}.positive_examples")
-        require_string_list(item["negative_examples"], f"marker {marker_id}.negative_examples")
+        positive_examples = require_string_list(
+            item["positive_examples"], f"marker {marker_id}.positive_examples"
+        )
+        negative_examples = require_string_list(
+            item["negative_examples"], f"marker {marker_id}.negative_examples"
+        )
         raw_projections = require_mapping(item["projections"], f"marker {marker_id}.projections")
         if not raw_projections:
             raise GateError("invalid-marker-policy", f"marker {marker_id} has no projections")
@@ -276,12 +314,23 @@ def load_policy(project_root: pathlib.Path, config: dict[str, Any]) -> tuple[pat
                 projection["pattern"], f"marker {marker_id}.{representation}.pattern"
             )
             try:
-                projections[representation] = re.compile(pattern, re.IGNORECASE | re.DOTALL)
+                compiled = re.compile(pattern, re.IGNORECASE | re.DOTALL)
             except re.error as exc:
                 raise GateError(
                     "invalid-marker-policy",
                     f"marker {marker_id}.{representation} has invalid regex: {exc}",
                 ) from exc
+            if not any(compiled.search(example) for example in positive_examples):
+                raise GateError(
+                    "invalid-marker-policy",
+                    f"marker {marker_id}.{representation} matches no canonical positive example",
+                )
+            if any(compiled.search(example) for example in negative_examples):
+                raise GateError(
+                    "invalid-marker-policy",
+                    f"marker {marker_id}.{representation} matches a canonical negative example",
+                )
+            projections[representation] = compiled
         markers.append(Marker(marker_id, projections))
     return path, markers
 
@@ -289,16 +338,48 @@ def load_policy(project_root: pathlib.Path, config: dict[str, Any]) -> tuple[pat
 def load_acceptance(project_root: pathlib.Path, config: dict[str, Any]) -> pathlib.Path:
     path = project_path(project_root, config["acceptance_suite"], "acceptance_suite", file_only=True)
     manifest = yaml_document(path, "acceptance suite")
+    if set(manifest) != ACCEPTANCE_KEYS:
+        missing = sorted(ACCEPTANCE_KEYS - set(manifest))
+        extra = sorted(set(manifest) - ACCEPTANCE_KEYS)
+        raise GateError(
+            "invalid-acceptance-suite",
+            f"acceptance suite schema mismatch; missing={missing}, extra={extra}",
+        )
     if manifest.get("schema") != SCHEMA or manifest.get("membership") != "closed":
-        raise GateError("invalid-acceptance-suite", "acceptance suite must declare schema 1 and closed membership")
-    require_string(manifest.get("boundary"), "acceptance suite boundary")
+        raise GateError(
+            "invalid-acceptance-suite",
+            "acceptance suite must declare schema 1 and closed membership",
+        )
+    for key in (
+        "suite",
+        "production_entry_point",
+        "enforcing_boundary",
+        "receipt_consumer",
+        "unverified_remainder",
+    ):
+        require_string(manifest.get(key), f"acceptance suite {key}")
     if manifest.get("expected_status") != "pass":
         raise GateError("invalid-acceptance-suite", "acceptance suite expected_status must be pass")
     cases = manifest.get("cases")
     if not isinstance(cases, list) or not cases:
         raise GateError("invalid-acceptance-suite", "acceptance suite must contain cases")
+    case_ids: set[str] = set()
     for case in cases:
         value = require_mapping(case, "acceptance case")
+        if set(value) != ACCEPTANCE_CASE_KEYS:
+            raise GateError(
+                "invalid-acceptance-suite",
+                "each acceptance case must declare id, control_class, fixture, and motivating_defect",
+            )
+        case_id = require_string(value.get("id"), "acceptance case id")
+        if case_id in case_ids:
+            raise GateError("invalid-acceptance-suite", f"duplicate acceptance case id: {case_id}")
+        case_ids.add(case_id)
+        require_string(value.get("fixture"), f"acceptance case {case_id} fixture")
+        require_string(
+            value.get("motivating_defect"),
+            f"acceptance case {case_id} motivating_defect",
+        )
         if value.get("control_class") not in CONTROL_CLASSES:
             raise GateError("invalid-acceptance-suite", "acceptance case has unknown control_class")
     return path
@@ -531,35 +612,65 @@ class DeclaredHtmlProjection(HTMLParser):
         self.dom_parts: list[str] = []
         self.comments: list[str] = []
         self.headings: list[str] = []
-        self._heading_parts: list[list[str]] = []
-        self._raw_depth = 0
+        self.structural_errors: list[str] = []
+        self._heading_stack: list[tuple[str, list[str]]] = []
+        self._raw_stack: list[str] = []
+        self._finished = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
         if tag in RAW_TEXT_ELEMENTS:
-            self._raw_depth += 1
+            if self._raw_stack:
+                self.structural_errors.append("nested raw-text element")
+            self._raw_stack.append(tag)
         if tag in HEADING_ELEMENTS:
-            self._heading_parts.append([])
+            if self._heading_stack:
+                self.structural_errors.append("nested heading element")
+            self._heading_stack.append((tag, []))
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        return
+        tag = tag.lower()
+        if tag in RAW_TEXT_ELEMENTS or tag in HEADING_ELEMENTS:
+            self.structural_errors.append("self-closing monitored element")
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
-        if tag in HEADING_ELEMENTS and self._heading_parts:
-            self.headings.append("".join(self._heading_parts.pop()))
-        if tag in RAW_TEXT_ELEMENTS and self._raw_depth:
-            self._raw_depth -= 1
+        if tag in HEADING_ELEMENTS:
+            if not self._heading_stack:
+                self.structural_errors.append("unmatched heading end tag")
+            else:
+                opened, parts = self._heading_stack.pop()
+                if opened != tag:
+                    self.structural_errors.append("mismatched heading end tag")
+                else:
+                    self.headings.append("".join(parts))
+        if tag in RAW_TEXT_ELEMENTS:
+            if not self._raw_stack:
+                self.structural_errors.append("unmatched raw-text end tag")
+            else:
+                opened = self._raw_stack.pop()
+                if opened != tag:
+                    self.structural_errors.append("mismatched raw-text end tag")
 
     def handle_data(self, data: str) -> None:
-        if self._raw_depth:
+        if self._raw_stack:
             return
         self.dom_parts.append(data)
-        for heading in self._heading_parts:
-            heading.append(data)
+        if self._heading_stack:
+            self._heading_stack[-1][1].append(data)
 
     def handle_comment(self, data: str) -> None:
         self.comments.append(data)
+
+    def finish(self) -> None:
+        if self._finished:
+            return
+        self.close()
+        if self._heading_stack:
+            self.structural_errors.append("unclosed heading element")
+        if self._raw_stack:
+            self.structural_errors.append("unclosed raw-text element")
+        self._finished = True
 
     def representations(self, raw: str) -> dict[str, list[str]]:
         return {
@@ -685,7 +796,10 @@ def base_receipt(mode: str, config_path: pathlib.Path) -> dict[str, Any]:
                 "receipt_consumer": "none",
             }
         ),
-        "unverified_remainder": "Configuration could not be loaded; no safety claim is available.",
+        "unverified_remainder": {
+            "engine_owned": list(ENGINE_UNVERIFIED_REMAINDER),
+            "repository_declared": [],
+        },
     }
 
 
@@ -713,22 +827,36 @@ def output_identities(output_root: pathlib.Path, expected: list[dict[str, Any]])
     ]
 
 
-def current_core_identities(
+def captured_output_identities(captured: dict[str, bytes]) -> list[dict[str, str]]:
+    return [
+        {"route": route, "sha256": sha256_bytes(payload)}
+        for route, payload in sorted(captured.items())
+    ]
+
+
+def current_contract_identities(
     project_root: pathlib.Path,
     config_path: pathlib.Path,
     linked: list[pathlib.Path],
     inputs: list[InputArtifact],
     sidecars: list[pathlib.Path],
-    output_root: pathlib.Path,
-    expected: list[dict[str, Any]],
 ) -> dict[str, Any]:
     return {
         "config_sha256": sha256_file(config_path),
         "linked": file_identities(project_root, linked),
         "inputs": file_identities(project_root, [item.path for item in inputs]),
         "sidecars": file_identities(project_root, sidecars),
-        "outputs": output_identities(output_root, expected),
     }
+
+
+def materialize_snapshot(root: pathlib.Path, captured: dict[str, bytes]) -> None:
+    root.mkdir()
+    for route, payload in sorted(captured.items()):
+        target = root / route
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+        if target.read_bytes() != payload:
+            raise GateError("snapshot-write", f"captured output read-back failed: {route}")
 
 
 def run_gate(
@@ -745,7 +873,10 @@ def run_gate(
             "sha256": sha256_file(config_path),
             "logical_output_root": config["build"]["output_root"],
         }
-        receipt["unverified_remainder"] = config["unverified_remainder"]
+        receipt["unverified_remainder"] = {
+            "engine_owned": list(ENGINE_UNVERIFIED_REMAINDER),
+            "repository_declared": list(config["additional_unverified_remainder"]),
+        }
         policy_path, markers = load_policy(project_root, config)
         acceptance_path = load_acceptance(project_root, config)
         manifest_path, renderers, inspections = load_surfaces(project_root, config)
@@ -811,14 +942,12 @@ def run_gate(
         with tempfile.TemporaryDirectory(prefix="synthesis-promotion-gate-") as temporary:
             output_root = pathlib.Path(temporary) / "rendered"
             output_root.mkdir()
-            baseline = current_core_identities(
+            baseline = current_contract_identities(
                 project_root,
                 config_path,
                 linked,
                 inputs,
                 sidecars,
-                output_root,
-                [],
             )
             build_command = substitute(
                 raw_build_command,
@@ -870,6 +999,7 @@ def run_gate(
 
             inspected: list[dict[str, Any]] = []
             missing: list[str] = []
+            captured_outputs: dict[str, bytes] = {}
             expected_by_route = {item["route"]: item for item in expected}
             for route, item in expected_by_route.items():
                 output = output_root / route
@@ -886,19 +1016,47 @@ def run_gate(
                         }
                     )
                     continue
-                raw = output.read_text(encoding="utf-8")
+                try:
+                    payload = output.read_bytes()
+                    raw = payload.decode("utf-8")
+                except (OSError, UnicodeError) as exc:
+                    receipt["findings"].append(
+                        {
+                            "kind": "rendered-representation-invalid",
+                            "path": item["input"],
+                            "renderer": item["renderer"],
+                            "route": route,
+                            "message": f"rendered output cannot be captured as UTF-8: {type(exc).__name__}",
+                        }
+                    )
+                    continue
+                captured_outputs[route] = payload
                 parser = DeclaredHtmlProjection()
                 parser.feed(raw)
+                parser.finish()
                 projected = parser.representations(raw)
                 representations = inspections[item["renderer"]]
                 inspected.append(
                     {
                         **item,
-                        "sha256": sha256_file(output),
+                        "sha256": sha256_bytes(payload),
                         "representations": representations,
                         "parser": f"python-html.parser:{sys.version_info.major}.{sys.version_info.minor}",
                     }
                 )
+                if parser.structural_errors:
+                    receipt["findings"].append(
+                        {
+                            "kind": "rendered-representation-invalid",
+                            "path": item["input"],
+                            "renderer": item["renderer"],
+                            "route": route,
+                            "message": (
+                                "declared projection found malformed monitored HTML "
+                                f"({len(parser.structural_errors)} structural error(s))"
+                            ),
+                        }
+                    )
                 for representation in representations:
                     if representation not in DESTINATION_REPRESENTATIONS:
                         continue
@@ -914,26 +1072,33 @@ def run_gate(
                     )
             receipt["route_bijection"]["inspected"] = inspected
             receipt["route_bijection"]["missing"] = missing
-            actual_outputs = sorted(
-                path.relative_to(output_root).as_posix()
-                for path in output_root.rglob("*")
-                if path.is_file()
-            )
-            receipt["route_bijection"]["unscoped_outputs"] = sorted(
-                set(actual_outputs) - set(expected_by_route)
-            )
+            actual_outputs: list[str] = []
+            for path in output_root.rglob("*"):
+                if path.is_symlink():
+                    no_symlink_components(path, output_root)
+                if path.is_file():
+                    actual_outputs.append(path.relative_to(output_root).as_posix())
+            unscoped_outputs = sorted(set(actual_outputs) - set(expected_by_route))
+            receipt["route_bijection"]["unscoped_outputs"] = unscoped_outputs
+            for route in unscoped_outputs:
+                receipt["findings"].append(
+                    {
+                        "kind": "unscoped-rendered-output",
+                        "path": route,
+                        "route": route,
+                        "message": "rendered output is outside the closed frontmatter-derived route universe",
+                    }
+                )
 
-            post_build = current_core_identities(
+            post_contract = current_contract_identities(
                 project_root,
                 config_path,
                 linked,
                 inputs,
                 sidecars,
-                output_root,
-                expected,
             )
             for key in ("config_sha256", "linked", "inputs", "sidecars"):
-                if baseline[key] != post_build[key]:
+                if baseline[key] != post_contract[key]:
                     kind = "input-changed-during-build" if key == "inputs" else "contract-changed-during-build"
                     if not any(f["kind"] == kind for f in receipt["findings"]):
                         receipt["findings"].append(
@@ -943,6 +1108,10 @@ def run_gate(
                                 "message": f"{key} identity changed during the build",
                             }
                         )
+            post_build = {
+                **post_contract,
+                "outputs": captured_output_identities(captured_outputs),
+            }
             receipt["identity_binding"] = post_build
 
             if receipt["findings"]:
@@ -984,21 +1153,29 @@ def run_gate(
                 atomic_json(receipt_path, receipt)
                 return 1
 
+            snapshot_root = pathlib.Path(temporary) / f"captured-{uuid.uuid4().hex}"
+            materialize_snapshot(snapshot_root, captured_outputs)
+            snapshot_outputs = output_identities(snapshot_root, expected)
+            receipt["handoff"] = {
+                "mode": "captured-content-snapshot",
+                "outputs": snapshot_outputs,
+            }
             candidate_receipt = pathlib.Path(temporary) / "candidate-receipt.json"
             candidate = copy.deepcopy(receipt)
             candidate["metadata_class"] = "acceptance-test"
             candidate["authority_receipt"] = False
             atomic_json(candidate_receipt, candidate)
 
-            immediately_before = current_core_identities(
-                project_root,
-                config_path,
-                linked,
-                inputs,
-                sidecars,
-                output_root,
-                expected,
-            )
+            immediately_before = {
+                **current_contract_identities(
+                    project_root,
+                    config_path,
+                    linked,
+                    inputs,
+                    sidecars,
+                ),
+                "outputs": output_identities(snapshot_root, expected),
+            }
             if immediately_before != post_build:
                 receipt["status"] = "refused"
                 receipt["findings"].append(
@@ -1015,7 +1192,7 @@ def run_gate(
                 promotion_command,
                 {
                     "candidate_receipt": str(candidate_receipt),
-                    "output_root": str(output_root),
+                    "output_root": str(snapshot_root),
                     "project_root": str(project_root),
                     "config_dir": str(config_path.parent),
                 },
@@ -1051,6 +1228,17 @@ def run_gate(
                         "kind": "promotion-command-failed",
                         "path": str(project_root),
                         "message": f"promotion command exited {promoted.returncode}",
+                    }
+                )
+                atomic_json(receipt_path, receipt)
+                return 1
+            if output_identities(snapshot_root, expected) != snapshot_outputs:
+                receipt["status"] = "refused"
+                receipt["findings"].append(
+                    {
+                        "kind": "snapshot-changed-during-promotion",
+                        "path": str(config_path),
+                        "message": "the supplied promotion command changed the captured output snapshot",
                     }
                 )
                 atomic_json(receipt_path, receipt)

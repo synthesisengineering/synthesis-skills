@@ -15,14 +15,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   canonical marker policy. A versioned surface manifest must agree exactly
   with configured renderer inspections; missing outputs and inputs consumed
   by no renderer refuse the run. Symlinked config and rendered-output paths
-  are refused before their targets can be inspected.
+  are refused before their targets can be inspected. The output universe is
+  closed, policy examples execute against every projection, malformed
+  monitored HTML refuses permissive parser divergence, and the shipped
+  acceptance schema is consumed by the production loader.
 - **Executable authority topology.** `check` emits a non-authoritative
-  acceptance receipt. `enforce` revalidates config, policy, inputs, sidecars,
-  renderer outputs, and hashes immediately before a supplied promotion
-  command, then issues an enforced-gate receipt only after that command
-  succeeds. The generation-zero suite carries the five successful-build
-  defects, comment leakage, inline-tag adjacency, frontmatter route mismatch,
-  and the staged page the old selector never inspected.
+  acceptance receipt. `enforce` captures each inspected output exactly once,
+  passes a separate content snapshot to the supplied promotion command, and
+  revalidates config, policy, inputs, sidecars, and snapshot hashes at that
+  boundary. It issues an enforced-gate receipt only after that command
+  succeeds. Engine-owned limits remain present in every receipt and cannot be
+  erased by repository configuration.
 
 ### Changed
 
