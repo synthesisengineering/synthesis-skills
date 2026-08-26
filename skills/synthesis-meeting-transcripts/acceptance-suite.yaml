@@ -1,0 +1,75 @@
+# AGENT HEURISTIC: R5 will generalize the executable acceptance-manifest
+# schema. R3 instantiates the controlling plan's closed fixture universe now.
+schema: 1
+suite: synthesis-meeting-transcripts-transcript-primary
+membership: closed
+production_entry_point: transcript_primary.py
+enforcing_boundary: before an attribution-bearing claim cites an artifact as primary
+receipt_consumer: the caller that stages or records the attribution-bearing claim
+expected_status: pass
+unverified_remainder: semantic fidelity, speaker identity, capture completeness outside the artifact, and consumer use of the receipt
+cases:
+  - id: exact-fixture-shape
+    control_class: diagnostic
+    fixture: test_transcript_primary.py::test_fixture_shape
+    motivating_defect: engagement-motivating-summary-shape-was-not-pinned
+  - id: manifest-self-consumption
+    control_class: diagnostic
+    fixture: test_transcript_primary.py::test_acceptance_manifest_is_closed_and_resolvable
+    motivating_defect: r3-review-closed-manifest-omitted-runner-members
+  - id: component-version-parity
+    control_class: diagnostic
+    fixture: test_transcript_primary.py::test_component_versions_match_skill_metadata
+    motivating_defect: agent-self-review-detector-banner-disagreed-with-skill-metadata
+  - id: structured-summary-128-lines
+    control_class: acceptance-test
+    fixture: test_transcript_primary.py::test_structured_summary_is_derived
+    motivating_defect: engagement-128-line-structured-summary-cleared-a-primary-transcript-gate
+  - id: summary-marker-injection
+    control_class: acceptance-test
+    fixture: test_transcript_primary.py::test_summary_with_bare_message_timestamps_is_derived
+    motivating_defect: r3-review-seven-bare-message-timestamps-upgraded-a-structured-summary
+  - id: marker-only-artifact
+    control_class: enforced-gate
+    fixture: test_transcript_primary.py::test_marker_only_file_is_derived
+    motivating_defect: r3-review-five-marker-lines-minted-attribution-authority
+  - id: transcript-heading-is-not-source-grade
+    control_class: acceptance-test
+    fixture: test_transcript_primary.py::test_heading_cannot_upgrade_summary
+    motivating_defect: engagement-prose-primary-transcript-label-was-accepted-as-evidence
+  - id: raw-message-density
+    control_class: acceptance-test
+    fixture: test_transcript_primary.py::test_raw_message_markers_establish_source_grade
+    motivating_defect: engagement-primary-label-was-not-checked-against-provider-identifiers
+  - id: canonical-message-identity
+    control_class: acceptance-test
+    fixture: test_transcript_primary.py::test_permalink_and_message_ts_for_one_message_are_deduplicated
+    motivating_defect: agent-self-review-two-identifiers-could-double-count-one-message
+  - id: attribution-location-required
+    control_class: enforced-gate
+    fixture: test_transcript_primary.py::test_attribution_without_location_is_refused
+    motivating_defect: engagement-derived-summary-cleared-a-first-public-naming
+  - id: attribution-location-must-resolve
+    control_class: enforced-gate
+    fixture: test_transcript_primary.py::test_unknown_location_is_refused
+    motivating_defect: engagement-grounding-label-had-no-quote-level-source-location
+  - id: location-belongs-to-raw-record
+    control_class: enforced-gate
+    fixture: test_transcript_primary.py::test_location_must_belong_to_a_complete_raw_record
+    motivating_defect: r3-review-loose-marker-could-be-used-as-attribution-location
+  - id: provider-identifier-agreement
+    control_class: acceptance-test
+    fixture: test_transcript_primary.py::test_mismatched_permalink_and_message_timestamp_refuses_source_grade
+    motivating_defect: agent-heuristic-conflicting-provider-identifiers-must-fail-closed
+  - id: thread-location-is-not-quote-granular
+    control_class: enforced-gate
+    fixture: test_transcript_primary.py::test_thread_location_is_not_quote_granular
+    motivating_defect: engagement-thread-context-could-be-mistaken-for-quote-level-evidence
+  - id: location-bound-authority-receipt
+    control_class: enforced-gate
+    fixture: test_transcript_primary.py::test_matching_location_issues_hash_bound_receipt
+    motivating_defect: engagement-source-grade-was-asserted-without-a-consumable-boundary-receipt
+  - id: completion-signal-remainder
+    control_class: acceptance-test
+    fixture: test_transcript_primary.py::test_every_result_names_unverified_remainder
+    motivating_defect: context-edit-body-currency-unqualified-success-for-partial-work

@@ -1,14 +1,38 @@
 ---
 name: synthesis-meeting-transcripts
-description: "Fetch AI-generated meeting notes and full transcripts (e.g., Google Meet + Gemini) from the user's Gmail/Drive into local markdown files. Tool-agnostic: works with any Gmail + Drive MCP (Anthropic hosted connectors, self-hosted workspace-mcp, or others). Replaces the manual email → Google Doc → export-markdown → Downloads → move workflow. Use when asked to: fetch meeting transcript, pull standup, grab meeting notes, sync meetings, download transcript, get Gemini notes, import meeting."
+description: "Fetch AI-generated meeting notes and full transcripts into local markdown files, and verify that an artifact is primary before it supports attribution-bearing claims. Tool-agnostic: works with Gmail/Drive MCPs and local transcript exports. Use when asked to fetch, pull, sync, download, import, classify, or verify a meeting transcript."
 license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "0.6.1"
+  version: "0.7.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
+
+## v0.7.0 — Source grade is now executable
+
+The standing kernel rule already says that a verbatim transcript is the only
+primary source for attribution-bearing meeting claims. v0.7.0 adds the missing
+mechanical boundary: `transcript_primary.py` rejects a structured summary even
+when its filename or heading says “primary transcript,” classifies artifacts
+from complete raw provider-message records that pair an identifier with
+bounded message content, and requires an exact record-bound message location
+before issuing an attribution receipt. Loose or conflicting identifiers fail
+closed.
+
+Both executable components now report the same 0.7.0 version as this skill's
+metadata. The acceptance suite executes that parity instead of leaving the
+existing “must match” banner as an unchecked claim.
+
+The motivating fixture preserves the structure, not the private content, of a
+real 128-line summarizer that had been labelled a primary transcript. Its
+summary bullets and inline times cannot establish raw-message provenance. The
+positive fixture uses synthetic `message_ts`, `thread_ts`, and Slack permalink
+records. Classification is explicitly diagnostic. Only
+`authorize-attribution` is an enforced gate, and its receipt binds the input
+hash and the exact permalink or `message_ts`; a thread id alone is not
+quote-granular. Every result names the unverified remainder.
 
 ## v0.6.1 — The heartbeat distinguishes absence from invisibility
 
@@ -359,6 +383,35 @@ If count < 5, you have not saved the full transcript. Re-fetch the Drive doc.
 - `email-*.md` — synced email threads (not meetings)
 
 If you want to keep one of these in the meetings directory but still audit it, rename it without the excluded prefix.
+
+### Step 4.6: Verify source grade before attribution
+
+Before a quote, approval, warning, decision, action owner, or close paraphrase
+cites an artifact as primary, classify the artifact and then bind the claim to
+one raw message location:
+
+```bash
+python3 <synthesis-meeting-transcripts-root>/transcript_primary.py \
+    classify <artifact> --json
+
+python3 <synthesis-meeting-transcripts-root>/transcript_primary.py \
+    authorize-attribution <artifact> \
+    --location 'permalink:https://example.slack.com/archives/C123/p1700000000000001' \
+    --json
+```
+
+`classify` is a diagnostic and never issues authority. A derived artifact exits
+1 even when it calls itself a transcript. `authorize-attribution` also exits 1
+unless the file has dense, complete raw provider-message records and the
+supplied `permalink:` or `message_ts:` belongs to one of those records in the
+same input bytes. A
+`thread_ts:` identifies a conversation, not the exact message supporting a
+claim, so it is not sufficient for attribution authority.
+
+The receipt expires when the file's bytes change. It does not verify semantic
+fidelity, speaker identity beyond the stored labels, capture completeness
+outside the artifact, or whether a later consumer cites the verified message
+honestly; those limits remain in every result.
 
 ### Step 5: Update indices (optional)
 

@@ -67,7 +67,7 @@ from pathlib import Path
 # own output could reveal that the copy being run was stale. This constant plus the banner
 # line below close that gap — if the printed version doesn't match SKILL.md's frontmatter
 # version, the copy being run is not the one you think it is.
-SCRIPT_VERSION = "0.5.3"
+SCRIPT_VERSION = "0.7.0"
 
 # Any HH:MM:SS or MM:SS anywhere — Gemini uses bare, bold, heading, and markdown-link forms
 TIMESTAMP_RE = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
@@ -131,6 +131,17 @@ SKIP_PREFIXES = ("_", "gdoc-", "email-")
 # no verbatim transcript was produced at the source" — Google Meet was recorded
 # but transcription was not enabled. The verifier accepts these as OK.
 NO_SOURCE_TRANSCRIPT_MARKER = "<!-- VERIFIER: no-source-transcript -->"
+
+# Completeness is a corpus diagnostic, not an attribution-authority gate. These
+# limits accompany every successful completion signal so a clean detector run
+# cannot be mistaken for proof that the files are authentic, exhaustive, or
+# source-grade for a particular claim.
+CONTROL_CLASS = "diagnostic"
+UNVERIFIED_REMAINDER = [
+    "whether a no-source-transcript marker truthfully reflects the provider source",
+    "capture completeness beyond the bytes in the audited files",
+    "attribution-level primary-source eligibility; use transcript_primary.py",
+]
 
 
 def count_timestamps(content: str) -> int:
@@ -271,6 +282,12 @@ def main() -> int:
     if args.json:
         print(json.dumps({
             "script_version": SCRIPT_VERSION,
+            "control_class": CONTROL_CLASS,
+            "issues_authority_receipt": False,
+            "enforcement_outcome": (
+                "complete-corpus" if incomplete_count == 0 else "incomplete-corpus"
+            ),
+            "unverified_remainder": UNVERIFIED_REMAINDER,
             "dir": str(meetings_dir),
             "min_markers": args.min_markers,
             "min_speakers": args.min_speakers,
@@ -285,6 +302,7 @@ def main() -> int:
     else:
         print(f"=== Transcript completeness audit: {meetings_dir} ===")
         print(f"Detector version: {SCRIPT_VERSION} (must match SKILL.md frontmatter — if you expected a newer fix and don't see it, you're running a stale copy)")
+        print(f"Control class: {CONTROL_CLASS}; authority receipt: no")
         print(f"Thresholds: ≥{args.min_markers} timestamps + ≥{args.min_speakers} speaker lines")
         print(f"Skip prefixes: {SKIP_PREFIXES} · No-source-transcript marker: {NO_SOURCE_TRANSCRIPT_MARKER}")
         print()
@@ -298,6 +316,13 @@ def main() -> int:
         print()
         filter_note = " (listing filtered to incomplete only)" if args.only_incomplete else ""
         print(f"Total: {len(results)} files — {incomplete_count} incomplete, {skipped_count} skipped, {no_source_count} no-source-transcript.{filter_note}")
+        print(
+            "Enforcement outcome: "
+            + ("complete-corpus" if incomplete_count == 0 else "incomplete-corpus")
+        )
+        print("Unverified remainder:")
+        for item in UNVERIFIED_REMAINDER:
+            print(f"- {item}")
         if incomplete_count:
             print()
             print("Incomplete files need backfill: re-fetch the source Google Doc")

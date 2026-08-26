@@ -106,6 +106,40 @@ def test_required_checks_do_not_depend_on_shell_glob_expansion() -> None:
     assert wildcard_arguments == []
 
 
+def test_required_checks_execute_both_transcript_boundaries() -> None:
+    commands = {name: command for name, command in release.REQUIRED_CHECKS}
+    assert commands["meeting-transcripts.completeness"] == [
+        "python3",
+        "skills/synthesis-meeting-transcripts/test_verify_transcripts.py",
+    ]
+    assert commands["meeting-transcripts.primary"] == [
+        "python3",
+        "skills/synthesis-meeting-transcripts/test_transcript_primary.py",
+    ]
+
+
+def test_required_checks_execute_release_wiring_tests() -> None:
+    commands = {name: command for name, command in release.REQUIRED_CHECKS}
+    assert commands["pytest.release"] == [
+        "python3",
+        "-m",
+        "pytest",
+        "skills/synthesis-skills-manager/scripts/test_release.py",
+        "-q",
+    ]
+
+
+def test_repository_ci_executes_release_wiring_tests() -> None:
+    repository = Path(__file__).resolve().parents[3]
+    workflow = (repository / ".github" / "workflows" / "validate.yml").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        "python -m pytest skills/synthesis-skills-manager/scripts/test_release.py -q"
+        in workflow
+    )
+
+
 # --- client reporting, fail-closed -----------------------------------------
 
 

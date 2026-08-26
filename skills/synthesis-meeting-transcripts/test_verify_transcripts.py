@@ -51,6 +51,7 @@ import importlib.util
 import io
 import json
 import pathlib
+import re
 import sys
 import tempfile
 
@@ -167,6 +168,16 @@ def reporting_cases(corpus: pathlib.Path) -> list[tuple[str, bool, str]]:
         CLEAN_CORPUS_SUMMARY in out,
         f"expected {CLEAN_CORPUS_SUMMARY!r} in:\n{out}",
     ))
+    cases.append((
+        "human success names control class",
+        "Control class: diagnostic" in out,
+        f"success output omitted its control class:\n{out}",
+    ))
+    cases.append((
+        "human success names unverified remainder",
+        "Unverified remainder:" in out,
+        f"success output omitted its unverified remainder:\n{out}",
+    ))
 
     code, out = run_cli([str(corpus), "--only-incomplete"])
     cases.append(("clean corpus exits 0 under --only-incomplete", code == 0, f"got exit {code}"))
@@ -198,12 +209,20 @@ def reporting_cases(corpus: pathlib.Path) -> list[tuple[str, bool, str]]:
         ("incomplete_count", "incomplete_count", 0),
         ("skipped_count survives filtering", "skipped_count", 2),
         ("no_source_count survives filtering", "no_source_count", 1),
+        ("control class", "control_class", "diagnostic"),
+        ("authority receipt", "issues_authority_receipt", False),
+        ("enforcement outcome", "enforcement_outcome", "complete-corpus"),
     ):
         cases.append((
             f"--json {label}",
             payload.get(key, "<missing>") == want,
             f"{key}={payload.get(key, '<missing>')!r}, want {want!r} — full payload: {payload}",
         ))
+    cases.append((
+        "--json names unverified remainder",
+        bool(payload.get("unverified_remainder")),
+        f"unverified_remainder missing or empty — full payload: {payload}",
+    ))
 
     # The other direction: filtering must still filter, and a real failure must still fail.
     write_summary_only(corpus / "summary-only.md")
@@ -225,6 +244,15 @@ def reporting_cases(corpus: pathlib.Path) -> list[tuple[str, bool, str]]:
 
 def main() -> int:
     failures = []
+
+    skill_text = (pathlib.Path(__file__).parent / "SKILL.md").read_text(encoding="utf-8")
+    skill_version_match = re.search(r'^  version: "([^"]+)"$', skill_text, re.MULTILINE)
+    if not skill_version_match or skill_version_match.group(1) != v.SCRIPT_VERSION:
+        failures.append(
+            "VERSION detector version must match SKILL.md metadata version — "
+            f"detector={v.SCRIPT_VERSION!r}, skill="
+            f"{skill_version_match.group(1) if skill_version_match else '<missing>'!r}"
+        )
 
     for label, line, want in SPEAKER_CASES:
         got = bool(v.SPEAKER_RE.search(line))
@@ -265,7 +293,7 @@ def main() -> int:
         if not passed:
             failures.append(f"REPORTING {label!r}: {detail}")
 
-    total = len(SPEAKER_CASES) + len(STANDALONE_TS_CASES) + 2 + len(reporting)
+    total = len(SPEAKER_CASES) + len(STANDALONE_TS_CASES) + 3 + len(reporting)
     if failures:
         print(f"FAILED — {len(failures)} of {total} checks:")
         for f in failures:
