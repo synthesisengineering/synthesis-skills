@@ -1,0 +1,55 @@
+# AGENT HEURISTIC: the plan requires an executable, closed acceptance manifest but
+# does not prescribe its schema. R5 will generalize this instance across skills.
+schema: 1
+suite: synthesis-promotion-gate
+membership: closed
+production_entry_point: scripts/promotion_gate.py enforce
+enforcing_boundary: before the supplied promotion command
+receipt_consumer: built-in candidate revalidation plus supplied command
+expected_status: pass
+unverified_remainder: consumers omitted from a repository's surface manifest, disclosure semantics outside the configured marker policy, and destination bytes after the supplied command returns
+cases:
+  - id: round2-five-rendered-defects
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_successful_build_refuses_all_five_round2_rendered_defects
+    motivating_defect: engagement-round-2-build-succeeded-with-five-outward-surface-defects
+  - id: sensitive-comment-page-source
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_sensitive_html_comment_is_inspected_as_comment_and_raw_source
+    motivating_defect: engagement-round-2-sensitive-comment-survived-in-generated-page-source
+  - id: tag-adjacency
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_dom_heading_preserves_tag_adjacency_instead_of_inventing_spaces
+    motivating_defect: engagement-round-15-tag-to-space-projection-missed-visible-adjacency
+  - id: frontmatter-route-bijection
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_route_bijection_uses_frontmatter_slug_not_source_directory
+    motivating_defect: engagement-round-15-directory-substring-routing-ignored-frontmatter
+  - id: staged-page-inspection-completeness
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_every_staged_input_must_have_an_inspected_output
+    motivating_defect: engagement-round-15-one-of-two-staged-pages-was-never-inspected
+  - id: publishable-range
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_publishable_range_excludes_internal_draft_material_but_binds_both_hashes
+    motivating_defect: engagement-round-2-byte-identity-certified-the-wrong-source-range
+  - id: unresolved-sidecar
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_unresolved_sidecar_flag_refuses_promotion_even_when_rendered_page_is_clean
+    motivating_defect: engagement-unresolved-sidecar-flags-were-not-promotion-blockers
+  - id: refusal-precedes-state-change
+    control_class: enforced-gate
+    fixture: scripts/test_promotion_gate.py::test_dirty_enforced_gate_never_invokes_the_promotion_command
+    motivating_defect: engagement-round-15-standalone-successful-command-had-no-enforcing-boundary
+  - id: receipt-consumer-topology
+    control_class: enforced-gate
+    fixture: scripts/test_promotion_gate.py::test_clean_enforced_gate_revalidates_receipt_then_invokes_the_consumer
+    motivating_defect: engagement-round-15-authority-had-no-required-caller-or-receipt-consumer
+  - id: changed-input-revalidation
+    control_class: enforced-gate
+    fixture: scripts/test_promotion_gate.py::test_input_changed_during_build_refuses_before_the_promotion_command
+    motivating_defect: engagement-round-15-receipt-was-not-bound-to-later-promoted-bytes
+  - id: surface-manifest-agreement
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_surface_manifest_and_inspection_config_must_name_the_same_renderers
+    motivating_defect: engagement-round-15-canonical-mirror-was-absent-from-the-inspected-surface-list
