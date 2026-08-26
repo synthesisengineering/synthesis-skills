@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -148,6 +148,32 @@ public-surface repositories rather than guessing.
 - **Human layer:** the person owns every Class-A approval and every
   Class-X override. The system's job is to make the decision explicit,
   informed, and durable — never to make it for them.
+
+## Category Allowlists Without Approval Fatigue
+
+A sound disclosure gate preserves human attention for consequential choices.
+When trivial, repetitive prompts teach the principal to rubber-stamp every
+dialog, the fail-closed mechanism is no longer producing informed decisions:
+approval fatigue is a failure mode of fail-closed design.
+
+A category allowlist is appropriate only when the principal approves the
+category once and the category has an executable membership test. Its record
+must define:
+
+1. the exact surface and register in which it applies;
+2. a predicate grounded in independent public evidence authored or controlled
+   by the principal;
+3. the permitted claim shape, which must remain positive or neutral;
+4. explicit exclusions and an owner for amendments;
+5. evidence that each use satisfies the frozen predicate, without silently
+   growing the category.
+
+The category reduces repeated Class-A decisions; it never turns an entity into
+a general disclosure allowance. Class X is never category-allowlisted. A
+negative statement, operational detail, private provenance, identifying
+aggregation, predicate mismatch, or ambiguity remains Class A and returns to
+the principal. Category membership narrows approval noise; it does not weaken
+the five tests or manufacture precedent.
 
 ## Maintenance protocol
 

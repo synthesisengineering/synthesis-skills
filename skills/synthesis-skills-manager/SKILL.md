@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.0"
+  version: "2.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
