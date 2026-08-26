@@ -162,6 +162,36 @@ def test_unknown_location_is_refused() -> None:
     assert result["enforcement_outcome"] == "refused-unresolved-location"
 
 
+def test_location_must_belong_to_a_complete_raw_record() -> None:
+    injected = RAW.read_text(encoding="utf-8") + "\nmessage_ts: `1900000000.000001`\n"
+    with tempfile.TemporaryDirectory() as temporary:
+        artifact = Path(temporary) / "raw-plus-loose-marker.md"
+        artifact.write_text(injected, encoding="utf-8")
+        code, result = invoke(
+            "authorize-attribution",
+            str(artifact),
+            "--location",
+            "message_ts:1900000000.000001",
+        )
+    assert code == 1
+    assert result["enforcement_outcome"] == "refused-unresolved-location"
+
+
+def test_mismatched_permalink_and_message_timestamp_refuses_source_grade() -> None:
+    mismatched = RAW.read_text(encoding="utf-8").replace(
+        "message_ts: `1700000000.000001`",
+        "message_ts: `1900000000.000001`",
+        1,
+    )
+    with tempfile.TemporaryDirectory() as temporary:
+        artifact = Path(temporary) / "identifier-mismatch.md"
+        artifact.write_text(mismatched, encoding="utf-8")
+        code, result = invoke("classify", str(artifact))
+    assert code == 1
+    assert result["source_class"] == "derived"
+    assert result["evidence"]["identifier_mismatch_count"] == 1
+
+
 def test_thread_location_is_not_quote_granular() -> None:
     code, result = invoke(
         "authorize-attribution",

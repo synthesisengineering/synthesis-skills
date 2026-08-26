@@ -53,6 +53,14 @@ cases:
     control_class: enforced-gate
     fixture: test_transcript_primary.py::test_unknown_location_is_refused
     motivating_defect: engagement-grounding-label-had-no-quote-level-source-location
+  - id: location-belongs-to-raw-record
+    control_class: enforced-gate
+    fixture: test_transcript_primary.py::test_location_must_belong_to_a_complete_raw_record
+    motivating_defect: r3-review-loose-marker-could-be-used-as-attribution-location
+  - id: provider-identifier-agreement
+    control_class: acceptance-test
+    fixture: test_transcript_primary.py::test_mismatched_permalink_and_message_timestamp_refuses_source_grade
+    motivating_defect: agent-heuristic-conflicting-provider-identifiers-must-fail-closed
   - id: thread-location-is-not-quote-granular
     control_class: enforced-gate
     fixture: test_transcript_primary.py::test_thread_location_is_not_quote_granular
