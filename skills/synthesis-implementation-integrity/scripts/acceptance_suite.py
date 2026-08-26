@@ -8,8 +8,10 @@ approval or replace the state-changing boundary that consumes its result.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -23,6 +25,10 @@ except Exception:  # pragma: no cover - exercised only in dependency failure
 
 VALID_EXPECTED_STATUSES = {"pass", "fail"}
 VALID_SCHEMAS = {1, 2}
+SCHEMA2_CHANGE_BASE_POLICY = "boundary-supplied-git-diff"
+SCHEMA2_RECEIPT_CONSUMER = (
+    "synthesis-skills-manager.release.consume-acceptance.v1"
+)
 
 
 class ManifestError(Exception):
@@ -69,6 +75,32 @@ def _nonempty_string(document: dict[str, Any], field: str, errors: list[str]) ->
         errors.append(f"{field} must be a non-empty string")
         return ""
     return value.strip()
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _git(root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            ["git", "-C", str(root), *arguments],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ManifestError(f"git evidence could not be established: {exc}") from exc
+
+
+def _git_value(root: Path, *arguments: str, label: str) -> str:
+    completed = _git(root, *arguments)
+    value = completed.stdout.strip()
+    if completed.returncode != 0 or not value:
+        detail = completed.stderr.strip() or completed.stdout.strip() or "no output"
+        raise ManifestError(f"{label} could not be established: {detail}")
+    return value
 
 
 def _load_manifest(path: Path, root: Path) -> tuple[Path, dict[str, Any]]:
@@ -179,7 +211,19 @@ def validate_manifest(
         )
 
     if has_enforced_gate:
-        _nonempty_string(document, "receipt_consumer", errors)
+        receipt_consumer = _nonempty_string(document, "receipt_consumer", errors)
+    else:
+        receipt_consumer = str(document.get("receipt_consumer") or "").strip()
+
+    if schema == 2:
+        if document.get("change_base_policy") != SCHEMA2_CHANGE_BASE_POLICY:
+            errors.append(
+                f"schema 2 change_base_policy must be {SCHEMA2_CHANGE_BASE_POLICY}"
+            )
+        if receipt_consumer != SCHEMA2_RECEIPT_CONSUMER:
+            errors.append(
+                f"schema 2 receipt_consumer must be {SCHEMA2_RECEIPT_CONSUMER}"
+            )
 
     raw_surfaces = document.get("changed_surfaces")
     if schema == 2 and (not isinstance(raw_surfaces, list) or not raw_surfaces):
@@ -192,6 +236,7 @@ def validate_manifest(
         raw_surfaces = []
 
     mapped_cases: set[str] = set()
+    surface_paths: set[str] = set()
     surface_records: list[dict[str, Any]] = []
     for position, raw_surface in enumerate(raw_surfaces):
         label = f"changed_surfaces[{position}]"
@@ -201,11 +246,19 @@ def validate_manifest(
         raw_path = raw_surface.get("path")
         if not isinstance(raw_path, str) or not raw_path.strip():
             errors.append(f"{label}.path must be a non-empty string")
+            normalized_path = ""
         else:
             try:
-                _bounded_regular_file(root / raw_path, root, f"{label}.path")
+                surface_file = _bounded_regular_file(
+                    root / raw_path, root, f"{label}.path"
+                )
+                normalized_path = surface_file.relative_to(root).as_posix()
+                if normalized_path in surface_paths:
+                    errors.append(f"duplicate changed surface: {normalized_path}")
+                surface_paths.add(normalized_path)
             except ManifestError as exc:
                 errors.append(str(exc))
+                normalized_path = raw_path
 
         surface_cases = raw_surface.get("cases")
         if not isinstance(surface_cases, list) or not surface_cases:
@@ -218,7 +271,7 @@ def validate_manifest(
                 errors.append(f"{label}.cases references unknown case {mapped_id}")
             else:
                 mapped_cases.add(mapped_id)
-        surface_records.append({"path": raw_path, "cases": surface_cases})
+        surface_records.append({"path": normalized_path, "cases": surface_cases})
 
     if schema == 2:
         for case_id in sorted(case_ids - mapped_cases):
@@ -233,6 +286,114 @@ def validate_manifest(
         "cases": case_records,
         "changed_surfaces": surface_records,
     }, []
+
+
+def authoritative_git_evidence(
+    validated: dict[str, Any],
+    root: Path,
+    change_base: str | None,
+    transaction_id: str | None,
+) -> dict[str, Any]:
+    """Bind a schema-2 run to the boundary-selected Git change universe."""
+
+    if not change_base:
+        raise ManifestError(
+            "schema 2 run requires a boundary-supplied --change-base"
+        )
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}", change_base):
+        raise ManifestError("change-base is not a safe Git revision")
+    if not transaction_id or not re.fullmatch(
+        r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", transaction_id
+    ):
+        raise ManifestError(
+            "schema 2 run requires a valid boundary-supplied --transaction-id"
+        )
+
+    inside = _git(root, "rev-parse", "--is-inside-work-tree")
+    if inside.returncode != 0 or inside.stdout.strip() != "true":
+        raise ManifestError(
+            "authoritative Git change universe is unavailable: repo-root is not a Git worktree"
+        )
+    dirty = _git(root, "status", "--porcelain", "--untracked-files=all")
+    if dirty.returncode != 0:
+        raise ManifestError(
+            "authoritative Git change universe is unavailable: git status failed"
+        )
+    if dirty.stdout.strip():
+        raise ManifestError(
+            "authoritative Git change universe requires a clean worktree"
+        )
+
+    base_sha = _git_value(
+        root,
+        "rev-parse",
+        "--verify",
+        f"{change_base}^{{commit}}",
+        label="change-base commit",
+    )
+    head_sha = _git_value(
+        root,
+        "rev-parse",
+        "--verify",
+        "HEAD^{commit}",
+        label="change-head commit",
+    )
+    ancestor = _git(root, "merge-base", "--is-ancestor", base_sha, head_sha)
+    if ancestor.returncode != 0:
+        raise ManifestError(
+            "boundary-supplied change-base is not an ancestor of HEAD"
+        )
+    head_tree = _git_value(
+        root,
+        "rev-parse",
+        "--verify",
+        f"{head_sha}^{{tree}}",
+        label="change-head tree",
+    )
+    changed = _git(
+        root,
+        "diff",
+        "--name-only",
+        "--diff-filter=ACDMRTUXB",
+        f"{base_sha}..{head_sha}",
+        "--",
+    )
+    if changed.returncode != 0:
+        detail = changed.stderr.strip() or "git diff failed"
+        raise ManifestError(
+            f"authoritative Git change universe could not be established: {detail}"
+        )
+    changed_paths = sorted(
+        {line.strip() for line in changed.stdout.splitlines() if line.strip()}
+    )
+    declared_paths = sorted(
+        {surface["path"] for surface in validated["changed_surfaces"]}
+    )
+    undeclared = sorted(set(changed_paths) - set(declared_paths))
+    not_changed = sorted(set(declared_paths) - set(changed_paths))
+    if undeclared or not_changed:
+        details: list[str] = []
+        if undeclared:
+            details.append("undeclared changed path(s): " + ", ".join(undeclared))
+        if not_changed:
+            details.append("declared but unchanged path(s): " + ", ".join(not_changed))
+        raise ManifestError(
+            "authoritative Git change universe does not equal changed_surfaces: "
+            + "; ".join(details)
+        )
+
+    manifest_bytes = validated["manifest"].read_bytes()
+    changed_serialized = ("\n".join(changed_paths) + "\n").encode("utf-8")
+    return {
+        "receipt_schema": "acceptance-run-receipt-v1",
+        "transaction_id": transaction_id,
+        "change_base": base_sha,
+        "change_head": head_sha,
+        "head_tree": head_tree,
+        "manifest_sha256": _sha256_bytes(manifest_bytes),
+        "changed_paths": changed_paths,
+        "changed_paths_sha256": _sha256_bytes(changed_serialized),
+    }
 
 
 def validation_receipt(validated: dict[str, Any]) -> dict[str, Any]:
@@ -252,7 +413,11 @@ def validation_receipt(validated: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def execute(validated: dict[str, Any], root: Path) -> tuple[dict[str, Any], int]:
+def execute(
+    validated: dict[str, Any],
+    root: Path,
+    git_evidence: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], int]:
     document = validated["document"]
     results: list[dict[str, Any]] = []
     for case in validated["cases"]:
@@ -313,6 +478,8 @@ def execute(validated: dict[str, Any], root: Path) -> tuple[dict[str, Any], int]
         case["matched"] for case in results
     )
     receipt = validation_receipt(validated)
+    if git_evidence:
+        receipt.update(git_evidence)
     receipt.update(
         {
             "ok": ok,
@@ -362,6 +529,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--repo-root", required=True)
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--change-base")
+    parser.add_argument("--transaction-id")
     return parser.parse_args(argv)
 
 
@@ -382,7 +551,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.action == "validate":
         emit(validation_receipt(validated), args.json)
         return 0
-    payload, returncode = execute(validated, root)
+    git_evidence = None
+    if validated["document"]["schema"] == 2:
+        try:
+            git_evidence = authoritative_git_evidence(
+                validated,
+                root,
+                args.change_base,
+                args.transaction_id,
+            )
+        except ManifestError as exc:
+            emit({"ok": False, "errors": [str(exc)]}, args.json)
+            return 2
+    payload, returncode = execute(validated, root, git_evidence)
     emit(payload, args.json)
     return returncode
 

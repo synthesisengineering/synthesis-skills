@@ -21,7 +21,10 @@ jobs:
       - run: python -m pytest skills/synthesis-project-management/scripts/test_coordination.py -q
       - run: python -m pytest skills/synthesis-promotion-gate/scripts/ -q
       - run: python -m pytest skills/synthesis-context-lifecycle/scripts/ skills/synthesis-implementation-integrity/scripts/ -q
-      - run: python skills/synthesis-implementation-integrity/scripts/acceptance_suite.py run --manifest skills/synthesis-implementation-integrity/acceptance-suite.yaml --repo-root .
+      - name: Consume transaction-bound R5 acceptance
+        env:
+          SYNTHESIS_ACCEPTANCE_CHANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python skills/synthesis-skills-manager/scripts/release.py --repo-root . --acceptance-only
       - run: python -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-onboarding/scripts/test_onboard.py -q

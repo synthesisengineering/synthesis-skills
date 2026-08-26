@@ -17,10 +17,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **Closed acceptance manifests are executable release evidence.**
   `synthesis-implementation-integrity` v1.2.0 supplies a fail-closed manifest
   validator and runner with declared membership, defect-pinned fixtures,
-  changed-surface closure, expected polarity, full terminal coverage, named
-  enforcement boundaries, and explicit unverified remainder. Doctrine now
-  requires extraction from authoritative sources and locates enforcement at
-  the state-changing receipt consumer.
+  exact changed-surface closure against a boundary-supplied Git diff, expected
+  polarity, full terminal coverage, named enforcement boundaries, and explicit
+  unverified remainder. Receipts bind a one-use transaction, exact head/tree,
+  manifest digest, and changed-path digest while explicitly denying that the
+  runner itself issues authority. Doctrine now requires extraction from
+  authoritative sources and locates enforcement at the state-changing receipt
+  consumer.
 - **Disclosure categories preserve attention without weakening the gate.**
   `synthesis-disclosure-policy` v1.1.0 defines one-time category approval with
   frozen evidence predicates, narrow register and surface scope, positive or
@@ -33,7 +36,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   scripts and inputs to reach the durable tier before a checkpoint closes.
 - **The gated release and repository CI consume the R5 acceptance universe.**
   `synthesis-skills-manager` v2.2.0 runs the lifecycle and integrity tests plus
-  the closed acceptance manifest before publication.
+  the closed acceptance manifest before publication. The release boundary and
+  CI use the same receipt consumer: it derives the authoritative change base,
+  parses the fresh result, recomputes every Git and content binding, verifies
+  closed terminal coverage, and refuses if the worktree changes during the
+  transaction.
 
 ## [4.53.1] - 2026-08-26
 
