@@ -2,10 +2,10 @@
 name: synthesis-autopilot
 description: "Execute an explicitly delegated whole task autonomously using the thinking framework, durable plan and context, checkpoints, anti-shortcut discipline, and implementation-integrity gate. Activate only for clear end-to-end delegation such as 'autopilot this,' 'take care of this for me,' 'handle this end to end,' or 'complete all phases autonomously'; never infer it from a single-step approval, discussion of autonomy, or ambiguous wording."
 license: "Apache-2.0"
-depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management"]
+depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -76,6 +76,10 @@ Engaged: <date> · Requested by: <user> · Status: <phase N of M>
 ## Mission
 What "done" means, in the user's terms.
 
+## Principal outcome
+The artifact or system outcome the principal asked to ship. Reviewer
+satisfaction and control construction are not substitutes.
+
 ## Standing instructions
 The delegation contract above, restated — so a post-compaction
 re-read restores the mode, not just the task.
@@ -86,6 +90,15 @@ Everything the user has decided; never re-litigate these.
 ## Coordination claims
 Session id, active source-area globs, overlaps checked, and messages pending.
 
+## Proportionality
+Consequence being prevented, bounded review universe, justified control
+depth, and why the planned review effort is proportionate.
+
+## Cross-agent orchestration and round-trip budget
+Counterpart sessions, direct dispatch path, provider-boundary exception if
+one exists, allowed principal courier crossings, current count, and the
+blocked-state alert threshold.
+
 ## Phases
 - [x] Phase 1 — ...
 - [ ] Phase 2 — ...
@@ -95,6 +108,9 @@ Dated entries: decision, thinking-framework mode used, rationale.
 
 ## Batched questions for the user
 Only questions the user alone can answer. Presented at checkpoints.
+
+## Sufficiency checkpoint
+Established, open, risk of shipping now, and the principal's ruling.
 
 ## Completion criteria and verification plan
 ```
@@ -110,6 +126,36 @@ Every decision in an autonomous run falls into one of three classes:
 3. **User-only → batch.** Facts only the user knows, genuine value trade-offs between goals the user holds, scope changes beyond the delegation. Add to the plan file's batched-questions section and continue with every piece of work that does not depend on the answer. Present the batch at a natural checkpoint — a phase boundary or the completion report.
 
 **Never block the whole run on one question.** Re-sequence around it. Halt early only when *every* remaining path depends on an unanswered user-only question — that is a blocked state, reported per the alerts section.
+
+## Cross-Agent Orchestration
+
+When an autonomous plan calls for adversarial or independent review, autopilot owns the
+transport. Use direct session-to-session dispatch where the runtime provides it. Give the
+counterpart the bounded evidence package, production entry point, enforcing boundary,
+receipt consumer, principal outcome, and terminal return contract. Apply the sub-agent
+acceptance audit to its return before adopting any finding.
+
+If a provider boundary genuinely has no direct transport, declare that before round one.
+Batch the payload, identify who must paste it, and count it as one of the plan's principal
+courier crossings. Never hide a manual crossing inside “send this to the reviewer.” The
+round-trip budget is a tracked delivery cost; exceeding it triggers the blocked-state alert
+rather than silently recruiting the principal as orchestration middleware.
+
+Write the proportionality section before the first review round: principal outcome,
+closed artifact universe, consequence being prevented, justified control depth, and stop
+rule. Fewer rounds come from complete per-artifact coverage and stronger fixtures, never
+from reducing quality.
+
+At each named checkpoint, record a sufficiency ruling with exactly three evidence fields:
+established, open, and risk of shipping now. Put the ship-now choice in front of the
+principal when the plan names that gate; the principal's ruling terminates the review loop.
+Completion remains the principal's outcome, never reviewer satisfaction.
+
+Control depth is bounded. Verifying a requested verifier once is legitimate. A finding in
+generation N+1 of a control the principal did not request does not start generation N+2.
+If a round's findings are entirely self-inflicted by the new control, record the findings
+and stop control growth until the principal explicitly decides otherwise. Use
+synthesis-adversarial-review for the complete round and ledger protocol.
 
 ## Standing Gates Survive Autonomy
 
@@ -130,7 +176,7 @@ When a phase reaches a gated action, prepare everything up to the gate (the draf
 3. **Coordinate** — read the shared active-sessions board and claim every
    source area this run may write before editing.
 4. **Register** — attach to or create the synthesis project (synthesis-project-management); create the plan file.
-5. **Phase loop** — for each phase: re-read the plan file and coordination board; execute with anti-shortcut discipline; classify each decision per the protocol above; dispatch sub-agents per the hygiene rules below; then update the plan file, and at natural checkpoints run the synthesis-context-lifecycle session protocol so CONTEXT.md and the session log stay current.
+5. **Phase loop** — for each phase: re-read the plan file and coordination board; execute with anti-shortcut discipline; classify each decision per the protocol above; dispatch sub-agents per the hygiene rules below; directly orchestrate any adversarial counterpart and count principal courier crossings; record the sufficiency checkpoint; then update the plan file, and at natural checkpoints run the synthesis-context-lifecycle session protocol so CONTEXT.md and the session log stay current.
 6. **Verify** — before declaring the mission complete, run synthesis-implementation-integrity (or the domain analog). Fix what it finds; verification that only reports is not verification.
 7. **Close** — session-end per synthesis-context-lifecycle (context files updated, work committed where applicable); release the coordination claims; completion report in plain language: what shipped, what was decided and why, the batched questions; then the completion alert.
 
@@ -166,5 +212,6 @@ Nothing above is specific to software. The mode runs the same for engineering, r
 | synthesis-anti-shortcuts | Solution quality; dispatch and acceptance hygiene | Every draft, plan, brief, and sub-agent return |
 | synthesis-grounding-discipline | Claim quality: provenance, cache re-verification, absence proof | Every recorded fact and status claim; before any write or deletion |
 | synthesis-implementation-integrity | Verification before completion claims | Before "done"; per-phase for high-stakes phases |
+| synthesis-adversarial-review | Bounded cross-agent attack, findings, sufficiency, and acceptance | When a plan calls for adversarial or independent review |
 
 Each dependency works standalone. This mode is the sequencing that makes them one behavior: delegate once, and the stack runs itself.

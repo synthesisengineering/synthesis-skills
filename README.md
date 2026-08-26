@@ -11,6 +11,15 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Adversarial review now has an outcome and a stop rule (August 2026).**
+Release **4.50.0** adds `synthesis-adversarial-review`: differently shaped
+agents attack a closed artifact universe, record concessions and terminal
+verdicts, and stop when the principal's outcome is established. Its
+fail-closed YAML ledger separates authority from enforcement and blocking
+defects from improvements, while `synthesis-autopilot` directly transports
+review packets and treats human courier crossings as a budgeted delivery
+cost. See the [4.50.0 release notes](CHANGELOG.md).
+
 **The engine that never updated (August 2026).** Release **4.49.0** fixes a
 silent failure in `synthesis-inbox-cleanup`'s runtime installer: it repointed
 `engine/current` with `mv -f`, but that path is a symlink to a directory, so

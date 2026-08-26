@@ -1,0 +1,88 @@
+# AGENT HEURISTIC: this manifest shape is the generation-zero instance that R5 will
+# formalize. The controlling plan requires a manifest now but does not prescribe keys.
+schema: 1
+suite: synthesis-adversarial-review-finding-ledger
+membership: closed
+production_entry_point: scripts/finding_ledger.py
+enforcing_boundary: atomic ledger replacement after schema and transition validation
+expected_status: pass
+metadata_class: acceptance-test
+issues_authority_receipt: false
+unverified_remainder: live agent behavior, release state, publication, deployment, and principal approvals
+cases:
+  - id: ledger-init
+    control_class: acceptance-test
+    fixture: scripts/test_finding_ledger.py::test_init_creates_declared_engagement
+    motivating_defect: catalogue-P0-1-principal-courier-cost-was-untracked
+  - id: courier-crossing-budget
+    control_class: acceptance-test
+    fixture: scripts/test_finding_ledger.py::test_courier_crossings_are_compare_before_write_and_budget_bounded
+    motivating_defect: catalogue-P0-1-principal-courier-crossings-had-no-auditable-mutation-path
+  - id: completion-signal-coverage
+    control_class: acceptance-test
+    fixture: scripts/test_finding_ledger.py::test_every_success_branch_names_the_unverified_remainder
+    motivating_defect: context-edit-body-currency-unqualified-success-for-partial-work
+  - id: classification-required
+    control_class: acceptance-test
+    fixture: scripts/test_finding_ledger.py::test_add_requires_ship_classification_without_mutating
+    motivating_defect: catalogue-P0-4-ship-blocking-and-ship-improving-were-conflated
+  - id: label-outcome-separation
+    control_class: acceptance-test
+    fixture: scripts/test_finding_ledger.py::test_authority_label_and_enforcement_outcome_remain_separate
+    motivating_defect: principal-boundary-unlabelled-agent-heuristic-became-a-rule
+  - id: executable-repair-state
+    control_class: acceptance-test
+    fixture: scripts/test_finding_ledger.py::test_transition_requires_the_recorded_prior_state
+    motivating_defect: engagement-round-2-prose-and-source-repair-were-conflated
+  - id: follow-up-routing
+    control_class: acceptance-test
+    fixture: scripts/test_finding_ledger.py::test_ship_improving_requires_follow_up_project
+    motivating_defect: catalogue-P0-4-improvements-extended-the-current-delivery
+  - id: duplicate-identity
+    control_class: acceptance-test
+    fixture: scripts/test_finding_ledger.py::test_duplicate_finding_id_refuses_without_mutating
+    motivating_defect: round-36-duplicate-identities-collapsed-before-validation
+  - id: symlink-boundary
+    control_class: acceptance-test
+    fixture: scripts/test_finding_ledger.py::test_symlink_ledger_is_refused
+    motivating_defect: engagement-round-1-symlink-escape
+  - id: principal-outcome-round-semantics
+    control_class: diagnostic
+    fixture: scripts/test_protocol_contract.py::test_review_protocol_is_principal_outcome_focused
+    motivating_defect: catalogue-P0-2-reviewer-satisfaction-replaced-the-principal-outcome
+  - id: production-topology-handoff
+    control_class: diagnostic
+    fixture: scripts/test_protocol_contract.py::test_handoff_contract_names_the_production_topology
+    motivating_defect: engagement-sidecars-and-receipts-were-treated-as-proof
+  - id: bounded-control-depth
+    control_class: diagnostic
+    fixture: scripts/test_protocol_contract.py::test_control_depth_and_sufficiency_are_bounded
+    motivating_defect: catalogue-P0-3-controls-generated-unrequested-controls
+  - id: direct-agent-orchestration
+    control_class: diagnostic
+    fixture: scripts/test_protocol_contract.py::test_autopilot_tracks_direct_dispatch_and_courier_cost
+    motivating_defect: catalogue-P0-1-more-than-twenty-principal-courier-crossings
+  - id: hidden-specialist-routing
+    control_class: diagnostic
+    fixture: scripts/test_protocol_contract.py::test_hidden_specialist_is_reachable_through_the_router
+    motivating_defect: codex-prompt-budget-hides-specialists-without-a-router-path
+  - id: atomic-courier-compare-before-write
+    control_class: acceptance-test
+    fixture: scripts/test_finding_ledger.py::test_concurrent_crossing_writers_cannot_both_report_success
+    motivating_defect: r1-review-two-stale-writers-both-succeeded-and-lost-one-event
+  - id: contiguous-finding-history
+    control_class: acceptance-test
+    fixture: scripts/test_finding_ledger.py::test_transition_history_is_contiguous_and_evidence_bound
+    motivating_defect: r1-review-validator-certified-a-noncontiguous-evidence-chain
+  - id: resources-containment
+    control_class: acceptance-test
+    fixture: scripts/test_finding_ledger.py::test_resources_root_rejects_symlinked_parent_and_outside_target
+    motivating_defect: r1-review-symlinked-parent-escaped-the-owning-project-resources-boundary
+  - id: declared-control-authority
+    control_class: diagnostic
+    fixture: scripts/test_protocol_contract.py::test_acceptance_manifest_classifies_control_authority
+    motivating_defect: r1-review-diagnostics-were-presented-as-acceptance-authority
+  - id: token-soup-refusal
+    control_class: diagnostic
+    fixture: scripts/test_protocol_contract.py::test_protocol_acceptance_rejects_token_soup
+    motivating_defect: r1-review-five-protocol-checks-passed-against-semantically-inert-token-soup

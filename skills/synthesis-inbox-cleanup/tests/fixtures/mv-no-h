@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+# Model GNU mv's refusal of the BSD-only -h option while delegating every
+# portable invocation to the host implementation.
+for argument in "$@"; do
+    case "$argument" in
+        -?*h*)
+            echo "mv fixture: option h is unsupported" >&2
+            exit 64
+            ;;
+    esac
+done
+
+exec "$SYNTHESIS_TEST_REAL_MV" "$@"
