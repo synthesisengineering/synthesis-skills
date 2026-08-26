@@ -4,6 +4,34 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.51.0] - 2026-08-26
+
+### Added
+
+- **`synthesis-promotion-gate` v1.0.0 — rendered publication boundaries.**
+  The new gate extracts a declared publishable range, builds into an isolated
+  output root, derives every expected route from frontmatter, and inspects
+  DOM text, heading text, HTML comments, and raw page source under one
+  canonical marker policy. A versioned surface manifest must agree exactly
+  with configured renderer inspections; missing outputs and inputs consumed
+  by no renderer refuse the run.
+- **Executable authority topology.** `check` emits a non-authoritative
+  acceptance receipt. `enforce` revalidates config, policy, inputs, sidecars,
+  renderer outputs, and hashes immediately before a supplied promotion
+  command, then issues an enforced-gate receipt only after that command
+  succeeds. The generation-zero suite carries the five successful-build
+  defects, comment leakage, inline-tag adjacency, frontmatter route mismatch,
+  and the staged page the old selector never inspected.
+
+### Changed
+
+- **The gated release and repository CI run the promotion acceptance suite.**
+  A release cannot install a promotion-gate change on either client unless
+  its fail-closed behavioral cases pass.
+- **AGENT HEURISTIC — `synthesis-skill-router` v1.4.0** routes publication
+  boundary, publishable-range, and promotion-receipt work to the new
+  prompt-hidden specialist.
+
 ## [4.50.0] - 2026-08-26
 
 ### Added

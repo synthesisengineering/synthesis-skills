@@ -498,3 +498,43 @@ def test_surface_manifest_and_inspection_config_must_name_the_same_renderers(
     receipt = read_receipt(receipt_path)
     assert any(f["kind"] == "surface-manifest-mismatch" for f in receipt["findings"])
 
+
+def test_symlinked_config_is_refused_without_following_it(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "project"
+    config = make_project(
+        root,
+        articles=[{"directory": "clean", "slug": "clean"}],
+        outputs={"articles/clean/index.html": "<p>Clean.</p>"},
+    )
+    linked_config = config.with_name("linked-promotion-gate.yaml")
+    linked_config.symlink_to(config.name)
+    result, receipt_path = run_gate(linked_config)
+    assert result.returncode == 1
+    receipt = read_receipt(receipt_path)
+    assert any(f["kind"] in {"symlink-path", "unreadable-config"} for f in receipt["findings"])
+
+
+def test_symlinked_rendered_output_is_refused_instead_of_inspecting_outside_bytes(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "project"
+    config = make_project(
+        root,
+        articles=[{"directory": "clean", "slug": "clean"}],
+        outputs={},
+    )
+    outside = tmp_path / "outside.html"
+    outside.write_text("<p>Clean.</p>", encoding="utf-8")
+    (root / "fixture_build.py").write_text(
+        "import pathlib, sys\n"
+        "target = pathlib.Path(sys.argv[1]) / 'articles/clean/index.html'\n"
+        "target.parent.mkdir(parents=True, exist_ok=True)\n"
+        f"target.symlink_to({str(outside)!r})\n",
+        encoding="utf-8",
+    )
+    result, receipt_path = run_gate(config)
+    assert result.returncode == 1
+    receipt = read_receipt(receipt_path)
+    assert any(f["kind"] == "symlink-path" for f in receipt["findings"])

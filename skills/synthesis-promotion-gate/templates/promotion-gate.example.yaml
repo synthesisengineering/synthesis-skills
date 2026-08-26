@@ -1,0 +1,27 @@
+schema: 1
+build:
+  # Argument list only. The build must write to this substituted isolated root.
+  command: [python3, tools/build_for_promotion.py, --output, "{output_root}"]
+  working_directory: .
+  output_root: dist
+inputs:
+  root: content/drafts
+  globs: ["**/index.md"]
+publishable_range:
+  start: "<!-- SYNTHESIS:PUBLISHABLE:START -->"
+  end: "<!-- SYNTHESIS:PUBLISHABLE:END -->"
+  required: true
+marker_policy: .agents/promotion-marker-policy.yaml
+surface_manifest: .agents/promotion-surface-manifest.yaml
+acceptance_suite: .agents/promotion-acceptance-suite.yaml
+inspected_surfaces:
+  - renderer: primary-html
+    representations:
+      - publishable-source
+      - dom-text
+      - dom-heading-text
+      - html-comments
+      - raw-page-source
+sidecar_flag_globs:
+  - sidecars/**/*.yaml
+unverified_remainder: Consumers omitted from this manifest, semantic disclosures outside this marker policy, and destination bytes after the supplied promotion command returns.

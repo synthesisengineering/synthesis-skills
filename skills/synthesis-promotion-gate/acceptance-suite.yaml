@@ -53,3 +53,11 @@ cases:
     control_class: acceptance-test
     fixture: scripts/test_promotion_gate.py::test_surface_manifest_and_inspection_config_must_name_the_same_renderers
     motivating_defect: engagement-round-15-canonical-mirror-was-absent-from-the-inspected-surface-list
+  - id: config-symlink-boundary
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_symlinked_config_is_refused_without_following_it
+    motivating_defect: implementation-self-review-resolved-a-config-symlink-before-validating-it
+  - id: rendered-output-symlink-boundary
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_symlinked_rendered_output_is_refused_instead_of_inspecting_outside_bytes
+    motivating_defect: implementation-self-review-rendered-output-could-follow-an-outside-symlink
