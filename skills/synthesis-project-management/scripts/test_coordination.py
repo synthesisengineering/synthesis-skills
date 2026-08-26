@@ -1079,8 +1079,13 @@ def test_r4_rename_from_unclaimed_path_is_refused(
 
 
 def test_r4_active_pointer_resolves_committing_session(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # AGENT HEURISTIC: this fixture exercises pointer fallback, so the caller's
+    # real coordination identity must not silently replace the fixture input.
+    monkeypatch.delenv("SYNTHESIS_COORDINATION_SESSION", raising=False)
     root = staged_repository(tmp_path)
     (root / "claimed").mkdir()
     (root / "claimed" / "inside.md").write_text("inside\n", encoding="utf-8")
