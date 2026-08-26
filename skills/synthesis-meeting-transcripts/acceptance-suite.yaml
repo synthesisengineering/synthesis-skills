@@ -1,0 +1,39 @@
+# AGENT HEURISTIC: R5 will generalize the executable acceptance-manifest
+# schema. R3 instantiates the controlling plan's closed fixture universe now.
+schema: 1
+suite: synthesis-meeting-transcripts-transcript-primary
+membership: closed
+production_entry_point: transcript_primary.py
+enforcing_boundary: before an attribution-bearing claim cites an artifact as primary
+receipt_consumer: the caller that stages or records the attribution-bearing claim
+expected_status: pass
+unverified_remainder: semantic fidelity, speaker identity, capture completeness outside the artifact, and consumer use of the receipt
+cases:
+  - id: structured-summary-128-lines
+    control_class: acceptance-test
+    fixture: test_transcript_primary.py::test_structured_summary_is_derived
+    motivating_defect: engagement-128-line-structured-summary-cleared-a-primary-transcript-gate
+  - id: transcript-heading-is-not-source-grade
+    control_class: acceptance-test
+    fixture: test_transcript_primary.py::test_heading_cannot_upgrade_summary
+    motivating_defect: engagement-prose-primary-transcript-label-was-accepted-as-evidence
+  - id: raw-message-density
+    control_class: acceptance-test
+    fixture: test_transcript_primary.py::test_raw_message_markers_establish_source_grade
+    motivating_defect: engagement-primary-label-was-not-checked-against-provider-identifiers
+  - id: attribution-location-required
+    control_class: enforced-gate
+    fixture: test_transcript_primary.py::test_attribution_without_location_is_refused
+    motivating_defect: engagement-derived-summary-cleared-a-first-public-naming
+  - id: attribution-location-must-resolve
+    control_class: enforced-gate
+    fixture: test_transcript_primary.py::test_unknown_location_is_refused
+    motivating_defect: engagement-grounding-label-had-no-quote-level-source-location
+  - id: location-bound-authority-receipt
+    control_class: enforced-gate
+    fixture: test_transcript_primary.py::test_matching_location_issues_hash_bound_receipt
+    motivating_defect: engagement-source-grade-was-asserted-without-a-consumable-boundary-receipt
+  - id: completion-signal-remainder
+    control_class: acceptance-test
+    fixture: test_transcript_primary.py::test_every_result_names_unverified_remainder
+    motivating_defect: context-edit-body-currency-unqualified-success-for-partial-work
