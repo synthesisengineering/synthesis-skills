@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.12.0"
+  version: "1.11.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -658,36 +658,6 @@ If any question cannot be answered from CONTEXT.md alone (with a pointer to REFE
 
 ---
 
-## Executable Working State — resources/scripts/
-
-Durable prose is incomplete when its cited computation exists only in the
-session that wrote it. If a script produces a number or conclusion cited in a
-durable record, preserve the script and every required input before recording
-the result. Put that executable working state under `resources/scripts/` and
-cite its canonical, project-relative path from the artifact or session record.
-
-Each preserved computation carries a `resources/scripts/README.md` that names:
-
-- the script and its purpose;
-- every input, dependency, and expected output;
-- the regeneration order and exact invocation;
-- whether each input is immutable, append-only, or intentionally refreshed;
-- the success and failure exit behavior.
-
-Portable means a cold resumer can run the script from repository state. A
-script that depends on a session-temporary download, chat attachment, shell
-variable, or scratchpad value is not preserved until that required state is
-also stored at a project-relative path or documented as an independently
-obtainable immutable input.
-
-The context doctor reports `artifact-cites-missing-script` when a Markdown file
-directly under `resources/artifacts/` cites a nonexistent, non-regular, escaped,
-or symlink-traversing `resources/scripts/` target. That check establishes path
-existence and portability at the citation boundary; it does not prove the
-script is correct, the inputs are sufficient, or the regenerated conclusion is
-valid. Those questions remain with the artifact's acceptance evidence and the
-implementation-integrity review.
-
 ## The Context Doctor — verification, not diligence
 
 Everything above describes what a well-maintained context layer looks like. None of it verifies that yours *is* one. That gap matters more than it first appears: the durable layer is what makes cross-agent, cross-machine resumption possible, so it is the foundation every other guarantee stands on — and until you can check it, its health is an assertion by the same agent that was supposed to maintain it.
@@ -714,7 +684,6 @@ What it checks:
 | Cross-tier agreement | index.yaml status agrees with the CONTEXT.md header; completed projects carry `completed_date`; indexed projects have directories and vice versa |
 | Freshness | index.yaml `last_session` and the CONTEXT.md header agree with real git history |
 | Durability | tier files are tracked by git; local mode reports recoverable uncommitted or ahead state as warnings; remote mode requires a clean upstream-current branch |
-| Executable state | artifact citations to missing, non-regular, escaped, or symlink-traversing `resources/scripts/` targets warn; existence does not establish correctness |
 | Disclosure | anything unverifiable is reported rather than skipped — unreadable status headers and freshness that cannot be established both surface as findings |
 
 Exit codes follow the guard contract: `0` healthy, `1` defects found, `2` the doctor could not establish ground truth. The third is the important one — an unreadable source or a source outside git exits 2 rather than reporting health, because a check that cannot run must never look like a check that passed.
