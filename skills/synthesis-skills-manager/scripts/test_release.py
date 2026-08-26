@@ -150,14 +150,30 @@ def test_required_checks_execute_r5_integrity_suite() -> None:
         "skills/synthesis-implementation-integrity/scripts/",
         "-q",
     ]
-    assert commands["acceptance.r5"] == [
-        "python3",
-        "skills/synthesis-implementation-integrity/scripts/acceptance_suite.py",
-        "run",
-        "--manifest",
-        "skills/synthesis-implementation-integrity/acceptance-suite.yaml",
-        "--repo-root",
-        ".",
+    assert "acceptance.r5" not in commands
+
+
+def test_release_boundary_consumes_fresh_bound_acceptance_receipt(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[Path, bool]] = []
+
+    def consume(candidate: Path, result: release.Result, dry_run: bool) -> bool:
+        calls.append((candidate, dry_run))
+        return result.add(
+            "checks.acceptance.r5",
+            True,
+            "fresh transaction-bound receipt consumed",
+        )
+
+    monkeypatch.setattr(release, "REQUIRED_CHECKS", ())
+    monkeypatch.setattr(release, "consume_acceptance", consume)
+    result = release.Result()
+
+    assert release.run_required_checks(repo, result, dry_run=False)
+    assert calls == [(repo, False)]
+    assert [(step.name, step.ok) for step in result.steps] == [
+        ("checks.acceptance.r5", True)
     ]
 
 
@@ -171,12 +187,16 @@ def test_repository_ci_executes_r5_integrity_suite() -> None:
         "skills/synthesis-implementation-integrity/scripts/ -q"
         in workflow
     )
-    assert (
-        "python skills/synthesis-implementation-integrity/scripts/acceptance_suite.py "
-        "run --manifest skills/synthesis-implementation-integrity/acceptance-suite.yaml "
-        "--repo-root ."
-        in workflow
+    assert "python skills/synthesis-skills-manager/scripts/release.py --repo-root . --acceptance-only" in workflow
+
+
+def test_repository_ci_uses_receipt_consumer_with_authoritative_base() -> None:
+    repository = Path(__file__).resolve().parents[3]
+    workflow = (repository / ".github" / "workflows" / "validate.yml").read_text(
+        encoding="utf-8"
     )
+    assert "SYNTHESIS_ACCEPTANCE_CHANGE_BASE:" in workflow
+    assert "github.event.pull_request.base.sha || github.event.before" in workflow
 
 
 # --- client reporting, fail-closed -----------------------------------------

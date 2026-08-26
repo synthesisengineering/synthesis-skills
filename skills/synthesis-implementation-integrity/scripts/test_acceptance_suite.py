@@ -29,7 +29,7 @@ def fixture_file(root: Path) -> Path:
 
 def manifest_payload() -> dict:
     return {
-        "schema": 2,
+        "schema": 1,
         "suite": "fixture-suite",
         "membership": "closed",
         "production_entry_point": "tool.py run",
@@ -73,6 +73,52 @@ def run_cli(root: Path, action: str, manifest: Path) -> subprocess.CompletedProc
         text=True,
         check=False,
     )
+
+
+def init_change_repository(root: Path) -> str:
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    for key, value in (
+        ("user.name", "Acceptance Fixture"),
+        ("user.email", "acceptance@example.invalid"),
+        ("core.hooksPath", "/dev/null"),
+    ):
+        subprocess.run(
+            ["git", "-C", str(root), "config", key, value],
+            check=True,
+        )
+    subprocess.run(
+        ["git", "-C", str(root), "commit", "--allow-empty", "-qm", "base"],
+        check=True,
+    )
+    return subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def commit_change_repository(root: Path) -> None:
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(root), "commit", "-qm", "candidate"],
+        check=True,
+    )
+
+
+def schema2_payload() -> dict:
+    payload = manifest_payload()
+    payload["schema"] = 2
+    payload["change_base_policy"] = "boundary-supplied-git-diff"
+    payload["receipt_consumer"] = (
+        "synthesis-skills-manager.release.consume-acceptance.v1"
+    )
+    payload["changed_surfaces"] = [
+        {"path": "tool.py", "cases": ["passing-probe"]},
+        {"path": "tests/test_probe.py", "cases": ["passing-probe"]},
+        {"path": "acceptance-suite.yaml", "cases": ["passing-probe"]},
+    ]
+    return payload
 
 
 def test_manifest_rejects_open_membership(tmp_path: Path) -> None:
@@ -202,6 +248,80 @@ def test_manifest_rejects_symlinked_fixture(tmp_path: Path) -> None:
     assert "symlink" in completed.stdout
 
 
+def test_schema2_rejects_undeclared_git_changed_surface(tmp_path: Path) -> None:
+    base = init_change_repository(tmp_path)
+    fixture_file(tmp_path)
+    (tmp_path / "undeclared_production.py").write_text(
+        "raise RuntimeError('must be declared')\n",
+        encoding="utf-8",
+    )
+    manifest = write_manifest(tmp_path, schema2_payload())
+    commit_change_repository(tmp_path)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(RUNNER),
+            "run",
+            "--manifest",
+            str(manifest),
+            "--repo-root",
+            str(tmp_path),
+            "--change-base",
+            base,
+            "--transaction-id",
+            "fixture-undeclared-change",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 2
+    assert "undeclared_production.py" in completed.stdout
+    assert "authoritative Git change universe" in completed.stdout
+
+
+def test_schema2_receipt_binds_transaction_and_git_state(tmp_path: Path) -> None:
+    base = init_change_repository(tmp_path)
+    fixture_file(tmp_path)
+    manifest = write_manifest(tmp_path, schema2_payload())
+    commit_change_repository(tmp_path)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(RUNNER),
+            "run",
+            "--manifest",
+            str(manifest),
+            "--repo-root",
+            str(tmp_path),
+            "--change-base",
+            base,
+            "--transaction-id",
+            "fixture-transaction",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    receipt = json.loads(completed.stdout)
+    assert receipt["receipt_schema"] == "acceptance-run-receipt-v1"
+    assert receipt["transaction_id"] == "fixture-transaction"
+    assert receipt["change_base"] == base
+    assert receipt["change_head"]
+    assert receipt["head_tree"]
+    assert receipt["manifest_sha256"]
+    assert receipt["changed_paths_sha256"]
+    assert receipt["changed_paths"] == sorted(
+        ["acceptance-suite.yaml", "tests/test_probe.py", "tool.py"]
+    )
+    assert receipt["issues_authority_receipt"] is False
+
+
 def test_shipped_manifest_validates() -> None:
     completed = run_cli(REPO_ROOT, "validate", SKILL_ROOT / "acceptance-suite.yaml")
 
@@ -209,4 +329,4 @@ def test_shipped_manifest_validates() -> None:
     result = json.loads(completed.stdout)
     assert result["ok"] is True
     assert result["membership"] == "closed"
-    assert result["cases_declared"] == 22
+    assert result["cases_declared"] == 26
