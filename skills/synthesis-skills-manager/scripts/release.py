@@ -28,6 +28,9 @@ Modes:
   --install-only  skip publishing; refresh and verify the clients only
                   (new machine, recovered drift, or a release pushed elsewhere)
   --check-only    preflight + required checks; no publish, no install
+  --acceptance-only
+                  consume a fresh acceptance result bound to this Git state;
+                  no publish or install (repository CI boundary)
   --dry-run       print the plan and run read-only steps; mutate nothing
 
 Exit codes: 0 released/verified, 1 a step failed, 2 preconditions unverifiable.
@@ -36,8 +39,10 @@ Exit codes: 0 released/verified, 1 a step failed, 2 preconditions unverifiable.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import secrets
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -65,6 +70,15 @@ except ImportError:  # pragma: no cover - resolved at runtime in the repo
 PLUGIN_NAME = "synthesis-skills"
 MARKETPLACE = "synthesis-engineering"
 MANIFESTS = (".claude-plugin/plugin.json", ".codex-plugin/plugin.json")
+ACCEPTANCE_MANIFEST = Path(
+    "skills/synthesis-implementation-integrity/acceptance-suite.yaml"
+)
+ACCEPTANCE_RUNNER = Path(
+    "skills/synthesis-implementation-integrity/scripts/acceptance_suite.py"
+)
+ACCEPTANCE_CONSUMER_ID = (
+    "synthesis-skills-manager.release.consume-acceptance.v1"
+)
 
 # The required checks, mirroring the repository's own verification contract.
 # Kept as data so a reader can see exactly what a release runs.
@@ -75,7 +89,6 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
     ("pytest.coordination", ["python3", "-m", "pytest", "skills/synthesis-project-management/scripts/test_coordination.py", "-q"]),
     ("pytest.promotion-gate", ["python3", "-m", "pytest", "skills/synthesis-promotion-gate/scripts/", "-q"]),
     ("pytest.context-lifecycle-integrity", ["python3", "-m", "pytest", "skills/synthesis-context-lifecycle/scripts/", "skills/synthesis-implementation-integrity/scripts/", "-q"]),
-    ("acceptance.r5", ["python3", "skills/synthesis-implementation-integrity/scripts/acceptance_suite.py", "run", "--manifest", "skills/synthesis-implementation-integrity/acceptance-suite.yaml", "--repo-root", "."]),
     ("pytest.release", ["python3", "-m", "pytest", "skills/synthesis-skills-manager/scripts/test_release.py", "-q"]),
     ("meeting-transcripts.completeness", ["python3", "skills/synthesis-meeting-transcripts/test_verify_transcripts.py"]),
     ("meeting-transcripts.primary", ["python3", "skills/synthesis-meeting-transcripts/test_transcript_primary.py"]),
@@ -113,6 +126,200 @@ def run(cmd: list[str], cwd: Path | None = None, timeout: int = 900) -> subproce
     return subprocess.run(
         cmd, cwd=str(cwd) if cwd else None, capture_output=True, text=True, timeout=timeout
     )
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _git_value(repo: Path, arguments: list[str]) -> tuple[str | None, str]:
+    completed = run(["git", *arguments], cwd=repo)
+    value = completed.stdout.strip()
+    if completed.returncode != 0 or not value:
+        detail = completed.stderr.strip() or completed.stdout.strip() or "no output"
+        return None, detail
+    return value, ""
+
+
+def acceptance_change_base(repo: Path) -> tuple[str | None, str]:
+    """Resolve the base at the release boundary, never from manifest prose."""
+
+    supplied = os.environ.get("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", "").strip()
+    if supplied:
+        resolved, detail = _git_value(
+            repo, ["rev-parse", "--verify", f"{supplied}^{{commit}}"]
+        )
+        return resolved, detail
+
+    parents, detail = _git_value(repo, ["rev-list", "--parents", "-n", "1", "HEAD"])
+    if parents:
+        fields = parents.split()
+        if len(fields) >= 3:
+            return fields[1], "merge first parent"
+
+    branch, branch_detail = _git_value(repo, ["rev-parse", "--abbrev-ref", "HEAD"])
+    if branch and branch != "main":
+        base, merge_detail = _git_value(repo, ["merge-base", "HEAD", "origin/main"])
+        if base:
+            return base, "feature branch merge-base with origin/main"
+        return None, merge_detail
+    return None, detail or branch_detail or (
+        "set SYNTHESIS_ACCEPTANCE_CHANGE_BASE, use a feature branch with origin/main, "
+        "or run from the resulting merge commit"
+    )
+
+
+def acceptance_expectation(
+    repo: Path, change_base: str, transaction_id: str
+) -> tuple[dict[str, object] | None, str]:
+    base_sha, detail = _git_value(
+        repo, ["rev-parse", "--verify", f"{change_base}^{{commit}}"]
+    )
+    if not base_sha:
+        return None, f"change-base: {detail}"
+    head_sha, detail = _git_value(repo, ["rev-parse", "--verify", "HEAD^{commit}"])
+    if not head_sha:
+        return None, f"change-head: {detail}"
+    ancestor = run(["git", "merge-base", "--is-ancestor", base_sha, head_sha], cwd=repo)
+    if ancestor.returncode != 0:
+        return None, "change-base is not an ancestor of HEAD"
+    head_tree, detail = _git_value(
+        repo, ["rev-parse", "--verify", f"{head_sha}^{{tree}}"]
+    )
+    if not head_tree:
+        return None, f"head-tree: {detail}"
+    changed = run(
+        [
+            "git",
+            "diff",
+            "--name-only",
+            "--diff-filter=ACDMRTUXB",
+            f"{base_sha}..{head_sha}",
+            "--",
+        ],
+        cwd=repo,
+    )
+    if changed.returncode != 0:
+        return None, changed.stderr.strip() or "git diff failed"
+    changed_paths = sorted(
+        {line.strip() for line in changed.stdout.splitlines() if line.strip()}
+    )
+    manifest = repo / ACCEPTANCE_MANIFEST
+    try:
+        manifest_bytes = manifest.read_bytes()
+    except OSError as exc:
+        return None, f"acceptance manifest unreadable: {exc}"
+    serialized_paths = ("\n".join(changed_paths) + "\n").encode("utf-8")
+    return {
+        "transaction_id": transaction_id,
+        "change_base": base_sha,
+        "change_head": head_sha,
+        "head_tree": head_tree,
+        "manifest_sha256": _sha256_bytes(manifest_bytes),
+        "changed_paths": changed_paths,
+        "changed_paths_sha256": _sha256_bytes(serialized_paths),
+    }, ""
+
+
+def validate_acceptance_receipt(
+    receipt: object, expected: dict[str, object]
+) -> tuple[bool, str]:
+    if not isinstance(receipt, dict):
+        return False, "runner output is not a JSON object"
+    for field, expected_value in expected.items():
+        if receipt.get(field) != expected_value:
+            return False, f"receipt {field} does not match the release transaction"
+    fixed = {
+        "receipt_schema": "acceptance-run-receipt-v1",
+        "receipt_consumer": ACCEPTANCE_CONSUMER_ID,
+        "metadata_class": "acceptance-test",
+        "issues_authority_receipt": False,
+        "ok": True,
+    }
+    for field, expected_value in fixed.items():
+        if receipt.get(field) != expected_value:
+            return False, f"receipt {field} is invalid"
+    coverage = receipt.get("coverage")
+    if not isinstance(coverage, dict):
+        return False, "receipt coverage is missing"
+    declared = coverage.get("declared")
+    terminal = coverage.get("terminal")
+    if (
+        not isinstance(declared, int)
+        or isinstance(declared, bool)
+        or declared <= 0
+        or terminal != declared
+        or coverage.get("not_run") != 0
+    ):
+        return False, "receipt coverage is not closed and terminal"
+    cases = receipt.get("cases")
+    if (
+        not isinstance(cases, list)
+        or len(cases) != declared
+        or not all(isinstance(case, dict) and case.get("matched") is True for case in cases)
+    ):
+        return False, "receipt cases are incomplete or mismatched"
+    return True, "fresh transaction-bound receipt consumed"
+
+
+def consume_acceptance(repo: Path, result: Result, dry_run: bool) -> bool:
+    if dry_run:
+        return result.add("checks.acceptance.r5", True, "dry-run")
+    change_base, detail = acceptance_change_base(repo)
+    if not change_base:
+        return result.add(
+            "checks.acceptance.r5",
+            False,
+            f"authoritative change-base unavailable: {detail}",
+        )
+    transaction_id = secrets.token_hex(16)
+    expected, detail = acceptance_expectation(repo, change_base, transaction_id)
+    if expected is None:
+        return result.add("checks.acceptance.r5", False, detail)
+    command = [
+        "python3",
+        str(ACCEPTANCE_RUNNER),
+        "run",
+        "--manifest",
+        str(ACCEPTANCE_MANIFEST),
+        "--repo-root",
+        ".",
+        "--change-base",
+        change_base,
+        "--transaction-id",
+        transaction_id,
+        "--json",
+    ]
+    completed = run(command, cwd=repo)
+    if completed.returncode != 0:
+        tail = (completed.stdout or completed.stderr).strip().splitlines()
+        return result.add(
+            "checks.acceptance.r5",
+            False,
+            tail[-1] if tail else "acceptance runner failed",
+        )
+    try:
+        receipt = json.loads(completed.stdout)
+    except (TypeError, json.JSONDecodeError) as exc:
+        return result.add(
+            "checks.acceptance.r5", False, f"runner receipt is not valid JSON: {exc}"
+        )
+    refreshed, detail = acceptance_expectation(repo, change_base, transaction_id)
+    if refreshed is None or refreshed != expected:
+        return result.add(
+            "checks.acceptance.r5",
+            False,
+            detail or "source state changed while acceptance executed",
+        )
+    status = run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=repo)
+    if status.returncode != 0 or status.stdout.strip():
+        return result.add(
+            "checks.acceptance.r5",
+            False,
+            "source worktree changed while acceptance executed",
+        )
+    valid, detail = validate_acceptance_receipt(receipt, expected)
+    return result.add("checks.acceptance.r5", valid, detail)
 
 
 def read_manifest_version(path: Path) -> str | None:
@@ -324,7 +531,6 @@ def publish(repo: Path, result: Result, dry_run: bool) -> bool:
 
 
 def run_required_checks(repo: Path, result: Result, dry_run: bool) -> bool:
-    ok = True
     for name, command in REQUIRED_CHECKS:
         if dry_run:
             result.add(f"checks.{name}", True, "dry-run")
@@ -332,10 +538,14 @@ def run_required_checks(repo: Path, result: Result, dry_run: bool) -> bool:
         completed = run(command, cwd=repo)
         passed = completed.returncode == 0
         tail = (completed.stdout or completed.stderr).strip().splitlines()
-        ok = result.add(f"checks.{name}", passed, "" if passed else (tail[-1] if tail else "failed")) and ok
+        result.add(
+            f"checks.{name}",
+            passed,
+            "" if passed else (tail[-1] if tail else "failed"),
+        )
         if not passed:
-            break
-    return ok
+            return False
+    return consume_acceptance(repo, result, dry_run)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -343,6 +553,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo-root", default=".", help="synthesis-skills checkout (default: cwd)")
     parser.add_argument("--install-only", action="store_true", help="refresh + verify clients only")
     parser.add_argument("--check-only", action="store_true", help="preflight + required checks only")
+    parser.add_argument(
+        "--acceptance-only",
+        action="store_true",
+        help="consume the transaction-bound acceptance receipt only",
+    )
     parser.add_argument("--dry-run", action="store_true", help="print the plan; mutate nothing")
     args = parser.parse_args(argv)
 
@@ -359,6 +574,16 @@ def main(argv: list[str] | None = None) -> int:
     if version is None or result.failed:
         print("\nRELEASE ABORTED: preflight failed. Nothing was published or installed.")
         return 2 if version is None else 1
+
+    if args.acceptance_only:
+        if args.install_only or args.check_only:
+            print("\nRELEASE ABORTED: --acceptance-only cannot be combined with other modes.")
+            return 2
+        if not consume_acceptance(repo, result, args.dry_run):
+            print("\nACCEPTANCE REFUSED: no release authority was issued.")
+            return 1
+        print(f"\nACCEPTANCE CONSUMED for {version}. Nothing published or installed.")
+        return 0
 
     if not args.install_only:
         if not run_required_checks(repo, result, args.dry_run):

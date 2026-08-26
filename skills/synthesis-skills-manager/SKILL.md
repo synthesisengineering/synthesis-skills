@@ -250,6 +250,7 @@ clients behind their own source with nothing visibly wrong.
 python3 skills/synthesis-skills-manager/scripts/release.py --repo-root .
 python3 .../release.py --dry-run       # print the plan, mutate nothing
 python3 .../release.py --check-only    # preflight + required checks, no publish
+python3 .../release.py --acceptance-only # consume the bound acceptance result (CI)
 python3 .../release.py --install-only  # refresh + verify clients (new machine, drift recovery)
 ```
 
@@ -260,6 +261,12 @@ The sequence, each stage gating the next:
 - **Preflight** refuses to proceed unless both plugin manifests agree, the
   newest CHANGELOG entry matches them, and the tree is clean. It also refuses
   to run against an installed cache mistaken for the source checkout.
+- **Acceptance consumption** derives the base-to-head change universe from
+  Git at the release boundary, requires exact manifest coverage, and parses a
+  fresh result bound to a one-use transaction, head commit and tree, manifest
+  digest, and changed-path digest. The boundary recomputes those fields and
+  rechecks the clean worktree before it can authorize publication. CI invokes
+  the same consumer with the pull request base supplied by its event record.
 - **Publish** pushes `main` to *every* configured push remote.
 - **Install** uses each client's own commands, in the order each client
   requires. For Codex that means `plugin marketplace upgrade` **before**
