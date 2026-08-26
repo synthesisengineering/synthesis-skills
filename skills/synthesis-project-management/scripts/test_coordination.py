@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import importlib.util
+import ast
 import json
+import subprocess
 import sys
 import threading
 import uuid
 from pathlib import Path
 
 import pytest
+import yaml
 
 
 MODULE_PATH = Path(__file__).with_name("coordination.py")
@@ -42,6 +45,68 @@ def claim_args(
         workspace=[workspace],
         area=[area],
         context_role=context_role,
+    )
+
+
+def staged_repository(tmp_path: Path) -> Path:
+    root = tmp_path / "repo"
+    root.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test"], cwd=root, check=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=root, check=True
+    )
+    return root
+
+
+def git(root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def claim_staged_repository(
+    board: Path,
+    root: Path,
+    *,
+    session_id: str = "A",
+    workspace: str | None = None,
+    area: str | None = None,
+):
+    request = claim_args(
+        board,
+        session_id=session_id,
+        project="project-a",
+        workspace=workspace or f"{root} @ main",
+        area=area or f"{root}/claimed/**",
+    )
+    assert MODULE.command_claim(request) == 0
+    return MODULE.rows(board.read_text(encoding="utf-8"))[0]
+
+
+def check_staged_args(
+    board: Path,
+    root: Path,
+    *,
+    session_id: str | None = "A",
+    active_project_file: Path | None = None,
+    override_reason: str | None = None,
+):
+    return args(
+        board,
+        id=session_id,
+        repository=root,
+        active_project_file=(active_project_file or root / "active-project.json"),
+        override_reason=override_reason,
+        json=True,
     )
 
 
@@ -944,3 +1009,331 @@ def test_semicolon_separated_claims_still_conflict(tmp_path: Path) -> None:
         area="/home/user/workspaces/demo/repo-two/daily/plan.md",
     )
     assert MODULE.command_claim(overlapping) == 10
+
+
+def test_r4_staged_paths_inside_claim_issue_bound_receipt(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = staged_repository(tmp_path)
+    claimed = root / "claimed"
+    claimed.mkdir()
+    (claimed / "inside.md").write_text("inside\n", encoding="utf-8")
+    assert git(root, "add", "claimed/inside.md").returncode == 0
+    board = tmp_path / "coordination" / "active-sessions.md"
+    session = claim_staged_repository(board, root)
+    capsys.readouterr()
+
+    assert MODULE.command_check_staged(check_staged_args(board, root)) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["control_class"] == "enforced-gate"
+    assert payload["enforcement_outcome"] == "passed-inside-claim"
+    assert payload["issues_authority_receipt"] is True
+    assert payload["receipt"]["session_uuid"] == session.session_uuid
+    assert payload["receipt"]["repository"] == str(root)
+    assert payload["receipt"]["branch"] == "main"
+    assert payload["receipt"]["enforcement_outcome"] == "passed-inside-claim"
+    assert payload["receipt"]["outside_paths"] == []
+    assert payload["receipt"]["staged_paths"] == ["claimed/inside.md"]
+    assert payload["receipt"]["staged_tree"] == git(root, "write-tree").stdout.strip()
+    assert payload["unverified_remainder"]
+
+
+def test_r4_staged_path_outside_claim_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = staged_repository(tmp_path)
+    (root / "outside.md").write_text("outside\n", encoding="utf-8")
+    assert git(root, "add", "outside.md").returncode == 0
+    board = tmp_path / "active-sessions.md"
+    claim_staged_repository(board, root)
+    capsys.readouterr()
+
+    assert MODULE.command_check_staged(check_staged_args(board, root)) == 10
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["enforcement_outcome"] == "refused-outside-claim"
+    assert payload["issues_authority_receipt"] is False
+    assert payload["outside_paths"] == ["outside.md"]
+    assert "isolated worktree" in payload["remediation"]
+
+
+def test_r4_rename_from_unclaimed_path_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = staged_repository(tmp_path)
+    (root / "unclaimed.md").write_text("baseline\n", encoding="utf-8")
+    assert git(root, "add", "unclaimed.md").returncode == 0
+    assert git(root, "commit", "-m", "Baseline").returncode == 0
+    (root / "claimed").mkdir()
+    assert git(root, "mv", "unclaimed.md", "claimed/renamed.md").returncode == 0
+    board = tmp_path / "active-sessions.md"
+    claim_staged_repository(board, root)
+    capsys.readouterr()
+
+    assert MODULE.command_check_staged(check_staged_args(board, root)) == 10
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["enforcement_outcome"] == "refused-outside-claim"
+    assert payload["outside_paths"] == ["unclaimed.md"]
+
+
+def test_r4_active_pointer_resolves_committing_session(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = staged_repository(tmp_path)
+    (root / "claimed").mkdir()
+    (root / "claimed" / "inside.md").write_text("inside\n", encoding="utf-8")
+    assert git(root, "add", "claimed/inside.md").returncode == 0
+    board = tmp_path / "active-sessions.md"
+    session = claim_staged_repository(board, root)
+    pointer = tmp_path / "active-project.json"
+    pointer.write_text(
+        json.dumps({"owner_session": session.session_uuid}), encoding="utf-8"
+    )
+    capsys.readouterr()
+
+    request = check_staged_args(
+        board, root, session_id=None, active_project_file=pointer
+    )
+    assert MODULE.command_check_staged(request) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["selector_source"] == "active-project"
+    assert payload["receipt"]["session_uuid"] == session.session_uuid
+
+
+def test_r4_recorded_override_binds_reason_and_paths(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = staged_repository(tmp_path)
+    (root / "outside.md").write_text("outside\n", encoding="utf-8")
+    assert git(root, "add", "outside.md").returncode == 0
+    board = tmp_path / "active-sessions.md"
+    claim_staged_repository(board, root)
+    capsys.readouterr()
+
+    request = check_staged_args(
+        board,
+        root,
+        override_reason="Urgent repair with explicit operator accountability",
+    )
+    assert MODULE.command_check_staged(request) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["enforcement_outcome"] == "recorded-override"
+    assert payload["issues_authority_receipt"] is True
+    assert payload["receipt"]["enforcement_outcome"] == "recorded-override"
+    assert payload["receipt"]["outside_paths"] == ["outside.md"]
+    assert payload["receipt"]["override_reason"].startswith("Urgent repair")
+    assert payload["receipt"]["staged_paths"] == ["outside.md"]
+    board_text = board.read_text(encoding="utf-8")
+    assert "recorded-staged-claim-override" in board_text
+    assert "Urgent repair with explicit operator accountability" in board_text
+    assert "outside.md" in board_text
+
+
+def test_r4_inactive_session_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = staged_repository(tmp_path)
+    (root / "claimed").mkdir()
+    (root / "claimed" / "inside.md").write_text("inside\n", encoding="utf-8")
+    assert git(root, "add", "claimed/inside.md").returncode == 0
+    board = tmp_path / "active-sessions.md"
+    claim_staged_repository(board, root)
+    assert MODULE.command_release(args(board, id="A", active_project_file=None)) == 0
+    capsys.readouterr()
+
+    assert MODULE.command_check_staged(check_staged_args(board, root)) == 10
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["enforcement_outcome"] == "refused-inactive-session"
+    assert payload["issues_authority_receipt"] is False
+
+
+def test_r4_lease_fence_cannot_resurrect_released_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = staged_repository(tmp_path)
+    claimed = root / "claimed"
+    claimed.mkdir()
+    (claimed / "inside.md").write_text("inside\n", encoding="utf-8")
+    assert git(root, "add", "claimed/inside.md").returncode == 0
+    machine1, machine2 = lease_machines(tmp_path)
+    claim_staged_repository(machine1, root)
+    capsys.readouterr()
+
+    original_fetch = MODULE.lease_fetch
+    raced = False
+
+    def release_after_stale_fetch(config):
+        nonlocal raced
+        sha, content = original_fetch(config)
+        if not raced:
+            raced = True
+            assert MODULE.command_release(args(machine2, id="A")) == 0
+        return sha, content
+
+    monkeypatch.setattr(MODULE, "lease_fetch", release_after_stale_fetch)
+
+    exit_code = MODULE.command_check_staged(
+        check_staged_args(machine1, root)
+    )
+    output = capsys.readouterr().out
+    payload = json.loads(output[output.index("{") :])
+
+    assert raced is True
+    assert exit_code == 10
+    assert payload["enforcement_outcome"] == "refused-inactive-session"
+    assert MODULE.rows(machine1.read_text(encoding="utf-8"))[0].status == "released"
+
+
+def test_r4_unregistered_worktree_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = staged_repository(tmp_path)
+    (root / "inside.md").write_text("inside\n", encoding="utf-8")
+    assert git(root, "add", "inside.md").returncode == 0
+    board = tmp_path / "active-sessions.md"
+    claim_staged_repository(
+        board,
+        root,
+        workspace=f"{tmp_path / 'different-worktree'} @ main",
+        area=f"{root}/**",
+    )
+    capsys.readouterr()
+
+    assert MODULE.command_check_staged(check_staged_args(board, root)) == 10
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["enforcement_outcome"] == "refused-unregistered-worktree"
+    assert "isolated worktree" in payload["remediation"]
+    assert "claim" in payload["remediation"]
+
+
+def test_r4_workspace_conflict_names_isolated_worktree_remedy(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    first = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/shared-worktree @ feature/shared",
+        area="/tmp/one/**",
+    )
+    second = claim_args(
+        board,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/shared-worktree @ feature/shared",
+        area="/tmp/two/**",
+    )
+    assert MODULE.command_claim(first) == 0
+    capsys.readouterr()
+
+    assert MODULE.command_claim(second) == 10
+    error = capsys.readouterr().err
+
+    assert "isolated worktree" in error
+    assert "distinct branch" in error
+    assert "claim" in error
+
+
+def test_r4_missing_board_is_unverifiable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = staged_repository(tmp_path)
+    (root / "inside.md").write_text("inside\n", encoding="utf-8")
+    assert git(root, "add", "inside.md").returncode == 0
+    board = tmp_path / "missing-board.md"
+
+    assert MODULE.command_check_staged(check_staged_args(board, root)) == 10
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["control_class"] == "enforced-gate"
+    assert payload["enforcement_outcome"] == "unverifiable-missing-board"
+    assert payload["issues_authority_receipt"] is False
+    assert payload["unverified_remainder"]
+
+
+def test_r4_glob_claim_does_not_authorize_deeper_sibling_path(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = staged_repository(tmp_path)
+    nested = root / "claimed" / "nested"
+    nested.mkdir(parents=True)
+    (nested / "outside.txt").write_text("outside\n", encoding="utf-8")
+    assert git(root, "add", "claimed/nested/outside.txt").returncode == 0
+    board = tmp_path / "active-sessions.md"
+    claim_staged_repository(
+        board,
+        root,
+        area=f"{root}/claimed/*.md",
+    )
+    capsys.readouterr()
+
+    assert MODULE.command_check_staged(check_staged_args(board, root)) == 10
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["enforcement_outcome"] == "refused-outside-claim"
+    assert payload["outside_paths"] == ["claimed/nested/outside.txt"]
+
+
+def test_r4_symlink_alias_claim_matches_resolved_worktree(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = staged_repository(tmp_path)
+    claimed = root / "claimed"
+    claimed.mkdir()
+    (claimed / "inside.md").write_text("inside\n", encoding="utf-8")
+    assert git(root, "add", "claimed/inside.md").returncode == 0
+    alias = tmp_path / "repo-alias"
+    alias.symlink_to(root, target_is_directory=True)
+    board = tmp_path / "active-sessions.md"
+    claim_staged_repository(
+        board,
+        root,
+        workspace=f"{alias} @ main",
+        area=f"{alias}/claimed/**",
+    )
+    capsys.readouterr()
+
+    assert MODULE.command_check_staged(check_staged_args(board, alias)) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["enforcement_outcome"] == "passed-inside-claim"
+    assert payload["outside_paths"] == []
+
+
+def test_r4_acceptance_manifest_is_closed_and_resolvable() -> None:
+    skill_root = Path(__file__).resolve().parents[1]
+    manifest = yaml.safe_load(
+        (skill_root / "acceptance-suite.yaml").read_text(encoding="utf-8")
+    )
+
+    assert manifest["schema"] == 1
+    assert manifest["membership"] == "closed"
+    declared = {case["fixture"] for case in manifest["cases"]}
+    discovered: set[str] = set()
+    for relative in (
+        "scripts/test_coordination.py",
+        "../synthesis-git-hooks/scripts/test_pre_commit.py",
+    ):
+        path = (skill_root / relative).resolve()
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(
+                "test_r4_"
+            ):
+                discovered.add(f"{relative}::{node.name}")
+
+    assert declared == discovered
+    assert {case["control_class"] for case in manifest["cases"]} <= {
+        "enforced-gate",
+        "acceptance-test",
+        "diagnostic",
+    }

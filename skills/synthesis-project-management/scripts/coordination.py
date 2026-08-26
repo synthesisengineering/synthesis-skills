@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
 import fcntl
 import json
@@ -229,6 +230,314 @@ def workspace_conflict(left: str, right: str) -> bool:
         and left_branch not in ignored
         and left_branch == right_branch
     )
+
+
+# AGENT HEURISTIC: the controlling plan fixes the enforcement behavior but not
+# the receipt serialization. Keep the schema small, explicit, and hash-bound so
+# R5 can generalize it without treating prose success as authority.
+CHECK_STAGED_UNVERIFIED_REMAINDER = (
+    "committing-process identity before selector resolution",
+    "claim legitimacy and semantic correctness of staged bytes",
+    "state mutation after the caller's final receipt revalidation",
+)
+CHECK_STAGED_REMEDIATION = (
+    "Use an isolated worktree with a distinct branch, claim that exact "
+    "worktree and every staged source area on the lease-backed coordination "
+    "board, then stage only paths covered by that claim."
+)
+
+
+def _check_staged_payload(
+    args,
+    outcome: str,
+    *,
+    selector_source: str | None = None,
+    outside_paths: list[str] | None = None,
+    detail: str | None = None,
+    remediation: str | None = None,
+    receipt: dict | None = None,
+) -> dict:
+    payload = {
+        "control_class": "enforced-gate",
+        "authority_label": "DESIGN CONSTRAINT (Fable, controlling plan)",
+        "enforcement_outcome": outcome,
+        "issues_authority_receipt": receipt is not None,
+        "board": str(args.board),
+        "selector_source": selector_source,
+        "outside_paths": outside_paths or [],
+        "unverified_remainder": list(CHECK_STAGED_UNVERIFIED_REMAINDER),
+    }
+    if detail:
+        payload["detail"] = detail
+    if remediation:
+        payload["remediation"] = remediation
+    if receipt is not None:
+        payload["receipt"] = receipt
+    return payload
+
+
+def _emit_check_staged(args, payload: dict) -> None:
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    print(
+        "coordination check-staged: "
+        f"{payload['enforcement_outcome']} "
+        f"(authority-receipt={'yes' if payload['issues_authority_receipt'] else 'no'})"
+    )
+    if payload.get("detail"):
+        print(f"detail: {payload['detail']}")
+    if payload.get("outside_paths"):
+        print("outside claim: " + ", ".join(payload["outside_paths"]))
+    if payload.get("remediation"):
+        print("remediation: " + payload["remediation"])
+    print(
+        "unverified remainder: "
+        + "; ".join(payload["unverified_remainder"])
+    )
+
+
+def _git_bytes(repository: Path, *arguments: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=repository,
+        capture_output=True,
+        check=False,
+    )
+
+
+def _repository_state(repository: Path) -> tuple[Path, str]:
+    requested = repository.expanduser()
+    if not requested.is_dir():
+        raise RuntimeError(f"repository is not a directory: {requested}")
+    top = _git_bytes(requested, "rev-parse", "--show-toplevel")
+    if top.returncode != 0:
+        detail = top.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(detail or f"not a Git worktree: {requested}")
+    root = Path(top.stdout.decode("utf-8", errors="strict").strip()).resolve()
+    branch_result = _git_bytes(root, "branch", "--show-current")
+    if branch_result.returncode != 0:
+        detail = branch_result.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(detail or f"cannot read branch for {root}")
+    branch = branch_result.stdout.decode("utf-8", errors="strict").strip()
+    if not branch:
+        raise RuntimeError(
+            "detached HEAD has no exact branch identity for a board workspace claim"
+        )
+    return root, branch
+
+
+def _staged_inventory(repository: Path) -> tuple[list[str], str]:
+    names = _git_bytes(
+        repository,
+        "diff",
+        "--cached",
+        "--name-only",
+        "-z",
+        "--no-renames",
+    )
+    if names.returncode != 0:
+        detail = names.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(detail or "cannot enumerate staged paths")
+    paths = [
+        value.decode("utf-8", errors="surrogateescape")
+        for value in names.stdout.split(b"\0")
+        if value
+    ]
+    for path in paths:
+        components = Path(path).parts
+        if Path(path).is_absolute() or ".." in components:
+            raise RuntimeError(f"Git returned an unsafe staged path: {path!r}")
+    tree = _git_bytes(repository, "write-tree")
+    if tree.returncode != 0:
+        detail = tree.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(detail or "cannot materialize the staged tree")
+    return sorted(paths), tree.stdout.decode("ascii", errors="strict").strip()
+
+
+def _workspace_registered(session: Session, repository: Path, branch: str) -> bool:
+    repository_real = Path(os.path.realpath(repository))
+    for workspace in session.workspaces:
+        path, claimed_branch = workspace_parts(workspace)
+        if claimed_branch != branch:
+            continue
+        if Path(os.path.realpath(os.path.expanduser(path))) == repository_real:
+            return True
+    return False
+
+
+def _absolute_claim_pattern(claim: str, repository: Path) -> str | None:
+    raw = plain(claim)
+    if not raw:
+        return None
+    expanded = os.path.expanduser(raw)
+    candidate = Path(expanded)
+    if not candidate.is_absolute():
+        parts = candidate.parts
+        base = (
+            repository.parent
+            if parts and parts[0] == repository.name
+            else repository
+        )
+        candidate = base / candidate
+    # AGENT HEURISTIC: board claims can be recorded through a symlinked macOS
+    # path spelling (for example /tmp while Git resolves /private/tmp). Resolve
+    # the existing prefix of a glob so claim and staged candidates share one
+    # filesystem identity before segment matching.
+    return os.path.realpath(candidate)
+
+
+# AGENT HEURISTIC: claim globs need segment semantics; Python fnmatch lets `*`
+# cross separators, while pathlib's `**` behavior does not cover the board's
+# common trailing-`/**` subtree form. This small matcher makes both explicit.
+def _glob_matches_path(pattern: str, candidate: str) -> bool:
+    """Match path-segment globs without allowing ``*`` to cross ``/``."""
+    pattern_parts = Path(pattern).parts
+    candidate_parts = Path(candidate).parts
+    cache: dict[tuple[int, int], bool] = {}
+
+    def matches(pattern_index: int, candidate_index: int) -> bool:
+        key = (pattern_index, candidate_index)
+        if key in cache:
+            return cache[key]
+        if pattern_index == len(pattern_parts):
+            result = candidate_index == len(candidate_parts)
+        elif pattern_parts[pattern_index] == "**":
+            result = matches(pattern_index + 1, candidate_index) or (
+                candidate_index < len(candidate_parts)
+                and matches(pattern_index, candidate_index + 1)
+            )
+        else:
+            result = (
+                candidate_index < len(candidate_parts)
+                and fnmatch.fnmatchcase(
+                    candidate_parts[candidate_index], pattern_parts[pattern_index]
+                )
+                and matches(pattern_index + 1, candidate_index + 1)
+            )
+        cache[key] = result
+        return result
+
+    return matches(0, 0)
+
+
+def _claim_authorizes_path(
+    claim: str, repository: Path, staged_path: str
+) -> bool:
+    pattern = _absolute_claim_pattern(claim, repository)
+    if pattern is None:
+        return False
+    candidate = os.path.realpath(repository / staged_path)
+    if any(token in pattern for token in ("*", "?", "[")):
+        return _glob_matches_path(pattern, candidate)
+    boundary = Path(pattern)
+    candidate_path = Path(candidate)
+    if plain(claim).endswith("/") or boundary.is_dir():
+        return candidate_path == boundary or boundary in candidate_path.parents
+    return candidate_path == boundary
+
+
+def _outside_claim(
+    session: Session, repository: Path, staged_paths: list[str]
+) -> list[str]:
+    return [
+        path
+        for path in staged_paths
+        if not any(
+            _claim_authorizes_path(claim, repository, path)
+            for claim in session.claims
+        )
+    ]
+
+
+def _resolve_check_selector(args) -> tuple[str | None, str | None]:
+    explicit = getattr(args, "id", None)
+    if explicit:
+        return explicit, "command-line"
+    environment = os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip()
+    if environment:
+        return environment, "environment"
+    pointer = Path(args.active_project_file).expanduser()
+    if not pointer.exists():
+        return None, None
+    if pointer.is_symlink():
+        raise RuntimeError(f"active-project pointer must not be a symlink: {pointer}")
+    try:
+        payload = json.loads(pointer.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"active-project pointer is unreadable: {exc}") from exc
+    owner = str(payload.get("owner_session") or "").strip()
+    if not owner:
+        raise RuntimeError("active-project pointer has no owner_session selector")
+    return owner, "active-project"
+
+
+def _append_override_message(
+    content: str,
+    session: Session,
+    repository: Path,
+    branch: str,
+    staged_tree: str,
+    staged_paths: list[str],
+    reason: str,
+) -> str:
+    marker = re.search(
+        r"(?m)^---[ \t]*\n\n## Protocol(?:[^\n]*)?$",
+        content,
+    )
+    if marker is None:
+        raise RuntimeError("board lacks Protocol boundary")
+    body = (
+        f"### recorded-staged-claim-override — {timestamp()}\n\n"
+        f"Session: {session.session_uuid}\n\n"
+        f"Repository: {repository} @ {sanitize(branch)}\n\n"
+        f"Staged tree: {staged_tree}\n\n"
+        f"Outside-claim paths: {', '.join(sanitize(path) for path in staged_paths)}\n\n"
+        f"Reason: {sanitize(reason)}\n\n"
+    )
+    return content[: marker.start()] + body + content[marker.start() :]
+
+
+def _check_staged_receipt(
+    *,
+    board: Path,
+    board_text: str,
+    session: Session,
+    repository: Path,
+    branch: str,
+    staged_tree: str,
+    staged_paths: list[str],
+    enforcement_outcome: str,
+    outside_paths: list[str],
+    override_reason: str | None = None,
+) -> dict:
+    receipt = {
+        "schema": "coordination-check-staged-v1",
+        "schema_provenance": "AGENT HEURISTIC",
+        "authority_label": "DESIGN CONSTRAINT (Fable, controlling plan)",
+        "receipt_consumer": "synthesis-git-hooks pre-commit",
+        "board": str(board),
+        "board_sha256": hashlib.sha256(board_text.encode("utf-8")).hexdigest(),
+        "session_uuid": session.session_uuid,
+        "repository": str(repository),
+        "branch": branch,
+        "claims": session.claims,
+        "enforcement_outcome": enforcement_outcome,
+        "outside_paths": list(outside_paths),
+        "staged_tree": staged_tree,
+        "staged_paths": staged_paths,
+        "issued_at": timestamp(),
+        "invalidated_by": [
+            "board content change",
+            "session, worktree, or branch change",
+            "Git index change",
+        ],
+    }
+    if override_reason is not None:
+        receipt["override_reason"] = override_reason
+    canonical = json.dumps(receipt, sort_keys=True, separators=(",", ":"))
+    receipt["binding_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return receipt
 
 
 def claims_context(claim: str) -> bool:
@@ -694,6 +1003,38 @@ def locked_update(board: Path, operation) -> None:
         write_board(board, operation(content))
 
 
+def _check_staged_board_snapshot(board: Path) -> str | None:
+    """Return one lock/CAS-fenced authority snapshot for check-staged.
+
+    AGENT HEURISTIC: a read followed by an unlocked mirror write can restore
+    stale active bytes after another process releases the session. A leased
+    board therefore publishes an identity mutation through the existing CAS
+    path. The successful CAS is the read fence: on a concurrent advance it
+    retries from the newer board before exposing local bytes. An unleased
+    board is read under the same filesystem lock used by every mutation.
+    """
+    board.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = board.parent / ".active-sessions.lock"
+    with lock_path.open("a+", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        config = lease_configuration(board)
+        if config is not None:
+            lease_update(board, config, lambda content: content)
+            return board.read_text(encoding="utf-8")
+        if not board.exists():
+            return None
+        content = board.read_text(encoding="utf-8")
+        declared = declared_lease(content)
+        if declared is not None:
+            raise RuntimeError(
+                f"board declares a coordination lease ({declared}) but "
+                f"{board.parent / LEASE_CONFIG_NAME} is missing on this "
+                "machine; restore the lease configuration before checking "
+                "commit authority"
+            )
+        return content
+
+
 def validate_sessions(sessions: list[Session]) -> list[str]:
     problems: list[str] = []
     seen_selectors: dict[tuple[str, object], str] = {}
@@ -736,7 +1077,9 @@ def validate_sessions(sessions: list[Session]) -> list[str]:
                     if workspace_conflict(left_workspace, right_workspace):
                         problems.append(
                             f"{left.label} and {right.label} share workspace or branch: "
-                            f"{left_workspace} / {right_workspace}"
+                            f"{left_workspace} / {right_workspace}. Use an isolated "
+                            "worktree with a distinct branch and claim that exact "
+                            "workspace before writing"
                         )
             if (
                 left.project not in {"", "unknown", "none"}
@@ -796,6 +1139,247 @@ def command_status(args) -> int:
     return 10 if args.strict and (payload["problems"] or any(
         item["stale"] for item in payload["sessions"]
     )) else 0
+
+
+def command_check_staged(args) -> int:
+    selector_source: str | None = None
+    try:
+        repository, branch = _repository_state(Path(args.repository))
+        staged_paths, staged_tree = _staged_inventory(repository)
+    except (OSError, UnicodeError, RuntimeError) as exc:
+        payload = _check_staged_payload(
+            args,
+            "unverifiable-repository-or-index",
+            detail=str(exc),
+            remediation=CHECK_STAGED_REMEDIATION,
+        )
+        _emit_check_staged(args, payload)
+        return 10
+
+    try:
+        board_text = _check_staged_board_snapshot(args.board)
+    except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
+        payload = _check_staged_payload(
+            args,
+            "unverifiable-lease-refresh",
+            detail=str(exc),
+            remediation=CHECK_STAGED_REMEDIATION,
+        )
+        _emit_check_staged(args, payload)
+        return 10
+    if board_text is None:
+        payload = _check_staged_payload(
+            args,
+            "unverifiable-missing-board",
+            detail=f"coordination board is unavailable: {args.board}",
+            remediation=CHECK_STAGED_REMEDIATION,
+        )
+        _emit_check_staged(args, payload)
+        return 10
+
+    try:
+        required = ("## Active sessions", "## Messages", "## Protocol")
+        missing = [heading for heading in required if heading not in board_text]
+        if missing:
+            raise RuntimeError("board missing " + ", ".join(missing))
+        sessions = rows(board_text)
+        problems = validate_sessions(sessions)
+        if problems:
+            raise RuntimeError("; ".join(problems))
+        selector, selector_source = _resolve_check_selector(args)
+        if selector is None:
+            raise RuntimeError(
+                "no committing session selector; pass --session, set "
+                "SYNTHESIS_COORDINATION_SESSION, or provide an owned "
+                "active-project pointer"
+            )
+        session = find_session(sessions, selector)
+    except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
+        payload = _check_staged_payload(
+            args,
+            "unverifiable-board-or-session",
+            selector_source=selector_source,
+            detail=str(exc),
+            remediation=CHECK_STAGED_REMEDIATION,
+        )
+        _emit_check_staged(args, payload)
+        return 10
+
+    if session is None:
+        payload = _check_staged_payload(
+            args,
+            "refused-session-not-found",
+            selector_source=selector_source,
+            detail=f"session selector is not present on the board: {selector}",
+            remediation=CHECK_STAGED_REMEDIATION,
+        )
+        _emit_check_staged(args, payload)
+        return 10
+    if not active(session):
+        payload = _check_staged_payload(
+            args,
+            "refused-inactive-session",
+            selector_source=selector_source,
+            detail=f"session {session.label} has status {session.status}",
+            remediation=CHECK_STAGED_REMEDIATION,
+        )
+        _emit_check_staged(args, payload)
+        return 10
+    if not session.session_uuid:
+        payload = _check_staged_payload(
+            args,
+            "unverifiable-session-identity",
+            selector_source=selector_source,
+            detail="the selected legacy board row has no UUID identity",
+            remediation=CHECK_STAGED_REMEDIATION,
+        )
+        _emit_check_staged(args, payload)
+        return 10
+    if not _workspace_registered(session, repository, branch):
+        payload = _check_staged_payload(
+            args,
+            "refused-unregistered-worktree",
+            selector_source=selector_source,
+            detail=f"{repository} @ {branch} is not an exact workspace claim",
+            remediation=CHECK_STAGED_REMEDIATION,
+        )
+        _emit_check_staged(args, payload)
+        return 10
+
+    if not staged_paths:
+        payload = _check_staged_payload(
+            args,
+            "no-staged-paths",
+            selector_source=selector_source,
+            detail="the Git index names no staged paths; no authority receipt issued",
+        )
+        _emit_check_staged(args, payload)
+        return 0
+
+    outside_paths = _outside_claim(session, repository, staged_paths)
+    override_reason = sanitize(str(args.override_reason or ""))
+    if outside_paths and not override_reason:
+        payload = _check_staged_payload(
+            args,
+            "refused-outside-claim",
+            selector_source=selector_source,
+            outside_paths=outside_paths,
+            detail=(
+                f"{len(outside_paths)} of {len(staged_paths)} staged paths "
+                "fall outside the selected session's claim"
+            ),
+            remediation=CHECK_STAGED_REMEDIATION,
+        )
+        _emit_check_staged(args, payload)
+        return 10
+
+    if outside_paths:
+        override_state: dict[str, object] = {}
+
+        def record_override(content: str) -> str:
+            current = rows(content)
+            problems = validate_sessions(current)
+            if problems:
+                raise RuntimeError("; ".join(problems))
+            current_session = find_session(current, selector)
+            if current_session is None or not active(current_session):
+                raise RuntimeError("selected session is missing or inactive")
+            if not current_session.session_uuid:
+                raise RuntimeError("selected session has no UUID identity")
+            if not _workspace_registered(current_session, repository, branch):
+                raise RuntimeError("worktree or branch is no longer registered")
+            current_paths, current_tree = _staged_inventory(repository)
+            if current_paths != staged_paths or current_tree != staged_tree:
+                raise RuntimeError(
+                    "Git index changed before the override could be recorded"
+                )
+            current_outside = _outside_claim(
+                current_session, repository, current_paths
+            )
+            override_state["session"] = current_session
+            override_state["outside"] = current_outside
+            if not current_outside:
+                override_state["recorded"] = False
+                return content
+            override_state["recorded"] = True
+            return _append_override_message(
+                content,
+                current_session,
+                repository,
+                branch,
+                current_tree,
+                current_outside,
+                override_reason,
+            )
+
+        try:
+            locked_update(args.board, record_override)
+            board_text = args.board.read_text(encoding="utf-8")
+        except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
+            payload = _check_staged_payload(
+                args,
+                "refused-override-revalidation",
+                selector_source=selector_source,
+                outside_paths=outside_paths,
+                detail=str(exc),
+                remediation=CHECK_STAGED_REMEDIATION,
+            )
+            _emit_check_staged(args, payload)
+            return 10
+        session = override_state["session"]  # type: ignore[assignment]
+        recorded = bool(override_state["recorded"])
+        outside_paths = list(override_state["outside"])  # type: ignore[arg-type]
+        outcome = "recorded-override" if recorded else "passed-inside-claim"
+        receipt = _check_staged_receipt(
+            board=args.board,
+            board_text=board_text,
+            session=session,  # type: ignore[arg-type]
+            repository=repository,
+            branch=branch,
+            staged_tree=staged_tree,
+            staged_paths=staged_paths,
+            enforcement_outcome=outcome,
+            outside_paths=outside_paths if recorded else [],
+            override_reason=override_reason if recorded else None,
+        )
+        payload = _check_staged_payload(
+            args,
+            outcome,
+            selector_source=selector_source,
+            outside_paths=outside_paths if recorded else [],
+            detail=(
+                "outside-claim authority was recorded on the board"
+                if recorded
+                else "a concurrent board update brought every staged path inside claim"
+            ),
+            receipt=receipt,
+        )
+        _emit_check_staged(args, payload)
+        return 0
+
+    receipt = _check_staged_receipt(
+        board=args.board,
+        board_text=board_text,
+        session=session,
+        repository=repository,
+        branch=branch,
+        staged_tree=staged_tree,
+        staged_paths=staged_paths,
+        enforcement_outcome="passed-inside-claim",
+        outside_paths=[],
+    )
+    payload = _check_staged_payload(
+        args,
+        "passed-inside-claim",
+        selector_source=selector_source,
+        detail=(
+            f"all {len(staged_paths)} staged paths are covered by session "
+            f"{session.label}"
+        ),
+        receipt=receipt,
+    )
+    _emit_check_staged(args, payload)
+    return 0
 
 
 def command_claim(args) -> int:
@@ -1153,6 +1737,31 @@ def parser() -> argparse.ArgumentParser:
     status.add_argument("--json", action="store_true")
     status.add_argument("--strict", action="store_true")
     status.add_argument("--stale-after-minutes", type=int, default=240)
+    check_staged = commands.add_parser(
+        "check-staged",
+        help=(
+            "Fail closed unless every staged path is covered by the selected "
+            "active session's exact worktree and source-area claims."
+        ),
+    )
+    check_staged.add_argument("--id", "--session", dest="id")
+    check_staged.add_argument(
+        "--repository",
+        type=Path,
+        default=Path.cwd(),
+        help="Repository or subdirectory whose Git index is being committed.",
+    )
+    check_staged.add_argument(
+        "--active-project-file", type=Path, default=DEFAULT_ACTIVE_PROJECT
+    )
+    check_staged.add_argument(
+        "--override-reason",
+        help=(
+            "Explicit accountability reason to record on the board before "
+            "allowing staged paths outside the claim."
+        ),
+    )
+    check_staged.add_argument("--json", action="store_true")
     claim = commands.add_parser("claim")
     claim.add_argument(
         "--id",
@@ -1209,6 +1818,8 @@ def main() -> int:
     args.board = args.board.expanduser()
     if args.command == "status":
         return command_status(args)
+    if args.command == "check-staged":
+        return command_check_staged(args)
     if args.command == "claim":
         return command_claim(args)
     if args.command == "heartbeat":

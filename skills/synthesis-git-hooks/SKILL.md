@@ -1,11 +1,11 @@
 ---
 name: synthesis-git-hooks
-description: "Deterministic pre-commit policy for the synthesis-engineering workflow. Classifies each repo by publication surface (personal / public-surface / strict) from its push remotes, applies a tiered pattern set: Tier 0 credentials always; Tier 1 financial / HR / confidentiality / client names in strict and public-surface repos — public-surface minus only the disclosure ledger's published-precedent names. YAML-driven policy lives in ~/.synthesis/git-hook-config.yaml. Use when asked to: install git hooks, configure pre-commit policy, prevent credential leaks, prevent confidential-name leaks, allow published bio names on my own sites, disclosure ledger enforcement, set up the synthesis-engineering enforcement layer."
+description: "Deterministic pre-commit policy for the synthesis-engineering workflow. Enforces staged paths against an active session's lease-backed coordination claim when a board is configured. Classifies each repo by publication surface (personal / public-surface / strict) from its push remotes, applies a tiered pattern set: Tier 0 credentials always; Tier 1 financial / HR / confidentiality / client names in strict and public-surface repos — public-surface minus only the disclosure ledger's published-precedent names. YAML-driven policy lives in ~/.synthesis/git-hook-config.yaml. Use when asked to: install git hooks, configure pre-commit policy, enforce coordination claims, prevent credential leaks, prevent confidential-name leaks, allow published bio names on my own sites, disclosure ledger enforcement, set up the synthesis-engineering enforcement layer."
 license: "Apache-2.0"
-depends_on: []
+depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.3.0"
+  version: "2.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -14,7 +14,30 @@ metadata:
 
 A YAML-driven pre-commit policy engine. Part of the synthesis-engineering operational layer — deterministic enforcement that catches credential leaks and exposure-sensitive content at the commit boundary, before the diff persists.
 
-The engine is small (one bash script + one Python sidecar). The policy is data — a YAML file at `~/.synthesis/git-hook-config.yaml` that anyone adopting synthesis engineering fills in with their own personal-remote patterns, client names, and internal URLs.
+The engine is a Bash boundary plus standard-library Python sidecars. The policy
+is data — a YAML file at `~/.synthesis/git-hook-config.yaml` that anyone
+adopting synthesis engineering fills in with personal-remote patterns, client
+names, internal URLs, and optionally a coordination-board path.
+
+## v2.4.0 — Coordination claims at the commit boundary
+
+When `coordination_board` is configured, pre-commit invokes
+`synthesis-project-management`'s `check-staged` before content scanning or a
+repo-local hook. It refuses unless the selected active session owns the exact
+worktree and branch and every staged source/destination path is covered by the
+session's claims. `SYNTHESIS_COORDINATION_SESSION` supplies the committing
+session when the active-project pointer does not. A deliberate outside-claim
+exception requires `SYNTHESIS_COORDINATION_OVERRIDE_REASON`; the checker
+atomically records it on the board before the commit proceeds. Missing runtime,
+board, lease refresh, selector, or index evidence fails closed.
+The hook accepts only `passed-inside-claim` and `recorded-override`, requires the
+outcome and outside-path list to match their hash-bound receipt fields, and
+revalidates the board and index before continuing. A coordination refusal is
+reported separately from content-policy-engine unavailability.
+
+Repositories remain usable when coordination is not adopted: omitting
+`coordination_board` does not block, and each hook invocation explicitly says
+that this control is absent. The credential and exposure scanners still run.
 
 ## v2.3.0 — Portable drift-source resolution
 
@@ -27,6 +50,9 @@ checkouts, worktrees, client plugin caches), else the documented locations
 the ecosystem's own installers create (direct-copy skill installs, the
 shared installer's cached clone). A source must carry all three engine
 files to qualify, and the doctor names the resolved source in its output.
+The v2.4.0 installer also persists its absolute source directory beside the
+installed engine. Later direct doctor runs use that pointer before documented
+fallback locations; an invalid or missing pointed source is a doctor failure.
 
 ## v2.1.2 — Exact-copy migration calibration
 
@@ -111,6 +137,11 @@ claude plugin install synthesis-skills@synthesis-engineering
 
 # 3. Edit ~/.synthesis/git-hook-config.yaml with YOUR personal-remote patterns
 #    (your GitHub user/org), confidential names, internal URLs.
+
+# 4. To enforce lease-backed source-area claims, enable the optional boundary:
+# coordination_board: '~/.synthesis/coordination/active-sessions.md'
+# Then export SYNTHESIS_COORDINATION_SESSION=<your board selector> in commit
+# processes that do not own the active-project pointer.
 ```
 
 After install, every `git commit` on the workstation runs the policy. No per-repo configuration needed; classification is automatic from each repo's push remotes.
@@ -165,7 +196,7 @@ This skill is one of four deterministic-enforcement layers. Each runs at a diffe
 |---|---|---|
 | `synthesis-anti-shortcuts` | Costume-vocabulary detection in agent outputs | Stop hook + PreToolUse hook |
 | (agent-rules sync) | Single source of truth for CLAUDE.md / AGENTS.md / ~/.codex/AGENTS.md | PostToolUse hook on edits |
-| **`synthesis-git-hooks` (this skill)** | **Credential + exposure-sensitive pattern check at commit boundary** | **pre-commit** |
+| **`synthesis-git-hooks` (this skill)** | **Coordination-claim enforcement plus credential and exposure-sensitive checks at the commit boundary** | **pre-commit** |
 | `synthesis-repo-guard` | Uncommitted changes + unpushed commits | Session-end skill |
 
 The discipline isn't a prompt the agent has to remember — it's a runtime check the agent can't route around. This is the differentiator from vibe coding / agentic coding / spec-driven development: methodology becomes runtime infrastructure, not a Markdown file the agent may or may not consult.
@@ -185,6 +216,14 @@ synthesis-git-hooks/
     ├── tier-classification.md        # how `git remote -v` becomes the class
     └── per-repo-overrides.md         # delegation to repo-local .githooks
 ```
+
+The installer also copies `coordination.py`, `coordination_schema.py`,
+`pointer_lock.py`, and the versioned session-word asset from the declared
+`synthesis-project-management` dependency into the shared runtime. Their
+canonical source remains in that owning skill; the git-hooks doctor compares
+the installed copies with those source paths and reports drift. `source-path`
+records the install-time source directory so direct installed-doctor runs can
+repeat that comparison without an environment override.
 
 ## Companion artifacts
 

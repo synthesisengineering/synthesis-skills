@@ -11,6 +11,18 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**A coordination claim now reaches the Git index (August 2026).** Release
+**4.53.0** adds `coordination.py check-staged`: before a configured commit can
+proceed, the active board session must name the exact worktree and branch, and
+its source-area claims must cover every staged path, including both sides of a
+rename. Outside paths refuse unless an explicit reason is recorded atomically
+on the lease-backed board. The lease read is CAS-fenced against concurrent
+release, path aliases resolve before claim matching, and the hook consumes only
+a receipt whose bound outcome authorizes the staged tree. Repositories that do
+not configure coordination remain usable, while the hook states that this
+control is absent and still runs its credential and exposure checks. Every
+result names what remains unverified. See the [4.53.0 release notes](CHANGELOG.md).
+
 **A heading cannot make a summary a primary transcript (August 2026).**
 Release **4.52.0** adds an executable source-grade boundary to
 `synthesis-meeting-transcripts`. Complete raw provider-message records pair an

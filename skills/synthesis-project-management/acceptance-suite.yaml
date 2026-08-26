@@ -1,0 +1,100 @@
+# AGENT HEURISTIC: the controlling plan requires a closed, executable R4
+# acceptance universe but does not prescribe the manifest schema. R5 will
+# generalize and validate this generation-zero instance.
+schema: 1
+suite: synthesis-project-management-coordination-check-staged
+membership: closed
+production_entry_point: scripts/coordination.py check-staged
+enforcing_boundary: synthesis-git-hooks pre-commit before the repository hook and commit
+receipt_consumer: synthesis-git-hooks pre-commit
+expected_status: pass
+unverified_remainder: committing-process identity before selector resolution, claim legitimacy, semantic correctness of staged bytes, and index mutation after the check returns
+cases:
+  - id: staged-paths-inside-claim
+    control_class: enforced-gate
+    fixture: scripts/test_coordination.py::test_r4_staged_paths_inside_claim_issue_bound_receipt
+    motivating_defect: engagement-staged-commit-authority-was-not-compared-with-the-board-claim
+  - id: staged-path-outside-claim
+    control_class: enforced-gate
+    fixture: scripts/test_coordination.py::test_r4_staged_path_outside_claim_is_refused
+    motivating_defect: engagement-advisory-claim-did-not-stop-an-outside-path-commit
+  - id: rename-source-closure
+    control_class: acceptance-test
+    fixture: scripts/test_coordination.py::test_r4_rename_from_unclaimed_path_is_refused
+    motivating_defect: agent-heuristic-rename-source-could-escape-a-destination-only-path-check
+  - id: active-pointer-selector
+    control_class: acceptance-test
+    fixture: scripts/test_coordination.py::test_r4_active_pointer_resolves_committing_session
+    motivating_defect: engagement-hook-process-had-no-explicit-session-selector
+  - id: recorded-override
+    control_class: enforced-gate
+    fixture: scripts/test_coordination.py::test_r4_recorded_override_binds_reason_and_paths
+    motivating_defect: engagement-outside-claim-override-had-no-durable-accountability-record
+  - id: inactive-session
+    control_class: enforced-gate
+    fixture: scripts/test_coordination.py::test_r4_inactive_session_is_refused
+    motivating_defect: engagement-released-claim-could-be-mistaken-for-current-authority
+  - id: lease-fence
+    control_class: enforced-gate
+    fixture: scripts/test_coordination.py::test_r4_lease_fence_cannot_resurrect_released_session
+    motivating_defect: agent-heuristic-stale-unlocked-refresh-resurrected-released-authority
+  - id: registered-worktree
+    control_class: enforced-gate
+    fixture: scripts/test_coordination.py::test_r4_unregistered_worktree_is_refused
+    motivating_defect: engagement-session-claim-did-not-bind-the-committing-worktree-and-branch
+  - id: conflict-remedy
+    control_class: diagnostic
+    fixture: scripts/test_coordination.py::test_r4_workspace_conflict_names_isolated_worktree_remedy
+    motivating_defect: engagement-workspace-conflict-refusal-omitted-the-required-remedy
+  - id: missing-board
+    control_class: enforced-gate
+    fixture: scripts/test_coordination.py::test_r4_missing_board_is_unverifiable
+    motivating_defect: engagement-unreachable-board-could-be-treated-as-no-conflict
+  - id: glob-boundary
+    control_class: acceptance-test
+    fixture: scripts/test_coordination.py::test_r4_glob_claim_does_not_authorize_deeper_sibling_path
+    motivating_defect: agent-self-review-wildcard-prefix-could-authorize-an-unmatched-deeper-path
+  - id: path-alias-canonicalization
+    control_class: acceptance-test
+    fixture: scripts/test_coordination.py::test_r4_symlink_alias_claim_matches_resolved_worktree
+    motivating_defect: agent-heuristic-equivalent-macos-path-spellings-falsely-refused-authority
+  - id: manifest-closure
+    control_class: diagnostic
+    fixture: scripts/test_coordination.py::test_r4_acceptance_manifest_is_closed_and_resolvable
+    motivating_defect: catalogue-acceptance-manifest-membership-was-not-executable
+  - id: configured-hook-boundary
+    control_class: enforced-gate
+    fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_configured_hook_blocks_outside_claim
+    motivating_defect: engagement-standalone-check-had-no-required-commit-boundary-consumer
+  - id: receipt-consumption
+    control_class: enforced-gate
+    fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_configured_hook_consumes_bound_receipt
+    motivating_defect: agent-self-review-hook-trusted-exit-status-without-consuming-the-hash-bound-receipt
+  - id: changed-index-invalidates-receipt
+    control_class: enforced-gate
+    fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_hook_rejects_index_changed_after_receipt
+    motivating_defect: design-constraint-d4-receipt-did-not-expire-when-its-staged-input-changed
+  - id: refusing-outcome-invalidates-receipt
+    control_class: enforced-gate
+    fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_hook_rejects_refusing_outcome_with_valid_receipt
+    motivating_defect: design-constraint-d4-d8-hook-consumed-a-valid-receipt-under-a-refusing-outcome
+  - id: absent-control-reporting
+    control_class: diagnostic
+    fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_unconfigured_hook_reports_control_absence
+    motivating_defect: design-constraint-d6-non-adopter-repositories-must-remain-usable-without-silent-control-claims
+  - id: missing-runtime-fail-closed
+    control_class: enforced-gate
+    fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_configured_hook_missing_runtime_fails_closed
+    motivating_defect: catalogue-protective-layer-could-warn-and-pass-when-runtime-was-missing
+  - id: generation-zero-installer
+    control_class: acceptance-test
+    fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_installer_copies_coordination_runtime
+    motivating_defect: agent-self-review-default-template-version-one-was-refused-by-the-version-two-engine
+  - id: persisted-source-pointer
+    control_class: enforced-gate
+    fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_invalid_persisted_source_pointer_fails_doctor_closed
+    motivating_defect: agent-heuristic-doctor-declared-health-while-source-drift-proof-was-skipped
+  - id: config-gate-emission
+    control_class: acceptance-test
+    fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_config_sidecar_emits_board_gate
+    motivating_defect: engagement-hook-had-no-machine-readable-coordination-control-configuration

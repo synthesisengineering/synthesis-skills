@@ -4,6 +4,68 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.53.0] - 2026-08-26
+
+### Added
+
+- **`synthesis-project-management` v2.5.0 — staged-path claim enforcement.**
+  `coordination.py check-staged` takes a lock/CAS-fenced snapshot of the
+  lease-backed board, resolves the committing session through an explicit
+  selector, environment, or owned active-project pointer, and requires an
+  exact registered worktree and branch.
+  Every staged path is compared with that session's source-area claims using a
+  rename-disabled index view, so a rename's source and destination both enter
+  the closed path universe. Missing board, lease, selector, session, worktree,
+  branch, or index evidence refuses. Workspace-conflict errors now name the
+  isolated-worktree, distinct-branch, and exact-claim remedy. Claim globs use
+  path-segment semantics: `*` cannot silently authorize a deeper directory,
+  while `**` remains the explicit recursive form. Claims and staged paths are
+  resolved to the same filesystem identity before matching, including macOS
+  path aliases.
+- **Recorded outside-claim overrides.** An exception can proceed only after
+  the reason, repository, branch, staged tree, and outside paths are appended
+  atomically to the board's existing Messages section and the unchanged index
+  is revalidated. No board schema changes were introduced.
+- **AGENT HEURISTIC — hash-bound receipt serialization.** Successful checks
+  expose a compact JSON receipt bound to the board content, canonical session
+  UUID, exact worktree and branch, staged tree, staged path list, enforcement
+  outcome, and outside-path list. Every result separates authority label from
+  enforcement outcome and names the state changes that invalidate the receipt
+  plus the semantic work it does not verify.
+
+### Changed
+
+- **`synthesis-git-hooks` v2.4.0 — config-gated claim checks at pre-commit.**
+  A configured `coordination_board` makes `check-staged` a fail-closed boundary
+  before content scanning and repository-local hooks. The installer and doctor
+  copy, monitor, and drift-check the project-management runtime and its
+  versioned session-word asset. The hook consumes the checker's JSON, requires
+  an authorizing outcome and the receipt's boundary fields, recomputes its
+  binding digest, and revalidates the board hash, worktree, branch, staged tree,
+  outside-path set, and rename-closed path universe before continuing. A
+  coordination refusal is reported as an authority refusal, distinct from a
+  broken content-policy engine. Without that setting, commits are not blocked by
+  coordination, and the hook reports the control's absence before running its
+  established credential and exposure checks.
+
+### Fixed
+
+- **Fresh git-hook installs now produce a parseable v2 policy.** The template
+  previously declared `config_version: 1` even though the engine refused
+  versions below 2, and represented empty groups with flow-style lists that
+  the strict parser also refuses. A clean installer could therefore copy its
+  own template and immediately fail its doctor. The generation-zero installer
+  fixture now executes that path end to end.
+- **Fresh git-hook installs retain their drift baseline.** The installer writes
+  the absolute source directory into the installed runtime. Both the installer
+  doctor and later direct doctor runs compare all installed engine files and
+  the coordination asset with that source. A present pointer that is malformed
+  or no longer resolves a complete source fails the doctor closed.
+- **Coordination authority cannot be resurrected by a stale refresh.** The
+  check's lease snapshot now passes through the existing compare-and-swap
+  mutation boundary. A concurrent release advances the lease, forces a retry,
+  and is read before any authority receipt can be issued.
+
 ## [4.52.0] - 2026-08-26
 
 ### Added

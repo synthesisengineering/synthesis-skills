@@ -8,7 +8,14 @@
 # Schema reference: ~/.synthesis/git-hooks/README.md
 # Distributable form: github.com/synthesisengineering/synthesis-skills/skills/synthesis-git-hooks
 
-config_version: 1
+config_version: 2
+
+# Optional commit-boundary coordination control. When configured, pre-commit
+# fails closed unless the committing session's exact worktree, branch, and
+# staged paths are covered by an active lease-backed board claim. Without this
+# field, the hook reports that the coordination control is absent and continues
+# with the credential/exposure scan.
+# coordination_board: '~/.synthesis/coordination/active-sessions.md'
 
 # A repo classifies as `personal` when EVERY push remote URL matches at least
 # one of these regex patterns (case-insensitive). Otherwise it classifies as
@@ -89,20 +96,20 @@ tier_1_strict_only:
   # Confidential client / company names. Add your own. Examples:
   #   - 'acme-corp'
   #   - 'example-client'
-  confidential_names: []
+  confidential_names:
 
   # Private/shared skill names. Add the names of skills from your private
   # synthesis-skills repos that should not appear in public docs. Examples:
   #   - 'YOUR-PERSONAL-ORG-private-some-skill'
   #   - 'YOUR-CLIENT-NAME-internal-skill'
-  private_skill_names: []
+  private_skill_names:
 
   # Internal URLs / repo references that must not leak into public docs.
   # Examples:
   #   - 'github\.com/YOUR-CLIENT-ORG'
   #   - 'internal\.YOUR-CLIENT-DOMAIN'
   #   - 'ai-knowledge-YOUR-CLIENT-NAME'
-  internal_urls: []
+  internal_urls:
 
 # ─── Allowlist — lines that legitimately match a pattern above. ──────────
 # SPDX-style license declarations in package manifests look like

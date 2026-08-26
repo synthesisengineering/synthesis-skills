@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -594,12 +596,70 @@ def test_double_quoted_pattern_keeps_its_escapes(tmp_path: Path) -> None:
 
 
 def engine_copy(target: Path) -> None:
-    """Copy the three engine files into `target`, executable bits included."""
+    """Copy the complete installed engine shape into `target`."""
     target.mkdir(parents=True, exist_ok=True)
     for name in SIDECAR.ENGINE_FILES:
         destination = target / name
-        destination.write_bytes((SCRIPT_DIR / name).read_bytes())
+        destination.write_bytes(
+            SIDECAR.source_engine_path(SCRIPT_DIR, name).read_bytes()
+        )
         destination.chmod(0o755)
+    references = target.parent / "references"
+    references.mkdir(exist_ok=True)
+    (references / SIDECAR.COORDINATION_ASSET).write_bytes(
+        SIDECAR.source_coordination_asset(SCRIPT_DIR).read_bytes()
+    )
+
+
+def r4_policy(path: Path, board: Path | None = None) -> None:
+    policy(path)
+    if board is not None:
+        path.write_text(
+            path.read_text(encoding="utf-8")
+            + f"coordination_board: '{board}'\n",
+            encoding="utf-8",
+        )
+
+
+def r4_engine_bundle(target: Path, *, coordination: bool = True) -> None:
+    if not coordination:
+        target.mkdir(parents=True, exist_ok=True)
+        for name in SIDECAR.CORE_ENGINE_FILES:
+            destination = target / name
+            shutil.copy2(SCRIPT_DIR / name, destination)
+            destination.chmod(0o755)
+        return
+    engine_copy(target)
+
+
+def r4_board_claim(board: Path, root: Path, engine: Path) -> str:
+    branch = run(root, "git", "branch", "--show-current").stdout.strip()
+    completed = run(
+        root,
+        sys.executable,
+        str(engine / "coordination.py"),
+        "--board",
+        str(board),
+        "claim",
+        "--session",
+        "A",
+        "--agent",
+        "test",
+        "--project",
+        "project-a",
+        "--mode",
+        "autonomous",
+        "--goal",
+        "test hook",
+        "--workspace",
+        f"{root} @ {branch}",
+        "--area",
+        f"{root}/claimed/**",
+        "--context-role",
+        "owner",
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    return "A"
 
 
 def test_source_env_override_is_authoritative(tmp_path, monkeypatch) -> None:
@@ -719,3 +779,287 @@ def test_doctor_detects_drift_end_to_end(tmp_path: Path) -> None:
     drifted = doctor()
     assert drifted.returncode == 1, drifted.stdout + drifted.stderr
     assert "DRIFT: installed pre-commit" in drifted.stdout
+
+
+def test_r4_configured_hook_blocks_outside_claim(tmp_path: Path) -> None:
+    root, environment = repository(tmp_path)
+    engine = tmp_path / "engine"
+    r4_engine_bundle(engine)
+    board = tmp_path / "coordination" / "active-sessions.md"
+    r4_board_claim(board, root, engine)
+    r4_policy(Path(environment["SYNTHESIS_GIT_HOOK_CONFIG"]), board)
+    environment["SYNTHESIS_COORDINATION_SESSION"] = "A"
+    (root / "outside.md").write_text("ordinary content\n", encoding="utf-8")
+    assert run(root, "git", "add", "outside.md").returncode == 0
+
+    completed = run(root, str(engine / "pre-commit"), env=environment)
+
+    assert completed.returncode == 1
+    assert "refused-outside-claim" in completed.stdout + completed.stderr
+    assert "COMMIT BLOCKED" in completed.stderr
+    assert "coordination authority refused" in completed.stderr
+    assert "policy engine unavailable" not in completed.stderr
+
+
+def test_r4_configured_hook_consumes_bound_receipt(tmp_path: Path) -> None:
+    root, environment = repository(tmp_path)
+    engine = tmp_path / "engine"
+    r4_engine_bundle(engine)
+    board = tmp_path / "coordination" / "active-sessions.md"
+    r4_board_claim(board, root, engine)
+    r4_policy(Path(environment["SYNTHESIS_GIT_HOOK_CONFIG"]), board)
+    environment["SYNTHESIS_COORDINATION_SESSION"] = "A"
+    claimed = root / "claimed"
+    claimed.mkdir()
+    (claimed / "inside.md").write_text("ordinary content\n", encoding="utf-8")
+    assert run(root, "git", "add", "claimed/inside.md").returncode == 0
+
+    completed = run(root, str(engine / "pre-commit"), env=environment)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "passed-inside-claim" in completed.stdout
+    assert "authority receipt consumed" in completed.stdout
+    assert "unverified remainder" in completed.stdout
+
+
+def test_r4_hook_rejects_index_changed_after_receipt(tmp_path: Path) -> None:
+    root, environment = repository(tmp_path)
+    engine = tmp_path / "engine"
+    r4_engine_bundle(engine)
+    board = tmp_path / "coordination" / "active-sessions.md"
+    r4_board_claim(board, root, engine)
+    r4_policy(Path(environment["SYNTHESIS_GIT_HOOK_CONFIG"]), board)
+    environment["SYNTHESIS_COORDINATION_SESSION"] = "A"
+    claimed = root / "claimed"
+    claimed.mkdir()
+    (claimed / "inside.md").write_text("ordinary content\n", encoding="utf-8")
+    assert run(root, "git", "add", "claimed/inside.md").returncode == 0
+
+    real_checker = engine / "coordination-real.py"
+    (engine / "coordination.py").replace(real_checker)
+    (engine / "coordination.py").write_text(
+        """\
+import subprocess
+import sys
+from pathlib import Path
+
+completed = subprocess.run(
+    [sys.executable, str(Path(__file__).with_name("coordination-real.py")), *sys.argv[1:]],
+    capture_output=True,
+    text=True,
+    check=False,
+)
+if completed.returncode == 0:
+    repository = Path(sys.argv[sys.argv.index("--repository") + 1])
+    late = repository / "claimed" / "late.md"
+    late.write_text("late index mutation\\n", encoding="utf-8")
+    subprocess.run(["git", "add", str(late)], cwd=repository, check=True)
+sys.stdout.write(completed.stdout)
+sys.stderr.write(completed.stderr)
+raise SystemExit(completed.returncode)
+""",
+        encoding="utf-8",
+    )
+
+    completed = run(root, str(engine / "pre-commit"), env=environment)
+
+    assert completed.returncode == 1
+    assert "receipt validation failed" in completed.stderr
+
+
+def test_r4_hook_rejects_refusing_outcome_with_valid_receipt(
+    tmp_path: Path,
+) -> None:
+    root, environment = repository(tmp_path)
+    engine = tmp_path / "engine"
+    r4_engine_bundle(engine)
+    board = tmp_path / "coordination" / "active-sessions.md"
+    r4_board_claim(board, root, engine)
+    r4_policy(Path(environment["SYNTHESIS_GIT_HOOK_CONFIG"]), board)
+    environment["SYNTHESIS_COORDINATION_SESSION"] = "A"
+    claimed = root / "claimed"
+    claimed.mkdir()
+    (claimed / "inside.md").write_text("ordinary content\n", encoding="utf-8")
+    assert run(root, "git", "add", "claimed/inside.md").returncode == 0
+
+    real_checker = engine / "coordination-real.py"
+    (engine / "coordination.py").replace(real_checker)
+    (engine / "coordination.py").write_text(
+        """\
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+completed = subprocess.run(
+    [sys.executable, str(Path(__file__).with_name("coordination-real.py")), *sys.argv[1:]],
+    capture_output=True,
+    text=True,
+    check=False,
+)
+if completed.returncode == 0:
+    payload = json.loads(completed.stdout)
+    payload["enforcement_outcome"] = "refused-outside-claim"
+    payload["outside_paths"] = ["claimed/inside.md"]
+    sys.stdout.write(json.dumps(payload))
+else:
+    sys.stdout.write(completed.stdout)
+sys.stderr.write(completed.stderr)
+raise SystemExit(completed.returncode)
+""",
+        encoding="utf-8",
+    )
+
+    completed = run(root, str(engine / "pre-commit"), env=environment)
+
+    assert completed.returncode == 1
+    assert "receipt validation failed" in completed.stderr
+
+
+def test_r4_unconfigured_hook_reports_control_absence(tmp_path: Path) -> None:
+    root, environment = repository(tmp_path)
+    engine = tmp_path / "engine"
+    r4_engine_bundle(engine)
+    r4_policy(Path(environment["SYNTHESIS_GIT_HOOK_CONFIG"]))
+    (root / "ordinary.md").write_text("ordinary content\n", encoding="utf-8")
+    assert run(root, "git", "add", "ordinary.md").returncode == 0
+
+    completed = run(root, str(engine / "pre-commit"), env=environment)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    output = completed.stdout + completed.stderr
+    assert "coordination check-staged" in output
+    assert "control absent" in output
+    assert "commit not blocked by this control" in output
+
+
+def test_r4_configured_hook_missing_runtime_fails_closed(tmp_path: Path) -> None:
+    root, environment = repository(tmp_path)
+    engine = tmp_path / "engine"
+    r4_engine_bundle(engine, coordination=False)
+    board = tmp_path / "coordination" / "active-sessions.md"
+    r4_policy(Path(environment["SYNTHESIS_GIT_HOOK_CONFIG"]), board)
+    environment["SYNTHESIS_COORDINATION_SESSION"] = "A"
+    (root / "ordinary.md").write_text("ordinary content\n", encoding="utf-8")
+    assert run(root, "git", "add", "ordinary.md").returncode == 0
+
+    completed = run(root, str(engine / "pre-commit"), env=environment)
+
+    assert completed.returncode == 1
+    assert "coordination runtime" in completed.stderr
+    assert "COMMIT BLOCKED" in completed.stderr
+
+
+def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    environment = dict(os.environ)
+    environment["HOME"] = str(home)
+    environment["GIT_CONFIG_GLOBAL"] = str(tmp_path / "gitconfig")
+    environment.pop("SYNTHESIS_GIT_HOOKS_SOURCE", None)
+
+    completed = subprocess.run(
+        ["bash", str(SCRIPT_DIR / "install.sh")],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    installed = home / ".synthesis" / "git-hooks"
+    assert {path.name for path in installed.iterdir()} == {
+        "pre-commit",
+        "commit-msg",
+        "_load_config.py",
+        "coordination.py",
+        "coordination_schema.py",
+        "pointer_lock.py",
+        "source-path",
+    }
+    assert (
+        home / ".synthesis" / "references" / "session-words-v1.txt.zlib.b85"
+    ).is_file()
+    seeded = home / ".synthesis" / "git-hook-config.yaml"
+    assert SIDECAR.parse_simple_yaml(seeded.read_text(encoding="utf-8"))[
+        "config_version"
+    ] == 2
+    output = completed.stdout + completed.stderr
+    assert "installed engine matches skill source (no drift)" in output
+    assert "skill source not found" not in output
+
+    direct_doctor = subprocess.run(
+        [sys.executable, str(installed / "_load_config.py"), "--doctor"],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert direct_doctor.returncode == 0, direct_doctor.stdout + direct_doctor.stderr
+    assert "installed engine matches skill source (no drift)" in direct_doctor.stdout
+    assert "skill source not found" not in direct_doctor.stdout
+
+
+def test_r4_invalid_persisted_source_pointer_fails_doctor_closed(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    installed = home / ".synthesis" / "git-hooks"
+    engine_copy(installed)
+    (installed / "source-path").write_text(
+        str(tmp_path / "missing-source") + "\n", encoding="utf-8"
+    )
+    config = tmp_path / "policy.yaml"
+    policy(config)
+    (home / ".gitconfig").write_text(
+        f"[core]\n\thooksPath = {installed}\n", encoding="utf-8"
+    )
+    environment = dict(os.environ)
+    environment["HOME"] = str(home)
+    environment["SYNTHESIS_GIT_HOOK_CONFIG"] = str(config)
+    for variable in (
+        "SYNTHESIS_GIT_HOOKS_SOURCE",
+        "XDG_CACHE_HOME",
+        "XDG_CONFIG_HOME",
+        "GIT_CONFIG_GLOBAL",
+    ):
+        environment.pop(variable, None)
+
+    completed = subprocess.run(
+        [sys.executable, str(installed / "_load_config.py"), "--doctor"],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 1
+    assert "persisted source pointer" in completed.stdout
+    assert "UNHEALTHY" in completed.stdout
+
+
+def test_r4_config_sidecar_emits_board_gate(tmp_path: Path) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    config = tmp_path / "policy.yaml"
+    r4_policy(config, board)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SIDECAR_PATH),
+            "--config",
+            str(config),
+            "--emit-shell-vars",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "COORDINATION_CHECK_STAGED=1" in completed.stdout
+    assert f"COORDINATION_BOARD={shlex.quote(str(board))}" in completed.stdout
