@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.0"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -179,11 +179,6 @@ When a phase reaches a gated action, prepare everything up to the gate (the draf
 5. **Phase loop** — for each phase: re-read the plan file and coordination board; execute with anti-shortcut discipline; classify each decision per the protocol above; dispatch sub-agents per the hygiene rules below; directly orchestrate any adversarial counterpart and count principal courier crossings; record the sufficiency checkpoint; then update the plan file, and at natural checkpoints run the synthesis-context-lifecycle session protocol so CONTEXT.md and the session log stay current.
 6. **Verify** — before declaring the mission complete, run synthesis-implementation-integrity (or the domain analog). Fix what it finds; verification that only reports is not verification.
 7. **Close** — session-end per synthesis-context-lifecycle (context files updated, work committed where applicable); release the coordination claims; completion report in plain language: what shipped, what was decided and why, the batched questions; then the completion alert.
-
-The close step includes a scratchpad sweep: **What executable state or required
-input data still exists only in this session's scratchpad?** If a durable
-record cites its output, preserve the script and required inputs under
-resources/scripts/ before the checkpoint can close.
 
 ## Sub-Agent Fan-Out Hygiene
 
