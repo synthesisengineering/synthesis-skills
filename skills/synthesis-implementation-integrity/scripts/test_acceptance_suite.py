@@ -166,6 +166,42 @@ def test_changed_surfaces_reference_existing_cases(tmp_path: Path) -> None:
     assert "missing-case" in completed.stdout
 
 
+def test_manifest_path_is_resolved_from_repo_root(tmp_path: Path) -> None:
+    fixture_file(tmp_path)
+    write_manifest(tmp_path, manifest_payload())
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(RUNNER),
+            "validate",
+            "--manifest",
+            "acceptance-suite.yaml",
+            "--repo-root",
+            str(tmp_path),
+            "--json",
+        ],
+        cwd=tmp_path.parent,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_manifest_rejects_symlinked_fixture(tmp_path: Path) -> None:
+    fixture_file(tmp_path)
+    outside = tmp_path.parent / "outside_probe.py"
+    outside.write_text("def test_pass():\n    assert True\n", encoding="utf-8")
+    target = tmp_path / "tests" / "test_probe.py"
+    target.unlink()
+    target.symlink_to(outside)
+    completed = run_cli(tmp_path, "validate", write_manifest(tmp_path, manifest_payload()))
+
+    assert completed.returncode == 2
+    assert "symlink" in completed.stdout
+
+
 def test_shipped_manifest_validates() -> None:
     completed = run_cli(REPO_ROOT, "validate", SKILL_ROOT / "acceptance-suite.yaml")
 
@@ -173,4 +209,4 @@ def test_shipped_manifest_validates() -> None:
     result = json.loads(completed.stdout)
     assert result["ok"] is True
     assert result["membership"] == "closed"
-    assert result["cases_declared"] == 19
+    assert result["cases_declared"] == 21
