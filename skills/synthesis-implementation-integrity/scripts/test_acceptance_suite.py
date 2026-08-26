@@ -15,6 +15,7 @@ REPO_ROOT = SKILL_ROOT.parents[1]
 
 
 def fixture_file(root: Path) -> Path:
+    (root / "tool.py").write_text("# production boundary fixture\n", encoding="utf-8")
     tests = root / "tests"
     tests.mkdir(parents=True, exist_ok=True)
     target = tests / "test_probe.py"
