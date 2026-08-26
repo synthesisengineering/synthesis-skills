@@ -4,6 +4,41 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.51.0] - 2026-08-26
+
+### Added
+
+- **`synthesis-promotion-gate` v1.0.0 — rendered publication boundaries.**
+  The new gate extracts a declared publishable range, builds into an isolated
+  output root, derives every expected route from frontmatter, and inspects
+  DOM text, heading text, HTML comments, and raw page source under one
+  canonical marker policy. A versioned surface manifest must agree exactly
+  with configured renderer inspections; missing outputs and inputs consumed
+  by no renderer refuse the run. Symlinked config and rendered-output paths
+  are refused before their targets can be inspected. The output universe is
+  closed, policy examples execute against every projection, and the shipped
+  acceptance schema is consumed by the production loader. The engine does not
+  approximate HTML grammar: a strict command protocol consumes identity-bound
+  representations from the repository's destination parser or renderer. A
+  parse5-derived corpus executes the Round-15 inline, entity, comment,
+  attribute, code, hidden-container, and malformed-input matrix.
+- **Executable authority topology.** `check` emits a non-authoritative
+  acceptance receipt. `enforce` captures each inspected output exactly once,
+  passes a separate content snapshot to the supplied promotion command, and
+  revalidates config, policy, inputs, sidecars, and snapshot hashes at that
+  boundary. It issues an enforced-gate receipt only after that command
+  succeeds. Engine-owned limits remain present in every receipt and cannot be
+  erased by repository configuration.
+
+### Changed
+
+- **The gated release and repository CI run the promotion acceptance suite.**
+  A release cannot install a promotion-gate change on either client unless
+  its fail-closed behavioral cases pass.
+- **AGENT HEURISTIC — `synthesis-skill-router` v1.4.0** routes publication
+  boundary, publishable-range, and promotion-receipt work to the new
+  prompt-hidden specialist.
+
 ## [4.50.0] - 2026-08-26
 
 ### Added

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Synthesis Promotion Gate"
+  short_description: "Inspect rendered publication surfaces before promotion"
+  default_prompt: "Use $synthesis-promotion-gate to configure or run the fail-closed promotion boundary for this repository."
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,107 @@
+# Renderer-derived generation-zero corpus. These projections were generated with the
+# destination Astro dependency's parse5 7.3.0 through the engagement's
+# render_channels.mjs adapter, then reduced to the three representations R2 declares.
+# AGENT HEURISTIC: this fixture schema is local to the public skill.
+schema: 1
+provenance:
+  motivating_contract: engagement-round-15-destination-grammar-matrix
+  generator: SYNTH_PARSE5=<destination-parse5-entry> node render_channels.mjs
+  parser_entry_sha256: b825162aced2e79be8d68d45efb1f89ec34ed4189467195a071a0d7b694a19d4
+  parser_package_sha256: 8196284780fe95c3245a40e3c17b45fc85ef709f1211775987d037e5e873fe95
+  generator_sha256: 84f5e878ee2798397d788b753a5fa19887ef26cd668aae474abb13744b9ea2a5
+identity:
+  parser: parse5
+  parser_version: "7.3.0"
+  renderer: fixture-renderer-1
+cases:
+  - id: clean-paragraph
+    plane: control
+    html: "<p>Clean.</p>"
+    representations:
+      dom-text: ["clean."]
+      dom-heading-text: []
+      html-comments: []
+  - id: clean-heading
+    plane: control
+    html: "<h1>Clean public page</h1>"
+    representations:
+      dom-text: ["clean public page"]
+      dom-heading-text: ["clean public page"]
+      html-comments: []
+  - id: sensitive-comment
+    plane: comment
+    html: "<!-- ORIGINAL OPENER private holdings REDACTED --><p>Clean.</p>"
+    representations:
+      dom-text: ["clean."]
+      dom-heading-text: []
+      html-comments: ["original opener private holdings redacted"]
+  - id: sensitive-comment-colon
+    plane: comment
+    html: "<!-- ORIGINAL OPENER: private holdings REDACTED --><p>Public.</p>"
+    representations:
+      dom-text: ["public."]
+      dom-heading-text: []
+      html-comments: ["original opener: private holdings redacted"]
+  - id: entity-decoded-date
+    plane: entity
+    html: "<p>&lt;DATE&gt;</p>"
+    representations:
+      dom-text: ["<date>"]
+      dom-heading-text: []
+      html-comments: []
+  - id: publication-heading
+    plane: heading
+    html: "<h2>Publication Notes</h2>"
+    representations:
+      dom-text: ["publication notes"]
+      dom-heading-text: ["publication notes"]
+      html-comments: []
+  - id: inline-adjacency
+    plane: inline
+    html: "<h2>Public<a href='/x'>ation</a> Notes</h2>"
+    representations:
+      dom-text: ["publication notes"]
+      dom-heading-text: ["publication notes"]
+      html-comments: []
+  - id: unclosed-heading-repair
+    plane: malformed
+    html: "<h2>Publication Notes"
+    representations:
+      dom-text: ["publication notes"]
+      dom-heading-text: ["publication notes"]
+      html-comments: []
+  - id: table-foster-parenting-repair
+    plane: malformed
+    html: "<tr><h2><p>Publication Notes"
+    representations:
+      dom-text: ["publication notes"]
+      dom-heading-text: ["publication notes"]
+      html-comments: []
+  - id: entity-adjacency
+    plane: entity
+    html: "<h2>Public&#x61;tion&nbsp;Notes</h2>"
+    representations:
+      dom-text: ["publication notes"]
+      dom-heading-text: ["publication notes"]
+      html-comments: []
+  - id: attribute-exclusion
+    plane: attribute
+    html: '<img alt="Publication Notes"><p>Clean.</p>'
+    representations:
+      dom-text: ["clean."]
+      dom-heading-text: []
+      html-comments: []
+  - id: code-channel-exclusion
+    plane: code
+    html: "<pre><code>Publication Notes</code></pre><p>Clean.</p>"
+    representations:
+      dom-text: ["clean."]
+      dom-heading-text: []
+      html-comments: []
+  - id: hidden-container-exclusion
+    plane: hidden-container
+    html: "<script>Publication Notes</script><p>Clean.</p>"
+    representations:
+      dom-text: ["clean."]
+      dom-heading-text: []
+      html-comments: []

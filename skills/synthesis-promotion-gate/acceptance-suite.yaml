@@ -1,0 +1,111 @@
+# AGENT HEURISTIC: the plan requires an executable, closed acceptance manifest but
+# does not prescribe its schema. R5 will generalize this instance across skills.
+schema: 1
+suite: synthesis-promotion-gate
+membership: closed
+production_entry_point: scripts/promotion_gate.py enforce
+enforcing_boundary: before the supplied promotion command
+receipt_consumer: built-in candidate revalidation plus supplied command
+expected_status: pass
+unverified_remainder: consumers omitted from a repository's surface manifest, disclosure semantics outside the configured marker policy, and destination bytes after the supplied command returns
+cases:
+  - id: round2-five-rendered-defects
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_successful_build_refuses_all_five_round2_rendered_defects
+    motivating_defect: engagement-round-2-build-succeeded-with-five-outward-surface-defects
+  - id: sensitive-comment-page-source
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_sensitive_html_comment_is_inspected_as_comment_and_raw_source
+    motivating_defect: engagement-round-2-sensitive-comment-survived-in-generated-page-source
+  - id: tag-adjacency
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_dom_heading_preserves_tag_adjacency_instead_of_inventing_spaces
+    motivating_defect: engagement-round-15-tag-to-space-projection-missed-visible-adjacency
+  - id: frontmatter-route-bijection
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_route_bijection_uses_frontmatter_slug_not_source_directory
+    motivating_defect: engagement-round-15-directory-substring-routing-ignored-frontmatter
+  - id: staged-page-inspection-completeness
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_every_staged_input_must_have_an_inspected_output
+    motivating_defect: engagement-round-15-one-of-two-staged-pages-was-never-inspected
+  - id: publishable-range
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_publishable_range_excludes_internal_draft_material_but_binds_both_hashes
+    motivating_defect: engagement-round-2-byte-identity-certified-the-wrong-source-range
+  - id: unresolved-sidecar
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_unresolved_sidecar_flag_refuses_promotion_even_when_rendered_page_is_clean
+    motivating_defect: engagement-unresolved-sidecar-flags-were-not-promotion-blockers
+  - id: refusal-precedes-state-change
+    control_class: enforced-gate
+    fixture: scripts/test_promotion_gate.py::test_dirty_enforced_gate_never_invokes_the_promotion_command
+    motivating_defect: engagement-round-15-standalone-successful-command-had-no-enforcing-boundary
+  - id: receipt-consumer-topology
+    control_class: enforced-gate
+    fixture: scripts/test_promotion_gate.py::test_clean_enforced_gate_revalidates_receipt_then_invokes_the_consumer
+    motivating_defect: engagement-round-15-authority-had-no-required-caller-or-receipt-consumer
+  - id: changed-input-revalidation
+    control_class: enforced-gate
+    fixture: scripts/test_promotion_gate.py::test_input_changed_during_build_refuses_before_the_promotion_command
+    motivating_defect: engagement-round-15-receipt-was-not-bound-to-later-promoted-bytes
+  - id: surface-manifest-agreement
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_surface_manifest_and_inspection_config_must_name_the_same_renderers
+    motivating_defect: engagement-round-15-canonical-mirror-was-absent-from-the-inspected-surface-list
+  - id: config-symlink-boundary
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_symlinked_config_is_refused_without_following_it
+    motivating_defect: implementation-self-review-resolved-a-config-symlink-before-validating-it
+  - id: rendered-output-symlink-boundary
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_symlinked_rendered_output_is_refused_instead_of_inspecting_outside_bytes
+    motivating_defect: implementation-self-review-rendered-output-could-follow-an-outside-symlink
+  - id: closed-output-universe
+    control_class: enforced-gate
+    fixture: scripts/test_promotion_gate.py::test_unscoped_output_refuses_before_the_whole_root_reaches_promotion
+    motivating_defect: r2-review-unscoped-dirty-output-crossed-the-whole-root-promotion-boundary
+  - id: captured-content-handoff
+    control_class: enforced-gate
+    fixture: scripts/test_promotion_gate.py::test_promotion_consumes_a_captured_snapshot_not_a_build_childs_later_mutation
+    motivating_defect: r2-review-build-child-mutated-output-after-revalidation
+  - id: executable-policy-examples
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_each_policy_projection_must_match_a_positive_and_reject_negatives
+    motivating_defect: r2-review-marker-examples-were-schema-only
+  - id: executable-policy-negative-examples
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_policy_projection_that_matches_a_negative_example_is_refused
+    motivating_defect: r2-review-marker-negative-examples-were-schema-only
+  - id: malformed-destination-representation
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_malformed_heading_that_destination_repairs_is_refused
+    motivating_defect: r2-review-unclosed-heading-diverged-from-destination-parsing
+  - id: renderer-derived-representation-matrix
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_renderer_derived_destination_fixture_matrix_is_consumed
+    motivating_defect: engagement-round-15-inline-entity-comment-attribute-code-hidden-container-matrix
+  - id: destination-projection-identity-binding
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_destination_projection_identity_mismatch_refuses
+    motivating_defect: r2-review-parser-identity-was-not-bound-to-the-consumed-projection
+  - id: destination-projection-route-closure
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_destination_projection_must_return_the_closed_route_universe
+    motivating_defect: engagement-round-15-staged-page-never-entered-the-inspected-universe
+  - id: engine-owned-unverified-remainder
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_engine_owned_unverified_remainder_cannot_be_erased_by_config
+    motivating_defect: r2-review-config-could-claim-no-unverified-remainder
+  - id: none-like-additional-remainder
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_additional_remainder_cannot_claim_that_nothing_is_unverified
+    motivating_defect: r2-review-config-could-deny-the-unverified-remainder
+  - id: acceptance-schema-self-consumption
+    control_class: acceptance-test
+    fixture: scripts/test_promotion_gate.py::test_shipped_acceptance_manifest_is_consumable_by_the_engine
+    motivating_defect: r2-review-shipped-acceptance-manifest-failed-its-own-loader
+  - id: acceptance-instance-template
+    control_class: diagnostic
+    fixture: scripts/test_promotion_gate.py::test_repository_acceptance_template_is_shipped_and_consumable
+    motivating_defect: r2-review-required-repository-acceptance-template-was-absent

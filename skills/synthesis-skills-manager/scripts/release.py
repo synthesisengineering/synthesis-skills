@@ -73,6 +73,7 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
     ("conformance.instructions", ["python3", "skills/synthesis-agent-conformance/scripts/conformance.py", "instructions", "--repo-root", "."]),
     ("pytest.conformance", ["python3", "-m", "pytest", "skills/synthesis-agent-conformance/scripts/", "-q"]),
     ("pytest.coordination", ["python3", "-m", "pytest", "skills/synthesis-project-management/scripts/test_coordination.py", "-q"]),
+    ("pytest.promotion-gate", ["python3", "-m", "pytest", "skills/synthesis-promotion-gate/scripts/", "-q"]),
     ("pytest.rituals-guard-hooks", ["python3", "-m", "pytest", "skills/synthesis-daily-rituals/scripts/", "skills/synthesis-message-guard/scripts/", "skills/synthesis-git-hooks/scripts/", "-q"]),
     ("compileall", ["python3", "-m", "compileall", "-q", "skills"]),
 )

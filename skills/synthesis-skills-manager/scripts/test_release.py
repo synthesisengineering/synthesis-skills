@@ -95,6 +95,17 @@ def test_first_json_returns_empty_when_absent() -> None:
     assert release._first_json("no json here") == ""
 
 
+def test_required_checks_do_not_depend_on_shell_glob_expansion() -> None:
+    """subprocess receives argv directly; wildcard tokens therefore run zero tests."""
+    wildcard_arguments = [
+        argument
+        for _name, command in release.REQUIRED_CHECKS
+        for argument in command
+        if "*" in argument or "?" in argument or "[" in argument
+    ]
+    assert wildcard_arguments == []
+
+
 # --- client reporting, fail-closed -----------------------------------------
 
 

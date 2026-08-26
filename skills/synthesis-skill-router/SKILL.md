@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.0"
+  version: "1.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -41,6 +41,8 @@ Choose the narrowest matching workflow, then read its sibling `SKILL.md` complet
 
 ### Writing, research, and publishing
 
+- AGENT HEURISTIC — Configure or run a rendered-output publication boundary,
+  publishable-range contract, or promotion receipt: `../synthesis-promotion-gate/SKILL.md`
 - Write or refresh an article: `../synthesis-article-writing/SKILL.md`, `../synthesis-article-refresh/SKILL.md`
 - Frame a topic or brief its readers: `../synthesis-content-framing/SKILL.md`, `../synthesis-reader-briefing/SKILL.md`
 - Check quality and revise prose: `../synthesis-content-quality/SKILL.md`, `../synthesis-writing-pitfalls/SKILL.md`, `../synthesis-writing-craft/SKILL.md`

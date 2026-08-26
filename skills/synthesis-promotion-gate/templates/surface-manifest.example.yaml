@@ -1,0 +1,8 @@
+schema: 1
+renderers:
+  - id: primary-html
+    # Record the exact renderer version used by the configured build command.
+    version: astro@5.0.0
+    input_globs: ["content/drafts/**/index.md"]
+    route_template: "articles/{slug}/index.html"
+    output_prefix: ""

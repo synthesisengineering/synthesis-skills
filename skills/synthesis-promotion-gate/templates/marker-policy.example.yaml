@@ -1,0 +1,40 @@
+schema: 1
+markers:
+  - id: private-original-opener
+    threat_rationale: A rejected private opener must not survive in generated page source.
+    provenance: engagement-round-2-sensitive-html-comment
+    positive_examples: ["ORIGINAL OPENER private holdings"]
+    negative_examples: ["An ordinary public introduction."]
+    projections:
+      html-comments:
+        pattern: 'original\s+opener.*private\s+holdings'
+      raw-page-source:
+        pattern: 'original\s+opener.*private\s+holdings'
+  - id: unresolved-date
+    threat_rationale: A date placeholder must not cross into the publishable range or rendered page.
+    provenance: engagement-round-2-unresolved-date-blocks
+    positive_examples: ["<DATE>", "&lt;DATE&gt;"]
+    negative_examples: ["2026-08-26"]
+    projections:
+      publishable-source:
+        pattern: '<\s*date\s*>'
+      dom-text:
+        pattern: '<\s*date\s*>'
+      raw-page-source:
+        pattern: '&lt;\s*date\s*&gt;'
+  - id: publication-notes-section
+    threat_rationale: Internal publication notes must not render as a reader-facing section.
+    provenance: engagement-round-2-publication-notes-sections
+    positive_examples: ["Publication Notes"]
+    negative_examples: ["I keep publication notes beside the draft."]
+    projections:
+      dom-heading-text:
+        pattern: '^\s*publication\s+notes\s*$'
+  - id: unresolved-sidecar
+    threat_rationale: An unresolved sidecar attestation cannot authorize promotion.
+    provenance: engagement-sidecar-flag-contract
+    positive_examples: ["status: unresolved"]
+    negative_examples: ["status: resolved"]
+    projections:
+      sidecar-flags:
+        pattern: 'status\s*:\s*unresolved'

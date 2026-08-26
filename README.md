@@ -11,6 +11,17 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**A successful build is not a publication-safety signal (August 2026).**
+Release **4.51.0** adds `synthesis-promotion-gate`: an isolated build and
+rendered-output boundary that computes routes from frontmatter, checks DOM
+text, headings, comments, and raw source under one marker policy, and refuses
+missing or undeclared renderer outputs. Its ordinary `check` receipt carries
+no authority. Declared DOM channels come from an identity-bound destination
+parser or renderer rather than a hand-written HTML approximation; only the
+fail-closed `enforce` caller can pass a captured content snapshot to a supplied
+promotion command after immediate contract and snapshot revalidation. See the
+[4.51.0 release notes](CHANGELOG.md).
+
 **Adversarial review now has an outcome and a stop rule (August 2026).**
 Release **4.50.0** adds `synthesis-adversarial-review`: differently shaped
 agents attack a closed artifact universe, record concessions and terminal

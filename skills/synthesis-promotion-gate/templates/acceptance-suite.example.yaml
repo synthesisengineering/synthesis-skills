@@ -1,0 +1,15 @@
+# AGENT HEURISTIC: repository instances use the same closed schema as the
+# shipped suite so the production loader validates its own contract.
+schema: 1
+suite: repository-promotion-gate
+membership: closed
+production_entry_point: scripts/promotion_gate.py enforce
+enforcing_boundary: before the supplied promotion command
+receipt_consumer: built-in candidate revalidation plus supplied command
+expected_status: pass
+unverified_remainder: repository-specific cases outside this closed suite
+cases:
+  - id: repository-clean-promotion
+    control_class: enforced-gate
+    fixture: tests/test_promotion.py::test_clean_promotion_crosses_the_gate
+    motivating_defect: repository-publication-boundary
