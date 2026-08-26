@@ -4,6 +4,37 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.54.0] - 2026-08-26
+
+### Added
+
+- **Executable working state has a durable project tier.**
+  `synthesis-context-lifecycle` v1.12.0 defines `resources/scripts/` for
+  portable computation and required inputs cited by durable records. The
+  context doctor warns when an artifact cites a missing, escaped, non-regular,
+  or symlink-traversing script target while explicitly leaving correctness to
+  acceptance evidence.
+- **Closed acceptance manifests are executable release evidence.**
+  `synthesis-implementation-integrity` v1.2.0 supplies a fail-closed manifest
+  validator and runner with declared membership, defect-pinned fixtures,
+  changed-surface closure, expected polarity, full terminal coverage, named
+  enforcement boundaries, and explicit unverified remainder. Doctrine now
+  requires extraction from authoritative sources and locates enforcement at
+  the state-changing receipt consumer.
+- **Disclosure categories preserve attention without weakening the gate.**
+  `synthesis-disclosure-policy` v1.1.0 defines one-time category approval with
+  frozen evidence predicates, narrow register and surface scope, positive or
+  neutral claims, Class-X exclusion, and fail-closed ambiguity.
+
+### Changed
+
+- **Checkpoint and autonomous closeout sweep executable scratch state.**
+  `synthesis-checkpoint` v1.6.0 and `synthesis-autopilot` v1.3.0 require cited
+  scripts and inputs to reach the durable tier before a checkpoint closes.
+- **The gated release and repository CI consume the R5 acceptance universe.**
+  `synthesis-skills-manager` v2.2.0 runs the lifecycle and integrity tests plus
+  the closed acceptance manifest before publication.
+
 ## [4.53.1] - 2026-08-26
 
 ### Fixed
