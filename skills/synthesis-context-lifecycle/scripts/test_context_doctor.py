@@ -51,6 +51,7 @@ class Fixture:
         run_git(root, "config", "user.email", "test@example.invalid")
         run_git(root, "config", "user.name", "Test")
         run_git(root, "config", "commit.gpgsign", "false")
+        run_git(root, "config", "core.hooksPath", "/dev/null")
         self.remote = root.parent / f"{root.name}-remote.git"
         self.has_remote = with_remote
         if with_remote:
@@ -238,6 +239,73 @@ class ContextDoctorTests(unittest.TestCase):
         self.fx.index([{"id": "alpha", "status": "active"}])
         self.fx.commit()
         self.assertEqual(self.fx.audit("--warnings-as-defects")["code"], 1)
+
+    # --- executable working-state tier ------------------------------------
+
+    def test_artifact_cites_missing_script_warns(self):
+        project = self.fx.project("alpha")
+        artifacts = project / "resources" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "result.md").write_text(
+            "Regenerate with `resources/scripts/rebuild.py`.\n", encoding="utf-8"
+        )
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+
+        result = self.fx.audit()
+        finding = next(
+            item
+            for item in result["data"]["findings"]
+            if item["check"] == "artifact-cites-missing-script"
+        )
+        self.assertEqual(finding["severity"], "warning")
+        self.assertIn("rebuild.py", finding["message"])
+        self.assertEqual(result["code"], 0)
+
+    def test_artifact_cites_existing_script_passes(self):
+        project = self.fx.project("alpha")
+        artifacts = project / "resources" / "artifacts"
+        scripts = project / "resources" / "scripts"
+        artifacts.mkdir(parents=True)
+        scripts.mkdir(parents=True)
+        (artifacts / "result.md").write_text(
+            "Regenerate with `resources/scripts/rebuild.py`.\n", encoding="utf-8"
+        )
+        (scripts / "rebuild.py").write_text("print('ok')\n", encoding="utf-8")
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+
+        self.assertNotIn("artifact-cites-missing-script", checks_in(self.fx.audit()))
+
+    def test_artifact_cites_symlinked_script_warns(self):
+        project = self.fx.project("alpha")
+        artifacts = project / "resources" / "artifacts"
+        scripts = project / "resources" / "scripts"
+        artifacts.mkdir(parents=True)
+        scripts.mkdir(parents=True)
+        outside = self.fx.root.parent / "outside.py"
+        outside.write_text("print('outside')\n", encoding="utf-8")
+        (scripts / "rebuild.py").symlink_to(outside)
+        (artifacts / "result.md").write_text(
+            "Regenerate with `resources/scripts/rebuild.py`.\n", encoding="utf-8"
+        )
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+
+        self.assertIn("artifact-cites-missing-script", checks_in(self.fx.audit()))
+
+    def test_cross_project_script_citation_is_not_a_local_missing_script(self):
+        project = self.fx.project("alpha")
+        artifacts = project / "resources" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "result.md").write_text(
+            "See `projects/other/resources/scripts/rebuild.py`.\n",
+            encoding="utf-8",
+        )
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+
+        self.assertNotIn("artifact-cites-missing-script", checks_in(self.fx.audit()))
 
     # --- cross-tier agreement ---------------------------------------------
 
