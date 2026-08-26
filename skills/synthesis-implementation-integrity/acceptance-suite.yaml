@@ -6,20 +6,27 @@ suite: synthesis-interoperability-integrity-controls-r5
 membership: closed
 production_entry_point: scripts/acceptance_suite.py run
 enforcing_boundary: release.py and repository CI before publication
-receipt_consumer: synthesis-skills-manager release.py and repository Validate CI
+receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
+change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: historical fixture chronology, semantic adequacy outside the declared cases, installed-client parity, independent review, publication, and deployment
+unverified_remainder: historical fixture chronology, semantic adequacy beyond the authoritative base-to-head Git diff and declared cases, installed-client parity, independent review, publication, and deployment
 changed_surfaces:
   - path: skills/synthesis-context-lifecycle/SKILL.md
     cases: [scripts-tier-contract]
   - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
     cases: [missing-script-warning, existing-script-accepted, symlink-script-refused, cross-project-script-reference]
+  - path: skills/synthesis-context-lifecycle/scripts/test_context_doctor.py
+    cases: [missing-script-warning, existing-script-accepted, symlink-script-refused, cross-project-script-reference]
   - path: skills/synthesis-implementation-integrity/SKILL.md
     cases: [acceptance-manifest-doctrine, extract-dont-restate, authority-at-boundary]
   - path: skills/synthesis-implementation-integrity/scripts/acceptance_suite.py
-    cases: [manifest-closed-membership, manifest-boundary-and-status, manifest-unique-cases, runner-terminal-matrix, runner-status-mismatch, enforced-gate-consumer, changed-surface-closure, manifest-root-relative, manifest-symlink-refused]
+    cases: [manifest-closed-membership, manifest-boundary-and-status, manifest-unique-cases, runner-terminal-matrix, runner-status-mismatch, enforced-gate-consumer, changed-surface-closure, manifest-root-relative, manifest-symlink-refused, authoritative-git-change-universe, transaction-bound-receipt]
+  - path: skills/synthesis-implementation-integrity/scripts/test_acceptance_suite.py
+    cases: [manifest-closed-membership, manifest-boundary-and-status, manifest-unique-cases, runner-terminal-matrix, runner-status-mismatch, enforced-gate-consumer, changed-surface-closure, manifest-root-relative, manifest-symlink-refused, authoritative-git-change-universe, transaction-bound-receipt, shipped-manifest-self-consumption]
+  - path: skills/synthesis-implementation-integrity/scripts/test_r5_contract.py
+    cases: [scripts-tier-contract, scratchpad-sweep, acceptance-manifest-doctrine, extract-dont-restate, authority-at-boundary, category-allowlist]
   - path: skills/synthesis-checkpoint/SKILL.md
     cases: [scratchpad-sweep]
   - path: skills/synthesis-autopilot/SKILL.md
@@ -27,11 +34,13 @@ changed_surfaces:
   - path: skills/synthesis-disclosure-policy/SKILL.md
     cases: [category-allowlist]
   - path: skills/synthesis-skills-manager/scripts/release.py
-    cases: [release-wiring]
+    cases: [release-wiring, release-receipt-consumer]
+  - path: skills/synthesis-skills-manager/scripts/test_release.py
+    cases: [release-wiring, release-receipt-consumer, ci-receipt-consumer]
   - path: skills/synthesis-skills-manager/SKILL.md
     cases: [release-wiring]
   - path: .github/workflows/validate.yml
-    cases: [ci-wiring]
+    cases: [ci-wiring, ci-receipt-consumer]
   - path: .claude-plugin/plugin.json
     cases: [release-wiring]
   - path: .codex-plugin/plugin.json
@@ -77,6 +86,14 @@ cases:
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_manifest_rejects_symlinked_fixture
     motivating_defect: agent-heuristic-fixture-could-leave-the-declared-repository-through-a-symlink
+  - id: authoritative-git-change-universe
+    control_class: acceptance-test
+    fixture: scripts/test_acceptance_suite.py::test_schema2_rejects_undeclared_git_changed_surface
+    motivating_defect: review-author-declared-changed-surfaces-omitted-a-broken-production-file-while-remaining-green
+  - id: transaction-bound-receipt
+    control_class: acceptance-test
+    fixture: scripts/test_acceptance_suite.py::test_schema2_receipt_binds_transaction_and_git_state
+    motivating_defect: review-runner-result-was-not-bound-to-the-release-transaction-or-exact-git-state
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
@@ -125,7 +142,15 @@ cases:
     control_class: enforced-gate
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_execute_r5_integrity_suite
     motivating_defect: engagement-new-acceptance-control-could-remain-outside-the-gated-release
+  - id: release-receipt-consumer
+    control_class: enforced-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_boundary_consumes_fresh_bound_acceptance_receipt
+    motivating_defect: review-release-boundary-consumed-subprocess-status-without-validating-a-transaction-bound-result
   - id: ci-wiring
     control_class: enforced-gate
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_repository_ci_executes_r5_integrity_suite
     motivating_defect: engagement-local-release-check-and-pr-ci-could-verify-different-universes
+  - id: ci-receipt-consumer
+    control_class: enforced-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_repository_ci_uses_receipt_consumer_with_authoritative_base
+    motivating_defect: review-ci-invoked-the-runner-directly-without-a-boundary-supplied-base-or-result-consumer
