@@ -4,6 +4,7 @@ import os
 import pathlib
 import subprocess
 import sys
+import time
 
 import yaml
 
@@ -11,9 +12,17 @@ import yaml
 SCRIPT = pathlib.Path(__file__).with_name("finding_ledger.py")
 
 
-def run(*args: str) -> subprocess.CompletedProcess[str]:
+def run(
+    *args: str, resources_root: pathlib.Path | None = None
+) -> subprocess.CompletedProcess[str]:
+    command, *rest = args
+    if command in {"init", "record-crossing", "add", "transition", "validate"}:
+        file_index = rest.index("--file") + 1
+        ledger = pathlib.Path(rest[file_index])
+        root = resources_root or ledger.parent
+        rest = ["--resources-root", str(root), *rest]
     return subprocess.run(
-        [sys.executable, str(SCRIPT), *args],
+        [sys.executable, str(SCRIPT), command, *rest],
         capture_output=True,
         text=True,
         check=False,
@@ -273,3 +282,137 @@ def test_every_success_branch_names_the_unverified_remainder(
     for result in (initialized, crossed, added, transitioned, validated):
         assert result.returncode == 0, result.stderr
         assert "not verified:" in result.stdout.lower()
+
+
+def test_transition_history_is_contiguous_and_evidence_bound(
+    tmp_path: pathlib.Path,
+) -> None:
+    mutations = ("first-from", "broken-chain", "evidence-mismatch")
+    for mutation in mutations:
+        root = tmp_path / mutation
+        root.mkdir()
+        ledger = root / "findings.yaml"
+        initialize(ledger)
+        assert run(*add_args(ledger)).returncode == 0
+        doc = yaml.safe_load(ledger.read_text(encoding="utf-8"))
+        finding = doc["findings"][0]
+        if mutation == "first-from":
+            finding["history"][0]["from"] = "open"
+        elif mutation == "broken-chain":
+            finding["history"].append(
+                {
+                    "at": "2026-08-26T00:00:00+00:00",
+                    "from": "open",
+                    "to": "repaired-verified",
+                    "evidence": "terminal evidence",
+                }
+            )
+            finding["state"] = "repaired-verified"
+            finding["evidence"] = "terminal evidence"
+        else:
+            finding["evidence"] = "top-level evidence disagrees"
+        ledger.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+        refused = run("validate", "--file", str(ledger))
+        assert refused.returncode != 0, mutation
+
+
+def test_resources_root_rejects_symlinked_parent_and_outside_target(
+    tmp_path: pathlib.Path,
+) -> None:
+    resources = tmp_path / "resources"
+    resources.mkdir()
+    safe = resources / "safe.yaml"
+    initialize(safe)
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    linked = resources / "linked"
+    os.symlink(outside, linked)
+    escaped = linked / "escaped.yaml"
+    result = run(
+        "init",
+        "--file",
+        str(escaped),
+        "--engagement",
+        "escape-fixture",
+        "--principal-outcome",
+        "Keep the ledger inside resources.",
+        "--round-trip-budget",
+        "0",
+        "--proportionality",
+        "One resources boundary.",
+        resources_root=resources,
+    )
+    assert result.returncode != 0
+    assert not (outside / "escaped.yaml").exists()
+
+    external = outside / "external.yaml"
+    result = run(
+        "init",
+        "--file",
+        str(external),
+        "--engagement",
+        "outside-fixture",
+        "--principal-outcome",
+        "Keep the ledger inside resources.",
+        "--round-trip-budget",
+        "0",
+        "--proportionality",
+        "One resources boundary.",
+        resources_root=resources,
+    )
+    assert result.returncode != 0
+    assert not external.exists()
+
+
+def test_concurrent_crossing_writers_cannot_both_report_success(
+    tmp_path: pathlib.Path,
+) -> None:
+    ledger = tmp_path / "findings.yaml"
+    initialize(ledger, budget=1)
+    start = tmp_path / "start"
+    workers: list[subprocess.Popen[str]] = []
+    wrapper = (
+        "import os,pathlib,sys,time;"
+        "ready=pathlib.Path(sys.argv[1]);start=pathlib.Path(sys.argv[2]);"
+        "ready.write_text('ready');"
+        "deadline=time.monotonic()+10;"
+        "\nwhile not start.exists():\n"
+        "  assert time.monotonic()<deadline\n"
+        "  time.sleep(0.001)\n"
+        "os.execv(sys.executable,[sys.executable,*sys.argv[3:]])"
+    )
+    command = [
+        str(SCRIPT),
+        "record-crossing",
+        "--resources-root",
+        str(tmp_path),
+        "--file",
+        str(ledger),
+        "--expected-count",
+        "0",
+        "--evidence",
+        "One synchronized provider-boundary crossing.",
+    ]
+    for index in range(8):
+        ready = tmp_path / f"ready-{index}"
+        workers.append(
+            subprocess.Popen(
+                [sys.executable, "-c", wrapper, str(ready), str(start), *command],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        )
+    deadline = time.monotonic() + 10
+    while len(list(tmp_path.glob("ready-*"))) != len(workers):
+        assert time.monotonic() < deadline
+        time.sleep(0.005)
+    start.write_text("start", encoding="utf-8")
+    results = [worker.communicate(timeout=15) + (worker.returncode,) for worker in workers]
+    assert [result[2] for result in results].count(0) == 1, results
+    trips = yaml.safe_load(ledger.read_text(encoding="utf-8"))["engagement"][
+        "principal_courier_round_trips"
+    ]
+    assert trips["count"] == 1
+    assert len(trips["history"]) == 1

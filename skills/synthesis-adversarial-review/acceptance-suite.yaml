@@ -49,3 +49,18 @@ cases:
   - id: hidden-specialist-routing
     fixture: scripts/test_protocol_contract.py::test_hidden_specialist_is_reachable_through_the_router
     motivating_defect: codex-prompt-budget-hides-specialists-without-a-router-path
+  - id: atomic-courier-compare-before-write
+    fixture: scripts/test_finding_ledger.py::test_concurrent_crossing_writers_cannot_both_report_success
+    motivating_defect: r1-review-two-stale-writers-both-succeeded-and-lost-one-event
+  - id: contiguous-finding-history
+    fixture: scripts/test_finding_ledger.py::test_transition_history_is_contiguous_and_evidence_bound
+    motivating_defect: r1-review-validator-certified-a-noncontiguous-evidence-chain
+  - id: resources-containment
+    fixture: scripts/test_finding_ledger.py::test_resources_root_rejects_symlinked_parent_and_outside_target
+    motivating_defect: r1-review-symlinked-parent-escaped-the-owning-project-resources-boundary
+  - id: declared-control-authority
+    fixture: scripts/test_protocol_contract.py::test_acceptance_manifest_classifies_control_authority
+    motivating_defect: r1-review-diagnostics-were-presented-as-acceptance-authority
+  - id: token-soup-refusal
+    fixture: scripts/test_protocol_contract.py::test_protocol_acceptance_rejects_token_soup
+    motivating_defect: r1-review-five-protocol-checks-passed-against-semantically-inert-token-soup
