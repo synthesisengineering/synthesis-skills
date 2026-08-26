@@ -44,6 +44,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   rather than a mutable branch name. CI checks out the history required to
   resolve the event-supplied base commit before deriving the change universe.
 
+### Fixed
+
+- **AGENT HEURISTIC — pointer-fallback tests remain hermetic in coordinated
+  shells.** The pointer-resolution fixture now removes the caller's real
+  coordination selector before exercising fallback identity, so the release
+  gate tests fixture state rather than the executor's ambient session.
+
 ## [4.53.1] - 2026-08-26
 
 ### Fixed

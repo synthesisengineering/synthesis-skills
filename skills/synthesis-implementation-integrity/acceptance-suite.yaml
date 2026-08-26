@@ -37,6 +37,8 @@ changed_surfaces:
     cases: [release-wiring, release-receipt-consumer, release-receipt-binding, publish-boundary-expiry, publish-exact-ref, publish-authority-topology]
   - path: skills/synthesis-skills-manager/scripts/test_release.py
     cases: [release-wiring, release-receipt-consumer, release-receipt-binding, ci-receipt-consumer, ci-authoritative-base-available, publish-boundary-expiry, publish-exact-ref, publish-authority-topology]
+  - path: skills/synthesis-project-management/scripts/test_coordination.py
+    cases: [coordinated-pointer-fallback-fixture]
   - path: skills/synthesis-skills-manager/SKILL.md
     cases: [release-wiring]
   - path: .github/workflows/validate.yml
@@ -98,6 +100,10 @@ cases:
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
     motivating_defect: engagement-suite-manifest-was-a-sidecar-claim-not-consumed-by-its-own-tool
+  - id: coordinated-pointer-fallback-fixture
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_r4_active_pointer_resolves_committing_session
+    motivating_defect: agent-heuristic-pointer-fallback-fixture-inherited-the-real-coordination-session-and-failed-the-release-gate
   - id: scripts-tier-contract
     control_class: diagnostic
     fixture: scripts/test_r5_contract.py::test_scripts_tier_contract_is_owned_by_context_lifecycle

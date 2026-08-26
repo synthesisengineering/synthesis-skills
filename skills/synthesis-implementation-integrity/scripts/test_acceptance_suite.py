@@ -329,4 +329,5 @@ def test_shipped_manifest_validates() -> None:
     result = json.loads(completed.stdout)
     assert result["ok"] is True
     assert result["membership"] == "closed"
-    assert result["cases_declared"] == 31
+    # AGENT HEURISTIC: the coordinated-shell fixture is the 32nd closed case.
+    assert result["cases_declared"] == 32
