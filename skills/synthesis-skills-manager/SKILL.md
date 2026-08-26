@@ -265,9 +265,14 @@ The sequence, each stage gating the next:
   Git at the release boundary, requires exact manifest coverage, and parses a
   fresh result bound to a one-use transaction, head commit and tree, manifest
   digest, and changed-path digest. The boundary recomputes those fields and
-  rechecks the clean worktree before it can authorize publication. CI invokes
-  the same consumer with the pull request base supplied by its event record.
-- **Publish** pushes `main` to *every* configured push remote.
+  rechecks the clean worktree before it can authorize publication. The
+  accepted-state object survives the check phase and expires when any binding
+  changes. CI invokes the same consumer with the pull request base supplied by
+  its event record.
+- **Publish** revalidates the accepted state immediately before every remote
+  mutation and pushes the immutable accepted commit SHA to `refs/heads/main`,
+  never a mutable local branch name. This is the PRINCIPAL RULE D4 repair for
+  `R5-REV-002`.
 - **Install** uses each client's own commands, in the order each client
   requires. For Codex that means `plugin marketplace upgrade` **before**
   `plugin add`, because Codex installs *from* its git marketplace snapshot —

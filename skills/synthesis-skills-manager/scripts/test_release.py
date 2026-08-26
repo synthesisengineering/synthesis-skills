@@ -158,20 +158,22 @@ def test_release_boundary_consumes_fresh_bound_acceptance_receipt(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[tuple[Path, bool]] = []
+    authority = object()
 
-    def consume(candidate: Path, result: release.Result, dry_run: bool) -> bool:
+    def consume(candidate: Path, result: release.Result, dry_run: bool) -> object:
         calls.append((candidate, dry_run))
-        return result.add(
+        result.add(
             "checks.acceptance.r5",
             True,
             "fresh transaction-bound receipt consumed",
         )
+        return authority
 
     monkeypatch.setattr(release, "REQUIRED_CHECKS", ())
     monkeypatch.setattr(release, "consume_acceptance", consume)
     result = release.Result()
 
-    assert release.run_required_checks(repo, result, dry_run=False)
+    assert release.run_required_checks(repo, result, dry_run=False) is authority
     assert calls == [(repo, False)]
     assert [(step.name, step.ok) for step in result.steps] == [
         ("checks.acceptance.r5", True)
