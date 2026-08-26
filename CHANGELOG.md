@@ -4,6 +4,34 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.50.0] - 2026-08-26
+
+### Added
+
+- **`synthesis-adversarial-review` v1.0.0 — bounded, outcome-focused review.**
+  The new protocol gives differently shaped agents a closed artifact universe,
+  rotating attack planes, explicit concessions, per-artifact dispositions,
+  production-topology handoffs, sufficiency rulings, and a bounded
+  post-publication acceptance phase. Review ends at the principal's outcome;
+  reviewer satisfaction and unbounded control growth are not completion
+  criteria.
+- **A fail-closed finding ledger.** `finding_ledger.py` records separate
+  authority labels, enforcement outcomes, and `ship-blocking` versus
+  `ship-improving` classifications. Compare-before-write transitions,
+  evidence-bearing principal-courier counts, strict schema validation, and
+  atomic read-back verification turn review state into an executable contract.
+
+### Changed
+
+- **`synthesis-autopilot` v1.2.0** directly orchestrates adversarial
+  counterparts where the runtime permits it, budgets and counts any genuine
+  principal courier crossings, writes proportionality before round one, and
+  binds completion to the principal's outcome. Control verification stops
+  after one generation unless a requested artifact or enforcing boundary is
+  still defective.
+- **AGENT HEURISTIC — `synthesis-skill-router` v1.3.0** makes the prompt-hidden
+  adversarial-review specialist reachable from outcome-shaped requests.
+
 ## [4.49.0] - 2026-08-24
 
 ### Fixed

@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.0"
+  version: "1.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -30,6 +30,8 @@ Choose the narrowest matching workflow, then read its sibling `SKILL.md` complet
 
 ### Software engineering and review
 
+- AGENT HEURISTIC — Conduct a bounded adversarial review, rotate differently shaped
+  reviewers, or maintain a finding ledger: `../synthesis-adversarial-review/SKILL.md`
 - Plan implementation: `../synthesis-code-planning/SKILL.md`; for unresolved architecture choices also load `../synthesis-preplan/SKILL.md`
 - Audit code or a codebase: `../synthesis-code-audit/SKILL.md`, `../synthesis-codebase-review/SKILL.md`
 - Integrate multi-contributor work: `../synthesis-code-integration/SKILL.md`
