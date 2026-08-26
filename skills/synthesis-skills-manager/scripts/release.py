@@ -122,6 +122,15 @@ class Result:
         return [s for s in self.steps if not s.ok]
 
 
+@dataclass(frozen=True)
+class AcceptanceAuthority:
+    """The exact accepted state that must survive to the publish boundary."""
+
+    change_base: str
+    expected: dict[str, object]
+    receipt: dict[str, object]
+
+
 def run(cmd: list[str], cwd: Path | None = None, timeout: int = 900) -> subprocess.CompletedProcess:
     return subprocess.run(
         cmd, cwd=str(cwd) if cwd else None, capture_output=True, text=True, timeout=timeout
@@ -262,20 +271,25 @@ def validate_acceptance_receipt(
     return True, "fresh transaction-bound receipt consumed"
 
 
-def consume_acceptance(repo: Path, result: Result, dry_run: bool) -> bool:
-    if dry_run:
-        return result.add("checks.acceptance.r5", True, "dry-run")
+def consume_acceptance(
+    repo: Path, result: Result, dry_run: bool
+) -> AcceptanceAuthority | None:
+    # PRINCIPAL RULE (controlling plan D4): even a dry run reconstructs the
+    # receipt. Skipping it would make the dry-run publish path unable to prove
+    # that authority remains current at the boundary it models.
     change_base, detail = acceptance_change_base(repo)
     if not change_base:
-        return result.add(
+        result.add(
             "checks.acceptance.r5",
             False,
             f"authoritative change-base unavailable: {detail}",
         )
+        return None
     transaction_id = secrets.token_hex(16)
     expected, detail = acceptance_expectation(repo, change_base, transaction_id)
     if expected is None:
-        return result.add("checks.acceptance.r5", False, detail)
+        result.add("checks.acceptance.r5", False, detail)
+        return None
     command = [
         "python3",
         str(ACCEPTANCE_RUNNER),
@@ -293,33 +307,69 @@ def consume_acceptance(repo: Path, result: Result, dry_run: bool) -> bool:
     completed = run(command, cwd=repo)
     if completed.returncode != 0:
         tail = (completed.stdout or completed.stderr).strip().splitlines()
-        return result.add(
+        result.add(
             "checks.acceptance.r5",
             False,
             tail[-1] if tail else "acceptance runner failed",
         )
+        return None
     try:
         receipt = json.loads(completed.stdout)
     except (TypeError, json.JSONDecodeError) as exc:
-        return result.add(
+        result.add(
             "checks.acceptance.r5", False, f"runner receipt is not valid JSON: {exc}"
         )
+        return None
     refreshed, detail = acceptance_expectation(repo, change_base, transaction_id)
     if refreshed is None or refreshed != expected:
-        return result.add(
+        result.add(
             "checks.acceptance.r5",
             False,
             detail or "source state changed while acceptance executed",
         )
+        return None
     status = run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=repo)
     if status.returncode != 0 or status.stdout.strip():
-        return result.add(
+        result.add(
             "checks.acceptance.r5",
             False,
             "source worktree changed while acceptance executed",
         )
+        return None
     valid, detail = validate_acceptance_receipt(receipt, expected)
-    return result.add("checks.acceptance.r5", valid, detail)
+    result.add("checks.acceptance.r5", valid, detail)
+    if not valid:
+        return None
+    return AcceptanceAuthority(
+        change_base=change_base,
+        expected=expected,
+        receipt=receipt,
+    )
+
+
+def revalidate_acceptance_authority(
+    repo: Path, authority: AcceptanceAuthority
+) -> tuple[bool, str]:
+    """Expire authority unless every accepted source binding still matches."""
+
+    transaction_id = authority.expected.get("transaction_id")
+    if not isinstance(transaction_id, str) or not transaction_id:
+        return False, "accepted transaction id is unavailable"
+    refreshed, detail = acceptance_expectation(
+        repo, authority.change_base, transaction_id
+    )
+    if refreshed is None:
+        return False, detail
+    if refreshed != authority.expected:
+        return False, "accepted source state changed before publication"
+    status = run(
+        ["git", "status", "--porcelain", "--untracked-files=all"], cwd=repo
+    )
+    if status.returncode != 0:
+        return False, "source worktree state could not be established"
+    if status.stdout.strip():
+        return False, "source worktree changed before publication"
+    return validate_acceptance_receipt(authority.receipt, authority.expected)
 
 
 def read_manifest_version(path: Path) -> str | None:
@@ -504,11 +554,24 @@ def preflight(repo: Path, result: Result, install_only: bool) -> str | None:
     return version
 
 
-def publish(repo: Path, result: Result, dry_run: bool) -> bool:
-    """Push main to every configured push remote."""
+def publish(
+    repo: Path,
+    result: Result,
+    dry_run: bool,
+    authority: AcceptanceAuthority,
+) -> bool:
+    """Push the exact receipt-bound commit to every configured push remote."""
     branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo).stdout.strip()
     if not result.add("publish.on-main", branch == "main", f"branch={branch or 'unknown'}"):
         return False
+    valid, detail = revalidate_acceptance_authority(repo, authority)
+    if not result.add("publish.acceptance", valid, detail):
+        return False
+    accepted_head = authority.expected.get("change_head")
+    if not isinstance(accepted_head, str) or not accepted_head:
+        return result.add(
+            "publish.accepted-head", False, "receipt-bound head is unavailable"
+        )
     remotes = sorted(
         {
             line.split()[0]
@@ -519,18 +582,29 @@ def publish(repo: Path, result: Result, dry_run: bool) -> bool:
     if not result.add("publish.remotes", bool(remotes), ", ".join(remotes) or "none configured"):
         return False
     for remote in remotes:
+        valid, detail = revalidate_acceptance_authority(repo, authority)
+        if not result.add(f"publish.acceptance.{remote}", valid, detail):
+            return False
+        refspec = f"{accepted_head}:refs/heads/main"
         if dry_run:
-            result.add(f"publish.push.{remote}", True, "dry-run")
+            result.add(f"publish.push.{remote}", True, f"dry-run: {refspec}")
             continue
-        completed = run(["git", "push", remote, "main"], cwd=repo, timeout=600)
+        # PRINCIPAL RULE (controlling plan D4): the pushed object is immutable.
+        # A concurrent branch movement cannot substitute a different commit
+        # after the final authority check.
+        completed = run(
+            ["git", "push", remote, refspec], cwd=repo, timeout=600
+        )
         if completed.returncode != 0:
             tail = (completed.stderr or completed.stdout).strip().splitlines()
             return result.add(f"publish.push.{remote}", False, tail[-1] if tail else "push failed")
-        result.add(f"publish.push.{remote}", True, "pushed")
+        result.add(f"publish.push.{remote}", True, f"pushed {refspec}")
     return True
 
 
-def run_required_checks(repo: Path, result: Result, dry_run: bool) -> bool:
+def run_required_checks(
+    repo: Path, result: Result, dry_run: bool
+) -> AcceptanceAuthority | None:
     for name, command in REQUIRED_CHECKS:
         if dry_run:
             result.add(f"checks.{name}", True, "dry-run")
@@ -544,7 +618,7 @@ def run_required_checks(repo: Path, result: Result, dry_run: bool) -> bool:
             "" if passed else (tail[-1] if tail else "failed"),
         )
         if not passed:
-            return False
+            return None
     return consume_acceptance(repo, result, dry_run)
 
 
@@ -579,20 +653,21 @@ def main(argv: list[str] | None = None) -> int:
         if args.install_only or args.check_only:
             print("\nRELEASE ABORTED: --acceptance-only cannot be combined with other modes.")
             return 2
-        if not consume_acceptance(repo, result, args.dry_run):
+        if consume_acceptance(repo, result, args.dry_run) is None:
             print("\nACCEPTANCE REFUSED: no release authority was issued.")
             return 1
         print(f"\nACCEPTANCE CONSUMED for {version}. Nothing published or installed.")
         return 0
 
     if not args.install_only:
-        if not run_required_checks(repo, result, args.dry_run):
+        authority = run_required_checks(repo, result, args.dry_run)
+        if authority is None:
             print("\nRELEASE ABORTED: required checks failed. Nothing was published.")
             return 1
         if args.check_only:
             print(f"\nCHECKS PASSED for {version}. Nothing published (--check-only).")
             return 0
-        if not publish(repo, result, args.dry_run):
+        if not publish(repo, result, args.dry_run, authority):
             print("\nRELEASE ABORTED: publish failed. Clients left untouched.")
             return 1
 

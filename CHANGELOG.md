@@ -39,8 +39,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   the closed acceptance manifest before publication. The release boundary and
   CI use the same receipt consumer: it derives the authoritative change base,
   parses the fresh result, recomputes every Git and content binding, verifies
-  closed terminal coverage, and refuses if the worktree changes during the
-  transaction.
+  closed terminal coverage, carries the accepted state through the release,
+  expires it on any source change, and pushes the immutable accepted commit
+  rather than a mutable branch name.
 
 ## [4.53.1] - 2026-08-26
 
