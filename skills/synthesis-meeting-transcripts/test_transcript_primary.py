@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -46,11 +47,59 @@ def test_fixture_shape() -> None:
     assert len(SUMMARY.read_text(encoding="utf-8").splitlines()) == 128
 
 
+def test_component_versions_match_skill_metadata() -> None:
+    skill_text = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    frontmatter = yaml.safe_load(skill_text.split("---", 2)[1])
+    expected = frontmatter["metadata"]["version"]
+    for script in (SCRIPT, ROOT / "verify_transcripts.py"):
+        completed = subprocess.run(
+            [sys.executable, str(script), "--version"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0
+        assert completed.stdout.strip() == expected
+
+
 def test_structured_summary_is_derived() -> None:
     code, result = invoke("classify", str(SUMMARY))
     assert code == 1
     assert result["source_class"] == "derived"
     assert result["primary_source_eligible"] is False
+
+
+def test_summary_with_bare_message_timestamps_is_derived() -> None:
+    injected = SUMMARY.read_text(encoding="utf-8") + """
+message_ts: `1800000001.000001`
+message_ts: `1800000002.000002`
+message_ts: `1800000003.000003`
+message_ts: `1800000004.000004`
+message_ts: `1800000005.000005`
+message_ts: `1800000006.000006`
+message_ts: `1800000007.000007`
+"""
+    with tempfile.TemporaryDirectory() as temporary:
+        artifact = Path(temporary) / "summary-with-markers.md"
+        artifact.write_text(injected, encoding="utf-8")
+        code, result = invoke("classify", str(artifact))
+    assert code == 1
+    assert result["source_class"] == "derived"
+    assert result["evidence"]["raw_message_record_count"] == 0
+
+
+def test_marker_only_file_is_derived() -> None:
+    markers = "\n".join(
+        f"message_ts: `180000000{index}.00000{index}`" for index in range(1, 6)
+    )
+    with tempfile.TemporaryDirectory() as temporary:
+        artifact = Path(temporary) / "markers-only.md"
+        artifact.write_text(markers + "\n", encoding="utf-8")
+        code, result = invoke("classify", str(artifact))
+    assert code == 1
+    assert result["source_class"] == "derived"
+    assert result["evidence"]["raw_message_record_count"] == 0
 
 
 def test_heading_cannot_upgrade_summary() -> None:
@@ -66,6 +115,32 @@ def test_raw_message_markers_establish_source_grade() -> None:
     assert result["primary_source_eligible"] is True
     assert result["control_class"] == "diagnostic"
     assert result["issues_authority_receipt"] is False
+
+
+def test_permalink_and_message_ts_for_one_message_are_deduplicated() -> None:
+    rows = ["# Three-message export", ""]
+    for index in range(1, 4):
+        timestamp = f"170000000{index}.00000{index}"
+        permalink_timestamp = timestamp.replace(".", "")
+        rows.extend(
+            [
+                f"## Message {index}",
+                (
+                    "https://example-workspace.slack.com/archives/"
+                    f"C0123456789/p{permalink_timestamp}"
+                ),
+                f"message_ts: `{timestamp}`",
+                "Synthetic message body.",
+                "",
+            ]
+        )
+    with tempfile.TemporaryDirectory() as temporary:
+        artifact = Path(temporary) / "three-messages.md"
+        artifact.write_text("\n".join(rows), encoding="utf-8")
+        code, result = invoke("classify", str(artifact))
+    assert code == 1
+    assert result["source_class"] == "derived"
+    assert result["evidence"]["distinct_message_location_count"] == 3
 
 
 def test_attribution_without_location_is_refused() -> None:
@@ -85,6 +160,19 @@ def test_unknown_location_is_refused() -> None:
     )
     assert code == 1
     assert result["enforcement_outcome"] == "refused-unresolved-location"
+
+
+def test_thread_location_is_not_quote_granular() -> None:
+    code, result = invoke(
+        "authorize-attribution",
+        str(RAW),
+        "--location",
+        "thread_ts:1700000000.000001",
+    )
+    assert code == 1
+    assert result["enforcement_outcome"] == (
+        "refused-thread-location-not-message-granular"
+    )
 
 
 def test_matching_location_issues_hash_bound_receipt() -> None:
@@ -127,11 +215,12 @@ def test_acceptance_manifest_is_closed_and_resolvable() -> None:
     cases = manifest["cases"]
     assert {case["control_class"] for case in cases} == {
         "acceptance-test",
+        "diagnostic",
         "enforced-gate",
     }
     functions = {name for name, value in globals().items() if name.startswith("test_") and callable(value)}
     declared = {case["fixture"].split("::", 1)[1] for case in cases}
-    assert declared <= functions
+    assert declared == functions
 
 
 def main() -> int:
