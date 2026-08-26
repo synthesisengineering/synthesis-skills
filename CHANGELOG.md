@@ -41,7 +41,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   parses the fresh result, recomputes every Git and content binding, verifies
   closed terminal coverage, carries the accepted state through the release,
   expires it on any source change, and pushes the immutable accepted commit
-  rather than a mutable branch name.
+  rather than a mutable branch name. CI checks out the history required to
+  resolve the event-supplied base commit before deriving the change universe.
 
 ## [4.53.1] - 2026-08-26
 

@@ -10,7 +10,11 @@ jobs:
   conformance:
     runs-on: ubuntu-latest
     steps:
+      # PRINCIPAL RULE (controlling plan D4): the event base must exist in the
+      # runner repository before the receipt consumer can derive its universe.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
