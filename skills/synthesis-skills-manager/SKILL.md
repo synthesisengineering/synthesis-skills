@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.0"
+  version: "2.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -250,6 +250,7 @@ clients behind their own source with nothing visibly wrong.
 python3 skills/synthesis-skills-manager/scripts/release.py --repo-root .
 python3 .../release.py --dry-run       # print the plan, mutate nothing
 python3 .../release.py --check-only    # preflight + required checks, no publish
+python3 .../release.py --acceptance-only # consume the bound acceptance result (CI)
 python3 .../release.py --install-only  # refresh + verify clients (new machine, drift recovery)
 ```
 
@@ -260,7 +261,18 @@ The sequence, each stage gating the next:
 - **Preflight** refuses to proceed unless both plugin manifests agree, the
   newest CHANGELOG entry matches them, and the tree is clean. It also refuses
   to run against an installed cache mistaken for the source checkout.
-- **Publish** pushes `main` to *every* configured push remote.
+- **Acceptance consumption** derives the base-to-head change universe from
+  Git at the release boundary, requires exact manifest coverage, and parses a
+  fresh result bound to a one-use transaction, head commit and tree, manifest
+  digest, and changed-path digest. The boundary recomputes those fields and
+  rechecks the clean worktree before it can authorize publication. The
+  accepted-state object survives the check phase and expires when any binding
+  changes. CI invokes the same consumer with the pull request base supplied by
+  its event record.
+- **Publish** revalidates the accepted state immediately before every remote
+  mutation and pushes the immutable accepted commit SHA to `refs/heads/main`,
+  never a mutable local branch name. This is the PRINCIPAL RULE D4 repair for
+  `R5-REV-002`.
 - **Install** uses each client's own commands, in the order each client
   requires. For Codex that means `plugin marketplace upgrade` **before**
   `plugin add`, because Codex installs *from* its git marketplace snapshot —

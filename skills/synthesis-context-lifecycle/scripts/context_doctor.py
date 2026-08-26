@@ -63,7 +63,7 @@ from pathlib import Path
 # missing the doctor must fail loudly rather than silently skip a check.
 import context_currency
 
-DOCTOR_VERSION = "1.5.0"
+DOCTOR_VERSION = "1.6.0"
 
 # Budgets from the tiered context architecture.
 CONTEXT_BUDGET_ACTIVE = 150
@@ -693,7 +693,65 @@ CHECKS = [
     "unpushed-context",
     "freshness-unverifiable",
     "record-unreadable",
+    "artifact-cites-missing-script",
 ]
+
+
+SCRIPT_CITATION = re.compile(
+    r"(?<![A-Za-z0-9_./-])"
+    r"(?P<reference>(?:resources/scripts/|\.\./scripts/)"
+    r"[A-Za-z0-9_./-]*[A-Za-z0-9_-])"
+)
+
+
+def cited_script_findings(project_path: Path) -> list[tuple[Path, str, str]]:
+    """Return artifact citations whose executable target is not durable.
+
+    This is deliberately an existence and boundary check. A regular file at
+    the cited path is not evidence that the code is correct or reproducible.
+    """
+
+    artifacts = project_path / "resources" / "artifacts"
+    scripts = project_path / "resources" / "scripts"
+    if not artifacts.is_dir():
+        return []
+
+    scripts_lexical = Path(os.path.abspath(os.fspath(scripts)))
+    findings: list[tuple[Path, str, str]] = []
+    seen: set[tuple[Path, str]] = set()
+    for artifact in sorted(artifacts.glob("*.md")):
+        if not artifact.is_file() or artifact.is_symlink():
+            continue
+        for match in SCRIPT_CITATION.finditer(read_text(artifact)):
+            reference = match.group("reference")
+            key = (artifact, reference)
+            if key in seen:
+                continue
+            seen.add(key)
+            if reference.startswith("resources/scripts/"):
+                candidate = project_path / reference
+            else:
+                candidate = artifact.parent / reference
+            candidate_lexical = Path(os.path.abspath(os.fspath(candidate)))
+
+            try:
+                relative = candidate_lexical.relative_to(scripts_lexical)
+            except ValueError:
+                findings.append((artifact, reference, "escapes resources/scripts/"))
+                continue
+
+            cursor = scripts_lexical
+            unsafe = cursor.is_symlink()
+            for part in relative.parts:
+                cursor = cursor / part
+                if cursor.is_symlink():
+                    unsafe = True
+                    break
+            if unsafe:
+                findings.append((artifact, reference, "traverses a symlink"))
+            elif not candidate_lexical.is_file():
+                findings.append((artifact, reference, "is not a regular file"))
+    return findings
 
 
 def audit_project(
@@ -790,6 +848,17 @@ def audit_project(
                 f"{REFERENCE_BUDGET} — the project's scope may be too broad",
                 "split the project, or move narrative into sessions/",
             )
+
+    # --- executable working-state durability ------------------------------
+    for artifact, citation, reason in cited_script_findings(project_path):
+        audit.add(
+            "artifact-cites-missing-script",
+            "warning",
+            f"{artifact.name} cites {citation}, but that target {reason}",
+            "preserve the portable script and every required input under "
+            "resources/scripts/, then update the artifact citation; this check "
+            "establishes existence only and does not prove the script is correct",
+        )
 
     # --- cross-tier agreement ----------------------------------------------
     if index_entry is None:
