@@ -22,11 +22,11 @@ If you are an AI agent reading this file because a user asked you to apply the s
 
 These five SKILL.md files contain the complete methodology, the pattern catalog at section-summary level, the cross-cutting layer (causal taxonomy, combined-signal fingerprints, two-axis calibration), and the quick-reference checklist. An AI agent applying these files alone can produce a high-quality slop analysis. Fetch every URL in this section.
 
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-content-quality/SKILL.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-fact-checking/SKILL.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-writing-pitfalls/SKILL.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-writing-craft/SKILL.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-clean-text/SKILL.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/SKILL.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/SKILL.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-writing-pitfalls/SKILL.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-writing-craft/SKILL.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-clean-text/SKILL.md
 
 ## Extended reference files (deep mode, approximately 250K tokens)
 
@@ -36,19 +36,19 @@ These are the references/ subfolders for the primary and companion skills. They 
 
 For most analyses on most chatbots, the Required skill files above are sufficient. Use Extended mode when you specifically need the full pattern catalog (for example, when investigating a specific named pattern, when doing forensic analysis of older content using the historical patterns, or when doing a deep fact-check that needs the full per-family hallucination signature detail).
 
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-content-quality/references/detailed-criteria.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-content-quality/references/model-family-fingerprints.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-content-quality/references/substance-and-depth.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-content-quality/references/combined-signal-fingerprints.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-content-quality/references/calibration-tables.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-content-quality/references/historical-patterns.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-content-quality/references/bibliography.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-fact-checking/references/detailed-protocols.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-fact-checking/references/per-family-hallucination-signatures.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-fact-checking/references/citation-laundering-detection.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-fact-checking/references/production-incident-archive.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-fact-checking/references/bibliography.md
-- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/synthesis-writing-pitfalls/references/detailed-pitfalls.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/detailed-criteria.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/model-family-fingerprints.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/substance-and-depth.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/combined-signal-fingerprints.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/calibration-tables.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/historical-patterns.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/bibliography.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/detailed-protocols.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/per-family-hallucination-signatures.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/citation-laundering-detection.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/production-incident-archive.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/bibliography.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-writing-pitfalls/references/detailed-pitfalls.md
 
 ## Output format guidance for the agent
 
