@@ -74,6 +74,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 HEADER_DATE = re.compile(
@@ -98,6 +99,29 @@ STATE_AS_OF = re.compile(
 SECTION_HEADING = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 
 STALENESS_KINDS = {"header-behind-log", "header-field-stale", "body-marker-stale"}
+
+# Item-level currency. Sections cover prose; these cover the open-items lists
+# whose entries carry an implicit present tense nobody re-dates. Stamping each
+# item makes its age travel with it, so appending stays safe and any reader can
+# compute overdue-ness without a ritual having run.
+#   - [ ] Chase the feedback ask (as of 2026-08-10, review 7d)
+ITEM_AS_OF = re.compile(
+    r"^[ \t]*[-*][ \t]+(?:\[(?P<box>[ xX])\][ \t]+)?(?P<text>.*?)[ \t]*"
+    r"\(as of[ \t]+(?P<date>\d{4}-\d{2}-\d{2})"
+    r"(?:,[ \t]*review[ \t]+(?P<days>\d+)d)?\)[ \t]*$",
+    re.MULTILINE,
+)
+ITEM_LINE = re.compile(
+    r"^[ \t]*[-*][ \t]+(?:\[(?P<box>[ xX])\][ \t]+)?(?P<text>.+?)[ \t]*$",
+    re.MULTILINE,
+)
+# Only lists that represent live obligations are held to stamping; narrative
+# bullets are not, because demanding a date from prose trains bypass.
+OPEN_SECTION = re.compile(
+    r"open|pending|next|action|todo|to do|blocked|waiting|in progress|current",
+    re.IGNORECASE,
+)
+DEFAULT_REVIEW_DAYS = 14
 
 
 def first_ordinals(text: str) -> dict[str, int]:
@@ -151,6 +175,77 @@ def body_markers(text: str) -> list[dict]:
     return markers
 
 
+def _section_of(headings: list[tuple[int, str]], position: int) -> str:
+    section = "(top)"
+    for start, title in headings:
+        if start < position:
+            section = title
+        else:
+            break
+    return section
+
+
+def item_markers(text: str) -> list[dict]:
+    """Every stamped list item, attributed to its section heading."""
+    headings = [(m.start(), m.group(1)) for m in SECTION_HEADING.finditer(text)]
+    items: list[dict] = []
+    for match in ITEM_AS_OF.finditer(text):
+        days = match.group("days")
+        items.append({
+            "section": _section_of(headings, match.start()),
+            "text": match.group("text").strip(),
+            "date": match.group("date"),
+            "review_days": int(days) if days is not None else None,
+            "done": (match.group("box") or " ").strip().lower() == "x",
+        })
+    return items
+
+
+def overdue_items(text: str, today: date | None = None) -> list[dict]:
+    """Stamped, still-open items whose review horizon has passed.
+
+    An unspecified horizon still ages: silence must not read as "never stale",
+    which is the same reasoning that makes an undated record unverifiable
+    rather than fresh.
+    """
+    moment = today or date.today()
+    overdue = []
+    for item in item_markers(text):
+        if item["done"]:
+            continue
+        try:
+            stamped = date.fromisoformat(item["date"])
+        except ValueError:
+            continue
+        horizon = item["review_days"] or DEFAULT_REVIEW_DAYS
+        if (moment - stamped).days > horizon:
+            item["age_days"] = (moment - stamped).days
+            item["horizon_days"] = horizon
+            overdue.append(item)
+    return overdue
+
+
+def unstamped_open_sections(text: str) -> list[str]:
+    """Open-item sections holding live entries that carry no stamp at all."""
+    headings = [(m.start(), m.group(1)) for m in SECTION_HEADING.finditer(text)]
+    stamped = {
+        (item["section"], item["text"]) for item in item_markers(text)
+    }
+    bare: dict[str, int] = {}
+    for match in ITEM_LINE.finditer(text):
+        section = _section_of(headings, match.start())
+        if not OPEN_SECTION.search(section):
+            continue
+        box = (match.group("box") or " ").strip().lower()
+        if box == "x":
+            continue
+        body = match.group("text").strip()
+        if (section, body) in stamped or body.endswith(")") and "as of" in body:
+            continue
+        bare[section] = bare.get(section, 0) + 1
+    return sorted(bare)
+
+
 def log_state(project: Path) -> tuple[str | None, str | None, dict[str, int]]:
     """(newest date, file, current ordinals) from the session log.
 
@@ -184,7 +279,7 @@ def log_state(project: Path) -> tuple[str | None, str | None, dict[str, int]]:
     return newest, newest_file, current
 
 
-def audit_project(project: Path) -> list[dict]:
+def audit_project(project: Path, today: date | None = None) -> list[dict]:
     """Every currency finding for one project record."""
     context = project / "CONTEXT.md"
     if not context.is_file():
@@ -271,6 +366,27 @@ def audit_project(project: Path) -> list[dict]:
                       "markers — body currency is unverifiable; a current "
                       "header above unmarked operational sections cannot be "
                       "distinguished from a stale one",
+        })
+
+    # Item currency — the level below sections. An open-items entry carries an
+    # implicit present tense that nothing re-dates, so a record whose header and
+    # sections are all current can still route an agent off a weeks-old item.
+    for item in overdue_items(text, today=today):
+        findings.append({
+            "project": str(project), "kind": "item-marker-stale",
+            "section": item["section"],
+            "detail": f"'{item['section']}' item \"{item['text']}\" is marked "
+                      f"as of {item['date']}, {item['age_days']} days ago, past "
+                      f"its {item['horizon_days']}-day review horizon",
+            "marker_date": item["date"], "age_days": item["age_days"],
+        })
+    for section in unstamped_open_sections(text):
+        findings.append({
+            "project": str(project), "kind": "item-marker-absent",
+            "section": section,
+            "detail": f"'{section}' lists live items with no '(as of ...)' "
+                      "stamps — their age is unverifiable, so an entry written "
+                      "weeks ago is indistinguishable from one written today",
         })
     return findings
 
