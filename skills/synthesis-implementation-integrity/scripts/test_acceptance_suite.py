@@ -329,5 +329,20 @@ def test_shipped_manifest_validates() -> None:
     result = json.loads(completed.stdout)
     assert result["ok"] is True
     assert result["membership"] == "closed"
-    # AGENT HEURISTIC: the coordinated-shell fixture is the 32nd closed case.
-    assert result["cases_declared"] == 32
+    # Derive the expected count from the manifest rather than pinning a literal.
+    # A hardcoded total describes one release's suite, so every later release
+    # fails this check for the sole reason that it is a different release —
+    # noise that says nothing about whether the shipped manifest is consumable.
+    # What matters is that the runner and the manifest agree, and that closed
+    # membership is real: every declared case is present and none is invented.
+    declared = yaml.safe_load(
+        (SKILL_ROOT / "acceptance-suite.yaml").read_text(encoding="utf-8")
+    )
+    assert result["cases_declared"] == len(declared["cases"])
+    assert result["cases_declared"] > 0
+    referenced = {
+        case_id
+        for surface in declared["changed_surfaces"]
+        for case_id in surface["cases"]
+    }
+    assert referenced == {case["id"] for case in declared["cases"]}

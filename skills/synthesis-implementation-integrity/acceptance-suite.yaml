@@ -29,6 +29,8 @@ changed_surfaces:
     cases: [ritual-documents-stamp-convention]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
+  - path: skills/synthesis-implementation-integrity/scripts/test_acceptance_suite.py
+    cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
     cases: [release-manifest-parity]
   - path: .codex-plugin/plugin.json
