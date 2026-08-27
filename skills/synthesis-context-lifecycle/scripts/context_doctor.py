@@ -962,6 +962,20 @@ def audit_project(
                 "add '*State as of:*' markers to Current State and What's "
                 "Next per the tiered-context template",
             )
+        elif kind in ("item-marker-stale", "item-marker-absent"):
+            # Warnings, not defects, and deliberately so: item stamping is a new
+            # convention, and turning an entire corpus red on the day it lands
+            # is how a guard teaches people to route around it. These surface in
+            # the integrity line and the session-start reading without blocking
+            # a session end, which stays reserved for structural defects.
+            audit.add(
+                "item-currency",
+                "warning",
+                finding["detail"],
+                "re-date the item with '(as of YYYY-MM-DD, review Nd)' once "
+                "you have checked it, or close it out into sessions/ — an "
+                "item whose age is unverifiable cannot be trusted as current",
+            )
 
     # --- durability ---------------------------------------------------------
     dirty = uncommitted(repo_root, project_path)
