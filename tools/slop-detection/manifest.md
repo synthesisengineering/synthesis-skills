@@ -2,7 +2,7 @@
 
 **Version:** 1.0
 **Date:** 2026-05-19
-**License:** CC0-1.0 (skill content) / MIT (this manifest)
+**License:** CC0-1.0
 **Canonical URL:** https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/tools/slop-detection/manifest.md
 
 This file is the canonical index of skill files that constitute the synthesis engineering open-source slop detection system. It exists so a chatbot or AI agent can fetch a single stable URL, then follow the URLs below to load the full skill methodology without any local installation.
