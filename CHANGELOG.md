@@ -4,6 +4,40 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.55.0] - 2026-08-27
+
+### Added
+
+- **Open-item currency is checked at read time.** `synthesis-context-lifecycle`
+  gains item-level stamps: a live entry in an open-items section carries
+  `(as of YYYY-MM-DD, review Nd)`, and `context_doctor.py` reports it as
+  `item-currency` once it passes its horizon. Section markers already stopped a
+  fresh header sitting above stale prose; this stops the failure one level down,
+  where an entry keeps the present tense it was written in long after that
+  stopped being true. Rewriting open-items lists each run was considered and
+  rejected: it drops whatever today's evidence fails to surface, turning a
+  visible stale entry into an invisible missing one, and it only acts on the
+  days the ritual runs — which is not when records rot. An omitted horizon
+  defaults to 14 days, because silence must not read as "never stale". Findings
+  are warnings, not defects: a convention that turns a corpus red the day it
+  lands teaches people to route around guards.
+- **Per-workspace review ledger.** `review_ledger.py` keeps an append-only
+  record of open-item transitions — opened, closed, carried, and
+  expired-unactioned — so weekly, monthly, and quarterly reviews can answer what
+  slipped. A tiered record describes what is open now and loses the evidence
+  that anything was ever open the moment it closes. The ledger is per-workspace
+  by design rather than global: engagement workspaces are deletion units, and a
+  shared store would keep a counterparty's items alive in a file that outlives
+  the delete-my-data request they belonged to. Reporting federates across
+  workspaces at read time and copies nothing. Expiry is derived from the item
+  stamps rather than remembered, so the common case needs no discipline at the
+  moment discipline fails.
+
+### Changed
+
+- `synthesis-daily-rituals` Day-End Step 7 documents the stamp convention and
+  states that advancing a stamp without re-checking the item is a false receipt.
+
 ## [4.54.0] - 2026-08-26
 
 ### Added

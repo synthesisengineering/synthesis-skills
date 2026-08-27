@@ -180,3 +180,35 @@ def test_appending_does_not_make_older_stamped_items_invisible(tmp_path: Path) -
 
     assert len(stale) == 1
     assert "2026-07-01" in stale[0]["detail"]
+
+
+# --- calibration and documented convention --------------------------------
+
+
+def test_item_findings_are_warnings_not_defects(tmp_path: Path) -> None:
+    """Deliberate calibration: a new convention that turns an entire corpus red
+    on the day it lands is how a guard teaches people to route around it. These
+    must surface without blocking a session end, which is reserved for defects."""
+    source = Path(__file__).with_name("context_doctor.py").read_text(encoding="utf-8")
+    marker = 'elif kind in ("item-marker-stale", "item-marker-absent"):'
+    assert marker in source, "doctor no longer maps the item kinds"
+    block = source.split(marker, 1)[1].split("audit.add(", 1)[1][:200]
+
+    assert '"item-currency"' in block
+    assert '"warning"' in block
+    assert '"defect"' not in block
+
+
+def test_day_end_ritual_documents_the_stamp_convention() -> None:
+    """The convention is only enforceable if the ritual that writes records
+    states it; a checker without a documented convention trains bypass."""
+    skill = (
+        Path(__file__).resolve().parents[2]
+        / "synthesis-daily-rituals"
+        / "SKILL.md"
+    )
+    text = skill.read_text(encoding="utf-8")
+    assert "(as of YYYY-MM-DD, review Nd)" in text
+    assert "item-currency" in text
+    # The rejected alternative must not creep back in as a mandate.
+    assert "rewritten every run, never appended" not in text

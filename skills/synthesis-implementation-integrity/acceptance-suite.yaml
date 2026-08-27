@@ -1,8 +1,10 @@
-# AGENT HEURISTIC: R5 is the first suite authored against the generalized
-# executable-manifest contract. The controlling plan specifies the required
-# semantics, while this manifest records the exact public release universe.
+# AGENT HEURISTIC: authored for the item-currency release against the same
+# generalized executable-manifest contract R5 established. The manifest records
+# this release's exact public universe; the runner proves the declaration
+# against the authoritative base-to-head Git diff, so a surface that changes
+# without being declared — or is declared without changing — refuses authority.
 schema: 2
-suite: synthesis-interoperability-integrity-controls-r5
+suite: synthesis-item-currency-and-review-ledger
 membership: closed
 production_entry_point: scripts/acceptance_suite.py run
 enforcing_boundary: release.py and repository CI before publication
@@ -11,172 +13,106 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: historical fixture chronology, semantic adequacy beyond the authoritative base-to-head Git diff and declared cases, installed-client parity, independent review, publication, and deployment
+unverified_remainder: adoption of the stamp convention by existing records (at authoring time the corpus carries item-marker-absent findings and zero item-marker-stale, so the derived-expiry path is fixture-proven but unexercised by live data), installed-client parity, independent review, publication, and deployment
 changed_surfaces:
-  - path: skills/synthesis-context-lifecycle/SKILL.md
-    cases: [scripts-tier-contract]
+  - path: skills/synthesis-context-lifecycle/scripts/context_currency.py
+    cases: [item-stamp-extraction, item-overdue-detected, item-default-horizon, item-completed-exempt, item-unstamped-unverifiable, item-prose-exempt, item-append-preserves-visibility]
+  - path: skills/synthesis-context-lifecycle/scripts/test_item_currency.py
+    cases: [item-stamp-extraction, item-overdue-detected, item-default-horizon, item-completed-exempt, item-unstamped-unverifiable, item-prose-exempt, item-append-preserves-visibility, item-warning-calibration, ritual-documents-stamp-convention]
   - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
-    cases: [missing-script-warning, existing-script-accepted, symlink-script-refused, cross-project-script-reference]
-  - path: skills/synthesis-context-lifecycle/scripts/test_context_doctor.py
-    cases: [missing-script-warning, existing-script-accepted, symlink-script-refused, cross-project-script-reference]
-  - path: skills/synthesis-implementation-integrity/SKILL.md
-    cases: [acceptance-manifest-doctrine, extract-dont-restate, authority-at-boundary]
-  - path: skills/synthesis-implementation-integrity/scripts/acceptance_suite.py
-    cases: [manifest-closed-membership, manifest-boundary-and-status, manifest-unique-cases, runner-terminal-matrix, runner-status-mismatch, enforced-gate-consumer, changed-surface-closure, manifest-root-relative, manifest-symlink-refused, authoritative-git-change-universe, transaction-bound-receipt]
-  - path: skills/synthesis-implementation-integrity/scripts/test_acceptance_suite.py
-    cases: [manifest-closed-membership, manifest-boundary-and-status, manifest-unique-cases, runner-terminal-matrix, runner-status-mismatch, enforced-gate-consumer, changed-surface-closure, manifest-root-relative, manifest-symlink-refused, authoritative-git-change-universe, transaction-bound-receipt, shipped-manifest-self-consumption]
-  - path: skills/synthesis-implementation-integrity/scripts/test_r5_contract.py
-    cases: [scripts-tier-contract, scratchpad-sweep, acceptance-manifest-doctrine, extract-dont-restate, authority-at-boundary, category-allowlist]
-  - path: skills/synthesis-checkpoint/SKILL.md
-    cases: [scratchpad-sweep]
-  - path: skills/synthesis-autopilot/SKILL.md
-    cases: [scratchpad-sweep]
-  - path: skills/synthesis-disclosure-policy/SKILL.md
-    cases: [category-allowlist]
-  - path: skills/synthesis-skills-manager/scripts/release.py
-    cases: [release-wiring, release-receipt-consumer, release-receipt-binding, publish-boundary-expiry, publish-exact-ref, publish-authority-topology]
-  - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [release-wiring, release-receipt-consumer, release-receipt-binding, ci-receipt-consumer, ci-authoritative-base-available, publish-boundary-expiry, publish-exact-ref, publish-authority-topology]
-  - path: skills/synthesis-project-management/scripts/test_coordination.py
-    cases: [coordinated-pointer-fallback-fixture]
-  - path: skills/synthesis-skills-manager/SKILL.md
-    cases: [release-wiring]
-  - path: .github/workflows/validate.yml
-    cases: [ci-wiring, ci-receipt-consumer, ci-authoritative-base-available]
-  - path: .claude-plugin/plugin.json
-    cases: [release-wiring]
-  - path: .codex-plugin/plugin.json
-    cases: [release-wiring]
-  - path: CHANGELOG.md
-    cases: [release-wiring]
+    cases: [item-surfaces-as-finding, item-warning-calibration]
+  - path: skills/synthesis-context-lifecycle/scripts/review_ledger.py
+    cases: [ledger-append-only, ledger-per-workspace-deletion-unit, ledger-corrupt-line-tolerated, ledger-derived-expiry, ledger-scan-idempotent, ledger-federation-no-merge, ledger-window-bounds]
+  - path: skills/synthesis-context-lifecycle/scripts/test_review_ledger.py
+    cases: [ledger-append-only, ledger-per-workspace-deletion-unit, ledger-corrupt-line-tolerated, ledger-derived-expiry, ledger-scan-idempotent, ledger-federation-no-merge, ledger-window-bounds]
+  - path: skills/synthesis-daily-rituals/SKILL.md
+    cases: [ritual-documents-stamp-convention]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
+  - path: .claude-plugin/plugin.json
+    cases: [release-manifest-parity]
+  - path: .codex-plugin/plugin.json
+    cases: [release-manifest-parity]
+  - path: CHANGELOG.md
+    cases: [release-changelog-parity]
 cases:
-  - id: manifest-closed-membership
+  - id: item-stamp-extraction
     control_class: acceptance-test
-    fixture: scripts/test_acceptance_suite.py::test_manifest_rejects_open_membership
-    motivating_defect: engagement-author-written-suite-had-no-closed-declared-universe
-  - id: manifest-boundary-and-status
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_item_markers_capture_date_and_horizon
+    motivating_defect: open-item-entries-carried-an-implicit-present-tense-nothing-re-dated
+  - id: item-overdue-detected
     control_class: acceptance-test
-    fixture: scripts/test_acceptance_suite.py::test_manifest_requires_boundary_and_expected_status
-    motivating_defect: engagement-suite-described-tests-without-naming-the-boundary-or-terminal-expectation
-  - id: manifest-unique-cases
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_item_past_its_review_horizon_is_flagged
+    motivating_defect: a-seat-record-listed-weeks-old-meetings-as-happening-today-for-17-days
+  - id: item-default-horizon
     control_class: acceptance-test
-    fixture: scripts/test_acceptance_suite.py::test_manifest_rejects_duplicate_case_ids
-    motivating_defect: engagement-duplicate-probe-identities-collapsed-before-coverage-was-checked
-  - id: runner-terminal-matrix
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_unspecified_horizon_uses_the_default
+    motivating_defect: an-omitted-horizon-would-otherwise-read-as-never-stale
+  - id: item-completed-exempt
     control_class: acceptance-test
-    fixture: scripts/test_acceptance_suite.py::test_runner_records_every_probe_terminal_state
-    motivating_defect: engagement-crashed-attack-left-unrun-probes-indistinguishable-from-adjudicated-probes
-  - id: runner-status-mismatch
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_completed_items_are_never_flagged
+    motivating_defect: flagging-closed-items-would-manufacture-noise-that-trains-bypass
+  - id: item-unstamped-unverifiable
     control_class: acceptance-test
-    fixture: scripts/test_acceptance_suite.py::test_runner_refuses_expected_status_mismatch
-    motivating_defect: engagement-exit-status-was-treated-as-coverage-and-expected-polarity
-  - id: enforced-gate-consumer
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_unstamped_open_items_are_reported_as_unverifiable
+    motivating_defect: an-undated-item-was-indistinguishable-from-one-written-today
+  - id: item-prose-exempt
     control_class: acceptance-test
-    fixture: scripts/test_acceptance_suite.py::test_enforced_gate_requires_receipt_consumer
-    motivating_defect: engagement-standalone-verifier-was-presented-as-enforcement-authority
-  - id: changed-surface-closure
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_prose_sections_do_not_demand_stamps
+    motivating_defect: demanding-dates-from-narrative-bullets-would-train-bypass
+  - id: item-append-preserves-visibility
     control_class: acceptance-test
-    fixture: scripts/test_acceptance_suite.py::test_changed_surfaces_reference_existing_cases
-    motivating_defect: engagement-changed-surfaces-reached-green-without-a-defect-pinning-fixture
-  - id: manifest-root-relative
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_appending_does_not_make_older_stamped_items_invisible
+    motivating_defect: rewrite-not-append-would-convert-a-visible-stale-entry-into-an-invisible-missing-one
+  - id: item-surfaces-as-finding
     control_class: acceptance-test
-    fixture: scripts/test_acceptance_suite.py::test_manifest_path_is_resolved_from_repo_root
-    motivating_defect: agent-heuristic-relative-manifest-path-depended-on-caller-working-directory
-  - id: manifest-symlink-refused
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_overdue_item_surfaces_as_a_project_finding
+    motivating_defect: a-checker-whose-findings-never-reach-the-doctor-changes-nothing
+  - id: item-warning-calibration
     control_class: acceptance-test
-    fixture: scripts/test_acceptance_suite.py::test_manifest_rejects_symlinked_fixture
-    motivating_defect: agent-heuristic-fixture-could-leave-the-declared-repository-through-a-symlink
-  - id: authoritative-git-change-universe
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_item_findings_are_warnings_not_defects
+    motivating_defect: turning-a-corpus-red-on-the-day-a-convention-lands-teaches-people-to-route-around-guards
+  - id: ritual-documents-stamp-convention
     control_class: acceptance-test
-    fixture: scripts/test_acceptance_suite.py::test_schema2_rejects_undeclared_git_changed_surface
-    motivating_defect: review-author-declared-changed-surfaces-omitted-a-broken-production-file-while-remaining-green
-  - id: transaction-bound-receipt
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_day_end_ritual_documents_the_stamp_convention
+    motivating_defect: a-checker-without-a-documented-convention-is-unenforceable
+  - id: ledger-append-only
     control_class: acceptance-test
-    fixture: scripts/test_acceptance_suite.py::test_schema2_receipt_binds_transaction_and_git_state
-    motivating_defect: review-runner-result-was-not-bound-to-the-release-transaction-or-exact-git-state
+    fixture: ../synthesis-context-lifecycle/scripts/test_review_ledger.py::test_record_appends_without_rewriting
+    motivating_defect: a-rewritten-history-cannot-answer-the-question-it-exists-for
+  - id: ledger-per-workspace-deletion-unit
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_review_ledger.py::test_ledger_lives_inside_its_own_workspace
+    motivating_defect: a-global-ledger-would-outlive-the-deletion-unit-its-entries-belonged-to
+  - id: ledger-corrupt-line-tolerated
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_review_ledger.py::test_corrupt_line_does_not_lose_the_rest
+    motivating_defect: one-malformed-line-must-cost-that-line-not-the-whole-history
+  - id: ledger-derived-expiry
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_review_ledger.py::test_scan_derives_expired_unactioned_from_stamps
+    motivating_defect: recording-a-miss-requires-discipline-at-the-moment-discipline-fails
+  - id: ledger-scan-idempotent
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_review_ledger.py::test_scan_is_idempotent
+    motivating_defect: a-daily-run-would-otherwise-manufacture-duplicate-misses-for-one-forgotten-thing
+  - id: ledger-federation-no-merge
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_review_ledger.py::test_report_federates_across_workspaces_without_merging_stores
+    motivating_defect: federating-by-copying-would-recreate-the-global-store-the-design-rejects
+  - id: ledger-window-bounds
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_review_ledger.py::test_report_window_excludes_older_events
+    motivating_defect: an-unbounded-window-cannot-answer-what-did-i-miss-last-week
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-    motivating_defect: engagement-suite-manifest-was-a-sidecar-claim-not-consumed-by-its-own-tool
-  - id: coordinated-pointer-fallback-fixture
+    motivating_defect: a-manifest-that-cannot-be-consumed-by-its-own-runner-issues-authority-it-never-earned
+  - id: release-manifest-parity
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_r4_active_pointer_resolves_committing_session
-    motivating_defect: agent-heuristic-pointer-fallback-fixture-inherited-the-real-coordination-session-and-failed-the-release-gate
-  - id: scripts-tier-contract
-    control_class: diagnostic
-    fixture: scripts/test_r5_contract.py::test_scripts_tier_contract_is_owned_by_context_lifecycle
-    motivating_defect: intake-executable-working-state-had-no-durable-tier
-  - id: missing-script-warning
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
+    motivating_defect: a-version-bump-that-reaches-one-client-and-not-the-other-stays-invisible-until-something-breaks
+  - id: release-changelog-parity
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_artifact_cites_missing_script_warns
-    motivating_defect: intake-context-doctor-reported-healthy-while-cited-working-code-was-ephemeral
-  - id: existing-script-accepted
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_artifact_cites_existing_script_passes
-    motivating_defect: agent-heuristic-missing-script-detector-could-cry-wolf-on-the-reference-layout
-  - id: symlink-script-refused
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_artifact_cites_symlinked_script_warns
-    motivating_defect: agent-heuristic-cited-script-could-resolve-outside-the-project
-  - id: cross-project-script-reference
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_cross_project_script_citation_is_not_a_local_missing_script
-    motivating_defect: agent-heuristic-cross-project-reference-was-misread-as-a-project-local-script-citation
-  - id: scratchpad-sweep
-    control_class: diagnostic
-    fixture: scripts/test_r5_contract.py::test_checkpoint_and_autopilot_ask_the_scratchpad_sweep_question
-    motivating_defect: intake-executable-state-died-with-the-originating-session
-  - id: acceptance-manifest-doctrine
-    control_class: diagnostic
-    fixture: scripts/test_r5_contract.py::test_integrity_requires_executable_closed_acceptance_manifests
-    motivating_defect: engagement-author-written-acceptance-suite-was-trusted-as-independent-proof
-  - id: extract-dont-restate
-    control_class: diagnostic
-    fixture: scripts/test_r5_contract.py::test_integrity_requires_extract_dont_restate
-    motivating_defect: engagement-two-parsers-restated-one-author-and-shared-the-same-blind-spot
-  - id: authority-at-boundary
-    control_class: diagnostic
-    fixture: scripts/test_r5_contract.py::test_integrity_locates_authority_at_the_state_changing_boundary
-    motivating_defect: engagement-standalone-check-was-confused-with-a-required-receipt-consumer
-  - id: category-allowlist
-    control_class: diagnostic
-    fixture: scripts/test_r5_contract.py::test_disclosure_categories_preserve_attention_for_real_approval_gates
-    motivating_defect: intake-trivial-naming-gates-trained-principal-rubber-stamping
-  - id: release-wiring
-    control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_execute_r5_integrity_suite
-    motivating_defect: engagement-new-acceptance-control-could-remain-outside-the-gated-release
-  - id: release-receipt-consumer
-    control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_boundary_consumes_fresh_bound_acceptance_receipt
-    motivating_defect: review-release-boundary-consumed-subprocess-status-without-validating-a-transaction-bound-result
-  - id: release-receipt-binding
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_receipt_validator_rejects_every_binding_mismatch
-    motivating_defect: review-consumer-could-trust-a-result-not-bound-to-the-current-transaction-manifest-or-git-tree
-  - id: ci-wiring
-    control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_repository_ci_executes_r5_integrity_suite
-    motivating_defect: engagement-local-release-check-and-pr-ci-could-verify-different-universes
-  - id: ci-receipt-consumer
-    control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_repository_ci_uses_receipt_consumer_with_authoritative_base
-    motivating_defect: review-ci-invoked-the-runner-directly-without-a-boundary-supplied-base-or-result-consumer
-  - id: ci-authoritative-base-available
-    control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_repository_ci_fetches_authoritative_base_history
-    motivating_defect: pr-ci-named-the-event-base-sha-but-shallow-checkout-made-that-revision-unavailable
-  - id: publish-boundary-expiry
-    control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_publish_refuses_when_receipt_bound_head_changes
-    motivating_defect: terminal-review-accepted-head-was-discarded-before-the-state-changing-publish-boundary
-  - id: publish-exact-ref
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_publish_dry_run_names_exact_receipt_bound_ref
-    motivating_defect: terminal-review-publish-resolved-a-mutable-main-branch-after-acceptance-consumption
-  - id: publish-authority-topology
-    control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_main_carries_acceptance_authority_to_publish_boundary
-    motivating_defect: terminal-review-run-required-checks-collapsed-the-accepted-state-to-a-boolean-before-publish
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
+    motivating_defect: a-release-whose-changelog-disagrees-with-its-manifests-cannot-be-audited-later
