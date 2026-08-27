@@ -1,10 +1,10 @@
-# AGENT HEURISTIC: authored for the item-currency release against the same
-# generalized executable-manifest contract R5 established. The manifest records
-# this release's exact public universe; the runner proves the declaration
-# against the authoritative base-to-head Git diff, so a surface that changes
-# without being declared — or is declared without changing — refuses authority.
+# AGENT HEURISTIC: authored for the item-currency section-scope correction.
+# The manifest records this release's exact public universe; the runner proves
+# the declaration against the authoritative base-to-head Git diff, so a surface
+# that changes without being declared — or is declared without changing —
+# refuses authority.
 schema: 2
-suite: synthesis-item-currency-and-review-ledger
+suite: synthesis-item-currency-section-scope
 membership: closed
 production_entry_point: scripts/acceptance_suite.py run
 enforcing_boundary: release.py and repository CI before publication
@@ -13,23 +13,13 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: adoption of the stamp convention by existing records (at authoring time the corpus carries item-marker-absent findings and zero item-marker-stale, so the derived-expiry path is fixture-proven but unexercised by live data), installed-client parity, independent review, publication, and deployment
+unverified_remainder: adoption of the stamp convention by existing records, installed-client parity, independent review, publication, and deployment
 changed_surfaces:
   - path: skills/synthesis-context-lifecycle/scripts/context_currency.py
-    cases: [item-stamp-extraction, item-overdue-detected, item-default-horizon, item-completed-exempt, item-unstamped-unverifiable, item-prose-exempt, item-append-preserves-visibility]
+    cases: [item-current-state-prose-exempt, item-obligation-sections-still-held, item-prose-exempt, item-unstamped-unverifiable]
   - path: skills/synthesis-context-lifecycle/scripts/test_item_currency.py
-    cases: [item-stamp-extraction, item-overdue-detected, item-default-horizon, item-completed-exempt, item-unstamped-unverifiable, item-prose-exempt, item-append-preserves-visibility, item-warning-calibration, ritual-documents-stamp-convention]
-  - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
-    cases: [item-surfaces-as-finding, item-warning-calibration]
-  - path: skills/synthesis-context-lifecycle/scripts/review_ledger.py
-    cases: [ledger-append-only, ledger-per-workspace-deletion-unit, ledger-corrupt-line-tolerated, ledger-derived-expiry, ledger-scan-idempotent, ledger-federation-no-merge, ledger-window-bounds]
-  - path: skills/synthesis-context-lifecycle/scripts/test_review_ledger.py
-    cases: [ledger-append-only, ledger-per-workspace-deletion-unit, ledger-corrupt-line-tolerated, ledger-derived-expiry, ledger-scan-idempotent, ledger-federation-no-merge, ledger-window-bounds]
-  - path: skills/synthesis-daily-rituals/SKILL.md
-    cases: [ritual-documents-stamp-convention]
+    cases: [item-current-state-prose-exempt, item-obligation-sections-still-held, item-prose-exempt, item-unstamped-unverifiable]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
-    cases: [shipped-manifest-self-consumption]
-  - path: skills/synthesis-implementation-integrity/scripts/test_acceptance_suite.py
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
     cases: [release-manifest-parity]
@@ -38,74 +28,22 @@ changed_surfaces:
   - path: CHANGELOG.md
     cases: [release-changelog-parity]
 cases:
-  - id: item-stamp-extraction
+  - id: item-current-state-prose-exempt
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_item_markers_capture_date_and_horizon
-    motivating_defect: open-item-entries-carried-an-implicit-present-tense-nothing-re-dated
-  - id: item-overdue-detected
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_current_state_prose_is_not_held_to_item_stamps
+    motivating_defect: matching-current-state-demanded-a-date-from-prose-and-double-covered-body-currency-140-of-294-flagged-items
+  - id: item-obligation-sections-still-held
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_item_past_its_review_horizon_is_flagged
-    motivating_defect: a-seat-record-listed-weeks-old-meetings-as-happening-today-for-17-days
-  - id: item-default-horizon
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_unspecified_horizon_uses_the_default
-    motivating_defect: an-omitted-horizon-would-otherwise-read-as-never-stale
-  - id: item-completed-exempt
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_completed_items_are_never_flagged
-    motivating_defect: flagging-closed-items-would-manufacture-noise-that-trains-bypass
-  - id: item-unstamped-unverifiable
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_unstamped_open_items_are_reported_as_unverifiable
-    motivating_defect: an-undated-item-was-indistinguishable-from-one-written-today
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_obligation_sections_are_still_held
+    motivating_defect: narrowing-a-guard-can-silently-exempt-the-sections-it-exists-to-cover
   - id: item-prose-exempt
     control_class: acceptance-test
     fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_prose_sections_do_not_demand_stamps
     motivating_defect: demanding-dates-from-narrative-bullets-would-train-bypass
-  - id: item-append-preserves-visibility
+  - id: item-unstamped-unverifiable
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_appending_does_not_make_older_stamped_items_invisible
-    motivating_defect: rewrite-not-append-would-convert-a-visible-stale-entry-into-an-invisible-missing-one
-  - id: item-surfaces-as-finding
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_overdue_item_surfaces_as_a_project_finding
-    motivating_defect: a-checker-whose-findings-never-reach-the-doctor-changes-nothing
-  - id: item-warning-calibration
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_item_findings_are_warnings_not_defects
-    motivating_defect: turning-a-corpus-red-on-the-day-a-convention-lands-teaches-people-to-route-around-guards
-  - id: ritual-documents-stamp-convention
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_day_end_ritual_documents_the_stamp_convention
-    motivating_defect: a-checker-without-a-documented-convention-is-unenforceable
-  - id: ledger-append-only
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_review_ledger.py::test_record_appends_without_rewriting
-    motivating_defect: a-rewritten-history-cannot-answer-the-question-it-exists-for
-  - id: ledger-per-workspace-deletion-unit
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_review_ledger.py::test_ledger_lives_inside_its_own_workspace
-    motivating_defect: a-global-ledger-would-outlive-the-deletion-unit-its-entries-belonged-to
-  - id: ledger-corrupt-line-tolerated
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_review_ledger.py::test_corrupt_line_does_not_lose_the_rest
-    motivating_defect: one-malformed-line-must-cost-that-line-not-the-whole-history
-  - id: ledger-derived-expiry
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_review_ledger.py::test_scan_derives_expired_unactioned_from_stamps
-    motivating_defect: recording-a-miss-requires-discipline-at-the-moment-discipline-fails
-  - id: ledger-scan-idempotent
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_review_ledger.py::test_scan_is_idempotent
-    motivating_defect: a-daily-run-would-otherwise-manufacture-duplicate-misses-for-one-forgotten-thing
-  - id: ledger-federation-no-merge
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_review_ledger.py::test_report_federates_across_workspaces_without_merging_stores
-    motivating_defect: federating-by-copying-would-recreate-the-global-store-the-design-rejects
-  - id: ledger-window-bounds
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_review_ledger.py::test_report_window_excludes_older_events
-    motivating_defect: an-unbounded-window-cannot-answer-what-did-i-miss-last-week
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_unstamped_open_items_are_reported_as_unverifiable
+    motivating_defect: an-undated-item-was-indistinguishable-from-one-written-today
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates

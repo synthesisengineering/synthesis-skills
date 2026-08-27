@@ -4,6 +4,21 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.55.1] - 2026-08-27
+
+### Fixed
+
+- **Item currency no longer demands stamps from narrative prose.** The
+  open-section pattern matched "current", which reads as though it belongs but
+  makes "Current State" — the commonest section name in practice — an obligation
+  list. Those sections hold prose that section-level `*State as of:*` markers
+  already govern, so the match demanded a date from narrative and double-covered
+  body currency. Measured against a live corpus before adopting the convention,
+  that single word accounted for 140 of 294 flagged items across 18 projects.
+  Obligation sections (open, next, action, todo, blocked, waiting, pending, in
+  progress) are unchanged and now carry a fixture proving the narrowing did not
+  silently exempt them.
+
 ## [4.55.0] - 2026-08-27
 
 ### Added

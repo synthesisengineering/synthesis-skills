@@ -117,8 +117,15 @@ ITEM_LINE = re.compile(
 )
 # Only lists that represent live obligations are held to stamping; narrative
 # bullets are not, because demanding a date from prose trains bypass.
+#
+# "current" is deliberately absent. It reads as though it belongs, but "Current
+# State" is the commonest section name in practice and it holds prose, which
+# section-level '*State as of:*' markers already govern. Including it demanded a
+# date from narrative and double-covered body currency: measured against the
+# live corpus before adoption, that one word accounted for 140 of 294 flagged
+# items across 18 projects.
 OPEN_SECTION = re.compile(
-    r"open|pending|next|action|todo|to do|blocked|waiting|in progress|current",
+    r"open|pending|next|action|todo|to do|blocked|waiting|in progress",
     re.IGNORECASE,
 )
 DEFAULT_REVIEW_DAYS = 14

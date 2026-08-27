@@ -212,3 +212,40 @@ def test_day_end_ritual_documents_the_stamp_convention() -> None:
     assert "item-currency" in text
     # The rejected alternative must not creep back in as a mandate.
     assert "rewritten every run, never appended" not in text
+
+
+def test_current_state_prose_is_not_held_to_item_stamps(tmp_path: Path) -> None:
+    """Found by surveying the real corpus before adopting the convention.
+
+    'Current State' is the commonest section name in this corpus and it holds
+    narrative prose, not obligations. Section-level '*State as of:*' markers
+    already govern exactly that content, so matching it here demanded a date
+    from prose and double-covered what body currency already checks — 140 of
+    the 294 flagged items across 18 projects were this single miscalibration.
+    """
+    project = _project(
+        tmp_path,
+        "**Last session:** 2026-08-27\n\n"
+        "## Current State\n"
+        "- The installer ships in three stages\n"
+        "- Both clients verify twice\n",
+    )
+
+    assert "item-marker-absent" not in _kinds(project)
+
+
+def test_obligation_sections_are_still_held(tmp_path: Path) -> None:
+    """The narrowing must not silently exempt the sections that matter."""
+    for heading in ("Open on Rajiv", "What's Next", "Next actions", "Blocked"):
+        project = tmp_path / heading.replace("/", "-").replace(" ", "-")
+        (project / "sessions").mkdir(parents=True)
+        (project / "CONTEXT.md").write_text(
+            "**Last session:** 2026-08-27\n\n"
+            f"## {heading}\n- [ ] Something undated\n",
+            encoding="utf-8",
+        )
+        (project / "sessions" / "2026-08.md").write_text(
+            "## 2026-08-27 — work\n", encoding="utf-8"
+        )
+        kinds = [f["kind"] for f in MODULE.audit_project(project, today=TODAY)]
+        assert "item-marker-absent" in kinds, heading
