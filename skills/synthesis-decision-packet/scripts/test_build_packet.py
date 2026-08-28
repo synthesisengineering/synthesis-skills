@@ -152,6 +152,32 @@ def test_summary_is_generated_by_the_tool():
     assert "OVERRODE" in out, "an override must be visible to the agent reading the paste"
 
 
+def test_no_option_is_selected_before_the_principal_acts():
+    """The initial state must be undecided, matching the reference implementation.
+
+    The reference sets aria-pressed only from saved storage, so a fresh packet has
+    nothing pressed. A packet that opens fully decided cannot distinguish "I agreed"
+    from "I never looked", and would report decisions nobody made.
+    """
+    out = bp.build(spec())
+    assert 'b.setAttribute("aria-pressed", String(b.dataset.value === d))' in out, \
+        "pressed state must derive from the stored decision, never from the recommendation"
+    # The recommendation may only set the marker attribute, never the pressed state.
+    block = out[out.index("if (row.recommendation === o.value)"):]
+    block = block[:block.index("b.addEventListener")]
+    assert "aria-pressed" not in block, "the recommendation must mark, not select"
+
+
+def test_bulk_accept_is_recorded_as_bulk():
+    """A routine set should not cost N considered clicks — but the record must say so."""
+    out = bp.build(spec())
+    assert "accepted in bulk" in out
+    assert "weight them accordingly" in out, "the paste must tell the agent not to over-read it"
+    assert "window.confirm" in out, "bulk acceptance must be an affirmative, confirmed gesture"
+    # Touching a row individually clears the bulk flag.
+    assert "bulk: false" in out, "an individual click must clear the bulk marker"
+
+
 def test_disagreement_is_surfaced_not_resolved():
     s = spec()
     s["rows"][0]["disagreement"] = {

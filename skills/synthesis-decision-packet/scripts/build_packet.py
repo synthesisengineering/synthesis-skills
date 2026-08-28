@@ -335,6 +335,7 @@ header .intro { color: var(--ink-2); max-width: 74ch; margin: 0 0 20px; }
     <b id="progress">Your decisions</b>
     <div class="actions">
       <button id="copy" type="button">Copy summary</button>
+      <button id="bulk" type="button" class="secondary" hidden>Take all remaining</button>
       <button id="toggle" type="button" class="secondary" aria-expanded="false" aria-controls="summarywrap">Show text</button>
       <button id="reset" type="button" class="secondary">Clear</button>
       <span id="copystatus" role="status" aria-live="polite"></span>
@@ -486,7 +487,12 @@ header .intro { color: var(--ink-2); max-width: 74ch; margin: 0 0 20px; }
         b.title = "The agent recommends this";
       }
       b.addEventListener("click", function () {
-        set(row.id, { choice: decisionOf(row) === o.value ? undefined : o.value });
+        // An individual click always clears the bulk flag: touching a row IS
+        // considering it, and the record must not keep calling it a bulk accept.
+        set(row.id, {
+          choice: decisionOf(row) === o.value ? undefined : o.value,
+          bulk: false
+        });
       });
       opts.appendChild(b);
     });
@@ -541,7 +547,13 @@ header .intro { color: var(--ink-2); max-width: 74ch; margin: 0 0 20px; }
       if (d !== null) decided++;
       var mark = d === null ? "— not yet decided" : labelFor(r, d);
       if (d !== null && r.recommendation) {
-        mark += d === r.recommendation ? "  (took the recommendation)" : "  (OVERRODE: recommended " + labelFor(r, r.recommendation) + ")";
+        if (d !== r.recommendation) {
+          mark += "  (OVERRODE: recommended " + labelFor(r, r.recommendation) + ")";
+        } else {
+          // A bulk acceptance is a different fact from an individual one, and the
+          // agent reading this paste must not read the first as the second.
+          mark += s.bulk ? "  (accepted in bulk)" : "  (took the recommendation)";
+        }
       }
       lines.push(r.id + "  " + r.label);
       lines.push("    -> " + mark);
@@ -549,10 +561,26 @@ header .intro { color: var(--ink-2); max-width: 74ch; margin: 0 0 20px; }
       lines.push("");
     });
     lines.push("Decided " + decided + " of " + SPEC.rows.length + ".");
+    var bulk = SPEC.rows.filter(function (r) { return get(r.id).bulk; }).length;
+    if (bulk) {
+      lines.push(bulk + " of those were accepted in bulk rather than considered one by one — " +
+                 "weight them accordingly.");
+    }
     if (!persists) lines.push("(This browser blocked local storage, so nothing was saved between sittings.)");
     document.getElementById("summary").value = lines.join("\\n");
     document.getElementById("progress").textContent =
       decided + " of " + SPEC.rows.length + " decided";
+
+    // The bulk control exists so that a genuinely routine set (forty patch bumps) does
+    // not cost forty considered clicks. It is deliberately NOT a default state: an
+    // affirmative, labelled gesture leaves an honest record, whereas a pre-selected
+    // recommendation would make "I agreed" indistinguishable from "I never looked".
+    var remaining = SPEC.rows.filter(function (r) {
+      return r.recommendation && decisionOf(r) === null;
+    }).length;
+    var bulkBtn = document.getElementById("bulk");
+    bulkBtn.hidden = remaining === 0;
+    bulkBtn.textContent = "Take all remaining (" + remaining + ")";
   }
 
   function revealSummary() {
@@ -603,6 +631,24 @@ header .intro { color: var(--ink-2); max-width: 74ch; margin: 0 0 20px; }
   }
 
   document.getElementById("copy").addEventListener("click", copySummary);
+  document.getElementById("bulk").addEventListener("click", function () {
+    var pending = SPEC.rows.filter(function (r) {
+      return r.recommendation && decisionOf(r) === null;
+    });
+    if (!pending.length) return;
+    if (!window.confirm(
+      "Accept the recommendation on " + pending.length + " remaining item" +
+      (pending.length === 1 ? "" : "s") + " without deciding them individually?\\n\\n" +
+      "They will be marked as accepted in bulk in the summary, so the difference stays visible."
+    )) return;
+    pending.forEach(function (r) {
+      state[r.id] = Object.assign({}, get(r.id), { choice: r.recommendation, bulk: true });
+    });
+    save(); render();
+    document.getElementById("copystatus").textContent =
+      pending.length + " accepted in bulk.";
+  });
+
   document.getElementById("toggle").addEventListener("click", function () {
     var wrap = document.getElementById("summarywrap");
     if (wrap.hidden) { revealSummary(); return; }
