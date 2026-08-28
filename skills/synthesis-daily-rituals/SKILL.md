@@ -19,6 +19,42 @@ metadata:
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
 
+## v2.27.0 — Sync windows follow the last write, and a recorded gap blocks
+
+v2.27.0 (2026-08-27) replaces run-anchored sync windows with per-surface
+watermarks, and makes a recorded gap something a later run must act on.
+
+**The defect.** A window anchored on when the previous run *executed* cannot see
+its own holes. Skip a run and the hole it leaves is never revisited, because the
+next window starts at now-minus-a-bit rather than at the last day actually
+written to disk. Nothing persisted "the mirror is complete through date X", so
+no run could detect what it had missed. Compounding it, the `gaps` field was
+honest and completely inert: writing a gap and closing a gap are different acts,
+and nothing forced the second. A gap was recorded in three consecutive artifacts
+and no run ever read those lines back.
+
+**The rule.** Each surface carries a watermark — the last date actually
+WRITTEN, never the last date attempted — in `~/.synthesis/sync-watermarks/`,
+managed by `scripts/sync_watermark.py`:
+
+- every sync computes its window from the watermark, so a hole is revisited
+  automatically and nobody has to notice it;
+- the watermark advances only after a successful write, so a run that fetches
+  nothing, errors, or is interrupted cannot declare the day covered;
+- `sync_watermark.py status --workspace W` exits non-zero while any surface has
+  an unclosed gap. Run it in Day-Start Step 3 and Day-End Step 1. An open gap is
+  closed this run or deferred with an explicit reason, and a deferral lasts one
+  working day — an indefinite silence is how a recorded gap becomes furniture.
+
+Surfaces are tracked independently: one surface closing never vouches for
+another, which is the completeness claim that hid the original gap.
+
+**The general lesson, worth more than the fix.** Detection that nothing consumes
+changes nothing. The gap field was accurate every time it was written; what was
+missing was any mechanism that read it back. When adding a check, ask what
+consumes its output and what happens when the answer is bad — a finding with no
+consumer is a note to self.
+
 ## v2.26.0 — Lead-time meeting preps: high-stakes meetings get prepared a business day ahead
 
 Same-day prep packs (v2.12.0) are right for routine meetings and structurally wrong for

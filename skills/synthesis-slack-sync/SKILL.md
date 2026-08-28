@@ -16,6 +16,32 @@ A protocol for syncing Slack channels and threads to local transcript files usin
 
 This skill provides the **protocol** — the sync methodology, thread re-reading discipline, transcript format, and action plan update rules. A per-project **config file** provides the specifics: which channels, which paths, which DMs. Prefer `.agents/slack-sync.yaml`; existing `.claude/slack-sync.yaml` configs remain supported.
 
+## v3.6.0 — Read targets come from preflight; deriving ids in the sweep is banned
+
+v3.6.0 (2026-08-27) fixes a class of bug that hides for months and then looks
+like something else entirely.
+
+**The defect.** A DM config entry carries two id-like fields: `id`, the user id
+(`U…`), and `dm_id`, the conversation id (`D…`). A reader that reaches for `id`
+hands a user id to a conversation-read API. That resolves implicitly while the
+account is active, so the mistake is invisible — and it starts failing only once
+that person leaves. The symptom then appears as a phantom "dead surface" for
+exactly one person, which reads as a configuration problem. It cost days of
+false unreadable-DM reports and a wrong public claim that the config was
+misaligned, when the config was correct and the reader was not.
+
+**The rule.** Sweeps take their read targets from preflight output, which emits
+the resolved read id per surface and fails closed when one cannot be resolved.
+Deriving ids from config inside the sweep is banned. A sweep that cannot obtain
+a resolved read target reports that surface as unresolved — never as unreadable,
+and never as a config defect, since it has no evidence for either.
+
+**Generalize it.** Any config whose entries carry two id-like fields has this
+trap, and the failure is always asymmetric: the wrong field usually works, so
+the bug is discovered by an unrelated change months later. Where two ids exist,
+resolution belongs in one place that fails closed, and every reader takes the
+resolved value from it rather than choosing a field.
+
 ## v3.5.0 — Backfills and archive imports
 
 v3.5.0 (2026-08-19) adds a section for the operation a windowed sync is not: reading a

@@ -10,6 +10,34 @@ metadata:
   source_type: "public"
 ---
 
+## v0.8.0 — Declared means fetched: no judgment gate before fetching
+
+v0.8.0 (2026-08-27) removes agent judgment from the decision of *which* declared
+transcripts to fetch.
+
+**The defect.** The sweep enumerated documents and recorded their ids, but
+fetching was gated on the agent deciding what looked worth fetching. That
+judgment deprioritised several meetings as routine standups. One held a live
+action item for the principal; another carried a launch date contradicting the
+one recorded everywhere else, so the corpus held two incompatible dates and
+nothing surfaced the conflict.
+
+**The rule.** If a transcript is declared in scope for the window, it is
+fetched. The agent does not get a vote on which declared items are interesting.
+Relevance is judged *after* fetching, when the content is visible — never
+before, from a title.
+
+**Why this shape is already settled here.** The workspace retired this exact
+failure once before, when "sync when active" gating was removed from the repo
+list after a repository drifted for six weeks behind a judgment that it looked
+inactive. Titles and activity heuristics are not evidence about content. A
+declared set exists precisely so that no per-item judgment stands between the
+list and the fetch; re-introducing one at a lower level rebuilds the failure the
+declared set was meant to prevent.
+
+A run that cannot fetch a declared item records it as an unclosed gap rather
+than silently omitting it.
+
 ## v0.7.0 — Source grade is now executable
 
 The standing kernel rule already says that a verbatim transcript is the only
