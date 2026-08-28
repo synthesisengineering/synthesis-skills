@@ -1,10 +1,10 @@
-# AGENT HEURISTIC: authored for the sync-watermark release. The manifest
+# AGENT HEURISTIC: authored for the decision-packet release. The manifest
 # records this release's exact public universe; the runner proves the
 # declaration against the authoritative base-to-head Git diff, so a surface that
 # changes without being declared — or is declared without changing — refuses
 # authority.
 schema: 2
-suite: synthesis-sync-watermarks-and-declared-fetching
+suite: synthesis-decision-packet-release
 membership: closed
 production_entry_point: scripts/acceptance_suite.py run
 enforcing_boundary: release.py and repository CI before publication
@@ -13,18 +13,10 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: adoption of watermarks by existing workspaces (no workspace has recorded a watermark yet, so the window and blocking paths are fixture-proven but unexercised by live ritual runs), the preflight read-target rule which is documented here but enforced by each workspace's own preflight tool, installed-client parity, independent review, publication, and deployment
+unverified_remainder: browser behaviour of the generated packet beyond the emitted markup and script text (the fixtures assert on generated source, not on a live DOM), wiring the packet into autopilot as its batched-questions mechanism, installed-client parity, independent review, publication, and deployment
 changed_surfaces:
-  - path: skills/synthesis-daily-rituals/scripts/sync_watermark.py
-    cases: [window-follows-last-write, skipped-run-gap-is-revisited, watermark-never-regresses, future-watermark-refused, unclosed-gap-blocks, deferral-requires-reason, deferral-expires, surfaces-independent, gate-is-consumable, store-scoped-per-workspace]
-  - path: skills/synthesis-daily-rituals/scripts/test_sync_watermark.py
-    cases: [window-follows-last-write, skipped-run-gap-is-revisited, watermark-never-regresses, future-watermark-refused, unclosed-gap-blocks, deferral-requires-reason, deferral-expires, surfaces-independent, gate-is-consumable, store-scoped-per-workspace, rituals-document-the-gate, transcripts-forbid-judgment-gate, slack-bans-derived-read-ids]
-  - path: skills/synthesis-daily-rituals/SKILL.md
-    cases: [rituals-document-the-gate]
-  - path: skills/synthesis-meeting-transcripts/SKILL.md
-    cases: [transcripts-forbid-judgment-gate]
-  - path: skills/synthesis-slack-sync/SKILL.md
-    cases: [slack-bans-derived-read-ids]
+  - path: skills/synthesis-decision-packet/scripts/test_build_packet.py
+    cases: [recommendation-marked-not-preselected, fresh-packet-has-nothing-selected]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -34,58 +26,14 @@ changed_surfaces:
   - path: CHANGELOG.md
     cases: [release-changelog-parity]
 cases:
-  - id: window-follows-last-write
+  - id: recommendation-marked-not-preselected
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_window_starts_after_the_last_written_day
-    motivating_defect: a-window-anchored-on-the-previous-run-cannot-see-the-hole-a-skipped-run-left
-  - id: skipped-run-gap-is-revisited
+    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_recommendation_is_marked_on_the_control_not_only_prose
+    motivating_defect: the-test-name-said-preselected-while-the-implementation-deliberately-preselects-nothing-inviting-a-fix-toward-the-wrong-behaviour
+  - id: fresh-packet-has-nothing-selected
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_a_skipped_run_leaves_a_gap_the_next_run_must_cover
-    motivating_defect: a-six-day-mirror-gap-was-recorded-in-three-artifacts-and-never-revisited
-  - id: watermark-never-regresses
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_watermark_never_moves_backwards
-    motivating_defect: a-regressing-watermark-would-silently-re-open-days-already-mirrored
-  - id: future-watermark-refused
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_future_watermark_is_refused
-    motivating_defect: a-run-must-not-be-able-to-declare-a-day-covered-before-it-happens
-  - id: unclosed-gap-blocks
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_status_blocks_while_a_gap_is_open
-    motivating_defect: the-gaps-field-was-honest-and-completely-inert-because-nothing-read-it-back
-  - id: deferral-requires-reason
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_deferral_requires_a_reason
-    motivating_defect: a-reasonless-deferral-is-indistinguishable-from-forgetting
-  - id: deferral-expires
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_explicit_deferral_unblocks_for_one_day_only
-    motivating_defect: an-indefinite-silence-is-how-a-recorded-gap-becomes-furniture
-  - id: surfaces-independent
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_surfaces_are_tracked_independently
-    motivating_defect: one-surface-closing-vouched-for-others-and-hid-the-original-gap
-  - id: gate-is-consumable
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_status_exits_nonzero_while_blocking
-    motivating_defect: detection-that-no-step-can-fail-on-changes-nothing
-  - id: store-scoped-per-workspace
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_store_is_scoped_per_workspace
-    motivating_defect: engagement-workspaces-must-not-read-each-others-sync-state
-  - id: rituals-document-the-gate
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_rituals_document_the_watermark_and_blocking_gap
-    motivating_defect: a-mechanism-nobody-is-told-to-run-is-not-a-control
-  - id: transcripts-forbid-judgment-gate
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_transcripts_forbid_a_judgment_gate_before_fetching
-    motivating_defect: title-based-triage-deprioritised-declared-transcripts-holding-a-live-action-item-and-a-contradicting-date
-  - id: slack-bans-derived-read-ids
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_slack_sync_bans_deriving_read_ids_in_the_sweep
-    motivating_defect: a-reader-that-picks-between-two-id-fields-works-until-the-person-leaves-then-looks-like-a-config-defect
+    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_a_fresh_packet_has_nothing_selected
+    motivating_defect: a-packet-that-opens-fully-decided-cannot-distinguish-i-agreed-from-i-never-looked
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates

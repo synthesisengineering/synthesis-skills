@@ -4,6 +4,32 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.57.0] - 2026-08-28
+
+### Added
+
+- **`synthesis-decision-packet` reaches both clients.** The skill collects N
+  parallel decisions into one self-contained HTML packet a principal can work
+  through in a single sitting, with `scripts/build_packet.py` refusing to emit a
+  broken packet (duplicate ids, a recommendation outside its own option set, a
+  packet with no recommendations). It was merged without a version bump,
+  changelog entry, or acceptance declaration, so it existed in source while
+  neither client could load it — built and merged is not shipped. This release
+  declares and ships it.
+
+### Fixed
+
+- **A test name that contradicted the behaviour it guarded.** The packet
+  deliberately pre-selects nothing: pressed state is computed from the saved
+  decision for a row and from nothing else, because a packet that opens fully
+  decided cannot distinguish "I agreed" from "I never looked" and would report
+  decisions nobody made. The fixture asserting the recommendation is *marked on
+  the control* was nonetheless named `..._is_a_preselected_button_...`. A name is
+  read far more often than a body, and this one invited a future reader to
+  "fix" the implementation toward the wrong behaviour — a near miss already
+  reported once. The fixture is renamed to what it asserts, and the no-default
+  property now has its own explicit guard.
+
 ## [4.56.0] - 2026-08-27
 
 ### Added

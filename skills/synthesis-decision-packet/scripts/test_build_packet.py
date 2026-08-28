@@ -126,10 +126,39 @@ def test_every_copy_path_reports_its_outcome():
 # The five load-bearing properties
 # ---------------------------------------------------------------------------
 
-def test_recommendation_is_a_preselected_button_not_only_prose():
+def test_recommendation_is_marked_on_the_control_not_only_prose():
     out = bp.build(spec())
     assert 'aria-pressed' in out and 'b.dataset.value = o.value' in out
     assert "recommended: " in out, "the recommendation must be shown on the control, not just in text"
+
+
+def test_a_fresh_packet_has_nothing_selected():
+    """The property the old test NAME contradicted.
+
+    This test previously read `..._is_a_preselected_button_...` while the
+    implementation deliberately pre-selects nothing. The assertions were always
+    about the recommendation being *marked on the control*, but a name is read
+    far more often than a body, and the wrong name invited someone to "fix" the
+    code to match it — which would ship a packet that opens fully decided and
+    cannot tell "I agreed" from "I never looked".
+
+    So the property gets its own explicit guard: pressed state is set from saved
+    storage alone, never from the recommendation.
+    """
+    out = bp.build(spec())
+
+    # Pressed state is computed from the saved decision for that row and from
+    # nothing else. If this ever reads the recommendation, a fresh packet opens
+    # already decided.
+    assert 'b.setAttribute("aria-pressed", String(b.dataset.value === d))' in out
+    assert "var d = decisionOf(r);" in out
+
+    # And no option button is emitted pre-pressed in the served markup. Buttons
+    # are constructed in script, so the body carries none before restore runs.
+    body = out.split("<body", 1)[1].split("<script", 1)[0]
+    assert 'aria-pressed="true"' not in body, (
+        "no option may be rendered pre-pressed before saved state is read"
+    )
 
 
 def test_every_row_gets_a_free_text_box():
