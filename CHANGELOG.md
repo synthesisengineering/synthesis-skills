@@ -4,6 +4,39 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.56.0] - 2026-08-27
+
+### Added
+
+- **Sync windows follow the last write, not the last run.** `synthesis-daily-rituals`
+  gains `scripts/sync_watermark.py`: each surface records the last date actually
+  WRITTEN, every sync computes its window from that watermark, and the watermark
+  advances only after a successful write. A window anchored on when the previous
+  run executed cannot see its own holes — skip a run and the gap is never
+  revisited, because the next window starts near today rather than at the last
+  day on disk. Surfaces are tracked independently, so one closing never vouches
+  for another.
+- **A recorded gap is now blocking.** `sync_watermark.py status` exits non-zero
+  while any surface has an unclosed gap, so a ritual step can fail on it. A gap
+  that genuinely cannot close is deferred with an explicit reason, and the
+  deferral lasts one working day — an indefinite silence is how a recorded gap
+  becomes furniture. This closes a loop that was previously open: the `gaps`
+  field was honest and completely inert, because writing a gap and closing one
+  are different acts and nothing forced the second.
+
+### Changed
+
+- **`synthesis-meeting-transcripts`: declared means fetched.** Agent judgment is
+  removed from deciding which declared transcripts are worth fetching. Relevance
+  is judged after fetching, when content is visible, never before from a title.
+  The workspace retired this same failure shape once already when activity-based
+  gating was removed from repository syncing.
+- **`synthesis-slack-sync`: read targets come from preflight.** Deriving ids from
+  config inside a sweep is banned. Where an entry carries two id-like fields, the
+  wrong one usually resolves — so the bug hides for months and then surfaces as a
+  phantom dead surface for exactly one person. Resolution belongs in one place
+  that fails closed, and readers take the resolved value from it.
+
 ## [4.55.1] - 2026-08-27
 
 ### Fixed
