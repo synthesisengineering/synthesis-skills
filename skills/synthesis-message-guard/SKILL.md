@@ -5,12 +5,20 @@ license: "Apache-2.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Message Guard
+
+**Version 1.2.0** (2026-08-28) — adds `check_header_hygiene`: the gate now inspects the
+RFC threading headers (`in_reply_to`, `references`) in the tool input, not only the message
+text, and blocks a send whose Message-ID has been HTML-escaped (`&lt;id@host&gt;`) or left
+with an unbalanced angle bracket. Such a header matches no message, so the reply orphans in
+any strict RFC client — but Gmail's own `thread_id` threading masks it whenever the caller
+passes both, which is why the error survived review and recurred (2026-08-20, 2026-08-28).
+A malformed header is now structurally undeliverable rather than silently wrong.
 
 **Version 1.1.0** (2026-07-29)
 

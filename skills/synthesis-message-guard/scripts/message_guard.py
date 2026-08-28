@@ -129,6 +129,34 @@ def extract_text(tool_input, candidates):
     return None, None
 
 
+def check_header_hygiene(tool_input):
+    """Return a list of failures in RFC threading headers; empty list = clean.
+
+    An RFC Message-ID is passed with literal angle brackets: <abc@host>. A
+    caller that HTML-escapes it writes `&lt;abc@host&gt;` straight into the
+    In-Reply-To and References headers, where it matches no message. Gmail
+    hides the damage whenever thread_id is also supplied — its own threading
+    wins — so the error survives review and recurs. Twice on this machine
+    (2026-08-20, 2026-08-28) before this check existed.
+    """
+    fails = []
+    for key in ("in_reply_to", "references", "inReplyTo", "in_reply_to_id"):
+        val = tool_input.get(key)
+        if not isinstance(val, str) or not val.strip():
+            continue
+        if "&lt;" in val or "&gt;" in val or "&amp;" in val:
+            fails.append(
+                "%s contains HTML entities (%r). RFC Message-IDs take LITERAL "
+                "angle brackets: <id@host>, never &lt;id@host&gt;. Pass the raw "
+                "value." % (key, val[:80])
+            )
+        elif val.strip().startswith("<") and not val.strip().endswith(">"):
+            fails.append(
+                "%s is missing its closing angle bracket (%r)." % (key, val[:80])
+            )
+    return fails
+
+
 def sha256_text(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -247,6 +275,10 @@ def run_gate():
                   "messages on the principal's behalf (see the writing-voice "
                   "skill). Rewrite the message; do not paraphrase the banned "
                   "phrase into a synonym of itself." % detail)
+
+        header_fails = check_header_hygiene(tool_input)
+        if header_fails:
+            block("threading headers malformed — " + " | ".join(header_fails))
 
         lp = ledger_path()
         if not os.path.exists(lp):
