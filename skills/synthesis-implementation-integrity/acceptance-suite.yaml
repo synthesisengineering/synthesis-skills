@@ -1,10 +1,10 @@
-# AGENT HEURISTIC: authored for the decision-packet release. The manifest
-# records this release's exact public universe; the runner proves the
+# AGENT HEURISTIC: authored for the status-vocabulary-enforcement release. The
+# manifest records this release's exact public universe; the runner proves the
 # declaration against the authoritative base-to-head Git diff, so a surface that
 # changes without being declared — or is declared without changing — refuses
 # authority.
 schema: 2
-suite: synthesis-decision-packet-release
+suite: synthesis-status-vocabulary-release
 membership: closed
 production_entry_point: scripts/acceptance_suite.py run
 enforcing_boundary: release.py and repository CI before publication
@@ -13,10 +13,14 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: browser behaviour of the generated packet beyond the emitted markup and script text (the fixtures assert on generated source, not on a live DOM), wiring the packet into autopilot as its batched-questions mechanism, installed-client parity, independent review, publication, and deployment
+unverified_remainder: migration of corpora outside the author's own workspaces (two retired statuses were found in unmigrated workspaces by this very check and are not fixed here), whether the four canonical values remain sufficient as new project shapes appear, installed-client parity, independent review, publication, and deployment
 changed_surfaces:
-  - path: skills/synthesis-decision-packet/scripts/test_build_packet.py
-    cases: [recommendation-marked-not-preselected, fresh-packet-has-nothing-selected]
+  - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
+    cases: [unknown-status-is-a-defect, retired-status-names-its-replacement, superseded-is-terminal]
+  - path: skills/synthesis-context-lifecycle/scripts/test_context_doctor.py
+    cases: [unknown-status-is-a-defect, retired-status-names-its-replacement, superseded-is-terminal, canonical-statuses-are-silent, superseded-gets-its-cross-tier-check]
+  - path: skills/synthesis-context-lifecycle/SKILL.md
+    cases: [shipped-manifest-self-consumption]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -25,15 +29,29 @@ changed_surfaces:
     cases: [release-manifest-parity]
   - path: CHANGELOG.md
     cases: [release-changelog-parity]
+  - path: README.md
+    cases: [release-changelog-parity]
 cases:
-  - id: recommendation-marked-not-preselected
+  - id: unknown-status-is-a-defect
     control_class: acceptance-test
-    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_recommendation_is_marked_on_the_control_not_only_prose
-    motivating_defect: the-test-name-said-preselected-while-the-implementation-deliberately-preselects-nothing-inviting-a-fix-toward-the-wrong-behaviour
-  - id: fresh-packet-has-nothing-selected
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_unknown_status_is_a_defect
+    motivating_defect: a-status-the-doctor-does-not-recognise-silently-disables-every-check-keyed-off-it-and-looks-identical-to-passing
+  - id: retired-status-names-its-replacement
     control_class: acceptance-test
-    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_a_fresh_packet_has_nothing_selected
-    motivating_defect: a-packet-that-opens-fully-decided-cannot-distinguish-i-agreed-from-i-never-looked
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_retired_status_is_a_warning_naming_its_replacement
+    motivating_defect: a-migration-warning-that-does-not-say-what-the-value-should-become-leaves-the-reader-to-guess-and-they-guess-wrong
+  - id: canonical-statuses-are-silent
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_canonical_statuses_produce_no_vocabulary_finding
+    motivating_defect: a-vocabulary-check-that-fires-on-correct-values-trains-its-owner-to-ignore-it
+  - id: superseded-is-terminal
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_superseded_is_terminal
+    motivating_defect: superseded-was-absent-from-the-terminal-set-and-from-the-header-parsers-completion-words-so-such-projects-parsed-as-making-no-completion-claim-at-all
+  - id: superseded-gets-its-cross-tier-check
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_superseded_project_gets_its_cross_tier_check
+    motivating_defect: five-real-projects-sat-permanently-as-record-unreadable-and-never-received-the-cross-tier-check-that-would-have-caught-a-disagreement
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates

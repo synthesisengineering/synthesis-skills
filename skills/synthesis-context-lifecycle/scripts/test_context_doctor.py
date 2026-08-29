@@ -696,6 +696,62 @@ class ContextDoctorTests(unittest.TestCase):
         self.assertFalse(cd.context_declares_completed("**Status:** Paused"))
         self.assertIsNone(cd.context_declares_completed("no header here"))
 
+    # --- status vocabulary -------------------------------------------------
+
+    def test_unknown_status_is_a_defect(self):
+        """An unrecognised status silently disables every check keyed off it."""
+        self.fx.project("alpha", context="# P\n\n**Status:** Active\n")
+        self.fx.index([{"id": "alpha", "status": "wibble"}])
+        self.fx.commit()
+        self.assertIn("status-vocabulary", checks_in(self.fx.audit()))
+
+    def test_retired_status_is_a_warning_naming_its_replacement(self):
+        self.fx.project("alpha", context="# P\n\n**Status:** Active\n")
+        self.fx.index([{"id": "alpha", "status": "ongoing"}])
+        self.fx.commit()
+        findings = self.fx.audit()["data"]["findings"]
+        found = [f for f in findings if f["check"] == "status-vocabulary"]
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["severity"], "warning")
+        self.assertIn("bounded", found[0]["message"])
+
+    def test_canonical_statuses_produce_no_vocabulary_finding(self):
+        for status in sorted(cd.CANONICAL_STATUSES):
+            with self.subTest(status=status):
+                fx = Fixture(Path(self._tmp.name) / ("vocab-" + status))
+                terminal = status in cd.TERMINAL_STATUSES
+                ctx = ("# P\n\n**Status:** Completed\n" if terminal
+                       else "# P\n\n**Status:** Active\n")
+                fx.project("alpha", context=ctx)
+                entry = {"id": "alpha", "status": status}
+                if terminal:
+                    entry["completed_date"] = "2026-01-01"
+                fx.index([entry])
+                fx.commit()
+                self.assertNotIn("status-vocabulary", checks_in(fx.audit()))
+
+    def test_superseded_is_terminal(self):
+        """Regression, found 2026-08-28 on a real corpus.
+
+        `superseded` was absent from the terminal set AND from the header
+        parser's completion words. A superseded project therefore parsed as
+        making no completion claim at all: it sat permanently as
+        `record-unreadable` and never received its cross-tier check. Five real
+        projects were silently exempt. This pins both halves of the fix.
+        """
+        self.assertIn("superseded", cd.TERMINAL_STATUSES)
+        self.assertTrue(cd.context_declares_completed("**Status:** Superseded by `x`"))
+        self.assertTrue(cd.context_declares_completed("**Status:** Archived - closed"))
+
+    def test_superseded_project_gets_its_cross_tier_check(self):
+        self.fx.project("alpha", context="# P\n\n**Status:** Superseded by `beta`\n")
+        self.fx.index([{"id": "alpha", "status": "superseded",
+                        "completed_date": "2026-01-01"}])
+        self.fx.commit()
+        checks = checks_in(self.fx.audit())
+        self.assertNotIn("record-unreadable", checks)
+        self.assertNotIn("status-agreement", checks)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

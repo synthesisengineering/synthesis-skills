@@ -11,6 +11,17 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**A status the doctor cannot read is a check that never runs (August 2026).**
+Release **4.58.0** makes the project status vocabulary enforceable. On a real
+corpus one status was a typo the doctor had *absorbed* into its terminal set
+rather than rejected, and another was missing from that set entirely — so five
+projects parsed as making no completion claim and quietly skipped their
+cross-tier check. Status now answers one question, does this claim attention,
+with four values; everything orthogonal is a qualifier field, so the vocabulary
+does not have to grow. A new `status-vocabulary` check fails on the unknown and
+warns on the retired, naming what each should become. See the
+[4.58.0 release notes](CHANGELOG.md).
+
 **A coordination claim now reaches the Git index (August 2026).** Release
 **4.53.0** adds `coordination.py check-staged`: before a configured commit can
 proceed, the active board session must name the exact worktree and branch, and
