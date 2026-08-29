@@ -209,6 +209,20 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--reason", required=True)
     args = parser.parse_args(argv)
 
+    if args.command == "status" and not args.surface:
+        # The declared surface set must come from the caller (the ritual's
+        # config), because the store only knows surfaces that have already
+        # been written: a declared surface with no successful write is
+        # exactly the gap this gate exists to block, and a status that
+        # consults only the store exits 0 straight past it.
+        print(
+            "error: status requires the declared surface set — pass every "
+            "declared surface with --surface (repeatable); an empty set "
+            "cannot authorize a ritual",
+            file=sys.stderr,
+        )
+        return 2
+
     try:
         if args.command == "window":
             result = window(args.workspace, args.surface)

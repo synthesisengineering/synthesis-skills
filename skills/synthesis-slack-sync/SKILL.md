@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.5.0"
+  version: "3.7.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -15,6 +15,17 @@ metadata:
 A protocol for syncing Slack channels and threads to local transcript files using Slack MCP. Designed for AI-assisted workflows where an agent reads Slack on behalf of a user, saves transcripts locally, and updates a daily action plan.
 
 This skill provides the **protocol** — the sync methodology, thread re-reading discipline, transcript format, and action plan update rules. A per-project **config file** provides the specifics: which channels, which paths, which DMs. Prefer `.agents/slack-sync.yaml`; existing `.claude/slack-sync.yaml` configs remain supported.
+
+## v3.7.0 — The sweep steps consume preflight instead of contradicting it
+
+v3.7.0 (2026-08-29) closes the gap an external adversarial review found in
+v3.6.0: the rule banned config-derived ids while the numbered steps still
+said "for each channel in the config." Step 0 now defines the mandatory
+resolved-target preflight, Steps 1/3/3b iterate only its output, an empty
+resolved set refuses the sweep, and unresolved surfaces are reported as
+unresolved. The deterministic preflight script is extraction item P2; the
+contract binds now either way. Frontmatter version also catches up — v3.6.0
+shipped with stale skill metadata.
 
 ## v3.6.0 — Read targets come from preflight; deriving ids in the sweep is banned
 
@@ -339,12 +350,31 @@ python3 <synthesis-slack-sync-root>/thread_checker.py {transcripts_repo}/{transc
 
 Skip any file that does not yet exist (e.g., no DMs synced today). Combine the output from all runs into a single checklist. You MUST re-read every thread listed during Step 2. The script exists because manually deciding which threads to re-read has repeatedly failed — threads get skipped and messages get missed.
 
+### Step 0: Preflight — resolve every read target (v3.7.0, REQUIRED)
+
+Before any read, build the resolved-target list for this sweep. For every
+surface the config declares — channels, 1:1 DMs, group DMs — record the one
+id a conversation-read call accepts: the channel id for channels and group
+DMs, the **conversation id (`D…`), never the user id (`U…`)**, for DMs. A
+surface whose read id cannot be established is recorded as **unresolved**
+and reported that way — never as unreadable, never as a config defect,
+because the sweep has evidence for neither. An empty resolved-target list
+refuses the sweep rather than reporting a quiet day.
+
+Steps 1, 3, and 3b iterate ONLY this resolved-target list. Reaching back
+into the config for an id mid-sweep is the banned move from v3.6.0: where an
+entry carries two id-like fields, the wrong one usually resolves, so the bug
+hides until the person behind it leaves. (A deterministic preflight script
+generalizing the worked private implementation is queued as extraction item
+P2; until it lands, the resolved-target table is produced by hand at the top
+of the sweep and included in the sync report.)
+
 ### Step 1: Read channels for new top-level messages
 
-For each channel in the config:
+For each channel in the preflight's resolved-target list:
 
 ```
-slack_read_channel(channel_id, oldest=LAST_SYNC_TIMESTAMP, limit=30)
+slack_read_channel(resolved_channel_id, oldest=LAST_SYNC_TIMESTAMP, limit=30)
 ```
 
 - On **first sync of the day** (no channels transcript file exists yet): omit `oldest` or use midnight timestamp.
@@ -382,23 +412,26 @@ Rules:
 
 ### Step 3: Check DMs
 
-For each DM channel in the config:
+For each 1:1 DM in the preflight's resolved-target list:
 
 ```
-slack_read_channel(channel_id=DM_CHANNEL_ID, oldest=LAST_SYNC_TIMESTAMP, limit=20)
+slack_read_channel(channel_id=RESOLVED_CONVERSATION_ID, oldest=LAST_SYNC_TIMESTAMP, limit=20)
 ```
 
-Only check DMs that have active conversations. Don't read every DM — the config file specifies which ones are active.
+The resolved conversation id comes from preflight (Step 0), never from a
+config field chosen mid-sweep. Only check DMs the config marks active —
+preflight carries that scoping — and report any DM preflight marked
+unresolved instead of silently skipping it.
 
 ### Step 3b: Check Group DMs
 
-For each group DM channel in the config:
+For each group DM in the preflight's resolved-target list:
 
 ```
-slack_read_channel(channel_id=GROUP_DM_ID, oldest=LAST_SYNC_TIMESTAMP, limit=20)
+slack_read_channel(channel_id=RESOLVED_GROUP_DM_ID, oldest=LAST_SYNC_TIMESTAMP, limit=20)
 ```
 
-Group DMs (multi-party IMs) are separate from 1:1 DMs. They use channel IDs, not user IDs. Only check group DMs listed in the config.
+Group DMs (multi-party IMs) are separate from 1:1 DMs. They use channel IDs, not user IDs. Only check group DMs the preflight resolved from the config's declared list.
 
 ### Step 4: Save to local transcripts
 

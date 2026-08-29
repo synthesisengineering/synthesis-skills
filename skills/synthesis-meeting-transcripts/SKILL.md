@@ -5,10 +5,20 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "0.7.0"
+  version: "0.9.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
+
+## v0.9.0 — The declared set gets an execution path
+
+v0.9.0 (2026-08-29) closes the gap an external adversarial review found in
+v0.8.0: the policy said "declared means fetched" while the operative protocol
+only resolved one user-named meeting. Step 0 now defines the declared-window
+sweep — enumerate the declared set for the window, fetch every member, and
+account for every member in the report with unclosed gaps recorded
+machine-readably. Frontmatter version also catches up; v0.8.0 shipped with
+stale skill metadata.
 
 ## v0.8.0 — Declared means fetched: no judgment gate before fetching
 
@@ -307,6 +317,26 @@ If the config file is missing, the skill should warn and ask the user to create 
 ---
 
 ## Protocol
+
+### Step 0: Declared-window sweep (v0.9.0 — how "declared means fetched" executes)
+
+The single-meeting path below serves an explicit user request. A ritual sync
+(Day-Start 3c, Day-End Step 1) runs this sweep instead, because the policy
+above has to have an execution path or it is prose:
+
+1. **Enumerate the declared set** for the window from
+   `.agents/meeting-transcripts.yaml`: every declared meeting pattern crossed
+   with every occurrence that ended inside the window. The enumeration is the
+   complete decision — no per-item judgment about which meetings look
+   interesting stands between the list and the fetch.
+2. **Run Steps 2–5 for every member.** Relevance is judged after fetching,
+   from content.
+3. **Account for every member.** The sync report carries one line per
+   declared member: fetched (with path), or an **unclosed gap** naming the
+   member, the window, and the failure ("no doc found", "fetch failed",
+   "verbatim half missing"). A member missing from the report is the defect
+   this step exists to prevent; a gap is closed this run or carried as a
+   blocking item, never dropped.
 
 ### Step 1: Resolve the meeting
 

@@ -190,7 +190,7 @@ def test_item_findings_are_warnings_not_defects(tmp_path: Path) -> None:
     on the day it lands is how a guard teaches people to route around it. These
     must surface without blocking a session end, which is reserved for defects."""
     source = Path(__file__).with_name("context_doctor.py").read_text(encoding="utf-8")
-    marker = 'elif kind in ("item-marker-stale", "item-marker-absent"):'
+    marker = '"item-marker-malformed",'
     assert marker in source, "doctor no longer maps the item kinds"
     block = source.split(marker, 1)[1].split("audit.add(", 1)[1][:200]
 
@@ -249,3 +249,56 @@ def test_obligation_sections_are_still_held(tmp_path: Path) -> None:
         )
         kinds = [f["kind"] for f in MODULE.audit_project(project, today=TODAY)]
         assert "item-marker-absent" in kinds, heading
+
+
+# --- R-02 external-review repairs: fail-open stamps and zero-day horizons --
+
+
+def test_zero_day_horizon_is_honored_not_defaulted(tmp_path: Path) -> None:
+    """'review 0d' is a statement (review daily), not an omission: `or`
+    silently replaced it with the 14-day default, so a daily-review item
+    could sit two weeks dark (R-02 external review)."""
+    project = _project(
+        tmp_path,
+        "**Last session:** 2026-08-27\n\n"
+        "## Open\n"
+        "- [ ] Watch this daily (as of 2026-08-26, review 0d)\n",
+    )
+    stale = [f for f in MODULE.audit_project(project, today=TODAY)
+             if f["kind"] == "item-marker-stale"]
+
+    assert len(stale) == 1
+    assert "0-day review horizon" in stale[0]["detail"]
+
+
+def test_malformed_stamp_suffix_is_flagged_not_exempted(tmp_path: Path) -> None:
+    """'(as of yesterday)' matched the unstamped-exemption heuristic and
+    passed as stamped; a stamp that does not parse must not read as one."""
+    project = _project(
+        tmp_path,
+        "**Last session:** 2026-08-27\n\n"
+        "## Open\n"
+        "- [ ] Chase the ask (as of yesterday)\n",
+    )
+    malformed = [f for f in MODULE.audit_project(project, today=TODAY)
+                 if f["kind"] == "item-marker-malformed"]
+
+    assert len(malformed) == 1
+    assert "does not parse" in malformed[0]["detail"]
+
+
+def test_impossible_stamp_date_is_flagged_not_skipped(tmp_path: Path) -> None:
+    """A date-shaped stamp that is not a real date was silently skipped by
+    the overdue scan, so the item read as current forever."""
+    project = _project(
+        tmp_path,
+        "**Last session:** 2026-08-27\n\n"
+        "## Open\n"
+        "- [ ] Bad stamp (as of 2026-02-30, review 7d)\n",
+    )
+    findings = MODULE.audit_project(project, today=TODAY)
+    malformed = [f for f in findings if f["kind"] == "item-marker-malformed"]
+
+    assert len(malformed) == 1
+    assert "not a real date" in malformed[0]["detail"]
+    assert not [f for f in findings if f["kind"] == "item-marker-stale"]

@@ -74,6 +74,7 @@ def record(
     transition: str,
     detail: str = "",
     today: date | None = None,
+    stamp: str = "",
 ) -> dict:
     if transition not in TRANSITIONS:
         raise ValueError(f"unknown transition: {transition}")
@@ -84,6 +85,8 @@ def record(
         "transition": transition,
         "detail": detail,
     }
+    if stamp:
+        event["stamp"] = stamp
     path = ledger_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
@@ -98,13 +101,29 @@ def _key(project: str, item: str, transition: str) -> tuple[str, str, str]:
 def scan(root: Path, today: date | None = None, projects_dir: str = "projects") -> int:
     """Record an expiry for every stamped item now past its review horizon.
 
-    Idempotent: an item already recorded as expired is not recorded again, so a
-    daily run cannot manufacture duplicate misses for the same forgotten thing.
+    Idempotent per lifecycle, not per text: the same stamp's expiry is never
+    recorded twice, but an item that was expired, carried, and re-stamped is a
+    NEW lifecycle — its later expiry is a new miss and must be recorded. Keying
+    suppression on text alone silenced every expiry cycle after the first.
     """
     moment = today or date.today()
+    events = read_events(root)
     seen = {
-        _key(e.get("project", ""), e.get("item", ""), e.get("transition", ""))
-        for e in read_events(root)
+        (
+            e.get("project", ""),
+            (e.get("item") or "").strip(),
+            e.get("transition", ""),
+            e.get("stamp", ""),
+        )
+        for e in events
+    }
+    # Events written before stamps were recorded cover the lifecycles current
+    # at their recording date: a legacy expiry suppresses stamps no newer than
+    # its own timestamp, and nothing after.
+    legacy_cover = {
+        (e.get("project", ""), (e.get("item") or "").strip()): e.get("ts", "")
+        for e in events
+        if e.get("transition") == "expired-unactioned" and not e.get("stamp")
     }
     added = 0
     projects = Path(root) / projects_dir
@@ -117,8 +136,11 @@ def scan(root: Path, today: date | None = None, projects_dir: str = "projects") 
         except OSError:
             continue
         for item in context_currency.overdue_items(text, today=moment):
-            key = _key(project.name, item["text"], "expired-unactioned")
+            key = (project.name, item["text"].strip(), "expired-unactioned", item["date"])
             if key in seen:
+                continue
+            legacy_ts = legacy_cover.get((project.name, item["text"].strip()))
+            if legacy_ts and item["date"] <= legacy_ts:
                 continue
             record(
                 root,
@@ -131,6 +153,7 @@ def scan(root: Path, today: date | None = None, projects_dir: str = "projects") 
                     f"(section '{item['section']}')"
                 ),
                 today=moment,
+                stamp=item["date"],
             )
             seen.add(key)
             added += 1

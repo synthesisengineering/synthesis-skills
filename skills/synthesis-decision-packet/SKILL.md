@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.0"
+  version: "1.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---

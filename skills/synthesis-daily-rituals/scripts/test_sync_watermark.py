@@ -154,7 +154,8 @@ def test_cli_status_exits_nonzero_while_blocking(tmp_path: Path) -> None:
     MODULE.advance(WS, "slack", "2026-08-20", today=date(2026, 8, 20), home=tmp_path)
 
     done = subprocess.run(
-        [sys.executable, str(SCRIPT), "status", "--workspace", WS, "--json"],
+        [sys.executable, str(SCRIPT), "status", "--workspace", WS,
+         "--surface", "slack", "--json"],
         capture_output=True, text=True, env=env,
     )
 
@@ -167,7 +168,8 @@ def test_cli_status_exits_zero_when_current(tmp_path: Path) -> None:
     MODULE.advance(WS, "slack", "2026-08-28", today=TODAY, home=tmp_path)
 
     done = subprocess.run(
-        [sys.executable, str(SCRIPT), "status", "--workspace", WS, "--json"],
+        [sys.executable, str(SCRIPT), "status", "--workspace", WS,
+         "--surface", "slack", "--json"],
         capture_output=True, text=True, env=env,
     )
 
@@ -198,18 +200,27 @@ def test_rituals_document_the_watermark_and_blocking_gap() -> None:
 
 
 def test_transcripts_forbid_a_judgment_gate_before_fetching() -> None:
-    """Declared means fetched; relevance is judged after fetching, not from a
-    title. The same shape was already retired once for repository syncing."""
+    """Declared means fetched — and (post R-02 review) the policy must have an
+    execution path, not just phrasing: the declared-window sweep enumerates the
+    set, fetches every member, and accounts for every member."""
     text = (SKILLS_ROOT / "synthesis-meeting-transcripts" / "SKILL.md").read_text(
         encoding="utf-8"
     )
 
     assert "does not get a vote" in text
     assert "after* fetching" in text or "after fetching" in text
+    # The execution path itself (v0.9.0): a numbered sweep step, complete
+    # enumeration, and machine-readable unclosed gaps.
+    assert "### Step 0: Declared-window sweep" in text
+    assert "Enumerate the declared set" in text
+    assert "unclosed gap" in text
+    assert "Account for every member" in text
 
 
 def test_slack_sync_bans_deriving_read_ids_in_the_sweep() -> None:
-    """Two id-like fields per entry is a trap that hides until someone leaves."""
+    """Two id-like fields per entry is a trap that hides until someone leaves —
+    and (post R-02 review) the sweep steps must consume the preflight rather
+    than contradict it: no numbered step may iterate the config for ids."""
     text = (SKILLS_ROOT / "synthesis-slack-sync" / "SKILL.md").read_text(
         encoding="utf-8"
     )
@@ -217,3 +228,51 @@ def test_slack_sync_bans_deriving_read_ids_in_the_sweep() -> None:
     assert "preflight" in text
     assert "banned" in text
     assert "dm_id" in text
+    # The operational consumption (v3.7.0): a mandatory Step 0 and steps that
+    # iterate its resolved output — the config-iteration phrasing the external
+    # review caught must stay gone.
+    assert "### Step 0: Preflight" in text
+    assert "resolved-target list" in text
+    assert "For each channel in the config" not in text
+    assert "For each DM channel in the config" not in text
+    assert "RESOLVED_CONVERSATION_ID" in text
+
+
+def test_cli_status_refuses_an_empty_surface_set(tmp_path: Path) -> None:
+    """The declared set must come from the caller: the store only knows
+    surfaces already written, so a store-only status walks straight past a
+    declared surface that has never been swept (R-02 external review)."""
+    env = {"SYNTHESIS_HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
+    done = subprocess.run(
+        [sys.executable, str(SCRIPT), "status", "--workspace", WS, "--json"],
+        capture_output=True, text=True, env=env,
+    )
+
+    assert done.returncode == 2
+    assert "declared surface set" in done.stderr
+
+
+def test_cli_status_blocks_a_declared_surface_never_written(tmp_path: Path) -> None:
+    """The bootstrap bypass itself: no advance() has ever run, and the
+    declared surface must still block rather than vanish."""
+    env = {"SYNTHESIS_HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
+    done = subprocess.run(
+        [sys.executable, str(SCRIPT), "status", "--workspace", WS,
+         "--surface", "slack", "--json"],
+        capture_output=True, text=True, env=env,
+    )
+
+    assert done.returncode == 1
+    assert json.loads(done.stdout)["blocking"] == ["slack"]
+
+
+
+def test_rituals_carry_the_watermark_gate_invocation() -> None:
+    """The release prose said to run status in Day-Start Step 3 and Day-End
+    Step 1; the external review found no operational step actually did. Both
+    checklists must carry the exact invocation with explicit surfaces."""
+    text = (SKILLS_ROOT / "synthesis-daily-rituals" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert text.count("sync_watermark.py status --workspace <W> --surface <s>") >= 2
+    assert "refuses an empty surface set" in text or "every declared surface passed explicitly" in text

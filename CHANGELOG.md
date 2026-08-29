@@ -4,6 +4,52 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.63.0] - 2026-08-29
+
+The repair release for the external adversarial review of 4.55.0–4.57.0
+(R-02: a second vendor's model reviewing four releases it did not write,
+from detached historical worktrees and runtime probes — 14 findings, seven
+ship-blocking). Every valid runtime and doctrine finding is repaired here;
+the review's two historical manifest-closure findings stand as audit records
+of already-shipped transactions.
+
+### Fixed
+
+- **`synthesis-context-lifecycle` v1.14.0 — item currency no longer fails
+  open.** A suffix that looks like a stamp but is not one ("(as of
+  yesterday)") passed as stamped, and a date-shaped impossibility
+  ("2026-02-30") was silently skipped; both now surface as
+  `item-marker-malformed`. An explicit `review 0d` horizon is honored
+  instead of being silently replaced with the 14-day default. The review
+  ledger's expiry suppression is per lifecycle, not per item text: an item
+  expired, carried, and re-stamped records its later expiry as the new miss
+  it is, with the governing stamp on every new event.
+- **`synthesis-daily-rituals` v2.28.0 — the blocking gap gate cannot be
+  walked past.** `sync_watermark.py status` refuses an empty surface set:
+  the store only knows surfaces already written, so a store-only status
+  exits 0 straight past a declared surface that has never been swept. Both
+  ritual checklists now carry the exact status invocation with every
+  declared surface passed explicitly — the release prose said to run it and
+  no operational step did.
+- **`synthesis-slack-sync` v3.7.0 — the sweep consumes preflight instead of
+  contradicting it.** v3.6.0 banned config-derived ids while the numbered
+  steps still said "for each channel in the config." Step 0 now defines the
+  mandatory resolved-target preflight; Steps 1/3/3b iterate only its output;
+  an empty resolved set refuses the sweep; unresolved surfaces are reported
+  as unresolved. Stale frontmatter metadata caught up.
+- **`synthesis-meeting-transcripts` v0.9.0 — "declared means fetched" gets
+  an execution path.** Step 0 enumerates the declared window, fetches every
+  member, and accounts for every member with machine-readable unclosed
+  gaps; the single-meeting protocol serves explicit requests only. Stale
+  frontmatter metadata caught up.
+- **`synthesis-decision-packet` v1.3.0 — ids survive browser coercion.**
+  Row ids must be non-empty strings: JSON `1` and `"1"` become the same
+  localStorage key, so JSON-distinct ids could silently share saved state.
+  The schema comment claiming a recommendation "pre-selects" a button now
+  says marked-never-pre-selected, matching the shipped behavior, and the
+  control-marker fixture is mutation-hardened — it previously passed with
+  the marker implementation deleted.
+
 ## [4.62.0] - 2026-08-29
 
 ### Added
