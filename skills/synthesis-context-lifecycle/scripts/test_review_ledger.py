@@ -201,3 +201,38 @@ def test_expired_items_are_summarised_for_the_review_question(
     assert report["totals"]["closed"] == 1
     missed = [e for e in report["events"] if e["transition"] == "expired-unactioned"]
     assert "Missed thing" in missed[0]["item"]
+
+
+def test_a_restamped_item_can_expire_again(tmp_path: Path) -> None:
+    """Idempotence is per lifecycle, not per text: expired -> carried ->
+    re-stamped -> expired again is TWO misses, and keying suppression on the
+    item text alone silenced every cycle after the first (R-02 external
+    review)."""
+    root = _workspace(tmp_path, "personal")
+    project = _project(
+        root,
+        "alpha",
+        "**Last session:** 2026-08-27\n\n"
+        "## Open\n"
+        "- [ ] Recurring ask (as of 2026-08-01, review 7d)\n",
+    )
+
+    assert MODULE.scan(root, today=TODAY) == 1
+    MODULE.record(root, "alpha", "Recurring ask", "carried")
+
+    # The same lifecycle stays idempotent.
+    assert MODULE.scan(root, today=TODAY) == 0
+
+    # A fresh stamp opens a new lifecycle; its later expiry is a new miss.
+    (project / "CONTEXT.md").write_text(
+        "**Last session:** 2026-08-27\n\n"
+        "## Open\n"
+        "- [ ] Recurring ask (as of 2026-08-15, review 7d)\n",
+        encoding="utf-8",
+    )
+    assert MODULE.scan(root, today=TODAY) == 1
+
+    expiries = [e for e in MODULE.read_events(root)
+                if e["transition"] == "expired-unactioned"]
+    assert len(expiries) == 2
+    assert {e.get("stamp") for e in expiries} == {"2026-08-01", "2026-08-15"}

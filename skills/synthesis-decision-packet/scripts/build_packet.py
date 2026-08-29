@@ -75,9 +75,11 @@ Decision-packet spec (JSON)
         "decline": "What happens if they   never in internal treatment vocabulary.
                    do not."
       },
-      "recommendation": "fix-now",        optional but STRONGLY expected — pre-selects
-                                          a button. No recommendation on any row means
-                                          the packet is a questionnaire; see the
+      "recommendation": "fix-now",        optional but STRONGLY expected — MARKS
+                                          a button (never pre-selects it: a packet
+                                          that opens decided records nobody's
+                                          judgment). No recommendation on any row
+                                          means the packet is a questionnaire; see the
                                           anti-trigger in SKILL.md.
       "severity": "high",                 optional ∈ {high, medium, low, none}
                                           — drives the coloured rail
@@ -144,10 +146,20 @@ def validate(spec: dict) -> list[str]:
         rid = r.get("id")
         if not rid:
             problems.append(f"rows[{i}] missing required field: id")
-        elif rid in seen:
-            problems.append(f"rows[{i}] duplicate id {rid!r} — ids key localStorage and must be unique")
+        elif not isinstance(rid, str) or not rid.strip():
+            # Ids key localStorage and DOM datasets, which coerce every value
+            # to a string: JSON 1 and "1" become the same browser key, so two
+            # JSON-distinct ids can silently share saved state. Only non-empty
+            # strings are ids.
+            problems.append(
+                f"rows[{i}] id {rid!r} must be a non-empty string — browser "
+                "storage coerces ids to strings, so non-string ids can "
+                "collide after coercion"
+            )
+        elif rid.strip() in seen:
+            problems.append(f"rows[{i}] duplicate id {rid.strip()!r} — ids key localStorage and must be unique")
         else:
-            seen.add(rid)
+            seen.add(rid.strip())
         if not r.get("label"):
             problems.append(f"rows[{i}] ({rid}) missing required field: label")
         sev = r.get("severity")

@@ -11,6 +11,16 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**A reviewer that did not write the code, reviewing the code (August 2026).**
+Release **4.63.0** repairs what an external adversarial review of
+4.55.0–4.57.0 found — a second vendor's model attacking four releases from
+detached worktrees and runtime probes: item-currency stamps that failed
+open, a blocking gap gate that could be walked past at bootstrap, sweep
+steps that contradicted their own preflight rule, a declared-fetch policy
+with no execution path, and packet ids that collided after browser
+coercion. Seven ship-blocking findings, every valid one repaired in one
+release. See the [4.63.0 release notes](CHANGELOG.md).
+
 **Two directions that remove the principal as transport (August 2026).**
 Release **4.62.0** pairs the decision packet with a generalized handoff
 queue: work moves between agents as sha-pinned files in the project

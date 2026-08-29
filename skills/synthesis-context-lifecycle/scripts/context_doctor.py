@@ -1005,7 +1005,11 @@ def audit_project(
                 "add '*State as of:*' markers to Current State and What's "
                 "Next per the tiered-context template",
             )
-        elif kind in ("item-marker-stale", "item-marker-absent"):
+        elif kind in (
+            "item-marker-stale",
+            "item-marker-absent",
+            "item-marker-malformed",
+        ):
             # Warnings, not defects, and deliberately so: item stamping is a new
             # convention, and turning an entire corpus red on the day it lands
             # is how a guard teaches people to route around it. These surface in

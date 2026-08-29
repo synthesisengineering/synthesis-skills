@@ -1,10 +1,10 @@
-# AGENT HEURISTIC: authored for the 4.62.0 packet/handoff-wiring release.
+# AGENT HEURISTIC: authored for the 4.63.0 external-review repair release.
 # The manifest records this release's exact public universe; the runner proves
 # the declaration against the authoritative base-to-head Git diff, so a
 # surface that changes without being declared — or is declared without
 # changing — refuses authority.
 schema: 2
-suite: synthesis-packet-handoff-wiring-release
+suite: synthesis-r02-repair-release
 membership: closed
 production_entry_point: scripts/acceptance_suite.py run
 enforcing_boundary: release.py and repository CI before publication
@@ -13,22 +13,36 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: whether autopilot sessions actually reach for the packet at the documented thresholds — doctrine adoption is behavioral, not testable here; consumer-side self-naming checks in gates other than the public release gate; installed-client parity, independent review, publication, and deployment
+unverified_remainder: behavioral adoption of the ritual watermark gate and the sweep preflight in live workspaces; the two historical manifest-closure findings (R02-455-001, R02-457-001) which audit already-shipped transactions and cannot be repaired retroactively; installed-client parity, independent review, publication, and deployment
 changed_surfaces:
-  - path: skills/synthesis-implementation-integrity/scripts/acceptance_suite.py
-    cases: [consumer-format-accepts-alternate, consumer-format-refuses-malformed]
-  - path: skills/synthesis-implementation-integrity/scripts/test_acceptance_suite.py
-    cases: [consumer-format-accepts-alternate, consumer-format-refuses-malformed]
-  - path: skills/synthesis-project-management/scripts/handoff.py
-    cases: [handoff-flow, handoff-tamper-refusal, handoff-identity-required]
-  - path: skills/synthesis-project-management/scripts/test_handoff.py
-    cases: [handoff-flow, handoff-tamper-refusal, handoff-identity-required, pm-doc-contract, autopilot-wiring-doc, packet-doc-pointer]
-  - path: skills/synthesis-project-management/SKILL.md
-    cases: [pm-doc-contract]
-  - path: skills/synthesis-autopilot/SKILL.md
-    cases: [autopilot-wiring-doc]
+  - path: skills/synthesis-context-lifecycle/SKILL.md
+    cases: [release-changelog-parity]
+  - path: skills/synthesis-context-lifecycle/scripts/context_currency.py
+    cases: [zero-day-horizon-honored, malformed-suffix-flagged, impossible-date-flagged]
+  - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
+    cases: [doctor-maps-malformed-kind]
+  - path: skills/synthesis-context-lifecycle/scripts/review_ledger.py
+    cases: [restamped-item-expires-again]
+  - path: skills/synthesis-context-lifecycle/scripts/test_item_currency.py
+    cases: [zero-day-horizon-honored, malformed-suffix-flagged, impossible-date-flagged, doctor-maps-malformed-kind]
+  - path: skills/synthesis-context-lifecycle/scripts/test_review_ledger.py
+    cases: [restamped-item-expires-again]
+  - path: skills/synthesis-daily-rituals/SKILL.md
+    cases: [rituals-carry-the-gate]
+  - path: skills/synthesis-daily-rituals/scripts/sync_watermark.py
+    cases: [status-refuses-empty-set, never-written-surface-blocks]
+  - path: skills/synthesis-daily-rituals/scripts/test_sync_watermark.py
+    cases: [status-refuses-empty-set, never-written-surface-blocks, rituals-carry-the-gate, sweep-consumes-preflight, declared-sweep-has-execution-path]
+  - path: skills/synthesis-slack-sync/SKILL.md
+    cases: [sweep-consumes-preflight]
+  - path: skills/synthesis-meeting-transcripts/SKILL.md
+    cases: [declared-sweep-has-execution-path]
   - path: skills/synthesis-decision-packet/SKILL.md
-    cases: [packet-doc-pointer]
+    cases: [release-changelog-parity]
+  - path: skills/synthesis-decision-packet/scripts/build_packet.py
+    cases: [coercion-collision-refused, nonstring-ids-refused, marker-test-mutation-hardened]
+  - path: skills/synthesis-decision-packet/scripts/test_build_packet.py
+    cases: [coercion-collision-refused, nonstring-ids-refused, marker-test-mutation-hardened]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -40,38 +54,58 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: consumer-format-accepts-alternate
+  - id: zero-day-horizon-honored
     control_class: acceptance-test
-    fixture: scripts/test_acceptance_suite.py::test_schema2_accepts_any_wellformed_consume_acceptance_consumer
-    motivating_defect: three-private-releases-shipped-in-one-week-on-suite-green-because-no-second-repository-could-declare-a-transaction-bound-gate
-  - id: consumer-format-refuses-malformed
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_zero_day_horizon_is_honored_not_defaulted
+    motivating_defect: an-explicit-review-daily-horizon-was-silently-replaced-with-the-fourteen-day-default
+  - id: malformed-suffix-flagged
     control_class: acceptance-test
-    fixture: scripts/test_acceptance_suite.py::test_schema2_refuses_malformed_consumer_id
-    motivating_defect: a-free-text-consumer-field-would-let-a-receipt-name-a-boundary-that-does-not-exist
-  - id: handoff-flow
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_malformed_stamp_suffix_is_flagged_not_exempted
+    motivating_defect: a-suffix-that-looks-like-a-stamp-but-is-not-one-passed-as-stamped-and-the-item-read-as-current-forever
+  - id: impossible-date-flagged
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_handoff.py::test_write_read_done_flow
-    motivating_defect: the-principal-as-courier-copied-prompts-between-agents-twenty-plus-times-in-one-engagement
-  - id: handoff-tamper-refusal
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_impossible_stamp_date_is_flagged_not_skipped
+    motivating_defect: a-date-shaped-impossibility-was-silently-skipped-by-the-overdue-scan
+  - id: doctor-maps-malformed-kind
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_handoff.py::test_read_refuses_tampered_payload
-    motivating_defect: a-payload-changed-after-handoff-executes-instructions-nobody-reviewed
-  - id: handoff-identity-required
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_item_findings_are_warnings_not_defects
+    motivating_defect: a-new-finding-kind-nothing-reports-is-a-check-that-does-not-exist
+  - id: restamped-item-expires-again
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_handoff.py::test_read_refuses_without_identity
-    motivating_defect: a-guessed-reader-identity-can-claim-another-agents-work
-  - id: pm-doc-contract
+    fixture: ../synthesis-context-lifecycle/scripts/test_review_ledger.py::test_a_restamped_item_can_expire_again
+    motivating_defect: text-keyed-suppression-silenced-every-expiry-cycle-after-the-first
+  - id: status-refuses-empty-set
+    control_class: enforced-gate
+    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_status_refuses_an_empty_surface_set
+    motivating_defect: a-store-only-status-exited-zero-straight-past-a-declared-surface-never-swept
+  - id: never-written-surface-blocks
+    control_class: enforced-gate
+    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_status_blocks_a_declared_surface_never_written
+    motivating_defect: the-bootstrap-bypass-the-shipped-test-registered-the-surface-before-testing-status-and-could-not-expose
+  - id: rituals-carry-the-gate
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_handoff.py::test_pm_skill_documents_the_handoff_queue
-    motivating_defect: an-undocumented-queue-gets-rediscovered-as-a-private-convention-instead-of-a-shared-mechanism
-  - id: autopilot-wiring-doc
+    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_rituals_carry_the_watermark_gate_invocation
+    motivating_defect: release-prose-mandated-an-invocation-that-no-operational-step-contained
+  - id: sweep-consumes-preflight
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_handoff.py::test_autopilot_wires_packet_and_handoff
-    motivating_defect: autopilot-carried-a-batched-questions-requirement-with-no-concrete-mechanism-and-per-item-conversation-returned
-  - id: packet-doc-pointer
+    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_slack_sync_bans_deriving_read_ids_in_the_sweep
+    motivating_defect: numbered-sweep-steps-iterated-the-config-for-ids-while-the-rule-above-them-banned-exactly-that
+  - id: declared-sweep-has-execution-path
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_handoff.py::test_decision_packet_names_concrete_handoff_path
-    motivating_defect: the-paired-direction-was-doctrine-without-a-path-so-nobody-could-run-it
+    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_transcripts_forbid_a_judgment_gate_before_fetching
+    motivating_defect: a-policy-with-no-numbered-execution-path-is-phrasing-not-behavior
+  - id: coercion-collision-refused
+    control_class: enforced-gate
+    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_ids_that_collide_after_browser_coercion_are_refused
+    motivating_defect: json-distinct-ids-that-coerce-to-one-browser-key-silently-shared-saved-state
+  - id: nonstring-ids-refused
+    control_class: acceptance-test
+    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_whitespace_and_boolean_ids_are_refused
+    motivating_defect: whitespace-and-boolean-ids-are-the-same-coercion-trap-in-other-clothes
+  - id: marker-test-mutation-hardened
+    control_class: acceptance-test
+    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_recommendation_is_marked_on_the_control_not_only_prose
+    motivating_defect: the-named-marker-test-passed-with-the-marker-implementation-deleted
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates

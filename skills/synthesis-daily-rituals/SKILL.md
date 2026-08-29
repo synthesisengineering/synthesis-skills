@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.27.0"
+  version: "2.28.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -583,6 +583,14 @@ The set of remotes for each repo comes from `git remote -v` inside that repo. Th
 - [ ] **Email sync (v2.19.0)** — when the workspace routinely syncs email (established `transcripts/email/` practice or explicit config): sweep the window's inbound mail AND the user's own sent mail (sent items are correspondence records too — the user's outbound exec mail is often the day's most consequential artifact), using the workspace's designated email tooling and account. Save to the workspace convention (e.g., `transcripts/email/YYYY-MM-DD-<slug>.md`).
 - [ ] **Document-comment sync (v2.19.0)** — when the workspace has an established docs-sweep practice (`transcripts/docs/` or explicit config): Drive documents modified in the window, open comment threads where the newest reply is not the user's (ball in their court), and engagement on documents the user shared out.
 - [ ] **Name any surface not swept.** The declared surface set is the complete decision (v2.12.1 applied to channels); a sync that skips one must say so in its report rather than reporting as complete.
+- [ ] **Watermark gate (v2.28.0):** after the sweeps, run
+  `python3 <skill-root>/scripts/sync_watermark.py status --workspace <W> --surface <s>` with
+  **every declared surface passed explicitly** — the store only knows surfaces
+  that have already been written, so a status that consults only the store
+  walks straight past a declared surface that has never been swept (the
+  command refuses an empty surface set for exactly that reason). Non-zero exit
+  means an unclosed gap: close it this run or defer it with an explicit
+  reason before the ritual proceeds.
 - [ ] Run any project-specific sync steps (see project supplement).
 
 #### 3c. Meeting Transcripts
@@ -1054,6 +1062,11 @@ The Weekly Loose-Ends Review (Step 10) attaches to whichever ritual runs first o
 - [ ] **Run `/synthesis-slack-sync`** for final capture of the day. The `synthesis-slack-sync` skill ensures all channels, threads, and DMs are captured.
 - [ ] **Google Chat final capture (v2.17.0)** — if the workspace declares `.agents/gchat-sync.yaml`, run the same Chat sweep as Day-Start Step 3b for the day's window (fresh space enumeration; raw sender IDs preserved).
 - [ ] **Email + document-comment final capture (v2.19.0)** — when the workspace syncs those surfaces (per Day-Start 3b's declared-set rule): the day's inbound and sent mail, meeting transcripts for any meeting that ended since the last sync, and document comments/engagement for the day's window. Name any surface not swept.
+- [ ] **Watermark gate (v2.28.0):** run
+  `python3 <skill-root>/scripts/sync_watermark.py status --workspace <W> --surface <s>` with
+  every declared surface passed explicitly (same rule and same reason as
+  Day-Start Step 3b's gate). The day does not close over a blocking gap:
+  close it or defer it with a reason now.
 - [ ] Update CONTEXT.md to mark any items resolved by day's conversations (so tomorrow's day-start does not re-propose them).
 
 ### 2. Source-Code Sync

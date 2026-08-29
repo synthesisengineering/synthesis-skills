@@ -127,8 +127,19 @@ def test_every_copy_path_reports_its_outcome():
 # ---------------------------------------------------------------------------
 
 def test_recommendation_is_marked_on_the_control_not_only_prose():
+    """Mutation-hardened: an external review deleted the marker statements and
+    this test still passed, because it only asserted generic button plumbing.
+    It now asserts the exact marking behavior it is named for."""
     out = bp.build(spec())
-    assert 'aria-pressed' in out and 'b.dataset.value = o.value' in out
+    # The marked-control affordance itself: the data attribute and the
+    # accessible title, set exactly when the option is the recommendation.
+    assert 'b.dataset.recommended = "true";' in out
+    assert 'b.title = "The agent recommends this";' in out
+    assert "row.recommendation === o.value" in out
+    # The visual treatment binds to the marker, and marking never presses:
+    # aria-pressed derives from saved state alone (guarded by the fresh-packet
+    # test), while the recommended styling keys off data-recommended.
+    assert 'button[data-recommended="true"]' in out
     assert "recommended: " in out, "the recommendation must be shown on the control, not just in text"
 
 
@@ -378,3 +389,35 @@ def _run_all():
 
 if __name__ == "__main__":
     sys.exit(_run_all())
+
+
+def test_ids_that_collide_after_browser_coercion_are_refused():
+    """JSON 1 and "1" become the same localStorage key; the generator must
+    refuse the collision instead of emitting a packet whose rows share saved
+    state (found by the R-02 external review)."""
+    s = spec()
+    s["rows"][0]["id"] = 1
+    s["rows"][1]["id"] = "1"
+    assert any("non-empty string" in p for p in bp.validate(s))
+
+    with tempfile.TemporaryDirectory() as d:
+        sp = pathlib.Path(d) / "s.json"
+        sp.write_text(json.dumps(s), encoding="utf-8")
+        out_file = pathlib.Path(d) / "o.html"
+        r = subprocess.run(
+            [sys.executable, str(HERE / "build_packet.py"), str(sp),
+             "-o", str(out_file)],
+            capture_output=True, text=True,
+        )
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert not out_file.exists(), "no output may be created for a colliding spec"
+
+
+def test_whitespace_and_boolean_ids_are_refused():
+    s = spec()
+    s["rows"][0]["id"] = "  "
+    assert any("non-empty string" in p for p in bp.validate(s))
+
+    s = spec()
+    s["rows"][0]["id"] = True
+    assert any("non-empty string" in p for p in bp.validate(s))

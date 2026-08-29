@@ -223,13 +223,76 @@ def overdue_items(text: str, today: date | None = None) -> list[dict]:
         try:
             stamped = date.fromisoformat(item["date"])
         except ValueError:
+            # A stamp shaped like a date that is not one is a malformed stamp,
+            # not a fresh item; malformed_stamp_items() reports it.
             continue
-        horizon = item["review_days"] or DEFAULT_REVIEW_DAYS
+        # An explicit 0-day horizon is a statement ("review daily"), not an
+        # omission: `or` would silently replace it with the default and the
+        # item could sit past its declared horizon without a finding.
+        horizon = (
+            item["review_days"]
+            if item["review_days"] is not None
+            else DEFAULT_REVIEW_DAYS
+        )
         if (moment - stamped).days > horizon:
             item["age_days"] = (moment - stamped).days
             item["horizon_days"] = horizon
             overdue.append(item)
     return overdue
+
+
+def malformed_stamp_items(text: str) -> list[dict]:
+    """Open-section items whose currency stamp cannot be trusted.
+
+    Two shapes, both previously invisible: a suffix that looks like a stamp
+    but is not one ("(as of yesterday)") slipped through the unstamped
+    exemption, and a stamp whose date string matches the pattern but is not a
+    real date ("2026-02-30") was silently skipped. A malformed stamp must not
+    read as a valid one — that is exactly how an unverifiable age passes as
+    current.
+    """
+    headings = [(m.start(), m.group(1)) for m in SECTION_HEADING.finditer(text)]
+    pattern_stamped: set[tuple[str, str]] = set()
+    malformed: list[dict] = []
+    for item in item_markers(text):
+        # Every regex-matching stamp is owned by this loop: valid ones are
+        # fine, impossible dates are malformed. Either way the suffix branch
+        # below must not double-report the same line.
+        pattern_stamped.add((item["section"], item["text"]))
+        try:
+            date.fromisoformat(item["date"])
+        except ValueError:
+            if not item["done"]:
+                malformed.append(
+                    {
+                        "section": item["section"],
+                        "text": item["text"],
+                        "reason": f"stamp date {item['date']} is not a real date",
+                    }
+                )
+    for match in ITEM_LINE.finditer(text):
+        section = _section_of(headings, match.start())
+        if not OPEN_SECTION.search(section):
+            continue
+        if (match.group("box") or " ").strip().lower() == "x":
+            continue
+        body = match.group("text").strip()
+        if not (body.endswith(")") and "as of" in body):
+            continue
+        if any(
+            body.startswith(stamped_text)
+            for stamped_section, stamped_text in pattern_stamped
+            if stamped_section == section
+        ):
+            continue
+        malformed.append(
+            {
+                "section": section,
+                "text": body,
+                "reason": "the '(as of ...)' suffix does not parse as a stamp",
+            }
+        )
+    return malformed
 
 
 def unstamped_open_sections(text: str) -> list[str]:
@@ -394,6 +457,13 @@ def audit_project(project: Path, today: date | None = None) -> list[dict]:
             "detail": f"'{section}' lists live items with no '(as of ...)' "
                       "stamps — their age is unverifiable, so an entry written "
                       "weeks ago is indistinguishable from one written today",
+        })
+    for item in malformed_stamp_items(text):
+        findings.append({
+            "project": str(project), "kind": "item-marker-malformed",
+            "section": item["section"],
+            "detail": f"'{item['section']}' item \"{item['text']}\" carries a "
+                      f"stamp that cannot be trusted: {item['reason']}",
         })
     return findings
 
