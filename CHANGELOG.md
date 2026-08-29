@@ -4,6 +4,90 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.60.0] - 2026-08-29
+
+### Added
+
+- **`synthesis-content-quality` v4.2.0 — restored philosophy layer and
+  corpus-level review.** The March 2026 runbook-to-skill conversion carried
+  the criteria forward and dropped the framing sections around them. They are
+  restored verbatim-faithful in `references/philosophy-and-application.md`:
+  the quality problem and the five characteristics of AI slop, the critical
+  understanding caveats, the dual-use (GAN-dynamic) improvement philosophy,
+  application guidance for detection-tool builders and for readers, the path
+  from "was this AI?" to "is this good?", and the before/after revision
+  example. The executable no-removals gate proves the restoration changed no
+  pre-existing rule line (fidelity to the pre-migration source is anchored by
+  the source snapshot preserved in the author's project records, outside this
+  repo); the four-axis inference boundary governs wherever the restored
+  framing touches authorship, restated inline where the restored tool-builder
+  checklist could otherwise be read as licensing origin scoring.
+
+  The same version adds **corpus-level review**: a defect class per-artifact
+  review cannot see by construction — repetition that only appears when a
+  body of work is read together (thirty staged articles shared constructions
+  every individual review passed). `scripts/corpus_repetition.py` takes a
+  corpus or a titles list and reports maximal cross-document word runs with
+  thresholds that survive ordinary English (function-word runs filtered,
+  high-document-frequency runs classified as boilerplate candidates, ignore
+  lists with containment semantics) plus batch title-shape measurements
+  (repeated two-word openings, watch-token concentration,
+  imperative/second-person share). Sixteen deterministic tests ship with the
+  tool — the original acceptance fixtures, including the
+  cure-worse-than-the-disease case where a replacement title set must be
+  measured on the same axes as the diagnosis, plus five adversarial
+  regressions from the pre-release review (frontmatter without a trailing
+  newline, a distinct document pair's run surviving a longer run elsewhere,
+  small-corpus boilerplate misclassification, mirrored-tree content
+  deduplication, and a `--strict` mode that refuses to exit clean while
+  boilerplate candidates await confirmation). The tool measures; the reviewer
+  adjudicates; nothing it reports establishes authorship.
+
+- **`synthesis-article-writing` v2.3.0 — Phase 4 publication-package
+  review.** A real 30-article batch passed full-body review 29/30 and then
+  failed a title-only skim (6 keep / 8 tune / 16 replace), with two
+  descriptions broadening their bodies' claims and 21 stale slugs from
+  superseded headlines. The new phase reviews the package, not the draft:
+  the title-only stranger test as an executable per-article obligation (six
+  recorded fields; a description cannot rescue a failed title row; batch
+  review requires the full N-row disposition table), the newcomer entry lens
+  (hype is the forbidden repair), the title/description/lede/body truth
+  contract extended to section headings, batch headline-monotony review with
+  a batch-shape budget and mandatory re-measurement of any replacement set,
+  the positive reader-value row, and the slug/metadata closure invariant for
+  unpublished articles (deterministic re-slug or a recorded exception —
+  "unchanged" is not an adjudication; a clean build proves consistency, not
+  correctness). Phase 3 gains lede protection from provenance scaffolding
+  (standfirst → note → body) and two-axis semantic sibling search (within
+  the article and across the batch). Seventeen worked acceptance fixtures,
+  including a recorded negative result, live in
+  `references/publication-review-fixtures.md`. A load-with contract states
+  when the framing plane (reader briefing, content framing, this skill)
+  must join the prose stack. Three pre-migration prohibition lines lost in
+  the conversion are restored under Ethical Storytelling.
+
+- **`synthesis-reader-briefing` v1.1.0 — series-dependency contract.** Five
+  short fields and exactly three output states: `standalone`, `standalone
+  after compact context`, or `true prerequisite` (which requires a link plus
+  a one-sentence reason). Dependency drives linking; blanket cross-reference
+  quotas produce formulaic over-context and are explicitly rejected.
+
+- **`synthesis-fact-checking` v2.1.0 — circular grounding.** A new terminal
+  class in the citation graph, DERIVATIVE-SELF: the claim's "supporting
+  source" is a document the author wrote from the same claim. Doctrine
+  repeating a claim is the claim republished; propagation cannot upgrade
+  source grade. (SKILL.md remains marginally over the 500-line guideline, a
+  pre-existing condition this release did not restructure.)
+
+### Changed
+
+- **`synthesis-content-framing` v1.1.0** — the blanket "at least one
+  cross-reference to another article in the series" gate is replaced by the
+  dependency-driven rule from the reader briefing's series-dependency
+  contract. This is the release's one non-additive change, made on the
+  recorded rejection of formulaic over-context in the same evidence intake
+  that motivated the batch gates.
+
 ## [4.59.0] - 2026-08-29
 
 ### Added

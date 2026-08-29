@@ -704,7 +704,7 @@ Before publishing, verify:
 - [ ] Examples are real patterns (even if composite/modified)
 
 **Cross-linking and vocabulary:**
-- [ ] At least one cross-reference to another article in the series
+- [ ] Series-dependency state declared per the reader briefing (`standalone` / `standalone after compact context` / `true prerequisite`); a true prerequisite is linked with a one-sentence reason, and no link is added merely to satisfy a quota
 - [ ] Named patterns use consistent terminology
 - [ ] Terminology follows capitalization rules
 
