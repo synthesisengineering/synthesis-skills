@@ -88,10 +88,11 @@ The protocol has five steps. Each step has explicit inputs, outputs, and stoppin
 1. List every source cited in support of the claim. Label them S1, S2, ..., SN. These are the level-0 nodes.
 2. For each level-0 node, retrieve the source. If the source has its own citations for the same claim, record them as level-1 nodes. Label them S1.1, S1.2, S2.1, etc. Edges go from level-0 to level-1.
 3. Repeat at level 2: for each level-1 node, retrieve and identify its citations for the same claim. Record edges.
-4. Continue until one of three terminal conditions is reached:
+4. Continue until one of four terminal conditions is reached:
    - **Primary upstream:** the node is a primary document (peer-reviewed paper with DOI, government data release, original interview transcript, official statement, dataset). Mark it as PRIMARY.
    - **Dead end:** the node makes the claim with no further citation ("studies show," "research indicates," "experts say" with no specific document named). Mark it as DEAD-END.
    - **Cycle:** the node cites a previously visited node. Mark it as CYCLE and note the cycle members.
+   - **Author-controlled upstream:** the node is a document written or controlled by the claim's own author or organization (a published skill, methodology page, style guide, manifesto, prior article) whose support for the claim traces back to the author or to nothing. Mark it as DERIVATIVE-SELF. This is circular grounding: the doctrine repeating the claim is the claim, republished. A DERIVATIVE-SELF terminal contributes zero graph-independent upstreams however many author-controlled documents sit between the draft and the terminal, and confidence cannot rise until an author-independent PRIMARY exists.
 5. Record the graph structure: every node, every edge, every terminal classification, every URL status (live, dead, never-existed), every publication date.
 
 **Practical tools:** Connected Papers (connectedpapers.com) for academic graph traversal, Semantic Scholar's citation graph API for programmatic access, OpenAlex for cross-disciplinary citation networks, ResearchRabbit for visualization of academic chains, Google Scholar's "cited by" feature for backwards traversal. For non-academic chains, use the Wayback Machine to retrieve historical versions of intermediate sources and identify their citations as they existed at publication time. The urlhealth tool (Rao et al. 2026) classifies URLs as LIVE, DEAD, LIKELY_HALLUCINATED, or UNKNOWN; apply this at every node to populate the URL status field.

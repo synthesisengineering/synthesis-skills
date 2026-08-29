@@ -11,6 +11,14 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**A body-perfect article can still fail as a package (August 2026).**
+Release **4.60.0** upgrades the writing-quality stack from a real 30-article
+publication wave: article packages now get a title-only stranger test, a
+title/description/body truth contract, batch headline budgets, and a
+slug-closure invariant; content quality gains corpus-level repetition review
+with an executable checker, and recovers the philosophy layer dropped in the
+March runbook conversion. See the [4.60.0 release notes](CHANGELOG.md).
+
 **Records that accumulate need an outflow, not just an intake (August 2026).**
 Release **4.59.0** adds two review surfaces built from signals the system already
 recorded and nobody read. A project index gains a capped daily review that names

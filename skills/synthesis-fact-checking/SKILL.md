@@ -12,7 +12,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-content-quality"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -99,6 +99,10 @@ When synthesizing from multiple research sources, the degree of agreement betwee
 ### Graph independence check (new in v2.0)
 
 For multi-source claims, build a citation graph: each source's own citation chain back to its upstream. If multiple paths converge on a single AI-generated upstream (blog post, content farm article, AI-summarized content), the claim is single-sourced. See [references/citation-laundering-detection.md](references/citation-laundering-detection.md) for the full graph-traversal protocol.
+
+### Circular grounding through the author's own doctrine (v2.1)
+
+A convergence case the graph must catch: the "supporting source" is a document the author or their organization wrote **from the same claim** (a published skill, methodology page, style guide). "The claim also appears in our doctrine" is the claim republished, not independent evidence; propagation cannot upgrade source grade. Grade such citations **derivative** (terminal class DERIVATIVE-SELF in [references/citation-laundering-detection.md](references/citation-laundering-detection.md)) and require an author-independent primary before confidence rises.
 
 ### Why this revision matters
 

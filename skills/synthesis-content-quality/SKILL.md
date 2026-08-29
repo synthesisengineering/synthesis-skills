@@ -13,7 +13,7 @@ license: CC0-1.0
 depends_on: []
 metadata:
   author: Rajiv Pant
-  version: 4.1.0
+  version: 4.2.0
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -54,6 +54,10 @@ Three categories of AI-collaborated content:
 - **Systematic human-AI collaboration.** Methodical integration where humans maintain judgment, add genuine expertise, and ensure quality. Indistinguishable from skilled human writing on substance; sometimes carries minor stylistic AI fingerprints from the final draft pass.
 
 The goal is quality assessment. Detection requires pattern recognition across multiple indicators. No single indicator proves AI generation definitively, and many AI-collaborated pieces are excellent content.
+
+Three companion caveats complete that stance: LLMs are trained on human writing, so overlap exists; context matters — some indicators are stronger than others — and skilled human writers exhibit some of these patterns naturally; and the goal is quality assessment, not origin witch-hunting.
+
+The full philosophical layer — the quality problem and the five characteristics of AI slop, the dual-use (GAN-dynamic) improvement model, application guidance for detection-tool builders and for readers, the path from "was this AI?" to "is this good?", and a concrete before/after revision example — lives in [references/philosophy-and-application.md](references/philosophy-and-application.md). It is the frame the catalog operates inside; read it when building tools on this skill or teaching the methodology.
 
 ### Four-axis inference boundary (August 2026 additive prototype)
 
@@ -262,6 +266,19 @@ It does not, on its own, catch:
 - **Voice mismatch.** The article is technically correct but does not sound like the author. Use [`synthesis-voice-profiler`](../synthesis-voice-profiler/SKILL.md).
 - **Strategic positioning errors.** A correct article in the wrong publication on the wrong topic at the wrong moment. Use [`synthesis-content-framing`](../synthesis-content-framing/SKILL.md).
 - **Fact-checking gaps.** Use the companion skill [`synthesis-fact-checking`](../synthesis-fact-checking/SKILL.md) v2.0 for nested attribution, paraphrase drift, composite quotes, position-shifting, source-translation drift, URL rot vs hallucination, AI-generated synthetic sources, citation laundering chains, and tool-specific hallucination patterns.
+- **Cross-article repetition.** Constructions repeated across a body of work are invisible to per-artifact review by construction; see Corpus-Level Review below.
+
+## Corpus-Level Review (v4.2)
+
+The catalog above evaluates one artifact at a time. A defect class exists that no per-artifact review can see: repetition that only appears when a body of work is read together. The motivating case: thirty articles staged as one publication wave shared constructions that every individual article review passed — a general property of AI-assisted writing at scale, where one drafting process leaves the same fingerprints across many artifacts.
+
+**When corpus-level review is required:**
+
+- before publication approval of any staged batch (roughly five or more articles sharing an author, site, or publication window);
+- when one article's review finds a claim-level defect — scan siblings for the same *semantic* claim, not merely the same phrase (one confirmed unsupported universal reopens that claim family across the whole batch);
+- periodically over an already-published corpus, where per-article review happened at different times and nobody has ever read the body of work as one thing.
+
+**Mechanical support:** [scripts/corpus_repetition.py](scripts/corpus_repetition.py) takes a corpus (files, directories, or a titles list), reports maximal word-run repetition across documents with thresholds that survive ordinary English (function-word runs filtered, short overlaps ignored, high-document-frequency runs classified separately as boilerplate candidates), and measures batch title shape against the default budget (repeated two-word openings, watch-token concentration, imperative/second-person share). Judgment stays with the reviewer: quotes, deliberate refrains, and series boilerplate are legitimate repetition, and title-mechanism classification (reversal, negation, coined principle) is reviewer work the tool deliberately does not attempt. When a monotony diagnosis produces a replacement title set, measure the replacement on the same axes — a cure measured only against the disease it names is not measured. Batch-gate doctrine lives in [`synthesis-article-writing`](../synthesis-article-writing/SKILL.md) Phase 4. Nothing the tool reports establishes authorship.
 
 ## Ineffective Detection Methods
 
@@ -412,6 +429,7 @@ This skill is the AI-pattern-and-substance arm of the writing-quality family:
 
 Detailed catalog content lives in the [references/](references/) subfolder:
 
+- [philosophy-and-application.md](references/philosophy-and-application.md): The dual-use philosophy, characteristics of AI slop, application guidance for tool builders and readers, and the before/after revision example (restored pre-migration framing layer).
 - [detailed-criteria.md](references/detailed-criteria.md): All 76 A3 criteria with 16-field detail and renumbering map from v3.1.0.
 - [model-family-fingerprints.md](references/model-family-fingerprints.md): All A1 patterns across 8 families.
 - [substance-and-depth.md](references/substance-and-depth.md): All 17 A2 sub-patterns with 5-minute editorial workflow.

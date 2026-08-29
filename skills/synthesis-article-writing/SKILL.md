@@ -1,23 +1,29 @@
 ---
 name: synthesis-article-writing
 description: >
-  Three-phase workflow for creating high-quality thought leadership articles: research and
-  validation, strategic writing, and pre-publication critical review. Includes anonymization
-  protocol, credibility assessment, substance density checks, and engagement optimization.
+  Five-phase workflow for creating high-quality thought leadership articles: reader briefing,
+  research and validation, strategic writing, pre-publication critical review, and
+  publication-package review (title, metadata, and batch gates). Includes anonymization
+  protocol, credibility assessment, substance density checks, engagement optimization,
+  the title-only stranger test, the title/description/body truth contract, batch headline
+  monotony budgets, and the slug/metadata closure invariant.
   Use when asked to: write article, thought leadership, blog post, article workflow, write blog,
-  draft article, create thought piece, write opinion piece, leadership article.
+  draft article, create thought piece, write opinion piece, leadership article, headline review,
+  title review, publication readiness, article package review.
 license: "CC0-1.0"
 depends_on: ["synthesis-reader-briefing", "synthesis-content-quality"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.2.0"
+  version: "2.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Article Writing
 
-A four-phase workflow for creating high-quality thought leadership articles: reader briefing, research/validation, strategic writing, and pre-publication critical review. Use when exploring a book, concept, or trend and connecting it to your expertise.
+A five-phase workflow for creating high-quality thought leadership articles: reader briefing, research/validation, strategic writing, pre-publication critical review, and publication-package review. Use when exploring a book, concept, or trend and connecting it to your expertise.
+
+**Load-with contract for publication review.** Article drafting, headline work, article-package review, and publication-readiness review load the full prose-quality stack ([`synthesis-content-quality`](../synthesis-content-quality/SKILL.md), [`synthesis-writing-pitfalls`](../synthesis-writing-pitfalls/SKILL.md), [`synthesis-writing-craft`](../synthesis-writing-craft/SKILL.md), plus the author's private voice skill where one exists) **and** the framing plane: [`synthesis-reader-briefing`](../synthesis-reader-briefing/SKILL.md), [`synthesis-content-framing`](../synthesis-content-framing/SKILL.md), and this skill. A prose-stack-only route reviews bodies while the title/lede/reader-entry plane goes unexamined — the documented Set A failure mode: a full-body review cleared 29 of 30 packages whose titles then failed a title-only skim (6 keep / 8 tune / 16 replace). Do not load the framing plane for every email or sentence edit; the trigger is article-level framing or publication readiness.
 
 ---
 
@@ -248,6 +254,9 @@ If ANY test fails, the example cannot be used regardless of whether names are re
 - Risk mitigation choices where the risk itself is sensitive
 - Stakeholder dynamics that fingerprint a specific situation
 - Vocabulary changes that map to known products
+- Attributing quotes to real individuals without verification
+- Inventing technical achievements
+- Creating scenarios inconsistent with the author's public record
 
 ### Output Deliverables
 
@@ -374,6 +383,90 @@ List every term replaced during the translation pass; re-verify each against the
 - Pay special attention to: hyperbolic subheadings, borrowed canonical examples (jet engine/market, bus route nobody rides), dramatic fragment construction, section-ending summaries.
 - Criterion #37 (Insider Context Collapse) catches frame-level slop that the Stranger Read lens may have missed; treat as a backstop, not a substitute.
 - Check that pull quotes exist and are placed for visual rhythm across the article's length.
+
+### 10. Lede Protection From Provenance Scaffolding
+
+**Does the article's first meaningful sentence belong to the article, not to its paperwork?**
+
+Provenance notes are legitimate and sometimes required — a whole-article revision note must precede the content it covers, a disclosure note must be visible before the material it governs. The failure mode is letting that scaffolding become the article's opening: the reader's first contact is administrative text instead of the piece's own promise.
+
+- A short standfirst (one or two sentences of the article's actual claim or stake) may earn attention *before* a whole-article note; the note then follows immediately, before the body it covers.
+- The note must not be the article's first meaningful sentence when a standfirst can lawfully precede it.
+- The valid sequence is: standfirst → provenance note → body. The invalid sequence is: provenance note as de-facto lede.
+- Within-article, section-scoped notes attach to their sections, not to the top.
+
+### 11. Semantic Sibling Search After Any Finding
+
+**One confirmed defect is a search obligation, not a closed item.** When review holds an article for a claim-level defect (an unsupported universal, a broadened scope, a misattributed position), search on two axes before the finding is closed:
+
+- **Within the article:** scan the whole artifact for other instances of the same defect class. A repair that resolves the flagged instance while a stronger, load-bearing instance survives in the same article is worse than no repair — it retires the finding without curing the defect.
+- **Across the batch or corpus:** scan sibling articles for the same *semantic* claim, not merely the same exact phrase. Two articles independently asserting the same unsupported universal are one claim family; the first finding reopens the family everywhere it appears.
+
+---
+
+## Phase 4: Publication-Package Review (Title, Metadata, and Batch Gates)
+
+Phase 3 reviews the draft. Phase 4 reviews the *package* — title, description, slug, routes, and the batch the article ships with. A body-perfect article can still fail here, and the failure is invisible to any body-focused review. Detailed worked fixtures: [references/publication-review-fixtures.md](references/publication-review-fixtures.md).
+
+### 4.1 Title-only stranger test (executable obligation)
+
+For every article, **before seeing the description or body**, the reviewer records six fields:
+
+- **subject:** what is this about?
+- **stake:** why should the intended reader care now?
+- **specificity:** what concrete object, decision, incident, or result anchors the promise?
+- **jargon debt:** which word requires project or ecosystem context to parse?
+- **promise match:** does the body deliver exactly what the title claims? (filled after the body read)
+- **action:** keep, tune, or replace.
+
+A blank or project-internal answer fails the row. **A description cannot repair a failed title-only row** — many surfaces show the title alone. After the title-only pass, run a second title-plus-description pass, because many cards show both. A reviewer that checks bodies but emits no per-article title disposition table cannot sign publication readiness; for a batch, the deliverable is the full N-row table.
+
+### 4.2 Newcomer entry lens
+
+For public work about a named methodology, add one audience fixture: a technically literate reader who has never heard the methodology's name. The title must state a problem or payoff that reader already owns before asking them to care about the category. The methodology name may stay in the title; it must not be the only reason offered to open the piece. **The forbidden repair is hype.** The acceptable repair is clearer subject, stakes, and evidence.
+
+### 4.3 Title/description/body truth contract
+
+Schema validation checks type and length, not truth. Publication review compares four claims for alignment:
+
+- the title's claim;
+- the description's claim;
+- the lede's claim;
+- the body's actual conclusion.
+
+A carefully scoped body with a broadened title or description fails, even when every individual sentence is accurate. **Section headings are metadata too:** a heading that asserts a conclusion its own section never argues fails truth alignment at the same severity as a broadened frontmatter description. The defect is one class at three levels — title against body, heading against section, sentence-level universals — and a check scoped to frontmatter sees only the first.
+
+### 4.4 Batch headline monotony review and batch-shape budget
+
+For a staged batch, classify each title's mechanism (confession/reversal, negation, question, coined principle, numbered result, why/what/how, internal label) and report concentration and adjacent repetition. A high count is not automatically a defect; the reviewer decides whether each instance earns its shape.
+
+**Measure the replacement set on the same axes as the diagnosis.** A proposed cure that reduces the diagnosed formula while raising a different one above threshold fails — a cure measured only against the disease it names is not measured.
+
+Default batch-shape budget (per ~30 titles, tune per corpus):
+
+- no two-word opening repeated more than twice;
+- a domain token (such as "AI") only where the title is otherwise ambiguous about its subject;
+- no more than one-third of the batch in the imperative or second person.
+
+Mechanical support: the corpus-level checker in `synthesis-content-quality` (`scripts/corpus_repetition.py`) computes opening repetition, token concentration, and register share; the judgment about what earns its shape stays with the reviewer.
+
+### 4.5 Positive reader-value row
+
+For each artifact, state in one sentence what the reader can do, decide, notice, or explain after reading that they could not before. "No slop markers" and "no paragraph fails the deletion test" are negative evidence; they do not establish that the article is worth a stranger's time. A package without a reader-value row is not publication-ready.
+
+### 4.6 Slug and metadata closure invariant (unpublished articles)
+
+For an unpublished article, changing or selecting the final headline **invalidates the URL and metadata plane** until all of the following close together:
+
+1. derive the default slug deterministically from the final selected title;
+2. keep a nonmatching slug only through a specific recorded exception — "unchanged" is not an adjudication;
+3. migrate every metadata surface together: source path, staged path, frontmatter slug, canonical URL, specialty and dated routes, category/config keys, preview links, and any transaction manifests;
+4. search every current body and metadata input for retired internal-link targets; the built preview must contain zero retired routes;
+5. synchronize source frontmatter and every regenerator so a rebuild cannot restore stale metadata;
+6. before publication approval, produce a closed-world per-article table of title / slug / canonical / route;
+7. already-published articles are a different regime: their route-preservation-or-redirect decision is publishing policy, never permission to keep stale slugs on unpublished work.
+
+A clean build does not prove editorial correctness of routes: internally consistent stale routes build green.
 
 ## Related
 

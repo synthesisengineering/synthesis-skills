@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Synthesis Engineering"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -353,7 +353,7 @@ Each article should have a clear primary audience.
 - Name patterns explicitly (Foundation-First, Direction Dynamic, etc.)
 - Link to other articles that expand on referenced patterns
 - Build vocabulary that becomes industry standard
-- Each article should reference at least one other article in the series
+- Link by dependency, not by quota: the reader-briefing's series-dependency contract (`synthesis-reader-briefing`) decides whether an article is `standalone`, `standalone after compact context`, or a `true prerequisite` case. A true prerequisite requires a link plus a one-sentence reason to read it first; a standalone article carries no obligatory series link. A blanket at-least-one-cross-reference quota produces formulaic over-context and is retired.
 
 **Pattern naming convention:**
 - Use title case for named patterns: "Foundation-First Pattern", "Direction Dynamic"

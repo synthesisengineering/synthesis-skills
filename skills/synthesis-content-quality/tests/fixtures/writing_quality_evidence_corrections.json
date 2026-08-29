@@ -377,12 +377,12 @@
         "ebc35e599fea0b66e2973de28915adcc8365f68ffd7ba25786d78ce4fc26a984"
       ],
       "replacement_text": [
-        "  version: 4.1.0"
+        "  version: 4.2.0"
       ],
       "replacement_sha256": [
-        "373bd39d9cd43b3c61b875f9283210bd3d4d6341843aa3c65d3b080e8fde0d19"
+        "22f4ad00662bab0af3a556a6fe8499ca2ccc58091dcc706004cb57550fe4f093"
       ],
-      "reason": "Record the additive content-quality release version without changing a writing rule."
+      "reason": "Record the additive content-quality release version without changing a writing rule (4.2.0 adds the restored philosophy layer and corpus-level review)."
     },
     {
       "path": "skills/synthesis-writing-craft/SKILL.md",
