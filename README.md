@@ -11,6 +11,17 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Two directions that remove the principal as transport (August 2026).**
+Release **4.62.0** pairs the decision packet with a generalized handoff
+queue: work moves between agents as sha-pinned files in the project
+(`synthesis-project-management`'s new `handoff.py`), decisions move between
+agent and principal as one reviewable packet, and `synthesis-autopilot` now
+calls the packet as its batched-questions mechanism instead of describing
+one. Schema-2 acceptance manifests may now name any repository's
+consume-acceptance boundary, so private repositories can run the same
+transaction-bound release gate the public one does. See the
+[4.62.0 release notes](CHANGELOG.md).
+
 **Structure without comprehension collects nothing (August 2026).**
 Release **4.61.0** gives decision packets a reader contract. A packet whose
 mechanics all worked collected zero decisions because its rows spoke the

@@ -346,3 +346,38 @@ def test_shipped_manifest_validates() -> None:
         for case_id in surface["cases"]
     }
     assert referenced == {case["id"] for case in declared["cases"]}
+
+
+def test_schema2_accepts_any_wellformed_consume_acceptance_consumer(
+    tmp_path: Path,
+) -> None:
+    fixture_file(tmp_path)
+    payload = schema2_payload()
+    payload["receipt_consumer"] = (
+        "another-repo.gated-release.consume-acceptance.v1"
+    )
+    completed = run_cli(tmp_path, "validate", write_manifest(tmp_path, payload))
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    receipt = json.loads(completed.stdout)
+    assert receipt["receipt_consumer"] == (
+        "another-repo.gated-release.consume-acceptance.v1"
+    )
+
+
+def test_schema2_refuses_malformed_consumer_id(tmp_path: Path) -> None:
+    fixture_file(tmp_path)
+    for malformed in (
+        "fixture boundary",
+        "release.v1",
+        "synthesis-skills-manager.release.consume-acceptance",
+        "Upper.Case.consume-acceptance.v1",
+        ".consume-acceptance.v1",
+    ):
+        payload = schema2_payload()
+        payload["receipt_consumer"] = malformed
+        completed = run_cli(
+            tmp_path, "validate", write_manifest(tmp_path, payload)
+        )
+        assert completed.returncode == 2, malformed
+        assert "consume-acceptance" in completed.stdout, malformed
