@@ -11,6 +11,13 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**A captured directive is not a routed one (August 2026).** Release
+**4.64.0** teaches the context doctor to catch the failure that happens by
+default: an intake artifact that records a directive, reads as handled, and
+was never routed to numbered work, declined, or superseded. Intake-class
+artifacts now need a CONTEXT reference or a terminal routing marker, or the
+doctor warns. See the [4.64.0 release notes](CHANGELOG.md).
+
 **A reviewer that did not write the code, reviewing the code (August 2026).**
 Release **4.63.0** repairs what an external adversarial review of
 4.55.0–4.57.0 found — a second vendor's model attacking four releases from

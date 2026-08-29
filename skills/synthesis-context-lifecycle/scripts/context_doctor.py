@@ -777,6 +777,43 @@ def cited_script_findings(project_path: Path) -> list[tuple[Path, str, str]]:
     return findings
 
 
+INTAKE_NAME = re.compile(r"(intake|brief|directive|catalogue)", re.IGNORECASE)
+ROUTING_MARKER = re.compile(
+    r"^\*\*(Routed|Declined|Superseded):\*\*", re.MULTILINE
+)
+
+
+def unrouted_intake_findings(project_path: Path) -> list[str]:
+    """Intake-class artifacts that no numbered work ever consumed.
+
+    The failure this catches: a directive arrives, gets captured in an
+    artifact, is endorsed in prose — and never becomes a numbered CONTEXT
+    item, a declination, or a supersession, so nothing ships and nothing
+    warns. Coverage is mechanical (the R-03 lane rule: the script narrows,
+    the model judges): an intake-named artifact is covered when CONTEXT.md
+    mentions its filename, or when the file itself carries a terminal
+    routing marker line (**Routed:** / **Declined:** / **Superseded:**).
+    Whether a recorded routing is honest stays a judgment for the reader.
+    """
+
+    artifacts = project_path / "resources" / "artifacts"
+    if not artifacts.is_dir():
+        return []
+    context_text = read_text(project_path / "CONTEXT.md")
+    unrouted: list[str] = []
+    for artifact in sorted(artifacts.glob("*.md")):
+        if not artifact.is_file() or artifact.is_symlink():
+            continue
+        if not INTAKE_NAME.search(artifact.name):
+            continue
+        if artifact.name in context_text:
+            continue
+        if ROUTING_MARKER.search(read_text(artifact)):
+            continue
+        unrouted.append(artifact.name)
+    return unrouted
+
+
 def audit_project(
     source: Source,
     project_id: str,
@@ -881,6 +918,21 @@ def audit_project(
             "preserve the portable script and every required input under "
             "resources/scripts/, then update the artifact citation; this check "
             "establishes existence only and does not prove the script is correct",
+        )
+
+    # --- intake routing coverage ------------------------------------------
+    # A captured directive that never becomes numbered work is the failure
+    # that happens by default: the artifact looks handled because it exists.
+    for intake_name in unrouted_intake_findings(project_path):
+        audit.add(
+            "intake-routing",
+            "warning",
+            f"{intake_name} is an intake-class artifact that CONTEXT.md never "
+            "references and that carries no routing marker — its asks may "
+            "have fallen through",
+            "route it to a numbered CONTEXT item, or add a terminal "
+            "'**Routed:**' / '**Declined:**' / '**Superseded:**' line to the "
+            "artifact stating where its asks went and why",
         )
 
     # --- cross-tier agreement ----------------------------------------------
