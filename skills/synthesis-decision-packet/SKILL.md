@@ -5,14 +5,14 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Decision Packet
 
-**Version 1.0.0** (2026-08-28)
+**Version 1.1.0** (2026-08-29)
 
 An agent that has analysed N items needs N decisions from its principal. Every default shape
 fails at scale, and the measurement that produced this skill is blunt: **26 rounds of per-item
@@ -86,11 +86,48 @@ Requirements, not suggestions. Each is why it worked.
 - **Recommend against your own prior work where that is true**, including failed hypotheses. A
   packet that only argues one way is a sales document, and the buttons stop being trusted.
 
+## The reader contract (v1.1.0) — comprehension is a load-bearing property
+
+The origin measurement has a dark twin, measured on the same principal on
+2026-08-29: **a 15-row packet written in project-internal language collected
+0 of 15 decisions.** Every mechanical property above worked — filters,
+persistence, marked recommendations — and none of it mattered, because the
+rows named things only the authoring session knew ("C1", "holdout",
+"quarantine", "protected strata"). The principal's verdict: "written in some
+alien or machine language." Structure without comprehension collects
+nothing. The packets that ran 30/30 were about things the principal already
+knew — articles, titles, links.
+
+So a packet is a **stranger-read document**, and authoring one starts where
+`synthesis-reader-briefing` starts: who reads this, what do they bring, what
+does it ask, what do they leave with. Then, per row:
+
+- **The label is plain language.** Internal IDs may appear as chips; they
+  are never the name.
+- **Context says what the thing IS** in words the reader already has,
+  before any result about it.
+- **An `impact` block states consequences, both ways** — what actually
+  happens if they take the recommendation and if they don't, in outcomes
+  the principal cares about (what ships, what it costs, what dies), never
+  in internal treatment vocabulary. The generator renders it distinctly.
+- **Options are labeled by consequence,** not by the agent's internal
+  verbs. "Keep it out of your published skill; test once more" beats
+  "retest".
+- **Every surviving term of art gets a one-clause gloss** — inline on first
+  use, or in the packet-level `glossary` band.
+- **`audience` names the reader.** One sentence. If you cannot write it,
+  you do not know who the packet is for, and neither will they.
+
+`--strict-reader` makes the generator refuse a packet missing `audience` or
+per-row `impact`. **Use it for every packet handed to a principal.** The
+warnings print either way; strictness is the difference between a warning
+you read and a packet they cannot.
+
 ## Use
 
 ```bash
 python3 scripts/build_packet.py --schema              # the spec format
-python3 scripts/build_packet.py spec.json -o packet.html
+python3 scripts/build_packet.py spec.json -o packet.html --strict-reader
 python3 scripts/build_packet.py spec.json --stdout    # to a pipe
 ```
 
@@ -139,6 +176,8 @@ regression-tested in `scripts/test_build_packet.py`.
 ## Related
 
 - `references/worked-example.md` — a complete spec and what it produces.
+- `synthesis-reader-briefing` — the four questions every packet is authored
+  against; the reader contract above is that skill applied to this medium.
 - `synthesis-thinking-framework` — for deciding *what* to recommend before you build the packet.
 - `synthesis-anti-shortcuts` — a packet whose rows hedge instead of recommending is the
   asking-as-shortcut costume in a new medium.

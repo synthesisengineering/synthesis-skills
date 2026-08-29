@@ -286,6 +286,78 @@ def test_output_is_self_contained():
     assert not external, f"packet must be self-contained; found external refs: {external}"
 
 
+# ---------------------------------------------------------------------------
+# The reader contract (v1.1.0) - born from a measured failure: a 15-row packet
+# written in project-internal language collected 0 decisions from the same
+# principal whose plain-language packets ran 30/30. Structure without
+# comprehension collects nothing.
+# ---------------------------------------------------------------------------
+
+def test_impact_block_renders_both_consequences():
+    s = spec()
+    s["rows"][0]["impact"] = {"accept": "The rule waits for one more test round.",
+                              "decline": "The strongest candidate from this research is discarded."}
+    out = bp.build(s)
+    assert "If you take the recommendation:" in out
+    assert "The rule waits for one more test round." in out
+    assert "The strongest candidate from this research is discarded." in out
+
+
+def test_glossary_renders_as_a_terms_band_and_escapes():
+    s = spec(glossary=[{"term": "holdout", "meaning": "material set aside <before> tuning"}])
+    out = bp.build(s)
+    assert "Terms used below (1)" in out
+    assert "holdout" in out
+    band = re.search(r'<details class="gloss">.*?</details>', out, re.S).group(0)
+    assert "&lt;before&gt;" in band and "<before>" not in band
+
+
+def test_audience_line_renders_under_the_intro():
+    s = spec(audience="Rajiv, who has not read this project's research records")
+    out = bp.build(s)
+    assert "Written for:" in out
+    assert "who has not read" in out
+
+
+def test_reader_findings_are_warnings_by_default():
+    problems = bp.validate(spec())
+    reader = [x for x in problems if x.startswith("READER:")]
+    assert reader, "a spec with no audience and no impact must raise READER findings"
+    hard = [x for x in problems if not x.startswith(("NOTE:", "READER:"))]
+    assert not hard, f"reader findings must not hard-fail validate(): {hard}"
+
+
+def test_reader_contract_satisfied_raises_no_reader_findings():
+    s = spec(audience="A principal with no project context")
+    for r in s["rows"]:
+        r["impact"] = {"accept": "Nothing changes today.", "decline": "The item is dropped."}
+    problems = bp.validate(s)
+    assert not [x for x in problems if x.startswith("READER:")]
+
+
+def test_strict_reader_flag_refuses_an_alien_packet(tmp_path=None):
+    import tempfile, subprocess, json as _json, pathlib as _pl
+    with tempfile.TemporaryDirectory() as td:
+        sp = _pl.Path(td) / "s.json"
+        sp.write_text(_json.dumps(spec()))
+        proc = subprocess.run(
+            [sys.executable, str(HERE / "build_packet.py"), str(sp),
+             "--stdout", "--strict-reader"],
+            capture_output=True, text=True)
+        assert proc.returncode != 0, "strict-reader must refuse a packet missing audience/impact"
+        assert "READER:" in proc.stderr
+
+
+def test_malformed_impact_and_glossary_are_hard_errors():
+    s = spec()
+    s["rows"][0]["impact"] = {"accept": "only one half"}
+    problems = bp.validate(s)
+    assert any("impact needs both" in x for x in problems)
+    s2 = spec(glossary=[{"term": "x"}])
+    problems2 = bp.validate(s2)
+    assert any("glossary[0] needs both" in x for x in problems2)
+
+
 def _run_all():
     fns = [(n, f) for n, f in sorted(globals().items())
            if n.startswith("test_") and callable(f)]
