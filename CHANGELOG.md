@@ -4,6 +4,25 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.64.0] - 2026-08-29
+
+### Added
+
+- **`synthesis-context-lifecycle` v1.15.0 — captured directives cannot fall
+  through silently.** A principal directive was captured in an intake
+  artifact, endorsed in prose, and routed to no numbered work; nothing
+  warned for four days, exactly as the intake itself predicted ("not
+  evaluating is the only bad outcome, and it is the one that happens by
+  default"). The context doctor now warns (`intake-routing`) on any
+  intake-class artifact — filename carrying intake/brief/directive/catalogue
+  — that CONTEXT.md never references and that carries no terminal
+  `**Routed:**` / `**Declined:**` / `**Superseded:**` marker line. The check
+  is mechanical coverage per the extraction taxonomy: the script narrows,
+  and whether a recorded routing is honest stays the reader's judgment.
+  Five fixtures pin the failure shape, both coverage paths, the
+  outputs-are-not-asks boundary, and that a mid-sentence mention of the
+  marker is not a routing.
+
 ## [4.63.0] - 2026-08-29
 
 The repair release for the external adversarial review of 4.55.0–4.57.0
