@@ -4,6 +4,30 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.61.0] - 2026-08-29
+
+### Added
+
+- **`synthesis-decision-packet` v1.1.0 — the reader contract.** The origin
+  measurement gained a dark twin, measured on the same principal: a 15-row
+  packet written in project-internal language collected **0 of 15**
+  decisions — every mechanical property worked and none of it mattered,
+  because the rows named things only the authoring session knew. The
+  principal's verdict: "written in some alien or machine language."
+  Structure without comprehension collects nothing.
+
+  A packet is now doctrinally a stranger-read document, authored against
+  `synthesis-reader-briefing`'s four questions. The spec gains `audience`
+  (who reads this and what they already know), a packet-level `glossary`
+  (one-clause meanings, rendered as a collapsible band), and per-row
+  `impact` blocks stating the consequences of accepting and of declining
+  the recommendation — in the principal's terms, never internal treatment
+  vocabulary. The generator renders all three, warns on missing
+  audience/impact, and refuses outright under `--strict-reader`, which the
+  skill requires for any packet handed to a principal. Options are to be
+  labeled by consequence, and internal IDs may chip but never name a row.
+  Seven new regression tests; existing specs build unchanged.
+
 ## [4.60.0] - 2026-08-29
 
 ### Added

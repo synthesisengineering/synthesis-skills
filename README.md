@@ -11,6 +11,14 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Structure without comprehension collects nothing (August 2026).**
+Release **4.61.0** gives decision packets a reader contract. A packet whose
+mechanics all worked collected zero decisions because its rows spoke the
+authoring session's internal language; the skill now requires an audience
+line, per-row accept/decline impact in the principal's terms, and a glossary
+for surviving terms of art — with `--strict-reader` making the contract
+enforceable at build time. See the [4.61.0 release notes](CHANGELOG.md).
+
 **A body-perfect article can still fail as a package (August 2026).**
 Release **4.60.0** upgrades the writing-quality stack from a real 30-article
 publication wave: article packages now get a title-only stranger test, a

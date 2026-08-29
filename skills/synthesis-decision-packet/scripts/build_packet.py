@@ -36,6 +36,16 @@ Decision-packet spec (JSON)
   "storage_key": "csa-review-2026-09",   optional; defaults to a slug of the title.
                                          Change it to reset everyone's saved state.
   "summary_intro": "Paste this back to the agent.",  optional
+  "audience":    "One sentence: who reads this and what they already know.",
+                                          optional in the format, REQUIRED by the
+                                          reader contract in SKILL.md - it is the
+                                          audience you must write every row for.
+  "glossary": [                           optional - one-clause meanings for every
+    {"term": "holdout",                   term of art any row still needs after
+     "meaning": "test material set aside  plain-language rewriting. Rendered as a
+      in advance so a rule is judged on   collapsible band under the intro.
+      text it was not tuned on"}
+  ],
 
   "options": [                            REQUIRED — the default choice set for every row
     {"value": "fix-now",  "label": "Fix now",  "tone": "danger"},
@@ -58,6 +68,13 @@ Decision-packet spec (JSON)
       "label": "Unbounded retry loop in the publish worker",   REQUIRED
       "context":  "What the reader needs to judge it.",        optional
       "reasoning":"Why the agent recommends what it does.",    optional
+      "impact": {                          optional in the format, REQUIRED by the
+        "accept": "What actually happens   reader contract: the consequences of
+                   if they take your       agreeing and of not agreeing, stated in
+                   recommendation.",       outcomes the principal cares about -
+        "decline": "What happens if they   never in internal treatment vocabulary.
+                   do not."
+      },
       "recommendation": "fix-now",        optional but STRONGLY expected — pre-selects
                                           a button. No recommendation on any row means
                                           the packet is a questionnaire; see the
@@ -147,6 +164,34 @@ def validate(spec: dict) -> list[str]:
         if dis is not None:
             if not isinstance(dis, dict) or not dis.get("a") or not dis.get("b"):
                 problems.append(f"rows[{i}] ({rid}) disagreement needs both 'a' and 'b'")
+        imp = r.get("impact")
+        if imp is not None and (not isinstance(imp, dict)
+                                or not imp.get("accept") or not imp.get("decline")):
+            problems.append(f"rows[{i}] ({rid}) impact needs both 'accept' and 'decline'")
+
+    gl = spec.get("glossary")
+    if gl is not None:
+        if not isinstance(gl, list):
+            problems.append("glossary must be a list of {term, meaning}")
+        else:
+            for gi, g in enumerate(gl):
+                if not isinstance(g, dict) or not g.get("term") or not g.get("meaning"):
+                    problems.append(f"glossary[{gi}] needs both 'term' and 'meaning'")
+
+    # Reader contract (see SKILL.md): a packet is a stranger-read document.
+    # These are READER-class findings - warnings by default, fatal under
+    # --strict-reader, which SKILL.md requires for packets handed to a
+    # principal. Measured origin: a 15-row packet written in project-internal
+    # language collected 0 decisions from the same principal whose plain-
+    # language packets ran 30/30.
+    if not spec.get("audience"):
+        problems.append("READER: no 'audience' - name who reads this and what they already know, then write every row for that reader")
+    missing_impact = [str(r.get("id")) for r in rows
+                      if isinstance(r, dict) and not r.get("impact")]
+    if missing_impact:
+        problems.append(
+            "READER: rows without an 'impact' block (what happens if they accept / decline, in the principal's terms): "
+            + ", ".join(missing_impact))
 
     recommended = sum(1 for r in rows if isinstance(r, dict) and r.get("recommendation"))
     if recommended == 0:
@@ -203,6 +248,14 @@ body {
 header h1 { font-size: 25px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
 header .sub { color: var(--ink-2); margin: 0 0 14px; }
 header .intro { color: var(--ink-2); max-width: 74ch; margin: 0 0 20px; }
+header .aud { color: var(--ink-3); font-size: 13px; margin: -10px 0 16px; }
+details.gloss { margin: 0 0 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+details.gloss summary { cursor: pointer; padding: 8px 12px; font-size: 13px; color: var(--ink-2); }
+details.gloss dl { margin: 0; padding: 4px 14px 12px; font-size: 13px; }
+details.gloss dt { font-weight: 600; margin-top: 6px; }
+details.gloss dd { margin: 0; color: var(--ink-2); }
+.impact { border-left: 3px solid var(--line); padding: 6px 10px; margin: 8px 0; font-size: 13.5px; }
+.impact b { color: var(--ink-2); }
 .counts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
 .count {
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
@@ -324,6 +377,8 @@ header .intro { color: var(--ink-2); max-width: 74ch; margin: 0 0 20px; }
   <h1>__TITLE__</h1>
   __SUBTITLE__
   __INTRO__
+  __AUDIENCE__
+  __GLOSSARY__
 </header>
 
 <div class="counts" id="counts"></div>
@@ -465,6 +520,10 @@ header .intro { color: var(--ink-2); max-width: 74ch; margin: 0 0 20px; }
       head += '<div class="links">' + row.links.map(function (l) {
         return '<a href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + "</a>";
       }).join(" · ") + "</div>";
+    }
+    if (row.impact) {
+      head += '<div class="impact"><b>If you take the recommendation:</b> ' + esc(row.impact.accept) +
+              '<br><b>If you don\u2019t:</b> ' + esc(row.impact.decline) + "</div>";
     }
     if (row.disagreement) {
       var d = row.disagreement;
@@ -696,6 +755,19 @@ def build(spec: dict) -> str:
     out = out.replace("__TITLE__", html.escape(title))
     out = out.replace("__SUBTITLE__", f'<p class="sub">{html.escape(str(sub))}</p>' if sub else "")
     out = out.replace("__INTRO__", f'<p class="intro">{html.escape(str(intro))}</p>' if intro else "")
+    aud = spec.get("audience")
+    out = out.replace("__AUDIENCE__",
+                      f'<p class="aud">Written for: {html.escape(str(aud))}</p>' if aud else "")
+    gl = spec.get("glossary") or []
+    if gl:
+        items = "".join(
+            f"<dt>{html.escape(str(g['term']))}</dt><dd>{html.escape(str(g['meaning']))}</dd>"
+            for g in gl if isinstance(g, dict))
+        out = out.replace(
+            "__GLOSSARY__",
+            f'<details class="gloss"><summary>Terms used below ({len(gl)})</summary><dl>{items}</dl></details>')
+    else:
+        out = out.replace("__GLOSSARY__", "")
     out = out.replace(
         "__SUMMARY_INTRO__",
         html.escape(str(spec.get("summary_intro")
@@ -713,6 +785,9 @@ def main() -> int:
     ap.add_argument("--schema", action="store_true", help="print the spec schema and exit")
     ap.add_argument("--allow-small", action="store_true",
                     help="build even with fewer than five rows (see the anti-trigger)")
+    ap.add_argument("--strict-reader", action="store_true",
+                    help="make reader-contract findings (missing audience/impact) fatal; "
+                         "SKILL.md requires this for packets handed to a principal")
     args = ap.parse_args()
 
     if args.schema:
@@ -729,12 +804,15 @@ def main() -> int:
         return 2
 
     problems = validate(spec)
-    hard = [p for p in problems if not p.startswith("NOTE:")]
+    hard = [p for p in problems if not p.startswith(("NOTE:", "READER:"))]
     soft = [p for p in problems if p.startswith("NOTE:")]
-    for p in soft:
+    reader = [p for p in problems if p.startswith("READER:")]
+    for p in soft + reader:
         print(p, file=sys.stderr)
     if soft and not args.allow_small:
         hard.append("refusing to build a sub-five-row packet without --allow-small")
+    if reader and args.strict_reader:
+        hard.append("reader contract unmet (--strict-reader): see READER findings above")
     if hard:
         print("\nwill not build:", file=sys.stderr)
         for p in hard:

@@ -1,13 +1,10 @@
-# AGENT HEURISTIC: authored for the writing-quality batch-review release
-# (content-quality restoration + corpus-level review, article-writing Phase 4
-# package gates, reader-briefing dependency contract, content-framing
-# dependency-driven linking, fact-checking circular grounding). The manifest
-# records this release's exact public universe; the runner proves the
-# declaration against the authoritative base-to-head Git diff, so a surface
-# that changes without being declared — or is declared without changing —
-# refuses authority.
+# AGENT HEURISTIC: authored for the decision-packet reader-contract release.
+# The manifest records this release's exact public universe; the runner proves
+# the declaration against the authoritative base-to-head Git diff, so a
+# surface that changes without being declared — or is declared without
+# changing — refuses authority.
 schema: 2
-suite: synthesis-writing-quality-batch-review-release
+suite: synthesis-decision-packet-reader-contract-release
 membership: closed
 production_entry_point: scripts/acceptance_suite.py run
 enforcing_boundary: release.py and repository CI before publication
@@ -16,32 +13,14 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: detector thresholds are tuned on synthetic fixtures and one real batch, not a labeled corpus; the Phase 4 package gates are review doctrine whose enforcement is procedural rather than executable; the fact-checking SKILL.md remains marginally over the 500-line guideline pre-existing; blinded confirmatory corpus scoring, installed-client parity, independent review, publication, and deployment
+unverified_remainder: whether the reader contract's mechanical half (audience and impact present) is sufficient for comprehension — plain language itself remains authorial judgment the generator cannot verify; installed-client parity, independent review, publication, and deployment
 changed_surfaces:
-  - path: skills/synthesis-content-quality/scripts/corpus_repetition.py
-    cases: [shared-construction-is-found, ordinary-english-survives, boilerplate-is-classified-not-flagged, ignored-phrase-silences-its-subruns, replacement-set-is-measured-on-the-same-axes]
-  - path: skills/synthesis-content-quality/tests/test_corpus_repetition.py
-    cases: [shared-construction-is-found, ordinary-english-survives, boilerplate-is-classified-not-flagged, ignored-phrase-silences-its-subruns, replacement-set-is-measured-on-the-same-axes]
-  - path: skills/synthesis-content-quality/SKILL.md
-    cases: [restoration-is-purely-additive]
-  - path: skills/synthesis-content-quality/references/philosophy-and-application.md
-    cases: [restoration-is-purely-additive]
-  - path: skills/synthesis-content-quality/tests/fixtures/writing_quality_evidence_corrections.json
-    cases: [restoration-is-purely-additive, version-stamp-is-the-only-baseline-change]
-  - path: skills/synthesis-article-writing/SKILL.md
+  - path: skills/synthesis-decision-packet/SKILL.md
     cases: [shipped-manifest-self-consumption]
-  - path: skills/synthesis-article-writing/references/publication-review-fixtures.md
-    cases: [shipped-manifest-self-consumption]
-  - path: skills/synthesis-reader-briefing/SKILL.md
-    cases: [shipped-manifest-self-consumption]
-  - path: skills/synthesis-content-framing/SKILL.md
-    cases: [shipped-manifest-self-consumption]
-  - path: skills/synthesis-content-framing/references/quality-gates.md
-    cases: [shipped-manifest-self-consumption]
-  - path: skills/synthesis-fact-checking/SKILL.md
-    cases: [shipped-manifest-self-consumption]
-  - path: skills/synthesis-fact-checking/references/citation-laundering-detection.md
-    cases: [shipped-manifest-self-consumption]
+  - path: skills/synthesis-decision-packet/scripts/build_packet.py
+    cases: [impact-renders-both-consequences, glossary-band-renders-escaped, audience-line-renders, reader-findings-warn-by-default, strict-reader-refuses-alien-packet, satisfied-contract-is-quiet, malformed-blocks-hard-fail]
+  - path: skills/synthesis-decision-packet/scripts/test_build_packet.py
+    cases: [impact-renders-both-consequences, glossary-band-renders-escaped, audience-line-renders, reader-findings-warn-by-default, strict-reader-refuses-alien-packet, satisfied-contract-is-quiet, malformed-blocks-hard-fail]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -53,34 +32,34 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: shared-construction-is-found
+  - id: impact-renders-both-consequences
     control_class: acceptance-test
-    fixture: ../synthesis-content-quality/tests/test_corpus_repetition.py::SharedRunTests::test_shared_construction_across_two_documents_is_found
-    motivating_defect: a-corpus-checker-that-misses-the-shared-construction-it-exists-to-find-reads-as-coverage-while-covering-nothing
-  - id: ordinary-english-survives
+    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_impact_block_renders_both_consequences
+    motivating_defect: consequences-stated-only-in-the-agents-head-leave-the-principal-choosing-between-labels-they-cannot-weigh
+  - id: glossary-band-renders-escaped
     control_class: acceptance-test
-    fixture: ../synthesis-content-quality/tests/test_corpus_repetition.py::SharedRunTests::test_ordinary_english_overlap_does_not_flag
-    motivating_defect: a-threshold-that-flags-ordinary-english-drowns-the-report-and-teaches-reviewers-to-ignore-it
-  - id: boilerplate-is-classified-not-flagged
+    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_glossary_renders_as_a_terms_band_and_escapes
+    motivating_defect: a-term-of-art-with-no-gloss-turns-a-decision-row-into-a-foreign-language-sentence
+  - id: audience-line-renders
     control_class: acceptance-test
-    fixture: ../synthesis-content-quality/tests/test_corpus_repetition.py::SharedRunTests::test_high_df_run_is_classified_boilerplate_not_finding
-    motivating_defect: deliberate-series-boilerplate-flagged-as-a-finding-buries-the-accidental-repetition-the-tool-is-for
-  - id: ignored-phrase-silences-its-subruns
+    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_audience_line_renders_under_the_intro
+    motivating_defect: a-packet-that-cannot-name-its-reader-was-written-for-nobody-and-reads-that-way
+  - id: reader-findings-warn-by-default
     control_class: acceptance-test
-    fixture: ../synthesis-content-quality/tests/test_corpus_repetition.py::SharedRunTests::test_ignore_file_suppresses_known_phrase
-    motivating_defect: an-ignore-entry-that-leaves-its-own-fragments-flagged-makes-the-allowlist-useless-in-practice
-  - id: replacement-set-is-measured-on-the-same-axes
+    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_reader_findings_are_warnings_by_default
+    motivating_defect: making-the-new-contract-fatal-by-default-would-break-every-existing-spec-and-teach-users-to-bypass-the-gate
+  - id: strict-reader-refuses-alien-packet
     control_class: acceptance-test
-    fixture: ../synthesis-content-quality/tests/test_corpus_repetition.py::TitleShapeTests::test_replacement_set_with_new_formula_flags
-    motivating_defect: a-cure-measured-only-against-the-disease-it-names-is-not-measured-and-the-real-batch-produced-exactly-that-cure
-  - id: restoration-is-purely-additive
+    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_strict_reader_flag_refuses_an_alien_packet
+    motivating_defect: the-measured-failure-a-structurally-perfect-packet-in-machine-language-collected-zero-of-fifteen-decisions
+  - id: satisfied-contract-is-quiet
     control_class: acceptance-test
-    fixture: ../synthesis-content-quality/tests/test_no_removals.py::NoRemovalsTests::test_every_baseline_file_and_nonblank_line_remains
-    motivating_defect: a-restoration-that-quietly-rewrites-a-surviving-rule-undoes-upgrades-while-claiming-to-add
-  - id: version-stamp-is-the-only-baseline-change
+    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_reader_contract_satisfied_raises_no_reader_findings
+    motivating_defect: a-gate-that-nags-compliant-specs-teaches-authors-to-ignore-its-output-entirely
+  - id: malformed-blocks-hard-fail
     control_class: acceptance-test
-    fixture: ../synthesis-content-quality/tests/test_no_removals.py::NoRemovalsTests::test_correction_allowlist_is_exact_and_baseline_bound
-    motivating_defect: an-allowlist-edit-beyond-the-version-stamp-would-let-an-evidence-correction-slip-in-without-review
+    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_malformed_impact_and_glossary_are_hard_errors
+    motivating_defect: a-half-filled-impact-block-renders-as-a-broken-promise-about-exactly-one-side-of-the-decision
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
