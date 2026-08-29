@@ -1,10 +1,13 @@
-# AGENT HEURISTIC: authored for the portfolio-and-claim-hygiene release. The
-# manifest records this release's exact public universe; the runner proves the
-# declaration against the authoritative base-to-head Git diff, so a surface that
-# changes without being declared — or is declared without changing — refuses
-# authority.
+# AGENT HEURISTIC: authored for the writing-quality batch-review release
+# (content-quality restoration + corpus-level review, article-writing Phase 4
+# package gates, reader-briefing dependency contract, content-framing
+# dependency-driven linking, fact-checking circular grounding). The manifest
+# records this release's exact public universe; the runner proves the
+# declaration against the authoritative base-to-head Git diff, so a surface
+# that changes without being declared — or is declared without changing —
+# refuses authority.
 schema: 2
-suite: synthesis-record-hygiene-release
+suite: synthesis-writing-quality-batch-review-release
 membership: closed
 production_entry_point: scripts/acceptance_suite.py run
 enforcing_boundary: release.py and repository CI before publication
@@ -13,19 +16,31 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: whether a three-item daily cap is the right rate for corpora much larger than the one it was tuned on, behaviour of the claim review against boards written by other machines (the cross-machine path reports that it cannot judge rather than guessing, but that path has no live multi-machine fixture), installed-client parity, independent review, publication, and deployment
+unverified_remainder: detector thresholds are tuned on synthetic fixtures and one real batch, not a labeled corpus; the Phase 4 package gates are review doctrine whose enforcement is procedural rather than executable; the fact-checking SKILL.md remains marginally over the 500-line guideline pre-existing; blinded confirmatory corpus scoring, installed-client parity, independent review, publication, and deployment
 changed_surfaces:
-  - path: skills/synthesis-daily-rituals/scripts/portfolio_review.py
-    cases: [paused-is-never-surfaced, output-is-capped-and-says-what-it-withheld, review-never-breaks-the-ritual, silent-source-drop-is-reported]
-  - path: skills/synthesis-daily-rituals/scripts/test_portfolio_review.py
-    cases: [paused-is-never-surfaced, output-is-capped-and-says-what-it-withheld, review-never-breaks-the-ritual, silent-source-drop-is-reported]
-  - path: skills/synthesis-daily-rituals/SKILL.md
+  - path: skills/synthesis-content-quality/scripts/corpus_repetition.py
+    cases: [shared-construction-is-found, ordinary-english-survives, boilerplate-is-classified-not-flagged, ignored-phrase-silences-its-subruns, replacement-set-is-measured-on-the-same-axes]
+  - path: skills/synthesis-content-quality/tests/test_corpus_repetition.py
+    cases: [shared-construction-is-found, ordinary-english-survives, boilerplate-is-classified-not-flagged, ignored-phrase-silences-its-subruns, replacement-set-is-measured-on-the-same-axes]
+  - path: skills/synthesis-content-quality/SKILL.md
+    cases: [restoration-is-purely-additive]
+  - path: skills/synthesis-content-quality/references/philosophy-and-application.md
+    cases: [restoration-is-purely-additive]
+  - path: skills/synthesis-content-quality/tests/fixtures/writing_quality_evidence_corrections.json
+    cases: [restoration-is-purely-additive, version-stamp-is-the-only-baseline-change]
+  - path: skills/synthesis-article-writing/SKILL.md
     cases: [shipped-manifest-self-consumption]
-  - path: skills/synthesis-project-management/scripts/coordination.py
-    cases: [stale-review-never-mutates, missing-worktree-is-evidence, present-worktree-is-not-called-gone]
-  - path: skills/synthesis-project-management/scripts/test_coordination.py
-    cases: [stale-review-never-mutates, missing-worktree-is-evidence, present-worktree-is-not-called-gone]
-  - path: skills/synthesis-project-management/SKILL.md
+  - path: skills/synthesis-article-writing/references/publication-review-fixtures.md
+    cases: [shipped-manifest-self-consumption]
+  - path: skills/synthesis-reader-briefing/SKILL.md
+    cases: [shipped-manifest-self-consumption]
+  - path: skills/synthesis-content-framing/SKILL.md
+    cases: [shipped-manifest-self-consumption]
+  - path: skills/synthesis-content-framing/references/quality-gates.md
+    cases: [shipped-manifest-self-consumption]
+  - path: skills/synthesis-fact-checking/SKILL.md
+    cases: [shipped-manifest-self-consumption]
+  - path: skills/synthesis-fact-checking/references/citation-laundering-detection.md
     cases: [shipped-manifest-self-consumption]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
@@ -38,34 +53,34 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: paused-is-never-surfaced
+  - id: shared-construction-is-found
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_portfolio_review.py::test_paused_is_never_surfaced
-    motivating_defect: if-pausing-a-project-did-not-stop-it-asking-then-pausing-buys-nothing-and-the-backlog-merely-moves
-  - id: output-is-capped-and-says-what-it-withheld
+    fixture: ../synthesis-content-quality/tests/test_corpus_repetition.py::SharedRunTests::test_shared_construction_across_two_documents_is_found
+    motivating_defect: a-corpus-checker-that-misses-the-shared-construction-it-exists-to-find-reads-as-coverage-while-covering-nothing
+  - id: ordinary-english-survives
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_portfolio_review.py::test_output_is_capped_and_says_how_many_were_withheld
-    motivating_defect: an-uncapped-list-gets-skipped-and-a-silent-cap-reads-as-full-coverage-when-it-is-truncation
-  - id: review-never-breaks-the-ritual
+    fixture: ../synthesis-content-quality/tests/test_corpus_repetition.py::SharedRunTests::test_ordinary_english_overlap_does_not_flag
+    motivating_defect: a-threshold-that-flags-ordinary-english-drowns-the-report-and-teaches-reviewers-to-ignore-it
+  - id: boilerplate-is-classified-not-flagged
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_portfolio_review.py::test_unparseable_index_exits_zero
-    motivating_defect: a-check-that-can-fail-the-ritual-calling-it-gets-removed-from-the-ritual-and-then-protects-nothing
-  - id: silent-source-drop-is-reported
+    fixture: ../synthesis-content-quality/tests/test_corpus_repetition.py::SharedRunTests::test_high_df_run_is_classified_boilerplate_not_finding
+    motivating_defect: deliberate-series-boilerplate-flagged-as-a-finding-buries-the-accidental-repetition-the-tool-is-for
+  - id: ignored-phrase-silences-its-subruns
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_portfolio_review.py::test_source_without_projects_dir_is_reported_not_skipped_silently
-    motivating_defect: silently-dropping-a-configured-source-is-how-a-whole-repository-goes-unreviewed-while-the-run-still-prints-a-clean-result
-  - id: stale-review-never-mutates
+    fixture: ../synthesis-content-quality/tests/test_corpus_repetition.py::SharedRunTests::test_ignore_file_suppresses_known_phrase
+    motivating_defect: an-ignore-entry-that-leaves-its-own-fragments-flagged-makes-the-allowlist-useless-in-practice
+  - id: replacement-set-is-measured-on-the-same-axes
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_stale_review_never_mutates_the_board
-    motivating_defect: an-agent-able-to-release-another-sessions-claim-turns-the-advisory-lock-into-a-suggestion
-  - id: missing-worktree-is-evidence
+    fixture: ../synthesis-content-quality/tests/test_corpus_repetition.py::TitleShapeTests::test_replacement_set_with_new_formula_flags
+    motivating_defect: a-cure-measured-only-against-the-disease-it-names-is-not-measured-and-the-real-batch-produced-exactly-that-cure
+  - id: restoration-is-purely-additive
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_missing_worktree_is_reported_as_likely_gone
-    motivating_defect: asking-a-user-to-judge-a-claim-from-elapsed-time-alone-gives-them-nothing-to-decide-on
-  - id: present-worktree-is-not-called-gone
+    fixture: ../synthesis-content-quality/tests/test_no_removals.py::NoRemovalsTests::test_every_baseline_file_and_nonblank_line_remains
+    motivating_defect: a-restoration-that-quietly-rewrites-a-surviving-rule-undoes-upgrades-while-claiming-to-add
+  - id: version-stamp-is-the-only-baseline-change
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_present_worktree_is_not_called_gone
-    motivating_defect: a-review-that-calls-a-live-session-dead-would-invite-releasing-a-claim-that-is-still-protecting-in-flight-work
+    fixture: ../synthesis-content-quality/tests/test_no_removals.py::NoRemovalsTests::test_correction_allowlist_is_exact_and_baseline_bound
+    motivating_defect: an-allowlist-edit-beyond-the-version-stamp-would-let-an-evidence-correction-slip-in-without-review
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
