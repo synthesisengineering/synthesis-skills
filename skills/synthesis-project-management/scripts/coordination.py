@@ -13,10 +13,11 @@ import re
 import shutil
 import socket
 import subprocess
+import platform
 import sys
 import tempfile
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -1675,6 +1676,118 @@ def command_lease_disable(args) -> int:
     return 0
 
 
+STALE_CLAIM_DEFAULT_DAYS = 2
+
+
+def worktree_evidence(session: "Session", this_machine: str) -> tuple[str, bool]:
+    """Physical evidence about whether a session can still be alive.
+
+    A heartbeat age is a hint; a missing worktree is close to proof. The point
+    is to give the user something to decide ON, rather than asking them to
+    guess from elapsed time — which is exactly the judgment the protocol
+    reserves to them.
+    """
+    if session.machine and this_machine and session.machine != this_machine:
+        return (f"claimed on {session.machine}, not this machine — "
+                "cannot be judged from here"), False
+    paths = []
+    for entry in session.workspaces:
+        candidate = entry.split(" @ ")[0].strip()
+        if candidate.startswith(("/", "~")):
+            paths.append(Path(candidate).expanduser())
+    if not paths:
+        return "no absolute worktree recorded — cannot verify", False
+    missing = [p for p in paths if not p.exists()]
+    if missing and len(missing) == len(paths):
+        return (f"worktree no longer exists ({missing[0]}) — the session "
+                "cannot still be writing there"), True
+    if missing:
+        return f"{len(missing)} of {len(paths)} recorded worktrees are gone", True
+    return "worktree still present — may be a live session", False
+
+
+def command_stale(args) -> int:
+    """Report `active` rows whose heartbeat has gone quiet. Never mutates."""
+    if not args.board.is_file():
+        print(f"coordination stale: no board at {args.board}", file=sys.stderr)
+        return 0
+    try:
+        sessions = rows(args.board.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"coordination stale: board unreadable: {exc}", file=sys.stderr)
+        return 2
+
+    now = datetime.now(timezone.utc)
+    this_machine = platform.node()
+    stale: list[tuple[float, "Session", str, bool]] = []
+    unknown_age = 0
+    for session in sessions:
+        if not active(session):
+            continue
+        beat = parse_time(session.heartbeat)
+        if beat is None:
+            unknown_age += 1
+            continue
+        age_days = (now - beat).total_seconds() / 86400.0
+        if age_days <= args.threshold:
+            continue
+        note, gone = worktree_evidence(session, this_machine)
+        stale.append((age_days, session, note, gone))
+    stale.sort(key=lambda r: -r[0])
+    shown = stale if args.all else stale[: args.limit]
+
+    if args.json:
+        print(json.dumps({
+            "threshold_days": args.threshold,
+            "active_total": sum(1 for s in sessions if active(s)),
+            "stale_total": len(stale),
+            "undated": unknown_age,
+            "shown": [{
+                "id": s.compact_id,
+                "uuid": s.session_uuid,
+                "agent": s.agent,
+                "machine": s.machine,
+                "project": s.project,
+                "heartbeat": s.heartbeat,
+                "age_days": round(age, 2),
+                "evidence": note,
+                "worktree_gone": gone,
+                "claims": s.claims,
+            } for age, s, note, gone in shown],
+        }, indent=2))
+        return 0
+
+    live = sum(1 for s in sessions if active(s))
+    if not stale:
+        print(f"Coordination review: {live} active session(s), none quiet for "
+              f"more than {args.threshold:g} day(s). No claims to resolve.")
+        return 0
+
+    print(f"Coordination review: {len(stale)} of {live} active session(s) have "
+          f"been quiet for more than {args.threshold:g} day(s).")
+    print("A dead session's row keeps blocking every overlapping claim, so these "
+          "cost real work.")
+    print("Releasing one is YOUR call — elapsed time is not proof, and no agent "
+          "should decide it.\n")
+    for age, session, note, gone in shown:
+        flag = "LIKELY GONE" if gone else "unverified"
+        print(f"  {session.compact_id}  [{flag}]  quiet {age:.1f}d")
+        print(f"    agent:    {session.agent} on {session.machine}")
+        print(f"    project:  {session.project}")
+        print(f"    evidence: {note}")
+        if session.claims:
+            head = session.claims[0]
+            extra = f" (+{len(session.claims) - 1} more)" if len(session.claims) > 1 else ""
+            print(f"    blocks:   {head}{extra}")
+        print(f"    release:  coordination.py release --id {session.compact_id}\n")
+    if len(stale) > len(shown):
+        print(f"  ...and {len(stale) - len(shown)} more; --all shows every one.")
+    if unknown_age:
+        print(f"  ({unknown_age} active row(s) have an unparseable heartbeat and "
+              "were not assessed — reported rather than assumed healthy.)")
+    return 0
+
+
 def command_doctor(args) -> int:
     if not args.board.is_file():
         print(f"FAIL coordination.board: missing {args.board}", file=sys.stderr)
@@ -1804,6 +1917,17 @@ def parser() -> argparse.ArgumentParser:
     message.add_argument("--text")
     commands.add_parser("migrate")
     commands.add_parser("doctor")
+    stale = commands.add_parser(
+        "stale",
+        help="Report active claims whose heartbeat has gone quiet. Reports "
+        "only; releasing a claim stays the user's decision.",
+    )
+    stale.add_argument("--threshold", type=float,
+                       default=STALE_CLAIM_DEFAULT_DAYS,
+                       help="days of silence before a claim is surfaced")
+    stale.add_argument("--limit", type=int, default=3)
+    stale.add_argument("--all", action="store_true")
+    stale.add_argument("--json", action="store_true")
     lease_disable = commands.add_parser(
         "lease-disable",
         help="Retire the board's lease declaration (CAS-published by default; "
@@ -1832,6 +1956,8 @@ def main() -> int:
         return command_migrate(args)
     if args.command == "lease-disable":
         return command_lease_disable(args)
+    if args.command == "stale":
+        return command_stale(args)
     return command_doctor(args)
 
 

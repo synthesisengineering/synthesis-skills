@@ -3,10 +3,12 @@ from __future__ import annotations
 import importlib.util
 import ast
 import json
+import platform
 import subprocess
 import sys
 import threading
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -1342,3 +1344,87 @@ def test_r4_acceptance_manifest_is_closed_and_resolvable() -> None:
         "acceptance-test",
         "diagnostic",
     }
+
+# --- stale-claim review ---------------------------------------------------
+#
+# A dead session's `active` row does not merely clutter the board: it denies
+# work to every future claim that overlaps it. The one property that must not
+# regress is that this surface NEVER mutates. An agent able to release another
+# session's claim on a timer would turn the advisory lock into a suggestion.
+
+
+def _stale_board(tmp_path, heartbeat, worktree, status="active"):
+    board = tmp_path / "board.md"
+    board.write_text(
+        "Schema: v3\n## Active sessions\n"
+        "| 01a01155-25a0-7c39-9af2-505104044949 | s-aaaa-bbbb-cccc | a-b-c-d-00001 |  | "
+        f"Claude Code | {platform.node()} | proj | 2026-08-01T00:00:00+00:00 | {heartbeat} | "
+        f"interactive | {worktree} | goal | area/** | owner | {status} |\n"
+        "\n## Messages\n\n## Protocol\n"
+    )
+    return board
+
+
+def _run_stale(board, *args):
+    return subprocess.run(
+        [sys.executable, str(MODULE_PATH), "--board", str(board), "stale", *args],
+        capture_output=True, text=True)
+
+
+def test_stale_claim_is_surfaced_with_release_command(tmp_path):
+    board = _stale_board(tmp_path, "2026-01-01T00:00:00+00:00", str(tmp_path))
+    r = _run_stale(board, "--threshold", "1")
+    assert r.returncode == 0
+    assert "s-aaaa-bbbb-cccc" in r.stdout
+    assert "release --id s-aaaa-bbbb-cccc" in r.stdout
+
+
+def test_stale_review_never_mutates_the_board(tmp_path):
+    """The release decision belongs to the user. This surface reports only."""
+    board = _stale_board(tmp_path, "2026-01-01T00:00:00+00:00", str(tmp_path))
+    before = board.read_text()
+    _run_stale(board, "--threshold", "1")
+    assert board.read_text() == before
+
+
+def test_missing_worktree_is_reported_as_likely_gone(tmp_path):
+    """A vanished worktree is close to proof; elapsed time alone is not."""
+    board = _stale_board(tmp_path, "2026-01-01T00:00:00+00:00",
+                         str(tmp_path / "gone"))
+    r = _run_stale(board, "--threshold", "1")
+    assert "LIKELY GONE" in r.stdout
+    assert "no longer exists" in r.stdout
+
+
+def test_present_worktree_is_not_called_gone(tmp_path):
+    board = _stale_board(tmp_path, "2026-01-01T00:00:00+00:00", str(tmp_path))
+    r = _run_stale(board, "--threshold", "1")
+    assert "LIKELY GONE" not in r.stdout
+    assert "may be a live session" in r.stdout
+
+
+def test_released_rows_are_not_surfaced(tmp_path):
+    board = _stale_board(tmp_path, "2026-01-01T00:00:00+00:00", str(tmp_path),
+                         status="released")
+    r = _run_stale(board, "--threshold", "1")
+    assert "s-aaaa-bbbb-cccc" not in r.stdout
+
+
+def test_fresh_claim_is_not_surfaced(tmp_path):
+    fresh = datetime.now(timezone.utc).isoformat()
+    board = _stale_board(tmp_path, fresh, str(tmp_path))
+    r = _run_stale(board, "--threshold", "1")
+    assert "No claims to resolve" in r.stdout
+
+
+def test_missing_board_exits_zero(tmp_path):
+    r = _run_stale(tmp_path / "absent.md", "--threshold", "1")
+    assert r.returncode == 0
+
+
+def test_json_mode_is_machine_readable(tmp_path):
+    board = _stale_board(tmp_path, "2026-01-01T00:00:00+00:00", str(tmp_path / "gone"))
+    r = _run_stale(board, "--threshold", "1", "--json")
+    data = json.loads(r.stdout)
+    assert data["stale_total"] == 1
+    assert data["shown"][0]["worktree_gone"] is True

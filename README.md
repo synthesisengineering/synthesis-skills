@@ -11,6 +11,15 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Records that accumulate need an outflow, not just an intake (August 2026).**
+Release **4.59.0** adds two review surfaces built from signals the system already
+recorded and nobody read. A project index gains a capped daily review that names
+at most three stale-active projects as decisions; the coordination board gains
+the same for claims whose heartbeat has gone quiet, reporting physical evidence
+and printing the release command without ever running it. Both exit 0 under
+every degraded input, because a check that can break the ritual calling it gets
+removed from the ritual. See the [4.59.0 release notes](CHANGELOG.md).
+
 **A status the doctor cannot read is a check that never runs (August 2026).**
 Release **4.58.0** makes the project status vocabulary enforceable. On a real
 corpus one status was a typo the doctor had *absorbed* into its terminal set

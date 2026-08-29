@@ -4,6 +4,34 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.59.0] - 2026-08-29
+
+### Added
+
+- **Two hygiene surfaces for records that accumulate without an outflow.** Both
+  fix the same shape of defect at different layers: a signal the system already
+  records, that nothing ever promotes to a decision.
+
+  **`synthesis-daily-rituals` v2.27.0 — portfolio review.** A project index has
+  an intake and no outflow: projects enter and never leave. On the corpus that
+  motivated this, 37 of 63 projects claiming to be live had not moved in over 90
+  days, one of them for 619, and nothing surfaced it. The context doctor already
+  computed freshness but reported it among 200+ warnings, and a signal inside 200
+  warnings is not a signal. `scripts/portfolio_review.py` names at most three
+  stale-active projects per run and asks one question about each: close it, pause
+  it, or pick it up. It discovers indexes through `console.yaml`, exits 0 under
+  every degraded input so it can never break a ritual, and never decides.
+
+  **`synthesis-project-management` v2.6.0 — coordination-claim review.** A dead
+  session's `active` row is worse than a stale project: it does not merely
+  clutter, it denies work to every future claim that overlaps it. Three abandoned
+  rows blocked real work for up to ten days on the corpus that motivated this.
+  `coordination.py stale` reports quiet claims with physical evidence — a claimed
+  worktree that no longer exists is close to proof, while elapsed time alone is
+  not — and prints the exact release command **without ever running it**.
+  Releasing another session's claim stays the user's decision; an agent that
+  could clear one on a timer would turn the advisory lock into a suggestion.
+
 ## [4.58.0] - 2026-08-29
 
 ### Added
