@@ -254,6 +254,8 @@ If ANY test fails, the example cannot be used regardless of whether names are re
 - Risk mitigation choices where the risk itself is sensitive
 - Stakeholder dynamics that fingerprint a specific situation
 - Vocabulary changes that map to known products
+
+**Never permitted regardless of anonymization** (restored pre-migration prohibitions — these are fabrication and attribution bans, not identifiability tests):
 - Attributing quotes to real individuals without verification
 - Inventing technical achievements
 - Creating scenarios inconsistent with the author's public record
@@ -410,7 +412,7 @@ Phase 3 reviews the draft. Phase 4 reviews the *package* — title, description,
 
 ### 4.1 Title-only stranger test (executable obligation)
 
-For every article, **before seeing the description or body**, the reviewer records six fields:
+For every article, the reviewer records six fields. The first four are recorded **before seeing the description or body**; promise match is completed after the body read; the action ruling comes last:
 
 - **subject:** what is this about?
 - **stake:** why should the intended reader care now?
@@ -461,7 +463,7 @@ For an unpublished article, changing or selecting the final headline **invalidat
 1. derive the default slug deterministically from the final selected title;
 2. keep a nonmatching slug only through a specific recorded exception — "unchanged" is not an adjudication;
 3. migrate every metadata surface together: source path, staged path, frontmatter slug, canonical URL, specialty and dated routes, category/config keys, preview links, and any transaction manifests;
-4. search every current body and metadata input for retired internal-link targets; the built preview must contain zero retired routes;
+4. search every current body and metadata input for retired internal-link targets; the built preview must contain zero retired routes (historical evidence files that preserve old URLs as records are not current inputs and must not be counted as failures);
 5. synchronize source frontmatter and every regenerator so a rebuild cannot restore stale metadata;
 6. before publication approval, produce a closed-world per-article table of title / slug / canonical / route;
 7. already-published articles are a different regime: their route-preservation-or-redirect decision is publishing policy, never permission to keep stale slugs on unpublished work.

@@ -108,6 +108,70 @@ class SharedRunTests(unittest.TestCase):
             self.assertEqual(code, 0)
 
 
+class AdversarialRegressionTests(unittest.TestCase):
+    """Regressions from the pre-release adversarial review."""
+
+    def test_frontmatter_without_trailing_newline_is_still_frontmatter(self) -> None:
+        with TemporaryDirectory() as td:
+            d = Path(td)
+            # last byte is the closing fence - no trailing newline
+            (d / "a.md").write_text('---\ntitle: "Alpha"\ndescription: the migration playbook nobody updated after the flood\n---')
+            (d / "b.md").write_text('---\ntitle: "Beta"\ndescription: the migration playbook nobody updated after the flood\n---')
+            code, report = run_tool(str(d))
+            self.assertEqual(report.get("shared_run_total", 0), 0,
+                             "frontmatter must never be analyzed as body prose")
+            self.assertEqual(report["titles"]["title_count"], 2)
+
+    def test_distinct_pair_run_survives_longer_run_elsewhere(self) -> None:
+        with TemporaryDirectory() as td:
+            d = Path(td)
+            long_run = "operate the restless crowd tonight before dawn breaks over town"
+            short_run = "rate the restless crowd tonight"
+            write(d / "fa.md", "FA", f"Alpha body. {long_run}. Tail A.")
+            write(d / "fb.md", "FB", f"Beta body. {long_run}. Tail B.")
+            write(d / "fc.md", "FC", f"Gamma body. They {short_run} again. Tail C.")
+            write(d / "fd.md", "FD", f"Delta body. We {short_run} as well. Tail D.")
+            code, report = run_tool(str(d))
+            runs = [r["run"] for r in report["shared_runs"]]
+            self.assertTrue(any(short_run in r for r in runs), runs)
+
+    def test_two_doc_run_in_four_doc_corpus_stays_a_finding(self) -> None:
+        with TemporaryDirectory() as td:
+            d = Path(td)
+            shared = "the dashboard treats every unanswered decision as a delivery problem"
+            write(d / "a.md", "A", f"One. {shared}. Done.")
+            write(d / "b.md", "B", f"Two. {shared}. Fin.")
+            write(d / "c.md", "C", "Third document with entirely distinct prose about harbors.")
+            write(d / "e.md", "E", "Fourth document about orchards and ledgers, unrelated.")
+            code, report = run_tool(str(d))
+            self.assertGreaterEqual(report.get("shared_run_total", 0), 1)
+            self.assertEqual(code, 1)
+
+    def test_content_duplicate_file_is_skipped_and_reported(self) -> None:
+        with TemporaryDirectory() as td:
+            d = Path(td)
+            body = "A wholly unique essay body that appears in two mirrored trees."
+            write(d / "orig.md", "Original", body)
+            (d / "mirror").mkdir()
+            write(d / "mirror" / "copy.md", "Original", body)
+            code, report = run_tool(str(d))
+            self.assertEqual(report["documents"], 1)
+            self.assertEqual(len(report.get("skipped_content_duplicates", [])), 1)
+
+    def test_strict_mode_exits_1_on_boilerplate(self) -> None:
+        with TemporaryDirectory() as td:
+            d = Path(td)
+            footer = "this piece belongs to the synthesis engineering series on collaboration"
+            for i in range(5):
+                write(d / f"doc{i}.md", f"Doc {i}",
+                      f"Body {i} with its own distinct words and phrasing. {footer}")
+            code_default, _ = run_tool(str(d))
+            code_strict, report = run_tool(str(d), "--strict")
+            self.assertEqual(code_default, 0)
+            self.assertEqual(code_strict, 1)
+            self.assertTrue(report.get("boilerplate_candidates"))
+
+
 class TitleShapeTests(unittest.TestCase):
     def _titles_file(self, d: Path, titles: list[str]) -> Path:
         f = d / "titles.txt"

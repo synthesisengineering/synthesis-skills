@@ -16,9 +16,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   understanding caveats, the dual-use (GAN-dynamic) improvement philosophy,
   application guidance for detection-tool builders and for readers, the path
   from "was this AI?" to "is this good?", and the before/after revision
-  example. The executable no-removals gate confirms the restoration is purely
-  additive; the four-axis inference boundary governs wherever the restored
-  framing touches authorship.
+  example. The executable no-removals gate proves the restoration changed no
+  pre-existing rule line (fidelity to the pre-migration source is anchored by
+  the source snapshot preserved in the author's project records, outside this
+  repo); the four-axis inference boundary governs wherever the restored
+  framing touches authorship, restated inline where the restored tool-builder
+  checklist could otherwise be read as licensing origin scoring.
 
   The same version adds **corpus-level review**: a defect class per-artifact
   review cannot see by construction — repetition that only appears when a
@@ -29,11 +32,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   high-document-frequency runs classified as boilerplate candidates, ignore
   lists with containment semantics) plus batch title-shape measurements
   (repeated two-word openings, watch-token concentration,
-  imperative/second-person share). Eighteen deterministic tests cover the
-  acceptance fixtures, including the cure-worse-than-the-disease case where a
-  replacement title set must be measured on the same axes as the diagnosis.
-  The tool measures; the reviewer adjudicates; nothing it reports establishes
-  authorship.
+  imperative/second-person share). Sixteen deterministic tests ship with the
+  tool — the original acceptance fixtures, including the
+  cure-worse-than-the-disease case where a replacement title set must be
+  measured on the same axes as the diagnosis, plus five adversarial
+  regressions from the pre-release review (frontmatter without a trailing
+  newline, a distinct document pair's run surviving a longer run elsewhere,
+  small-corpus boilerplate misclassification, mirrored-tree content
+  deduplication, and a `--strict` mode that refuses to exit clean while
+  boilerplate candidates await confirmation). The tool measures; the reviewer
+  adjudicates; nothing it reports establishes authorship.
 
 - **`synthesis-article-writing` v2.3.0 — Phase 4 publication-package
   review.** A real 30-article batch passed full-body review 29/30 and then

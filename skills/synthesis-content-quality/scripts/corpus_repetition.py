@@ -37,6 +37,12 @@ Options:
   --ignore-file F    file of literal phrases to ignore (one per line)
   --json             machine-readable output
   --max-findings N   cap on reported body findings (default 200)
+  --strict           also exit 1 while boilerplate candidates await a
+                     reviewer's confirmation (default: candidates report but
+                     do not fail, so series footers don't wedge pipelines)
+
+Files whose body text duplicates an earlier file (mirrored trees) are counted
+once and reported under skipped_content_duplicates.
 
 Exit codes: 0 nothing over threshold; 1 findings to adjudicate; 2 usage error.
 """
@@ -84,7 +90,7 @@ IMPERATIVE_OPENERS = {
     "test", "think", "treat", "try", "turn", "use", "watch", "write",
 }
 
-FRONTMATTER_RE = re.compile(r"\A---\s*\n.*?\n---\s*\n", re.S)
+FRONTMATTER_RE = re.compile(r"\A---\s*\n.*?\n---\s*(?:\n|\Z)", re.S)
 TITLE_RE = re.compile(r"^title:\s*[\"']?(.+?)[\"']?\s*$", re.M)
 CODE_FENCE_RE = re.compile(r"```.*?```", re.S)
 INLINE_CODE_RE = re.compile(r"`[^`]*`")
@@ -138,6 +144,13 @@ def content_word_count(gram: str) -> int:
     return len({w for w in gram.split() if w not in FUNCTION_WORDS})
 
 
+def _contains_words(longer: str, shorter: str) -> bool:
+    """Word-boundary containment: shorter's word sequence appears in longer's."""
+    lw, sw = longer.split(), shorter.split()
+    n = len(sw)
+    return any(lw[i:i + n] == sw for i in range(len(lw) - n + 1))
+
+
 def find_shared_runs(
     docs: dict[str, list[str]],
     min_n: int,
@@ -151,10 +164,14 @@ def find_shared_runs(
         grams_by_doc[n] = {name: ngram_positions(ws, n) for name, ws in docs.items()}
 
     results: list[dict] = []
-    # Ignored phrases behave like already-reported longer runs: every gram
-    # contained in one is suppressed, so ignoring a maximal run silences its
-    # sub-runs too. A run extending beyond an ignored phrase still reports.
-    claimed: list[str] = list(ignore)
+    # A shorter run is suppressed only when it is a word-boundary sub-run of
+    # an already-reported longer run AND its document set adds nothing new -
+    # a genuine repetition between a different pair of documents is its own
+    # finding even when its words happen to sit inside a longer run
+    # elsewhere. Ignored phrases suppress their word-boundary sub-runs in any
+    # document (ignoring a maximal run silences its fragments), while a run
+    # extending beyond an ignored phrase still reports.
+    claimed: list[tuple[str, frozenset[str]]] = []
     for n in range(max_n, min_n - 1, -1):
         counts: dict[str, list[str]] = {}
         for name, grams in grams_by_doc[n].items():
@@ -167,9 +184,13 @@ def find_shared_runs(
                 continue
             if content_word_count(gram) < min_content:
                 continue
-            if any(gram in longer for longer in claimed):
+            if any(_contains_words(ig, gram) for ig in ignore):
                 continue
-            claimed.append(gram)
+            docset = frozenset(names)
+            if any(_contains_words(longer, gram) and docset <= ldocs
+                   for longer, ldocs in claimed):
+                continue
+            claimed.append((gram, docset))
             results.append({"run": gram, "n": n, "documents": sorted(names)})
     results.sort(key=lambda r: (-r["n"], -len(r["documents"]), r["run"]))
     return results
@@ -250,6 +271,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ignore-file", default=None)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--max-findings", type=int, default=200)
+    parser.add_argument("--strict", action="store_true",
+                        help="also exit 1 when boilerplate candidates exist "
+                             "(they still need a reviewer confirmation)")
     args = parser.parse_args(argv)
 
     if not args.paths and not args.titles_file:
@@ -270,6 +294,7 @@ def main(argv: list[str] | None = None) -> int:
 
     docs: dict[str, list[str]] = {}
     titles: list[str] = []
+    duplicates: list[str] = []
     if args.paths:
         try:
             files = collect_files(args.paths)
@@ -279,8 +304,17 @@ def main(argv: list[str] | None = None) -> int:
         if not files:
             print("error: no .md files found under the given paths", file=sys.stderr)
             return 2
+        seen_bodies: dict[str, str] = {}
         for f in files:
             title, words = read_document(f)
+            body_key = " ".join(words)
+            if words and body_key in seen_bodies:
+                # mirrored trees would otherwise count one document twice and
+                # silently double every measurement it participates in
+                duplicates.append(f"{f} (duplicate of {seen_bodies[body_key]})")
+                continue
+            if words:
+                seen_bodies[body_key] = str(f)
             docs[str(f)] = words
             if title:
                 titles.append(title)
@@ -292,6 +326,8 @@ def main(argv: list[str] | None = None) -> int:
         ]
 
     report: dict = {"documents": len(docs)}
+    if args.paths and duplicates:
+        report["skipped_content_duplicates"] = duplicates
     findings_present = False
 
     if len(docs) >= 2:
@@ -301,7 +337,11 @@ def main(argv: list[str] | None = None) -> int:
         # frequency to mean anything; with 2-3 documents every shared run
         # would hit the fraction, so everything stays a finding there.
         def is_boilerplate(r: dict) -> bool:
-            return n_docs >= 4 and len(r["documents"]) / n_docs >= args.boilerplate_df
+            # fraction alone misfires at small corpus sizes (2 of 4 documents
+            # is a shared construction, not series boilerplate), so demand at
+            # least three sharing documents as well
+            return (n_docs >= 4 and len(r["documents"]) >= 3
+                    and len(r["documents"]) / n_docs >= args.boilerplate_df)
 
         boilerplate = [r for r in runs if is_boilerplate(r)]
         shared = [r for r in runs if not is_boilerplate(r)]
@@ -309,6 +349,8 @@ def main(argv: list[str] | None = None) -> int:
         report["shared_run_total"] = len(shared)
         report["boilerplate_candidates"] = boilerplate[: args.max_findings]
         if shared:
+            findings_present = True
+        if boilerplate and args.strict:
             findings_present = True
     elif docs:
         report["shared_runs"] = []

@@ -1,10 +1,16 @@
 # Publication-Review Acceptance Fixtures
 
-Worked fixtures for Phase 4 (publication-package review) and the Phase 3
-additions (lede protection, sibling search). Each fixture states a scenario
-and the disposition a correct review must produce. Use them to test a review
-process, a reviewer agent, or a proposed change to these gates: a process
-that passes a fixture's scenario with the wrong disposition fails the gate.
+Worked fixtures for the publication-review stack this skill's load-with
+contract assembles. Most enforce Phase 4 (publication-package review) or the
+Phase 3 additions (lede protection, sibling search) of this skill; fixtures
+5-6 are enforced by `synthesis-reader-briefing`'s series-dependency contract,
+fixture 11 jointly with `synthesis-fact-checking`'s circular-grounding
+terminal, and fixture 17 by `synthesis-content-quality`'s corpus checker
+(which deduplicates mirrored content before measuring). Each fixture states a
+scenario and the disposition a correct review of the full stack must produce.
+Use them to test a review process, a reviewer agent, or a proposed change to
+these gates: a process that passes a fixture's scenario with the wrong
+disposition fails the gate.
 
 They generalize a real 30-article staged batch in which a full-body review
 cleared 29 of 30 packages and a title-only pass then found 6 titles worth

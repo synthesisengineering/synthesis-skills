@@ -84,6 +84,14 @@ methodology helps ensure that standard is maintained.
 
 ## For AI Detection Tools
 
+> [Restoration note, 2026-08: this checklist predates the four-axis inference
+> boundary and reads as a build recipe for origin scoring. Under the current
+> catalog, every step below outputs a *quality or workflow signal*, never an
+> authorship verdict: "final determination" means the editorial decision about
+> the content, "confidence levels" attach to pattern presence and require the
+> validation discipline in calibration-tables.md, and no output may name a
+> human-or-AI author from prose. The boundary in SKILL.md governs.]
+
 **Multi-layered approach:**
 
 1. **Pattern matching algorithms**
