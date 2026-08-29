@@ -545,8 +545,30 @@ LAST_SESSION_HEADER = re.compile(
     r"^\*\*Last session\:\*\*\s*(?P<value>.+?)\s*$", re.MULTILINE
 )
 DATE_IN_TEXT = re.compile(r"(\d{4}-\d{2}-\d{2})")
-COMPLETED_WORDS = ("complete", "completed", "shipped", "closed", "done")
+COMPLETED_WORDS = ("complete", "completed", "shipped", "closed", "done",
+                   "archived", "superseded")
 PAUSED_WORDS = ("paused", "on hold", "parked")
+
+# The canonical project-status vocabulary. Status answers one question -- does
+# this claim attention -- and everything orthogonal is a qualifier field
+# (bounded, superseded_by, wake_when, blocked_by, completed_date).
+CANONICAL_STATUSES = {"active", "paused", "completed", "archived"}
+
+# Statuses that mean the project is over. `superseded` is accepted for corpora
+# that have not migrated: it used to be absent here, which meant such a project
+# parsed as making no completion claim at all, sat permanently as
+# `record-unreadable`, and never got its cross-tier check. `complete` is a
+# tolerated typo of `completed` and is reported by the vocabulary check below.
+TERMINAL_STATUSES = {"completed", "complete", "archived", "superseded"}
+
+# Retired values, still readable so an unmigrated corpus is diagnosed rather
+# than rejected. The message names what each one should become.
+RETIRED_STATUSES = {
+    "new": "a Phase, not a lifecycle state -- use active or paused",
+    "ongoing": "conflates attention with boundedness -- use active/paused plus `bounded: false`",
+    "superseded": "use `archived` plus `superseded_by`",
+    "complete": "a typo of `completed`",
+}
 
 
 def read_text(path: Path) -> str:
@@ -683,6 +705,7 @@ CHECKS = [
     "reference-budget",
     "sessions-present",
     "status-agreement",
+    "status-vocabulary",
     "completed-date",
     "last-session-freshness",
     "context-header-freshness",
@@ -800,7 +823,7 @@ def audit_project(
     declared_complete = context_declares_completed(context_text)
 
     index_status = str((index_entry or {}).get("status") or "").strip().lower()
-    index_says_completed = index_status in {"completed", "complete", "archived"}
+    index_says_completed = index_status in TERMINAL_STATUSES
 
     # Budget depends on which lifecycle stage the project is actually in.
     treat_completed = index_says_completed or bool(declared_complete)
@@ -888,6 +911,26 @@ def audit_project(
                 "record says the other",
                 "decide the real status and set both",
             )
+        if index_status and index_status not in CANONICAL_STATUSES:
+            became = RETIRED_STATUSES.get(index_status)
+            if became:
+                audit.add(
+                    "status-vocabulary",
+                    "warning",
+                    f"index.yaml status `{index_status}` is retired -- {became}",
+                    "migrate the entry to the canonical vocabulary "
+                    f"{sorted(CANONICAL_STATUSES)}",
+                )
+            else:
+                audit.add(
+                    "status-vocabulary",
+                    "defect",
+                    f"index.yaml status `{index_status}` is not a known status -- "
+                    "an unrecognised status silently disables the checks that key "
+                    "off it",
+                    f"use one of {sorted(CANONICAL_STATUSES)}",
+                )
+
         if index_says_completed and not (index_entry or {}).get("completed_date"):
             audit.add(
                 "completed-date",

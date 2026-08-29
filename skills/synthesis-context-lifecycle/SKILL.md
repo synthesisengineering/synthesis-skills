@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.12.0"
+  version: "1.13.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -718,6 +718,23 @@ What it checks:
 | Disclosure | anything unverifiable is reported rather than skipped — unreadable status headers and freshness that cannot be established both surface as findings |
 
 Exit codes follow the guard contract: `0` healthy, `1` defects found, `2` the doctor could not establish ground truth. The third is the important one — an unreadable source or a source outside git exits 2 rather than reporting health, because a check that cannot run must never look like a check that passed.
+
+**The status vocabulary is enforced, not assumed** (v1.13.0). `status` answers
+one question — does this project claim attention — with four values: `active`,
+`paused`, `completed`, `archived`. Everything orthogonal is a qualifier field
+(`bounded`, `superseded_by`, `wake_when`, `blocked_by`, `completed_date`), so the
+vocabulary does not have to grow as new distinctions appear.
+
+The `status-vocabulary` check reports an unrecognised status as a **defect** and
+a retired one as a **warning** naming what it should become. This exists because
+an unvalidated vocabulary is not a vocabulary: on a real corpus, `complete`
+survived for months as a typo of `completed` and this tool *absorbed* it,
+hardcoding it into the terminal set rather than rejecting it. Worse, `superseded`
+was absent from that set while also not being a completion word to the header
+parser, so five projects parsed as making no completion claim at all — they sat
+permanently as `record-unreadable` and never received their cross-tier check. A
+status the doctor does not recognise silently disables every check keyed off it,
+which is the most expensive kind of quiet failure a health check can have.
 
 **Nothing is skipped silently.** A check that cannot run reports that it could not run. When every recent commit touching a project is a repo-wide sweep, freshness is unverifiable and says so; when a CONTEXT.md has no parseable status header, the cross-check is reported as unavailable rather than passed. Silent skips are indistinguishable from clean results, and that is the property this tool exists to remove.
 
