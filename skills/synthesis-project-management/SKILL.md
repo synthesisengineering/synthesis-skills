@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.6.0"
+  version: "2.7.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -498,6 +498,40 @@ Cross-computer recovery adds two preconditions: the source machine must reach
 fetch and fast-forward before Session Start. Offline, divergent, behind,
 unpublished, or overlapping-claim states are reported explicitly and are not
 remote-continuity passes.
+
+### The Handoff Queue — Work Transfer Between Agents
+
+The protocol above hands a project's *state* between tools. When two root
+sessions collaborate on one project — a writer producing a prompt for a
+counterpart, an executor returning work for a reviewer — the *work item*
+itself also needs a transport that is not the principal's clipboard.
+`scripts/handoff.py` is that transport:
+
+```bash
+handoff.py write --to codex --from claude --file prompt.md [--round N]
+handoff.py read  --as codex          # oldest pending addressed to me
+handoff.py list                      # full queue, both directions
+handoff.py done  --id h-XXXXXXXXXX   # close a claimed handoff
+```
+
+Prompts are stored as durable files under `resources/handoffs/` with a
+sha256 recorded at write time; `read` refuses a payload whose bytes have
+changed since the handoff. The queue (`resources/handoffs/queue.json`) is
+written atomically. Reader identity comes from `--as` or
+`SYNTHESIS_HANDOFF_SELF` — with neither, `read` refuses rather than guess,
+because guessing could claim another agent's work.
+
+Two rules keep this supervised:
+
+- **Nothing self-triggers.** An agent reads the queue when the principal, or
+  a coordination-board message the principal's protocol allows, says the
+  other side is done. Announce every `write` with `coordination.py message`
+  (the script prints the exact command). Supervision by exception is the
+  point; unattended is not uncontrolled.
+- **The queue is one of two directions.** It moves work *between agents*.
+  Decisions *between agent and principal* travel as a decision packet
+  (`synthesis-decision-packet`). Together they remove the principal as the
+  transport layer while leaving every crossing visible in the project.
 
 ### Parallel Sub-Agent Dispatch
 

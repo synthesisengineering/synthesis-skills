@@ -2,10 +2,10 @@
 name: synthesis-autopilot
 description: "Execute an explicitly delegated whole task autonomously using the thinking framework, durable plan and context, checkpoints, anti-shortcut discipline, and implementation-integrity gate. Activate only for clear end-to-end delegation such as 'autopilot this,' 'take care of this for me,' 'handle this end to end,' or 'complete all phases autonomously'; never infer it from a single-step approval, discussion of autonomy, or ambiguous wording."
 license: "Apache-2.0"
-depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review"]
+depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.0"
+  version: "1.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -107,7 +107,10 @@ blocked-state alert threshold.
 Dated entries: decision, thinking-framework mode used, rationale.
 
 ## Batched questions for the user
-Only questions the user alone can answer. Presented at checkpoints.
+Only questions the user alone can answer. Presented at checkpoints —
+simple batches as chat prompts, complex batches as a decision packet
+(synthesis-decision-packet). Packet paths and paste-back summaries
+recorded here.
 
 ## Sufficiency checkpoint
 Established, open, risk of shipping now, and the principal's ruling.
@@ -125,6 +128,8 @@ Every decision in an autonomous run falls into one of three classes:
 2. **Open and important → thinking framework.** Run synthesis-thinking-framework, choose, record the decision and rationale in the decisions log, and proceed. Autonomy means making these calls, not deferring them.
 3. **User-only → batch.** Facts only the user knows, genuine value trade-offs between goals the user holds, scope changes beyond the delegation. Add to the plan file's batched-questions section and continue with every piece of work that does not depend on the answer. Present the batch at a natural checkpoint — a phase boundary or the completion report.
 
+**Batch delivery has two forms, chosen by the batch, not by habit.** A simple batch — a few questions answerable in a sentence each, no evidence to weigh — goes as plain chat prompts (or the platform's structured-question facility). A complex batch — many rows, or rows that need a recommendation, reasoning, evidence links, or a notes field — is delivered as a **decision packet built by calling `synthesis-decision-packet`'s `build_packet.py`**, never reimplemented inline. The packet's integrity rules travel with it: recommendations marked but never pre-selected, bulk acceptance recorded as bulk, and the pasted-back summary logged in the decisions log with the bulk/individual distinction intact. One packet counts as one round-trip against the plan's budget — that is what makes the budget compatible with keeping every decision the principal's: the cost scales with sittings, not items. Rebuild a packet's rows against any corrections the principal has issued since the rows were drafted; a row that a correction erased must be dropped, not carried through a rebuild.
+
 **Never block the whole run on one question.** Re-sequence around it. Halt early only when *every* remaining path depends on an unanswered user-only question — that is a blocked state, reported per the alerts section.
 
 ## Cross-Agent Orchestration
@@ -134,6 +139,16 @@ transport. Use direct session-to-session dispatch where the runtime provides it.
 counterpart the bounded evidence package, production entry point, enforcing boundary,
 receipt consumer, principal outcome, and terminal return contract. Apply the sub-agent
 acceptance audit to its return before adopting any finding.
+
+When both agents share the project repository, the default transport is the handoff queue
+(`synthesis-project-management/scripts/handoff.py`): the writer stores the counterpart's
+prompt as a durable, hash-pinned file under `resources/handoffs/`, announces it on the
+coordination board, and the counterpart claims it with `handoff.py read` — no chat
+transcript crossing, no principal courier. The queue and the decision packet are the two
+directions that remove the principal as transport: work moves between agents through the
+queue; decisions move between agent and principal through the packet. The queue never
+self-triggers — a counterpart acts on it only when the principal's protocol says the other
+side is done.
 
 If a provider boundary genuinely has no direct transport, declare that before round one.
 Batch the payload, identify who must paste it, and count it as one of the plan's principal
@@ -218,5 +233,6 @@ Nothing above is specific to software. The mode runs the same for engineering, r
 | synthesis-grounding-discipline | Claim quality: provenance, cache re-verification, absence proof | Every recorded fact and status claim; before any write or deletion |
 | synthesis-implementation-integrity | Verification before completion claims | Before "done"; per-phase for high-stakes phases |
 | synthesis-adversarial-review | Bounded cross-agent attack, findings, sufficiency, and acceptance | When a plan calls for adversarial or independent review |
+| synthesis-decision-packet | Complex user-only batches as one honest, reviewable page | Decision protocol, class 3, complex batches |
 
 Each dependency works standalone. This mode is the sequencing that makes them one behavior: delegate once, and the stack runs itself.

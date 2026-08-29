@@ -29,6 +29,16 @@ SCHEMA2_CHANGE_BASE_POLICY = "boundary-supplied-git-diff"
 SCHEMA2_RECEIPT_CONSUMER = (
     "synthesis-skills-manager.release.consume-acceptance.v1"
 )
+# Schema 2 requires the manifest to name its consume-acceptance boundary, but
+# the validator no longer hardcodes one repository's boundary as the only
+# legal consumer: any state-changing gate may be named, provided the id keeps
+# the consume-acceptance contract shape. Honesty stays enforced where it is
+# checkable — each consumer verifies that the receipt names *itself* before
+# acting (the public release gate checks equality with its own id at its
+# boundary; any other gate must do the same).
+SCHEMA2_CONSUMER_PATTERN = re.compile(
+    r"^[a-z0-9][a-z0-9._-]*\.consume-acceptance\.v[0-9]+$"
+)
 
 
 class ManifestError(Exception):
@@ -220,9 +230,12 @@ def validate_manifest(
             errors.append(
                 f"schema 2 change_base_policy must be {SCHEMA2_CHANGE_BASE_POLICY}"
             )
-        if receipt_consumer != SCHEMA2_RECEIPT_CONSUMER:
+        if not SCHEMA2_CONSUMER_PATTERN.fullmatch(receipt_consumer or ""):
             errors.append(
-                f"schema 2 receipt_consumer must be {SCHEMA2_RECEIPT_CONSUMER}"
+                "schema 2 receipt_consumer must name a consume-acceptance "
+                "boundary matching "
+                f"{SCHEMA2_CONSUMER_PATTERN.pattern} "
+                f"(the public release gate's is {SCHEMA2_RECEIPT_CONSUMER})"
             )
 
     raw_surfaces = document.get("changed_surfaces")

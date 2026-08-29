@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -169,9 +169,9 @@ regression-tested in `scripts/test_build_packet.py`.
 - **The adversarial review family** — this is where an engagement surfaces its unresolved
   disagreements. Pair it with a status for findings that are not open, not conceded, and not the
   agents' to close.
-- **Handoff queues** move work *between agents*. The decision packet moves decisions *between
-  agent and principal*. Together they are the two directions that stop routing everything through
-  a person as the transport layer.
+- **The handoff queue** (`synthesis-project-management/scripts/handoff.py`) moves work *between
+  agents*. The decision packet moves decisions *between agent and principal*. Together they are
+  the two directions that stop routing everything through a person as the transport layer.
 
 ## Related
 
