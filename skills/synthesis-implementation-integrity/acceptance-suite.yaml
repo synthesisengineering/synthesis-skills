@@ -1,10 +1,10 @@
-# AGENT HEURISTIC: authored for the status-vocabulary-enforcement release. The
+# AGENT HEURISTIC: authored for the portfolio-and-claim-hygiene release. The
 # manifest records this release's exact public universe; the runner proves the
 # declaration against the authoritative base-to-head Git diff, so a surface that
 # changes without being declared — or is declared without changing — refuses
 # authority.
 schema: 2
-suite: synthesis-status-vocabulary-release
+suite: synthesis-record-hygiene-release
 membership: closed
 production_entry_point: scripts/acceptance_suite.py run
 enforcing_boundary: release.py and repository CI before publication
@@ -13,13 +13,19 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: migration of corpora outside the author's own workspaces (two retired statuses were found in unmigrated workspaces by this very check and are not fixed here), whether the four canonical values remain sufficient as new project shapes appear, installed-client parity, independent review, publication, and deployment
+unverified_remainder: whether a three-item daily cap is the right rate for corpora much larger than the one it was tuned on, behaviour of the claim review against boards written by other machines (the cross-machine path reports that it cannot judge rather than guessing, but that path has no live multi-machine fixture), installed-client parity, independent review, publication, and deployment
 changed_surfaces:
-  - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
-    cases: [unknown-status-is-a-defect, retired-status-names-its-replacement, superseded-is-terminal]
-  - path: skills/synthesis-context-lifecycle/scripts/test_context_doctor.py
-    cases: [unknown-status-is-a-defect, retired-status-names-its-replacement, superseded-is-terminal, canonical-statuses-are-silent, superseded-gets-its-cross-tier-check]
-  - path: skills/synthesis-context-lifecycle/SKILL.md
+  - path: skills/synthesis-daily-rituals/scripts/portfolio_review.py
+    cases: [paused-is-never-surfaced, output-is-capped-and-says-what-it-withheld, review-never-breaks-the-ritual, silent-source-drop-is-reported]
+  - path: skills/synthesis-daily-rituals/scripts/test_portfolio_review.py
+    cases: [paused-is-never-surfaced, output-is-capped-and-says-what-it-withheld, review-never-breaks-the-ritual, silent-source-drop-is-reported]
+  - path: skills/synthesis-daily-rituals/SKILL.md
+    cases: [shipped-manifest-self-consumption]
+  - path: skills/synthesis-project-management/scripts/coordination.py
+    cases: [stale-review-never-mutates, missing-worktree-is-evidence, present-worktree-is-not-called-gone]
+  - path: skills/synthesis-project-management/scripts/test_coordination.py
+    cases: [stale-review-never-mutates, missing-worktree-is-evidence, present-worktree-is-not-called-gone]
+  - path: skills/synthesis-project-management/SKILL.md
     cases: [shipped-manifest-self-consumption]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
@@ -32,26 +38,34 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: unknown-status-is-a-defect
+  - id: paused-is-never-surfaced
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_unknown_status_is_a_defect
-    motivating_defect: a-status-the-doctor-does-not-recognise-silently-disables-every-check-keyed-off-it-and-looks-identical-to-passing
-  - id: retired-status-names-its-replacement
+    fixture: ../synthesis-daily-rituals/scripts/test_portfolio_review.py::test_paused_is_never_surfaced
+    motivating_defect: if-pausing-a-project-did-not-stop-it-asking-then-pausing-buys-nothing-and-the-backlog-merely-moves
+  - id: output-is-capped-and-says-what-it-withheld
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_retired_status_is_a_warning_naming_its_replacement
-    motivating_defect: a-migration-warning-that-does-not-say-what-the-value-should-become-leaves-the-reader-to-guess-and-they-guess-wrong
-  - id: canonical-statuses-are-silent
+    fixture: ../synthesis-daily-rituals/scripts/test_portfolio_review.py::test_output_is_capped_and_says_how_many_were_withheld
+    motivating_defect: an-uncapped-list-gets-skipped-and-a-silent-cap-reads-as-full-coverage-when-it-is-truncation
+  - id: review-never-breaks-the-ritual
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_canonical_statuses_produce_no_vocabulary_finding
-    motivating_defect: a-vocabulary-check-that-fires-on-correct-values-trains-its-owner-to-ignore-it
-  - id: superseded-is-terminal
+    fixture: ../synthesis-daily-rituals/scripts/test_portfolio_review.py::test_unparseable_index_exits_zero
+    motivating_defect: a-check-that-can-fail-the-ritual-calling-it-gets-removed-from-the-ritual-and-then-protects-nothing
+  - id: silent-source-drop-is-reported
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_superseded_is_terminal
-    motivating_defect: superseded-was-absent-from-the-terminal-set-and-from-the-header-parsers-completion-words-so-such-projects-parsed-as-making-no-completion-claim-at-all
-  - id: superseded-gets-its-cross-tier-check
+    fixture: ../synthesis-daily-rituals/scripts/test_portfolio_review.py::test_source_without_projects_dir_is_reported_not_skipped_silently
+    motivating_defect: silently-dropping-a-configured-source-is-how-a-whole-repository-goes-unreviewed-while-the-run-still-prints-a-clean-result
+  - id: stale-review-never-mutates
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_superseded_project_gets_its_cross_tier_check
-    motivating_defect: five-real-projects-sat-permanently-as-record-unreadable-and-never-received-the-cross-tier-check-that-would-have-caught-a-disagreement
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_stale_review_never_mutates_the_board
+    motivating_defect: an-agent-able-to-release-another-sessions-claim-turns-the-advisory-lock-into-a-suggestion
+  - id: missing-worktree-is-evidence
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_missing_worktree_is_reported_as_likely_gone
+    motivating_defect: asking-a-user-to-judge-a-claim-from-elapsed-time-alone-gives-them-nothing-to-decide-on
+  - id: present-worktree-is-not-called-gone
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_present_worktree_is_not_called_gone
+    motivating_defect: a-review-that-calls-a-live-session-dead-would-invite-releasing-a-claim-that-is-still-protecting-in-flight-work
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates

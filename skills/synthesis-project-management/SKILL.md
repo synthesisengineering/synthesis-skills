@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.5.0"
+  version: "2.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -319,6 +319,9 @@ records:
 Use `scripts/coordination.py` for atomic, file-locked updates:
 
 ```bash
+# Review claims that have gone quiet (reports only; never mutates)
+python3 <synthesis-project-management-root>/scripts/coordination.py stale
+
 # Read before writing
 python3 <synthesis-project-management-root>/scripts/coordination.py status
 
@@ -394,7 +397,12 @@ Rules:
 8. **Heartbeat and release explicitly.** Refresh the heartbeat at checkpoints.
    A paused or completed session releases or narrows its claims. Stale `active`
    rows remain blocking until explicitly resolved; time alone never transfers
-   ownership.
+   ownership. **Review them on a cadence** — `coordination.py stale` surfaces
+   quiet claims with physical evidence (a claimed worktree that no longer
+   exists is close to proof; elapsed time is not) and prints the release
+   command without ever running it. Unreviewed, abandoned rows accumulate and
+   silently deny work to every overlapping claim; day-start is the natural
+   place to catch them.
 9. **Advisory does not mean optional.** The filesystem cannot stop every tool,
    so the protocol and checkpoint hooks make the shared obligation visible.
 
