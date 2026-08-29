@@ -4,6 +4,35 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.58.0] - 2026-08-29
+
+### Added
+
+- **`synthesis-context-lifecycle` v1.13.0 — the status vocabulary is enforced,
+  not assumed.** An unvalidated vocabulary is not a vocabulary. Two failures on
+  a real 127-project corpus made the case. `complete` survived for months as a
+  typo of `completed`, and rather than reject it the doctor *absorbed* it,
+  hardcoding the typo into its terminal set. Worse, `superseded` was absent from
+  that set while also not being a completion word to the header parser, so a
+  superseded project parsed as making no completion claim at all: it sat
+  permanently as `record-unreadable` and never received its cross-tier check.
+  Five projects were silently exempt, two of them for months.
+
+  A status the doctor does not recognise silently disables every check keyed off
+  it, which is the most expensive kind of quiet failure a health check can have
+  — indistinguishable from passing.
+
+  This release declares the canonical set — `active`, `paused`, `completed`,
+  `archived` — where status answers exactly one question: does this project
+  claim attention. Everything orthogonal becomes a qualifier field (`bounded`,
+  `superseded_by`, `wake_when`, `blocked_by`, `completed_date`), so the
+  vocabulary should not have to grow as new distinctions appear. The new
+  `status-vocabulary` check reports an unknown status as a defect and a retired
+  one as a warning naming its replacement; retired values stay readable so an
+  unmigrated corpus is diagnosed rather than rejected. Run against a live corpus
+  the check immediately found two retired statuses in workspaces that had not
+  been migrated.
+
 ## [4.57.0] - 2026-08-28
 
 ### Added
