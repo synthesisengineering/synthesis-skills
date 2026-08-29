@@ -1,10 +1,10 @@
-# AGENT HEURISTIC: authored for the decision-packet reader-contract release.
+# AGENT HEURISTIC: authored for the 4.62.0 packet/handoff-wiring release.
 # The manifest records this release's exact public universe; the runner proves
 # the declaration against the authoritative base-to-head Git diff, so a
 # surface that changes without being declared — or is declared without
 # changing — refuses authority.
 schema: 2
-suite: synthesis-decision-packet-reader-contract-release
+suite: synthesis-packet-handoff-wiring-release
 membership: closed
 production_entry_point: scripts/acceptance_suite.py run
 enforcing_boundary: release.py and repository CI before publication
@@ -13,14 +13,22 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: whether the reader contract's mechanical half (audience and impact present) is sufficient for comprehension — plain language itself remains authorial judgment the generator cannot verify; installed-client parity, independent review, publication, and deployment
+unverified_remainder: whether autopilot sessions actually reach for the packet at the documented thresholds — doctrine adoption is behavioral, not testable here; consumer-side self-naming checks in gates other than the public release gate; installed-client parity, independent review, publication, and deployment
 changed_surfaces:
+  - path: skills/synthesis-implementation-integrity/scripts/acceptance_suite.py
+    cases: [consumer-format-accepts-alternate, consumer-format-refuses-malformed]
+  - path: skills/synthesis-implementation-integrity/scripts/test_acceptance_suite.py
+    cases: [consumer-format-accepts-alternate, consumer-format-refuses-malformed]
+  - path: skills/synthesis-project-management/scripts/handoff.py
+    cases: [handoff-flow, handoff-tamper-refusal, handoff-identity-required]
+  - path: skills/synthesis-project-management/scripts/test_handoff.py
+    cases: [handoff-flow, handoff-tamper-refusal, handoff-identity-required, pm-doc-contract, autopilot-wiring-doc, packet-doc-pointer]
+  - path: skills/synthesis-project-management/SKILL.md
+    cases: [pm-doc-contract]
+  - path: skills/synthesis-autopilot/SKILL.md
+    cases: [autopilot-wiring-doc]
   - path: skills/synthesis-decision-packet/SKILL.md
-    cases: [shipped-manifest-self-consumption]
-  - path: skills/synthesis-decision-packet/scripts/build_packet.py
-    cases: [impact-renders-both-consequences, glossary-band-renders-escaped, audience-line-renders, reader-findings-warn-by-default, strict-reader-refuses-alien-packet, satisfied-contract-is-quiet, malformed-blocks-hard-fail]
-  - path: skills/synthesis-decision-packet/scripts/test_build_packet.py
-    cases: [impact-renders-both-consequences, glossary-band-renders-escaped, audience-line-renders, reader-findings-warn-by-default, strict-reader-refuses-alien-packet, satisfied-contract-is-quiet, malformed-blocks-hard-fail]
+    cases: [packet-doc-pointer]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -32,34 +40,38 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: impact-renders-both-consequences
+  - id: consumer-format-accepts-alternate
     control_class: acceptance-test
-    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_impact_block_renders_both_consequences
-    motivating_defect: consequences-stated-only-in-the-agents-head-leave-the-principal-choosing-between-labels-they-cannot-weigh
-  - id: glossary-band-renders-escaped
+    fixture: scripts/test_acceptance_suite.py::test_schema2_accepts_any_wellformed_consume_acceptance_consumer
+    motivating_defect: three-private-releases-shipped-in-one-week-on-suite-green-because-no-second-repository-could-declare-a-transaction-bound-gate
+  - id: consumer-format-refuses-malformed
     control_class: acceptance-test
-    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_glossary_renders_as_a_terms_band_and_escapes
-    motivating_defect: a-term-of-art-with-no-gloss-turns-a-decision-row-into-a-foreign-language-sentence
-  - id: audience-line-renders
+    fixture: scripts/test_acceptance_suite.py::test_schema2_refuses_malformed_consumer_id
+    motivating_defect: a-free-text-consumer-field-would-let-a-receipt-name-a-boundary-that-does-not-exist
+  - id: handoff-flow
     control_class: acceptance-test
-    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_audience_line_renders_under_the_intro
-    motivating_defect: a-packet-that-cannot-name-its-reader-was-written-for-nobody-and-reads-that-way
-  - id: reader-findings-warn-by-default
+    fixture: ../synthesis-project-management/scripts/test_handoff.py::test_write_read_done_flow
+    motivating_defect: the-principal-as-courier-copied-prompts-between-agents-twenty-plus-times-in-one-engagement
+  - id: handoff-tamper-refusal
     control_class: acceptance-test
-    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_reader_findings_are_warnings_by_default
-    motivating_defect: making-the-new-contract-fatal-by-default-would-break-every-existing-spec-and-teach-users-to-bypass-the-gate
-  - id: strict-reader-refuses-alien-packet
+    fixture: ../synthesis-project-management/scripts/test_handoff.py::test_read_refuses_tampered_payload
+    motivating_defect: a-payload-changed-after-handoff-executes-instructions-nobody-reviewed
+  - id: handoff-identity-required
     control_class: acceptance-test
-    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_strict_reader_flag_refuses_an_alien_packet
-    motivating_defect: the-measured-failure-a-structurally-perfect-packet-in-machine-language-collected-zero-of-fifteen-decisions
-  - id: satisfied-contract-is-quiet
+    fixture: ../synthesis-project-management/scripts/test_handoff.py::test_read_refuses_without_identity
+    motivating_defect: a-guessed-reader-identity-can-claim-another-agents-work
+  - id: pm-doc-contract
     control_class: acceptance-test
-    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_reader_contract_satisfied_raises_no_reader_findings
-    motivating_defect: a-gate-that-nags-compliant-specs-teaches-authors-to-ignore-its-output-entirely
-  - id: malformed-blocks-hard-fail
+    fixture: ../synthesis-project-management/scripts/test_handoff.py::test_pm_skill_documents_the_handoff_queue
+    motivating_defect: an-undocumented-queue-gets-rediscovered-as-a-private-convention-instead-of-a-shared-mechanism
+  - id: autopilot-wiring-doc
     control_class: acceptance-test
-    fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_malformed_impact_and_glossary_are_hard_errors
-    motivating_defect: a-half-filled-impact-block-renders-as-a-broken-promise-about-exactly-one-side-of-the-decision
+    fixture: ../synthesis-project-management/scripts/test_handoff.py::test_autopilot_wires_packet_and_handoff
+    motivating_defect: autopilot-carried-a-batched-questions-requirement-with-no-concrete-mechanism-and-per-item-conversation-returned
+  - id: packet-doc-pointer
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_handoff.py::test_decision_packet_names_concrete_handoff_path
+    motivating_defect: the-paired-direction-was-doctrine-without-a-path-so-nobody-could-run-it
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates

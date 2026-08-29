@@ -4,6 +4,46 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.62.0] - 2026-08-29
+
+### Added
+
+- **The handoff queue reaches the public toolkit.** `synthesis-project-management`
+  v2.7.0 ships `scripts/handoff.py`, generalized from the working project
+  reference that removed a principal from twenty-plus prompt-courier
+  crossings in one engagement: a writer stores the counterpart's prompt as a
+  durable, sha256-pinned file under `resources/handoffs/`, the queue is
+  written atomically, and `read` refuses a payload whose bytes changed after
+  handoff. Reader identity is fail-closed — `--as` or
+  `SYNTHESIS_HANDOFF_SELF`, never a guess, because a guessed identity could
+  claim another agent's work. Nothing self-triggers: an agent acts on the
+  queue only when the principal's protocol says the other side is done.
+  Eleven tests, including the doctrine contracts.
+- **Autopilot calls the decision packet instead of describing one.**
+  `synthesis-autopilot` v1.4.0 wires `synthesis-decision-packet` in as the
+  batched-questions mechanism its protocol always required: simple user-only
+  batches stay chat prompts, complex batches are built with
+  `build_packet.py` — never reimplemented inline — and the packet's
+  integrity rules travel with it (recommendations marked, never
+  pre-selected; bulk recorded as bulk; one packet is one round-trip against
+  the plan's budget). Packet rows are rebuilt against any principal
+  corrections issued since drafting, so a correction-erased row cannot ride
+  through a rebuild. The handoff queue is named as the agent-to-agent
+  transport; queue and packet together are the two directions that remove
+  the principal as transport.
+
+### Changed
+
+- **Schema-2 acceptance manifests may name any consume-acceptance boundary.**
+  `synthesis-implementation-integrity`'s validator previously accepted
+  exactly one receipt consumer — the public release gate — which made an
+  honest transaction-bound gate impossible for any other repository; three
+  private releases shipped in one week on suite-green alone for lack of one.
+  The validator now enforces a format contract
+  (`*.consume-acceptance.vN`), and honesty stays enforced where it is
+  checkable: every consumer verifies at its own boundary that the receipt
+  names itself, exactly as the public release gate already does.
+
 ## [4.61.0] - 2026-08-29
 
 ### Added

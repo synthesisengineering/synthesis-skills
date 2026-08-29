@@ -139,3 +139,30 @@ def test_round_is_optional(tmp_path: Path) -> None:
     assert queue[0]["round"] is None
     read = run_cli(tmp_path, "read", "--as", "claude")
     assert read.returncode == 0
+
+
+SKILLS_ROOT = SCRIPT.parents[2]
+
+
+def test_pm_skill_documents_the_handoff_queue() -> None:
+    text = (SCRIPT.parent.parent / "SKILL.md").read_text(encoding="utf-8")
+    assert "### The Handoff Queue" in text
+    assert "scripts/handoff.py" in text
+    assert "Nothing self-triggers" in text
+
+
+def test_autopilot_wires_packet_and_handoff() -> None:
+    text = (SKILLS_ROOT / "synthesis-autopilot" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "synthesis-decision-packet" in text
+    assert "build_packet.py" in text
+    assert "handoff.py" in text
+    assert "never reimplemented inline" in text
+
+
+def test_decision_packet_names_concrete_handoff_path() -> None:
+    text = (SKILLS_ROOT / "synthesis-decision-packet" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "synthesis-project-management/scripts/handoff.py" in text
