@@ -36,7 +36,13 @@ changed_surfaces:
   - path: skills/synthesis-slack-sync/SKILL.md
     cases: [sweep-consumes-preflight]
   - path: skills/synthesis-meeting-transcripts/SKILL.md
-    cases: [declared-sweep-has-execution-path]
+    cases: [declared-sweep-has-execution-path, script-version-parity]
+  - path: skills/synthesis-meeting-transcripts/verify_transcripts.py
+    cases: [script-version-parity]
+  - path: skills/synthesis-meeting-transcripts/transcript_primary.py
+    cases: [script-version-parity]
+  - path: skills/synthesis-meeting-transcripts/test_version_parity.py
+    cases: [script-version-parity]
   - path: skills/synthesis-decision-packet/SKILL.md
     cases: [release-changelog-parity]
   - path: skills/synthesis-decision-packet/scripts/build_packet.py
@@ -106,6 +112,10 @@ cases:
     control_class: acceptance-test
     fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_recommendation_is_marked_on_the_control_not_only_prose
     motivating_defect: the-named-marker-test-passed-with-the-marker-implementation-deleted
+  - id: script-version-parity
+    control_class: acceptance-test
+    fixture: ../synthesis-meeting-transcripts/test_version_parity.py::test_executable_components_match_the_skill_version
+    motivating_defect: executable-components-reporting-an-older-version-than-the-skill-that-ships-them-cannot-be-audited-in-the-field
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates

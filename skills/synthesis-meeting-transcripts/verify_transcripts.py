@@ -67,7 +67,7 @@ from pathlib import Path
 # own output could reveal that the copy being run was stale. This constant plus the banner
 # line below close that gap — if the printed version doesn't match SKILL.md's frontmatter
 # version, the copy being run is not the one you think it is.
-SCRIPT_VERSION = "0.7.0"
+SCRIPT_VERSION = "0.9.0"
 
 # Any HH:MM:SS or MM:SS anywhere — Gemini uses bare, bold, heading, and markdown-link forms
 TIMESTAMP_RE = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
