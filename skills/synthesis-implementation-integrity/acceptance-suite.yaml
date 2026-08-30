@@ -1,8 +1,9 @@
-# AGENT HEURISTIC: authored for the 4.64.0 intake-routing release. Fresh per
-# transaction: changed_surfaces must equal the authoritative base-to-head
-# Git diff, proved by the runner before release.py consumes the receipt.
+# AGENT HEURISTIC: authored for the 4.65.0 board-sweep controls release.
+# Fresh per transaction: changed_surfaces must equal the authoritative
+# base-to-head Git diff, proved by the runner before release.py consumes
+# the receipt.
 schema: 2
-suite: synthesis-intake-routing-release
+suite: synthesis-board-sweep-controls-release
 membership: closed
 production_entry_point: scripts/acceptance_suite.py run
 enforcing_boundary: release.py and repository CI before publication
@@ -11,14 +12,20 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: whether teams actually add routing markers rather than route around the warning — adoption is behavioral; the honesty of any recorded routing, which is the reader's judgment by design; installed-client parity, independent review, publication, and deployment
+unverified_remainder: doctor_clean_controls adoption is per-config and behavioral — the mechanism ships, each workspace supplies its own canonical messages; installed-client parity, independent review, publication, and deployment
 changed_surfaces:
-  - path: skills/synthesis-context-lifecycle/SKILL.md
-    cases: [release-changelog-parity]
-  - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
-    cases: [unrouted-intake-warns, coverage-by-context-reference, coverage-by-terminal-marker, outputs-are-not-asks, mention-is-not-a-routing]
-  - path: skills/synthesis-context-lifecycle/scripts/test_intake_routing.py
-    cases: [unrouted-intake-warns, coverage-by-context-reference, coverage-by-terminal-marker, outputs-are-not-asks, mention-is-not-a-routing]
+  - path: skills/synthesis-skills-manager/scripts/release.py
+    cases: [content-parity-detects-drift, content-parity-passes-equal-trees, content-parity-fails-closed-without-source]
+  - path: skills/synthesis-skills-manager/scripts/test_release.py
+    cases: [content-parity-detects-drift, content-parity-passes-equal-trees, content-parity-fails-closed-without-source]
+  - path: skills/synthesis-context-lifecycle/scripts/context_currency.py
+    cases: [zero-scan-fails-closed, project-directory-accepted]
+  - path: skills/synthesis-context-lifecycle/scripts/test_context_currency.py
+    cases: [zero-scan-fails-closed, project-directory-accepted]
+  - path: skills/synthesis-message-guard/scripts/message_guard.py
+    cases: [dead-surrogate-pattern-detected, config-clean-controls-scan]
+  - path: skills/synthesis-message-guard/scripts/test_message_guard.py
+    cases: [dead-surrogate-pattern-detected, config-clean-controls-scan]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -30,29 +37,37 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: unrouted-intake-warns
+  - id: content-parity-detects-drift
+    control_class: enforced-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deep_verify_fails_on_content_drift_despite_version_parity
+    motivating_defect: an-unbumped-version-left-one-client-loading-stale-files-while-both-reported-current
+  - id: content-parity-passes-equal-trees
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_intake_routing.py::test_endorsed_but_unrouted_intake_warns
-    motivating_defect: a-principal-directive-sat-endorsed-and-unrouted-for-four-days-with-nothing-warning
-  - id: coverage-by-context-reference
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deep_verify_passes_when_report_disk_and_content_agree
+    motivating_defect: a-verification-that-cannot-pass-a-correct-install-teaches-people-to-route-around-it
+  - id: content-parity-fails-closed-without-source
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_intake_routing.py::test_context_reference_covers_an_intake
-    motivating_defect: a-check-that-nags-properly-routed-intakes-teaches-authors-to-ignore-it
-  - id: coverage-by-terminal-marker
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deep_verify_fails_closed_without_source_repo
+    motivating_defect: a-content-check-that-silently-skips-when-unsupplied-is-the-false-green-it-replaces
+  - id: zero-scan-fails-closed
+    control_class: enforced-gate
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_currency.py::test_zero_scan_fails_closed
+    motivating_defect: pointed-at-a-projects-own-subtree-the-audit-printed-a-green-zero-finding-scan-of-nothing
+  - id: project-directory-accepted
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_intake_routing.py::test_terminal_routing_marker_covers_an_intake
-    motivating_defect: declined-and-superseded-are-legitimate-terminals-that-must-not-require-a-context-item
-  - id: outputs-are-not-asks
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_currency.py::test_project_directory_is_accepted_directly
+    motivating_defect: the-sibling-doctor-takes-a-project-dir-so-callers-hand-this-tool-the-same-shape
+  - id: dead-surrogate-pattern-detected
+    control_class: enforced-gate
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_dead_surrogate_pattern_detection
+    motivating_defect: a-surrogate-escaped-emoji-pattern-matched-nothing-for-months-while-the-doctor-stayed-green
+  - id: config-clean-controls-scan
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_intake_routing.py::test_non_intake_artifacts_are_not_held_to_routing
-    motivating_defect: holding-designs-and-plans-to-an-intake-rule-would-flood-the-corpus-with-false-warnings
-  - id: mention-is-not-a-routing
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_intake_routing.py::test_marker_must_lead_a_line
-    motivating_defect: prose-that-mentions-the-marker-word-must-not-count-as-a-terminal-disposition
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_config_clean_controls_scan
+    motivating_defect: the-built-in-clean-control-passed-while-every-real-legitimate-message-was-being-blocked
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
-    fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
+    fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
     motivating_defect: a-manifest-that-cannot-be-consumed-by-its-own-runner-issues-authority-it-never-earned
   - id: release-manifest-parity
     control_class: acceptance-test
