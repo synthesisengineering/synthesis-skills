@@ -405,7 +405,55 @@ def test_deep_verify_fails_when_cli_reports_but_disk_is_stale(
     assert names["verify.codex.on-disk"] is False
 
 
-def test_deep_verify_passes_when_report_and_disk_agree(
+def _seed_content(source: Path, installed: Path, drift: bool = False) -> None:
+    for base in (source, installed):
+        (base / "skills" / "demo" / "scripts").mkdir(parents=True, exist_ok=True)
+        (base / "skills" / "demo" / "SKILL.md").write_text("# demo\n", encoding="utf-8")
+        (base / "skills" / "demo" / "scripts" / "tool.py").write_text(
+            "print('v2')\n", encoding="utf-8")
+    if drift:
+        (installed / "skills" / "demo" / "scripts" / "tool.py").write_text(
+            "print('v1-stale')\n", encoding="utf-8")
+
+
+def test_deep_verify_passes_when_report_disk_and_content_agree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "cache" / "4.30.1"
+    source = tmp_path / "source"
+    (root / ".codex-plugin").mkdir(parents=True)
+    (root / ".codex-plugin" / "plugin.json").write_text(
+        json.dumps({"version": "4.30.1"}), encoding="utf-8"
+    )
+    _seed_content(source, root)
+    monkeypatch.setattr(release, "client_reported_version", lambda client: ("4.30.1", str(root)))
+    monkeypatch.setattr(release, "installed_root", lambda client, version: root)
+    result = release.Result()
+    assert release.deep_verify("codex", "4.30.1", result, repo=source) is True
+
+
+def test_deep_verify_fails_on_content_drift_despite_version_parity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The 2026-08-24 false-green: versions equal everywhere, installed
+    bytes stale. Version parity is not content parity."""
+    root = tmp_path / "cache" / "4.30.1"
+    source = tmp_path / "source"
+    (root / ".codex-plugin").mkdir(parents=True)
+    (root / ".codex-plugin" / "plugin.json").write_text(
+        json.dumps({"version": "4.30.1"}), encoding="utf-8"
+    )
+    _seed_content(source, root, drift=True)
+    monkeypatch.setattr(release, "client_reported_version", lambda client: ("4.30.1", str(root)))
+    monkeypatch.setattr(release, "installed_root", lambda client, version: root)
+    result = release.Result()
+    assert release.deep_verify("codex", "4.30.1", result, repo=source) is False
+    names = {s.name: s.ok for s in result.steps}
+    assert names["verify.codex.on-disk"] is True
+    assert names["verify.codex.content"] is False
+
+
+def test_deep_verify_fails_closed_without_source_repo(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = tmp_path / "cache" / "4.30.1"
@@ -416,7 +464,7 @@ def test_deep_verify_passes_when_report_and_disk_agree(
     monkeypatch.setattr(release, "client_reported_version", lambda client: ("4.30.1", str(root)))
     monkeypatch.setattr(release, "installed_root", lambda client, version: root)
     result = release.Result()
-    assert release.deep_verify("codex", "4.30.1", result) is True
+    assert release.deep_verify("codex", "4.30.1", result) is False
 
 
 def test_deep_verify_fails_when_client_silent(

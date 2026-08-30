@@ -502,11 +502,31 @@ def main() -> int:
         if not root.is_dir():
             print(f"not a directory: {root}", file=sys.stderr)
             return 2
+        if (root / "CONTEXT.md").is_file():
+            # A project directory was passed directly (the sibling doctor's
+            # --project convention). Audit it rather than scanning its
+            # children for records they cannot contain.
+            scanned += 1
+            findings.extend(audit_project(root))
+            continue
         for project in sorted(p for p in root.iterdir() if p.is_dir()):
             if not (project / "CONTEXT.md").is_file():
                 continue
             scanned += 1
             findings.extend(audit_project(project))
+
+    if scanned == 0:
+        # Fail closed: a scan of nothing is not a clean scan (2026-08-24
+        # defect — pointed at a project's subdirectory, this printed
+        # "0 findings" and exited 0). Zero results are never evidence of
+        # absence.
+        print(
+            "no project records scanned: expected a projects container "
+            "(directories each holding CONTEXT.md) or a single project "
+            "directory holding CONTEXT.md at its root",
+            file=sys.stderr,
+        )
+        return 2
 
     if args.quiet:
         findings = [f for f in findings if f["kind"] in STALENESS_KINDS]
