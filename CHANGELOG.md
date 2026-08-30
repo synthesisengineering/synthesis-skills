@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.66.0] - 2026-08-29
+
+- **`synthesis-agent-correspondence` v3.1.0 — signature links render natively
+  per channel.** The persona name in a signature is a named hyperlink on every
+  channel that can render one; the visible-URL form is a last-resort fallback,
+  never a choice. Email is the load-bearing case: markdown link syntax never
+  renders in mail clients, so email sends and drafts carry an HTML body with
+  real anchors, with the plain form as the multipart alternative. Motivated by
+  a live Gmail signature that displayed its URL wrapped in a provider redirect
+  because the body went out as plain text.
+
 ## [4.65.0] - 2026-08-29
 
 Three fail-closed controls, each from a board-filed defect that had waited

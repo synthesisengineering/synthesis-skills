@@ -1,9 +1,9 @@
-# AGENT HEURISTIC: authored for the 4.65.0 board-sweep controls release.
+# AGENT HEURISTIC: authored for the 4.66.0 signature-channel-links release.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff, proved by the runner before release.py consumes
 # the receipt.
 schema: 2
-suite: synthesis-board-sweep-controls-release
+suite: synthesis-signature-channel-links-release
 membership: closed
 production_entry_point: scripts/acceptance_suite.py run
 enforcing_boundary: release.py and repository CI before publication
@@ -12,22 +12,12 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: doctor_clean_controls adoption is per-config and behavioral — the mechanism ships, each workspace supplies its own canonical messages; installed-client parity, independent review, publication, and deployment
+unverified_remainder: rendering on each real platform is verified by a human reading the actual client (a Gmail draft is filed for that); per-channel capability facts (e.g. Google Chat user-send markup) are re-verified when a send path changes, per the doctrine itself
 changed_surfaces:
-  - path: skills/synthesis-skills-manager/scripts/release.py
-    cases: [content-parity-detects-drift, content-parity-passes-equal-trees, content-parity-fails-closed-without-source]
-  - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [content-parity-detects-drift, content-parity-passes-equal-trees, content-parity-fails-closed-without-source]
-  - path: skills/synthesis-context-lifecycle/scripts/context_currency.py
-    cases: [zero-scan-fails-closed, project-directory-accepted]
-  - path: skills/synthesis-context-lifecycle/scripts/test_context_currency.py
-    cases: [zero-scan-fails-closed, project-directory-accepted]
-  - path: skills/synthesis-message-guard/scripts/message_guard.py
-    cases: [dead-surrogate-pattern-detected, config-clean-controls-scan]
-  - path: skills/synthesis-message-guard/scripts/test_message_guard.py
-    cases: [dead-surrogate-pattern-detected, config-clean-controls-scan]
-  - path: skills/synthesis-daily-rituals/scripts/test_sync_watermark.py
-    cases: [watermark-cli-fixtures-use-live-dates]
+  - path: skills/synthesis-agent-correspondence/SKILL.md
+    cases: [named-hyperlink-rule, email-html-never-markdown, fallback-notation-distinction]
+  - path: skills/synthesis-agent-correspondence/scripts/test_signature_channels.py
+    cases: [named-hyperlink-rule, email-html-never-markdown, fallback-notation-distinction]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -39,38 +29,18 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: content-parity-detects-drift
-    control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deep_verify_fails_on_content_drift_despite_version_parity
-    motivating_defect: an-unbumped-version-left-one-client-loading-stale-files-while-both-reported-current
-  - id: content-parity-passes-equal-trees
+  - id: named-hyperlink-rule
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deep_verify_passes_when_report_disk_and_content_agree
-    motivating_defect: a-verification-that-cannot-pass-a-correct-install-teaches-people-to-route-around-it
-  - id: content-parity-fails-closed-without-source
+    fixture: ../synthesis-agent-correspondence/scripts/test_signature_channels.py::test_named_hyperlink_rule_present
+    motivating_defect: a-live-gmail-signature-displayed-its-url-wrapped-in-a-provider-redirect-instead-of-a-named-link
+  - id: email-html-never-markdown
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deep_verify_fails_closed_without_source_repo
-    motivating_defect: a-content-check-that-silently-skips-when-unsupplied-is-the-false-green-it-replaces
-  - id: zero-scan-fails-closed
-    control_class: enforced-gate
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_currency.py::test_zero_scan_fails_closed
-    motivating_defect: pointed-at-a-projects-own-subtree-the-audit-printed-a-green-zero-finding-scan-of-nothing
-  - id: project-directory-accepted
+    fixture: ../synthesis-agent-correspondence/scripts/test_signature_channels.py::test_email_html_never_markdown
+    motivating_defect: markdown-link-syntax-authored-for-review-surfaces-reached-a-plain-text-email-body
+  - id: fallback-notation-distinction
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_currency.py::test_project_directory_is_accepted_directly
-    motivating_defect: the-sibling-doctor-takes-a-project-dir-so-callers-hand-this-tool-the-same-shape
-  - id: dead-surrogate-pattern-detected
-    control_class: enforced-gate
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_dead_surrogate_pattern_detection
-    motivating_defect: a-surrogate-escaped-emoji-pattern-matched-nothing-for-months-while-the-doctor-stayed-green
-  - id: config-clean-controls-scan
-    control_class: acceptance-test
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_config_clean_controls_scan
-    motivating_defect: the-built-in-clean-control-passed-while-every-real-legitimate-message-was-being-blocked
-  - id: watermark-cli-fixtures-use-live-dates
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_status_exits_zero_when_current
-    motivating_defect: a-frozen-authorship-date-in-a-subprocess-fixture-rotted-red-the-first-utc-midnight-after-it-shipped
+    fixture: ../synthesis-agent-correspondence/scripts/test_signature_channels.py::test_fallback_and_notation_distinction
+    motivating_defect: a-fallback-treated-as-a-stylistic-choice-costs-exactly-the-recipients-the-signature-serves
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates

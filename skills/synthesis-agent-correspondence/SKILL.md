@@ -12,7 +12,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "3.0.0"
+  version: "3.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -204,6 +204,39 @@ Whether a channel forces visible disclosure when an agent performs the send is a
 - **Slack forces it.** Slack's agent/bot connector auto-stamps a visible "Sent using [agent name]" tag the instant an agent, not the human, performs the send. No signature wording removes it — it's platform-level. Write the persona's signature to pre-explain the tag, since it will appear regardless.
 - **Most other channels don't.** Email the human sends by clicking "send" on an agent-drafted message carries no platform tag — the send action was human. A direct API send frequently carries none either, but that varies by provider. Where nothing is forced, disclosure is governed by the lane, not the channel.
 - **Check, don't guess.** Connector behavior changes with product updates. Verify each channel's current behavior before designing a signature around an assumption carried from another channel, or from memory.
+
+## Signature links render natively per channel (v3.1.0)
+
+The persona's name in a signature is a **named hyperlink on every channel that can
+render one**. A visible URL is the last-resort fallback for channels that genuinely
+cannot — never a stylistic choice, because the raw-URL form costs exactly the
+recipients the signature exists to serve.
+
+Link capability is a per-channel fact, verified against the actual send path like
+disclosure behavior above:
+
+- **Slack** renders `<https://example.com/|Name>` mrkdwn as a true link.
+- **Email renders HTML, never markdown.** `[Name](url)` in an email body is
+  literal text to every mail client. The signature (and therefore the whole body)
+  must go out as an HTML part — `<a href="https://example.com/">Name</a>` — via
+  whatever the send tool exposes (an html body format, or a dedicated html-body
+  parameter). When the tool takes both a plain and an html part, the html part
+  carries the anchor and the plain part carries the fallback form. A plain-text
+  body is not a softer version of the same signature: the receiving client
+  auto-links the raw URL and may wrap it in a tracking redirect, so the recipient
+  sees neither the clean name-link nor the clean URL. (Observed live: a
+  markdown-authored signature reached Gmail as plain text and displayed as the
+  name followed by a provider-redirect URL in parentheses.)
+- **Rich editors** (docs, wikis) take the platform's native link on the name.
+- **Channels with no rich text on the send path** (for example Google Chat
+  messages sent with user credentials, where named-link markup is app-only) use
+  the plain fallback: `Name (example.com)` — short and readable as text, chosen
+  for how it reads, not for auto-linking.
+
+Markdown link syntax remains the *notation* for drafts, approval prompts, and
+review surfaces; the wire format is the channel's own. Converting notation to the
+channel form is part of staging the send, and a compose gate should treat
+markdown reaching an email body as a defect, not a fallback.
 
 ## Three gates
 

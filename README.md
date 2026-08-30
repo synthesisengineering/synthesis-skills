@@ -12,11 +12,11 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 ## What's new
 
 **A captured directive is not a routed one (August 2026).** Release
-**4.65.0** makes the release gate verify installed bytes against source (version parity is not content parity), makes the currency audit refuse a zero scan, and adds dead-pattern and canonical-clean controls to the message-guard doctor. Previously: **4.64.0** teaches the context doctor to catch the failure that happens by
+**4.66.0** makes persona signature links render as native hyperlinks per channel (HTML anchors in email, mrkdwn in Slack, plain fallback only where links are impossible). Previously: **4.65.0** makes the release gate verify installed bytes against source (version parity is not content parity), makes the currency audit refuse a zero scan, and adds dead-pattern and canonical-clean controls to the message-guard doctor. Previously: **4.64.0** teaches the context doctor to catch the failure that happens by
 default: an intake artifact that records a directive, reads as handled, and
 was never routed to numbered work, declined, or superseded. Intake-class
 artifacts now need a CONTEXT reference or a terminal routing marker, or the
-doctor warns. See the [4.65.0 release notes](CHANGELOG.md).
+doctor warns. See the [4.66.0 release notes](CHANGELOG.md).
 
 **A reviewer that did not write the code, reviewing the code (August 2026).**
 Release **4.63.0** repairs what an external adversarial review of
