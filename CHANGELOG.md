@@ -4,6 +4,41 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.68.0] - 2026-08-30
+
+**`synthesis-autopilot` v2.0.0 — unattended time is a scheduled property.**
+The motivating incident: an overnight delegation engaged the mode correctly,
+ran two phases, and then its turn ended — nothing runs between turns, so the
+session idled all night (a mid-night reboot passed unnoticed) and the phase
+that was the point never started. Every discipline held; the work still did
+not happen.
+
+- **Continuation contract:** an engagement whose horizon exceeds the current
+  turn must establish a VERIFIED continuation mechanism before its first turn
+  ends (background work that re-invokes the session, self-scheduled wakeups,
+  scheduler/cron re-entry, or a declared principal-side relaunch) — or say
+  plainly that it cannot run unattended. A survival table (turn end / session
+  death / reboot) matches mechanism to horizon; long horizons layer a
+  scheduler-class dead-man's switch under the inner loop.
+- **Mechanical stop-gate:** new `scripts/autopilot_gate.py` + a plugin Stop
+  hook refuse to let a session stop while a registered engagement is active,
+  unfinished, and has neither a recorded continuation nor an alerted blocker
+  nor an honest close. Abandoned engagements block later stops by design.
+- **Runaway and budget control:** plan files gain Continuation, Budget, and
+  Cycle-ledger sections; `autopilot_gate.py cycle` refuses to record a wake
+  that advanced nothing and names no external wait — a bare spin cannot be
+  logged. Stop conditions: goals met · blocker + alert · budget + alert.
+- **Capability probe before asserting absence:** a blocker claiming a
+  capability is missing must carry probe evidence — an agent that wrongly
+  believes it is blocked stops (a headless CLI was reported unreachable from
+  stale memory in the incident's aftermath while the same session had been
+  using it).
+- **Volatile-state rule:** scratchpad dies at reboots; derived state moves
+  into the project at EVERY phase boundary, not only at close.
+- **Adversary at scope time:** dispatching the counterpart during scope
+  definition (not only review) caught silently dropped artifacts in the real
+  case; now doctrine for discovery-shaped phases.
+
 ## [4.67.0] - 2026-08-29
 
 - **`synthesis-agent-correspondence` v3.1.1 — the send path is part of the
