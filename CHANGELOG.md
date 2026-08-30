@@ -4,6 +4,31 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.65.0] - 2026-08-29
+
+Three fail-closed controls, each from a board-filed defect that had waited
+for an owner.
+
+- **`synthesis-skills-manager` release.py verifies installed CONTENT, not
+  only versions.** `verify.<client>.content` compares every source
+  `skills/` file byte-for-byte against the installed tree and refuses
+  success on drift — closing the 2026-08-24 false-green where an unbumped
+  version left one client loading stale files while both reported current.
+  Version parity is not content parity; now the release gate knows it.
+- **`synthesis-context-lifecycle` context_currency.py fails closed on a
+  zero scan.** Pointed at a directory holding no project records (the
+  documented misuse: a project's own subdirectory), it now exits 2 naming
+  what it expected instead of printing a green zero-finding result, and a
+  project directory carrying CONTEXT.md at its root is audited directly —
+  matching the sibling doctor's `--project` convention.
+- **`synthesis-message-guard` doctor gains two config controls.** A
+  pattern authored with surrogate-escape sequences (which can never match
+  real decoded text — the 2026-08-07 dead-emoji-pattern incident) now
+  fails the doctor, and `doctor_clean_controls` in patterns.json runs
+  canonical real messages through the live scanner so a pattern change
+  that starts blocking legitimate traffic fails loudly (the 2026-08-03
+  incident class).
+
 ## [4.64.0] - 2026-08-29
 
 ### Added

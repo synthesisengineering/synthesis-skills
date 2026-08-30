@@ -391,6 +391,39 @@ def run_doctor():
     report(len(hits2) == 0, "negative control (clean text passes)",
            "%d hits" % len(hits2))
 
+    # Dead-pattern control (2026-08-07 defect): a pattern authored with
+    # surrogate-escape sequences (a "\\ud83e\\uddde"-style pair in place of
+    # the real emoji character) compiles to lone surrogates that can never
+    # match decoded text, so the rule it encodes is silently OFF while the
+    # doctor stays green.
+    dead = [name for name, rx in (cblock + cwarn)
+            if any("\ud800" <= ch <= "\udfff" for ch in rx.pattern)]
+    report(not dead, "no dead surrogate-escape patterns",
+           ("%d pattern(s) can never match decoded text" % len(dead))
+           if dead else "all patterns use real characters")
+
+    # Config-supplied clean controls (2026-08-03 defect): the built-in
+    # clean control passed while every REAL legitimate message was being
+    # blocked, because it did not resemble the user's canonical traffic.
+    # patterns.json may carry doctor_clean_controls: known-legitimate
+    # messages that must pass the scanner exactly as sent.
+    clean_controls = cfg.get("doctor_clean_controls", [])
+    if clean_controls:
+        failing = []
+        for sample in clean_controls:
+            sample_hits, _ = scan_text(str(sample), cblock, cwarn)
+            if sample_hits:
+                failing.append(str(sample)[:60])
+        report(not failing, "config clean controls (canonical real "
+               "messages pass)",
+               "; ".join(failing) if failing
+               else "%d control(s) pass" % len(clean_controls))
+    else:
+        report(True, "config clean controls",
+               "none configured — add doctor_clean_controls with your "
+               "canonical legitimate messages so a pattern change that "
+               "blocks real traffic fails the doctor")
+
     sample_tools = [
         "mcp__abc123__slack_send_message",
         "mcp__abc123__slack_send_message_draft",

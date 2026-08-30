@@ -292,3 +292,49 @@ def test_coherent_header_reports_nothing() -> None:
 def test_header_incoherence_ignores_disjoint_families() -> None:
     text = "**Phase:** phase 2 rollout\n**Last session:** 2026-08-23 (round 9)\n"
     assert header_incoherence(text) == []
+
+
+# --- CLI zero-scan refusal (2026-08-24 fail-open) ---------------------------
+
+
+def _run_cli(tmp_path: Path, target: Path) -> "subprocess.CompletedProcess[str]":
+    import subprocess
+    import sys
+
+    script = Path(__file__).with_name("context_currency.py")
+    return subprocess.run(
+        [sys.executable, str(script), str(target)],
+        capture_output=True, text=True,
+    )
+
+
+def test_zero_scan_fails_closed(tmp_path: Path) -> None:
+    """Pointed at a directory holding no project records, the audit must
+    refuse (exit 2), never print a green zero-finding result — the real
+    misuse was passing a project's own subtree and reading 'clean'."""
+    empty = tmp_path / "not-a-projects-root"
+    (empty / "drafts").mkdir(parents=True)
+    completed = _run_cli(tmp_path, empty)
+    assert completed.returncode == 2
+    assert "no project records scanned" in completed.stderr
+
+
+def test_project_directory_is_accepted_directly(tmp_path: Path) -> None:
+    """The sibling doctor takes --project <dir>; passing the same shape
+    here must audit that record instead of scanning nothing."""
+    project = tmp_path / "some-project"
+    project.mkdir()
+    (project / "CONTEXT.md").write_text(
+        "**Phase:** Round 2 done\n**Last session:** 2026-08-23 (round 2)\n",
+        encoding="utf-8",
+    )
+    sessions = project / "sessions"
+    sessions.mkdir()
+    (sessions / "2026-08.md").write_text(
+        "### 2026-08-23 (round 2)\nwork\n", encoding="utf-8",
+    )
+    completed = _run_cli(tmp_path, project)
+    # The record IS audited (its markerless body is a legitimate finding);
+    # the defect under test was scanning nothing and reporting clean.
+    assert completed.returncode != 2
+    assert "scanned 1 project record(s)" in completed.stdout

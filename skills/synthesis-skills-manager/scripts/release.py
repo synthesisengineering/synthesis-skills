@@ -466,12 +466,56 @@ def installed_root(client: str, version: str) -> Path:
     return base / "plugins" / "cache" / MARKETPLACE / PLUGIN_NAME / version
 
 
-def deep_verify(client: str, expected: str, result: Result) -> bool:
-    """Verify a client twice: its own report, and the manifest it loads.
+def content_digest_report(source_repo: Path, installed: Path) -> tuple[bool, str]:
+    """Compare every source skills/ file against the installed tree by bytes.
 
-    The second half exists because the first half can lie. A stale marketplace
+    Version equality is a claim about a label; this is the check on the
+    content behind it. The motivating false-green (2026-08-24): a skill was
+    edited without a version bump, ``plugin update`` no-opped on the
+    unchanged version, and both clients reported current while one loaded
+    stale files. A release is not verified until the installed bytes equal
+    the source bytes, whatever the version strings say.
+    """
+    skills_root = source_repo / "skills"
+    if not skills_root.is_dir():
+        return False, f"source skills/ missing at {skills_root}"
+    mismatched: list[str] = []
+    missing: list[str] = []
+    compared = 0
+    for path in sorted(skills_root.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(source_repo)
+        if "__pycache__" in rel.parts or rel.suffix == ".pyc":
+            continue
+        counterpart = installed / rel
+        if not counterpart.is_file():
+            missing.append(str(rel))
+            continue
+        compared += 1
+        if _sha256_bytes(path.read_bytes()) != _sha256_bytes(counterpart.read_bytes()):
+            mismatched.append(str(rel))
+    if compared == 0 and not missing:
+        return False, "no source files compared — refusing an empty verification"
+    if missing or mismatched:
+        sample = (missing + mismatched)[:3]
+        return False, (
+            f"{len(missing)} missing, {len(mismatched)} differing of "
+            f"{compared + len(missing)} source files (e.g. {', '.join(sample)})"
+        )
+    return True, f"{compared} files byte-equal to source"
+
+
+def deep_verify(client: str, expected: str, result: Result,
+                repo: Path | None = None) -> bool:
+    """Verify a client three ways: its report, the manifest it loads, and
+    the installed bytes against the source tree.
+
+    The later halves exist because the first can lie. A stale marketplace
     snapshot, a hand-made cache directory, or a partial install can all leave a
-    client reporting a version whose files are not the ones on disk.
+    client reporting a version whose files are not the ones on disk — and an
+    unbumped version can leave on-disk version equality vouching for stale
+    content.
     """
     reported, load_path = client_reported_version(client)
     ok_reported = result.add(
@@ -498,7 +542,19 @@ def deep_verify(client: str, expected: str, result: Result) -> bool:
         ok_disk,
         "; ".join(seen) if seen else "no readable plugin manifest at any reported root",
     )
-    return ok_reported and ok_disk
+    ok_content = False
+    if repo is not None:
+        content_root = next(
+            (c for c in candidates
+             if read_manifest_version(c / manifest_name / "plugin.json") == expected),
+            candidates[0],
+        )
+        ok_content, detail = content_digest_report(repo, content_root)
+        result.add(f"verify.{client}.content", ok_content, detail)
+    else:
+        result.add(f"verify.{client}.content", False,
+                   "no source repo supplied for content comparison")
+    return ok_reported and ok_disk and ok_content
 
 
 def refresh_client(client: str, result: Result, dry_run: bool) -> bool:
@@ -678,7 +734,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\nDRY RUN complete for {version}. No state changed.")
         return 0
 
-    verified = all(deep_verify(client, version, result) for client in ("claude", "codex"))
+    verified = all(deep_verify(client, version, result, repo=repo)
+                   for client in ("claude", "codex"))
     if not verified or result.failed:
         print(
             f"\nRELEASE INCOMPLETE for {version}: "
