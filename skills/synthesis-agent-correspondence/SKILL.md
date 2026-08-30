@@ -12,7 +12,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "3.1.0"
+  version: "3.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -237,6 +237,16 @@ Markdown link syntax remains the *notation* for drafts, approval prompts, and
 review surfaces; the wire format is the channel's own. Converting notation to the
 channel form is part of staging the send, and a compose gate should treat
 markdown reaching an email body as a defect, not a fallback.
+
+**The send path is part of the channel (v3.1.1).** Two tools for the same
+mailbox can store different bytes: a tool that takes structured fields and lets
+the provider compose the message server-side may rewrite your hrefs (observed
+live: Gmail's composer wrapping every link in an expiring `google.com/url`
+redirect at ingestion), while a tool that submits raw MIME stores the bytes you
+built. When both exist, prefer the byte-faithful path — and verify a path once
+by reading the stored message back in raw form before trusting it with real
+correspondence. A link that looks right in the client can still be wrapped
+underneath; only the stored bytes settle it.
 
 ## Three gates
 
