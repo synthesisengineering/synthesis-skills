@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.67.0] - 2026-08-29
+
+- **`synthesis-agent-correspondence` v3.1.1 — the send path is part of the
+  channel.** A provider-composed send path can rewrite clean hrefs at
+  ingestion (observed live: Gmail's composer wrapping every link in an
+  expiring redirect), while a raw-MIME path stores the bytes you built.
+  Prefer the byte-faithful path and verify a path once by reading the
+  stored message back in raw form. Proven by raw-MIME comparison of two
+  drafts filed minutes apart through the two paths.
+
 ## [4.66.0] - 2026-08-29
 
 - **`synthesis-agent-correspondence` v3.1.0 — signature links render natively

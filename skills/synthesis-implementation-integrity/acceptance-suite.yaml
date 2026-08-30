@@ -3,7 +3,7 @@
 # base-to-head Git diff, proved by the runner before release.py consumes
 # the receipt.
 schema: 2
-suite: synthesis-signature-channel-links-release
+suite: synthesis-byte-faithful-send-path-release
 membership: closed
 production_entry_point: scripts/acceptance_suite.py run
 enforcing_boundary: release.py and repository CI before publication
@@ -15,9 +15,9 @@ issues_authority_receipt: false
 unverified_remainder: rendering on each real platform is verified by a human reading the actual client (a Gmail draft is filed for that); per-channel capability facts (e.g. Google Chat user-send markup) are re-verified when a send path changes, per the doctrine itself
 changed_surfaces:
   - path: skills/synthesis-agent-correspondence/SKILL.md
-    cases: [named-hyperlink-rule, email-html-never-markdown, fallback-notation-distinction]
+    cases: [byte-faithful-send-path]
   - path: skills/synthesis-agent-correspondence/scripts/test_signature_channels.py
-    cases: [named-hyperlink-rule, email-html-never-markdown, fallback-notation-distinction]
+    cases: [byte-faithful-send-path]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -29,18 +29,10 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: named-hyperlink-rule
+  - id: byte-faithful-send-path
     control_class: acceptance-test
-    fixture: ../synthesis-agent-correspondence/scripts/test_signature_channels.py::test_named_hyperlink_rule_present
-    motivating_defect: a-live-gmail-signature-displayed-its-url-wrapped-in-a-provider-redirect-instead-of-a-named-link
-  - id: email-html-never-markdown
-    control_class: acceptance-test
-    fixture: ../synthesis-agent-correspondence/scripts/test_signature_channels.py::test_email_html_never_markdown
-    motivating_defect: markdown-link-syntax-authored-for-review-surfaces-reached-a-plain-text-email-body
-  - id: fallback-notation-distinction
-    control_class: acceptance-test
-    fixture: ../synthesis-agent-correspondence/scripts/test_signature_channels.py::test_fallback_and_notation_distinction
-    motivating_defect: a-fallback-treated-as-a-stylistic-choice-costs-exactly-the-recipients-the-signature-serves
+    fixture: ../synthesis-agent-correspondence/scripts/test_signature_channels.py::test_send_path_byte_faithfulness_rule
+    motivating_defect: a-provider-composed-draft-path-rewrote-clean-hrefs-into-expiring-redirects-at-ingestion
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
