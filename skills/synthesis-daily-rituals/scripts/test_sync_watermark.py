@@ -18,7 +18,7 @@ import importlib.util
 import json
 import subprocess
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 
@@ -149,9 +149,16 @@ def test_surfaces_are_tracked_independently(tmp_path: Path) -> None:
 
 
 def test_cli_status_exits_nonzero_while_blocking(tmp_path: Path) -> None:
-    """The property that makes this load-bearing: a ritual step can fail on it."""
+    """The property that makes this load-bearing: a ritual step can fail on it.
+
+    The subprocess computes its own date.today(), so this fixture must use
+    live dates: a frozen watermark rotted the sibling green test the first
+    UTC midnight after authorship (caught 2026-08-30 in CI).
+    """
     env = {"SYNTHESIS_HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
-    MODULE.advance(WS, "slack", "2026-08-20", today=date(2026, 8, 20), home=tmp_path)
+    stale_day = date.today() - timedelta(days=8)
+    MODULE.advance(WS, "slack", stale_day.isoformat(), today=stale_day,
+                   home=tmp_path)
 
     done = subprocess.run(
         [sys.executable, str(SCRIPT), "status", "--workspace", WS,
@@ -165,7 +172,9 @@ def test_cli_status_exits_nonzero_while_blocking(tmp_path: Path) -> None:
 
 def test_cli_status_exits_zero_when_current(tmp_path: Path) -> None:
     env = {"SYNTHESIS_HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
-    MODULE.advance(WS, "slack", "2026-08-28", today=TODAY, home=tmp_path)
+    live_today = date.today()
+    MODULE.advance(WS, "slack", live_today.isoformat(), today=live_today,
+                   home=tmp_path)
 
     done = subprocess.run(
         [sys.executable, str(SCRIPT), "status", "--workspace", WS,

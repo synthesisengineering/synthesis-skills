@@ -26,6 +26,8 @@ changed_surfaces:
     cases: [dead-surrogate-pattern-detected, config-clean-controls-scan]
   - path: skills/synthesis-message-guard/scripts/test_message_guard.py
     cases: [dead-surrogate-pattern-detected, config-clean-controls-scan]
+  - path: skills/synthesis-daily-rituals/scripts/test_sync_watermark.py
+    cases: [watermark-cli-fixtures-use-live-dates]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -65,6 +67,10 @@ cases:
     control_class: acceptance-test
     fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_config_clean_controls_scan
     motivating_defect: the-built-in-clean-control-passed-while-every-real-legitimate-message-was-being-blocked
+  - id: watermark-cli-fixtures-use-live-dates
+    control_class: acceptance-test
+    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_status_exits_zero_when_current
+    motivating_defect: a-frozen-authorship-date-in-a-subprocess-fixture-rotted-red-the-first-utc-midnight-after-it-shipped
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
