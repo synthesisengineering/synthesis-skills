@@ -11,6 +11,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-autopilot/scripts/autopilot_gate.py --gate",
+            "timeout": 15,
+            "statusMessage": "Checking autopilot engagements for a continuation"
+          }
+        ]
+      }
     ]
   }
 }

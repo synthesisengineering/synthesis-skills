@@ -1,11 +1,11 @@
 ---
 name: synthesis-autopilot
-description: "Execute an explicitly delegated whole task autonomously using the thinking framework, durable plan and context, checkpoints, anti-shortcut discipline, and implementation-integrity gate. Activate only for clear end-to-end delegation such as 'autopilot this,' 'take care of this for me,' 'handle this end to end,' or 'complete all phases autonomously'; never infer it from a single-step approval, discussion of autonomy, or ambiguous wording."
+description: "Execute an explicitly delegated whole task autonomously using the thinking framework, durable plan and context, checkpoints, anti-shortcut discipline, and implementation-integrity gate — and, for unattended runs, a verified continuation mechanism with budget and runaway control, so overnight and multi-day engagements keep producing turns instead of idling silently. Activate only for clear end-to-end delegation such as 'autopilot this,' 'take care of this for me,' 'handle this end to end,' 'run overnight,' or 'complete all phases autonomously'; never infer it from a single-step approval, discussion of autonomy, or ambiguous wording."
 license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.4.0"
+  version: "2.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -61,6 +61,93 @@ Engaging the mode means the user is taken to have said all of the following, onc
 5. **Verification before "done"** — synthesis-implementation-integrity (or the domain's analog: fact-checking and quality gates for content work) runs before any completion claim.
 6. **Standing rules remain in force** — nothing in this contract grants permissions the user's standing configuration withholds.
 
+## Continuation — Unattended Time Is a Scheduled Property
+
+The costliest way this mode fails is silently, at a turn boundary. The real
+incident that forced this section: a principal delegated an overnight run and
+went to sleep; the agent engaged the mode correctly, wrote the plan file, ran
+two phases, and then its turn ended. **Agent harnesses do not run between
+turns.** The session sat idle all night — the machine rebooted mid-night
+without interrupting anything, because nothing was executing — and the phase
+that was the entire point never started. Every discipline in this file held;
+the work still did not happen, because the contract said "complete the work
+end to end" and nothing caused the next turn to exist.
+
+**The rule: an engagement whose horizon extends beyond the current turn MUST
+establish a verified continuation mechanism before its first turn ends — or
+must say plainly, at engagement, that it cannot run unattended in this
+environment and negotiate what happens instead.** Claiming overnight autonomy
+without a continuation mechanism is a false capability claim, and the silence
+it produces is indistinguishable from progress until the principal wakes up.
+
+**Continuation mechanisms, by what they survive.** Verify what the current
+harness actually provides — do not assume from memory (see the capability
+probe rule below). The common classes:
+
+| Mechanism | Survives turn end | Survives session death | Survives reboot |
+|---|---|---|---|
+| In-flight background work whose completion re-invokes the session (dispatched agents, detached exec with a completion waiter, workflows) | yes | no | no |
+| Self-scheduled wakeup / dynamic loop (the harness re-invokes the session with a prompt on a cadence it sets) | yes | no | no |
+| Scheduled task / cron re-entry (a scheduler starts a fresh run that resumes from the plan file) | yes | yes | usually |
+| Principal-side relaunch instruction (documented command the principal or their machine runs) | yes | yes | yes |
+
+**Match the mechanism to the horizon, and layer for long ones.** A run
+measured in hours inside one sitting can ride background work and wakeups. A
+run measured across sleep, reboots, or days needs a scheduler-class re-entry
+as the dead-man's switch underneath whatever finer mechanism drives the
+inner loop — the plan file is the state that makes any fresh re-entry able
+to resume. When no mechanism exists at all, the honest engagement response
+is: "I can only make progress while turns are running; here is the relaunch
+command / loop invocation that would change that."
+
+**Re-entry protocol.** Every wake — wakeup, completion notification,
+scheduled re-entry, or a fresh session resuming — starts the same way: read
+the plan file first (it is the loop variable), read the coordination board,
+verify the plan's claimed state against ground truth (git, artifacts on
+disk — not memory), then continue the next unmet goal. Record every wake in
+the plan's cycle ledger.
+
+**Budget and runaway control.** The twin fear of the silent stop is the
+loop that burns the principal's usage limits without value. The plan file
+declares the budget up front: horizon, maximum cycles or wall-clock, and
+the per-cycle value test. Each cycle records what it advanced; a cycle that
+advanced nothing must name the external event it is waiting on, and waits
+use coarse cadences (do not poll for what a completion notification will
+deliver). Stop conditions are exactly: goals met · blocker recorded and
+principal alerted · budget exhausted and principal alerted. "Still running"
+is never itself evidence of value.
+
+**Capability probe before asserting absence.** An agent that wrongly
+believes it is blocked stops. In the motivating incident's aftermath, a
+session confidently reported that the counterpart CLI could not be reached
+unattended — stale knowledge stated as fact; the CLI had a working headless
+mode the same session had already used. Before any blocker or plan step
+claims a capability is absent ("X cannot run autonomously", "no way to
+reach Y"), run the probe — locate the binary, invoke the minimal command,
+read the tool schema — and record the probe's evidence with the claim.
+Zero results from memory are not evidence of absence.
+
+**Volatile state dies at reboots.** Scratchpad and temp directories are
+cleared by reboots and session ends — and long-horizon runs are exactly the
+runs that meet reboots. Anything a later phase, another agent, or a durable
+record depends on moves into the project (resources/) **at every phase
+boundary**, not only at close. Losing derived findings to a reboot mid-run
+means regenerating them on the next wake — paid for twice.
+
+**The mechanical backstop.** Doctrine that depends on the agent remembering
+it is the failure shape this section documents, so the gate is enforced:
+engagement registers with `scripts/autopilot_gate.py register --plan <plan>
+--mission "<done means>"`, and the plugin's Stop hook refuses to let a
+session stop while a registered engagement is active, unfinished, and has
+neither a recorded continuation (`autopilot_gate.py continuation`) nor an
+alerted blocker (`autopilot_gate.py blocker ... --alerted`) nor an honest
+close (`autopilot_gate.py close --goals-met | --incomplete <reason>`). The
+cycle ledger is mechanical too: `autopilot_gate.py cycle` refuses to record
+a wake that advanced nothing and names no external wait — there is no way
+to log a bare spin. An engagement abandoned by a dead session blocks the
+next session's stop BY DESIGN: abandonment must be loud, and the block
+message carries the honest close command.
+
 ## The Plan File
 
 The plan file is the mode's survival mechanism. Chat context compacts; the plan file does not.
@@ -98,6 +185,21 @@ depth, and why the planned review effort is proportionate.
 Counterpart sessions, direct dispatch path, provider-boundary exception if
 one exists, allowed principal courier crossings, current count, and the
 blocked-state alert threshold.
+
+## Continuation
+Mechanism causing the next turn, what it survives (turn end / session
+death / reboot), the next-wake condition or cadence, the dead-man's
+switch for long horizons, and how the mechanism was VERIFIED in this
+harness (probe evidence, not memory).
+
+## Budget
+Horizon; maximum cycles or wall-clock; the per-cycle value test; counters
+updated each cycle. Stop conditions: goals met · blocker + alert ·
+budget exhausted + alert.
+
+## Cycle ledger
+One line per wake: what advanced, or the named external wait. Appended
+mechanically via autopilot_gate.py cycle.
 
 ## Phases
 - [x] Phase 1 — ...
@@ -156,6 +258,14 @@ courier crossings. Never hide a manual crossing inside “send this to the revie
 round-trip budget is a tracked delivery cost; exceeding it triggers the blocked-state alert
 rather than silently recruiting the principal as orchestration middleware.
 
+**Dispatch the counterpart at scope-definition time, not only at review time,
+for discovery-shaped phases.** An adversary auditing the scope inventory while
+it is being built catches classifier drops and universe errors when they cost a
+correction, not a re-run — proven in the motivating overnight engagement, where
+a scope audit dispatched during Phase 0 found complete artifacts the primary
+classifier had silently dropped. Review-time dispatch remains for judging
+finished work; scope-time dispatch protects the universe the work runs over.
+
 Write the proportionality section before the first review round: principal outcome,
 closed artifact universe, consequence being prevented, justified control depth, and stop
 rule. Fewer rounds come from complete per-artifact coverage and stronger fixtures, never
@@ -186,19 +296,20 @@ When a phase reaches a gated action, prepare everything up to the gate (the draf
 
 ## The Execution Loop
 
-1. **Engage** — one-line acknowledgment with the plan-file path.
+1. **Engage** — one-line acknowledgment with the plan-file path; register the
+   engagement with the continuation gate (`autopilot_gate.py register`).
 2. **Anchor** — run synthesis-checkpoint: verified date, project state from disk, history from git.
 3. **Coordinate** — read the shared active-sessions board and claim every
    source area this run may write before editing.
-4. **Register** — attach to or create the synthesis project (synthesis-project-management); create the plan file.
-5. **Phase loop** — for each phase: re-read the plan file and coordination board; execute with anti-shortcut discipline; classify each decision per the protocol above; dispatch sub-agents per the hygiene rules below; directly orchestrate any adversarial counterpart and count principal courier crossings; record the sufficiency checkpoint; then update the plan file, and at natural checkpoints run the synthesis-context-lifecycle session protocol so CONTEXT.md and the session log stay current.
+4. **Register** — attach to or create the synthesis project (synthesis-project-management); create the plan file, including its Continuation and Budget sections. **If the horizon exceeds this turn, establish and verify the continuation mechanism NOW** — record it in the plan and via `autopilot_gate.py continuation` before any phase work makes the first turn long enough to forget.
+5. **Phase loop** — for each phase: re-read the plan file and coordination board; execute with anti-shortcut discipline; classify each decision per the protocol above; dispatch sub-agents per the hygiene rules below; directly orchestrate any adversarial counterpart and count principal courier crossings; record the sufficiency checkpoint; then update the plan file (cycle ledger included), **sweep the scratchpad — anything a later phase, another agent, or a durable record depends on moves into resources/ at THIS boundary, because volatile state dies at reboots** — and at natural checkpoints run the synthesis-context-lifecycle session protocol so CONTEXT.md and the session log stay current.
 6. **Verify** — before declaring the mission complete, run synthesis-implementation-integrity (or the domain analog). Fix what it finds; verification that only reports is not verification.
-7. **Close** — session-end per synthesis-context-lifecycle (context files updated, work committed where applicable); release the coordination claims; completion report in plain language: what shipped, what was decided and why, the batched questions; then the completion alert.
+7. **Close** — session-end per synthesis-context-lifecycle (context files updated, work committed where applicable); release the coordination claims; close the engagement (`autopilot_gate.py close --goals-met`, or `--incomplete <reason>` for an honest partial close); completion report in plain language: what shipped, what was decided and why, the batched questions; then the completion alert.
 
-The close step includes a scratchpad sweep: **What executable state or required
-input data still exists only in this session's scratchpad?** If a durable
-record cites its output, preserve the script and required inputs under
-resources/scripts/ before the checkpoint can close.
+The close step repeats the scratchpad sweep one final time: **What executable
+state or required input data still exists only in this session's scratchpad?**
+If a durable record cites its output, preserve the script and required inputs
+under resources/scripts/ before the checkpoint can close.
 
 ## Sub-Agent Fan-Out Hygiene
 

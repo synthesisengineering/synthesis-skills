@@ -1,23 +1,27 @@
-# AGENT HEURISTIC: authored for the 4.66.0 signature-channel-links release.
+# AGENT HEURISTIC: authored for the 4.68.0 autopilot-continuation release.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff, proved by the runner before release.py consumes
 # the receipt.
 schema: 2
-suite: synthesis-byte-faithful-send-path-release
+suite: synthesis-autopilot-continuation-release
 membership: closed
-production_entry_point: scripts/acceptance_suite.py run
-enforcing_boundary: release.py and repository CI before publication
+production_entry_point: skills/synthesis-autopilot/scripts/autopilot_gate.py --gate
+enforcing_boundary: plugin Stop hook on every session stop while an engagement is registered
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: rendering on each real platform is verified by a human reading the actual client (a Gmail draft is filed for that); per-channel capability facts (e.g. Google Chat user-send markup) are re-verified when a send path changes, per the doctrine itself
+unverified_remainder: the live Stop-hook path requires each client to load the new plugin hook (Codex hook trust is a human decision by design and will show one pending definition until the principal trusts it); which continuation mechanisms exist is a per-harness fact the doctrine requires probing at engagement rather than assuming
 changed_surfaces:
-  - path: skills/synthesis-agent-correspondence/SKILL.md
-    cases: [byte-faithful-send-path]
-  - path: skills/synthesis-agent-correspondence/scripts/test_signature_channels.py
-    cases: [byte-faithful-send-path]
+  - path: skills/synthesis-autopilot/SKILL.md
+    cases: [doctrine-carries-continuation-contract]
+  - path: skills/synthesis-autopilot/scripts/autopilot_gate.py
+    cases: [gate-blocks-silent-idle, gate-passes-with-continuation, gate-passes-with-alerted-blocker, gate-passes-after-honest-close, unreadable-record-fails-closed, bare-spin-unrecordable, blocker-requires-alert]
+  - path: skills/synthesis-autopilot/scripts/test_autopilot_gate.py
+    cases: [gate-blocks-silent-idle, gate-passes-with-continuation, gate-passes-with-alerted-blocker, gate-passes-after-honest-close, unreadable-record-fails-closed, bare-spin-unrecordable, blocker-requires-alert, doctrine-carries-continuation-contract]
+  - path: hooks/hooks.json
+    cases: [gate-blocks-silent-idle]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -29,10 +33,38 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: byte-faithful-send-path
+  - id: gate-blocks-silent-idle
+    control_class: enforced-gate
+    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_gate_blocks_active_engagement_without_continuation
+    motivating_defect: an-overnight-engagement-idled-all-night-because-nothing-caused-the-next-turn-and-nothing-noticed
+  - id: gate-passes-with-continuation
     control_class: acceptance-test
-    fixture: ../synthesis-agent-correspondence/scripts/test_signature_channels.py::test_send_path_byte_faithfulness_rule
-    motivating_defect: a-provider-composed-draft-path-rewrote-clean-hrefs-into-expiring-redirects-at-ingestion
+    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_gate_passes_once_continuation_recorded
+    motivating_defect: a-gate-that-cannot-pass-a-correctly-continued-run-teaches-agents-to-delete-its-state
+  - id: gate-passes-with-alerted-blocker
+    control_class: acceptance-test
+    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_gate_passes_with_alerted_blocker
+    motivating_defect: stopping-blocked-is-legitimate-exactly-when-the-principal-was-actually-told
+  - id: gate-passes-after-honest-close
+    control_class: acceptance-test
+    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_gate_passes_after_honest_close
+    motivating_defect: an-incomplete-close-with-a-reason-beats-an-abandonment-nobody-recorded
+  - id: unreadable-record-fails-closed
+    control_class: enforced-gate
+    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_unreadable_record_fails_closed
+    motivating_defect: an-unreadable-engagement-cannot-prove-it-was-continued
+  - id: bare-spin-unrecordable
+    control_class: enforced-gate
+    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_bare_spin_cannot_be_recorded
+    motivating_defect: the-principal-fears-loops-that-burn-usage-limits-without-value-so-a-no-progress-wake-must-name-its-external-wait
+  - id: blocker-requires-alert
+    control_class: enforced-gate
+    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_blocker_requires_alert_attestation
+    motivating_defect: a-blocker-nobody-was-told-about-is-the-silent-stop-restated
+  - id: doctrine-carries-continuation-contract
+    control_class: acceptance-test
+    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_doctrine_carries_continuation_contract
+    motivating_defect: a-contract-that-lives-only-in-code-gets-routed-around-by-the-next-session-that-never-reads-code
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
