@@ -1,23 +1,25 @@
-# AGENT HEURISTIC: authored for the 4.69.0 signature-wire-enforcement release.
+# AGENT HEURISTIC: authored for the 4.70.0 context-health-signal release.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff, proved by the runner before release.py consumes
 # the receipt.
 schema: 2
-suite: synthesis-signature-wire-enforcement-release
+suite: synthesis-context-health-signal-release
 membership: closed
-production_entry_point: skills/synthesis-message-guard/scripts/message_guard.py --gate
-enforcing_boundary: PreToolUse gate on every send/draft tool call
+production_entry_point: skills/synthesis-context-lifecycle/scripts/context_doctor.py --json
+enforcing_boundary: the corpus health signal consumed at SessionStart and at day-start Step 1
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: enforcement activates only where the user's patterns.json adopts the signature_link_enforcement key (config is deliberately user-local); the incident session's own compose-from-compaction-summary habit is doctrine and cannot be mechanized here
+unverified_remainder: the corpus effect that motivated the change (193 warnings to 90 across 175 projects) is measured on a private corpus and cannot be reproduced in CI, so these cases prove the rules and not the number; whether a human acts on a surfaced finding is doctrine and unmechanizable here; and the nine stale terminal records the new check found are records to repair, not code this suite can hold
 changed_surfaces:
-  - path: skills/synthesis-message-guard/scripts/message_guard.py
-    cases: [incident-shape-blocks, html-anchors-pass, slack-mrkdwn-passes, markdown-in-email-blocks, linkless-fallback-exempt, unsigned-traffic-untaxed, absent-config-off]
-  - path: skills/synthesis-message-guard/scripts/test_message_guard.py
-    cases: [incident-shape-blocks, html-anchors-pass, slack-mrkdwn-passes, markdown-in-email-blocks, linkless-fallback-exempt, unsigned-traffic-untaxed, absent-config-off]
+  - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
+    cases: [dormant-checks-suppressed, live-checks-untouched, applicability-errs-toward-live, terminal-project-active-reported, closing-commits-are-not-resumption, post-completion-work-still-fires, standing-project-gets-shard-remedy, bounded-defaults-true, orphan-topic-reported, shard-without-index-is-a-defect]
+  - path: skills/synthesis-context-lifecycle/scripts/test_context_doctor.py
+    cases: [dormant-checks-suppressed, live-checks-untouched, applicability-errs-toward-live, terminal-project-active-reported, closing-commits-are-not-resumption, post-completion-work-still-fires, standing-project-gets-shard-remedy, bounded-defaults-true, orphan-topic-reported, shard-without-index-is-a-defect, shard-vocabulary-documented, pairing-rule-documented]
+  - path: skills/synthesis-context-lifecycle/SKILL.md
+    cases: [shard-vocabulary-documented, pairing-rule-documented]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -29,34 +31,54 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: incident-shape-blocks
+  - id: dormant-checks-suppressed
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::LifecycleApplicabilityTests::test_freshness_unverifiable_silent_on_completed
+    motivating_defect: 193-unactioned-warnings-is-the-fail-open-state-the-doctor-exists-to-end-and-98-percent-of-one-check-was-asking-dormant-projects-a-live-project-question
+  - id: live-checks-untouched
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::LifecycleApplicabilityTests::test_freshness_unverifiable_fires_on_an_active_project
+    motivating_defect: quieting-a-corpus-by-weakening-a-check-buys-the-number-and-loses-the-signal
+  - id: applicability-errs-toward-live
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::LifecycleApplicabilityTests::test_unset_status_is_treated_as_live_not_dormant
+    motivating_defect: a-record-whose-state-cannot-be-read-is-the-one-most-likely-to-be-wrong-and-must-never-be-suppressed-as-dormant
+  - id: terminal-project-active-reported
     control_class: enforced-gate
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_wire_incident_shape_blocks
-    motivating_defect: a-persona-signed-email-to-executives-went-out-plain-one-day-after-the-doctrine-named-the-exact-parameter
-  - id: html-anchors-pass
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::LifecycleApplicabilityTests::test_terminal_project_still_being_worked_is_reported
+    motivating_defect: suppression-without-its-paired-inversion-is-indistinguishable-from-a-guard-that-stopped-working-and-nine-projects-claimed-completion-while-still-taking-commits-one-off-by-twenty-months
+  - id: closing-commits-are-not-resumption
     control_class: acceptance-test
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_wire_html_anchors_pass
-    motivating_defect: a-gate-that-blocks-the-canonical-form-teaches-operators-to-route-around-it
-  - id: slack-mrkdwn-passes
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::LifecycleApplicabilityTests::test_the_commits_that_close_a_project_are_not_evidence_it_is_open
+    motivating_defect: anchored-on-last-session-the-archive-pass-that-finishes-a-project-reads-as-proof-it-is-unfinished-and-two-of-this-checks-first-nine-findings-were-that-artifact
+  - id: post-completion-work-still-fires
     control_class: acceptance-test
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_wire_slack_mrkdwn_passes
-    motivating_defect: slack-wire-forms-are-correct-links-and-must-not-be-taxed
-  - id: markdown-in-email-blocks
-    control_class: enforced-gate
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_wire_markdown_in_email_blocks
-    motivating_defect: markdown-notation-never-renders-in-mail-clients
-  - id: linkless-fallback-exempt
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::LifecycleApplicabilityTests::test_work_after_the_declared_completion_still_fires
+    motivating_defect: a-tightened-anchor-that-buys-quiet-by-dropping-the-question-is-the-failure-this-whole-release-exists-to-avoid
+  - id: standing-project-gets-shard-remedy
     control_class: acceptance-test
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_wire_linkless_fallback_tool_exempt
-    motivating_defect: the-visible-form-is-the-legitimate-form-exactly-where-links-cannot-render
-  - id: unsigned-traffic-untaxed
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ReferenceShardTests::test_standing_project_over_budget_gets_the_shard_remedy
+    motivating_defect: telling-a-standing-seat-its-scope-is-too-broad-is-advice-its-owner-cannot-take-because-accumulating-operating-knowledge-is-what-a-seat-is
+  - id: bounded-defaults-true
     control_class: acceptance-test
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_wire_unsigned_traffic_untaxed
-    motivating_defect: a-domain-mentioned-in-prose-is-not-a-signature
-  - id: absent-config-off
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ReferenceShardTests::test_bounded_defaults_true_when_unset
+    motivating_defect: a-field-that-changes-behaviour-must-leave-the-1296-projects-that-never-declare-it-behaving-exactly-as-before-or-the-release-needs-a-migration-it-does-not-have
+  - id: orphan-topic-reported
     control_class: acceptance-test
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_wire_absent_config_is_off
-    motivating_defect: enforcement-is-adopted-deliberately-per-config-never-sprung-on-unconfigured-users
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ReferenceShardTests::test_unlinked_topic_is_reported
+    motivating_defect: a-topic-nothing-links-to-is-unreachable-from-session-start-which-makes-sharding-a-way-to-lose-content
+  - id: shard-without-index-is-a-defect
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ReferenceShardTests::test_shard_without_index_is_a_defect
+    motivating_defect: a-reference-directory-with-no-index-strands-every-topic-behind-an-entry-point-that-does-not-exist
+  - id: shard-vocabulary-documented
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SkillDocContractTests::test_every_reference_shard_check_is_documented_by_name
+    motivating_defect: a-report-names-the-check-that-fired-so-a-name-absent-from-the-skill-hands-the-operator-a-string-instead-of-a-remedy
+  - id: pairing-rule-documented
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SkillDocContractTests::test_the_pairing_rule_itself_survives_in_the_doc
+    motivating_defect: the-rule-that-makes-this-suppression-safe-is-the-part-a-later-editor-is-most-likely-to-drop-and-least-likely-to-miss
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates

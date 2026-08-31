@@ -69,6 +69,7 @@ class Fixture:
         context: str | None = "# P\n\n**Status:** Active\n",
         reference: str | None = None,
         sessions: dict[str, str] | None = None,
+        reference_topics: dict[str, str] | None = None,
     ) -> Path:
         path = self.projects / pid
         path.mkdir(parents=True, exist_ok=True)
@@ -76,6 +77,11 @@ class Fixture:
             (path / "CONTEXT.md").write_text(context, encoding="utf-8")
         if reference is not None:
             (path / "REFERENCE.md").write_text(reference, encoding="utf-8")
+        if reference_topics:
+            rdir = path / "reference"
+            rdir.mkdir(exist_ok=True)
+            for name, body in reference_topics.items():
+                (rdir / name).write_text(body, encoding="utf-8")
         if sessions:
             sdir = path / "sessions"
             sdir.mkdir(exist_ok=True)
@@ -90,7 +96,15 @@ class Fixture:
             for k, v in e.items():
                 if k == "id":
                     continue
-                lines.append(f"    {k}: '{v}'")
+                # Booleans must survive as booleans. Quoting them would make
+                # `bounded: false` the string "false", which is truthy — the
+                # fixture would then silently disagree with every real
+                # index.yaml and certify the standing-project path as working
+                # when it was never exercised.
+                if isinstance(v, bool):
+                    lines.append(f"    {k}: {str(v).lower()}")
+                else:
+                    lines.append(f"    {k}: '{v}'")
         (self.projects / "index.yaml").write_text(
             "\n".join(lines) + "\n", encoding="utf-8"
         )
@@ -751,6 +765,301 @@ class ContextDoctorTests(unittest.TestCase):
         checks = checks_in(self.fx.audit())
         self.assertNotIn("record-unreadable", checks)
         self.assertNotIn("status-agreement", checks)
+
+
+class LifecycleApplicabilityTests(unittest.TestCase):
+    """Checks that only have meaning about work in progress must not fire on
+    projects nobody is working.
+
+    Measured on a 175-project corpus, 98% of `freshness-unverifiable` and 90%
+    of `record-unreadable` were raised against dormant projects. Every one was
+    unactionable, and 193 unactioned warnings is the fail-open state the doctor
+    exists to prevent. The negative cases below are the point of this class;
+    the positive ones prove the checks still work where they apply.
+    """
+
+    def setUp(self):
+        self._tmp = TemporaryDirectory()
+        self.fx = Fixture(Path(self._tmp.name) / "src")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _sweep_only_project(self, pid: str, status: str, **entry):
+        """A project whose every commit also touches enough other projects to
+        be classified as a repo-wide sweep — the shape that makes freshness
+        genuinely unverifiable."""
+        self.fx.project(pid, context=f"# P\n\n**Status:** {status.title()}\n")
+        for filler in range(cd.BULK_COMMIT_PROJECT_THRESHOLD + 2):
+            self.fx.project(f"{pid}-filler{filler}")
+        self.fx.index([{"id": pid, "status": status, **entry}] +
+                      [{"id": f"{pid}-filler{i}", "status": "active"}
+                       for i in range(cd.BULK_COMMIT_PROJECT_THRESHOLD + 2)])
+        self.fx.commit("repo-wide sweep")
+
+    def _checks_for(self, result: dict, pid: str) -> set[str]:
+        """Checks raised against ONE project. The filler projects that make a
+        commit look like a sweep are themselves active and legitimately raise
+        this warning, so a corpus-wide assertion would pass or fail for the
+        wrong reason."""
+        return {f["check"] for f in result["data"].get("findings", [])
+                if f["project"] == pid}
+
+    def test_freshness_unverifiable_fires_on_an_active_project(self):
+        self._sweep_only_project("alpha", "active")
+        self.assertIn("freshness-unverifiable",
+                      self._checks_for(self.fx.audit(), "alpha"))
+
+    def test_freshness_unverifiable_silent_on_completed(self):
+        self._sweep_only_project("alpha", "completed", completed_date="2026-01-01")
+        self.assertNotIn("freshness-unverifiable",
+                         self._checks_for(self.fx.audit(), "alpha"))
+
+    def test_freshness_unverifiable_silent_on_paused(self):
+        self._sweep_only_project("alpha", "paused")
+        self.assertNotIn("freshness-unverifiable",
+                         self._checks_for(self.fx.audit(), "alpha"))
+
+    def test_unset_status_is_treated_as_live_not_dormant(self):
+        """The suppression must never swallow a project whose state we cannot
+        read — those are the records most likely to be wrong."""
+        self.assertFalse(cd.project_is_dormant("", None))
+        self.assertFalse(cd.project_is_dormant("wat", None))
+        self.assertTrue(cd.project_is_dormant("paused", None))
+        self.assertTrue(cd.project_is_dormant("completed", None))
+
+    def test_record_unreadable_silent_on_dormant_but_fires_when_active(self):
+        headerless = "# P\n\nsome prose with no status header\n"
+        self.fx.project("alpha", context=headerless)
+        self.fx.project("beta", context=headerless)
+        self.fx.index([{"id": "alpha", "status": "completed",
+                        "completed_date": "2026-01-01"},
+                       {"id": "beta", "status": "active"}])
+        self.fx.commit()
+        found = {(f["project"], f["check"])
+                 for f in self.fx.audit()["data"]["findings"]}
+        self.assertIn(("beta", "record-unreadable"), found)
+        self.assertNotIn(("alpha", "record-unreadable"), found)
+
+    def test_terminal_project_still_being_worked_is_reported(self):
+        """The inversion that makes the suppression safe: a project declared
+        finished but still receiving session commits is a live record error,
+        and it was invisible before this check existed."""
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n")
+        self.fx.index([{"id": "alpha", "status": "completed",
+                        "completed_date": "2026-01-01",
+                        "last_session": "2026-01-01"}])
+        self.fx.commit("real work long after completion", when="2026-06-01")
+        checks = checks_in(self.fx.audit())
+        self.assertIn("terminal-project-active", checks)
+
+    def test_terminal_project_with_matching_record_is_quiet(self):
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n")
+        self.fx.index([{"id": "alpha", "status": "completed",
+                        "completed_date": "2026-06-01",
+                        "last_session": "2026-06-01"}])
+        self.fx.commit("closing commit", when="2026-06-01")
+        self.assertNotIn("terminal-project-active", checks_in(self.fx.audit()))
+
+    def test_the_commits_that_close_a_project_are_not_evidence_it_is_open(self):
+        """Found by reading the nine findings this check first raised: two were
+        a project whose every commit landed on its own completion date. Closing
+        is work — the archive pass, the trim to budget — and it lands after the
+        last *working* session by design. Anchored on last_session, the act of
+        finishing reads as proof of not being finished."""
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n")
+        self.fx.index([{"id": "alpha", "status": "completed",
+                        "completed_date": "2026-06-01",
+                        "last_session": "2024-12-17"}])
+        self.fx.commit("archive the record and trim it to budget",
+                       when="2026-06-01")
+        self.assertNotIn("terminal-project-active",
+                         self._checks_for(self.fx.audit(), "alpha"))
+
+    def test_work_after_the_declared_completion_still_fires(self):
+        """The tightened anchor must not buy quiet by dropping the question."""
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n")
+        self.fx.index([{"id": "alpha", "status": "completed",
+                        "completed_date": "2026-06-01",
+                        "last_session": "2026-06-01"}])
+        self.fx.commit("work that resumed after the close", when="2026-08-20")
+        self.assertIn("terminal-project-active",
+                      self._checks_for(self.fx.audit(), "alpha"))
+
+    def test_missing_completed_date_falls_back_rather_than_falling_silent(self):
+        """A record too incomplete to anchor on is the one most likely to be
+        wrong, so the check keeps asking against last_session."""
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n")
+        self.fx.index([{"id": "alpha", "status": "completed",
+                        "last_session": "2026-01-01"}])
+        self.fx.commit("real work long after completion", when="2026-06-01")
+        self.assertIn("terminal-project-active",
+                      self._checks_for(self.fx.audit(), "alpha"))
+
+
+class ReferenceShardTests(unittest.TestCase):
+    """Semantic memory outgrows one file exactly as episodic memory does.
+
+    `sessions/` solved that for the episodic tier; `reference/` is the same
+    move one tier over. A standing project's REFERENCE.md has no natural
+    ceiling, so telling its owner the scope is too broad is advice that cannot
+    be taken — the remedy has to be structural.
+    """
+
+    def setUp(self):
+        self._tmp = TemporaryDirectory()
+        self.fx = Fixture(Path(self._tmp.name) / "src")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_bounded_project_over_budget_gets_the_scope_remedy(self):
+        self.fx.project("alpha", reference="x\n" * 400)
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+        checks = checks_in(self.fx.audit())
+        self.assertIn("reference-budget", checks)
+        self.assertNotIn("reference-shard", checks)
+
+    def test_standing_project_over_budget_gets_the_shard_remedy(self):
+        self.fx.project("alpha", reference="x\n" * 400)
+        self.fx.index([{"id": "alpha", "status": "active", "bounded": False}])
+        self.fx.commit()
+        checks = checks_in(self.fx.audit())
+        self.assertIn("reference-shard", checks)
+        self.assertNotIn("reference-budget", checks)
+
+    def test_bounded_defaults_true_when_unset(self):
+        """1,296 of 1,306 corpus projects leave `bounded` unset. Their
+        behaviour must not change, or adoption becomes a migration."""
+        self.fx.project("alpha", reference="x\n" * 400)
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+        self.assertIn("reference-budget", checks_in(self.fx.audit()))
+
+    def test_sharded_project_is_judged_as_index_plus_topics(self):
+        self.fx.project(
+            "alpha",
+            reference="# Reference\n\n- [ops](reference/ops.md)\n",
+            reference_topics={"ops.md": "y\n" * 40},
+        )
+        self.fx.index([{"id": "alpha", "status": "active", "bounded": False}])
+        self.fx.commit()
+        checks = checks_in(self.fx.audit())
+        for noisy in ("reference-budget", "reference-shard",
+                      "reference-index-budget", "reference-topic-budget",
+                      "reference-index-orphan"):
+            self.assertNotIn(noisy, checks)
+
+    def test_fat_index_is_reported(self):
+        self.fx.project(
+            "alpha",
+            reference="# Reference\n\n- [ops](reference/ops.md)\n" + "z\n" * 200,
+            reference_topics={"ops.md": "y\n"},
+        )
+        self.fx.index([{"id": "alpha", "status": "active", "bounded": False}])
+        self.fx.commit()
+        self.assertIn("reference-index-budget", checks_in(self.fx.audit()))
+
+    def test_oversized_topic_is_reported(self):
+        self.fx.project(
+            "alpha",
+            reference="# Reference\n\n- [ops](reference/ops.md)\n",
+            reference_topics={"ops.md": "y\n" * 400},
+        )
+        self.fx.index([{"id": "alpha", "status": "active", "bounded": False}])
+        self.fx.commit()
+        self.assertIn("reference-topic-budget", checks_in(self.fx.audit()))
+
+    def test_unlinked_topic_is_reported(self):
+        """Sharding must not become a way to lose content: a topic file the
+        index does not point at is unreachable from session start."""
+        self.fx.project(
+            "alpha",
+            reference="# Reference\n\n- [ops](reference/ops.md)\n",
+            reference_topics={"ops.md": "y\n", "orphan.md": "y\n"},
+        )
+        self.fx.index([{"id": "alpha", "status": "active", "bounded": False}])
+        self.fx.commit()
+        findings = [f for f in self.fx.audit()["data"]["findings"]
+                    if f["check"] == "reference-index-orphan"]
+        self.assertEqual(len(findings), 1)
+        self.assertIn("orphan.md", findings[0]["message"])
+
+    def test_shard_without_index_is_a_defect(self):
+        self.fx.project("alpha", reference=None,
+                        reference_topics={"ops.md": "y\n"})
+        self.fx.index([{"id": "alpha", "status": "active", "bounded": False}])
+        self.fx.commit()
+        result = self.fx.audit()
+        self.assertIn("reference-index-missing", checks_in(result))
+        self.assertEqual(
+            "defect",
+            next(f["severity"] for f in result["data"]["findings"]
+                 if f["check"] == "reference-index-missing"),
+        )
+
+
+class SkillDocContractTests(unittest.TestCase):
+    """A finding names a check; the skill has to make that name mean something.
+
+    An operator handed `reference-topic-budget` and no way to look it up has
+    been handed a string, not a remedy — and a check nobody can act on is the
+    fail-open state this doctor exists to end. test_item_currency.py holds the
+    day-end ritual to the same contract; this holds the skill to it for the
+    vocabulary v1.7.0 introduced.
+    """
+
+    SKILL = Path(__file__).resolve().parents[1] / "SKILL.md"
+
+    def setUp(self):
+        self.text = self.SKILL.read_text(encoding="utf-8")
+
+    # The semantic-shard family. Named rather than prefix-matched: the prefix
+    # also catches reference-present, which is a tier-structure check and is
+    # documented with that group. Membership is asserted against the doctor so
+    # a rename there breaks this test instead of quietly passing.
+    SHARD_CHECKS = (
+        "reference-budget",
+        "reference-shard",
+        "reference-index-budget",
+        "reference-topic-budget",
+        "reference-index-orphan",
+        "reference-index-missing",
+    )
+
+    def test_the_shard_family_is_still_the_doctors_own_vocabulary(self):
+        for check in self.SHARD_CHECKS:
+            with self.subTest(check=check):
+                self.assertIn(check, cd.CHECKS)
+
+    def test_every_reference_shard_check_is_documented_by_name(self):
+        for check in self.SHARD_CHECKS:
+            with self.subTest(check=check):
+                self.assertIn(check, self.text)
+
+    def test_the_paired_inversion_is_documented_by_name(self):
+        # Suppression is only safe paired with the check that replaces it. If
+        # the pairing is undocumented, the next reader sees only the silence.
+        self.assertIn("terminal-project-active", self.text)
+
+    def test_the_pairing_rule_itself_survives_in_the_doc(self):
+        self.assertIn(
+            "suppressing an inapplicable check is only safe when you add the "
+            "check that becomes applicable in its place",
+            self.text.lower(),
+        )
+
+    def test_bounded_is_documented_as_behaviour_with_its_default(self):
+        # The field decides which remedy a project is offered, so its default
+        # is load-bearing: readers must be able to learn it without reading
+        # the source.
+        self.assertIn("bounded: false", self.text)
+        self.assertIn("`bounded` defaults to `true` when unset", self.text)
+
+    def test_post_shard_budgets_are_stated(self):
+        self.assertIn(str(cd.REFERENCE_INDEX_BUDGET), self.text)
+        self.assertIn(str(cd.REFERENCE_TOPIC_BUDGET), self.text)
 
 
 if __name__ == "__main__":

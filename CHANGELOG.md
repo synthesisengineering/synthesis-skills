@@ -4,6 +4,60 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.70.0] - 2026-08-31
+
+**`synthesis-context-lifecycle` doctor v1.7.0 — the health signal learns when a
+check does not apply, and the semantic tier learns to shard.** A 175-project
+corpus was carrying 193 warnings nobody had acted on. Reading them rather than
+counting them showed why: several checks were asking questions that only have
+meaning about work in progress, of projects that had shipped months earlier.
+98% of `freshness-unverifiable` and 90% of `record-unreadable` were raised
+against dormant projects. A guard that emits 193 unactionable findings is the
+fail-open state it exists to prevent.
+
+- **Lifecycle applicability.** Freshness, open-item currency, and the status
+  cross-check now apply to live projects only. The rule errs toward *live*: an
+  unset or unrecognised status counts as active, because records whose state
+  cannot be read are the ones most likely to be wrong.
+- **The paired inversion.** New `terminal-project-active` reports a project
+  declared completed that is still receiving session commits — a live record
+  error the doctor could not previously ask about. Suppressing an inapplicable
+  check is only safe when you add the check that becomes applicable in its
+  place.
+- **The inversion anchors on `completed_date`, not `last_session`.** Closing a
+  project is itself work — the archive pass, the trim to budget — and those
+  commits land after its final *working* session by design. Measured against
+  `last_session` they read as "still being worked," which is the opposite of
+  what they are: two of the check's first nine findings were a project whose
+  every commit fell on its own completion date. Against the date the project
+  says it finished, the question is the one worth asking — did work continue
+  after the close? — and the corpus answers it thirteen times, from two days
+  to 194. Falls back to `last_session` when `completed_date` is missing or
+  unreadable, because a record too incomplete to anchor on is the one most
+  likely to be wrong.
+- **`reference/` — sharding for the semantic tier.** `sessions/` solved
+  unbounded episodic growth years ago; `REFERENCE.md` had a soft cap and no
+  overflow. That is fine for a bounded arc and structurally broken for a
+  standing project, whose function is to accumulate operating knowledge without
+  a natural ceiling. Once `reference/` exists, `REFERENCE.md` becomes its index
+  (≤150 lines) and each topic gets the old ≤300. Every topic must be linked
+  from the index (`reference-index-orphan`), and a shard with no index is a
+  defect — sharding must not become a way to lose content.
+- **`bounded` stops being dead metadata.** It was declared in the status
+  vocabulary and read by nothing. A standing project over budget is now told to
+  shard rather than to narrow its scope, which was advice its owner could not
+  take. Defaults to `true` when unset: 172 of the 177 indexed corpus projects
+  never declare the field and are unaffected, so adoption costs no migration.
+
+- **The shard vocabulary is documented by name.** A report names the check
+  that fired, so a name the skill never mentions hands its reader a string
+  instead of a remedy. All six `reference-*` shard checks now appear in one
+  table with what fires them and at what severity, and a contract test holds
+  the skill to it.
+
+Corpus effect: 193 warnings to 93, with thirteen new genuine findings, and no
+weakening of any check that applies. 24 new tests (162 total in the skill).
+
 ## [4.69.0] - 2026-08-30
 
 **`synthesis-message-guard` engine v1.3.0 — signature wire forms become
