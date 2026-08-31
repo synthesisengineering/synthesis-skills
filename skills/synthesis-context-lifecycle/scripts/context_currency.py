@@ -316,6 +316,35 @@ def unstamped_open_sections(text: str) -> list[str]:
     return sorted(bare)
 
 
+def open_obligation_count(text: str) -> int:
+    """Unchecked items under an open-items heading, stamped or not.
+
+    Deliberately not the same question as `overdue_items`. That one asks
+    whether a live queue is current; this one asks whether a queue exists at
+    all in a record that claims to be finished, so a well-stamped item counts
+    exactly like a bare one.
+
+    Only an EXPLICIT unchecked box counts. A checked box is a record of
+    something done, which is what a finished project's list should hold. A
+    bullet with no box at all is prose — the majority of bullets in these
+    records are — and reading narrative as owed work is the miscalibration
+    that cost 140 of 294 findings when `current` was briefly an open-section
+    word. An unchecked box is unambiguous: someone wrote the box and did not
+    tick it.
+    """
+    headings = [(m.start(), m.group(1)) for m in SECTION_HEADING.finditer(text)]
+    owed = 0
+    for match in ITEM_LINE.finditer(text):
+        box = match.group("box")
+        if box is None or box.strip().lower() == "x":
+            continue
+        if not OPEN_SECTION.search(_section_of(headings, match.start())):
+            continue
+        if match.group("text").strip():
+            owed += 1
+    return owed
+
+
 def log_state(project: Path) -> tuple[str | None, str | None, dict[str, int]]:
     """(newest date, file, current ordinals) from the session log.
 

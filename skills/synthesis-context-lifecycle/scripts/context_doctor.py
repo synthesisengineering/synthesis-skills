@@ -63,7 +63,7 @@ from pathlib import Path
 # missing the doctor must fail loudly rather than silently skip a check.
 import context_currency
 
-DOCTOR_VERSION = "1.7.0"
+DOCTOR_VERSION = "1.8.0"
 
 # Budgets from the tiered context architecture.
 CONTEXT_BUDGET_ACTIVE = 150
@@ -146,11 +146,28 @@ class ProjectAudit:
     project_id: str
     path: Path
     findings: list[Finding] = field(default_factory=list)
+    # Coverage, not findings. A check that finds nothing and a check that
+    # examined nothing print the same thing unless you make them different,
+    # and a deliberate skip is invisible for exactly the same reason. Every
+    # lifecycle-gated check records which side it took, so the report can say
+    # "examined 36, skipped 140" instead of silently saying nothing at all.
+    # This is what makes an unpaired suppression visible without anyone having
+    # to notice the missing pairing.
+    skipped: list[tuple[str, str]] = field(default_factory=list)
+    examined: list[str] = field(default_factory=list)
 
     def add(self, check: str, severity: str, message: str, remedy: str) -> None:
         self.findings.append(
             Finding(self.project_id, self.source, check, severity, message, remedy)
         )
+
+    def skip(self, check: str, reason: str) -> None:
+        """This project was deliberately out of scope for `check`."""
+        self.skipped.append((check, reason))
+
+    def cover(self, check: str) -> None:
+        """This project was in scope for `check`, whatever the outcome."""
+        self.examined.append(check)
 
 
 # ---------------------------------------------------------------------------
@@ -396,9 +413,9 @@ def git(repo: Path, *args: str) -> tuple[int, str]:
     return completed.returncode, completed.stdout.strip()
 
 
-def last_session_commit_date(
+def last_session_commit(
     repo: Path, projects_root: Path, project_path: Path
-) -> date | None:
+) -> tuple[object, str | None]:
     """Date of the newest commit that represents WORK on this project.
 
     Not simply the newest commit touching it. Repo-wide maintenance — a path
@@ -423,7 +440,7 @@ def last_session_commit_date(
         str(project_path),
     )
     if code != 0 or not out:
-        return None
+        return None, None
 
     try:
         prefix = projects_root.resolve().relative_to(repo.resolve()).as_posix()
@@ -466,10 +483,45 @@ def last_session_commit_date(
         if len(touched) > BULK_COMMIT_PROJECT_THRESHOLD or outside > BULK_COMMIT_OUTSIDE_FILES:
             continue
         try:
-            return datetime.strptime(datestr.strip(), "%Y-%m-%d").date()
+            return datetime.strptime(datestr.strip(), "%Y-%m-%d").date(), sha
         except ValueError:
             continue
-    return UNVERIFIABLE
+    return UNVERIFIABLE, None
+
+
+def last_session_commit_date(
+    repo: Path, projects_root: Path, project_path: Path
+) -> date | None:
+    """Date only. Kept because most callers do not need the commit identity."""
+    when, _sha = last_session_commit(repo, projects_root, project_path)
+    return when
+
+
+def coverage_report(audits: list[ProjectAudit]) -> dict:
+    """Per-check denominators for every lifecycle-gated check.
+
+    The report exists because a check finding nothing and a check examining
+    nothing are indistinguishable in a findings list, and so are a suppression
+    that is working and one that quietly covers a question nobody replaced.
+    An unpaired suppression shipped in v1.7.0 and survived the changelog, the
+    skill documentation and review; a printed `skipped 140` would have made
+    somebody ask what happens to those 140.
+
+    Only gated checks appear. An ungated check's denominator is every project
+    audited, which the report already states.
+    """
+    counts: dict[str, dict] = {}
+    for audit in audits:
+        for check in audit.examined:
+            counts.setdefault(check, {"examined": 0, "skipped": 0, "reasons": {}})
+            counts[check]["examined"] += 1
+        for check, reason in audit.skipped:
+            counts.setdefault(check, {"examined": 0, "skipped": 0, "reasons": {}})
+            counts[check]["skipped"] += 1
+            counts[check]["reasons"][reason] = (
+                counts[check]["reasons"].get(reason, 0) + 1
+            )
+    return dict(sorted(counts.items()))
 
 
 def uncommitted(repo: Path, path: Path) -> list[str]:
@@ -549,8 +601,18 @@ def tracked_files(repo: Path, path: Path) -> set[str]:
 # Project parsing
 # ---------------------------------------------------------------------------
 
-STATUS_HEADER = re.compile(r"^\*\*Status\:\*\*\s*(?P<value>.+?)\s*$", re.MULTILINE)
-PHASE_HEADER = re.compile(r"^\*\*Phase\:\*\*\s*(?P<value>.+?)\s*$", re.MULTILINE)
+# Not anchored to line start. Real records put two fields on one line —
+# "**Phase:** Review complete — awaiting send. **Status:** Active (...)" is a
+# live example — and an anchored pattern misses the Status there, falls through
+# to the Phase fallback, reads "complete" out of the phase text, and reports a
+# project as finished that says Active three words later. The value stops at the
+# next bold field marker so a trailing field is never swallowed into it.
+STATUS_HEADER = re.compile(
+    r"\*\*Status\:\*\*\s*(?P<value>.+?)\s*(?=\*\*[A-Z][^*]*\:\*\*|$)", re.MULTILINE
+)
+PHASE_HEADER = re.compile(
+    r"\*\*Phase\:\*\*\s*(?P<value>.+?)\s*(?=\*\*[A-Z][^*]*\:\*\*|$)", re.MULTILINE
+)
 LAST_SESSION_HEADER = re.compile(
     r"^\*\*Last session\:\*\*\s*(?P<value>.+?)\s*$", re.MULTILINE
 )
@@ -751,6 +813,8 @@ CHECKS = [
     "unpushed-context",
     "freshness-unverifiable",
     "terminal-project-active",
+    "terminal-project-open-items",
+    "post-close-review-unresolvable",
     "record-unreadable",
     "artifact-cites-missing-script",
 ]
@@ -900,6 +964,9 @@ def audit_project(
 
     # Budget depends on which lifecycle stage the project is actually in.
     treat_completed = index_says_completed or bool(declared_complete)
+    # Computed here rather than at the freshness block, because the tier and
+    # budget checks below need it too. Same rule, same errs-toward-live default.
+    dormant = project_is_dormant(index_status, declared_complete)
     budget = CONTEXT_BUDGET_COMPLETED if treat_completed else CONTEXT_BUDGET_ACTIVE
     if context_lines > budget:
         audit.add(
@@ -913,7 +980,23 @@ def audit_project(
 
     entries = session_entry_count(sessions_dir)
 
-    if not sessions_dir.is_dir():
+    # The same lifecycle rule the freshness checks got in v1.7.0, applied to the
+    # tier-structure and budget checks it missed. "Move your session narrative
+    # into an archive" and "your scope may be too broad" are instructions to
+    # someone doing the work. Measured on the corpus before this gate: 11 of 11
+    # sessions-present and 5 of 5 reference-budget findings were raised against
+    # dormant projects — the identical shape as the v1 diagnosis, one release
+    # later, on the checks that release did not touch.
+    # reference-present belongs to this family too, and leaving one member
+    # ungated is the same inconsistency this gate exists to remove. "Extract
+    # your stable facts into REFERENCE.md" asks somebody to restructure a
+    # record whose work is over; for a finished project the CONTEXT and the
+    # session archive already hold everything a later reader needs, and a
+    # reference file would be a duplicate of them.
+    for check in ("sessions-present", "reference-budget", "reference-present"):
+        audit.skip(check, "dormant") if dormant else audit.cover(check)
+
+    if not sessions_dir.is_dir() and not dormant:
         # Only a defect once there is history to archive; a brand-new project
         # legitimately has none.
         if context_lines > CONTEXT_BUDGET_COMPLETED:
@@ -924,7 +1007,11 @@ def audit_project(
                 "create sessions/YYYY-MM.md and move session narrative there",
             )
 
-    if not reference_path.is_file() and entries >= REFERENCE_EXPECTED_AFTER_SESSIONS:
+    if (
+        not reference_path.is_file()
+        and entries >= REFERENCE_EXPECTED_AFTER_SESSIONS
+        and not dormant
+    ):
         audit.add(
             "reference-present",
             "defect",
@@ -988,7 +1075,7 @@ def audit_project(
                     "topic nothing points at is unreachable from session start",
                     "add it to the REFERENCE.md index",
                 )
-    elif reference_path.is_file():
+    elif reference_path.is_file() and not dormant:
         ref_lines = len(read_text(reference_path).splitlines())
         if ref_lines > REFERENCE_BUDGET:
             if is_standing:
@@ -1102,8 +1189,7 @@ def audit_project(
             )
 
     # --- freshness against git ---------------------------------------------
-    newest = last_session_commit_date(repo_root, projects_root, project_path)
-    dormant = project_is_dormant(index_status, declared_complete)
+    newest, newest_sha = last_session_commit(repo_root, projects_root, project_path)
 
     if newest is UNVERIFIABLE:
         # Only meaningful for a project someone is working. "We cannot tell when
@@ -1141,15 +1227,60 @@ def audit_project(
             # likely to be wrong.
             anchor_field = "last_session"
             anchor = parse_date_field(entry.get("last_session"))
-        if anchor and (newest - anchor).days > LAST_SESSION_TOLERANCE_DAYS:
+        # The acknowledgment. Without it this finding is self-sustaining: the
+        # commits that carry out a disposition — the archive pass, the trim to
+        # budget, the routing note — are themselves post-completed_date commits,
+        # so resolving the finding re-creates it and no amount of correct work
+        # ever clears it. Two live instances produced this field on the day the
+        # check shipped.
+        #
+        # It lives in index.yaml and NOT in the project directory, and that is a
+        # correctness requirement rather than a preference: the freshness walk is
+        # `git log -- <project_path>`, so a marker written inside the project
+        # would re-extend newest-commit by the act of writing it and re-trigger
+        # the very check it answers. index.yaml is outside that path.
+        #
+        # A sha, not a date. A date over-covers by up to a day — two disposition
+        # commits thirteen minutes apart, one either side of a recorded review
+        # date, and the second is silently swallowed. And a sha that no longer
+        # resolves fails LOUDLY below, where a stale date would just keep
+        # quietly asserting a review of history that has since been rewritten.
+        acknowledged = False
+        reviewed = str(entry.get("post_close_reviewed_through") or "").strip()
+        if reviewed:
+            code, _ = git(repo_root, "cat-file", "-e", f"{reviewed}^{{commit}}")
+            if code != 0:
+                audit.add(
+                    "post-close-review-unresolvable",
+                    "defect",
+                    f"post_close_reviewed_through is {reviewed}, which is not a "
+                    "commit in this repository — the acknowledgment cannot be "
+                    "checked, so it is not honoured",
+                    "re-review the commits after completed_date and record the "
+                    "sha of the newest one, or remove the field",
+                )
+            elif newest_sha:
+                covered, _ = git(
+                    repo_root, "merge-base", "--is-ancestor", newest_sha, reviewed
+                )
+                # Honoured only while every project commit is an ancestor of the
+                # reviewed sha. One new commit and the question re-arms itself,
+                # which is the property that keeps this an acknowledgment rather
+                # than a mute button.
+                if covered == 0:
+                    acknowledged = True
+                    audit.skip("terminal-project-active", "post-close review")
+
+        if not acknowledged and anchor and (newest - anchor).days > LAST_SESSION_TOLERANCE_DAYS:
             audit.add(
                 "terminal-project-active",
                 "warning",
                 f"index.yaml marks this project completed, but it has session "
                 f"commits through {newest} ({anchor_field} says {anchor}) — "
                 "either the work resumed or the status is wrong",
-                "reopen the project (status: active) or record why the commits "
-                "are maintenance rather than work",
+                "reopen the project (status: active), or record that you read "
+                "the commits after completed_date and they were maintenance, "
+                f"with post_close_reviewed_through: '{newest_sha or '<sha>'}'",
             )
     elif newest and not treat_completed:
         idx_last = parse_date_field((index_entry or {}).get("last_session"))
@@ -1198,6 +1329,13 @@ def audit_project(
                 "'*State as of:*' marker in the same edit",
             )
         elif kind == "body-marker-absent":
+            # "Body currency is unverifiable" is a live-project question. On a
+            # finished record the body is not supposed to be current, it is
+            # supposed to be final, and adding markers to assert a re-check
+            # nobody performed would be the same fiction the item-currency
+            # suppression already refuses.
+            if dormant:
+                continue
             audit.add(
                 "body-currency",
                 "warning",
@@ -1214,8 +1352,17 @@ def audit_project(
             # open when work stopped, not a live queue. Re-dating it would be
             # fiction: nobody re-checked those items, and stamping them would
             # assert that somebody did.
+            #
+            # This suppression shipped in v1.7.0 with no paired check, in the
+            # release whose own headline principle forbids exactly that. The
+            # pairing is below: the question that becomes applicable is not
+            # whether a finished project's items are FRESH, it is whether a
+            # project claiming to be finished should be listing obligations at
+            # all. 24 such items across 6 projects were invisible until it existed.
             if dormant:
+                audit.skip("item-currency", "dormant")
                 continue
+            audit.cover("item-currency")
             # Warnings, not defects, and deliberately so: item stamping is a new
             # convention, and turning an entire corpus red on the day it lands
             # is how a guard teaches people to route around it. These surface in
@@ -1228,6 +1375,25 @@ def audit_project(
                 "re-date the item with '(as of YYYY-MM-DD, review Nd)' once "
                 "you have checked it, or close it out into sessions/ — an "
                 "item whose age is unverifiable cannot be trusted as current",
+            )
+
+    # --- the inversion that pairs the item-currency suppression --------------
+    # Asked only of a terminal project, and only about obligations: a finished
+    # project that still lists things it owes is either not finished, or its
+    # record is carrying a queue it should have closed out into sessions/.
+    # Either way it is a live record error, and it was unaskable before.
+    if dormant and index_says_completed:
+        owed = context_currency.open_obligation_count(context_text)
+        if owed:
+            audit.add(
+                "terminal-project-open-items",
+                "warning",
+                f"index.yaml marks this project completed, but its CONTEXT.md "
+                f"still lists {owed} unchecked obligation(s) under an "
+                "open-items heading — a finished project should not owe work",
+                "close them out into sessions/ as the record of what was open "
+                "at close, hand them to the project that inherited them, or "
+                "reopen this one",
             )
 
     # --- durability ---------------------------------------------------------
@@ -1444,8 +1610,21 @@ def _root_list_entries(text: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def render_human(findings: list[Finding], audited: int, sources: int) -> str:
+def render_human(
+    findings: list[Finding],
+    audited: int,
+    sources: int,
+    coverage: dict | None = None,
+) -> str:
     lines = [f"synthesis context doctor {DOCTOR_VERSION}"]
+    for check, c in (coverage or {}).items():
+        if not c["skipped"]:
+            continue
+        why = ", ".join(f"{n} {r}" for r, n in sorted(c["reasons"].items()))
+        lines.append(
+            f"  coverage  {check}: examined {c['examined']}, "
+            f"skipped {c['skipped']} ({why})"
+        )
     if not findings:
         lines.append(
             f"  ok  {audited} project(s) across {sources} source(s): tiers "
@@ -1596,6 +1775,7 @@ def main(argv: list[str] | None = None) -> int:
         "doctor_version": DOCTOR_VERSION,
         "readiness": args.readiness,
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "coverage": coverage_report(audits),
         "sources": source_count,
         "projects_audited": len(audits),
         "defects": len(defects),
@@ -1626,7 +1806,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"context doctor: {len(audits)} project(s) healthy")
     else:
-        print(render_human(findings, len(audits), source_count))
+        print(render_human(findings, len(audits), source_count, payload["coverage"]))
 
     return 1 if failed else 0
 

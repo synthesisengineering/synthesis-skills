@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.15.0"
+  version: "1.16.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -797,6 +797,27 @@ Two properties keep the suppression honest:
   The inversion anchors on `completed_date`. Closing a project is itself work — the archive pass, the trim to budget — and those commits land after its final *working* session by design; measured against `last_session` they read as "still being worked," which is the opposite of what they are. Two of this check's first nine findings were exactly that. It falls back to `last_session` only when `completed_date` is missing or unreadable, because a record too incomplete to anchor on is the one most likely to be wrong.
 
 The general form, worth more than the fix: **suppressing an inapplicable check is only safe when you add the check that becomes applicable in its place.** Silence alone is indistinguishable from a guard that stopped working.
+
+**A suppression must be answerable, and its answer must expire** (v1.8.0). `terminal-project-active` shipped in v1.7.0 with a remedy the system could not accept: "record why the commits are maintenance rather than work," and no field to record it in. Worse than unactionable — it was self-sustaining, because the commits that dispose of a project are themselves post-completion commits, so resolving the finding re-created it.
+
+The acknowledgment is an index field, and index-side is a correctness requirement rather than a preference: the freshness walk is `git log -- <project_path>`, so a marker written inside the project would re-extend newest-commit by the act of writing it.
+
+```yaml
+post_close_reviewed_through: 3e79b38...   # carries the comparison
+post_close_reviewed_on: '2026-08-31'          # human readability only
+```
+
+It names a commit, not a date. A date over-covers by up to a day, and two disposition commits minutes apart either side of a recorded date would see the second silently swallowed. A sha that no longer resolves raises `post-close-review-unresolvable` as a **defect** — an acknowledgment whose evidence has vanished fails loudly rather than continuing to assert a review of history that was rewritten. One new project commit re-arms the question, which is what keeps this an acknowledgment rather than a mute button.
+
+**Every gated check reports its denominator** (v1.8.0). A check that finds nothing and a check that examined nothing are indistinguishable in a findings list, and so is a deliberate skip. The report now states both:
+
+```
+coverage  item-currency: examined 41, skipped 31 (31 dormant)
+```
+
+This is the general form of the pairing rule, and the cheaper half of it. v1.7.0 suppressed open-item checks on dormant projects and shipped **no paired check** — in the release whose headline principle forbids that, asserted in the changelog, in this file, and in the project record, and enforced by none of them. A printed `skipped 141` invites the question nobody asked. The pairing itself is `terminal-project-open-items`: a project claiming to be finished while still listing obligations it owes.
+
+The general form, which covers both this and the case where a check simply reaches less than it appears to: **a guard's coverage is a claim that needs its own verification, separate from whether it passes.**
 
 **Bulk commits are not sessions.** The freshness checks ignore any commit touching more than a few projects at once. A path migration or a repo-wide restructure touches every project and says nothing about when any one of them was worked; counting those as sessions makes every dormant project look stale. False alarms are not a cosmetic problem — a doctor that cries wolf gets ignored, and an ignored doctor is the fail-open state it was built to end.
 
