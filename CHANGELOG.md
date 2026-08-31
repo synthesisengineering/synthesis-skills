@@ -46,8 +46,8 @@ fail-open state it exists to prevent.
 - **`bounded` stops being dead metadata.** It was declared in the status
   vocabulary and read by nothing. A standing project over budget is now told to
   shard rather than to narrow its scope, which was advice its owner could not
-  take. Defaults to `true` when unset: 1,296 of 1,306 corpus projects are
-  unaffected, so adoption costs no migration.
+  take. Defaults to `true` when unset: 172 of the 177 indexed corpus projects
+  never declare the field and are unaffected, so adoption costs no migration.
 
 - **The shard vocabulary is documented by name.** A report names the check
   that fired, so a name the skill never mentions hands its reader a string
