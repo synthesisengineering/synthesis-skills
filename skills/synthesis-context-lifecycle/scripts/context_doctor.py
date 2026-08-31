@@ -63,12 +63,22 @@ from pathlib import Path
 # missing the doctor must fail loudly rather than silently skip a check.
 import context_currency
 
-DOCTOR_VERSION = "1.6.0"
+DOCTOR_VERSION = "1.7.0"
 
 # Budgets from the tiered context architecture.
 CONTEXT_BUDGET_ACTIVE = 150
 CONTEXT_BUDGET_COMPLETED = 80
 REFERENCE_BUDGET = 300
+
+# Semantic memory outgrows one file the same way episodic memory does, and for
+# the same reason: a standing project's whole function is to accumulate durable
+# operating knowledge, so its REFERENCE.md has no natural ceiling. `sessions/`
+# solved that for the episodic tier years ago; `reference/` is the same move one
+# tier over. Once a project shards, REFERENCE.md stops being the content and
+# becomes the index over it, so it is held to a working-memory budget while each
+# topic file gets the old reference budget.
+REFERENCE_INDEX_BUDGET = 150
+REFERENCE_TOPIC_BUDGET = 300
 
 # A project with at least this many session-archive entries has accumulated
 # enough history that stable facts belong in REFERENCE.md rather than in the
@@ -561,6 +571,26 @@ CANONICAL_STATUSES = {"active", "paused", "completed", "archived"}
 # tolerated typo of `completed` and is reported by the vocabulary check below.
 TERMINAL_STATUSES = {"completed", "complete", "archived", "superseded"}
 
+# Statuses under which nobody is working the project. The distinction matters
+# because several checks ask questions that only have meaning about work in
+# progress: how fresh is the record, are its open items still current, is its
+# status header parseable for a cross-check. Asked of a project that shipped in
+# May, each of those is unanswerable *and* unactionable — and a guard that emits
+# unactionable findings is the fail-open state it exists to prevent. Measured on
+# a 175-project corpus before this change: 98% of `freshness-unverifiable` and
+# 90% of `record-unreadable` were raised against dormant projects.
+DORMANT_STATUSES = TERMINAL_STATUSES | {"paused"}
+
+
+def project_is_dormant(index_status: str, declared_complete) -> bool:
+    """True when no one is working the project, so work-in-progress checks do
+    not apply. Errs toward *active*: an unset or unrecognised status is treated
+    as live, because suppressing a check on a project whose state we cannot read
+    would hide exactly the records most likely to be wrong."""
+    if (index_status or "").strip().lower() in DORMANT_STATUSES:
+        return True
+    return bool(declared_complete)
+
 # Retired values, still readable so an unmigrated corpus is diagnosed rather
 # than rejected. The message names what each one should become.
 RETIRED_STATUSES = {
@@ -703,6 +733,11 @@ CHECKS = [
     "context-budget",
     "reference-present",
     "reference-budget",
+    "reference-shard",
+    "reference-index-budget",
+    "reference-index-missing",
+    "reference-topic-budget",
+    "reference-index-orphan",
     "sessions-present",
     "status-agreement",
     "status-vocabulary",
@@ -715,6 +750,7 @@ CHECKS = [
     "untracked-context",
     "unpushed-context",
     "freshness-unverifiable",
+    "terminal-project-active",
     "record-unreadable",
     "artifact-cites-missing-script",
 ]
@@ -898,16 +934,85 @@ def audit_project(
             "(write it first, verify, then trim CONTEXT.md)",
         )
 
-    if reference_path.is_file():
+    # --- semantic tier: one file, or an index over reference/ ---------------
+    # `bounded` defaults to True when unset. That keeps every existing project's
+    # behaviour identical and changes it only where a project has explicitly
+    # declared itself standing, so adoption costs nothing and means something.
+    is_standing = (index_entry or {}).get("bounded") is False
+    reference_dir = project_path / "reference"
+
+    if reference_dir.is_dir():
+        # Sharded: REFERENCE.md is the index, not the content.
+        if reference_path.is_file():
+            index_text = read_text(reference_path)
+            index_lines = len(index_text.splitlines())
+            if index_lines > REFERENCE_INDEX_BUDGET:
+                audit.add(
+                    "reference-index-budget",
+                    "warning",
+                    f"REFERENCE.md is {index_lines} lines, over the "
+                    f"{REFERENCE_INDEX_BUDGET}-line index budget — once a project "
+                    "shards, REFERENCE.md is a map of reference/, not content",
+                    "move the prose into a reference/ topic file and leave a "
+                    "one-line pointer in the index",
+                )
+        else:
+            index_text = ""
+            audit.add(
+                "reference-index-missing",
+                "defect",
+                "reference/ exists with no REFERENCE.md index — the topic files "
+                "are unreachable from the project's entry point",
+                "write REFERENCE.md as an index linking every reference/ topic",
+            )
+        for topic in sorted(reference_dir.glob("*.md")):
+            if not topic.is_file():
+                continue
+            topic_lines = len(read_text(topic).splitlines())
+            if topic_lines > REFERENCE_TOPIC_BUDGET:
+                audit.add(
+                    "reference-topic-budget",
+                    "warning",
+                    f"reference/{topic.name} is {topic_lines} lines, over the "
+                    f"soft budget of {REFERENCE_TOPIC_BUDGET}",
+                    "split the topic, or move narrative into sessions/",
+                )
+            # An unlinked topic file is the shard's version of losing content:
+            # it exists, it is not reachable from the entry point, and nothing
+            # else in the system would notice.
+            if topic.name not in index_text:
+                audit.add(
+                    "reference-index-orphan",
+                    "warning",
+                    f"reference/{topic.name} is not linked from REFERENCE.md — a "
+                    "topic nothing points at is unreachable from session start",
+                    "add it to the REFERENCE.md index",
+                )
+    elif reference_path.is_file():
         ref_lines = len(read_text(reference_path).splitlines())
         if ref_lines > REFERENCE_BUDGET:
-            audit.add(
-                "reference-budget",
-                "warning",
-                f"REFERENCE.md is {ref_lines} lines, over the soft budget of "
-                f"{REFERENCE_BUDGET} — the project's scope may be too broad",
-                "split the project, or move narrative into sessions/",
-            )
+            if is_standing:
+                # For a seat, breadth is the point. The wall is the file, not
+                # the scope, so the remedy is to shard rather than to split.
+                audit.add(
+                    "reference-shard",
+                    "warning",
+                    f"REFERENCE.md is {ref_lines} lines, over {REFERENCE_BUDGET}. "
+                    "This project is declared standing (`bounded: false`), so its "
+                    "reference is expected to grow — it has outgrown one file",
+                    "shard into reference/<topic>.md and leave REFERENCE.md as "
+                    "the index",
+                )
+            else:
+                audit.add(
+                    "reference-budget",
+                    "warning",
+                    f"REFERENCE.md is {ref_lines} lines, over the soft budget of "
+                    f"{REFERENCE_BUDGET} — the project's scope may be too broad",
+                    "split the project, move narrative into sessions/, or — if "
+                    "the breadth is real — declare `bounded: false` and shard "
+                    "into reference/",
+                )
 
     # --- executable working-state durability ------------------------------
     for artifact, citation, reason in cited_script_findings(project_path):
@@ -946,13 +1051,18 @@ def audit_project(
         )
     else:
         if declared_complete is None:
-            audit.add(
-                "record-unreadable",
-                "warning",
-                "CONTEXT.md has no parseable Status or Phase header, so its "
-                "status cannot be cross-checked against index.yaml",
-                "add a '**Status:** Active' (or Completed/Paused) header",
-            )
+            # The cross-check this enables only protects a project someone is
+            # working. On a dormant one it asks an author who has moved on to
+            # go back and annotate a finished record, which is why 90% of these
+            # sat unactioned. Kept as a finding wherever the project is live.
+            if (index_status or "").strip().lower() not in DORMANT_STATUSES:
+                audit.add(
+                    "record-unreadable",
+                    "warning",
+                    "CONTEXT.md has no parseable Status or Phase header, so its "
+                    "status cannot be cross-checked against index.yaml",
+                    "add a '**Status:** Active' (or Completed/Paused) header",
+                )
         elif declared_complete != index_says_completed:
             ctx_word = "completed" if declared_complete else "active"
             audit.add(
@@ -993,16 +1103,37 @@ def audit_project(
 
     # --- freshness against git ---------------------------------------------
     newest = last_session_commit_date(repo_root, projects_root, project_path)
+    dormant = project_is_dormant(index_status, declared_complete)
+
     if newest is UNVERIFIABLE:
-        audit.add(
-            "freshness-unverifiable",
-            "warning",
-            f"every one of the last {MAX_COMMITS_EXAMINED} commits touching this "
-            "project is a repo-wide sweep, so its record cannot be checked "
-            "against real session history",
-            "commit session work in project-scoped commits so freshness is "
-            "verifiable",
-        )
+        # Only meaningful for a project someone is working. "We cannot tell when
+        # this shipped-in-May post was last touched" is true and useless.
+        if not dormant:
+            audit.add(
+                "freshness-unverifiable",
+                "warning",
+                f"every one of the last {MAX_COMMITS_EXAMINED} commits touching "
+                "this project is a repo-wide sweep, so its record cannot be "
+                "checked against real session history",
+                "commit session work in project-scoped commits so freshness is "
+                "verifiable",
+            )
+    elif newest and dormant and index_says_completed:
+        # The inversion, and the reason suppressing the above is safe: a project
+        # declared finished that is still receiving real session commits is a
+        # live record error, and it is the one freshness question worth asking
+        # about a terminal project.
+        idx_last = parse_date_field((index_entry or {}).get("last_session"))
+        if idx_last and (newest - idx_last).days > LAST_SESSION_TOLERANCE_DAYS:
+            audit.add(
+                "terminal-project-active",
+                "warning",
+                f"index.yaml marks this project completed, but it has session "
+                f"commits through {newest} (last_session says {idx_last}) — "
+                "either the work resumed or the status is wrong",
+                "reopen the project (status: active) or record why the commits "
+                "are maintenance rather than work",
+            )
     elif newest and not treat_completed:
         idx_last = parse_date_field((index_entry or {}).get("last_session"))
         if idx_last and (newest - idx_last).days > LAST_SESSION_TOLERANCE_DAYS:
@@ -1062,6 +1193,12 @@ def audit_project(
             "item-marker-absent",
             "item-marker-malformed",
         ):
+            # An open-items list in a dormant project is a record of what was
+            # open when work stopped, not a live queue. Re-dating it would be
+            # fiction: nobody re-checked those items, and stamping them would
+            # assert that somebody did.
+            if dormant:
+                continue
             # Warnings, not defects, and deliberately so: item stamping is a new
             # convention, and turning an entire corpus red on the day it lands
             # is how a guard teaches people to route around it. These surface in

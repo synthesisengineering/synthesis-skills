@@ -35,6 +35,8 @@ Combining all four in one file means the file grows linearly with session count,
 project/
 ├── CONTEXT.md      # Working memory (budget: ≤150 lines)
 ├── REFERENCE.md    # Semantic memory (stable facts, update in place)
+├── reference/      # Semantic memory, sharded — once one file is not enough
+│   └── <topic>.md  # One topic per file; REFERENCE.md becomes its index
 ├── sessions/       # Episodic memory (archived session logs)
 │   └── YYYY-MM.md  # Monthly files
 └── [other files]   # Transcripts, artifacts, etc.
@@ -168,7 +170,9 @@ For session history: see [sessions/](sessions/)
 
 **Purpose:** Stable facts that don't change session-to-session.
 
-**Budget:** ≤300 lines (soft). Exceeding 300 lines signals the project scope may be too broad.
+**Budget:** ≤300 lines (soft) for a **bounded** project. Exceeding it signals the scope may be too broad — the right response is usually to split the project or move narrative into `sessions/`.
+
+**For a standing project, that reading is wrong**, and saying it anyway produces advice nobody can take. A project declared `bounded: false` in `index.yaml` — an operations seat, a standing stewardship — exists precisely to accumulate durable operating knowledge. Its reference has no natural ceiling, and "your scope is too broad" is not a defect report about a seat, it is a description of what a seat is. See **Sharding the semantic tier** below.
 
 **Contains:**
 - Project overview and goals (if not obvious from name)
@@ -210,6 +214,34 @@ Stable facts for this project. Updated in place when facts change.
 
 [Index of transcripts, artifacts, external documents]
 ```
+
+### Sharding the semantic tier — `reference/`
+
+The episodic tier solved unbounded growth years ago: `sessions/` is a directory, and no single file has to hold every session. The semantic tier never got that treatment. `REFERENCE.md` was a single file with a soft cap and **no overflow mechanism**, which is fine for a bounded arc whose scope really is limited, and structurally broken for a standing project whose whole function is accumulating operating knowledge.
+
+`reference/` is the same move, one tier over.
+
+**When to shard.** A bounded project should not: hitting 300 lines is real information about its scope. A standing project shards when one file stops being readable — in practice around the same 300 lines.
+
+**What changes when you do.** `REFERENCE.md` stops being the content and becomes the **index over it**:
+
+```markdown
+# [Project] — Reference
+
+Stable facts, sharded by topic. Each entry links one file in `reference/`.
+
+| Topic | What lives there |
+|---|---|
+| [People and roles](reference/people.md) | roster, reporting lines, who owns what |
+| [Tooling and auth](reference/tooling.md) | CLIs, credentials posture, known limitations |
+| [Routing](reference/routing.md) | what this seat owns and where work goes |
+```
+
+**Budgets after sharding.** The index is working-memory-shaped and held to **≤150 lines**; each `reference/<topic>.md` gets the old **≤300**. The scope signal moves from one line count to the *number of topics* — which is the honest measure for a standing project anyway.
+
+**The invariant that keeps sharding safe:** every topic file is linked from the index. A topic nothing points at is unreachable from session start, which makes sharding a way to lose content rather than organise it. The doctor reports an unlinked topic (`reference-index-orphan`) and a `reference/` with no index at all (`reference-index-missing`, a defect).
+
+**Migration is not required.** A project under the budget keeps one `REFERENCE.md` and nothing changes. `bounded` defaults to `true` when unset, so projects that never declare themselves standing behave exactly as before.
 
 ### sessions/ — Episodic Archive
 
@@ -641,7 +673,10 @@ This section is the mechanism. Which repositories are deletion units, which root
 | Metric | Target |
 |--------|--------|
 | CONTEXT.md line count | ≤150 (active) / ≤80 (completed) |
-| REFERENCE.md line count | ≤300 |
+| REFERENCE.md line count | ≤300 (bounded projects); standing projects shard into `reference/` |
+| REFERENCE.md as index, once sharded | ≤150 |
+| `reference/<topic>.md` line count | ≤300 each |
+| Unlinked files in `reference/` | 0 |
 | Stale session logs (>1 week old in CONTEXT.md) | 0 |
 | Completed tasks remaining in CONTEXT.md | 0 |
 | Budget footer present | Yes |
@@ -710,9 +745,10 @@ What it checks:
 | Group | Checks |
 |-------|--------|
 | Tier structure | CONTEXT.md present; sessions/ once there is history to archive; REFERENCE.md once a project has accumulated stable facts |
-| Budgets | CONTEXT.md ≤150 active / ≤80 completed; REFERENCE.md ≤300 (warning) |
+| Budgets | CONTEXT.md ≤150 active / ≤80 completed; REFERENCE.md ≤300 (warning). A standing project (`bounded: false`) over budget is told to shard, not to narrow its scope |
+| Semantic shard | once `reference/` exists: index ≤150, each topic ≤300, every topic linked from the index, and an index actually present (defect if not) |
 | Cross-tier agreement | index.yaml status agrees with the CONTEXT.md header; completed projects carry `completed_date`; indexed projects have directories and vice versa |
-| Freshness | index.yaml `last_session` and the CONTEXT.md header agree with real git history |
+| Freshness | index.yaml `last_session` and the CONTEXT.md header agree with real git history. Applies to live projects; for a terminal one the question inverts to whether it is still being worked |
 | Durability | tier files are tracked by git; local mode reports recoverable uncommitted or ahead state as warnings; remote mode requires a clean upstream-current branch |
 | Executable state | artifact citations to missing, non-regular, escaped, or symlink-traversing `resources/scripts/` targets warn; existence does not establish correctness |
 | Disclosure | anything unverifiable is reported rather than skipped — unreadable status headers and freshness that cannot be established both surface as findings |
@@ -737,6 +773,17 @@ status the doctor does not recognise silently disables every check keyed off it,
 which is the most expensive kind of quiet failure a health check can have.
 
 **Nothing is skipped silently.** A check that cannot run reports that it could not run. When every recent commit touching a project is a repo-wide sweep, freshness is unverifiable and says so; when a CONTEXT.md has no parseable status header, the cross-check is reported as unavailable rather than passed. Silent skips are indistinguishable from clean results, and that is the property this tool exists to remove.
+
+**A check must know when it does not apply** (v1.7.0). Several checks ask questions that only have meaning about work in progress: how fresh is this record, are its open items still current, is its status header parseable for a cross-check. Asked of a project that shipped in May, each is unanswerable *and* unactionable.
+
+Measured on a 175-project corpus before this rule existed: **98%** of `freshness-unverifiable` and **90%** of `record-unreadable` were raised against dormant projects — completed, archived, or paused. They accounted for most of 193 warnings that nobody had acted on, and 193 unactioned warnings is the fail-open state the doctor exists to end. Applying the rule took the corpus from 193 warnings to 90 without weakening a single check that applies.
+
+Two properties keep the suppression honest:
+
+- **It errs toward live.** An unset or unrecognised status counts as active, because the records whose state cannot be read are the ones most likely to be wrong. Only an explicit dormant status suppresses.
+- **It is paired with an inversion.** A project declared *completed* that is still receiving real session commits is a live record error, and `terminal-project-active` reports it. That question was invisible before — the old code asked only whether a terminal project's freshness could be verified, never whether its terminal claim was still true. On the same corpus it surfaced nine genuine stale records, one of them off by twenty months.
+
+The general form, worth more than the fix: **suppressing an inapplicable check is only safe when you add the check that becomes applicable in its place.** Silence alone is indistinguishable from a guard that stopped working.
 
 **Bulk commits are not sessions.** The freshness checks ignore any commit touching more than a few projects at once. A path migration or a repo-wide restructure touches every project and says nothing about when any one of them was worked; counting those as sessions makes every dormant project look stale. False alarms are not a cosmetic problem — a doctor that cries wolf gets ignored, and an ignored doctor is the fail-open state it was built to end.
 
