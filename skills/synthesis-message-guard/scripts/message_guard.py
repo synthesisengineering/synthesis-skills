@@ -51,7 +51,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 
-ENGINE_VERSION = "1.1.0"
+ENGINE_VERSION = "1.3.0"
 
 
 def config_path():
@@ -127,6 +127,74 @@ def extract_text(tool_input, candidates):
         if isinstance(val, str) and val.strip():
             return key, val
     return None, None
+
+
+LINKED_CONSTRUCT_RX = None  # compiled lazily; strips forms that RENDER as links
+
+
+def _strip_linked_constructs(text):
+    """Remove every construct in which a URL legitimately rides: HTML href
+    attributes, Slack <url|label> / <url> mrkdwn, and markdown (url)
+    notation. What remains is VISIBLE text; a persona domain surviving the
+    strip is the visible-URL fallback form."""
+    import re as _re
+    global LINKED_CONSTRUCT_RX
+    if LINKED_CONSTRUCT_RX is None:
+        LINKED_CONSTRUCT_RX = _re.compile(
+            r'href\s*=\s*"[^"]*"'
+            r"|href\s*=\s*'[^']*'"
+            r"|<https?://[^>|\s]*(?:\|[^>]*)?>"
+            r"|\]\(https?://[^)]*\)"
+        )
+    return LINKED_CONSTRUCT_RX.sub(" ", text)
+
+
+def signature_wire_failures(tool_name, tool_input, text, cfg):
+    """Enforce the signature link-form rules (2026-08-30 incident: a
+    persona-signed email to executives went out body_format plain, so the
+    signature rendered as a bare visible URL and dropped its method link —
+    one day after the doctrine naming the exact tool and parameter shipped.
+    Correct doctrine did not bind because nothing read it; this does).
+
+    Configured via the OPTIONAL patterns.json key signature_link_enforcement:
+      { "markers": ["\\U0001F9DE", "\\U0001F916"],
+        "domains": ["ragenie.ai", "ragbot.ai"],
+        "html_body_format_tools": "send_gmail_message|draft_gmail_message",
+        "linkless_fallback_tools": "regex-of-tools-with-no-link-support" }
+    Checks run only when an outgoing message carries a persona marker, so
+    unsigned traffic is never taxed. Absent key = checks off (adopt
+    deliberately)."""
+    enforcement = cfg.get("signature_link_enforcement")
+    if not enforcement:
+        return []
+    markers = enforcement.get("markers", [])
+    if not any(m in text for m in markers):
+        return []
+    failures = []
+    import re as _re
+    html_tools = enforcement.get("html_body_format_tools")
+    if html_tools and _re.search(html_tools, tool_name):
+        if tool_input.get("body_format", "plain") != "html":
+            failures.append(
+                "persona-signed email MUST use body_format html — the "
+                "raw-MIME HTML path is the only permitted email form "
+                "(comms doctrine v4.3.1); the plain default renders the "
+                "signature as a bare URL")
+        if _re.search(r"\]\(https?://", text):
+            failures.append(
+                "markdown link notation never renders in email bodies; "
+                "convert to HTML anchors before staging")
+    fallback_tools = enforcement.get("linkless_fallback_tools")
+    if fallback_tools and _re.search(fallback_tools, tool_name):
+        return failures  # visible-URL form is the legitimate form here
+    stripped = _strip_linked_constructs(text)
+    exposed = [d for d in enforcement.get("domains", []) if d in stripped]
+    if exposed:
+        failures.append(
+            "persona signature uses the visible-URL fallback (%s appears "
+            "as text, not inside a link) on a link-capable channel — the "
+            "persona name must BE the hyperlink" % ", ".join(exposed))
+    return failures
 
 
 def check_header_hygiene(tool_input):
@@ -275,6 +343,13 @@ def run_gate():
                   "messages on the principal's behalf (see the writing-voice "
                   "skill). Rewrite the message; do not paraphrase the banned "
                   "phrase into a synonym of itself." % detail)
+
+        wire_fails = signature_wire_failures(tool_name, tool_input, text, cfg)
+        if wire_fails:
+            block("signature wire-form violation — " + " | ".join(wire_fails)
+                  + ". Load the comms skill and use its exact per-platform "
+                  "wire forms; the visible-URL form is only for channels "
+                  "that cannot render links.")
 
         header_fails = check_header_hygiene(tool_input)
         if header_fails:

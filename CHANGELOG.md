@@ -4,6 +4,29 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.69.0] - 2026-08-30
+
+**`synthesis-message-guard` engine v1.3.0 — signature wire forms become
+mechanical.** One day after the per-platform signature doctrine shipped, a
+persona-signed email to executives went out `body_format: plain` — composed
+from a compaction summary instead of the loaded skill — so the signature
+rendered as a bare visible URL and dropped its method link. Correct,
+freshly-updated, ABSOLUTE doctrine naming the exact tool and parameter did
+not bind, because nothing read it and nothing checked the result.
+
+- New optional `signature_link_enforcement` config: when an outgoing
+  message carries a persona marker, the gate refuses (1) persona-signed
+  email without `body_format: "html"`, (2) markdown link notation in email
+  bodies, and (3) any configured persona domain appearing as visible text
+  rather than inside a link construct (href, Slack mrkdwn, or markdown
+  notation) — with a configured exempt list for genuinely link-incapable
+  channels, where the visible form is the legitimate form.
+- Unsigned traffic is never taxed: the checks trigger only on marker
+  presence. Absent config = checks off; adopt deliberately.
+- The self-attested branding boolean in grounding ledgers now has a
+  mechanical backstop: the gate verifies the link form itself instead of
+  trusting the typed field.
+
 ## [4.68.0] - 2026-08-30
 
 **`synthesis-autopilot` v2.0.0 — unattended time is a scheduled property.**

@@ -1,27 +1,23 @@
-# AGENT HEURISTIC: authored for the 4.68.0 autopilot-continuation release.
+# AGENT HEURISTIC: authored for the 4.69.0 signature-wire-enforcement release.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff, proved by the runner before release.py consumes
 # the receipt.
 schema: 2
-suite: synthesis-autopilot-continuation-release
+suite: synthesis-signature-wire-enforcement-release
 membership: closed
-production_entry_point: skills/synthesis-autopilot/scripts/autopilot_gate.py --gate
-enforcing_boundary: plugin Stop hook on every session stop while an engagement is registered
+production_entry_point: skills/synthesis-message-guard/scripts/message_guard.py --gate
+enforcing_boundary: PreToolUse gate on every send/draft tool call
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the live Stop-hook path requires each client to load the new plugin hook (Codex hook trust is a human decision by design and will show one pending definition until the principal trusts it); which continuation mechanisms exist is a per-harness fact the doctrine requires probing at engagement rather than assuming
+unverified_remainder: enforcement activates only where the user's patterns.json adopts the signature_link_enforcement key (config is deliberately user-local); the incident session's own compose-from-compaction-summary habit is doctrine and cannot be mechanized here
 changed_surfaces:
-  - path: skills/synthesis-autopilot/SKILL.md
-    cases: [doctrine-carries-continuation-contract]
-  - path: skills/synthesis-autopilot/scripts/autopilot_gate.py
-    cases: [gate-blocks-silent-idle, gate-passes-with-continuation, gate-passes-with-alerted-blocker, gate-passes-after-honest-close, unreadable-record-fails-closed, bare-spin-unrecordable, blocker-requires-alert]
-  - path: skills/synthesis-autopilot/scripts/test_autopilot_gate.py
-    cases: [gate-blocks-silent-idle, gate-passes-with-continuation, gate-passes-with-alerted-blocker, gate-passes-after-honest-close, unreadable-record-fails-closed, bare-spin-unrecordable, blocker-requires-alert, doctrine-carries-continuation-contract]
-  - path: hooks/hooks.json
-    cases: [gate-blocks-silent-idle]
+  - path: skills/synthesis-message-guard/scripts/message_guard.py
+    cases: [incident-shape-blocks, html-anchors-pass, slack-mrkdwn-passes, markdown-in-email-blocks, linkless-fallback-exempt, unsigned-traffic-untaxed, absent-config-off]
+  - path: skills/synthesis-message-guard/scripts/test_message_guard.py
+    cases: [incident-shape-blocks, html-anchors-pass, slack-mrkdwn-passes, markdown-in-email-blocks, linkless-fallback-exempt, unsigned-traffic-untaxed, absent-config-off]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -33,38 +29,34 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: gate-blocks-silent-idle
+  - id: incident-shape-blocks
     control_class: enforced-gate
-    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_gate_blocks_active_engagement_without_continuation
-    motivating_defect: an-overnight-engagement-idled-all-night-because-nothing-caused-the-next-turn-and-nothing-noticed
-  - id: gate-passes-with-continuation
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_wire_incident_shape_blocks
+    motivating_defect: a-persona-signed-email-to-executives-went-out-plain-one-day-after-the-doctrine-named-the-exact-parameter
+  - id: html-anchors-pass
     control_class: acceptance-test
-    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_gate_passes_once_continuation_recorded
-    motivating_defect: a-gate-that-cannot-pass-a-correctly-continued-run-teaches-agents-to-delete-its-state
-  - id: gate-passes-with-alerted-blocker
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_wire_html_anchors_pass
+    motivating_defect: a-gate-that-blocks-the-canonical-form-teaches-operators-to-route-around-it
+  - id: slack-mrkdwn-passes
     control_class: acceptance-test
-    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_gate_passes_with_alerted_blocker
-    motivating_defect: stopping-blocked-is-legitimate-exactly-when-the-principal-was-actually-told
-  - id: gate-passes-after-honest-close
-    control_class: acceptance-test
-    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_gate_passes_after_honest_close
-    motivating_defect: an-incomplete-close-with-a-reason-beats-an-abandonment-nobody-recorded
-  - id: unreadable-record-fails-closed
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_wire_slack_mrkdwn_passes
+    motivating_defect: slack-wire-forms-are-correct-links-and-must-not-be-taxed
+  - id: markdown-in-email-blocks
     control_class: enforced-gate
-    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_unreadable_record_fails_closed
-    motivating_defect: an-unreadable-engagement-cannot-prove-it-was-continued
-  - id: bare-spin-unrecordable
-    control_class: enforced-gate
-    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_bare_spin_cannot_be_recorded
-    motivating_defect: the-principal-fears-loops-that-burn-usage-limits-without-value-so-a-no-progress-wake-must-name-its-external-wait
-  - id: blocker-requires-alert
-    control_class: enforced-gate
-    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_blocker_requires_alert_attestation
-    motivating_defect: a-blocker-nobody-was-told-about-is-the-silent-stop-restated
-  - id: doctrine-carries-continuation-contract
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_wire_markdown_in_email_blocks
+    motivating_defect: markdown-notation-never-renders-in-mail-clients
+  - id: linkless-fallback-exempt
     control_class: acceptance-test
-    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_doctrine_carries_continuation_contract
-    motivating_defect: a-contract-that-lives-only-in-code-gets-routed-around-by-the-next-session-that-never-reads-code
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_wire_linkless_fallback_tool_exempt
+    motivating_defect: the-visible-form-is-the-legitimate-form-exactly-where-links-cannot-render
+  - id: unsigned-traffic-untaxed
+    control_class: acceptance-test
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_wire_unsigned_traffic_untaxed
+    motivating_defect: a-domain-mentioned-in-prose-is-not-a-signature
+  - id: absent-config-off
+    control_class: acceptance-test
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_wire_absent_config_is_off
+    motivating_defect: enforcement-is-adopted-deliberately-per-config-never-sprung-on-unconfigured-users
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
