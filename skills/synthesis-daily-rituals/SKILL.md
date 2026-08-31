@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.28.0"
+  version: "2.29.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -1149,6 +1149,10 @@ may be wrong by hours or days. Re-anchor before writing.
 - [ ] Update CONTEXT.md. Refresh the "Last session" field with today's verified date and update "Recent Sessions" with a one-line summary. **Every live entry in an open-items section carries its own age:** stamp it `(as of YYYY-MM-DD, review Nd)` when you write it, and re-stamp it only when you have actually re-checked it — a stamp advanced without a check is a false receipt, which is worse than an obviously old one. Entries that are genuinely done are closed out into `sessions/YYYY-MM.md` — write them there, verify they landed, then remove them from CONTEXT.md.
 
   Appending is safe under this rule and rewriting is not required, which is the point. The failure being prevented is an entry that keeps the present tense it was written in ("today", "this week") long after that stopped being true; re-deriving the whole list each run would also drop anything today's evidence happens not to surface, turning a visible stale entry into an invisible missing one. A stamped entry ages in public instead: `context_doctor.py` reports it as `item-currency` once it passes its review horizon (14 days when `review Nd` is omitted), so the check runs for any reader at any time rather than only on days this ritual runs.
+  **Match the horizon to what the item is.** The 14-day default is the horizon for something *owed* — blocked on a named person, with a consequence if it slips. A backlog is not that: a list of feature ideas, article ideas, or a bug inventory is a record of intent, and nobody promised it by a date. Stamp those `(as of YYYY-MM-DD, review 180d)`. Measured once on a real corpus, 17 of 38 open-item findings were wishlists ageing at the owed-work horizon, and a check that reports intentions as overdue is how the whole open-items signal gets read as noise.
+
+  **A recorded decision is not an open item at all.** If a bullet under an open-items heading says a thing was settled — "not needed", "kept", "declined" — the fix is structural rather than a longer horizon: move it under a decisions heading, where the checker does not read it as owed. The section HEADING is what decides, so a settled decision parked under "What's Next" will keep being asked to prove it is still current no matter how it is worded.
+
 - [ ] Update MEMORY.md if current state info is stale (version numbers, environment status, team assignments).
 - [ ] Update `last_session` date in `index.yaml` for each active project worked on today — use today's verified date.
 - [ ] **Local context gate:** run context_doctor.py --project <active-project-path> --readiness local for every project worked today. Structural defects block; expected local-only Git state remains visible.

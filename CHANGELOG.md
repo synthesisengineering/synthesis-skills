@@ -4,6 +4,21 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.72.0] - 2026-08-31
+
+**`synthesis-daily-rituals` — the open-items horizon has to match what the item
+is.** The 14-day default is the horizon for work that is *owed*: blocked on a
+named person, with a consequence if it slips. A backlog of feature ideas and
+article ideas is a record of intent that nobody promised by a date, and holding
+it to the owed-work horizon reports intentions as overdue. Measured on a real
+corpus, **17 of 38** open-item findings were exactly that. The day-end ritual now
+says to stamp a backlog `review 180d`, and says the thing that is easy to miss:
+a recorded decision parked under an open-items heading needs moving, not a longer
+horizon, because the section heading is what the checker reads.
+
+No code change. This is the convention half of a fix whose mechanism — per-item
+horizons — has existed since the stamps did.
+
 ## [4.71.0] - 2026-08-31
 
 **`synthesis-context-lifecycle` doctor v1.8.0 — five defects found by using

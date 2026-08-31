@@ -1,27 +1,21 @@
-# AGENT HEURISTIC: authored for the 4.71.0 context-doctor-defects release.
+# AGENT HEURISTIC: authored for the 4.72.0 open-items-horizon release.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff, proved by the runner before release.py consumes
 # the receipt.
 schema: 2
-suite: synthesis-context-doctor-defects-release
+suite: synthesis-open-items-horizon-release
 membership: closed
-production_entry_point: skills/synthesis-context-lifecycle/scripts/context_doctor.py --json
-enforcing_boundary: the corpus health signal consumed at SessionStart and at day-start Step 1
+production_entry_point: skills/synthesis-daily-rituals/SKILL.md day-end step 7
+enforcing_boundary: the day-end ritual, which is where open-item stamps are written
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the corpus measurements that motivated each change (80 warnings to 67; 11 of 11 and 5 of 5 dormant-only findings; one parser misread suppressing eight real findings) come from a private corpus and cannot be reproduced in CI, so these cases prove the rules and not the numbers; whether a human actually reads the commits before recording post_close_reviewed_through is an attestation the tool cannot verify, only date and expire; and the coverage report makes a skip visible without proving anybody looked at it
+unverified_remainder: this release is doctrine rather than mechanism — the per-item horizon it tells operators to use has existed since the stamps did, and nothing here verifies that any human actually applies it; the 17-of-38 measurement comes from a private corpus and cannot be reproduced in CI; and whether a given list is a backlog or a set of obligations is a judgement the tool cannot make, which is exactly why the instruction is addressed to a person
 changed_surfaces:
-  - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
-    cases: [status-found-mid-line, phase-fallback-preserved, disposition-still-fires-unacknowledged, review-covering-every-commit-silences, acknowledgment-re-arms, unresolvable-sha-is-a-defect, dormant-budget-advice-suppressed, live-budget-advice-untouched, tier-family-gated-together, reference-present-still-live, skip-is-reported, terminal-open-items-reported, live-project-not-asked]
-  - path: skills/synthesis-context-lifecycle/scripts/context_currency.py
-    cases: [checked-items-not-owed, narrative-bullets-not-owed]
-  - path: skills/synthesis-context-lifecycle/scripts/test_context_doctor.py
-    cases: [status-found-mid-line, phase-fallback-preserved, disposition-still-fires-unacknowledged, review-covering-every-commit-silences, acknowledgment-re-arms, unresolvable-sha-is-a-defect, dormant-budget-advice-suppressed, live-budget-advice-untouched, tier-family-gated-together, reference-present-still-live, skip-is-reported, terminal-open-items-reported, live-project-not-asked, checked-items-not-owed, narrative-bullets-not-owed, v18-vocabulary-documented, coverage-rule-documented]
-  - path: skills/synthesis-context-lifecycle/SKILL.md
-    cases: [v18-vocabulary-documented, coverage-rule-documented]
+  - path: skills/synthesis-daily-rituals/SKILL.md
+    cases: [ritual-documents-the-stamp-convention]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -33,74 +27,10 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: status-found-mid-line
-    control_class: enforced-gate
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::StatusHeaderParsingTests::test_status_is_found_when_it_follows_phase_on_one_line
-    motivating_defect: an-anchored-pattern-missed-a-status-that-was-not-first-on-its-line-read-complete-out-of-the-phase-text-and-suppressed-a-live-projects-currency-checks-as-dormant
-  - id: phase-fallback-preserved
+  - id: ritual-documents-the-stamp-convention
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::StatusHeaderParsingTests::test_phase_fallback_still_applies_when_status_is_absent
-    motivating_defect: widening-a-pattern-must-not-cost-the-fallback-that-reads-records-having-no-status-line-at-all
-  - id: disposition-still-fires-unacknowledged
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::PostCloseAcknowledgmentTests::test_without_the_field_the_disposition_commit_still_fires
-    motivating_defect: an-acknowledgment-field-that-changes-behaviour-when-absent-would-silently-retire-the-check-for-every-project-that-never-declares-it
-  - id: review-covering-every-commit-silences
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::PostCloseAcknowledgmentTests::test_a_review_covering_every_commit_silences_it
-    motivating_defect: the-finding-was-self-sustaining-because-the-commits-disposing-of-a-project-are-themselves-post-completion-commits-so-answering-it-re-created-it
-  - id: acknowledgment-re-arms
-    control_class: enforced-gate
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::PostCloseAcknowledgmentTests::test_the_acknowledgment_re_arms_on_the_next_project_commit
-    motivating_defect: an-acknowledgment-that-never-expires-is-a-mute-button-and-would-hide-a-genuine-resumption-forever
-  - id: unresolvable-sha-is-a-defect
-    control_class: enforced-gate
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::PostCloseAcknowledgmentTests::test_an_unresolvable_sha_is_a_defect_not_a_silent_pass
-    motivating_defect: an-acknowledgment-whose-evidence-has-vanished-in-a-rewrite-must-fail-loudly-rather-than-keep-asserting-a-review-of-history-that-no-longer-exists
-  - id: dormant-budget-advice-suppressed
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::DormantApplicabilityTests::test_budget_and_archive_advice_is_silent_on_a_dormant_project
-    motivating_defect: archive-your-narrative-and-narrow-your-scope-are-instructions-to-somebody-doing-the-work-and-11-of-11-and-5-of-5-such-findings-were-raised-against-projects-nobody-was-working
-  - id: tier-family-gated-together
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::DormantApplicabilityTests::test_the_whole_tier_family_is_gated_together
-    motivating_defect: gating-two-of-three-siblings-leaves-exactly-the-inconsistency-the-gate-was-added-to-remove-and-the-third-was-found-by-the-releases-own-archival-work
-  - id: reference-present-still-live
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::DormantApplicabilityTests::test_reference_present_still_fires_on_a_live_project
-    motivating_defect: a-tier-check-that-stops-firing-on-live-projects-removes-the-structural-guarantee-a-cold-resumption-depends-on
-  - id: live-budget-advice-untouched
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::DormantApplicabilityTests::test_the_same_advice_still_fires_on_a_live_project
-    motivating_defect: quieting-a-corpus-by-weakening-a-check-buys-the-number-and-loses-the-signal
-  - id: skip-is-reported
-    control_class: enforced-gate
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::DormantApplicabilityTests::test_the_skip_is_reported_rather_than_silent
-    motivating_defect: a-check-that-finds-nothing-and-a-check-that-examined-nothing-are-indistinguishable-which-is-how-an-unpaired-suppression-shipped-and-survived-changelog-skill-doc-and-review
-  - id: terminal-open-items-reported
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::TerminalOpenItemsTests::test_a_finished_project_still_owing_work_is_reported
-    motivating_defect: the-item-currency-suppression-shipped-with-no-paired-check-in-the-release-whose-own-headline-principle-forbids-exactly-that
-  - id: live-project-not-asked
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::TerminalOpenItemsTests::test_a_live_project_is_not_asked_this_question
-    motivating_defect: an-inversion-that-also-fires-on-live-projects-duplicates-item-currency-and-doubles-the-noise-it-was-added-to-reduce
-  - id: checked-items-not-owed
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::TerminalOpenItemsTests::test_checked_items_are_a_record_of_work_done_not_work_owed
-    motivating_defect: a-finished-projects-list-should-hold-what-was-done-and-counting-that-as-owed-work-would-make-every-well-closed-project-fire
-  - id: narrative-bullets-not-owed
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::TerminalOpenItemsTests::test_narrative_bullets_are_not_read_as_obligations
-    motivating_defect: reading-prose-as-owed-work-is-the-miscalibration-that-cost-140-of-294-findings-when-current-was-briefly-an-open-section-word
-  - id: v18-vocabulary-documented
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SkillDocContractTests::test_the_v18_vocabulary_is_documented_by_name
-    motivating_defect: a-report-names-the-check-that-fired-so-a-name-absent-from-the-skill-hands-the-operator-a-string-instead-of-a-remedy
-  - id: coverage-rule-documented
-    control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SkillDocContractTests::test_the_coverage_rule_survives_in_the_doc
-    motivating_defect: the-rule-that-generalises-this-whole-release-is-the-part-a-later-editor-is-most-likely-to-drop-and-least-likely-to-miss
+    fixture: ../synthesis-context-lifecycle/scripts/test_item_currency.py::test_day_end_ritual_documents_the_stamp_convention
+    motivating_defect: a-convention-the-checker-enforces-but-the-ritual-never-states-trains-operators-to-route-around-the-checker-rather-than-follow-the-convention
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
