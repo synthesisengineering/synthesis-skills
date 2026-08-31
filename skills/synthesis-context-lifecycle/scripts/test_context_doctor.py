@@ -1000,6 +1000,192 @@ class ReferenceShardTests(unittest.TestCase):
         )
 
 
+class StatusHeaderParsingTests(unittest.TestCase):
+    """Status is authoritative, so it has to be FOUND before Phase is consulted.
+
+    Anchoring the pattern to line start missed every record that puts two
+    fields on one line, fell through to the Phase fallback, and read a
+    completion word out of the phase text. One live project reported as
+    finished while its own header said Active three words later.
+    """
+
+    def test_status_is_found_when_it_follows_phase_on_one_line(self):
+        text = ("**Phase:** Review complete — awaiting send. "
+                "**Status:** Active (arc; bounded)\n")
+        self.assertIs(False, cd.context_declares_completed(text))
+
+    def test_phase_fallback_still_applies_when_status_is_absent(self):
+        text = "**Phase:** COMPLETE (re-architecture); pass pending\n"
+        self.assertIs(True, cd.context_declares_completed(text))
+
+    def test_a_completing_phase_never_overrides_an_active_status(self):
+        text = "**Phase:** Triage — inventory complete\n**Status:** Active\n"
+        self.assertIs(False, cd.context_declares_completed(text))
+
+    def test_a_trailing_field_is_not_swallowed_into_the_status_value(self):
+        text = "**Status:** Active **Last session:** 2026-08-31 (completed round)\n"
+        self.assertIs(False, cd.context_declares_completed(text))
+
+
+class PostCloseAcknowledgmentTests(unittest.TestCase):
+    """The finding must be answerable, and the answer must expire.
+
+    Without this the check is self-sustaining: the commits that dispose of a
+    project are post-completion commits, so resolving the finding re-creates
+    it and no amount of correct work clears it.
+    """
+
+    def setUp(self):
+        self._tmp = TemporaryDirectory()
+        self.fx = Fixture(Path(self._tmp.name) / "src")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _closed_project_with_later_commit(self, **entry):
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n")
+        self.fx.index([{"id": "alpha", "status": "completed",
+                        "completed_date": "2026-06-01",
+                        "last_session": "2026-06-01", **entry}])
+        self.fx.commit("closing commit", when="2026-06-01")
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n\ntidy\n")
+        self.fx.commit("archive pass long after the close", when="2026-08-20")
+        return subprocess.run(
+            ["git", "-C", str(self.fx.root), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+
+    def test_without_the_field_the_disposition_commit_still_fires(self):
+        self._closed_project_with_later_commit()
+        self.assertIn("terminal-project-active", checks_in(self.fx.audit()))
+
+    def test_a_review_covering_every_commit_silences_it(self):
+        head = self._closed_project_with_later_commit()
+        self.fx.index([{"id": "alpha", "status": "completed",
+                        "completed_date": "2026-06-01",
+                        "last_session": "2026-06-01",
+                        "post_close_reviewed_through": head}])
+        self.fx.commit("record the review", when="2026-08-20")
+        self.assertNotIn("terminal-project-active", checks_in(self.fx.audit()))
+
+    def test_the_acknowledgment_re_arms_on_the_next_project_commit(self):
+        """An acknowledgment that never expires is a mute button."""
+        head = self._closed_project_with_later_commit()
+        self.fx.index([{"id": "alpha", "status": "completed",
+                        "completed_date": "2026-06-01",
+                        "last_session": "2026-06-01",
+                        "post_close_reviewed_through": head}])
+        self.fx.commit("record the review", when="2026-08-20")
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n\nnew work\n")
+        self.fx.commit("work that resumed after the review", when="2026-08-25")
+        self.assertIn("terminal-project-active", checks_in(self.fx.audit()))
+
+    def test_an_unresolvable_sha_is_a_defect_not_a_silent_pass(self):
+        """A stale date degrades quietly; a missing sha must not."""
+        self._closed_project_with_later_commit()
+        self.fx.index([{"id": "alpha", "status": "completed",
+                        "completed_date": "2026-06-01",
+                        "last_session": "2026-06-01",
+                        "post_close_reviewed_through": "0" * 40}])
+        self.fx.commit("record a review of history that is gone", when="2026-08-20")
+        result = self.fx.audit()
+        checks = checks_in(result)
+        self.assertIn("post-close-review-unresolvable", checks)
+        self.assertIn("terminal-project-active", checks)
+        self.assertEqual(
+            "defect",
+            next(f["severity"] for f in result["data"]["findings"]
+                 if f["check"] == "post-close-review-unresolvable"),
+        )
+
+
+class DormantApplicabilityTests(unittest.TestCase):
+    """The v1.7.0 lifecycle rule, applied to the checks that release missed.
+
+    Measured before this gate: 11 of 11 sessions-present and 5 of 5
+    reference-budget findings were raised against dormant projects. "Move your
+    session narrative into an archive" and "your scope may be too broad" are
+    instructions to somebody doing the work.
+    """
+
+    def setUp(self):
+        self._tmp = TemporaryDirectory()
+        self.fx = Fixture(Path(self._tmp.name) / "src")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _checks_for(self, result, pid):
+        return {f["check"] for f in result["data"].get("findings", [])
+                if f["project"] == pid}
+
+    def _fat_project(self, pid, status, **entry):
+        self.fx.project(
+            pid,
+            context="# P\n\n**Status:** " + status.title() + "\n"
+                    + "\n".join(f"- line {i}" for i in range(120)) + "\n",
+            reference="\n".join(f"fact {i}" for i in range(340)) + "\n",
+            sessions=None,
+        )
+        self.fx.index([{"id": pid, "status": status, **entry}])
+        self.fx.commit(f"{pid} state")
+
+    def test_budget_and_archive_advice_is_silent_on_a_dormant_project(self):
+        self._fat_project("alpha", "paused")
+        found = self._checks_for(self.fx.audit(), "alpha")
+        self.assertNotIn("sessions-present", found)
+        self.assertNotIn("reference-budget", found)
+
+    def test_the_same_advice_still_fires_on_a_live_project(self):
+        self._fat_project("beta", "active")
+        found = self._checks_for(self.fx.audit(), "beta")
+        self.assertIn("sessions-present", found)
+        self.assertIn("reference-budget", found)
+
+    def test_the_skip_is_reported_rather_than_silent(self):
+        """The property that makes an unpaired suppression findable."""
+        self._fat_project("alpha", "paused")
+        coverage = self.fx.audit()["data"]["coverage"]
+        self.assertGreaterEqual(coverage["sessions-present"]["skipped"], 1)
+        self.assertIn("dormant", coverage["sessions-present"]["reasons"])
+
+
+class TerminalOpenItemsTests(unittest.TestCase):
+    """The pairing the item-currency suppression shipped without."""
+
+    def setUp(self):
+        self._tmp = TemporaryDirectory()
+        self.fx = Fixture(Path(self._tmp.name) / "src")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _project(self, body, status="completed"):
+        self.fx.project("alpha", context=f"# P\n\n**Status:** Completed\n\n{body}")
+        self.fx.index([{"id": "alpha", "status": status,
+                        "completed_date": "2026-06-01",
+                        "last_session": "2026-06-01"}])
+        self.fx.commit("state", when="2026-06-01")
+        return checks_in(self.fx.audit())
+
+    def test_a_finished_project_still_owing_work_is_reported(self):
+        checks = self._project("## What's Next\n\n- [ ] chase the vendor\n")
+        self.assertIn("terminal-project-open-items", checks)
+
+    def test_checked_items_are_a_record_of_work_done_not_work_owed(self):
+        checks = self._project("## What's Next\n\n- [x] chased the vendor\n")
+        self.assertNotIn("terminal-project-open-items", checks)
+
+    def test_narrative_bullets_are_not_read_as_obligations(self):
+        """The miscalibration that cost 140 of 294 findings once already."""
+        checks = self._project("## What's Next\n\n- the vendor was chased\n")
+        self.assertNotIn("terminal-project-open-items", checks)
+
+    def test_a_live_project_is_not_asked_this_question(self):
+        checks = self._project("## What's Next\n\n- [ ] chase\n", status="active")
+        self.assertNotIn("terminal-project-open-items", checks)
+
+
 class SkillDocContractTests(unittest.TestCase):
     """A finding names a check; the skill has to make that name mean something.
 
@@ -1056,6 +1242,27 @@ class SkillDocContractTests(unittest.TestCase):
         # the source.
         self.assertIn("bounded: false", self.text)
         self.assertIn("`bounded` defaults to `true` when unset", self.text)
+
+    def test_the_v18_vocabulary_is_documented_by_name(self):
+        """Same contract as the shard family: a report names the check that
+        fired, and a name the skill never mentions is a string, not a remedy."""
+        for check in ("terminal-project-open-items",
+                      "post-close-review-unresolvable"):
+            with self.subTest(check=check):
+                self.assertIn(check, cd.CHECKS)
+                self.assertIn(check, self.text)
+
+    def test_the_acknowledgment_field_and_its_expiry_are_documented(self):
+        # The field without its expiry reads as a mute button, which is the
+        # one way this change could be misused.
+        self.assertIn("post_close_reviewed_through", self.text)
+        self.assertIn("re-arms", self.text.lower())
+
+    def test_the_coverage_rule_survives_in_the_doc(self):
+        self.assertIn(
+            "coverage is a claim that needs its own verification",
+            self.text.lower(),
+        )
 
     def test_post_shard_budgets_are_stated(self):
         self.assertIn(str(cd.REFERENCE_INDEX_BUDGET), self.text)

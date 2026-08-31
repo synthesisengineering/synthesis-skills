@@ -4,6 +4,73 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.71.0] - 2026-08-31
+
+**`synthesis-context-lifecycle` doctor v1.8.0 — five defects found by using
+4.70.0 on the day it shipped, one of them in the principle 4.70.0 was built
+on.** Reading the findings rather than counting them worked a third time.
+
+- **The disposition finding can be answered.** `terminal-project-active` was
+  self-sustaining: the commits that dispose of a project — the archive pass,
+  the trim to budget, the routing note — are themselves post-`completed_date`
+  commits, so resolving the finding re-created it and no amount of correct work
+  ever cleared it. Two live instances within an hour, one of them this release's
+  own archival of a project. New index field `post_close_reviewed_through: <sha>`
+  records that a human read the commits after the close and found maintenance.
+  - **Index-side, and that is correctness rather than preference.** The freshness
+    walk is `git log -- <project_path>`, so a marker written inside the project
+    would re-extend newest-commit by the act of writing it and re-trigger the
+    check it answers. `index.yaml` is outside that path.
+  - **A sha, not a date.** A date over-covers by up to a day; two disposition
+    commits thirteen minutes apart straddling a recorded review date would see
+    the second silently swallowed. And a sha that no longer resolves is a
+    defect (`post-close-review-unresolvable`) rather than silence — an
+    acknowledgment whose evidence has vanished must fail loudly.
+  - **It expires.** One new project commit and the question re-arms. An
+    acknowledgment that never decays is a mute button.
+- **The `item-currency` suppression gets the pairing it shipped without.** In
+  4.70.0, open-item checks correctly went quiet on dormant projects and nothing
+  asked the question that becomes applicable in their place — in the release
+  whose headline principle forbids exactly that, stated in the changelog, the
+  skill and the project record, enforced by none of them. New
+  `terminal-project-open-items` asks whether a project claiming to be finished
+  still lists obligations it owes. Only an explicit unchecked box counts:
+  narrative bullets are prose, and reading prose as owed work is the
+  miscalibration that cost 140 of 294 findings once already.
+- **Coverage is reported, so the next unpaired suppression is visible without
+  anyone noticing it.** A check that finds nothing and a check that examined
+  nothing are indistinguishable in a findings list, and so is a deliberate skip.
+  Every lifecycle-gated check now reports its denominator — `item-currency:
+  examined 41, skipped 31 (dormant)` — in `--json` and in the human report. This
+  is the only one of the five changes that prevents rather than patches: a
+  printed `skipped 141` invites the question that was never asked.
+- **The lifecycle rule reaches the checks 4.70.0 missed.** Archive-and-budget
+  advice is an instruction to somebody doing the work. Measured before the gate:
+  **11 of 11** `sessions-present` and **5 of 5** `reference-budget` findings were
+  raised against dormant projects — the v1 diagnosis exactly, one release later,
+  on the checks that release did not touch. `body-currency`'s absent-marker
+  warning is gated for the same reason a dormant project's items are: asserting
+  a re-check nobody performed is fiction.
+- **The status header is found when it is not first on its line.** The pattern
+  was anchored to line start, so a record reading `**Phase:** Review complete —
+  awaiting send. **Status:** Active` missed the Status entirely, fell through to
+  the Phase fallback, read "complete" out of the phase text and reported the
+  project as finished. That misread was *suppressing* real findings, not just
+  producing a false one: the project's currency and freshness checks were being
+  skipped as dormant. Fixing it removed one false defect and surfaced eight real
+  findings.
+
+Corpus effect: **80 warnings to 67**, 16 findings correctly suppressed and made
+visible as skip counts, 3 genuine findings surfaced that the parser bug had been
+hiding. 197 tests pass (+35).
+
+A note on one number, because it was wrong in the working record before it was
+right here: the unpaired suppression was first sized at "24 obligations across 6
+projects." That count included **paused** projects, where owing work is correct
+and expected. Scoped to projects actually claiming completion, it is **1 project,
+2 items** — created by this release's own archival work. The principle violation
+was real and the corpus impact is small, and both are worth stating.
+
 ## [4.70.0] - 2026-08-31
 
 **`synthesis-context-lifecycle` doctor v1.7.0 — the health signal learns when a
