@@ -38,8 +38,14 @@ fail-open state it exists to prevent.
   take. Defaults to `true` when unset: 1,296 of 1,306 corpus projects are
   unaffected, so adoption costs no migration.
 
+- **The shard vocabulary is documented by name.** A report names the check
+  that fired, so a name the skill never mentions hands its reader a string
+  instead of a remedy. All six `reference-*` shard checks now appear in one
+  table with what fires them and at what severity, and a contract test holds
+  the skill to it.
+
 Corpus effect: 193 warnings to 90, with nine new genuine findings, and no
-weakening of any check that applies. 15 new tests (153 total in the skill).
+weakening of any check that applies. 21 new tests (159 total in the skill).
 
 ## [4.69.0] - 2026-08-30
 

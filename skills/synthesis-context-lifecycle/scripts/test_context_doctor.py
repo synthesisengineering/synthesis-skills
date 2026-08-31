@@ -965,5 +965,67 @@ class ReferenceShardTests(unittest.TestCase):
         )
 
 
+class SkillDocContractTests(unittest.TestCase):
+    """A finding names a check; the skill has to make that name mean something.
+
+    An operator handed `reference-topic-budget` and no way to look it up has
+    been handed a string, not a remedy — and a check nobody can act on is the
+    fail-open state this doctor exists to end. test_item_currency.py holds the
+    day-end ritual to the same contract; this holds the skill to it for the
+    vocabulary v1.7.0 introduced.
+    """
+
+    SKILL = Path(__file__).resolve().parents[1] / "SKILL.md"
+
+    def setUp(self):
+        self.text = self.SKILL.read_text(encoding="utf-8")
+
+    # The semantic-shard family. Named rather than prefix-matched: the prefix
+    # also catches reference-present, which is a tier-structure check and is
+    # documented with that group. Membership is asserted against the doctor so
+    # a rename there breaks this test instead of quietly passing.
+    SHARD_CHECKS = (
+        "reference-budget",
+        "reference-shard",
+        "reference-index-budget",
+        "reference-topic-budget",
+        "reference-index-orphan",
+        "reference-index-missing",
+    )
+
+    def test_the_shard_family_is_still_the_doctors_own_vocabulary(self):
+        for check in self.SHARD_CHECKS:
+            with self.subTest(check=check):
+                self.assertIn(check, cd.CHECKS)
+
+    def test_every_reference_shard_check_is_documented_by_name(self):
+        for check in self.SHARD_CHECKS:
+            with self.subTest(check=check):
+                self.assertIn(check, self.text)
+
+    def test_the_paired_inversion_is_documented_by_name(self):
+        # Suppression is only safe paired with the check that replaces it. If
+        # the pairing is undocumented, the next reader sees only the silence.
+        self.assertIn("terminal-project-active", self.text)
+
+    def test_the_pairing_rule_itself_survives_in_the_doc(self):
+        self.assertIn(
+            "suppressing an inapplicable check is only safe when you add the "
+            "check that becomes applicable in its place",
+            self.text.lower(),
+        )
+
+    def test_bounded_is_documented_as_behaviour_with_its_default(self):
+        # The field decides which remedy a project is offered, so its default
+        # is load-bearing: readers must be able to learn it without reading
+        # the source.
+        self.assertIn("bounded: false", self.text)
+        self.assertIn("`bounded` defaults to `true` when unset", self.text)
+
+    def test_post_shard_budgets_are_stated(self):
+        self.assertIn(str(cd.REFERENCE_INDEX_BUDGET), self.text)
+        self.assertIn(str(cd.REFERENCE_TOPIC_BUDGET), self.text)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

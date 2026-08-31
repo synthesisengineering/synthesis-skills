@@ -243,6 +243,17 @@ Stable facts, sharded by topic. Each entry links one file in `reference/`.
 
 **Migration is not required.** A project under the budget keeps one `REFERENCE.md` and nothing changes. `bounded` defaults to `true` when unset, so projects that never declare themselves standing behave exactly as before.
 
+**The whole vocabulary, so a finding is a remedy and not just a string.** A report names the check that fired; a name absent from this skill leaves its reader nothing to do.
+
+| Check | Fires when | Severity |
+|---|---|---|
+| `reference-budget` | a **bounded** project's `REFERENCE.md` is over 300 lines | warning |
+| `reference-shard` | a **standing** project's `REFERENCE.md` is over 300 lines — outgrown one file, not overbroad in scope | warning |
+| `reference-index-budget` | once sharded, `REFERENCE.md` is over 150 lines — the index has started holding content again | warning |
+| `reference-topic-budget` | a `reference/<topic>.md` is over 300 lines | warning |
+| `reference-index-orphan` | a topic file is not linked from the index | warning |
+| `reference-index-missing` | `reference/` exists with no `REFERENCE.md` index at all | defect |
+
 ### sessions/ — Episodic Archive
 
 **Purpose:** Historical record of what happened and when. Rarely read, but searchable when historical context is needed.
