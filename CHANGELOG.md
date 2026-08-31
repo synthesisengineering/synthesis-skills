@@ -21,9 +21,20 @@ fail-open state it exists to prevent.
   cannot be read are the ones most likely to be wrong.
 - **The paired inversion.** New `terminal-project-active` reports a project
   declared completed that is still receiving session commits — a live record
-  error the doctor could not previously ask about. Nine real cases surfaced on
-  the corpus, one off by twenty months. Suppressing an inapplicable check is
-  only safe when you add the check that becomes applicable in its place.
+  error the doctor could not previously ask about. Suppressing an inapplicable
+  check is only safe when you add the check that becomes applicable in its
+  place.
+- **The inversion anchors on `completed_date`, not `last_session`.** Closing a
+  project is itself work — the archive pass, the trim to budget — and those
+  commits land after its final *working* session by design. Measured against
+  `last_session` they read as "still being worked," which is the opposite of
+  what they are: two of the check's first nine findings were a project whose
+  every commit fell on its own completion date. Against the date the project
+  says it finished, the question is the one worth asking — did work continue
+  after the close? — and the corpus answers it thirteen times, from two days
+  to 194. Falls back to `last_session` when `completed_date` is missing or
+  unreadable, because a record too incomplete to anchor on is the one most
+  likely to be wrong.
 - **`reference/` — sharding for the semantic tier.** `sessions/` solved
   unbounded episodic growth years ago; `REFERENCE.md` had a soft cap and no
   overflow. That is fine for a bounded arc and structurally broken for a
@@ -44,8 +55,8 @@ fail-open state it exists to prevent.
   table with what fires them and at what severity, and a contract test holds
   the skill to it.
 
-Corpus effect: 193 warnings to 90, with nine new genuine findings, and no
-weakening of any check that applies. 21 new tests (159 total in the skill).
+Corpus effect: 193 warnings to 93, with thirteen new genuine findings, and no
+weakening of any check that applies. 24 new tests (162 total in the skill).
 
 ## [4.69.0] - 2026-08-30
 

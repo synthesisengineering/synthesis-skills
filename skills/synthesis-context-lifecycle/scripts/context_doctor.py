@@ -1123,13 +1123,30 @@ def audit_project(
         # declared finished that is still receiving real session commits is a
         # live record error, and it is the one freshness question worth asking
         # about a terminal project.
-        idx_last = parse_date_field((index_entry or {}).get("last_session"))
-        if idx_last and (newest - idx_last).days > LAST_SESSION_TOLERANCE_DAYS:
+        #
+        # Anchor on completed_date, not last_session. Closing a project is
+        # itself work — the archive pass, the trim to budget — and those commits
+        # land after its final *working* session by design. Against last_session
+        # they read as "still being worked," which is the opposite of what they
+        # are. Reading the nine findings this check first raised, two were
+        # exactly that: every commit fell on the completion date itself. The
+        # question worth asking is whether work continued *after* the project
+        # said it was finished.
+        entry = index_entry or {}
+        anchor_field = "completed_date"
+        anchor = parse_date_field(entry.get("completed_date"))
+        if anchor is None:
+            # Missing or unparseable — already its own warning above. Fall back
+            # rather than fall silent: an unreadable record is the one most
+            # likely to be wrong.
+            anchor_field = "last_session"
+            anchor = parse_date_field(entry.get("last_session"))
+        if anchor and (newest - anchor).days > LAST_SESSION_TOLERANCE_DAYS:
             audit.add(
                 "terminal-project-active",
                 "warning",
                 f"index.yaml marks this project completed, but it has session "
-                f"commits through {newest} (last_session says {idx_last}) — "
+                f"commits through {newest} ({anchor_field} says {anchor}) — "
                 "either the work resumed or the status is wrong",
                 "reopen the project (status: active) or record why the commits "
                 "are maintenance rather than work",

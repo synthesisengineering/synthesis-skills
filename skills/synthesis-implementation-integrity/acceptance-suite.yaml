@@ -15,9 +15,9 @@ issues_authority_receipt: false
 unverified_remainder: the corpus effect that motivated the change (193 warnings to 90 across 175 projects) is measured on a private corpus and cannot be reproduced in CI, so these cases prove the rules and not the number; whether a human acts on a surfaced finding is doctrine and unmechanizable here; and the nine stale terminal records the new check found are records to repair, not code this suite can hold
 changed_surfaces:
   - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
-    cases: [dormant-checks-suppressed, live-checks-untouched, applicability-errs-toward-live, terminal-project-active-reported, standing-project-gets-shard-remedy, bounded-defaults-true, orphan-topic-reported, shard-without-index-is-a-defect]
+    cases: [dormant-checks-suppressed, live-checks-untouched, applicability-errs-toward-live, terminal-project-active-reported, closing-commits-are-not-resumption, post-completion-work-still-fires, standing-project-gets-shard-remedy, bounded-defaults-true, orphan-topic-reported, shard-without-index-is-a-defect]
   - path: skills/synthesis-context-lifecycle/scripts/test_context_doctor.py
-    cases: [dormant-checks-suppressed, live-checks-untouched, applicability-errs-toward-live, terminal-project-active-reported, standing-project-gets-shard-remedy, bounded-defaults-true, orphan-topic-reported, shard-without-index-is-a-defect, shard-vocabulary-documented, pairing-rule-documented]
+    cases: [dormant-checks-suppressed, live-checks-untouched, applicability-errs-toward-live, terminal-project-active-reported, closing-commits-are-not-resumption, post-completion-work-still-fires, standing-project-gets-shard-remedy, bounded-defaults-true, orphan-topic-reported, shard-without-index-is-a-defect, shard-vocabulary-documented, pairing-rule-documented]
   - path: skills/synthesis-context-lifecycle/SKILL.md
     cases: [shard-vocabulary-documented, pairing-rule-documented]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
@@ -47,6 +47,14 @@ cases:
     control_class: enforced-gate
     fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::LifecycleApplicabilityTests::test_terminal_project_still_being_worked_is_reported
     motivating_defect: suppression-without-its-paired-inversion-is-indistinguishable-from-a-guard-that-stopped-working-and-nine-projects-claimed-completion-while-still-taking-commits-one-off-by-twenty-months
+  - id: closing-commits-are-not-resumption
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::LifecycleApplicabilityTests::test_the_commits_that_close_a_project_are_not_evidence_it_is_open
+    motivating_defect: anchored-on-last-session-the-archive-pass-that-finishes-a-project-reads-as-proof-it-is-unfinished-and-two-of-this-checks-first-nine-findings-were-that-artifact
+  - id: post-completion-work-still-fires
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::LifecycleApplicabilityTests::test_work_after_the_declared_completion_still_fires
+    motivating_defect: a-tightened-anchor-that-buys-quiet-by-dropping-the-question-is-the-failure-this-whole-release-exists-to-avoid
   - id: standing-project-gets-shard-remedy
     control_class: acceptance-test
     fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ReferenceShardTests::test_standing_project_over_budget_gets_the_shard_remedy

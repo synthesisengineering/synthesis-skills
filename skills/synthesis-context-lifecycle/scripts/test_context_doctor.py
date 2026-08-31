@@ -861,6 +861,41 @@ class LifecycleApplicabilityTests(unittest.TestCase):
         self.fx.commit("closing commit", when="2026-06-01")
         self.assertNotIn("terminal-project-active", checks_in(self.fx.audit()))
 
+    def test_the_commits_that_close_a_project_are_not_evidence_it_is_open(self):
+        """Found by reading the nine findings this check first raised: two were
+        a project whose every commit landed on its own completion date. Closing
+        is work — the archive pass, the trim to budget — and it lands after the
+        last *working* session by design. Anchored on last_session, the act of
+        finishing reads as proof of not being finished."""
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n")
+        self.fx.index([{"id": "alpha", "status": "completed",
+                        "completed_date": "2026-06-01",
+                        "last_session": "2024-12-17"}])
+        self.fx.commit("archive the record and trim it to budget",
+                       when="2026-06-01")
+        self.assertNotIn("terminal-project-active",
+                         self._checks_for(self.fx.audit(), "alpha"))
+
+    def test_work_after_the_declared_completion_still_fires(self):
+        """The tightened anchor must not buy quiet by dropping the question."""
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n")
+        self.fx.index([{"id": "alpha", "status": "completed",
+                        "completed_date": "2026-06-01",
+                        "last_session": "2026-06-01"}])
+        self.fx.commit("work that resumed after the close", when="2026-08-20")
+        self.assertIn("terminal-project-active",
+                      self._checks_for(self.fx.audit(), "alpha"))
+
+    def test_missing_completed_date_falls_back_rather_than_falling_silent(self):
+        """A record too incomplete to anchor on is the one most likely to be
+        wrong, so the check keeps asking against last_session."""
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n")
+        self.fx.index([{"id": "alpha", "status": "completed",
+                        "last_session": "2026-01-01"}])
+        self.fx.commit("real work long after completion", when="2026-06-01")
+        self.assertIn("terminal-project-active",
+                      self._checks_for(self.fx.audit(), "alpha"))
+
 
 class ReferenceShardTests(unittest.TestCase):
     """Semantic memory outgrows one file exactly as episodic memory does.

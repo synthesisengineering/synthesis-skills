@@ -787,12 +787,14 @@ which is the most expensive kind of quiet failure a health check can have.
 
 **A check must know when it does not apply** (v1.7.0). Several checks ask questions that only have meaning about work in progress: how fresh is this record, are its open items still current, is its status header parseable for a cross-check. Asked of a project that shipped in May, each is unanswerable *and* unactionable.
 
-Measured on a 175-project corpus before this rule existed: **98%** of `freshness-unverifiable` and **90%** of `record-unreadable` were raised against dormant projects — completed, archived, or paused. They accounted for most of 193 warnings that nobody had acted on, and 193 unactioned warnings is the fail-open state the doctor exists to end. Applying the rule took the corpus from 193 warnings to 90 without weakening a single check that applies.
+Measured on a 175-project corpus before this rule existed: **98%** of `freshness-unverifiable` and **90%** of `record-unreadable` were raised against dormant projects — completed, archived, or paused. They accounted for most of 193 warnings that nobody had acted on, and 193 unactioned warnings is the fail-open state the doctor exists to end. Applying the rule took the corpus from 193 warnings to 93 without weakening a single check that applies.
 
 Two properties keep the suppression honest:
 
 - **It errs toward live.** An unset or unrecognised status counts as active, because the records whose state cannot be read are the ones most likely to be wrong. Only an explicit dormant status suppresses.
-- **It is paired with an inversion.** A project declared *completed* that is still receiving real session commits is a live record error, and `terminal-project-active` reports it. That question was invisible before — the old code asked only whether a terminal project's freshness could be verified, never whether its terminal claim was still true. On the same corpus it surfaced nine genuine stale records, one of them off by twenty months.
+- **It is paired with an inversion.** A project declared *completed* that is still receiving real session commits is a live record error, and `terminal-project-active` reports it. That question was invisible before — the old code asked only whether a terminal project's freshness could be verified, never whether its terminal claim was still true. On the same corpus it surfaced thirteen genuine stale records, the worst 194 days past its own completion date.
+
+  The inversion anchors on `completed_date`. Closing a project is itself work — the archive pass, the trim to budget — and those commits land after its final *working* session by design; measured against `last_session` they read as "still being worked," which is the opposite of what they are. Two of this check's first nine findings were exactly that. It falls back to `last_session` only when `completed_date` is missing or unreadable, because a record too incomplete to anchor on is the one most likely to be wrong.
 
 The general form, worth more than the fix: **suppressing an inapplicable check is only safe when you add the check that becomes applicable in its place.** Silence alone is indistinguishable from a guard that stopped working.
 
