@@ -107,3 +107,81 @@ def test_config_clean_controls_scan() -> None:
     over_broad = [("bad-brand", re.compile("ragbot", re.IGNORECASE))]
     hits2, _ = MODULE.scan_text(canonical, over_broad, cwarn)
     assert hits2, "an over-broad pattern must be visible to the control"
+
+
+# --- signature wire-form enforcement (2026-08-30 incident) ------------------
+
+WIRE_CFG = {
+    "signature_link_enforcement": {
+        "markers": ["\U0001F9DE", "\U0001F916"],
+        "domains": ["ragenie.ai", "ragbot.ai", "synthesiswriting.org"],
+        "html_body_format_tools": "send_gmail_message|draft_gmail_message",
+        "linkless_fallback_tools": "workspace-mcp__send_message$",
+    }
+}
+
+RAGENIE_PLAIN = ("\U0001F9DE\u200d\u2642\ufe0f I wrote this with my Ragenie "
+                 "(ragenie.ai) \u2014 synthesis writing: I personally write")
+RAGENIE_HTML = ("\U0001F9DE\u200d\u2642\ufe0f <em>I wrote this with my "
+                "<a href=\"https://ragenie.ai/\">Ragenie</a> \u2014 "
+                "<a href=\"https://synthesiswriting.org/#from-a-message\">"
+                "synthesis writing</a>: I personally write</em>")
+RAGBOT_SLACK = ("\U0001F916 _I\u2019m Rajiv\u2019s "
+                "<https://ragbot.ai/|Ragbot>, sent under his standing "
+                "direction \u2014 he reads every reply_")
+
+
+def test_wire_incident_shape_blocks() -> None:
+    """The exact 2026-08-30 failure: persona-signed email, body_format
+    plain, bare visible domain — the doctrine existed and nothing read it."""
+    fails = MODULE.signature_wire_failures(
+        "mcp__workspace-mcp__send_gmail_message",
+        {"body_format": "plain"}, RAGENIE_PLAIN, WIRE_CFG)
+    joined = " ".join(fails)
+    assert "body_format html" in joined
+    assert "visible-URL fallback" in joined
+
+
+def test_wire_html_anchors_pass() -> None:
+    fails = MODULE.signature_wire_failures(
+        "mcp__workspace-mcp__send_gmail_message",
+        {"body_format": "html"}, RAGENIE_HTML, WIRE_CFG)
+    assert fails == []
+
+
+def test_wire_slack_mrkdwn_passes() -> None:
+    fails = MODULE.signature_wire_failures(
+        "mcp__abc__slack_send_message", {}, RAGBOT_SLACK, WIRE_CFG)
+    assert fails == []
+
+
+def test_wire_markdown_in_email_blocks() -> None:
+    text = ("\U0001F916 _I\u2019m Rajiv\u2019s "
+            "[Ragbot](https://ragbot.ai/) \u2014 he approved this_")
+    fails = MODULE.signature_wire_failures(
+        "mcp__workspace-mcp__draft_gmail_message",
+        {"body_format": "html"}, text, WIRE_CFG)
+    assert any("markdown" in f for f in fails)
+
+
+def test_wire_linkless_fallback_tool_exempt() -> None:
+    """Google Chat user sends cannot render links; the visible form is the
+    legitimate form there."""
+    fails = MODULE.signature_wire_failures(
+        "mcp__workspace-mcp__send_message", {},
+        "\U0001F916 I\u2019m Rajiv\u2019s Ragbot (ragbot.ai)", WIRE_CFG)
+    assert fails == []
+
+
+def test_wire_unsigned_traffic_untaxed() -> None:
+    fails = MODULE.signature_wire_failures(
+        "mcp__workspace-mcp__send_gmail_message", {"body_format": "plain"},
+        "Plain operational note mentioning ragbot.ai in prose.", WIRE_CFG)
+    assert fails == []
+
+
+def test_wire_absent_config_is_off() -> None:
+    fails = MODULE.signature_wire_failures(
+        "mcp__workspace-mcp__send_gmail_message", {"body_format": "plain"},
+        RAGENIE_PLAIN, {})
+    assert fails == []
