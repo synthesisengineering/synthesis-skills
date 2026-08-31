@@ -987,12 +987,14 @@ def audit_project(
     # sessions-present and 5 of 5 reference-budget findings were raised against
     # dormant projects — the identical shape as the v1 diagnosis, one release
     # later, on the checks that release did not touch.
-    if dormant:
-        audit.skip("sessions-present", "dormant")
-        audit.skip("reference-budget", "dormant")
-    else:
-        audit.cover("sessions-present")
-        audit.cover("reference-budget")
+    # reference-present belongs to this family too, and leaving one member
+    # ungated is the same inconsistency this gate exists to remove. "Extract
+    # your stable facts into REFERENCE.md" asks somebody to restructure a
+    # record whose work is over; for a finished project the CONTEXT and the
+    # session archive already hold everything a later reader needs, and a
+    # reference file would be a duplicate of them.
+    for check in ("sessions-present", "reference-budget", "reference-present"):
+        audit.skip(check, "dormant") if dormant else audit.cover(check)
 
     if not sessions_dir.is_dir() and not dormant:
         # Only a defect once there is history to archive; a brand-new project
@@ -1005,7 +1007,11 @@ def audit_project(
                 "create sessions/YYYY-MM.md and move session narrative there",
             )
 
-    if not reference_path.is_file() and entries >= REFERENCE_EXPECTED_AFTER_SESSIONS:
+    if (
+        not reference_path.is_file()
+        and entries >= REFERENCE_EXPECTED_AFTER_SESSIONS
+        and not dormant
+    ):
         audit.add(
             "reference-present",
             "defect",

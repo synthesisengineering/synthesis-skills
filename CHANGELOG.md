@@ -48,9 +48,12 @@ on.** Reading the findings rather than counting them worked a third time.
   advice is an instruction to somebody doing the work. Measured before the gate:
   **11 of 11** `sessions-present` and **5 of 5** `reference-budget` findings were
   raised against dormant projects — the v1 diagnosis exactly, one release later,
-  on the checks that release did not touch. `body-currency`'s absent-marker
-  warning is gated for the same reason a dormant project's items are: asserting
-  a re-check nobody performed is fiction.
+  on the checks that release did not touch. `reference-present` joins them: asking
+  a finished project to restructure its stable facts is work on a record whose
+  work is over, and gating two of three siblings would have left the same
+  inconsistency this gate removes. `body-currency`'s absent-marker warning is
+  gated for the same reason a dormant project's items are: asserting a re-check
+  nobody performed is fiction.
 - **The status header is found when it is not first on its line.** The pattern
   was anchored to line start, so a record reading `**Phase:** Review complete —
   awaiting send. **Status:** Active` missed the Status entirely, fell through to

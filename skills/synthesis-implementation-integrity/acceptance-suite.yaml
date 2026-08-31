@@ -15,11 +15,11 @@ issues_authority_receipt: false
 unverified_remainder: the corpus measurements that motivated each change (80 warnings to 67; 11 of 11 and 5 of 5 dormant-only findings; one parser misread suppressing eight real findings) come from a private corpus and cannot be reproduced in CI, so these cases prove the rules and not the numbers; whether a human actually reads the commits before recording post_close_reviewed_through is an attestation the tool cannot verify, only date and expire; and the coverage report makes a skip visible without proving anybody looked at it
 changed_surfaces:
   - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
-    cases: [status-found-mid-line, phase-fallback-preserved, disposition-still-fires-unacknowledged, review-covering-every-commit-silences, acknowledgment-re-arms, unresolvable-sha-is-a-defect, dormant-budget-advice-suppressed, live-budget-advice-untouched, skip-is-reported, terminal-open-items-reported, live-project-not-asked]
+    cases: [status-found-mid-line, phase-fallback-preserved, disposition-still-fires-unacknowledged, review-covering-every-commit-silences, acknowledgment-re-arms, unresolvable-sha-is-a-defect, dormant-budget-advice-suppressed, live-budget-advice-untouched, tier-family-gated-together, reference-present-still-live, skip-is-reported, terminal-open-items-reported, live-project-not-asked]
   - path: skills/synthesis-context-lifecycle/scripts/context_currency.py
     cases: [checked-items-not-owed, narrative-bullets-not-owed]
   - path: skills/synthesis-context-lifecycle/scripts/test_context_doctor.py
-    cases: [status-found-mid-line, phase-fallback-preserved, disposition-still-fires-unacknowledged, review-covering-every-commit-silences, acknowledgment-re-arms, unresolvable-sha-is-a-defect, dormant-budget-advice-suppressed, live-budget-advice-untouched, skip-is-reported, terminal-open-items-reported, live-project-not-asked, checked-items-not-owed, narrative-bullets-not-owed, v18-vocabulary-documented, coverage-rule-documented]
+    cases: [status-found-mid-line, phase-fallback-preserved, disposition-still-fires-unacknowledged, review-covering-every-commit-silences, acknowledgment-re-arms, unresolvable-sha-is-a-defect, dormant-budget-advice-suppressed, live-budget-advice-untouched, tier-family-gated-together, reference-present-still-live, skip-is-reported, terminal-open-items-reported, live-project-not-asked, checked-items-not-owed, narrative-bullets-not-owed, v18-vocabulary-documented, coverage-rule-documented]
   - path: skills/synthesis-context-lifecycle/SKILL.md
     cases: [v18-vocabulary-documented, coverage-rule-documented]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
@@ -61,6 +61,14 @@ cases:
     control_class: acceptance-test
     fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::DormantApplicabilityTests::test_budget_and_archive_advice_is_silent_on_a_dormant_project
     motivating_defect: archive-your-narrative-and-narrow-your-scope-are-instructions-to-somebody-doing-the-work-and-11-of-11-and-5-of-5-such-findings-were-raised-against-projects-nobody-was-working
+  - id: tier-family-gated-together
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::DormantApplicabilityTests::test_the_whole_tier_family_is_gated_together
+    motivating_defect: gating-two-of-three-siblings-leaves-exactly-the-inconsistency-the-gate-was-added-to-remove-and-the-third-was-found-by-the-releases-own-archival-work
+  - id: reference-present-still-live
+    control_class: acceptance-test
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::DormantApplicabilityTests::test_reference_present_still_fires_on_a_live_project
+    motivating_defect: a-tier-check-that-stops-firing-on-live-projects-removes-the-structural-guarantee-a-cold-resumption-depends-on
   - id: live-budget-advice-untouched
     control_class: acceptance-test
     fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::DormantApplicabilityTests::test_the_same_advice_still_fires_on_a_live_project

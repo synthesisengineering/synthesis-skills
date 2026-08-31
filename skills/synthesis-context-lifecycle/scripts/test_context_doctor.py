@@ -1142,6 +1142,30 @@ class DormantApplicabilityTests(unittest.TestCase):
         self.assertIn("sessions-present", found)
         self.assertIn("reference-budget", found)
 
+    def test_the_whole_tier_family_is_gated_together(self):
+        """Gating two of three siblings is the inconsistency this removes.
+
+        reference-present asks a finished project to restructure a record whose
+        work is over, and its CONTEXT plus session archive already hold what a
+        later reader needs.
+        """
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n",
+                        sessions={"2026-01.md": "## 2026-01-05 — a\n",
+                                  "2026-02.md": "## 2026-02-05 — b\n"})
+        self.fx.index([{"id": "alpha", "status": "completed",
+                        "completed_date": "2026-02-05"}])
+        self.fx.commit("closed", when="2026-02-05")
+        found = self._checks_for(self.fx.audit(), "alpha")
+        self.assertNotIn("reference-present", found)
+
+    def test_reference_present_still_fires_on_a_live_project(self):
+        self.fx.project("beta", context="# P\n\n**Status:** Active\n",
+                        sessions={"2026-01.md": "## 2026-01-05 — a\n",
+                                  "2026-02.md": "## 2026-02-05 — b\n"})
+        self.fx.index([{"id": "beta", "status": "active"}])
+        self.fx.commit("live")
+        self.assertIn("reference-present", self._checks_for(self.fx.audit(), "beta"))
+
     def test_the_skip_is_reported_rather_than_silent(self):
         """The property that makes an unpaired suppression findable."""
         self._fat_project("alpha", "paused")
