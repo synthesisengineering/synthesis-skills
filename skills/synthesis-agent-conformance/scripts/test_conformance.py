@@ -2044,3 +2044,146 @@ def test_render_atomically_writes_the_same_structured_evidence(
     assert stdout == cached
     assert cached["checks"][0]["plane"] == "source"
     assert not list(report.parent.glob("last-report.json.*.tmp"))
+
+
+def _seed_plan_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """Repo with a bounded arc and a sibling program that owns the work plan."""
+    repo = tmp_path / "repo"
+    arc = repo / "projects" / "arc"
+    program_plan = (
+        repo
+        / "projects"
+        / "program"
+        / "resources"
+        / "artifacts"
+        / "2026-01-01-work-plan.md"
+    )
+    program_plan.parent.mkdir(parents=True)
+    program_plan.write_text("# Plan\n", encoding="utf-8")
+    (arc / "sessions").mkdir(parents=True)
+    (arc / "REFERENCE.md").write_text("# Reference\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "init", "--quiet", "--initial-branch", "main", str(repo)],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "core.hooksPath", "/dev/null"],
+        check=True,
+    )
+    return repo, arc, program_plan
+
+
+def _write_arc_context(arc: Path, plan_reference: str) -> None:
+    (arc / "CONTEXT.md").write_text(
+        "**Phase:** Drafting\n"
+        "**Status:** Active\n\n"
+        f"{plan_reference}\n"
+        "## What's Next\n\n"
+        "1. [ ] Continue.\n",
+        encoding="utf-8",
+    )
+
+
+def _plan_check(checks: list) -> object:
+    return {check.name: check for check in checks}["handoff.plan"]
+
+
+def test_project_summary_accepts_cross_project_plan_link(tmp_path: Path) -> None:
+    _, arc, program_plan = _seed_plan_repo(tmp_path)
+    _write_arc_context(
+        arc, "[plan](../program/resources/artifacts/2026-01-01-work-plan.md)\n"
+    )
+
+    summary, checks = MODULE.project_summary(arc)
+
+    assert _plan_check(checks).ok
+    assert summary["plan"] == str(program_plan.resolve())
+
+
+def test_project_summary_accepts_controlling_plan_line_absolute(
+    tmp_path: Path,
+) -> None:
+    _, arc, program_plan = _seed_plan_repo(tmp_path)
+    _write_arc_context(arc, f"Controlling plan: {program_plan} (item 2.1)\n")
+
+    summary, checks = MODULE.project_summary(arc)
+
+    assert _plan_check(checks).ok
+    assert summary["plan"] == str(program_plan.resolve())
+
+
+def test_project_summary_accepts_controlling_plan_line_repo_relative(
+    tmp_path: Path,
+) -> None:
+    _, arc, program_plan = _seed_plan_repo(tmp_path)
+    _write_arc_context(
+        arc,
+        "Controlling plan: projects/program/resources/artifacts/2026-01-01-work-plan.md\n",
+    )
+
+    summary, checks = MODULE.project_summary(arc)
+
+    assert _plan_check(checks).ok
+    assert summary["plan"] == str(program_plan.resolve())
+
+
+def test_project_summary_fails_closed_on_missing_declared_plan(
+    tmp_path: Path,
+) -> None:
+    _, arc, _ = _seed_plan_repo(tmp_path)
+    _write_arc_context(
+        arc,
+        "Controlling plan: projects/program/resources/artifacts/absent-plan.md\n",
+    )
+
+    summary, checks = MODULE.project_summary(arc)
+
+    check = _plan_check(checks)
+    assert not check.ok
+    assert check.required
+    assert "not a file" in check.detail
+    assert summary["plan"] == "projects/program/resources/artifacts/absent-plan.md"
+
+
+def test_project_summary_refuses_plan_escaping_repository(tmp_path: Path) -> None:
+    _, arc, _ = _seed_plan_repo(tmp_path)
+    (tmp_path / "outside-plan.md").write_text("# Outside\n", encoding="utf-8")
+    _write_arc_context(arc, "[plan](../../../outside-plan.md)\n")
+
+    summary, checks = MODULE.project_summary(arc)
+
+    check = _plan_check(checks)
+    assert not check.ok
+    assert check.required
+    assert "outside the repository" in check.detail
+    assert summary["plan"] == "../../../outside-plan.md"
+
+
+def test_project_summary_keeps_local_plan_value_shape(tmp_path: Path) -> None:
+    project = write_stopped_project(tmp_path)
+
+    summary, checks = MODULE.project_summary(project)
+
+    assert _plan_check(checks).ok
+    assert summary["plan"] == str(project / "resources/artifacts/demo-plan.md")
+
+
+def test_project_summary_ignores_mid_line_controlling_plan(tmp_path: Path) -> None:
+    """A `Controlling plan:` fragment fused into another line is corrupted
+    record state, not a declaration; the anchored pattern must not match it."""
+    _, arc, program_plan = _seed_plan_repo(tmp_path)
+    _write_arc_context(
+        arc, f"(some other prose)Controlling plan: {program_plan}\n"
+    )
+
+    summary, checks = MODULE.project_summary(arc)
+
+    check = _plan_check(checks)
+    assert not check.ok
+    assert not check.required
+    assert summary["plan"] == "unknown"
