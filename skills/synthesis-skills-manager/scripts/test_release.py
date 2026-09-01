@@ -51,6 +51,21 @@ def no_real_cache_settle_delay(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(release, "CODEX_CACHE_QUIET_SECONDS", 0.0)
 
 
+@pytest.fixture(autouse=True)
+def hermetic_release_train(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Keep the suite off the developer's real coordination board and
+    session identity; train tests point at their own fixtures."""
+    monkeypatch.setenv(
+        "SYNTHESIS_COORDINATION_BOARD", str(tmp_path / "absent-board.md")
+    )
+    monkeypatch.delenv("SYNTHESIS_COORDINATION_SESSION", raising=False)
+    monkeypatch.setenv(
+        "SYNTHESIS_ACTIVE_PROJECT_FILE", str(tmp_path / "absent-pointer.json")
+    )
+
+
 # --- source of truth -------------------------------------------------------
 
 
@@ -152,6 +167,129 @@ def test_required_checks_execute_whole_system_onboarding_contract() -> None:
         "skills/synthesis-onboarding/scripts/check_scaffolds.py",
         ".",
     ]
+
+
+# --- release-train serialization (2026-09-01) -------------------------------
+#
+# Five same-day overtakes between two parallel releasing sessions, one
+# version-number collision. The train is a virtual coordination-board claim;
+# holding it is verified here, at the boundary both sessions already run.
+
+TRAIN_UUID = "01a05e00-0000-7000-8000-000000000001"
+OTHER_UUID = "01a05e00-0000-7000-8000-000000000002"
+
+
+def train_board(tmp_path: Path, rows: list[tuple[str, str, str]]) -> Path:
+    header = (
+        "| session uuid | compact id | speakable id v1 | legacy id | agent | "
+        "machine | client session ref | project | started | heartbeat | mode | "
+        "workspace(s) / branch | goal | claimed areas (advisory lock) | "
+        "context role | status |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+    )
+    body = "".join(
+        f"| {uuid} | s-x | a-b-c-d-00001 |  | Agent | m1 | - | proj | t | t | "
+        f"interactive | w | g | {claims} | owner | {status} |\n"
+        for uuid, claims, status in rows
+    )
+    board = tmp_path / "board.md"
+    board.write_text(
+        "# Coordination\n\nSchema: v4\n\n## Active sessions\n\n"
+        + header + body + "\n## Messages\n\n---\n\n## Protocol\n",
+        encoding="utf-8",
+    )
+    return board
+
+
+def run_train_check(
+    monkeypatch: pytest.MonkeyPatch, board: Path | None, selector: str | None
+) -> release.Step:
+    if board is not None:
+        monkeypatch.setenv("SYNTHESIS_COORDINATION_BOARD", str(board))
+    if selector is not None:
+        monkeypatch.setenv("SYNTHESIS_COORDINATION_SESSION", selector)
+    result = release.Result()
+    release.train_check(result)
+    (step,) = [s for s in result.steps if s.name == "preflight.release-train"]
+    return step
+
+
+def test_train_not_adopted_without_a_board(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    step = run_train_check(monkeypatch, None, None)
+    assert step.ok and "not adopted" in step.detail
+
+
+def test_train_held_by_this_session_passes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    board = train_board(
+        tmp_path, [(TRAIN_UUID, release.TRAIN_RESOURCE, "active")]
+    )
+    step = run_train_check(monkeypatch, board, TRAIN_UUID)
+    assert step.ok and "held by this session" in step.detail
+
+
+def test_train_held_by_peer_refuses(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    board = train_board(
+        tmp_path, [(OTHER_UUID, release.TRAIN_RESOURCE, "active")]
+    )
+    step = run_train_check(monkeypatch, board, TRAIN_UUID)
+    assert not step.ok and "not this session" in step.detail
+
+
+def test_train_unheld_refuses_with_claim_guidance(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    board = train_board(tmp_path, [(OTHER_UUID, "some/path/**", "active")])
+    step = run_train_check(monkeypatch, board, TRAIN_UUID)
+    assert not step.ok and "claim it before" in step.detail
+
+
+def test_train_released_holder_does_not_count(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    board = train_board(
+        tmp_path, [(OTHER_UUID, release.TRAIN_RESOURCE, "released")]
+    )
+    step = run_train_check(monkeypatch, board, TRAIN_UUID)
+    assert not step.ok and "claim it before" in step.detail
+
+
+def test_train_held_without_local_identity_refuses(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    board = train_board(
+        tmp_path, [(OTHER_UUID, release.TRAIN_RESOURCE, "active")]
+    )
+    step = run_train_check(monkeypatch, board, None)
+    assert not step.ok and "no session identity" in step.detail
+
+
+def test_train_token_conflicts_with_itself_but_not_with_paths() -> None:
+    """The virtual resource rides the unmodified claim-overlap machinery:
+    identical tokens conflict (the lock), ordinary path claims do not
+    (no false positives)."""
+    sys.path.insert(
+        0,
+        str(
+            Path(release.__file__).resolve().parents[2]
+            / "synthesis-project-management"
+            / "scripts"
+        ),
+    )
+    import coordination
+
+    assert coordination.overlaps(release.TRAIN_RESOURCE, release.TRAIN_RESOURCE)
+    assert not coordination.overlaps(
+        release.TRAIN_RESOURCE, "/repos/synthesis-skills/skills/**"
+    )
+    assert not coordination.overlaps(
+        "ai-knowledge-demo/projects/**", release.TRAIN_RESOURCE
+    )
 
 
 def test_agents_verification_list_matches_ci_workflow() -> None:

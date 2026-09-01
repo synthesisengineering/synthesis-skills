@@ -11,6 +11,14 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Two release trains on one track now queue instead of colliding (September
+2026).** Release **4.77.0** makes release serialization mechanical: a
+virtual `release-train:synthesis-skills` claim on the coordination board is
+the lock, and `release.py` preflight refuses to gate or publish on a
+board-carrying machine unless the running session holds it — while machines
+without a board pass with a notice. See the
+[4.77.0 release notes](CHANGELOG.md).
+
 **A documented check list that CI outgrew is now a test failure (September
 2026).** Release **4.76.5** syncs AGENTS.md's Verification list with the CI
 workflow and pins their equality with a test, and widens the

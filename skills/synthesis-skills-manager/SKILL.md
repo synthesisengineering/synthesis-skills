@@ -324,6 +324,37 @@ The general rule this encodes, worth applying beyond releases: **when a
 verification asks a system to describe itself, verify the description against
 the artifact.** A self-report is a claim, not evidence.
 
+## The release train — one publisher at a time
+
+On 2026-09-01, two agent sessions releasing this repository in parallel
+overtook each other five times — each merge to `main` turned the other's open
+PR CONFLICTING with checks never run — and once both authored the same
+version number. Coordination-board messages failed as a serializer because
+an autonomous session mid-transaction does not re-read the board between
+authoring a version and merging.
+
+Serialization is now mechanical. The train is a **virtual coordination-board
+resource**, `release-train:synthesis-skills`, claimed like any source area:
+
+```bash
+python3 <synthesis-project-management-root>/scripts/coordination.py claim \
+  ... --area release-train:synthesis-skills --area <your real areas>
+```
+
+The board's existing claim-overlap refusal is the mutual exclusion (two
+holders cannot coexist; the lease serializes it across machines), and
+`release.py`'s preflight enforces possession: on any machine that has a
+coordination board, every mode except `--install-only` refuses unless the
+running process's session — from `SYNTHESIS_COORDINATION_SESSION` or an
+owned active-project pointer — holds the train. Machines without a board
+(outside contributors) pass with a notice; adoption travels with the board.
+
+Protocol: claim the train **before authoring the version bump**, hold it
+through merge and `release.py`, and release or narrow the claim immediately
+after the gated release completes. A crashed holder blocks the train by
+design; the user — never another agent on its own initiative — frees it via
+the stale-claim review (`coordination.py stale`).
+
 ## Source Update Protocol (NON-NEGOTIABLE)
 
 When updating any skill — whether one file or several — follow this exact sequence. Do not deviate. **Manual file copies to install targets are NOT installation.** They create drift between what is committed, what is pushed, and what is locally active. The protocol below exists because that drift has happened before and must not happen again.

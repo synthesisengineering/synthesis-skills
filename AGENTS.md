@@ -95,6 +95,10 @@ python3 skills/synthesis-agent-conformance/scripts/conformance.py coordination
 - Update the concise release note in `README.md`.
 - Use a feature branch and a review request for non-trivial changes.
 - Merge only after every required check passes.
+- On a machine with a synthesis coordination board, hold the release train
+  (`coordination.py claim ... --area release-train:synthesis-skills`) from
+  version authoring through the gated release; `release.py` preflight
+  refuses otherwise. Release the claim right after shipping.
 - **Ship with the gated release script**, which runs the required checks,
   publishes to every push remote, installs into both clients using each
   client's own commands, and verifies each client twice — its CLI report and
