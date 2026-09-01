@@ -4,6 +4,23 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.73.0] - 2026-08-31
+
+**`synthesis-context-lifecycle` doctor v1.8.1 — a cited directory of scripts is
+preserved work, not a missing target.** `artifact-cites-missing-script` required
+the citation to resolve to a regular file, so an artifact pointing at
+`resources/scripts/codex-hooks/` — a directory holding six scripts and a
+`hooks.json` — was reported as citing something that was never kept. Referencing
+a multi-file tool by its directory is the ordinary way to do it.
+
+The check's purpose is durability: an artifact must not cite an executable
+nobody preserved. A directory holding files satisfies that. An **empty** one
+still fails, because a folder is not a substitute for content — that is the same
+failure as a missing file, wearing a folder.
+
+Sixth defect of the same family found this week, and the same shape as the other
+five: a check that did not know a legitimate form of the thing it was judging.
+
 ## [4.72.0] - 2026-08-31
 
 **`synthesis-daily-rituals` — the open-items horizon has to match what the item

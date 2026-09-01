@@ -63,7 +63,7 @@ from pathlib import Path
 # missing the doctor must fail loudly rather than silently skip a check.
 import context_currency
 
-DOCTOR_VERSION = "1.8.0"
+DOCTOR_VERSION = "1.8.1"
 
 # Budgets from the tiered context architecture.
 CONTEXT_BUDGET_ACTIVE = 150
@@ -872,6 +872,15 @@ def cited_script_findings(project_path: Path) -> list[tuple[Path, str, str]]:
                     break
             if unsafe:
                 findings.append((artifact, reference, "traverses a symlink"))
+            elif candidate_lexical.is_dir():
+                # A citation to a DIRECTORY of scripts is legitimate and common:
+                # "the portable hooks live here" is how a multi-file tool is
+                # referenced. What this check exists to catch is a citation to
+                # something that was not preserved, and a directory holding
+                # files satisfies that completely. An EMPTY one does not — it
+                # is the same failure as a missing file wearing a folder.
+                if not any(candidate_lexical.iterdir()):
+                    findings.append((artifact, reference, "is an empty directory"))
             elif not candidate_lexical.is_file():
                 findings.append((artifact, reference, "is not a regular file"))
     return findings

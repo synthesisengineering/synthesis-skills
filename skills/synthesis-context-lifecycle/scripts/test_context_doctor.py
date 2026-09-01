@@ -1210,6 +1210,61 @@ class TerminalOpenItemsTests(unittest.TestCase):
         self.assertNotIn("terminal-project-open-items", checks)
 
 
+class CitedScriptTargetTests(unittest.TestCase):
+    """A cited directory of scripts is preserved work, not a missing target.
+
+    The check exists so an artifact cannot cite an executable that was never
+    kept. A directory holding the scripts satisfies that; requiring a regular
+    file rejected the ordinary way a multi-file tool is referenced.
+    """
+
+    def setUp(self):
+        self._tmp = TemporaryDirectory()
+        self.fx = Fixture(Path(self._tmp.name) / "src")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _project_citing(self, target: str, make):
+        path = self.fx.project("alpha")
+        arts = path / "resources" / "artifacts"
+        arts.mkdir(parents=True, exist_ok=True)
+        (arts / "note.md").write_text(
+            f"See `resources/scripts/{target}` for the portable version.\n",
+            encoding="utf-8",
+        )
+        make(path / "resources" / "scripts")
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+        return self._checks_for(self.fx.audit(), "alpha")
+
+    def _checks_for(self, result, pid):
+        return {f["check"] for f in result["data"].get("findings", [])
+                if f["project"] == pid}
+
+    def test_a_directory_of_scripts_is_a_valid_citation(self):
+        def make(scripts):
+            d = scripts / "codex-hooks"
+            d.mkdir(parents=True)
+            (d / "hooks.json").write_text("{}\n", encoding="utf-8")
+            (d / "guard.py").write_text("print('x')\n", encoding="utf-8")
+        self.assertNotIn("artifact-cites-missing-script",
+                         self._project_citing("codex-hooks/", make))
+
+    def test_an_empty_directory_is_still_a_missing_target(self):
+        """Nothing was preserved; a folder is not a substitute for content."""
+        def make(scripts):
+            (scripts / "codex-hooks").mkdir(parents=True)
+        self.assertIn("artifact-cites-missing-script",
+                      self._project_citing("codex-hooks/", make))
+
+    def test_a_missing_target_still_fires(self):
+        def make(scripts):
+            scripts.mkdir(parents=True)
+        self.assertIn("artifact-cites-missing-script",
+                      self._project_citing("gone.py", make))
+
+
 class SkillDocContractTests(unittest.TestCase):
     """A finding names a check; the skill has to make that name mean something.
 
