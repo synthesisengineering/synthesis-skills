@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import ssl
+import urllib.error
 from pathlib import Path
 
 import plugin_currency
@@ -78,6 +80,68 @@ def test_live_resolution_is_cached_and_stale_cache_remains_labeled(tmp_path: Pat
     )
     assert version == "4.74.0"
     assert "stale" in detail
+
+
+def test_verified_open_retries_cert_failure_with_system_ca_bundle(
+    tmp_path: Path, monkeypatch
+) -> None:
+    ca_file = tmp_path / "system-ca.pem"
+    ca_file.write_text("fixture", encoding="utf-8")
+    contexts = []
+    calls = []
+    sentinel_context = object()
+
+    def open_url(url, timeout, context=None):
+        calls.append((url, timeout, context))
+        if context is None:
+            verification_error = ssl.SSLCertVerificationError(
+                1, "certificate verify failed"
+            )
+            raise urllib.error.URLError(verification_error)
+        return Response({"version": "4.74.0"})
+
+    def create_context(*, cafile):
+        contexts.append(cafile)
+        return sentinel_context
+
+    monkeypatch.setattr(plugin_currency.urllib.request, "urlopen", open_url)
+    monkeypatch.setattr(plugin_currency, "_candidate_ca_files", lambda: [ca_file])
+    monkeypatch.setattr(plugin_currency.ssl, "create_default_context", create_context)
+
+    response = plugin_currency._verified_urlopen("https://example.test", timeout=2)
+    assert json.loads(response.read()) == {"version": "4.74.0"}
+    assert contexts == [str(ca_file)]
+    assert calls == [
+        ("https://example.test", 2, None),
+        ("https://example.test", 2, sentinel_context),
+    ]
+
+
+def test_verified_open_does_not_mask_non_certificate_network_error(monkeypatch) -> None:
+    def offline(*_args, **_kwargs):
+        raise urllib.error.URLError("offline")
+
+    monkeypatch.setattr(plugin_currency.urllib.request, "urlopen", offline)
+    monkeypatch.setattr(
+        plugin_currency,
+        "_candidate_ca_files",
+        lambda: (_ for _ in ()).throw(AssertionError("must not retry CA files")),
+    )
+    try:
+        plugin_currency._verified_urlopen("https://example.test", timeout=2)
+    except urllib.error.URLError as exc:
+        assert "offline" in str(exc)
+    else:
+        raise AssertionError("offline lookup should fail")
+
+
+def test_system_ca_context_keeps_peer_and_hostname_verification_enabled() -> None:
+    candidates = plugin_currency._candidate_ca_files()
+    if not candidates:
+        return
+    context = ssl.create_default_context(cafile=str(candidates[0]))
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname is True
 
 
 def test_sessionstart_notice_compares_executing_cache_to_stable(tmp_path: Path) -> None:

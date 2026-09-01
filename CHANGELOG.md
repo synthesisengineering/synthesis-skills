@@ -4,6 +4,23 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.74.1] - 2026-09-01
+
+**The lifecycle now survives the release that advances it.** The first 4.74.0
+SessionStart exposed two defects that hermetic policy tests could not: the
+python.org macOS runtime had no configured OpenSSL CA path and therefore could
+not verify the stable manifest, while Codex's native plugin refresh deleted the
+old versioned cache before the running task's Stop hook had finished using it.
+
+Release discovery keeps urllib and verified TLS, but on a certificate-path
+failure it retries known operating-system CA bundles through
+`ssl.create_default_context(cafile=...)`; certificate-chain and hostname checks
+stay enabled. The release publisher snapshots every real Codex version root
+before refresh, restores any root the client removes, and verifies the complete
+tree digest before declaring installation successful. Symlink recovery artifacts
+are deliberately excluded. A failed snapshot blocks the client mutation; a
+failed restore leaves its recovery copy in place and fails the release loudly.
+
 ## [4.74.0] - 2026-09-01
 
 **`synthesis-onboarding` v1.3.0 — plugin upgrades now have a lifecycle instead

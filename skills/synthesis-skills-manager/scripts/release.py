@@ -44,8 +44,10 @@ import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -468,6 +470,111 @@ def installed_root(client: str, version: str) -> Path:
     return base / "plugins" / "cache" / MARKETPLACE / PLUGIN_NAME / version
 
 
+def plugin_cache_parent(client: str) -> Path:
+    """Return the directory containing this plugin's versioned cache roots."""
+    return installed_root(client, "0.0.0").parent
+
+
+def _tree_digest(root: Path) -> str:
+    """Hash paths, entry types, symlink targets, and file bytes deterministically."""
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*"), key=lambda item: str(item.relative_to(root))):
+        relative = str(path.relative_to(root)).encode("utf-8")
+        if path.is_symlink():
+            digest.update(b"L\0" + relative + b"\0" + os.readlink(path).encode("utf-8"))
+        elif path.is_dir():
+            digest.update(b"D\0" + relative)
+        elif path.is_file():
+            digest.update(b"F\0" + relative + b"\0" + path.read_bytes())
+    return digest.hexdigest()
+
+
+def snapshot_codex_caches(result: Result) -> tuple[Path, list[str]] | None:
+    """Copy real version roots before Codex's destructive plugin refresh.
+
+    A running Codex task retains the absolute plugin root from its SessionStart
+    hook definition. Codex's plugin add currently replaces the cache and removes
+    that root, which strands the task's later Stop hook. Claude already retains
+    historical roots. The release publisher therefore preserves every real
+    Codex version directory that exists at the transition boundary. Symlinks are
+    deliberately excluded: they are recovery artifacts, not installed versions.
+    """
+    parent = plugin_cache_parent("codex")
+    backup = Path(tempfile.mkdtemp(prefix="synthesis-codex-cache-"))
+    versions = []
+    try:
+        if parent.is_dir():
+            for source in sorted(parent.iterdir(), key=lambda path: path.name):
+                if (
+                    source.is_symlink()
+                    or not source.is_dir()
+                    or RELEASE_VERSION_RE.fullmatch(source.name) is None
+                ):
+                    continue
+                shutil.copytree(source, backup / source.name, symlinks=True)
+                versions.append(source.name)
+    except OSError as exc:
+        result.add(
+            "install.codex.cache-snapshot",
+            False,
+            f"could not preserve active-session cache roots; recovery copy kept at {backup}: {exc}",
+        )
+        return None
+    result.add(
+        "install.codex.cache-snapshot",
+        True,
+        f"preserved {len(versions)} real version root(s) before refresh",
+    )
+    return backup, versions
+
+
+def _remove_transition_backup(backup: Path) -> None:
+    """Remove only a validated mkdtemp directory created by this module."""
+    resolved = backup.resolve()
+    temporary_root = Path(tempfile.gettempdir()).resolve()
+    if (
+        resolved.parent != temporary_root
+        or not resolved.name.startswith("synthesis-codex-cache-")
+        or resolved.is_symlink()
+    ):
+        raise OSError(f"refusing unsafe transition-backup cleanup target: {backup}")
+    shutil.rmtree(resolved)
+
+
+def restore_codex_caches(
+    backup: Path, versions: list[str], result: Result
+) -> bool:
+    """Restore missing version roots and prove every preserved tree is exact."""
+    parent = plugin_cache_parent("codex")
+    restored = []
+    try:
+        parent.mkdir(parents=True, exist_ok=True)
+        for version in versions:
+            source = backup / version
+            destination = parent / version
+            if destination.is_symlink():
+                raise OSError(f"version root became a symlink: {destination}")
+            if not destination.exists():
+                shutil.copytree(source, destination, symlinks=True)
+                restored.append(version)
+            if not destination.is_dir():
+                raise OSError(f"version root is not a directory: {destination}")
+            if _tree_digest(source) != _tree_digest(destination):
+                raise OSError(f"version root changed during refresh: {destination}")
+        _remove_transition_backup(backup)
+    except OSError as exc:
+        return result.add(
+            "install.codex.cache-restore",
+            False,
+            f"active-session cache preservation failed; recovery copy kept at {backup}: {exc}",
+        )
+    return result.add(
+        "install.codex.cache-restore",
+        True,
+        f"verified {len(versions)} preserved root(s); restored {len(restored)}",
+    )
+
+
 def content_digest_report(source_repo: Path, installed: Path) -> tuple[bool, str]:
     """Compare every source skills/ file against the installed tree by bytes.
 
@@ -577,6 +684,13 @@ def refresh_client(client: str, result: Result, dry_run: bool) -> bool:
             [binary, "plugin", "marketplace", "upgrade", MARKETPLACE],
             [binary, "plugin", "add", f"{PLUGIN_NAME}@{MARKETPLACE}"],
         ]
+    cache_snapshot = None
+    if client == "codex" and not dry_run:
+        cache_snapshot = snapshot_codex_caches(result)
+        if cache_snapshot is None:
+            return False
+
+    commands_ok = True
     for command in commands:
         label = f"install.{client}.{command[2] if len(command) > 2 else 'run'}"
         if dry_run:
@@ -585,9 +699,14 @@ def refresh_client(client: str, result: Result, dry_run: bool) -> bool:
         completed = run(command, timeout=600)
         if completed.returncode != 0:
             tail = (completed.stderr or completed.stdout).strip().splitlines()
-            return result.add(label, False, tail[-1] if tail else "command failed")
+            result.add(label, False, tail[-1] if tail else "command failed")
+            commands_ok = False
+            break
         result.add(label, True, " ".join(command[1:]))
-    return True
+    caches_ok = True
+    if cache_snapshot is not None:
+        caches_ok = restore_codex_caches(*cache_snapshot, result)
+    return commands_ok and caches_ok
 
 
 def preflight(repo: Path, result: Result, install_only: bool) -> str | None:

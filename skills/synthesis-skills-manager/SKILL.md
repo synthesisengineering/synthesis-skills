@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.2.0"
+  version: "2.2.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -280,7 +280,10 @@ The sequence, each stage gating the next:
   requires. For Codex that means `plugin marketplace upgrade` **before**
   `plugin add`, because Codex installs *from* its git marketplace snapshot —
   skipping the upgrade installs the previous release while appearing to
-  succeed.
+  succeed. Before that destructive Codex refresh, the publisher snapshots
+  every real versioned cache root and afterwards restores and byte-verifies
+  any root the client removed. An already-running task keeps the exact hook
+  code its SessionStart loaded. Symlink recovery artifacts are not preserved.
 - **Verify** is the point of the whole script, and it checks each client
   **twice**: what the CLI reports, and the plugin manifest at the path the CLI
   says it loads. Agreement of both with the source version is the only pass.

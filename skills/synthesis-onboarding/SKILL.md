@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.0"
+  version: "1.3.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -92,7 +92,10 @@ The receipt also stores the effective plugin policy. SessionStart reads that
 policy and the executing plugin-cache manifest, then compares it with a
 six-hour cached release-manifest check. It emits a notice when the installed
 cache is behind or mismatched and preserves an explicit unverifiable state
-when neither live nor cached release evidence is available. `doctor` applies
+when neither live nor cached release evidence is available. On python.org's
+macOS runtime, where OpenSSL can have no configured CA path, the live check
+retries with an existing operating-system CA bundle through a fully verifying
+TLS context; it never disables certificate or hostname verification. `doctor` applies
 the same comparison and exit-code contract.
 
 ## Release channels

@@ -1,45 +1,32 @@
-# AGENT HEURISTIC: authored for the 4.74.0 onboarding-lifecycle release.
+# AGENT HEURISTIC: authored for the 4.74.1 lifecycle-survival hotfix.
 # Fresh per transaction: changed_surfaces must equal the authoritative
-# base-to-head Git diff, proved by the runner before release.py consumes
-# the receipt.
+# base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: synthesis-onboarding-lifecycle-release
+suite: synthesis-onboarding-lifecycle-survival-hotfix
 membership: closed
-production_entry_point: skills/synthesis-onboarding/scripts/onboard.py update
-enforcing_boundary: SessionStart update notice, onboarding doctor currency result, and the acceptance-bound release publisher
+production_entry_point: skills/synthesis-skills-manager/scripts/release.py
+enforcing_boundary: verified release lookup and active-session-safe plugin refresh
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: hermetic tests prove policy parsing, semantic comparison, bounded cache behavior, client command construction, doctor outcomes, SessionStart injection, and atomic Git ref publication; they do not make live marketplace mutations or prove remote network availability, while release.py deep verification remains the live installed-cache boundary after publication
+unverified_remainder: hermetic tests prove certificate-path retries, refusal to mask unrelated network errors, verifying SSL context properties, exact Codex cache restoration, corruption detection, pre-mutation snapshot failure, documentation, manifest parity, and changelog parity; the live stock-Python stable lookup is checked outside the suite, while release.py deep verification remains the installed-cache boundary after publication
 changed_surfaces:
   - path: skills/synthesis-onboarding/scripts/plugin_currency.py
-    cases: [policy-ref-resolution, semantic-version-comparison, release-cache-evidence, sessionstart-cache-comparison]
+    cases: [verified-system-ca-retry, non-certificate-error-propagation, verifying-context]
   - path: skills/synthesis-onboarding/scripts/test_plugin_currency.py
-    cases: [policy-ref-resolution, semantic-version-comparison, release-cache-evidence, sessionstart-cache-comparison]
-  - path: skills/synthesis-onboarding/scripts/onboard.py
-    cases: [manifest-policy-validation, marketplace-target-selection, doctor-plugin-currency]
-  - path: skills/synthesis-onboarding/scripts/test_onboard.py
-    cases: [manifest-policy-validation, marketplace-target-selection, doctor-plugin-currency, public-channel-docs]
+    cases: [verified-system-ca-retry, non-certificate-error-propagation, verifying-context]
   - path: skills/synthesis-onboarding/SKILL.md
-    cases: [public-channel-docs]
-  - path: skills/synthesis-onboarding/references/org-manifest.md
-    cases: [public-channel-docs]
-  - path: onboard.sh
-    cases: [bootstrap-channel-selection, public-channel-docs]
-  - path: README.md
-    cases: [public-channel-docs, release-changelog-parity]
-  - path: skills/synthesis-agent-conformance/scripts/session_context.py
-    cases: [sessionstart-lifecycle-notice]
-  - path: skills/synthesis-agent-conformance/scripts/test_session_context.py
-    cases: [sessionstart-lifecycle-notice]
+    cases: [lifecycle-hotfix-doc-contract]
   - path: skills/synthesis-skills-manager/scripts/release.py
-    cases: [atomic-channel-publication]
+    cases: [active-cache-restoration, cache-corruption-refusal, snapshot-failure-precedes-mutation]
   - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [atomic-channel-publication, release-manager-doc-contract]
+    cases: [active-cache-restoration, cache-corruption-refusal, snapshot-failure-precedes-mutation, lifecycle-hotfix-doc-contract, release-manifest-parity, release-changelog-parity]
   - path: skills/synthesis-skills-manager/SKILL.md
-    cases: [release-manager-doc-contract]
+    cases: [lifecycle-hotfix-doc-contract]
+  - path: README.md
+    cases: [lifecycle-hotfix-doc-contract]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -49,62 +36,42 @@ changed_surfaces:
   - path: CHANGELOG.md
     cases: [release-changelog-parity]
 cases:
-  - id: policy-ref-resolution
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_stable_edge_and_pin_resolve_to_distinct_git_refs
-    motivating_defect: stable-edge-and-exact-pins-are-only-real-when-they-resolve-to-distinct-enforceable-git-targets
-  - id: semantic-version-comparison
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_version_comparison_is_semantic_not_lexical
-    motivating_defect: lexical-ordering-reports-4-10-as-older-than-4-9-and-inverts-the-update-notice
-  - id: release-cache-evidence
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_live_resolution_is_cached_and_stale_cache_remains_labeled
-    motivating_defect: a-sessionstart-network-check-without-bounded-cache-evidence-either-blocks-startup-or-turns-an-outage-into-an-uncited-current-claim
-  - id: sessionstart-cache-comparison
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_sessionstart_notice_compares_executing_cache_to_stable
-    motivating_defect: the-notice-must-compare-the-executing-cache-manifest-not-a-source-checkout-or-client-self-report
-  - id: manifest-policy-validation
+  - id: verified-system-ca-retry
     control_class: enforced-gate
-    fixture: ../synthesis-onboarding/scripts/test_onboard.py::ParserTests::test_manifest_rejects_unknown_channel_and_non_exact_pin
-    motivating_defect: accepting-an-unknown-channel-or-non-exact-pin-converts-org-policy-into-guesswork
-  - id: marketplace-target-selection
+    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_verified_open_retries_cert_failure_with_system_ca_bundle
+    motivating_defect: python-org-macos-can-have-no-openssl-ca-path-even-though-the-operating-system-ships-a-valid-ca-bundle
+  - id: non-certificate-error-propagation
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_marketplace_add_targets_stable_edge_and_version_pin
-    motivating_defect: a-manifest-label-without-client-marketplace-ref-selection-is-not-channel-support
-  - id: doctor-plugin-currency
+    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_verified_open_does_not_mask_non_certificate_network_error
+    motivating_defect: retrying-every-network-error-as-a-ca-problem-hides-the-real-unverifiable-state-and-wastes-sessionstart-time
+  - id: verifying-context
     control_class: enforced-gate
-    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_doctor_reports_current_behind_and_unverifiable_currency
-    motivating_defect: doctor-must-not-collapse-behind-and-unverifiable-release-state-into-the-same-green-presence-check
-  - id: bootstrap-channel-selection
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_bootstrap_defaults_to_stable_and_maps_edge_to_main
-    motivating_defect: a-stable-engine-default-is-bypassed-if-the-public-bootstrap-still-clones-main
-  - id: public-channel-docs
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_public_docs_expose_stable_edge_and_org_pin_contract
-    motivating_defect: an-engine-capability-hidden-behind-the-old-main-bootstrap-or-an-undocumented-pin-field-cannot-be-used-correctly
-  - id: sessionstart-lifecycle-notice
-    control_class: acceptance-test
-    fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_sessionstart_prepends_plugin_update_notice
-    motivating_defect: an-update-check-that-never-enters-the-real-sessionstart-envelope-is-dead-code-not-a-lifecycle-notice
-  - id: atomic-channel-publication
+    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_system_ca_context_keeps_peer_and_hostname_verification_enabled
+    motivating_defect: fixing-ca-discovery-by-disabling-peer-or-hostname-verification-turns-an-update-notice-into-a-network-injection-surface
+  - id: active-cache-restoration
     control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_publish_atomically_creates_edge_stable_and_version_pin_refs
-    motivating_defect: publishing-main-stable-and-the-pin-separately-can-leave-users-on-three-different-releases-after-one-failed-push
-  - id: release-manager-doc-contract
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_refresh_restores_real_version_root_deleted_by_client
+    motivating_defect: codex-plugin-refresh-deletes-the-version-root-that-an-already-running-task-still-needs-for-its-stop-hook
+  - id: cache-corruption-refusal
+    control_class: enforced-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_refresh_fails_if_existing_preserved_root_changes
+    motivating_defect: presence-alone-cannot-prove-an-active-session-cache-still-contains-the-code-that-session-loaded
+  - id: snapshot-failure-precedes-mutation
+    control_class: enforced-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_refresh_does_not_run_when_cache_snapshot_fails
+    motivating_defect: a-publisher-that-refreshes-after-its-preservation-copy-fails-can-strand-the-running-task-without-recovery-bytes
+  - id: lifecycle-hotfix-doc-contract
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_manager_documents_channel_ref_contract
-    motivating_defect: maintainers-need-the-same-channel-boundary-the-publisher-enforces-or-a-later-release-can-regress-to-main-only
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_lifecycle_hotfix_is_documented_on_every_public_maintenance_surface
+    motivating_defect: future-maintainers-can-regress-a-runtime-lifecycle-invariant-that-only-lives-in-an-incident-log
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-    motivating_defect: a-manifest-that-cannot-be-consumed-by-its-own-runner-issues-authority-it-never-earned
+    motivating_defect: an-acceptance-manifest-that-its-own-runner-cannot-consume-issues-authority-it-never-earned
   - id: release-manifest-parity
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
-    motivating_defect: a-version-bump-that-reaches-one-client-and-not-the-other-stays-invisible-until-something-breaks
+    motivating_defect: a-hotfix-version-that-reaches-only-one-client-manifest-cannot-be-reliably-installed-or-audited
   - id: release-changelog-parity
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
