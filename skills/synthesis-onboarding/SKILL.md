@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.4.0"
+  version: "1.4.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -43,7 +43,9 @@ With no arguments, the bootstrap opens the guided `init` interview through
 the terminal even though the shell script arrived over a pipe. Every cataloged
 layer ends as `installed`, `declined`, or `missing`; a missing selected layer
 keeps the run non-green. For an agent-driven or automated run, pass a reviewed
-JSON answers file instead of relying on prompts.
+JSON answers file instead of relying on prompts. When Git has no author
+identity, a full-profile interview collects the name and email before mutation;
+non-interactive answers provide them as `git_name` and `git_email`.
 
 **Agent (when Claude Code or Codex already has this plugin):** ask the
 assistant to "set up the synthesis ecosystem" — it runs the same engine:
@@ -94,8 +96,8 @@ No selected layer can disappear from the report.
 
 | Phase | Behavior |
 |-------|----------|
-| interview | Choose `full` or `skills-only`; collect a workspace slug, time zone, voice traits, wording boundaries, and optional-runtime choices. `/dev/tty` keeps the interview available when `onboard.sh` is piped from curl. `--answers` provides the same contract as reviewed JSON for an agent or CI run. |
-| personal workspace | Scaffold a Git-backed `ai-knowledge-<workspace>` container and its project/lesson structure. The interview creates policy; it does not copy anyone else's private files. |
+| interview | Choose `full` or `skills-only`; collect a workspace slug, time zone, voice traits, wording boundaries, optional-runtime choices, and, only when absent from Git, the author name and email for the new repository. `/dev/tty` keeps the interview available when `onboard.sh` is piped from curl. `--answers` provides the same contract as reviewed JSON for an agent or CI run, including paired `git_name` and `git_email` fields when needed. |
+| personal workspace | Scaffold a Git-backed `ai-knowledge-<workspace>` container and its project/lesson structure. A collected Git identity is configured only in that repository, never globally; a rerun completes the initial commit of a half-finished workspace. The interview creates policy; it does not copy anyone else's private files. |
 | personal policy | Render valid local configs for personal policy, message guard, chief of staff, and knowledge capture from shipped generic templates. The scaffold audit fails CI if a documented fail-closed config lacks a template and validator route. |
 | gates + runtimes | Install the commit guard, stable message-guard engine, day-end launcher, and optional inbox runtime under `~/.synthesis`; wire only the two owned hook entries while preserving every unrelated entry. Codex hook trust remains a human-controlled client setting and is reported, never auto-approved. |
 | kernel | Create user-owned `AGENTS.source.md`, then render `AGENTS.md` and `CLAUDE.md`. A 55,000-byte hard limit refuses propagation before either output changes; the warning band starts at 85 percent. A stable PostToolUse hook propagates later valid source edits and refuses to overwrite a user-edited output. |

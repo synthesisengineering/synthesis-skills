@@ -4,6 +4,21 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.76.1] - 2026-09-01
+
+**A truly empty home now reaches a committed personal workspace without a
+manual repair step.** The 4.76.0 live-stable acceptance run found that a new
+user with no configured Git author could receive every scaffold but stop at
+the first repository commit. Guided `init` now detects that condition before
+mutation and asks for the author name and email it needs. Reviewed
+non-interactive answers can provide the same values as `git_name` and
+`git_email`.
+
+The engine applies those values only to the new personal repository, retries
+the initial commit when repairing a half-finished 4.76.0 run, and leaves global
+Git configuration untouched. Acceptance tests prove both the pre-mutation
+validation boundary and a successful repository-local first commit.
+
 ## [4.76.0] - 2026-09-01
 
 **`synthesis-onboarding` v1.4.0 makes the public bootstrap the door to the
