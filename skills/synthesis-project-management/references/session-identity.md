@@ -80,6 +80,21 @@ each historical row a UUIDv7 and both aliases, and preserves its old letter in
 `legacy id`. Messages and history are left intact. Once migrated, canonical
 machine references use the UUID even when a human supplied a legacy selector.
 
+## Engine older than board
+
+A board is shared by every session on every machine that mounts it, and a
+plugin release reaches those sessions at different times, so version skew
+between the board and the engines reading it is a permanent condition rather
+than a transition. `rows()` refuses a board whose declared `Schema:` is newer
+than the running engine, and a row wider than the engine's newest column set
+is refused the same way; both messages name the newest installed engine to
+invoke — resolved from the plugin cache the running script lives in — or the
+plugin refresh when none is newer. The refusal is fail-closed by design: a
+stale engine must never rewrite a newer board, and the remedy is always the
+same, run the current engine's `coordination.py`. `doctor` reports the same
+line. Origin (2026-09-01): a session on an older cache read the freshly
+migrated v4 board and reported the board itself as corrupt.
+
 ## Collision boundary
 
 The UUID remains authoritative even if a human alias collision were ever

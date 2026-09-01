@@ -4,6 +4,33 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.78.0] - 2026-09-01
+
+**A coordination engine older than the board it reads now says so, and
+names the engine to run.** After the 4.75.0 schema migration, a session
+still on an older plugin cache read the shared board and reported the board
+itself as corrupt: its parser raised a bare column-count error, and the
+operator on that side spent the incident hunting a phantom second table.
+Version skew between a shared board and the engines reading it is permanent
+— a plugin release reaches sessions at different times — so the engine now
+refuses fail-closed with a diagnosis instead of a symptom: a board whose
+declared `Schema:` is newer than the engine, or a row wider than the
+engine's newest column set, raises a message naming the newest installed
+engine to invoke (resolved numerically from the plugin cache the script runs
+from, or the plugin refresh when none is newer), and `doctor` reports the
+same line. A stale engine still never rewrites a newer board.
+
+Also fixed: every rewrite of the Active sessions table grew the blank run
+between the heading and the table by one line — the section pattern
+swallowed the existing padding into the heading group and re-emitted it plus
+a newline — so a long-lived board carried over a thousand empty lines, which
+is what the "second table" reading was. Rewrites now emit a fixed-shape
+section (one blank line, table, one blank line) and are idempotent, so the
+next mutation on any board collapses the accumulated padding. Regression
+tests pin the refusal, the wider-row diagnosis, the remedy's newest-version
+resolution, the padding collapse, and the public documentation; the
+board-template reference now shows the v4 header.
+
 ## [4.77.1] - 2026-09-01
 
 **Historical Codex roots now survive cache generations created after the
