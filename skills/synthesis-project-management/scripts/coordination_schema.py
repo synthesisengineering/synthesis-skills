@@ -303,6 +303,80 @@ def validate_identity(identity: SessionIdentity) -> list[str]:
     return issues
 
 
+_VERSION_DIR = re.compile(r"^\d+(?:\.\d+)+$")
+
+
+def _version_key(name: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in name.split("."))
+
+
+def engine_remedy(script_path: Path | str) -> str:
+    """Name the engine a stale script should hand off to.
+
+    A board written by a newer plugin than the one a session runs is the one
+    parse failure no change to the running engine can repair; the remedy is
+    always to invoke the current engine. When the running script lives in a
+    versioned plugin cache (``<plugin>/<version>/skills/...``) the newest
+    sibling version's copy of the same script is named outright — compared
+    numerically, so 4.78.0 outranks 4.9.0 — otherwise the caller is told to
+    refresh the installed plugin.
+    """
+    script = Path(script_path).resolve()
+    version_dir = next(
+        (
+            parent
+            for parent in script.parents
+            if _VERSION_DIR.match(parent.name) and (parent / "skills").is_dir()
+        ),
+        None,
+    )
+    if version_dir is None:
+        return (
+            f"this engine ({script}) is not from a versioned plugin cache; "
+            "update it to the current plugin release and rerun"
+        )
+    relative = script.relative_to(version_dir)
+    siblings = [
+        candidate
+        for candidate in version_dir.parent.iterdir()
+        if _VERSION_DIR.match(candidate.name) and (candidate / relative).is_file()
+    ]
+    newest = max(siblings, key=lambda candidate: _version_key(candidate.name))
+    if _version_key(newest.name) > _version_key(version_dir.name):
+        return (
+            f"this engine is {version_dir.name} but {newest.name} is installed; "
+            f"run {newest / relative}"
+        )
+    return (
+        f"this engine ({version_dir.name}) is the newest installed; refresh the "
+        "plugin (release.py --install-only, or the client's plugin update) "
+        "and rerun"
+    )
+
+
+def column_count_error(cells: list[str], script_path: Path | str) -> ValueError:
+    """The row-width failure, diagnosed instead of merely reported.
+
+    A row wider than the newest column set this engine knows can only have
+    been written by a newer engine, so the message names the engine to run;
+    a narrower unknown width is a malformed row and says so.
+    """
+    head = (
+        f"active-session row has {len(cells)} columns; expected "
+        f"{len(V4_COLUMNS)}, {len(V3_COLUMNS)}, {len(V2_COLUMNS)}, or "
+        f"{len(V1_COLUMNS)}"
+    )
+    if len(cells) > len(V4_COLUMNS):
+        return ValueError(
+            f"{head}. A wider row than this engine knows means the board was "
+            f"written by a newer engine: {engine_remedy(script_path)}"
+        )
+    return ValueError(
+        f"{head}. A narrower unknown width is a malformed row (hand edit?): "
+        "repair it or restore the board from its lease remote"
+    )
+
+
 def parse_table_rows(text: str) -> list[dict[str, str]]:
     """Parse v1-v3 active-session rows without mutating legacy boards."""
     result: list[dict[str, str]] = []
@@ -330,10 +404,8 @@ def parse_table_rows(text: str) -> list[dict[str, str]]:
         elif len(cells) == len(V1_COLUMNS):
             result.append(dict(zip(V1_COLUMNS, cells)))
         else:
-            raise ValueError(
-                f"active-session row has {len(cells)} columns; expected "
-                f"{len(V4_COLUMNS)}, {len(V3_COLUMNS)}, {len(V2_COLUMNS)}, "
-                f"or {len(V1_COLUMNS)}"
+            raise column_count_error(
+                cells, Path(__file__).with_name("coordination.py")
             )
     return result
 

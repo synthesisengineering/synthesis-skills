@@ -1,28 +1,30 @@
-# AGENT HEURISTIC: authored for the 4.77.1 delayed-cache-generation hotfix.
+# AGENT HEURISTIC: authored for the 4.78.0 coordination-engine hardening.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: delayed-codex-cache-generation-survival
+suite: coordination-engine-version-skew-and-section-hygiene
 membership: closed
-production_entry_point: skills/synthesis-skills-manager/scripts/release.py
-enforcing_boundary: the gated publisher installs and verifies a durable user supervisor outside the client-owned cache before reporting the release complete
+production_entry_point: skills/synthesis-project-management/scripts/coordination.py
+enforcing_boundary: the coordination engine refuses to parse or rewrite a board newer than itself and names the engine to run, and every Active-sessions rewrite emits a fixed-shape section
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: hermetic tests cover archive validation, delayed parent replacement, newest-version noninterference, existing-content refusal, lock contention, and macOS and Linux supervisor definitions; the release receipt must additionally prove the macOS supervisor is live and a real post-command historical-root deletion is repaired, while a live Linux systemd-user acceptance remains platform-specific
+unverified_remainder: engines released before 4.78.0 keep their bare column-count message on a newer board and cannot be repaired retroactively; the live collapse of a real board's accumulated padding is proven in the release record rather than by a hermetic case
 changed_surfaces:
-  - path: skills/synthesis-skills-manager/scripts/release.py
-    cases: [release-installs-guardian]
-  - path: skills/synthesis-skills-manager/scripts/cache_guardian.py
-    cases: [delayed-generation-recovery, current-version-noninterference, guardian-fails-closed, shared-transition-lock, persistent-supervisors]
-  - path: skills/synthesis-skills-manager/scripts/test_cache_guardian.py
-    cases: [delayed-generation-recovery, current-version-noninterference, guardian-fails-closed, shared-transition-lock, persistent-supervisors]
-  - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [release-installs-guardian, guardian-doc-contract]
-  - path: skills/synthesis-skills-manager/SKILL.md
-    cases: [guardian-doc-contract]
+  - path: skills/synthesis-project-management/scripts/coordination.py
+    cases: [newer-board-refused-with-remedy, wider-row-names-newer-engine, section-padding-collapses]
+  - path: skills/synthesis-project-management/scripts/coordination_schema.py
+    cases: [remedy-names-newest-cached-engine, wider-row-names-newer-engine]
+  - path: skills/synthesis-project-management/scripts/test_coordination.py
+    cases: [newer-board-refused-with-remedy, wider-row-names-newer-engine, section-padding-collapses, remedy-names-newest-cached-engine, skew-doc-contract]
+  - path: skills/synthesis-project-management/references/session-identity.md
+    cases: [skew-doc-contract]
+  - path: skills/synthesis-project-management/references/active-sessions-template.md
+    cases: [skew-doc-contract]
+  - path: skills/synthesis-project-management/SKILL.md
+    cases: [skill-budget]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -30,38 +32,34 @@ changed_surfaces:
   - path: .codex-plugin/plugin.json
     cases: [release-manifest-parity]
   - path: CHANGELOG.md
-    cases: [release-changelog-parity, guardian-doc-contract]
+    cases: [release-changelog-parity, skew-doc-contract]
   - path: README.md
-    cases: [guardian-doc-contract]
+    cases: [release-changelog-parity]
 cases:
-  - id: delayed-generation-recovery
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_later_parent_generation_is_repaired_without_touching_current
-    motivating_defect: codex-replaced-the-live-cache-parent-thirteen-minutes-after-the-release-verified-a-ten-second-quiet-window
-  - id: current-version-noninterference
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_restore_protects_history_but_never_installs_current
-    motivating_defect: a-guardian-that-races-the-client-for-its-current-version-would-trade-a-missing-history-defect-for-cache-corruption
-  - id: guardian-fails-closed
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_differing_existing_history_fails_closed_without_overwrite
-    motivating_defect: silently-overlaying-a-differing-live-root-would-erase-the-evidence-needed-to-diagnose-content-drift
-  - id: shared-transition-lock
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_release_lock_defers_guardian_without_writing
-    motivating_defect: a-background-healer-writing-during-the-gated-release-transition-would-create-a-second-cache-writer
-  - id: persistent-supervisors
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_macos_supervisor_is_loaded_and_verified
-    motivating_defect: a-one-shot-repair-still-ends-before-the-later-client-owned-cache-generation-that-caused-the-incident
-  - id: release-installs-guardian
+  - id: newer-board-refused-with-remedy
     control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_guardian_install_uses_source_checkout_and_surfaces_receipt
-    motivating_defect: guardian-code-that-the-publisher-never-installs-cannot-protect-any-running-task
-  - id: guardian-doc-contract
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_rows_refuses_a_board_newer_than_the_engine
+    motivating_defect: a-stale-engine-reported-the-freshly-migrated-shared-board-as-corrupt-with-a-bare-column-count
+  - id: wider-row-names-newer-engine
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_delayed_cache_guardian_release_contract_is_public_and_coherent
-    motivating_defect: documentation-that-still-promises-a-bounded-quiet-window-as-enduring-proof-misstates-the-runtime-contract
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_wider_rows_than_the_engine_knows_name_the_newer_engine
+    motivating_defect: a-row-wider-than-the-engine-knows-has-one-cause-and-the-message-did-not-say-it
+  - id: section-padding-collapses
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_replace_table_collapses_padding_and_stays_fixed
+    motivating_defect: every-table-rewrite-grew-the-board-by-one-blank-line-until-a-thousand-read-as-a-second-table
+  - id: remedy-names-newest-cached-engine
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_engine_remedy_names_the_newest_cached_engine
+    motivating_defect: a-remedy-that-says-update-without-naming-the-path-sends-the-operator-back-to-guessing
+  - id: skew-doc-contract
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_version_skew_documented_on_public_surfaces
+    motivating_defect: a-refusal-nobody-is-told-about-reads-as-a-new-corruption
+  - id: skill-budget
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_skill_document_stays_within_repo_budget
+    motivating_defect: a-version-bump-must-not-be-an-excuse-for-the-main-document-to-regrow
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates

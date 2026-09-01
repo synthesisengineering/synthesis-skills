@@ -11,6 +11,13 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**A stale engine now diagnoses itself instead of blaming the board
+(September 2026).** Release **4.78.0** makes the coordination engine refuse
+a board newer than itself with a message naming the engine to run, reports
+rows wider than it knows the same way, and stops every table rewrite from
+growing the board by a blank line. See the [4.78.0 release
+notes](CHANGELOG.md).
+
 **Historical tasks now survive cache replacement after the release command
 returns (September 2026).** Release **4.77.1** installs a durable, supervised
 Codex cache guardian outside the client-owned version tree. It restores only

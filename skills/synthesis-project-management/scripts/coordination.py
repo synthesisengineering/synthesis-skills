@@ -32,7 +32,9 @@ from coordination_schema import (
     V3_COLUMNS,
     V4_COLUMNS,
     SessionIdentity,
+    column_count_error,
     display_id,
+    engine_remedy,
     identity_lookup_keys,
     new_identity,
     selector_keys,
@@ -684,11 +686,7 @@ def session_from_cells(cells: list[str]) -> Session:
             context_role="none",
             status=plain(cells[6]).lower(),
         )
-    raise ValueError(
-        f"active-session row has {len(cells)} columns; expected "
-        f"{len(V4_COLUMNS)}, {len(V3_COLUMNS)}, {len(V2_COLUMNS)}, or "
-        f"{len(V1_COLUMNS)}"
-    )
+    raise column_count_error(cells, __file__)
 
 
 def with_identity(session: Session, identity: SessionIdentity) -> Session:
@@ -736,6 +734,16 @@ def find_session(sessions: list[Session], selector: str) -> Session | None:
 
 
 def rows(text: str) -> list[Session]:
+    declared = board_schema(text)
+    if declared is not None and declared > SCHEMA_VERSION:
+        # Version skew between a shared board and the engines reading it is
+        # permanent, not a transition: a release reaches sessions at different
+        # times. A stale engine must never rewrite a newer board, and the one
+        # useful thing it can say is which engine to run instead.
+        raise ValueError(
+            f"board declares schema v{declared}, newer than this engine's "
+            f"v{SCHEMA_VERSION}; {engine_remedy(__file__)}"
+        )
     result: list[Session] = []
     in_table = False
     for line in text.splitlines():
@@ -800,7 +808,10 @@ def replace_table(
         for session in sessions
     )
     block = "\n".join(rendered)
-    pattern = re.compile(r"(?ms)(^## Active sessions\s*\n).*?(?=^## Messages\s*$)")
+    # The heading group must not swallow blank lines: with `\s*` it captured
+    # every existing padding line and re-emitted it plus one more, so each
+    # rewrite grew the board by a line (over a thousand on a long-lived board).
+    pattern = re.compile(r"(?ms)(^## Active sessions[ \t]*\n).*?(?=^## Messages\s*$)")
     if not pattern.search(text):
         raise ValueError("board lacks Active sessions and Messages sections")
     updated = pattern.sub(lambda match: match.group(1) + "\n" + block + "\n\n", text)
@@ -2290,30 +2301,31 @@ def parser() -> argparse.ArgumentParser:
     return result
 
 
+COMMANDS = {
+    "status": command_status,
+    "check-staged": command_check_staged,
+    "claim": command_claim,
+    "heartbeat": command_heartbeat,
+    "release": command_release,
+    "message": command_message,
+    "resolve": command_resolve,
+    "migrate": command_migrate,
+    "lease-disable": command_lease_disable,
+    "stale": command_stale,
+}
+
+
 def main() -> int:
     args = parser().parse_args()
     args.board = args.board.expanduser()
-    if args.command == "status":
-        return command_status(args)
-    if args.command == "check-staged":
-        return command_check_staged(args)
-    if args.command == "claim":
-        return command_claim(args)
-    if args.command == "heartbeat":
-        return command_heartbeat(args)
-    if args.command == "release":
-        return command_release(args)
-    if args.command == "message":
-        return command_message(args)
-    if args.command == "resolve":
-        return command_resolve(args)
-    if args.command == "migrate":
-        return command_migrate(args)
-    if args.command == "lease-disable":
-        return command_lease_disable(args)
-    if args.command == "stale":
-        return command_stale(args)
-    return command_doctor(args)
+    command = COMMANDS.get(args.command, command_doctor)
+    try:
+        return command(args)
+    except ValueError as exc:
+        # A refusal is a diagnosis, not a crash: one line the operator can act
+        # on, never a traceback whose last line gets quoted as the problem.
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

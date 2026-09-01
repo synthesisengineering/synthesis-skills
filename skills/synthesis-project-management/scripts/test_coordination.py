@@ -4,6 +4,7 @@ import importlib.util
 import ast
 import json
 import platform
+import re
 import subprocess
 import sys
 import threading
@@ -1821,3 +1822,130 @@ def test_skill_document_stays_within_repo_budget() -> None:
         if reference.name == "session-words-v1.LICENSE.md":
             continue
         assert reference.name in skill, f"unlinked reference: {reference.name}"
+
+
+# --- engine/board version skew and section hygiene (4.78.0) ------------------
+
+
+def _claimed_board(tmp_path, *, schema=None, padding=0):
+    board = tmp_path / "board.md"
+    assert (
+        MODULE.command_claim(
+            seatless_claim(board, "project-a", "/tmp/wt-a @ feature/a", "repo-a/**")
+        )
+        == 0
+    )
+    text = board.read_text(encoding="utf-8")
+    if schema is not None:
+        text = re.sub(r"(?m)^Schema: v\d+$", f"Schema: v{schema}", text, count=1)
+    if padding:
+        text = text.replace(
+            "## Active sessions\n", "## Active sessions\n" + "\n" * padding, 1
+        )
+    board.write_text(text, encoding="utf-8")
+    return board
+
+
+def test_rows_refuses_a_board_newer_than_the_engine(tmp_path, capsys):
+    """The 2026-09-01 incident inverted: a stale engine must diagnose itself
+    instead of reporting the shared board as corrupt, and must never rewrite
+    a board written by a newer engine."""
+    newer = MODULE.SCHEMA_VERSION + 1
+    board = _claimed_board(tmp_path, schema=newer)
+    text = board.read_text(encoding="utf-8")
+
+    with pytest.raises(ValueError) as caught:
+        MODULE.rows(text)
+    message = str(caught.value)
+    assert f"schema v{newer}" in message
+    assert f"newer than this engine's v{MODULE.SCHEMA_VERSION}" in message
+    assert "coordination.py" in message  # the remedy names an engine path
+
+    assert MODULE.command_doctor(args(board)) == 1
+    assert "newer than this engine" in capsys.readouterr().err
+    assert board.read_text(encoding="utf-8") == text  # untouched
+
+
+def test_wider_rows_than_the_engine_knows_name_the_newer_engine(tmp_path):
+    board = _claimed_board(tmp_path)
+    text = board.read_text(encoding="utf-8")
+    row_uuid = MODULE.rows(text)[0].session_uuid
+    lines = text.splitlines()
+    index = next(i for i, line in enumerate(lines) if row_uuid in line)
+    lines[index] = lines[index] + " future-column |"
+
+    with pytest.raises(ValueError) as caught:
+        MODULE.rows("\n".join(lines))
+    message = str(caught.value)
+    assert f"{len(MODULE.V4_COLUMNS) + 1} columns" in message
+    assert "written by a newer engine" in message
+
+    lines[index] = "| " + " | ".join(["x"] * (len(MODULE.V1_COLUMNS) + 1)) + " |"
+    with pytest.raises(ValueError) as narrower:
+        MODULE.rows("\n".join(lines))
+    assert "malformed row" in str(narrower.value)
+
+
+def test_replace_table_collapses_padding_and_stays_fixed(tmp_path):
+    """Every rewrite used to grow the blank run under the heading by one line;
+    a rewrite now emits a fixed-shape section and is idempotent."""
+    board = _claimed_board(tmp_path, padding=500)
+    text = board.read_text(encoding="utf-8")
+
+    once = MODULE.replace_table(text, MODULE.rows(text))
+    section = once.split("## Active sessions\n", 1)[1].split("## Messages", 1)[0]
+    assert section.startswith("\n| session uuid |")
+    assert section.endswith("|\n\n")
+    assert len(once.splitlines()) == len(text.splitlines()) - 500
+
+    twice = MODULE.replace_table(once, MODULE.rows(once))
+    assert twice == once
+
+
+def test_engine_remedy_names_the_newest_cached_engine(tmp_path):
+    cache = tmp_path / "plugins" / "synthesis-skills"
+    relative = Path("skills") / "synthesis-project-management" / "scripts" / "coordination.py"
+    for version in ("4.74.1", "4.78.0", "4.9.0"):
+        script = cache / version / relative
+        script.parent.mkdir(parents=True)
+        script.write_text("#\n", encoding="utf-8")
+
+    stale = MODULE.engine_remedy(cache / "4.74.1" / relative)
+    assert str(cache / "4.78.0" / relative) in stale
+    assert "4.9.0" not in stale  # numeric ordering, not lexical
+
+    newest = MODULE.engine_remedy(cache / "4.78.0" / relative)
+    assert "newest installed" in newest and "refresh the plugin" in newest
+
+    outside = MODULE.engine_remedy(tmp_path / "src" / "coordination.py")
+    assert "not from a versioned plugin cache" in outside
+
+
+def test_version_skew_documented_on_public_surfaces():
+    skill_root = MODULE_PATH.parents[1]
+    repo_root = MODULE_PATH.parents[3]
+    identity = (skill_root / "references" / "session-identity.md").read_text(
+        encoding="utf-8"
+    )
+    assert "## Engine older than board" in identity
+    assert "than the running engine" in identity
+    template = (skill_root / "references" / "active-sessions-template.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Schema: v4" in template
+    assert "| client session ref |" in template
+    changelog = (repo_root / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "## [4.78.0]" in changelog
+    assert "names the engine to run" in changelog
+
+
+def test_cli_presents_a_refusal_as_one_error_line(tmp_path):
+    board = _claimed_board(tmp_path, schema=MODULE.SCHEMA_VERSION + 1)
+    done = subprocess.run(
+        [sys.executable, str(MODULE_PATH), "--board", str(board), "status"],
+        capture_output=True, text=True, check=False,
+    )
+    assert done.returncode == 1
+    assert done.stderr.startswith("error: board declares schema v")
+    assert "Traceback" not in done.stderr
+
