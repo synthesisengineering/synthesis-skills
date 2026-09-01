@@ -416,18 +416,23 @@ class WholeSystemTests(unittest.TestCase):
     def test_guided_interview_builds_full_profile_without_stdin_assumptions(self):
         args = SimpleNamespace(profile=None, answers=None, workspace=None)
         catalog = whole_system.load_catalog(REPO_ROOT)
-        with patch.object(
-            onboard,
-            "_ask",
-            side_effect=[
-                "full",
-                "example-user",
-                "Example User",
-                "UTC",
-                "direct, kind",
-                "empty promise",
-                "no",
-            ],
+        with (
+            patch.object(onboard, "configured_git_identity", return_value=None),
+            patch.object(
+                onboard,
+                "_ask",
+                side_effect=[
+                    "full",
+                    "example-user",
+                    "Example User",
+                    "UTC",
+                    "direct, kind",
+                    "empty promise",
+                    "no",
+                    "Example User",
+                    "example@example.invalid",
+                ],
+            ),
         ):
             profile, answers, choices = onboard.collect_init_inputs(
                 args, None, catalog
@@ -435,6 +440,8 @@ class WholeSystemTests(unittest.TestCase):
         self.assertEqual(profile, "full")
         self.assertEqual(answers["display_name"], "Example User")
         self.assertEqual(answers["tone"], ["direct", "kind"])
+        self.assertEqual(answers["git_name"], "Example User")
+        self.assertEqual(answers["git_email"], "example@example.invalid")
         self.assertEqual(choices["organization"], "declined")
 
     def test_noninteractive_full_init_requires_git_identity_before_mutation(self):
