@@ -4,6 +4,26 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.77.1] - 2026-09-01
+
+**Historical Codex roots now survive cache generations created after the
+publisher exits.** The earlier recovery boundary reconstructed and verified
+every historical root, then watched for a ten-second quiet window. A later
+client-owned reconciliation could still replace the entire live cache minutes
+after that receipt and strand running tasks whose hooks retained an older
+absolute path.
+
+The gated publisher now installs a standard-library cache guardian outside the
+client-owned tree and verifies its user-level supervisor before reporting a
+release complete. The guardian shares the release transition lock, validates
+the durable archive, protects every archived version except the newest
+client-owned version, and restores missing historical roots after any later
+cache replacement. It never deletes a cache path or overwrites differing
+existing content. macOS uses launchd; Linux uses a systemd user service.
+Hermetic coverage pins delayed parent replacement, current-version
+noninterference, unsafe archives, differing-content refusal, lock contention,
+and both supervisor definitions.
+
 ## [4.77.0] - 2026-09-01
 
 **Releases now serialize mechanically: one train, one holder.** Five

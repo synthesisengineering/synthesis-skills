@@ -11,6 +11,14 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Historical tasks now survive cache replacement after the release command
+returns (September 2026).** Release **4.77.1** installs a durable, supervised
+Codex cache guardian outside the client-owned version tree. It restores only
+verified historical roots from the bounded recovery archive, never races the
+newest client-owned version, shares the publisher's transition lock, and fails
+closed on unsafe or differing content. See the [4.77.1 release
+notes](CHANGELOG.md).
+
 **Two release trains on one track now queue instead of colliding (September
 2026).** Release **4.77.0** makes release serialization mechanical: a
 virtual `release-train:synthesis-skills` claim on the coordination board is
