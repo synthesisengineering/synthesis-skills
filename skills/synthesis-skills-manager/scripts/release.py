@@ -87,6 +87,19 @@ ACCEPTANCE_CONSUMER_ID = (
     "synthesis-skills-manager.release.consume-acceptance.v1"
 )
 RELEASE_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+# One release train per plugin: a virtual coordination-board resource whose
+# claim overlap refusal is the mutual exclusion. On 2026-09-01 two agent
+# sessions releasing this repository in parallel overtook each other five
+# times and once collided on the announced version; message-based sequencing
+# failed because an autonomous session mid-transaction does not re-read the
+# board. Machines without a coordination board (outside contributors) are
+# exempt; where a board exists, preflight refuses to proceed unless this
+# process's session holds the train.
+TRAIN_RESOURCE = f"release-train:{PLUGIN_NAME}"
+DEFAULT_COORDINATION_BOARD = (
+    Path.home() / ".synthesis" / "coordination" / "active-sessions.md"
+)
+DEFAULT_ACTIVE_PROJECT_POINTER = Path.home() / ".synthesis" / "active-project.json"
 HOOK_PLUGIN_PATH_RE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\s\"']+)")
 RECOVERY_DIGEST_IGNORED_ROOTS = frozenset(
     {".git", ".in_use", ".codex-marketplace-install.json"}
@@ -1085,6 +1098,117 @@ def refresh_client(
             _release_codex_cache_lock(cache_lock)
 
 
+def _coordination_board_path() -> Path:
+    override = os.environ.get("SYNTHESIS_COORDINATION_BOARD", "").strip()
+    return Path(override).expanduser() if override else DEFAULT_COORDINATION_BOARD
+
+
+def _train_session_selector() -> tuple[str | None, str]:
+    """This process's coordination identity: env first, then the pointer."""
+    explicit = os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip()
+    if explicit:
+        return explicit, "environment"
+    override = os.environ.get("SYNTHESIS_ACTIVE_PROJECT_FILE", "").strip()
+    pointer = (
+        Path(override).expanduser() if override else DEFAULT_ACTIVE_PROJECT_POINTER
+    )
+    try:
+        payload = json.loads(pointer.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None, "unavailable"
+    owner = str(payload.get("owner_session") or "").strip()
+    return (owner, "active-project pointer") if owner else (None, "unavailable")
+
+
+def train_check(result: Result) -> bool:
+    """Fail closed unless this session holds the release train on the board.
+
+    A machine without a coordination board has not adopted train
+    serialization (public contributors); the check passes with a notice.
+    Where a board exists, an unheld or peer-held train refuses — waiting is
+    the point. A crashed holder is released by the user via the stale-claim
+    review, never by another agent on its own initiative.
+    """
+    board = _coordination_board_path()
+    if not board.is_file():
+        return result.add(
+            "preflight.release-train",
+            True,
+            f"no coordination board at {board}; train serialization not "
+            "adopted on this machine",
+        )
+    coordination_scripts = (
+        SCRIPT_DIR.parents[1] / "synthesis-project-management" / "scripts"
+    )
+    if str(coordination_scripts) not in sys.path:
+        sys.path.insert(0, str(coordination_scripts))
+    try:
+        import coordination
+    except Exception as exc:  # board present but engine missing: unverifiable
+        return result.add(
+            "preflight.release-train",
+            False,
+            f"board exists but the coordination engine is unavailable ({exc}); "
+            "the release train cannot be verified",
+        )
+    refresh = coordination.lease_refresh(board)
+    if refresh.get("error"):
+        return result.add(
+            "preflight.release-train",
+            False,
+            f"board lease refresh failed; the local mirror may be stale: "
+            f"{refresh['error']}",
+        )
+    try:
+        sessions = coordination.rows(board.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return result.add(
+            "preflight.release-train", False, f"board unreadable: {exc}"
+        )
+    holders = [
+        session
+        for session in sessions
+        if coordination.active(session)
+        and any(claim.strip() == TRAIN_RESOURCE for claim in session.claims)
+    ]
+    if not holders:
+        return result.add(
+            "preflight.release-train",
+            False,
+            f"nobody holds {TRAIN_RESOURCE}; claim it before authoring or "
+            "publishing a release: coordination.py claim ... --area "
+            f"{TRAIN_RESOURCE}",
+        )
+    selector, source = _train_session_selector()
+    if selector is None:
+        return result.add(
+            "preflight.release-train",
+            False,
+            f"{TRAIN_RESOURCE} is held by {holders[0].label} and this process "
+            "has no session identity; set SYNTHESIS_COORDINATION_SESSION or "
+            "run with an owned active-project pointer",
+        )
+    mine = [
+        session
+        for session in holders
+        if coordination.selector_matches(session.identity, selector)
+    ]
+    if mine:
+        return result.add(
+            "preflight.release-train",
+            True,
+            f"held by this session ({mine[0].label}, selector via {source})",
+        )
+    return result.add(
+        "preflight.release-train",
+        False,
+        f"{TRAIN_RESOURCE} is held by {holders[0].label}, not this session; "
+        "wait for its release, coordinate on the board message bus, or — for "
+        "a genuinely dead holder — ask the user to run the stale-claim "
+        "review (coordination.py stale)",
+    )
+
+
 def preflight(repo: Path, result: Result, install_only: bool) -> str | None:
     """Validate the release is coherent before anything is published."""
     version, detail = source_version(repo)
@@ -1104,6 +1228,7 @@ def preflight(repo: Path, result: Result, install_only: bool) -> str | None:
             not dirty,
             f"{len(dirty)} uncommitted path(s)" if dirty else "clean",
         )
+        train_check(result)
     return version
 
 

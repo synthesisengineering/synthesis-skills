@@ -1,26 +1,28 @@
-# AGENT HEURISTIC: authored for the 4.76.5 ci-doc-parity release.
+# AGENT HEURISTIC: authored for the 4.77.0 release-train-serialization release.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: ci-doc-parity
+suite: release-train-serialization
 membership: closed
-production_entry_point: .github/workflows/validate.yml
-enforcing_boundary: documented verification list held equal to the CI conformance job, with the project-management suite widened at every boundary
+production_entry_point: skills/synthesis-skills-manager/scripts/release.py
+enforcing_boundary: preflight possession of the virtual release-train claim on board-carrying machines
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: hermetic tests prove the fence/workflow equality under its stated normalization, the widened project-management step at the CI and release-gate boundaries, and manifest/changelog parity; that the hosted runner executes the workflow as written is CI's own concern, and the equality test deliberately excludes the CI-only dependency install and the env-bound acceptance step
+unverified_remainder: hermetic tests prove the not-adopted pass, the held-by-me pass, and the peer-held, unheld, released-holder, and identity-less refusals, plus that the virtual token conflicts with itself and never with path claims; the cross-machine lease serialization of the claim itself is the coordination engine's own tested contract, and the first live two-train queueing necessarily occurs after both sessions run 4.77.0
 changed_surfaces:
-  - path: AGENTS.md
-    cases: [agents-ci-parity]
-  - path: .github/workflows/validate.yml
-    cases: [agents-ci-parity, pm-suite-widened]
   - path: skills/synthesis-skills-manager/scripts/release.py
-    cases: [pm-suite-widened]
+    cases: [train-possession-gate, train-token-lock-semantics]
   - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [agents-ci-parity, pm-suite-widened]
+    cases: [train-possession-gate, train-token-lock-semantics]
+  - path: skills/synthesis-skills-manager/SKILL.md
+    cases: [train-doc-contract]
+  - path: skills/synthesis-project-management/references/parallel-agent-protocol.md
+    cases: [train-doc-contract]
+  - path: AGENTS.md
+    cases: [train-doc-contract]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -28,18 +30,22 @@ changed_surfaces:
   - path: .codex-plugin/plugin.json
     cases: [release-manifest-parity]
   - path: CHANGELOG.md
-    cases: [release-changelog-parity]
+    cases: [release-changelog-parity, train-doc-contract]
   - path: README.md
-    cases: [agents-ci-parity]
+    cases: [train-doc-contract]
 cases:
-  - id: agents-ci-parity
+  - id: train-possession-gate
     control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
-    motivating_defect: a-locally-green-branch-failed-ci-because-the-workflow-grew-five-steps-beyond-the-documented-list
-  - id: pm-suite-widened
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_train_held_by_peer_refuses
+    motivating_defect: five-same-day-overtakes-and-a-version-collision-because-nothing-mechanical-serialized-parallel-releases
+  - id: train-token-lock-semantics
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_execute_r5_integrity_suite
-    motivating_defect: the-handoff-and-worktree-retirement-suites-ran-at-no-boundary-while-looking-covered-by-the-skill-directory
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_train_token_conflicts_with_itself_but_not_with_paths
+    motivating_defect: a-virtual-lock-that-collides-with-ordinary-path-claims-would-deny-unrelated-work-instead-of-serializing-releases
+  - id: train-doc-contract
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_train_unheld_refuses_with_claim_guidance
+    motivating_defect: a-lock-whose-refusal-does-not-teach-the-claim-command-turns-serialization-into-a-mystery-outage
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates

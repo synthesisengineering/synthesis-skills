@@ -4,6 +4,25 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.77.0] - 2026-09-01
+
+**Releases now serialize mechanically: one train, one holder.** Five
+same-day overtakes between two parallel releasing agent sessions — each
+merge invalidating the other's open PR, once colliding on the version
+number itself — proved message-based sequencing fails when an autonomous
+session mid-transaction does not re-read the board. The release train is
+now a virtual coordination-board resource (`release-train:synthesis-skills`)
+claimed through the unmodified claim machinery, whose overlap refusal is
+the mutual exclusion and whose lease compare-and-swap serializes it across
+machines. `release.py` preflight enforces possession fail-closed in every
+publish-capable mode on any machine carrying a coordination board: unheld
+refuses with the claim command, peer-held refuses naming the holder, a
+missing local identity refuses, and a stale board mirror refuses. Machines
+without a board — outside contributors — pass with a notice, so the public
+repository stays usable without the coordination system. Hold the train
+from version authoring through the gated release; a dead holder is freed
+only by the user via the stale-claim review.
+
 ## [4.76.5] - 2026-09-01
 
 **The documented check list and CI now move together or fail together.**

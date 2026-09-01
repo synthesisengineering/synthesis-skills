@@ -76,6 +76,27 @@ run after every machine's client is current, so older parsers mid-flight
 fail closed on nothing. Until migration, refs print a notice at claim time
 and drop harmlessly; resolve says the board is pre-v4.
 
+## Release trains — serializing a shared publish surface
+
+Path claims keep concurrent sessions off each other's files, but some
+resources are not files: a repository's release identity (its `main`, its
+version number, its changelog top) is one shared slot that every releasing
+session mutates. Five same-day overtakes between two parallel release
+trains (2026-09-01) showed that message-based sequencing fails exactly when
+it matters — an autonomous session mid-transaction does not re-read the
+board between authoring a version and merging.
+
+The pattern: claim a **virtual resource** — a non-path token such as
+`release-train:<plugin>` — through the ordinary claim machinery. Identical
+tokens conflict under the same overlap refusal that guards paths (and the
+lease compare-and-swap serializes them across machines), so the claim is
+the lock; path claims never false-positive against it. The consuming
+boundary then enforces possession fail-closed: synthesis-skills'
+`release.py` preflight refuses every publish-capable mode on a
+board-carrying machine unless the running session holds the train. Hold it
+from version authoring through the gated release; release it immediately
+after. A dead holder is freed only by the user via the stale-claim review.
+
 ## Digests — what survives a crash
 
 Semantic continuity does not come from copying chat transcripts. The durable
