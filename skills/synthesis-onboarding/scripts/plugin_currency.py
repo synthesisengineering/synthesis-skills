@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import ssl
 import tempfile
 import time
 import urllib.error
@@ -33,6 +34,13 @@ RAW_MANIFEST_TEMPLATE = (
     "synthesis-skills/{ref}/.codex-plugin/plugin.json"
 )
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+SYSTEM_CA_FILES = (
+    "/etc/ssl/cert.pem",  # macOS and several BSDs
+    "/etc/ssl/certs/ca-certificates.crt",  # Debian, Ubuntu, and WSL
+    "/etc/pki/tls/certs/ca-bundle.crt",  # Fedora and RHEL
+    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+    "/etc/ssl/ca-bundle.pem",  # openSUSE
+)
 
 
 def normalize_policy(channel=None, version_pin=None):
@@ -135,12 +143,83 @@ def _write_cache(path, data):
             os.unlink(temporary_name)
 
 
+def _certificate_verification_failed(exc):
+    """Recognize verification failures even when urllib wraps the SSL error."""
+    seen = set()
+    current = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, ssl.SSLCertVerificationError):
+            return True
+        reason = getattr(current, "reason", None)
+        if reason is not None and reason is not current:
+            current = reason
+            continue
+        current = getattr(current, "__cause__", None)
+    return "CERTIFICATE_VERIFY_FAILED" in str(exc)
+
+
+def _candidate_ca_files():
+    """Return existing platform CA bundles not already resolved by OpenSSL.
+
+    Python.org's macOS runtime can have no resolved OpenSSL CA path even while
+    the operating system ships ``/etc/ssl/cert.pem``. Linux distributions use
+    a small set of other conventional bundle locations. Passing any candidate
+    to ``ssl.create_default_context`` keeps chain and hostname verification
+    enabled; this function never manufactures or downloads a trust root.
+    """
+    defaults = ssl.get_default_verify_paths()
+    candidates = [defaults.cafile, *SYSTEM_CA_FILES]
+    resolved = []
+    seen = set()
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(candidate)
+        try:
+            identity = str(path.resolve())
+        except OSError:
+            identity = str(path)
+        if identity in seen or not path.is_file():
+            continue
+        seen.add(identity)
+        resolved.append(path)
+    return resolved
+
+
+def _verified_urlopen(url, timeout):
+    """Open HTTPS with verified TLS across stock Python distributions.
+
+    The default urllib path remains first. Only a certificate-verification
+    failure triggers retries with an existing operating-system CA bundle.
+    Network, HTTP, decoding, and other TLS failures remain failures instead of
+    being masked by a second transport.
+    """
+    try:
+        return urllib.request.urlopen(url, timeout=timeout)
+    except (OSError, urllib.error.URLError) as first_error:
+        if not _certificate_verification_failed(first_error):
+            raise
+
+    attempts = []
+    for ca_file in _candidate_ca_files():
+        try:
+            context = ssl.create_default_context(cafile=str(ca_file))
+            return urllib.request.urlopen(url, timeout=timeout, context=context)
+        except (OSError, urllib.error.URLError) as retry_error:
+            attempts.append("%s: %s" % (ca_file, retry_error))
+    detail = "; ".join(attempts) or "no operating-system CA bundle found"
+    raise urllib.error.URLError(
+        "certificate verification failed with default trust; %s" % detail
+    )
+
+
 def resolve_target_version(
     policy,
     cache_path=None,
     ttl_seconds=DEFAULT_TTL_SECONDS,
     timeout=2,
-    opener=urllib.request.urlopen,
+    opener=None,
     now=None,
 ):
     """Resolve the desired plugin version, using fresh or stale cache evidence.
@@ -164,7 +243,7 @@ def resolve_target_version(
 
     url = RAW_MANIFEST_TEMPLATE.format(ref=ref)
     try:
-        response = opener(url, timeout=timeout)
+        response = (opener or _verified_urlopen)(url, timeout=timeout)
         try:
             payload = json.loads(response.read().decode("utf-8"))
         finally:

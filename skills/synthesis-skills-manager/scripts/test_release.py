@@ -13,6 +13,7 @@ converts an unknown into a false assurance.
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -395,6 +396,21 @@ def test_release_manager_documents_channel_ref_contract() -> None:
     assert "atomic" in text
 
 
+def test_lifecycle_hotfix_is_documented_on_every_public_maintenance_surface() -> None:
+    repository = Path(__file__).resolve().parents[3]
+    manager = (repository / "skills/synthesis-skills-manager/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    onboarding = (repository / "skills/synthesis-onboarding/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    readme = (repository / "README.md").read_text(encoding="utf-8")
+    assert "snapshots" in manager and "versioned cache root" in manager
+    assert "operating-system CA bundle" in onboarding
+    assert "4.74.1" in readme
+    assert "full TLS and" in readme
+
+
 def test_main_carries_acceptance_authority_to_publish_boundary(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -560,6 +576,90 @@ def test_refresh_fails_closed_without_binary(monkeypatch: pytest.MonkeyPatch) ->
     result = release.Result()
     assert release.refresh_client("codex", result, dry_run=True) is False
     assert result.failed
+
+
+def test_codex_refresh_restores_real_version_root_deleted_by_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache_parent = tmp_path / "codex-cache"
+    old_root = cache_parent / "4.74.0"
+    (old_root / "hooks").mkdir(parents=True)
+    (old_root / "hooks" / "hooks.json").write_text("old hook bytes\n", encoding="utf-8")
+    recovery_link = cache_parent / "4.73.0"
+    recovery_link.symlink_to(old_root)
+
+    monkeypatch.setattr(release, "plugin_cache_parent", lambda client: cache_parent)
+    monkeypatch.setattr(release, "resolve_client_binary", lambda name: "/fake/codex")
+
+    def run(command, **_kwargs):
+        if command[1:3] == ["plugin", "add"]:
+            shutil.rmtree(old_root)
+            recovery_link.unlink()
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(release, "run", run)
+    result = release.Result()
+    assert release.refresh_client("codex", result, dry_run=False) is True
+    assert (old_root / "hooks" / "hooks.json").read_text(encoding="utf-8") == "old hook bytes\n"
+    assert not recovery_link.exists()
+    steps = {step.name: step for step in result.steps}
+    assert steps["install.codex.cache-snapshot"].ok is True
+    assert "1 real version" in steps["install.codex.cache-snapshot"].detail
+    assert steps["install.codex.cache-restore"].ok is True
+    assert "restored 1" in steps["install.codex.cache-restore"].detail
+
+
+def test_codex_refresh_fails_if_existing_preserved_root_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache_parent = tmp_path / "codex-cache"
+    old_file = cache_parent / "4.74.0" / "hooks" / "hooks.json"
+    old_file.parent.mkdir(parents=True)
+    old_file.write_text("before\n", encoding="utf-8")
+
+    monkeypatch.setattr(release, "plugin_cache_parent", lambda client: cache_parent)
+    monkeypatch.setattr(release, "resolve_client_binary", lambda name: "/fake/codex")
+
+    def run(command, **_kwargs):
+        if command[1:3] == ["plugin", "add"]:
+            old_file.write_text("modified\n", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(release, "run", run)
+    result = release.Result()
+    assert release.refresh_client("codex", result, dry_run=False) is False
+    restore = next(
+        step for step in result.steps if step.name == "install.codex.cache-restore"
+    )
+    assert restore.ok is False
+    assert "recovery copy kept" in restore.detail
+
+
+def test_codex_refresh_does_not_run_when_cache_snapshot_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache_parent = tmp_path / "codex-cache"
+    old_root = cache_parent / "4.74.0"
+    old_root.mkdir(parents=True)
+    calls = []
+
+    monkeypatch.setattr(release, "plugin_cache_parent", lambda client: cache_parent)
+    monkeypatch.setattr(release, "resolve_client_binary", lambda name: "/fake/codex")
+    monkeypatch.setattr(
+        release.shutil,
+        "copytree",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
+    )
+    monkeypatch.setattr(release, "run", lambda *args, **kwargs: calls.append(args))
+
+    result = release.Result()
+    assert release.refresh_client("codex", result, dry_run=False) is False
+    assert calls == []
+    snapshot = next(
+        step for step in result.steps if step.name == "install.codex.cache-snapshot"
+    )
+    assert snapshot.ok is False
+    assert "recovery copy kept" in snapshot.detail
 
 
 # --- entrypoint guards -----------------------------------------------------
