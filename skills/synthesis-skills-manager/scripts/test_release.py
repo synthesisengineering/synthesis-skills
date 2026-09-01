@@ -435,6 +435,23 @@ def test_lifecycle_hotfix_is_documented_on_every_public_maintenance_surface() ->
     assert "full TLS and" in readme
 
 
+def test_cache_survival_release_contract_is_public_and_coherent() -> None:
+    repository = Path(__file__).resolve().parents[3]
+    manager = (repository / "skills/synthesis-skills-manager/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    readme = (repository / "README.md").read_text(encoding="utf-8")
+    changelog = (repository / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    assert "Every version retained by either client" in manager
+    assert "single-writer transition lock" in readme
+    assert "pre-tag" in readme
+    assert "## [4.76.3]" in changelog
+    assert "512 MiB hard limit" in changelog
+    assert readme.count("**4.76.1**") == 1
+    assert changelog.count("## [4.76.1]") == 1
+
+
 def test_whole_system_onboarding_release_contract_is_public_and_coherent() -> None:
     repository = Path(__file__).resolve().parents[3]
     onboarding = (repository / "skills/synthesis-onboarding/SKILL.md").read_text(
