@@ -12,8 +12,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -22,6 +24,7 @@ REPO_ROOT = SCRIPTS.parents[2]
 
 sys.path.insert(0, str(SCRIPTS))
 import onboard  # noqa: E402
+import whole_system  # noqa: E402
 
 
 def sh(cmd, cwd=None, env=None):
@@ -172,6 +175,71 @@ class Sandbox:
         proc = self.run_engine(*(list(args) + ["--json"]), expect=expect)
         return json.loads(proc.stdout), proc
 
+    def run_with_env(self, extra, *args, expect=None):
+        env = dict(os.environ)
+        env.update(self.env_overrides())
+        env.update(extra)
+        proc = subprocess.run(
+            [sys.executable, str(ENGINE)] + list(args),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if expect is not None and proc.returncode != expect:
+            raise AssertionError(
+                "exit %d != %d\nstdout:\n%s\nstderr:\n%s"
+                % (proc.returncode, expect, proc.stdout, proc.stderr)
+            )
+        return proc
+
+    def fake_client(self, version="4.76.0"):
+        path = self.root / "fake-client"
+        path.write_text(
+            "#!/bin/sh\n"
+            "if [ \"${1:-}\" = plugin ] && [ \"${2:-}\" = list ]; then\n"
+            "  printf '%s\\n' '{\"installed\":[{\"pluginId\":\"synthesis-skills@synthesis-engineering\",\"name\":\"synthesis-skills\",\"version\":\"%s\",\"enabled\":true}]}'\n"
+            "fi\n"
+            "exit 0\n" % ("%s", version),
+            encoding="utf-8",
+        )
+        path.chmod(0o755)
+        return path
+
+    def seed_currency(self, version="4.76.0", ref="stable"):
+        path = self.home / ".synthesis" / "onboarding" / "plugin-currency.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "targets": {
+                        ref: {"version": version, "checked_at": time.time()}
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def answers(self, workspace="example-user"):
+        path = self.root / "answers.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "workspace": workspace,
+                    "display_name": "Example User",
+                    "timezone": "UTC",
+                    "tone": ["direct", "substantive", "kind"],
+                    "avoid_phrases": ["empty promise"],
+                    "personal_remote_patterns": ["[:/]example-user/"],
+                    "confidential_terms": [],
+                    "inbox_cleanup": False,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
     def cleanup(self):
         shutil.rmtree(self.root, ignore_errors=True)
 
@@ -267,6 +335,106 @@ class ParserTests(unittest.TestCase):
                 },
                 "t",
             )
+
+
+class WholeSystemTests(unittest.TestCase):
+    def test_catalog_and_probe_universe_match(self):
+        catalog = whole_system.load_catalog(REPO_ROOT)
+        self.assertEqual(len(whole_system.catalog_ids(catalog)), 11)
+        self.assertEqual(
+            set(whole_system.catalog_ids(catalog)),
+            {
+                "skills", "session-context", "hooks-gates", "agent-kernel",
+                "runtime-engines", "coordination", "doctors-conformance",
+                "personal-policy", "organization", "knowledge-bases", "lifecycle",
+            },
+        )
+
+    def test_every_hard_stop_has_a_real_scaffold(self):
+        from check_scaffolds import audit
+
+        self.assertEqual(audit(REPO_ROOT), [])
+
+    def test_kernel_budget_and_hook_merge_are_deterministic(self):
+        self.assertEqual(whole_system.kernel_budget("x" * 100), (100, "ok"))
+        size, state = whole_system.kernel_budget(
+            "x" * (whole_system.KERNEL_HARD_LIMIT + 1)
+        )
+        self.assertEqual(size, whole_system.KERNEL_HARD_LIMIT + 1)
+        self.assertEqual(state, "over")
+        target = Path("/tmp/example/message_guard.py")
+        merged, changed = whole_system.merge_message_guard_hook({}, target)
+        self.assertTrue(changed)
+        merged2, changed2 = whole_system.merge_message_guard_hook(merged, target)
+        self.assertFalse(changed2)
+        self.assertEqual(merged2, merged)
+        for client in ("claude", "codex"):
+            with_kernel, kernel_changed = whole_system.merge_kernel_sync_hook(
+                merged2, Path("/tmp/example/kernel_sync.py"), client
+            )
+            self.assertTrue(kernel_changed)
+            again, changed_again = whole_system.merge_kernel_sync_hook(
+                with_kernel, Path("/tmp/example/kernel_sync.py"), client
+            )
+            self.assertFalse(changed_again)
+            self.assertEqual(again, with_kernel)
+
+    def test_platform_detection_treats_wsl_as_supported_linux_userland(self):
+        self.assertEqual(
+            onboard.platform_family(
+                platform="linux",
+                environ={"WSL_DISTRO_NAME": "Ubuntu"},
+                proc_version="Linux version",
+            ),
+            "wsl",
+        )
+        self.assertEqual(
+            onboard.platform_family(
+                platform="linux", environ={}, proc_version="Linux version"
+            ),
+            "linux",
+        )
+        self.assertEqual(
+            onboard.platform_family(platform="win32", environ={}, proc_version=""),
+            "native-windows",
+        )
+
+    def test_codex_hooks_feature_merge_is_narrow_and_respects_false(self):
+        original = 'model = "example"\n\n[features]\nmemories = true\n\n[projects.x]\ntrust_level = "trusted"\n'
+        merged, changed, block = onboard.merge_codex_hooks_feature(original)
+        self.assertTrue(changed)
+        self.assertTrue(onboard.codex_hooks_feature(merged))
+        self.assertIn('[projects.x]\ntrust_level = "trusted"', merged)
+        self.assertEqual(onboard.managed_codex_hooks_block(merged), block)
+        again, changed_again, _ = onboard.merge_codex_hooks_feature(merged)
+        self.assertFalse(changed_again)
+        self.assertEqual(again, merged)
+        with self.assertRaises(ValueError):
+            onboard.merge_codex_hooks_feature("[features]\nhooks = false\n")
+
+    def test_guided_interview_builds_full_profile_without_stdin_assumptions(self):
+        args = SimpleNamespace(profile=None, answers=None, workspace=None)
+        catalog = whole_system.load_catalog(REPO_ROOT)
+        with patch.object(
+            onboard,
+            "_ask",
+            side_effect=[
+                "full",
+                "example-user",
+                "Example User",
+                "UTC",
+                "direct, kind",
+                "empty promise",
+                "no",
+            ],
+        ):
+            profile, answers, choices = onboard.collect_init_inputs(
+                args, None, catalog
+            )
+        self.assertEqual(profile, "full")
+        self.assertEqual(answers["display_name"], "Example User")
+        self.assertEqual(answers["tone"], ["direct", "kind"])
+        self.assertEqual(choices["organization"], "declined")
 
 
 class PluginTests(unittest.TestCase):
@@ -446,7 +614,8 @@ class PluginTests(unittest.TestCase):
         with patch.object(onboard, "run", return_value=(0, "", "")), \
              patch.object(onboard, "resolve_client", return_value="codex"), \
              patch.object(onboard, "plugin_record", return_value=(True, "4.74.0")), \
-             patch.object(onboard, "resolve_target_version", return_value=("4.74.0", "fixture")):
+             patch.object(onboard, "expected_policy_version", return_value=("4.74.0", "fixture")), \
+             patch.object(onboard, "render_layer_doctor", return_value=False):
             report = onboard.Report(as_json=True)
             self.assertEqual(onboard.doctor(report, None, ["codex"], self.policy), 0)
             self.assertEqual(report.steps[-1]["status"], onboard.OK)
@@ -454,7 +623,8 @@ class PluginTests(unittest.TestCase):
         with patch.object(onboard, "run", return_value=(0, "", "")), \
              patch.object(onboard, "resolve_client", return_value="codex"), \
              patch.object(onboard, "plugin_record", return_value=(True, "4.73.0")), \
-             patch.object(onboard, "resolve_target_version", return_value=("4.74.0", "fixture")):
+             patch.object(onboard, "expected_policy_version", return_value=("4.74.0", "fixture")), \
+             patch.object(onboard, "render_layer_doctor", return_value=False):
             report = onboard.Report(as_json=True)
             self.assertEqual(onboard.doctor(report, None, ["codex"], self.policy), 1)
             self.assertEqual(report.steps[-1]["status"], onboard.ACTION)
@@ -462,7 +632,8 @@ class PluginTests(unittest.TestCase):
         with patch.object(onboard, "run", return_value=(0, "", "")), \
              patch.object(onboard, "resolve_client", return_value="codex"), \
              patch.object(onboard, "plugin_record", return_value=(True, "4.74.0")), \
-             patch.object(onboard, "resolve_target_version", return_value=(None, "offline")):
+             patch.object(onboard, "expected_policy_version", return_value=(None, "offline")), \
+             patch.object(onboard, "render_layer_doctor", return_value=False):
             report = onboard.Report(as_json=True)
             self.assertEqual(onboard.doctor(report, None, ["codex"], self.policy), 2)
             self.assertEqual(report.steps[-1]["status"], onboard.WARN)
@@ -539,7 +710,16 @@ class EngineTests(unittest.TestCase):
     def test_doctor_healthy_then_detects_missing_kb(self):
         manifest = self.box.manifest()
         self.box.run_json("install", "--manifest", str(manifest), expect=0)
-        self.box.run_json("doctor", "--manifest", str(manifest), expect=0)
+        partial, _ = self.box.run_json(
+            "doctor", "--manifest", str(manifest), expect=1
+        )
+        self.assertTrue(
+            any(
+                step.get("layer") == "hooks-gates"
+                and step.get("layer_state") == "missing"
+                for step in partial["steps"]
+            )
+        )
         shutil.rmtree(self.box.kb_clone)
         data, _ = self.box.run_json("doctor", "--manifest", str(manifest), expect=1)
         self.assertIn("error", self.statuses(data))
@@ -591,7 +771,190 @@ class EngineTests(unittest.TestCase):
         data2 = json.loads(proc2.stdout)
         self.assertNotIn("changed", [s["status"] for s in data2["steps"]])
         proc3 = run_engine("doctor")
-        self.assertEqual(proc3.returncode, 0, proc3.stdout + proc3.stderr)
+        self.assertEqual(proc3.returncode, 1, proc3.stdout + proc3.stderr)
+        data3 = json.loads(proc3.stdout)
+        self.assertTrue(
+            any(
+                step.get("layer") == "session-context"
+                and step.get("layer_state") == "missing"
+                for step in data3["steps"]
+            )
+        )
+
+    def test_full_init_converges_every_layer_and_reruns_cleanly(self):
+        client = self.box.fake_client()
+        answers = self.box.answers()
+        self.box.seed_currency()
+        env = {
+            "SYNTHESIS_CLAUDE_BIN": str(client),
+            "SYNTHESIS_CODEX_BIN": str(client),
+        }
+        proc = self.box.run_with_env(
+            env,
+            "init",
+            "--profile",
+            "full",
+            "--answers",
+            str(answers),
+            "--no-services",
+            "--json",
+            expect=0,
+        )
+        data = json.loads(proc.stdout)
+        layers = [step for step in data["steps"] if step.get("phase") == "layer"]
+        self.assertEqual(len(layers), 11)
+        self.assertNotIn("missing", [step.get("layer_state") for step in layers])
+        self.assertEqual(
+            next(step for step in layers if step["layer"] == "organization")["layer_state"],
+            "declined",
+        )
+        workspace = self.box.home / "workspaces" / "example-user"
+        self.assertTrue((workspace / "AGENTS.source.md").is_file())
+        self.assertTrue((workspace / "AGENTS.md").is_file())
+        self.assertTrue((workspace / "CLAUDE.md").is_file())
+        self.assertTrue(
+            (
+                self.box.home
+                / ".synthesis"
+                / "onboarding"
+                / "bin"
+                / "kernel_sync.py"
+            ).is_file()
+        )
+        self.assertTrue(
+            (self.box.home / ".synthesis" / "message-guard" / "patterns.json").is_file()
+        )
+
+        self.box.seed_currency()
+        proc2 = self.box.run_with_env(
+            env,
+            "init",
+            "--profile",
+            "full",
+            "--answers",
+            str(answers),
+            "--no-services",
+            "--json",
+            expect=0,
+        )
+        data2 = json.loads(proc2.stdout)
+        changed = [step for step in data2["steps"] if step["status"] == "changed"]
+        self.assertEqual(changed, [])
+
+        source = workspace / "AGENTS.source.md"
+        source.write_text(
+            source.read_text(encoding="utf-8") + "\n## Personal addition\n\nKeep evidence close.\n",
+            encoding="utf-8",
+        )
+        sync = subprocess.run(
+            [
+                sys.executable,
+                str(
+                    self.box.home
+                    / ".synthesis"
+                    / "onboarding"
+                    / "bin"
+                    / "kernel_sync.py"
+                ),
+                "--hook",
+            ],
+            env={**os.environ, **self.box.env_overrides(), **env},
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        self.assertEqual(sync.returncode, 0, sync.stdout + sync.stderr)
+        self.assertIn("Keep evidence close.", (workspace / "AGENTS.md").read_text(encoding="utf-8"))
+        self.assertIn("Keep evidence close.", (workspace / "CLAUDE.md").read_text(encoding="utf-8"))
+
+        agents = workspace / "AGENTS.md"
+        agents.write_text("# My edited client instructions\n", encoding="utf-8")
+        kernel = self.box.run_with_env(
+            env,
+            "kernel",
+            "--workspace",
+            "example-user",
+            "--json",
+            expect=1,
+        )
+        self.assertIn("your own edits", kernel.stdout)
+        self.assertEqual(agents.read_text(encoding="utf-8"), "# My edited client instructions\n")
+
+        claude = workspace / "CLAUDE.md"
+        before = claude.read_text(encoding="utf-8")
+        (workspace / "AGENTS.source.md").write_text(
+            "x" * (whole_system.KERNEL_HARD_LIMIT + 1), encoding="utf-8"
+        )
+        self.box.run_with_env(
+            env,
+            "kernel",
+            "--workspace",
+            "example-user",
+            "--json",
+            expect=1,
+        )
+        self.assertEqual(claude.read_text(encoding="utf-8"), before)
+
+        self.box.run_with_env(env, "uninstall", "--json", expect=0)
+        self.assertTrue(source.is_file())
+        self.assertFalse(
+            (
+                self.box.home
+                / ".synthesis"
+                / "onboarding"
+                / "bin"
+                / "kernel_sync.py"
+            ).exists()
+        )
+        self.assertFalse(
+            onboard._hook_file_has_kernel_sync(
+                self.box.home / ".claude" / "settings.json"
+            )
+        )
+        self.assertFalse(
+            onboard._hook_file_has_message_guard(
+                self.box.home / ".codex" / "hooks.json"
+            )
+        )
+        codex_config = (self.box.home / ".codex" / "config.toml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIsNone(onboard.codex_hooks_feature(codex_config))
+
+    def test_skills_only_profile_is_visibly_partial_but_healthy(self):
+        client = self.box.fake_client()
+        self.box.seed_currency()
+        env = {
+            "SYNTHESIS_CLAUDE_BIN": str(client),
+            "SYNTHESIS_CODEX_BIN": str(client),
+        }
+        proc = self.box.run_with_env(
+            env,
+            "init",
+            "--profile",
+            "skills-only",
+            "--answers",
+            str(self.box.answers()),
+            "--no-services",
+            "--json",
+            expect=0,
+        )
+        data = json.loads(proc.stdout)
+        states = {
+            step["layer"]: step["layer_state"]
+            for step in data["steps"]
+            if step.get("phase") == "layer"
+        }
+        self.assertEqual(states["skills"], "installed")
+        self.assertEqual(states["session-context"], "installed")
+        self.assertEqual(states["lifecycle"], "installed")
+        self.assertTrue(
+            all(
+                state == "declined"
+                for layer, state in states.items()
+                if layer not in {"skills", "session-context", "lifecycle", "doctors-conformance"}
+            )
+        )
 
     def test_uninstall_archives_generated_files_only(self):
         manifest = self.box.manifest()

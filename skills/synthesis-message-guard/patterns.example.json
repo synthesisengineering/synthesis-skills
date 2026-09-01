@@ -1,0 +1,31 @@
+{
+  "config_version": 1,
+  "gated_tool_patterns": [
+    "mcp__.*__(slack_send_message|slack_send_message_draft|slack_schedule_message|draft_gmail_message|send_gmail_message|create_draft|update_draft|send_email|send_message)$"
+  ],
+  "exempt_tool_patterns": [
+    "mcp__.*session.*__send_message$"
+  ],
+  "block_patterns": [
+    {
+      "name": "delay-apology",
+      "regex": "\\b(?:sorry|apolog(?:y|ize|ise|etic))\\b.{0,40}\\b(?:delay|late|silence)\\b"
+    },
+    {
+      "name": "self-abandonment",
+      "regex": "\\b(?:went|been|was)\\s+(?:quiet|missing|absent)\\b"
+    }
+  ],
+  "warn_patterns": [],
+  "ledger_max_age_minutes": 45,
+  "text_field_candidates": [
+    "message",
+    "text",
+    "body",
+    "content",
+    "prompt"
+  ],
+  "doctor_clean_controls": [
+    "Thanks for the note. I reviewed the full thread and can meet Tuesday at 10."
+  ]
+}

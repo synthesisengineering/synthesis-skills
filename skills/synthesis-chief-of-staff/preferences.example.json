@@ -1,0 +1,41 @@
+{
+  "config_version": 1,
+  "timezone": "America/New_York",
+  "working_hours": {
+    "start": "09:00",
+    "end": "17:00"
+  },
+  "protected_hours": [],
+  "tiers": {
+    "priority": [],
+    "peer": [],
+    "vendor": []
+  },
+  "assistants": [],
+  "aliases": {},
+  "meeting_defaults": {
+    "short_minutes": 25,
+    "long_minutes": 50,
+    "minimum_notice_hours": 24,
+    "same_day_meetings": false,
+    "prep_lead_hours": 24
+  },
+  "calendar_guardian": {
+    "thresholds": {
+      "max_meeting_hours_per_day": 5,
+      "min_maker_blocks_per_day": 1,
+      "max_consecutive_meetings": 3
+    },
+    "holds": {
+      "title": "Hold",
+      "ledger": "~/.synthesis/chief-of-staff/holds-ledger.json",
+      "expire": "end-of-day"
+    },
+    "same_day_exceptions": "reuse the tiers section",
+    "weekly_review_day": "Friday"
+  },
+  "travel": {
+    "notification_tiers": [],
+    "itinerary_recipients": []
+  }
+}

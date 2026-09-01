@@ -7,12 +7,17 @@ depends_on:
   - synthesis-kb-edit
 metadata:
   author: Rajiv Pant
-  version: "1.1.0"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Knowledge Capture
+
+**Version 1.2.0** (2026-09-01) ships `config.example.json` and connects the
+private routing table to the guided onboarding interview. The example uses a
+synthetic private workspace and a hold-for-approval push posture; the onboarding
+validator refuses a domain without its repo, tier, or bundle path.
 
 **Version 1.1.0** (2026-07-29)
 
@@ -56,6 +61,10 @@ must never reach a public repo; and it records each repo's **push posture**
 is neither. If the config is missing, STOP and say so — routing a fact without
 the routing table is guessing, and guessing about confidentiality is how a
 private fact ends up in a shared corpus.
+
+Run `synthesis-onboarding init` to author the file from the personal workspace
+you select, or copy `config.example.json` and validate it with the onboarding
+doctor. The public example contains no real repository or confidentiality data.
 
 Each target repository must also carry `.agents/knowledge-base.yaml`. The
 private capture config answers **which repository receives the fact**; the

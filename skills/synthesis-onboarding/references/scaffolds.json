@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "hard_stop_consumers": [
+    {
+      "skill": "synthesis-absence-coordination",
+      "config": "~/.synthesis/absence-coordination/config.yaml",
+      "template": "skills/synthesis-absence-coordination/example-config.yaml",
+      "validator": "skills/synthesis-absence-coordination/validate_config.py"
+    },
+    {
+      "skill": "synthesis-chief-of-staff",
+      "config": "~/.synthesis/chief-of-staff/preferences.json",
+      "template": "skills/synthesis-chief-of-staff/preferences.example.json",
+      "validator": "synthesis-onboarding"
+    },
+    {
+      "skill": "synthesis-knowledge-capture",
+      "config": "~/.synthesis/knowledge-capture/config.json",
+      "template": "skills/synthesis-knowledge-capture/config.example.json",
+      "validator": "synthesis-onboarding"
+    },
+    {
+      "skill": "synthesis-message-guard",
+      "config": "~/.synthesis/message-guard/patterns.json",
+      "template": "skills/synthesis-message-guard/patterns.example.json",
+      "validator": "skills/synthesis-message-guard/scripts/message_guard.py --doctor"
+    }
+  ]
+}

@@ -32,6 +32,7 @@ jobs:
       - run: python -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-onboarding/scripts/test_onboard.py -q
+      - run: python skills/synthesis-onboarding/scripts/check_scaffolds.py .
       - run: python -m pytest skills/synthesis-skills-manager/scripts/test_release.py -q
       # Standalone runner, not pytest: the file must stay executable from inside a
       # deployed skill directory, where pytest is not guaranteed to be installed.
@@ -43,3 +44,19 @@ jobs:
       - run: python skills/synthesis-inbox-cleanup/tests/run_poisoned.py
       - run: python skills/synthesis-inbox-cleanup/tests/run_resolver.py
       - run: sh skills/synthesis-inbox-cleanup/tests/test_runtime_installer.sh
+
+  onboarding-portability:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pytest pyyaml
+      - run: python -m pytest skills/synthesis-onboarding/scripts/test_onboard.py -q
+      - run: python skills/synthesis-onboarding/scripts/check_scaffolds.py .
+      - run: sh -n onboard.sh

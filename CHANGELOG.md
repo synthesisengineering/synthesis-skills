@@ -4,6 +4,30 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.76.0] - 2026-09-01
+
+**`synthesis-onboarding` v1.4.0 makes the public bootstrap the door to the
+whole work system.** Its guided `init` flow now converges eleven declared
+layers instead of treating a plugin as the finished system: skills, session
+context, stable gates, agent kernel, runtime engines, coordination, doctors,
+personal policy, optional organization state, knowledge bases, and lifecycle.
+Every layer ends visibly `installed`, `declined`, or `missing`; selected gaps
+keep doctor non-green.
+
+The personal layer is authored through a generic interview and shipped
+templates for message guard, chief of staff, knowledge capture, and the public
+policy profile. A CI audit now rejects a documented fail-closed config without
+a scaffold and rejects any skill or installer missing from the static component
+catalog. Organization manifest documentation includes `default_branch`.
+
+The kernel generator creates one user-owned `AGENTS.source.md`, renders both
+client files under a 55,000-byte hard budget and 85-percent warning band, and
+installs a stable edit-propagation hook. Receipt hashes prevent overwriting a
+user-edited output; uninstall removes only its exact owned hook entries before
+their engines and preserves the canonical source. The same fresh-home tests run
+on macOS and Linux in CI, with WSL recognized as the supported Windows
+userland and native Windows refused before mutation.
+
 ## [4.75.0] - 2026-09-01
 
 **Peer-session messages now resolve through the board instead of guesswork.**

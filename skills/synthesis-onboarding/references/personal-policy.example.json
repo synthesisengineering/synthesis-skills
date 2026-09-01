@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "workspace": "example-workspace",
+  "identity": {
+    "display_name": "Example User",
+    "working_relationship": "peer advisor"
+  },
+  "voice": {
+    "tone": [
+      "direct",
+      "substantive",
+      "kind"
+    ],
+    "avoid_phrases": []
+  },
+  "preferences": {
+    "timezone": "America/New_York",
+    "working_hours": {
+      "start": "09:00",
+      "end": "17:00"
+    },
+    "protected_hours": []
+  },
+  "guard_patterns": {
+    "personal_remote_patterns": [],
+    "confidential_terms": []
+  },
+  "knowledge_capture": {
+    "default_tier": "private",
+    "push_posture": "hold-for-approval"
+  }
+}

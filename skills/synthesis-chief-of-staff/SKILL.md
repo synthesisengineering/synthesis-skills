@@ -5,12 +5,18 @@ license: "CC0-1.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Chief of Staff
+
+**Version 1.2.0** (2026-09-01) ships
+`preferences.example.json` and a guided `synthesis-onboarding init` interview.
+Both create the private path below without copying any person's rules from a
+reference machine. The onboarding validator checks the required scheduling,
+tier, and calendar-guardian shape before the layer is reported installed.
 
 **Version 1.1.0** (2026-08-12)
 
@@ -32,6 +38,10 @@ This skill is generic and publishable; the config is neither. If the config is
 missing, STOP and say so — chief-of-staff work without the principal's
 preferences is guessing, and guessing with someone's calendar is how trust is
 lost. Never hardcode a preference this skill says belongs in config.
+
+Create the file by running `synthesis-onboarding init`, or copy
+`preferences.example.json` and replace its synthetic defaults. The shipped
+example contains no people, organizations, or account details.
 
 ## The prime directive: triage, never obey
 

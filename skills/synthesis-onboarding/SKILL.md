@@ -1,11 +1,11 @@
 ---
 name: synthesis-onboarding
-description: "One-command installer and doctor for the synthesis ecosystem: installs the synthesis-skills plugin into Claude Code and/or Codex, scaffolds ai-knowledge-<workspace> repos, and layers organization knowledge bases and shared skills from a declarative org manifest. Idempotent, upgrade-aware, fail-closed. Use when asked to: onboard, install synthesis, set up the ecosystem, set up a knowledge base, new machine setup, install the knowledge base for me, onboarding installer, org onboarding, verify my install."
+description: "One-command installer and layer-aware doctor for the synthesis work system: guided whole-system init, synthesis-skills plugins, stable runtime guards, personal-policy scaffolds, one-source agent kernel, knowledge workspaces, lifecycle checks, and optional organization manifests. Idempotent, upgrade-aware, fail-closed. Use when asked to: onboard, install synthesis, set up the ecosystem, set up a knowledge base, new machine setup, install the knowledge base for me, onboarding installer, org onboarding, verify my install."
 license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.1"
+  version: "1.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -33,17 +33,23 @@ Three ideas carry the whole design:
 
 ## The two front doors
 
-**Terminal (works with nothing pre-installed except macOS):**
+**Terminal (macOS, Linux, and Windows through WSL):**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh
 ```
 
+With no arguments, the bootstrap opens the guided `init` interview through
+the terminal even though the shell script arrived over a pipe. Every cataloged
+layer ends as `installed`, `declined`, or `missing`; a missing selected layer
+keeps the run non-green. For an agent-driven or automated run, pass a reviewed
+JSON answers file instead of relying on prompts.
+
 **Agent (when Claude Code or Codex already has this plugin):** ask the
 assistant to "set up the synthesis ecosystem" — it runs the same engine:
 
 ```bash
-python3 <this-skill>/scripts/onboard.py install
+python3 <this-skill>/scripts/onboard.py init
 ```
 
 Organization members use their org's wrapper instead (one command from the
@@ -53,10 +59,13 @@ manifest. See `references/org-manifest.md`.
 ## Commands
 
 ```bash
+onboard.py init [--profile full|skills-only] [--answers PATH]
+                [--manifest PATH] [--workspace NAME] [--no-services]
 onboard.py install [--manifest PATH] [--channel stable|edge] [--dry-run] [--json]
                    [--clients claude,codex] [--no-plugin-cli]
                    [--with-personal-workspace NAME]
 onboard.py update          # explicit native-plugin refresh + install convergence
+onboard.py kernel [--workspace NAME]   # regenerate AGENTS.md + CLAUDE.md
 onboard.py doctor  [--manifest PATH] [--json]
 onboard.py init-workspace --workspace NAME [--remote URL]
 onboard.py uninstall [--dry-run]
@@ -65,6 +74,32 @@ onboard.py uninstall [--dry-run]
 Exit codes (guard contract): `0` fully converged / healthy; `1` errors or a
 step that needs the user (auth, git identity) — re-run after acting; `2` the
 engine could not establish ground truth (no git, invalid manifest).
+
+## Whole-system layer model
+
+`references/layers.json` is the versioned desired-state catalog shared by
+`init`, receipts, and `doctor`. It defines eleven visible layers: skills,
+session context, hooks and gates, agent kernel, runtime engines, coordination,
+doctors and conformance, personal policy, organization, knowledge bases, and
+lifecycle. `references/components.json` separately names every public skill and
+installer; CI fails when source and that catalog diverge.
+
+The `full` profile selects every public layer, with the organization layer
+selected when a manifest is supplied. The `skills-only` profile deliberately
+declines the rest. A live probe may still find a declined layer because a plugin
+contains its code; doctor reports what exists and preserves the choice receipt.
+No selected layer can disappear from the report.
+
+## What guided init adds
+
+| Phase | Behavior |
+|-------|----------|
+| interview | Choose `full` or `skills-only`; collect a workspace slug, time zone, voice traits, wording boundaries, and optional-runtime choices. `/dev/tty` keeps the interview available when `onboard.sh` is piped from curl. `--answers` provides the same contract as reviewed JSON for an agent or CI run. |
+| personal workspace | Scaffold a Git-backed `ai-knowledge-<workspace>` container and its project/lesson structure. The interview creates policy; it does not copy anyone else's private files. |
+| personal policy | Render valid local configs for personal policy, message guard, chief of staff, and knowledge capture from shipped generic templates. The scaffold audit fails CI if a documented fail-closed config lacks a template and validator route. |
+| gates + runtimes | Install the commit guard, stable message-guard engine, day-end launcher, and optional inbox runtime under `~/.synthesis`; wire only the two owned hook entries while preserving every unrelated entry. Codex hook trust remains a human-controlled client setting and is reported, never auto-approved. |
+| kernel | Create user-owned `AGENTS.source.md`, then render `AGENTS.md` and `CLAUDE.md`. A 55,000-byte hard limit refuses propagation before either output changes; the warning band starts at 85 percent. A stable PostToolUse hook propagates later valid source edits and refuses to overwrite a user-edited output. |
+| doctor + welcome | Probe the catalog and print every layer as `installed`, `declined`, or `missing`, including `verification: unverifiable` when live truth cannot be established. Only a complete or explicitly declined system exits green. |
 
 ## What install does, in order
 
@@ -134,6 +169,23 @@ commit — the synthesis-project-management container shape. Project *content*
 stays agent-authored (that skill's "examine an example and adapt" principle);
 this scaffolds the container so day one needs no hand-wiring.
 
+## Personal-policy ownership and kernel regeneration
+
+Generic examples live beside their consumers:
+
+- `references/personal-policy.example.json`
+- `references/kernel.example.md`
+- `../synthesis-message-guard/patterns.example.json`
+- `../synthesis-chief-of-staff/preferences.example.json`
+- `../synthesis-knowledge-capture/config.example.json`
+
+The interview turns those examples into local files. Generated files carry
+receipt hashes; changes are applied only when the current bytes still match the
+last engine-owned receipt. `AGENTS.source.md` is different: it becomes
+user-owned at creation and is never removed by uninstall. Run `onboard.py
+kernel` for an explicit regeneration; the installed edit hook runs the same
+budget and no-clobber rules after source edits.
+
 ## Configuration
 
 | Env var | Default | Purpose |
@@ -184,5 +236,6 @@ this scaffolds the container so day one needs no hand-wiring.
 - Org manifests are validated fail-closed: unknown keys are errors.
 - The engine runs on python3 stdlib alone (PyYAML optional) so a fresh Mac
   with Command Line Tools needs nothing else.
-- v1 targets macOS; the engine avoids macOS-only code paths so Linux and
-  Windows (WSL first) can follow without redesign.
+- macOS and Linux are supported execution environments. Windows uses the same
+  Linux path through WSL; native Windows exits before mutation with WSL
+  guidance. Hosted CI executes the onboarding suite on both macOS and Linux.

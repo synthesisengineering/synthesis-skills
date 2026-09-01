@@ -3,8 +3,10 @@
 
 Converges a machine toward a working synthesis ecosystem install:
 
+  init            guided whole-system convergence; every layer visible
   install         (default) converge everything; safe to re-run anytime
   update          alias of install
+  kernel          regenerate both client instruction files from one source
   doctor          verify-only; exit 0 healthy / 1 defects / 2 cannot verify
   init-workspace  scaffold ~/workspaces/<name>/ai-knowledge-<name>/
   uninstall       archive-then-remove engine-generated files
@@ -40,8 +42,34 @@ from plugin_currency import (
     policy_ref,
     resolve_target_version,
 )
+from whole_system import (
+    CAPTURE_TEMPLATE_REL,
+    CHIEF_TEMPLATE_REL,
+    KERNEL_HARD_LIMIT,
+    KERNEL_WARN_RATIO,
+    MESSAGE_TEMPLATE_REL,
+    build_capture_config,
+    build_chief_preferences,
+    build_message_guard_config,
+    build_personal_policy,
+    catalog_ids,
+    dump_json,
+    kernel_budget,
+    load_answers,
+    load_catalog,
+    merge_kernel_sync_hook,
+    merge_message_guard_hook,
+    profile_choices,
+    render_kernel_source,
+    rendered_kernel,
+    validate_answers,
+    validate_capture_config,
+    validate_chief_preferences,
+    validate_message_guard,
+    validate_personal_policy,
+)
 
-ENGINE_VERSION = "1.3.0"
+ENGINE_VERSION = "1.4.0"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -93,10 +121,12 @@ class Report:
         self.dry_run = dry_run
         self.as_json = as_json
 
-    def add(self, phase, status, detail, hint=None):
+    def add(self, phase, status, detail, hint=None, **extra):
         if self.dry_run and status == CHANGED:
             status = WOULD
-        self.steps.append({"phase": phase, "status": status, "detail": detail, "hint": hint})
+        step = {"phase": phase, "status": status, "detail": detail, "hint": hint}
+        step.update(extra)
+        self.steps.append(step)
         if not self.as_json:
             line = "%s [%s] %s" % (_BADGES.get(status, "  ??"), phase, detail)
             print(line)
@@ -104,6 +134,24 @@ class Report:
                 for hline in hint.strip().splitlines():
                     print("        %s" % hline)
         return status
+
+    def add_layer(self, layer, title, state, detail, verification="verified"):
+        if state == "installed":
+            status = OK
+        elif state == "declined":
+            status = SKIP
+        elif verification == "unverifiable":
+            status = WARN
+        else:
+            status = ACTION
+        return self.add(
+            "layer",
+            status,
+            "%s: %s — %s" % (title, state, detail),
+            layer=layer,
+            layer_state=state,
+            verification=verification,
+        )
 
     def counts(self):
         out = {}
@@ -354,7 +402,15 @@ class Receipts:
         if self.path.exists():
             self.data = json.loads(self.path.read_text(encoding="utf-8"))
         else:
-            self.data = {"version": 1, "generated_files": {}, "adopted_repos": {}, "runs": []}
+            self.data = {"version": 2, "generated_files": {}, "adopted_repos": {}, "runs": []}
+        self.data.setdefault("generated_files", {})
+        self.data.setdefault("adopted_repos", {})
+        self.data.setdefault("runs", [])
+        self.data.setdefault("layer_choices", {})
+        self.data.setdefault("component_choices", {})
+        self.data.setdefault("managed_json_entries", {})
+        self.data.setdefault("managed_text_entries", {})
+        self.data["version"] = max(2, int(self.data.get("version", 1)))
 
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -379,6 +435,27 @@ class Receipts:
     def record_adoption(self, name, path):
         self.data["adopted_repos"][name] = str(path)
 
+    def record_layer_choices(self, choices):
+        now = utcnow()
+        self.data["layer_choices"] = {
+            key: {"choice": value, "recorded_at": now}
+            for key, value in sorted(choices.items())
+        }
+
+    def layer_choice(self, layer):
+        entry = self.data.get("layer_choices", {}).get(layer) or {}
+        return entry.get("choice")
+
+    def record_component_choice(self, component, choice):
+        self.data["component_choices"][component] = {
+            "choice": choice,
+            "recorded_at": utcnow(),
+        }
+
+    def component_choice(self, component):
+        entry = self.data.get("component_choices", {}).get(component) or {}
+        return entry.get("choice")
+
 
 def archive_path(target):
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -396,7 +473,7 @@ def ensure_file(report, receipts, path, content, kind, dry_run):
             receipts.record_file(path, content, kind)
             return report.add(kind, OK, "%s is current" % path)
         owned = receipts.file_sha(path) == sha256_text(current)
-        if not owned and GENERATED_MARK not in current:
+        if not owned:
             return report.add(kind, WARN,
                               "%s exists with your own edits — left untouched" % path,
                               hint="Remove the file and re-run to regenerate it.")
@@ -413,6 +490,284 @@ def ensure_file(report, receipts, path, content, kind, dry_run):
     path.write_text(content, encoding="utf-8")
     receipts.record_file(path, content, kind)
     return report.add(kind, CHANGED, "created %s" % path)
+
+
+def ensure_user_source(report, receipts, path, content, kind, dry_run):
+    """Create a user-owned source once; never replace it on later runs."""
+    path = Path(path)
+    if path.exists():
+        receipts.forget_file(path)
+        return report.add(kind, OK, "%s exists and remains user-owned" % path)
+    if dry_run:
+        return report.add(kind, CHANGED, "would create user-owned %s" % path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    receipts.forget_file(path)
+    return report.add(kind, CHANGED, "created user-owned %s" % path)
+
+
+def atomic_json_write(path, data):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(".%s.tmp-%s" % (path.name, os.getpid()))
+    temporary.write_text(dump_json(data), encoding="utf-8")
+    os.replace(temporary, path)
+
+
+CODEX_HOOKS_BEGIN = "# synthesis-onboarding:begin hooks-feature"
+CODEX_HOOKS_END = "# synthesis-onboarding:end hooks-feature"
+
+
+def codex_hooks_feature(text):
+    """Return True, False, or None for hooks inside the TOML features table."""
+    in_features = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("[") and line.endswith("]"):
+            in_features = line == "[features]"
+            continue
+        if in_features:
+            match = re.match(r"^hooks\s*=\s*(true|false)\s*(?:#.*)?$", line)
+            if match:
+                return match.group(1) == "true"
+    return None
+
+
+def managed_codex_hooks_block(text):
+    pattern = re.compile(
+        r"(?:^|\n)(%s\n.*?\n%s)(?=\n|$)"
+        % (re.escape(CODEX_HOOKS_BEGIN), re.escape(CODEX_HOOKS_END)),
+        re.DOTALL,
+    )
+    match = pattern.search(text)
+    return match.group(1) if match else None
+
+
+def merge_codex_hooks_feature(text):
+    state = codex_hooks_feature(text)
+    if state is True:
+        return text, False, managed_codex_hooks_block(text)
+    if state is False:
+        raise ValueError(
+            "Codex features.hooks is explicitly false; preserving that user setting"
+        )
+    lines = text.splitlines(keepends=True)
+    feature_index = None
+    end_index = len(lines)
+    for index, raw in enumerate(lines):
+        stripped = raw.strip()
+        if stripped == "[features]":
+            feature_index = index
+            continue
+        if (
+            feature_index is not None
+            and index > feature_index
+            and stripped.startswith("[")
+            and stripped.endswith("]")
+        ):
+            end_index = index
+            break
+    if feature_index is None:
+        owned = "%s\n[features]\nhooks = true\n%s" % (
+            CODEX_HOOKS_BEGIN,
+            CODEX_HOOKS_END,
+        )
+        prefix = text
+        if prefix and not prefix.endswith("\n"):
+            prefix += "\n"
+        if prefix and not prefix.endswith("\n\n"):
+            prefix += "\n"
+        return prefix + owned + "\n", True, owned
+    owned = "%s\nhooks = true\n%s" % (CODEX_HOOKS_BEGIN, CODEX_HOOKS_END)
+    insertion = owned + "\n"
+    lines.insert(end_index, insertion)
+    return "".join(lines), True, owned
+
+
+def ensure_codex_hooks_feature(report, receipts, path, dry_run):
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+        merged, changed, owned = merge_codex_hooks_feature(text)
+    except (OSError, ValueError) as exc:
+        return report.add("hooks-gates", ACTION, str(exc))
+    receipt_key = "%s#codex-hooks-feature" % path
+    if not changed:
+        if owned:
+            receipts.data["managed_text_entries"][receipt_key] = {
+                "sha256": sha256_text(owned),
+                "block": owned,
+            }
+        return report.add("hooks-gates", OK, "Codex hooks feature is enabled")
+    if dry_run:
+        return report.add("hooks-gates", CHANGED, "would enable Codex hooks")
+    if path.exists():
+        shutil.copy2(path, archive_path(path))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(".%s.tmp-%s" % (path.name, os.getpid()))
+    temporary.write_text(merged, encoding="utf-8")
+    os.replace(temporary, path)
+    receipts.data["managed_text_entries"][receipt_key] = {
+        "sha256": sha256_text(owned),
+        "block": owned,
+    }
+    return report.add("hooks-gates", CHANGED, "enabled Codex hooks")
+
+
+def _message_guard_entry(data):
+    if not isinstance(data, dict):
+        return None
+    hooks = data.get("hooks") or {}
+    entries = hooks.get("PreToolUse") if isinstance(hooks, dict) else None
+    if not isinstance(entries, list):
+        return None
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        commands = [
+            hook.get("command", "")
+            for hook in entry.get("hooks", [])
+            if isinstance(hook, dict)
+        ]
+        if any("message_guard.py" in command for command in commands):
+            return entry
+    return None
+
+
+def _kernel_sync_entry(data):
+    if not isinstance(data, dict):
+        return None
+    hooks = data.get("hooks") or {}
+    entries = hooks.get("PostToolUse") if isinstance(hooks, dict) else None
+    if not isinstance(entries, list):
+        return None
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        commands = [
+            hook.get("command", "")
+            for hook in entry.get("hooks", [])
+            if isinstance(hook, dict)
+        ]
+        if any("kernel_sync.py" in command for command in commands):
+            return entry
+    return None
+
+
+def ensure_message_guard_hook(report, receipts, path, engine_path, dry_run):
+    """Narrow JSON merge with receipt-aware conffile semantics."""
+    path = Path(path)
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return report.add(
+                "hooks-gates", ERROR, "%s is not valid JSON" % path, hint=str(exc)
+            )
+    else:
+        existing = {}
+    current_entry = _message_guard_entry(existing)
+    merged, changed = merge_message_guard_hook(existing, engine_path)
+    if not changed:
+        entry = _message_guard_entry(merged)
+        receipts.data["managed_json_entries"][str(path)] = sha256_text(
+            dump_json(entry or {})
+        )
+        return report.add("hooks-gates", OK, "%s message guard wiring is current" % path)
+    if current_entry is not None:
+        recorded = receipts.data["managed_json_entries"].get(str(path))
+        current_sha = sha256_text(dump_json(current_entry))
+        if recorded != current_sha:
+            return report.add(
+                "hooks-gates",
+                WARN,
+                "%s has user-edited message guard wiring — left untouched" % path,
+                hint="Remove only that message-guard entry and re-run init to regenerate it.",
+            )
+    if dry_run:
+        return report.add("hooks-gates", CHANGED, "would wire message guard in %s" % path)
+    if path.exists():
+        backup = archive_path(path)
+        shutil.copy2(path, backup)
+    atomic_json_write(path, merged)
+    entry = _message_guard_entry(merged)
+    receipts.data["managed_json_entries"][str(path)] = sha256_text(
+        dump_json(entry or {})
+    )
+    return report.add("hooks-gates", CHANGED, "wired message guard in %s" % path)
+
+
+def ensure_kernel_sync_hook(
+    report, receipts, path, engine_path, client, dry_run
+):
+    """Add or update only the onboarding-owned kernel propagation hook."""
+    path = Path(path)
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return report.add(
+                "agent-kernel", ERROR, "%s is not valid JSON" % path, hint=str(exc)
+            )
+    else:
+        existing = {}
+    current_entry = _kernel_sync_entry(existing)
+    merged, changed = merge_kernel_sync_hook(existing, engine_path, client)
+    receipt_key = "%s#kernel-sync" % path
+    if not changed:
+        entry = _kernel_sync_entry(merged)
+        receipts.data["managed_json_entries"][receipt_key] = sha256_text(
+            dump_json(entry or {})
+        )
+        return report.add(
+            "agent-kernel", OK, "%s kernel propagation hook is current" % path
+        )
+    if current_entry is not None:
+        recorded = receipts.data["managed_json_entries"].get(receipt_key)
+        current_sha = sha256_text(dump_json(current_entry))
+        if recorded != current_sha:
+            return report.add(
+                "agent-kernel",
+                WARN,
+                "%s has user-edited kernel hook wiring — left untouched" % path,
+                hint="Remove only that kernel-sync entry and re-run init to regenerate it.",
+            )
+    if dry_run:
+        return report.add(
+            "agent-kernel", CHANGED, "would wire kernel propagation in %s" % path
+        )
+    if path.exists():
+        shutil.copy2(path, archive_path(path))
+    atomic_json_write(path, merged)
+    entry = _kernel_sync_entry(merged)
+    receipts.data["managed_json_entries"][receipt_key] = sha256_text(
+        dump_json(entry or {})
+    )
+    return report.add(
+        "agent-kernel", CHANGED, "wired kernel propagation in %s" % path
+    )
+
+
+def paths_digest(paths):
+    digest = hashlib.sha256()
+    found = False
+    for root in sorted(Path(path) for path in paths):
+        if root.is_symlink():
+            found = True
+            digest.update(str(root).encode("utf-8"))
+            digest.update(os.readlink(root).encode("utf-8"))
+            continue
+        if root.is_file():
+            found = True
+            digest.update(str(root).encode("utf-8"))
+            digest.update(root.read_bytes())
+            continue
+        if root.is_dir():
+            for child in sorted(item for item in root.rglob("*") if item.is_file()):
+                found = True
+                digest.update(str(child.relative_to(root)).encode("utf-8"))
+                digest.update(child.read_bytes())
+    return digest.hexdigest() if found else None
 
 
 # ---------------------------------------------------------------------------
@@ -625,8 +980,20 @@ def clone_or_update(report, phase, url_list, dest, dry_run, allow_stale=ALLOW_ST
 # ---------------------------------------------------------------------------
 
 def phase_preflight(report, clients_wanted):
-    if sys.platform != "darwin":
-        report.add("preflight", WARN, "v1 targets macOS; this platform (%s) is best-effort" % sys.platform)
+    platform = platform_family()
+    if platform == "native-windows":
+        report.add(
+            "preflight",
+            ERROR,
+            "native Windows is not supported; run the installer inside WSL",
+        )
+        return None
+    if platform == "wsl":
+        report.add("preflight", OK, "Windows detected through the supported WSL userland")
+    elif platform == "linux":
+        report.add("preflight", OK, "Linux userland detected")
+    else:
+        report.add("preflight", OK, "macOS detected")
     rc, out, _ = run(["git", "--version"], timeout=15)
     if rc != 0:
         report.add("preflight", ERROR, "git is not available",
@@ -645,6 +1012,26 @@ def phase_preflight(report, clients_wanted):
     if not any(clients.values()):
         report.add("preflight", WARN, "no AI client detected; repos and workspace will still be set up")
     return clients
+
+
+def platform_family(platform=None, environ=None, proc_version=None):
+    platform = platform or sys.platform
+    environ = environ if environ is not None else os.environ
+    if platform == "darwin":
+        return "macos"
+    if platform.startswith("linux"):
+        version = proc_version
+        if version is None:
+            try:
+                version = Path("/proc/version").read_text(encoding="utf-8")
+            except OSError:
+                version = ""
+        if environ.get("WSL_INTEROP") or environ.get("WSL_DISTRO_NAME") or "microsoft" in version.lower():
+            return "wsl"
+        return "linux"
+    if platform in ("win32", "cygwin"):
+        return "native-windows"
+    return "native-windows"
 
 
 def phase_ecosystem(
@@ -1103,8 +1490,661 @@ def init_workspace(report, receipts, workspace, dry_run, remote=None):
 
 
 # ---------------------------------------------------------------------------
+# Whole-system init + kernel generation
+# ---------------------------------------------------------------------------
+
+def _prompt_stream():
+    if sys.stdin.isatty():
+        return sys.stdin, False
+    try:
+        return open("/dev/tty", "r", encoding="utf-8"), True
+    except OSError:
+        return None, False
+
+
+def _ask(prompt, default=""):
+    stream, close = _prompt_stream()
+    if stream is None:
+        raise ValueError(
+            "guided init needs a terminal; use --profile and --answers for a non-interactive run"
+        )
+    suffix = " [%s]" % default if default else ""
+    print("%s%s: " % (prompt, suffix), end="", flush=True)
+    try:
+        value = stream.readline()
+    finally:
+        if close:
+            stream.close()
+    if value == "":
+        raise ValueError("guided init input ended before the interview completed")
+    return value.strip() or default
+
+
+def collect_init_inputs(args, manifest, catalog):
+    profile = args.profile
+    if profile is None:
+        selected = _ask("Install the full system or skills only? (full/skills-only)", "full")
+        profile = selected.lower()
+    if profile not in (catalog.get("profiles") or {}):
+        raise ValueError("--profile must be full or skills-only")
+    answers = load_answers(args.answers)
+    if args.workspace:
+        answers["workspace"] = args.workspace
+    require_workspace = profile == "full"
+    if require_workspace and not answers.get("workspace"):
+        answers["workspace"] = _ask("Personal workspace slug", "personal")
+    if profile == "full" and args.answers is None:
+        answers.setdefault("display_name", _ask("Display name (optional)", ""))
+        answers.setdefault("timezone", _ask("Time zone", "UTC"))
+        tones = _ask("Voice traits, comma separated", "direct, substantive, kind")
+        answers.setdefault("tone", [item.strip() for item in tones.split(",") if item.strip()])
+        avoids = _ask("Phrases your assistant should avoid, comma separated", "")
+        answers.setdefault(
+            "avoid_phrases",
+            [item.strip() for item in avoids.split(",") if item.strip()],
+        )
+        inbox = _ask("Configure the optional inbox runtime? (yes/no)", "no")
+        answers.setdefault("inbox_cleanup", inbox.lower() in ("y", "yes"))
+    answers = validate_answers(answers, require_workspace=require_workspace)
+    choices = profile_choices(catalog, profile, manifest_present=manifest is not None)
+    return profile, answers, choices
+
+
+def phase_personal_policy(report, receipts, answers, clients_wanted, dry_run):
+    synthesis_root = HOME / ".synthesis"
+    workspace = answers["workspace"]
+    personal_repo = WORKSPACES_ROOT / workspace / ("ai-knowledge-%s" % workspace)
+    policy = build_personal_policy(source_root(), answers)
+    message_config = build_message_guard_config(source_root(), answers)
+    chief_config = build_chief_preferences(source_root(), answers)
+    capture_config = build_capture_config(source_root(), answers, personal_repo)
+
+    ensure_file(
+        report,
+        receipts,
+        synthesis_root / "personal-policy" / "profile.json",
+        dump_json(policy),
+        "personal-policy",
+        dry_run,
+    )
+    ensure_file(
+        report,
+        receipts,
+        synthesis_root / "chief-of-staff" / "preferences.json",
+        dump_json(chief_config),
+        "personal-policy",
+        dry_run,
+    )
+    ensure_file(
+        report,
+        receipts,
+        synthesis_root / "knowledge-capture" / "config.json",
+        dump_json(capture_config),
+        "personal-policy",
+        dry_run,
+    )
+    message_dir = synthesis_root / "message-guard"
+    ensure_file(
+        report,
+        receipts,
+        message_dir / "patterns.json",
+        dump_json(message_config),
+        "personal-policy",
+        dry_run,
+    )
+    engine_source = (
+        source_root()
+        / "skills"
+        / "synthesis-message-guard"
+        / "scripts"
+        / "message_guard.py"
+    )
+    try:
+        engine_content = engine_source.read_text(encoding="utf-8")
+    except OSError as exc:
+        report.add("hooks-gates", ERROR, "message guard engine is unavailable", hint=str(exc))
+        return
+    engine_target = message_dir / "message_guard.py"
+    ensure_file(
+        report, receipts, engine_target, engine_content, "hooks-gates", dry_run
+    )
+    if not dry_run and engine_target.exists():
+        engine_target.chmod(0o755)
+    for client in clients_wanted:
+        if client == "claude":
+            hook_path = HOME / ".claude" / "settings.json"
+        else:
+            hook_path = HOME / ".codex" / "hooks.json"
+            ensure_codex_hooks_feature(
+                report, receipts, HOME / ".codex" / "config.toml", dry_run
+            )
+        ensure_message_guard_hook(
+            report, receipts, hook_path, engine_target, dry_run
+        )
+
+
+def phase_kernel_runtime(report, receipts, clients_wanted, dry_run):
+    """Install the stable edit-propagation engine and wire both clients."""
+    runtime_dir = STATE_DIR / "bin"
+    source_scripts = Path(__file__).resolve().parent
+    targets = {
+        "kernel_sync.py": source_scripts / "kernel_sync.py",
+        "whole_system.py": source_scripts / "whole_system.py",
+    }
+    for name, source in targets.items():
+        try:
+            content = source.read_text(encoding="utf-8")
+        except OSError as exc:
+            report.add(
+                "agent-kernel",
+                ERROR,
+                "kernel propagation source is unavailable: %s" % source,
+                hint=str(exc),
+            )
+            return
+        target = runtime_dir / name
+        ensure_file(report, receipts, target, content, "agent-kernel", dry_run)
+        if not dry_run and target.exists():
+            target.chmod(0o755 if name.endswith(".py") else 0o644)
+    engine = runtime_dir / "kernel_sync.py"
+    for client in clients_wanted:
+        hook_path = (
+            HOME / ".claude" / "settings.json"
+            if client == "claude"
+            else HOME / ".codex" / "hooks.json"
+        )
+        ensure_kernel_sync_hook(
+            report, receipts, hook_path, engine, client, dry_run
+        )
+
+
+def phase_kernel(report, receipts, workspace, dry_run, policy_override=None):
+    ws_dir = WORKSPACES_ROOT / workspace
+    policy_path = HOME / ".synthesis" / "personal-policy" / "profile.json"
+    try:
+        if policy_override is not None:
+            policy = policy_override
+        elif policy_path.exists():
+            policy = json.loads(policy_path.read_text(encoding="utf-8"))
+        else:
+            raise ValueError("personal policy is missing")
+        validate_personal_policy(policy)
+    except (OSError, ValueError) as exc:
+        return report.add(
+            "agent-kernel",
+            ERROR,
+            "cannot generate the agent kernel without valid personal policy",
+            hint=str(exc),
+        )
+    source_path = ws_dir / "AGENTS.source.md"
+    initial = render_kernel_source(policy)
+    ensure_user_source(
+        report, receipts, source_path, initial, "agent-kernel", dry_run
+    )
+    source = initial if dry_run and not source_path.exists() else source_path.read_text(encoding="utf-8")
+    size, budget_state = kernel_budget(source)
+    if budget_state == "over":
+        return report.add(
+            "agent-kernel",
+            ERROR,
+            "kernel is %d bytes; hard limit is %d" % (size, KERNEL_HARD_LIMIT),
+            hint="Move task-specific detail into routed skills or references, then re-run kernel.",
+        )
+    if budget_state == "warning":
+        report.add(
+            "agent-kernel",
+            WARN,
+            "kernel is %d bytes (warning band begins at %d%%)" %
+            (size, int(KERNEL_WARN_RATIO * 100)),
+        )
+    else:
+        report.add("agent-kernel", OK, "kernel budget: %d/%d bytes" % (size, KERNEL_HARD_LIMIT))
+    statuses = []
+    for client, name in (("codex", "AGENTS.md"), ("claude", "CLAUDE.md")):
+        output = rendered_kernel(source, client)
+        output_size, output_state = kernel_budget(output)
+        if output_state == "over":
+            statuses.append(
+                report.add(
+                    "agent-kernel",
+                    ERROR,
+                    "%s output is %d bytes; hard limit is %d" %
+                    (name, output_size, KERNEL_HARD_LIMIT),
+                )
+            )
+            continue
+        statuses.append(
+            ensure_file(
+                report,
+                receipts,
+                ws_dir / name,
+                output,
+                "agent-kernel",
+                dry_run,
+            )
+        )
+    if ERROR in statuses:
+        return ERROR
+    if WARN in statuses:
+        return report.add(
+            "agent-kernel",
+            ACTION,
+            "generated kernel outputs need reconciliation before convergence",
+        )
+    if not dry_run:
+        receipts.data["kernel_source_sha256"] = sha256_text(source)
+    return OK
+
+
+def phase_runtime_engines(report, receipts, answers, dry_run, no_services):
+    git_hooks = source_root() / "skills" / "synthesis-git-hooks" / "scripts" / "install.sh"
+    if dry_run:
+        report.add("runtime-engines", CHANGED, "would install the stable git-hooks runtime")
+    else:
+        git_before = paths_digest(
+            [
+                HOME / ".synthesis" / "git-hooks",
+                HOME / ".synthesis" / "references" / "session-words-v1.txt.zlib.b85",
+                HOME / ".synthesis" / "git-hook-config.yaml",
+            ]
+        )
+        rc, out, err = run(["bash", str(git_hooks)], timeout=600)
+        if rc == 0:
+            git_after = paths_digest(
+                [
+                    HOME / ".synthesis" / "git-hooks",
+                    HOME / ".synthesis" / "references" / "session-words-v1.txt.zlib.b85",
+                    HOME / ".synthesis" / "git-hook-config.yaml",
+                ]
+            )
+            report.add(
+                "runtime-engines",
+                OK if git_before == git_after else CHANGED,
+                "git-hooks runtime is current and doctor-verified",
+            )
+        else:
+            report.add("runtime-engines", ERROR, "git-hooks runtime installation failed",
+                       hint=(err or out).strip()[-600:])
+
+    day_end = source_root() / "skills" / "synthesis-daily-rituals" / "scripts" / "install_day_end.py"
+    receipts.record_component_choice("day-end", "selected")
+    command = [sys.executable, str(day_end)]
+    if no_services or sys.platform != "darwin":
+        command.append("--no-launchctl")
+    if dry_run:
+        report.add("runtime-engines", CHANGED, "would install the day-end launcher")
+    else:
+        day_paths = [
+            HOME / ".synthesis" / "day-end",
+            HOME / ".local" / "bin" / "day-end",
+            HOME / "Library" / "LaunchAgents" / "com.synthesis.day-end-nudge.plist",
+        ]
+        day_before = paths_digest(day_paths)
+        rc, out, err = run(command, timeout=300)
+        if rc == 0:
+            day_after = paths_digest(day_paths)
+            report.add(
+                "runtime-engines",
+                OK if day_before == day_after else CHANGED,
+                "day-end launcher is current",
+            )
+        else:
+            report.add("runtime-engines", ERROR, "day-end launcher installation failed",
+                       hint=(err or out).strip()[-600:])
+
+    inbox_selected = bool(answers.get("inbox_cleanup"))
+    receipts.record_component_choice(
+        "inbox-cleanup", "selected" if inbox_selected else "declined"
+    )
+    if not inbox_selected:
+        report.add("runtime-engines", SKIP, "optional inbox runtime declined")
+        return
+    inbox = source_root() / "skills" / "synthesis-inbox-cleanup" / "scripts" / "install.sh"
+    if dry_run:
+        report.add("runtime-engines", CHANGED, "would scaffold the inbox runtime")
+    else:
+        rc, out, err = run(["bash", str(inbox)], timeout=600)
+        if rc == 0:
+            report.add("runtime-engines", CHANGED, "inbox runtime scaffolded; account auth remains local")
+        else:
+            report.add("runtime-engines", ERROR, "inbox runtime installation failed",
+                       hint=(err or out).strip()[-600:])
+
+
+def run_whole_system_init(
+    report,
+    receipts,
+    profile,
+    answers,
+    choices,
+    clients_wanted,
+    dry_run,
+    no_services,
+):
+    receipts.record_layer_choices(choices)
+    receipts.data["profile"] = profile
+    receipts.data["personal_workspace"] = answers.get("workspace") or None
+    if choices.get("knowledge-bases") == "selected":
+        init_workspace(report, receipts, answers["workspace"], dry_run)
+        personal_repo = (
+            WORKSPACES_ROOT
+            / answers["workspace"]
+            / ("ai-knowledge-%s" % answers["workspace"])
+        )
+        if not dry_run:
+            (personal_repo / "source").mkdir(parents=True, exist_ok=True)
+    if choices.get("personal-policy") == "selected":
+        phase_personal_policy(
+            report, receipts, answers, clients_wanted, dry_run
+        )
+    if choices.get("agent-kernel") == "selected":
+        phase_kernel_runtime(report, receipts, clients_wanted, dry_run)
+        phase_kernel(
+            report,
+            receipts,
+            answers["workspace"],
+            dry_run,
+            policy_override=(build_personal_policy(source_root(), answers) if dry_run else None),
+        )
+    if choices.get("runtime-engines") == "selected":
+        phase_runtime_engines(
+            report, receipts, answers, dry_run, no_services=no_services
+        )
+    else:
+        receipts.record_component_choice("day-end", "declined")
+        receipts.record_component_choice("inbox-cleanup", "declined")
+
+
+# ---------------------------------------------------------------------------
 # doctor
 # ---------------------------------------------------------------------------
+
+def _skills_probe(clients_wanted):
+    for name in clients_wanted:
+        binary = resolve_client(name)
+        if binary and plugin_record(name, binary)[0] is True:
+            return True, "%s native plugin is enabled" % name
+    for target in (HOME / ".claude" / "skills", HOME / ".agents" / "skills"):
+        if target.is_dir() and any(target.glob("synthesis-*")):
+            return True, "direct-copy skill set is present"
+    return False, "no native plugin or direct-copy skill set was found"
+
+
+def _session_context_probe(clients_wanted):
+    hooks_file = source_root() / "hooks" / "hooks.json"
+    try:
+        hooks_text = hooks_file.read_text(encoding="utf-8")
+    except OSError:
+        return False, "SessionStart hook definition is missing"
+    if "SessionStart" not in hooks_text:
+        return False, "plugin hook file has no SessionStart definition"
+    for name in clients_wanted:
+        binary = resolve_client(name)
+        if binary and plugin_record(name, binary)[0] is True:
+            return True, "native plugin includes SessionStart context"
+    return False, "SessionStart needs a native plugin; direct copies do not load hooks"
+
+
+def _hook_file_has_message_guard(path):
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return _message_guard_entry(data) is not None
+
+
+def _hook_file_has_kernel_sync(path):
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return _kernel_sync_entry(data) is not None
+
+
+def _hooks_probe(clients_wanted):
+    engine = HOME / ".synthesis" / "git-hooks"
+    required = [engine / "pre-commit", engine / "commit-msg", engine / "_load_config.py"]
+    missing = [str(path) for path in required if not path.is_file()]
+    rc, out, _ = git(["config", "--global", "--get", "core.hooksPath"])
+    if rc != 0 or Path(out.strip()) != engine:
+        missing.append("global core.hooksPath")
+    message_engine = HOME / ".synthesis" / "message-guard" / "message_guard.py"
+    message_config = HOME / ".synthesis" / "message-guard" / "patterns.json"
+    for path in (message_engine, message_config):
+        if not path.is_file():
+            missing.append(str(path))
+    for client in clients_wanted:
+        hook_path = (
+            HOME / ".claude" / "settings.json"
+            if client == "claude"
+            else HOME / ".codex" / "hooks.json"
+        )
+        if not _hook_file_has_message_guard(hook_path):
+            missing.append("%s message-guard hook wiring" % client)
+        if client == "codex":
+            try:
+                config = (HOME / ".codex" / "config.toml").read_text(
+                    encoding="utf-8"
+                )
+            except OSError:
+                config = ""
+            if codex_hooks_feature(config) is not True:
+                missing.append("Codex features.hooks = true")
+    if missing:
+        return False, "missing: %s" % ", ".join(missing)
+    detail = "commit and pre-send gates are wired from stable local paths"
+    if "codex" in clients_wanted:
+        detail += "; Codex hook trust remains human-reviewed"
+    return True, detail
+
+
+def _kernel_probe(receipts):
+    workspace = receipts.data.get("personal_workspace")
+    if not workspace:
+        return False, "no personal workspace is recorded"
+    root = WORKSPACES_ROOT / workspace
+    source = root / "AGENTS.source.md"
+    outputs = {"codex": root / "AGENTS.md", "claude": root / "CLAUDE.md"}
+    runtime = STATE_DIR / "bin" / "kernel_sync.py"
+    if not runtime.is_file():
+        return False, "stable kernel propagation runtime is missing"
+    if not source.is_file():
+        return False, "canonical AGENTS.source.md is missing"
+    content = source.read_text(encoding="utf-8")
+    size, budget_state = kernel_budget(content)
+    if budget_state == "over":
+        return False, "kernel is %d bytes; hard limit is %d" % (size, KERNEL_HARD_LIMIT)
+    for client, path in outputs.items():
+        if not path.is_file():
+            return False, "%s is missing" % path
+        if path.read_text(encoding="utf-8") != rendered_kernel(content, client):
+            return False, "%s does not match the canonical kernel source" % path
+    for client in ("claude", "codex"):
+        hook_path = (
+            HOME / ".claude" / "settings.json"
+            if client == "claude"
+            else HOME / ".codex" / "hooks.json"
+        )
+        if not _hook_file_has_kernel_sync(hook_path):
+            return False, "%s kernel propagation hook is missing" % client
+    suffix = " (warning band)" if budget_state == "warning" else ""
+    return True, "both client files match the %d-byte source%s" % (size, suffix)
+
+
+def _runtime_probe(receipts):
+    missing = []
+    if not (HOME / ".synthesis" / "git-hooks" / "pre-commit").is_file():
+        missing.append("git-hooks")
+    if not (HOME / ".synthesis" / "message-guard" / "message_guard.py").is_file():
+        missing.append("message-guard")
+    if receipts.component_choice("day-end") == "selected":
+        if not (HOME / ".synthesis" / "day-end" / "bin" / "day-end").is_file():
+            missing.append("day-end")
+    if receipts.component_choice("inbox-cleanup") == "selected":
+        inbox = HOME / ".synthesis" / "inbox-cleanup"
+        if not (inbox / "engine" / "current").exists() or not (inbox / "config.yaml").is_file():
+            missing.append("inbox-cleanup")
+    if missing:
+        return False, "selected runtime components missing: %s" % ", ".join(missing)
+    declined = [
+        name
+        for name in ("day-end", "inbox-cleanup")
+        if receipts.component_choice(name) == "declined"
+    ]
+    detail = "selected stable runtimes are installed"
+    if declined:
+        detail += "; declined components: %s" % ", ".join(declined)
+    return True, detail
+
+
+def _coordination_probe():
+    root = HOME / ".synthesis" / "git-hooks"
+    required = [root / "coordination.py", root / "coordination_schema.py"]
+    if not all(path.is_file() for path in required):
+        return False, "stable coordination runtime is missing"
+    board = HOME / ".synthesis" / "coordination" / "active-sessions.md"
+    if not board.exists():
+        return True, "coordination runtime is ready; the board initializes on first claim"
+    try:
+        text = board.read_text(encoding="utf-8")
+    except OSError as exc:
+        return None, "coordination board is unreadable: %s" % exc
+    required_headings = ("## Active sessions", "## Messages", "## Protocol")
+    if not all(heading in text for heading in required_headings):
+        return False, "coordination board is malformed"
+    return True, "coordination runtime and board are present"
+
+
+def _doctors_probe():
+    root = source_root() / "skills"
+    required = [
+        root / "synthesis-context-lifecycle" / "scripts" / "context_doctor.py",
+        root / "synthesis-agent-conformance" / "scripts" / "conformance.py",
+        root / "synthesis-git-hooks" / "scripts" / "_load_config.py",
+        root / "synthesis-message-guard" / "scripts" / "message_guard.py",
+    ]
+    missing = [path.name for path in required if not path.is_file()]
+    if missing:
+        return False, "doctor entry points missing: %s" % ", ".join(missing)
+    return True, "context, conformance, commit, and message doctors are available"
+
+
+def _personal_policy_probe():
+    root = HOME / ".synthesis"
+    paths = {
+        "policy": root / "personal-policy" / "profile.json",
+        "message": root / "message-guard" / "patterns.json",
+        "chief": root / "chief-of-staff" / "preferences.json",
+        "capture": root / "knowledge-capture" / "config.json",
+    }
+    missing = [name for name, path in paths.items() if not path.is_file()]
+    if missing:
+        return False, "personal policy files missing: %s" % ", ".join(missing)
+    try:
+        policy = json.loads(paths["policy"].read_text(encoding="utf-8"))
+        message = json.loads(paths["message"].read_text(encoding="utf-8"))
+        chief = json.loads(paths["chief"].read_text(encoding="utf-8"))
+        capture = json.loads(paths["capture"].read_text(encoding="utf-8"))
+        validate_personal_policy(policy)
+        validate_message_guard(message)
+        validate_chief_preferences(chief)
+        validate_capture_config(capture)
+    except (OSError, ValueError) as exc:
+        return False, "personal policy validation failed: %s" % exc
+    return True, "personal profile and all hard-stop consumer configs validate"
+
+
+def _organization_probe(manifest, receipts):
+    if not manifest:
+        return False, "no organization manifest was selected"
+    for repo in manifest.get("skills_repos") or []:
+        if not (CACHE_DIR / repo["name"] / ".git").exists():
+            return False, "organization skills source %s is missing" % repo["name"]
+    workspace = manifest["org"]["workspace"]
+    for kb in manifest.get("knowledge_bases") or []:
+        adopted = receipts.adopted(kb["name"])
+        path = Path(adopted) if adopted else WORKSPACES_ROOT / workspace / kb["name"]
+        if not (path / ".git").exists():
+            return False, "organization knowledge base %s is missing" % kb["name"]
+    return True, "manifest-selected organization sources are present"
+
+
+def _knowledge_probe(manifest, receipts):
+    workspace = receipts.data.get("personal_workspace")
+    if workspace:
+        personal = WORKSPACES_ROOT / workspace / ("ai-knowledge-%s" % workspace)
+        if not (personal / ".git").exists():
+            return False, "personal knowledge workspace is missing"
+    elif not manifest:
+        return False, "no personal or organization knowledge base is recorded"
+    if manifest:
+        state, detail = _organization_probe(manifest, receipts)
+        if state is not True:
+            return state, detail
+    return True, "selected knowledge bases are present"
+
+
+def _lifecycle_probe(receipts, skills_state, currency_unverifiable):
+    if not receipts.data.get("plugin_policy"):
+        return False, "no channel/version policy receipt is recorded"
+    if skills_state is not True:
+        return False, "lifecycle policy exists but the skill installation is missing"
+    if currency_unverifiable:
+        return None, "installed version exists but the selected release target is unverifiable"
+    return True, "channel/version policy and convergence receipt are present"
+
+
+def render_layer_doctor(
+    report,
+    manifest,
+    clients_wanted,
+    receipts,
+    currency_unverifiable,
+):
+    catalog = load_catalog(source_root())
+    skills_state, skills_detail = _skills_probe(clients_wanted)
+    probes = {
+        "skills": lambda: (skills_state, skills_detail),
+        "session-context": lambda: _session_context_probe(clients_wanted),
+        "hooks-gates": lambda: _hooks_probe(clients_wanted),
+        "agent-kernel": lambda: _kernel_probe(receipts),
+        "runtime-engines": lambda: _runtime_probe(receipts),
+        "coordination": _coordination_probe,
+        "doctors-conformance": _doctors_probe,
+        "personal-policy": _personal_policy_probe,
+        "organization": lambda: _organization_probe(manifest, receipts),
+        "knowledge-bases": lambda: _knowledge_probe(manifest, receipts),
+        "lifecycle": lambda: _lifecycle_probe(
+            receipts, skills_state, currency_unverifiable
+        ),
+    }
+    if set(probes) != set(catalog_ids(catalog)):
+        report.add("layer", ERROR, "layer catalog and executable probes disagree")
+        return False
+    unverifiable = False
+    for layer in catalog["layers"]:
+        layer_id = layer["id"]
+        state, detail = probes[layer_id]()
+        choice = receipts.layer_choice(layer_id)
+        if state is True:
+            rendered = "installed"
+            verification = "verified"
+        elif choice == "declined":
+            rendered = "declined"
+            verification = "verified"
+        else:
+            rendered = "missing"
+            verification = "unverifiable" if state is None else "verified"
+            unverifiable = unverifiable or state is None
+        report.add_layer(
+            layer_id,
+            layer["title"],
+            rendered,
+            detail,
+            verification=verification,
+        )
+    return unverifiable
+
 
 def doctor(report, manifest, clients_wanted, policy):
     rc, _, _ = run(["git", "--version"], timeout=15)
@@ -1127,9 +2167,7 @@ def doctor(report, manifest, clients_wanted, policy):
         if state is True:
             verified_any = True
             if not target_checked:
-                target_version, target_detail = resolve_target_version(
-                    policy, ttl_seconds=0
-                )
+                target_version, target_detail = expected_policy_version(policy)
                 target_checked = True
             if target_version is None:
                 currency_unverifiable = True
@@ -1222,12 +2260,19 @@ def doctor(report, manifest, clients_wanted, policy):
             report.add("doctor", OK, "workspace instructions present")
         else:
             report.add("doctor", ERROR, "workspace AGENTS.md missing — run install")
+    layer_unverifiable = render_layer_doctor(
+        report,
+        manifest,
+        clients_wanted,
+        Receipts(),
+        currency_unverifiable=currency_unverifiable,
+    )
     counts = report.counts()
     if counts.get(ERROR):
         return 1
     if counts.get(ACTION):
         return 1
-    if currency_unverifiable:
+    if currency_unverifiable or layer_unverifiable:
         return 2
     if not verified_any and not manifest:
         return 2
@@ -1238,11 +2283,126 @@ def doctor(report, manifest, clients_wanted, policy):
 # uninstall
 # ---------------------------------------------------------------------------
 
+def remove_managed_hooks(report, receipts, dry_run):
+    """Remove only receipt-owned JSON hook entries before their engines."""
+    clean = True
+    entries = list(receipts.data.get("managed_json_entries", {}).items())
+    for receipt_key, recorded_sha in entries:
+        if receipt_key.endswith("#kernel-sync"):
+            path = Path(receipt_key[: -len("#kernel-sync")])
+            event = "PostToolUse"
+            finder = _kernel_sync_entry
+            label = "kernel propagation"
+        else:
+            path = Path(receipt_key)
+            event = "PreToolUse"
+            finder = _message_guard_entry
+            label = "message guard"
+        if not path.exists():
+            if not dry_run:
+                receipts.data["managed_json_entries"].pop(receipt_key, None)
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            clean = False
+            report.add(
+                "uninstall",
+                ACTION,
+                "%s cannot be read; no generated files were removed" % path,
+                hint=str(exc),
+            )
+            continue
+        current = finder(data)
+        if current is None:
+            if not dry_run:
+                receipts.data["managed_json_entries"].pop(receipt_key, None)
+            continue
+        if sha256_text(dump_json(current)) != recorded_sha:
+            clean = False
+            report.add(
+                "uninstall",
+                ACTION,
+                "%s %s entry has user edits; no generated files were removed"
+                % (path, label),
+            )
+            continue
+        if dry_run:
+            report.add(
+                "uninstall", CHANGED, "would remove %s hook from %s" % (label, path)
+            )
+            continue
+        hooks = data.get("hooks", {})
+        hooks[event] = [entry for entry in hooks.get(event, []) if entry != current]
+        shutil.copy2(path, archive_path(path))
+        atomic_json_write(path, data)
+        receipts.data["managed_json_entries"].pop(receipt_key, None)
+        report.add("uninstall", CHANGED, "removed %s hook from %s" % (label, path))
+    text_entries = list(receipts.data.get("managed_text_entries", {}).items())
+    for receipt_key, meta in text_entries:
+        if not receipt_key.endswith("#codex-hooks-feature"):
+            clean = False
+            report.add(
+                "uninstall", ACTION, "unknown managed text receipt: %s" % receipt_key
+            )
+            continue
+        path = Path(receipt_key[: -len("#codex-hooks-feature")])
+        if not path.exists():
+            if not dry_run:
+                receipts.data["managed_text_entries"].pop(receipt_key, None)
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            clean = False
+            report.add("uninstall", ACTION, "%s cannot be read" % path, hint=str(exc))
+            continue
+        block = managed_codex_hooks_block(text)
+        if block is None:
+            if not dry_run:
+                receipts.data["managed_text_entries"].pop(receipt_key, None)
+            continue
+        if not isinstance(meta, dict) or sha256_text(block) != meta.get("sha256"):
+            clean = False
+            report.add(
+                "uninstall",
+                ACTION,
+                "%s Codex hooks feature block has user edits; no generated files were removed"
+                % path,
+            )
+            continue
+        if dry_run:
+            report.add(
+                "uninstall", CHANGED, "would remove owned Codex hooks feature block"
+            )
+            continue
+        updated = text.replace(block + "\n", "", 1)
+        if updated == text:
+            updated = text.replace(block, "", 1)
+        shutil.copy2(path, archive_path(path))
+        temporary = path.with_name(".%s.tmp-%s" % (path.name, os.getpid()))
+        temporary.write_text(updated, encoding="utf-8")
+        os.replace(temporary, path)
+        receipts.data["managed_text_entries"].pop(receipt_key, None)
+        report.add("uninstall", CHANGED, "removed owned Codex hooks feature block")
+    return clean
+
+
 def uninstall(report, dry_run):
     receipts = Receipts()
+    hooks_clean = remove_managed_hooks(report, receipts, dry_run)
     files = list(receipts.data.get("generated_files", {}).items())
-    if not files:
+    if not files and not receipts.data.get("managed_json_entries"):
         report.add("uninstall", OK, "nothing recorded to remove")
+    if not hooks_clean:
+        if not dry_run:
+            receipts.save()
+        report.add(
+            "uninstall",
+            ACTION,
+            "resolve the edited hook entry, then re-run uninstall; generated files remain intact",
+        )
+        return
     for path_str, meta in files:
         path = Path(path_str)
         if not path.exists():
@@ -1273,7 +2433,7 @@ def build_parser():
     parser = argparse.ArgumentParser(prog="onboard.py", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", nargs="?", default="install",
-                        choices=["install", "update", "doctor", "init-workspace", "uninstall"])
+                        choices=["install", "update", "init", "kernel", "doctor", "init-workspace", "uninstall"])
     parser.add_argument("--manifest", type=Path, help="org onboarding manifest (.agents/onboarding.yaml)")
     parser.add_argument("--clients",
                         help="comma-separated clients to target (default: manifest or claude,codex)")
@@ -1285,6 +2445,21 @@ def build_parser():
     )
     parser.add_argument("--workspace", help="workspace name for init-workspace")
     parser.add_argument("--remote", help="optional git remote URL for init-workspace")
+    parser.add_argument(
+        "--profile",
+        choices=["full", "skills-only"],
+        help="whole-system init profile (omit for the guided interview)",
+    )
+    parser.add_argument(
+        "--answers",
+        type=Path,
+        help="JSON answers for agent-driven or non-interactive init",
+    )
+    parser.add_argument(
+        "--no-services",
+        action="store_true",
+        help="write service artifacts without loading background services (CI/audit)",
+    )
     parser.add_argument("--with-personal-workspace", metavar="NAME",
                         help="also scaffold a personal ai-knowledge-<NAME> workspace during install")
     parser.add_argument("--dry-run", action="store_true", help="show what would change; touch nothing")
@@ -1319,6 +2494,17 @@ def main(argv=None):
         )
         return finish(report, args, code)
 
+    if args.command == "kernel":
+        receipts = Receipts()
+        workspace = args.workspace or receipts.data.get("personal_workspace")
+        if not workspace:
+            report.add("agent-kernel", ERROR, "--workspace NAME is required until init records one")
+            return finish(report, args, 2)
+        phase_kernel(report, receipts, workspace, args.dry_run)
+        if not args.dry_run:
+            receipts.save()
+        return finish(report, args, report.exit_code())
+
     if args.command == "init-workspace":
         if not args.workspace:
             report.add("init-workspace", ERROR, "--workspace NAME is required")
@@ -1333,8 +2519,18 @@ def main(argv=None):
         uninstall(report, args.dry_run)
         return finish(report, args, report.exit_code())
 
-    # install / update
+    # install / update / whole-system init
     receipts = Receipts()
+    profile = None
+    answers = None
+    choices = None
+    if args.command == "init":
+        try:
+            catalog = load_catalog(source_root())
+            profile, answers, choices = collect_init_inputs(args, manifest, catalog)
+        except (OSError, ValueError) as exc:
+            report.add("init", ERROR, str(exc))
+            return finish(report, args, 2)
     no_plugin_cli = args.no_plugin_cli or os.environ.get("SYNTHESIS_ONBOARD_NO_PLUGIN_CLI") == "1"
     clients = phase_preflight(report, clients_wanted if plugin_requested else [])
     if clients is None:
@@ -1346,7 +2542,7 @@ def main(argv=None):
             args.dry_run,
             no_plugin_cli,
             policy,
-            refresh_native_plugins=args.command == "update",
+            refresh_native_plugins=args.command in ("update", "init"),
         )
     else:
         report.add("ecosystem", SKIP, "public plugin disabled by manifest")
@@ -1357,6 +2553,17 @@ def main(argv=None):
         phase_migrations(report, manifest, receipts, args.dry_run)
     if args.with_personal_workspace:
         init_workspace(report, receipts, args.with_personal_workspace, args.dry_run)
+    if args.command == "init":
+        run_whole_system_init(
+            report,
+            receipts,
+            profile,
+            answers,
+            choices,
+            clients_wanted,
+            args.dry_run,
+            args.no_services,
+        )
     if not args.dry_run:
         receipts.data["plugin_policy"] = policy
         receipts.data.setdefault("runs", []).append(
@@ -1364,7 +2571,10 @@ def main(argv=None):
              "engine": ENGINE_VERSION})
         receipts.data["runs"] = receipts.data["runs"][-20:]
         receipts.save()
-    code = report.exit_code()
+    if args.command == "init" and not args.dry_run and report.exit_code() == 0:
+        code = doctor(report, manifest, clients_wanted if plugin_requested else [], policy)
+    else:
+        code = report.exit_code()
     if not args.json:
         counts = report.counts()
         actions = [s for s in report.steps if s["status"] == ACTION]

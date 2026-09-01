@@ -36,6 +36,7 @@ skills_repos:                  # org shared skills (optional)
 knowledge_bases:
   - name: ai-knowledge-exampleco
     primary: git@git.example.com:exampleco/ai-knowledge-exampleco.git
+    default_branch: main       # documented branch for fresh clones and guidance
     superseded_remotes:        # old URLs; clones found on these are repointed
       - https://github.example.com/old-owner/ai-knowledge-exampleco.git
     local_hooks: true          # wire repo-local .githooks when no global engine
@@ -76,7 +77,7 @@ workspace_instructions: true   # generate ~/workspaces/<workspace>/AGENTS.md
 | `org.id`, `org.workspace` | yes | Slug and workspace directory name. `org.name` optional display name. |
 | `ecosystem` | no | `plugin` (default true), `clients` list, `channel` (`stable` default or `edge`), and optional exact `version_pin` (`X.Y.Z`). A pin overrides the channel and resolves to the immutable `vX.Y.Z` release tag. |
 | `skills_repos[]` | no | `name` + `primary` required. `installer` is invoked as `sh <installer> install <installer_args...>` from the engine's cache clone; `source_env` names the env var your installer honors to skip its own network fetch; `status_args` enables `doctor` verification. |
-| `knowledge_bases[]` | no | `name` + `primary` required. `superseded_remotes` powers remote migrations (e.g., moving from a personal mirror to the canonical host). `local_hooks` wires `.githooks` on machines without a global hooks engine. |
+| `knowledge_bases[]` | no | `name` + `primary` required. `default_branch` documents the branch contributors should use (the remote default remains authoritative when omitted). `superseded_remotes` powers remote migrations (e.g., moving from a personal mirror to the canonical host). `local_hooks` wires `.githooks` on machines without a global hooks engine. |
 | `auth_help` | no | Printed verbatim when a repo is unreachable — write it for a non-engineer, with the exact clicks. |
 | `welcome` | no | `title`, `try_asking[]`, `docs[]` — shown at the end of a successful run and embedded in the generated workspace AGENTS.md. |
 | `migrations.skills[]` | no | `from` + `action` (`remove` or `rename`, `rename` needs `to`), optional `note`. Applied to user-level skill copies; everything is archived before removal. |
@@ -103,9 +104,9 @@ if [ -e "$SRC/.git" ]; then
 else
   git clone --branch stable --single-branch https://github.com/synthesisengineering/synthesis-skills.git "$SRC"
 fi
-CMD="install"
+CMD="init"
 case "${1:-}" in
-  install|update|doctor|init-workspace|uninstall) CMD="$1"; shift ;;
+  init|install|update|kernel|doctor|init-workspace|uninstall) CMD="$1"; shift ;;
 esac
 exec python3 "$SRC/skills/synthesis-onboarding/scripts/onboard.py" "$CMD" \
   --manifest "$REPO_ROOT/.agents/onboarding.yaml" "$@"

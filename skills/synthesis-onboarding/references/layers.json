@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "profiles": {
+    "full": {
+      "description": "Install or scaffold every public layer; organization access remains conditional on a manifest.",
+      "selected": [
+        "skills",
+        "session-context",
+        "hooks-gates",
+        "agent-kernel",
+        "runtime-engines",
+        "coordination",
+        "doctors-conformance",
+        "personal-policy",
+        "knowledge-bases",
+        "lifecycle"
+      ]
+    },
+    "skills-only": {
+      "description": "Install portable skills and lifecycle checks only.",
+      "selected": [
+        "skills",
+        "session-context",
+        "lifecycle"
+      ]
+    }
+  },
+  "layers": [
+    {
+      "id": "skills",
+      "title": "Skills",
+      "probe": "skills",
+      "description": "Portable synthesis methods loaded through a native plugin or direct-copy fallback."
+    },
+    {
+      "id": "session-context",
+      "title": "Session context",
+      "probe": "session-context",
+      "description": "SessionStart time, project, coordination, and lifecycle evidence."
+    },
+    {
+      "id": "hooks-gates",
+      "title": "Hooks and gates",
+      "probe": "hooks-gates",
+      "description": "Commit-boundary and pre-send controls running from stable local paths."
+    },
+    {
+      "id": "agent-kernel",
+      "title": "Agent kernel",
+      "probe": "agent-kernel",
+      "description": "One user-owned instruction source rendered for Claude Code and Codex."
+    },
+    {
+      "id": "runtime-engines",
+      "title": "Runtime engines",
+      "probe": "runtime-engines",
+      "description": "Durable local engines and launchers under ~/.synthesis."
+    },
+    {
+      "id": "coordination",
+      "title": "Coordination",
+      "probe": "coordination",
+      "description": "Lease-aware session board, claims, and handoff machinery."
+    },
+    {
+      "id": "doctors-conformance",
+      "title": "Doctors and conformance",
+      "probe": "doctors-conformance",
+      "description": "Health checks that distinguish defects from unverifiable state."
+    },
+    {
+      "id": "personal-policy",
+      "title": "Personal policy",
+      "probe": "personal-policy",
+      "description": "User-authored preferences, guard patterns, and routing policy."
+    },
+    {
+      "id": "organization",
+      "title": "Organization layer",
+      "probe": "organization",
+      "description": "Optional organization manifest, shared skills, and knowledge access."
+    },
+    {
+      "id": "knowledge-bases",
+      "title": "Knowledge bases",
+      "probe": "knowledge-bases",
+      "description": "Personal and optional organization knowledge repositories."
+    },
+    {
+      "id": "lifecycle",
+      "title": "Lifecycle",
+      "probe": "lifecycle",
+      "description": "Release channel policy, update notice, convergence, and receipts."
+    }
+  ]
+}
