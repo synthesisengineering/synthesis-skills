@@ -45,6 +45,11 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
+@pytest.fixture(autouse=True)
+def no_real_cache_settle_delay(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(release, "CODEX_CACHE_QUIET_SECONDS", 0.0)
+
+
 # --- source of truth -------------------------------------------------------
 
 
@@ -485,7 +490,7 @@ def test_main_carries_acceptance_authority_to_publish_boundary(
         return result.add("publish.fixture", True)
 
     monkeypatch.setattr(release, "publish", publish)
-    monkeypatch.setattr(release, "refresh_client", lambda *_args: True)
+    monkeypatch.setattr(release, "refresh_client", lambda *_args, **_kwargs: True)
 
     assert release.main(["--repo-root", str(repo), "--dry-run"]) == 0
     assert received == [(authority, "9.9.9")]
@@ -598,6 +603,181 @@ def test_deep_verify_fails_when_client_silent(
 # --- install sequencing ----------------------------------------------------
 
 
+def commit_release(repo: Path, version: str, marker: str) -> None:
+    write_manifests(repo, version, version)
+    skill = repo / "skills" / "example" / "SKILL.md"
+    skill.parent.mkdir(parents=True, exist_ok=True)
+    skill.write_text(f"version: {version}\n{marker}\n", encoding="utf-8")
+    if not (repo / ".git").is_dir():
+        subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+    tree = subprocess.run(
+        ["git", "write-tree"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    parent = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+    )
+    commit_command = [
+        "git",
+        "-c",
+        "user.name=Release Test",
+        "-c",
+        "user.email=release-test@example.invalid",
+        "commit-tree",
+        tree,
+    ]
+    if parent.returncode == 0:
+        commit_command.extend(["-p", parent.stdout.strip()])
+    commit = subprocess.run(
+        commit_command,
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        input=f"Release {version}\n",
+        text=True,
+    ).stdout.strip()
+    branch = subprocess.run(
+        ["git", "symbolic-ref", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        [
+            "git",
+            "update-ref",
+            branch,
+            commit,
+        ],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "update-ref", f"refs/tags/v{version}", commit],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_tag_backed_snapshot_repairs_partial_and_missing_historical_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    commit_release(source, "4.74.0", "first")
+    commit_release(source, "4.74.1", "middle")
+    commit_release(source, "4.75.0", "current")
+    subprocess.run(
+        ["git", "update-ref", "-d", "refs/tags/v4.75.0"],
+        cwd=source,
+        check=True,
+        capture_output=True,
+    )
+
+    cache_parent = tmp_path / "codex-cache"
+    partial = cache_parent / "4.74.0"
+    partial.mkdir(parents=True)
+    (partial / "cache-only.json").write_text("{}\n", encoding="utf-8")
+    newest = cache_parent / "4.75.0"
+    newest.mkdir(parents=True)
+    recovery = tmp_path / "recovery"
+    monkeypatch.setattr(release, "plugin_cache_parent", lambda client: cache_parent)
+    monkeypatch.setattr(release, "codex_cache_archive", lambda: recovery)
+
+    result = release.Result()
+    snapshot = release.snapshot_codex_caches(result, repo=source)
+
+    assert snapshot is not None
+    assert snapshot.versions == ("4.74.0", "4.74.1", "4.75.0")
+    assert (snapshot.backup / "4.74.0" / ".codex-plugin/plugin.json").is_file()
+    assert (snapshot.backup / "4.74.0" / "cache-only.json").is_file()
+    assert (
+        snapshot.backup / "4.74.1" / "skills/example/SKILL.md"
+    ).read_text(encoding="utf-8") == "version: 4.74.1\nmiddle\n"
+    assert release._tree_digest(snapshot.backup / "4.74.1") == release._tree_digest(
+        recovery / "4.74.1"
+    )
+    assert next(
+        step for step in result.steps if step.name == "install.codex.cache-archive"
+    ).ok
+
+
+def test_restore_repeats_after_post_command_cache_deletion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache_parent = tmp_path / "codex-cache"
+    old_root = cache_parent / "4.74.0"
+    old_root.mkdir(parents=True)
+    (old_root / "marker").write_text("complete\n", encoding="utf-8")
+    backup = tmp_path / "synthesis-codex-cache-fixture"
+    shutil.copytree(old_root, backup / "4.74.0")
+    snapshot = release.CodexCacheSnapshot(backup, ("4.74.0",))
+    monkeypatch.setattr(release, "plugin_cache_parent", lambda client: cache_parent)
+    monkeypatch.setattr(release, "CODEX_CACHE_QUIET_SECONDS", 2.0)
+    monkeypatch.setattr(release, "CODEX_CACHE_SETTLE_TIMEOUT_SECONDS", 10.0)
+    monkeypatch.setattr(release, "CODEX_CACHE_POLL_SECONDS", 1.0)
+    monkeypatch.setattr(
+        release, "_remove_transition_backup", lambda path: shutil.rmtree(path)
+    )
+
+    class Clock:
+        now = 0.0
+        deleted = False
+
+        def read(self) -> float:
+            return self.now
+
+        def sleep(self, seconds: float) -> None:
+            self.now += seconds
+            if not self.deleted:
+                shutil.rmtree(old_root)
+                self.deleted = True
+
+    clock = Clock()
+    result = release.Result()
+    assert release.restore_codex_caches(
+        snapshot, result, clock=clock.read, sleeper=clock.sleep
+    )
+    assert (old_root / "marker").read_text(encoding="utf-8") == "complete\n"
+    detail = next(
+        step.detail
+        for step in result.steps
+        if step.name == "install.codex.cache-restore"
+    )
+    assert "restored 1" in detail
+
+
+def test_tag_backed_snapshot_refuses_archive_budget_overflow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    commit_release(source, "4.74.0", "content larger than one byte")
+    cache_parent = tmp_path / "codex-cache"
+    (cache_parent / "4.74.0").mkdir(parents=True)
+    monkeypatch.setattr(release, "plugin_cache_parent", lambda client: cache_parent)
+    monkeypatch.setattr(release, "codex_cache_archive", lambda: tmp_path / "recovery")
+    monkeypatch.setattr(release, "CODEX_CACHE_ARCHIVE_BUDGET_BYTES", 1)
+
+    result = release.Result()
+    assert release.snapshot_codex_caches(result, repo=source) is None
+    failure = next(
+        step for step in result.steps if step.name == "install.codex.cache-snapshot"
+    )
+    assert failure.ok is False
+    assert "hard budget" in failure.detail
+
+
 def test_codex_refresh_upgrades_marketplace_before_installing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -656,12 +836,12 @@ def test_codex_refresh_restores_real_version_root_deleted_by_client(
     assert not recovery_link.exists()
     steps = {step.name: step for step in result.steps}
     assert steps["install.codex.cache-snapshot"].ok is True
-    assert "1 real version" in steps["install.codex.cache-snapshot"].detail
+    assert "1 complete version" in steps["install.codex.cache-snapshot"].detail
     assert steps["install.codex.cache-restore"].ok is True
     assert "restored 1" in steps["install.codex.cache-restore"].detail
 
 
-def test_codex_refresh_fails_if_existing_preserved_root_changes(
+def test_codex_refresh_repairs_if_existing_preserved_root_changes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cache_parent = tmp_path / "codex-cache"
@@ -675,6 +855,33 @@ def test_codex_refresh_fails_if_existing_preserved_root_changes(
     def run(command, **_kwargs):
         if command[1:3] == ["plugin", "add"]:
             old_file.write_text("modified\n", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(release, "run", run)
+    result = release.Result()
+    assert release.refresh_client("codex", result, dry_run=False) is True
+    assert old_file.read_text(encoding="utf-8") == "before\n"
+    restore = next(
+        step for step in result.steps if step.name == "install.codex.cache-restore"
+    )
+    assert restore.ok is True
+    assert "repaired 1" in restore.detail
+
+
+def test_codex_refresh_fails_if_unowned_extra_survives_repair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache_parent = tmp_path / "codex-cache"
+    old_root = cache_parent / "4.74.0"
+    old_root.mkdir(parents=True)
+    (old_root / "owned").write_text("before\n", encoding="utf-8")
+
+    monkeypatch.setattr(release, "plugin_cache_parent", lambda client: cache_parent)
+    monkeypatch.setattr(release, "resolve_client_binary", lambda name: "/fake/codex")
+
+    def run(command, **_kwargs):
+        if command[1:3] == ["plugin", "add"]:
+            (old_root / "unexpected").write_text("late\n", encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     monkeypatch.setattr(release, "run", run)
