@@ -1,32 +1,38 @@
-# AGENT HEURISTIC: authored for the 4.74.1 lifecycle-survival hotfix.
+# AGENT HEURISTIC: authored for the 4.75.0 peer-session-resolution release.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: synthesis-onboarding-lifecycle-survival-hotfix
+suite: peer-session-resolution
 membership: closed
-production_entry_point: skills/synthesis-skills-manager/scripts/release.py
-enforcing_boundary: verified release lookup and active-session-safe plugin refresh
+production_entry_point: skills/synthesis-project-management/scripts/coordination.py
+enforcing_boundary: board-registered peer resolution, strict bus addressing, and staged v4 migration
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: hermetic tests prove certificate-path retries, refusal to mask unrelated network errors, verifying SSL context properties, exact Codex cache restoration, corruption detection, pre-mutation snapshot failure, documentation, manifest parity, and changelog parity; the live stock-Python stable lookup is checked outside the suite, while release.py deep verification remains the installed-cache boundary after publication
+unverified_remainder: hermetic tests prove ref registration and seat idempotency, resolve's fail-closed ambiguity and absence exits, strict bus addressing with the recorded exception, staged v3-write preservation, the guard's peer lane in all three outcomes, schema-tolerant conformance, and documentation on every public surface; live cross-session delivery, migration of the real lease-backed board, private guard adoption and hook wiring, and Codex-side ref export remain boundary work outside this suite
 changed_surfaces:
-  - path: skills/synthesis-onboarding/scripts/plugin_currency.py
-    cases: [verified-system-ca-retry, non-certificate-error-propagation, verifying-context]
-  - path: skills/synthesis-onboarding/scripts/test_plugin_currency.py
-    cases: [verified-system-ca-retry, non-certificate-error-propagation, verifying-context]
-  - path: skills/synthesis-onboarding/SKILL.md
-    cases: [lifecycle-hotfix-doc-contract]
-  - path: skills/synthesis-skills-manager/scripts/release.py
-    cases: [active-cache-restoration, cache-corruption-refusal, snapshot-failure-precedes-mutation]
-  - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [active-cache-restoration, cache-corruption-refusal, snapshot-failure-precedes-mutation, lifecycle-hotfix-doc-contract, release-manifest-parity, release-changelog-parity]
-  - path: skills/synthesis-skills-manager/SKILL.md
-    cases: [lifecycle-hotfix-doc-contract]
-  - path: README.md
-    cases: [lifecycle-hotfix-doc-contract]
+  - path: skills/synthesis-project-management/scripts/coordination.py
+    cases: [client-ref-registration, seat-idempotency, duplicate-seat-refusal, resolve-refuses-ambiguity, resolve-refuses-absence, resolve-by-client-ref, bus-strict-addressing, staged-migration-preserves-v3]
+  - path: skills/synthesis-project-management/scripts/coordination_schema.py
+    cases: [client-ref-registration, staged-migration-preserves-v3]
+  - path: skills/synthesis-project-management/scripts/test_coordination.py
+    cases: [client-ref-registration, seat-idempotency, duplicate-seat-refusal, resolve-refuses-ambiguity, resolve-refuses-absence, resolve-by-client-ref, bus-strict-addressing, staged-migration-preserves-v3, peer-doc-contract, conformance-accepts-declared-v3]
+  - path: skills/synthesis-project-management/SKILL.md
+    cases: [peer-doc-contract]
+  - path: skills/synthesis-project-management/references/parallel-agent-protocol.md
+    cases: [peer-doc-contract]
+  - path: skills/synthesis-project-management/references/session-identity.md
+    cases: [peer-doc-contract]
+  - path: skills/synthesis-message-guard/scripts/message_guard.py
+    cases: [peer-send-registered-target-passes, peer-send-unregistered-target-blocks, peer-send-missing-board-fails-closed]
+  - path: skills/synthesis-message-guard/scripts/test_message_guard.py
+    cases: [peer-send-registered-target-passes, peer-send-unregistered-target-blocks, peer-send-missing-board-fails-closed]
+  - path: skills/synthesis-message-guard/SKILL.md
+    cases: [peer-doc-contract]
+  - path: skills/synthesis-agent-conformance/scripts/conformance.py
+    cases: [conformance-accepts-declared-v3]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -34,36 +40,62 @@ changed_surfaces:
   - path: .codex-plugin/plugin.json
     cases: [release-manifest-parity]
   - path: CHANGELOG.md
-    cases: [release-changelog-parity]
+    cases: [release-changelog-parity, peer-doc-contract]
+  - path: README.md
+    cases: [peer-doc-contract]
 cases:
-  - id: verified-system-ca-retry
+  - id: client-ref-registration
     control_class: enforced-gate
-    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_verified_open_retries_cert_failure_with_system_ca_bundle
-    motivating_defect: python-org-macos-can-have-no-openssl-ca-path-even-though-the-operating-system-ships-a-valid-ca-bundle
-  - id: non-certificate-error-propagation
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_claim_registers_detected_client_ref
+    motivating_defect: three-naming-layers-covered-one-session-population-with-no-join-so-senders-guessed-targets-by-chat-title
+  - id: seat-idempotency
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_verified_open_does_not_mask_non_certificate_network_error
-    motivating_defect: retrying-every-network-error-as-a-ca-problem-hides-the-real-unverifiable-state-and-wastes-sessionstart-time
-  - id: verifying-context
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_claim_reuses_active_row_for_same_client_seat
+    motivating_defect: one-client-session-allocated-a-fresh-board-identity-per-claim-scattering-one-seat-across-many-rows
+  - id: duplicate-seat-refusal
     control_class: enforced-gate
-    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_system_ca_context_keeps_peer_and_hostname_verification_enabled
-    motivating_defect: fixing-ca-discovery-by-disabling-peer-or-hostname-verification-turns-an-update-notice-into-a-network-injection-surface
-  - id: active-cache-restoration
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_second_seat_with_same_ref_and_selector_is_refused
+    motivating_defect: a-zombie-row-sharing-a-live-seat-ref-would-make-the-delivery-lookup-silently-ambiguous
+  - id: resolve-refuses-ambiguity
     control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_refresh_restores_real_version_root_deleted_by_client
-    motivating_defect: codex-plugin-refresh-deletes-the-version-root-that-an-already-running-task-still-needs-for-its-stop-hook
-  - id: cache-corruption-refusal
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_resolve_ambiguity_refuses_instead_of_broadcasting
+    motivating_defect: an-unsure-sender-broadcast-to-several-sessions-and-a-wrong-session-may-comply-with-a-dispatch
+  - id: resolve-refuses-absence
     control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_refresh_fails_if_existing_preserved_root_changes
-    motivating_defect: presence-alone-cannot-prove-an-active-session-cache-still-contains-the-code-that-session-loaded
-  - id: snapshot-failure-precedes-mutation
-    control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_refresh_does_not_run_when_cache_snapshot_fails
-    motivating_defect: a-publisher-that-refreshes-after-its-preservation-copy-fails-can-strand-the-running-task-without-recovery-bytes
-  - id: lifecycle-hotfix-doc-contract
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_resolve_unknown_target_points_to_board_bus
+    motivating_defect: an-unregistered-peer-invited-title-guessing-instead-of-the-durable-self-selecting-bus
+  - id: resolve-by-client-ref
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_lifecycle_hotfix_is_documented_on_every_public_maintenance_surface
-    motivating_defect: future-maintainers-can-regress-a-runtime-lifecycle-invariant-that-only-lives-in-an-incident-log
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_resolve_by_bare_local_ref
+    motivating_defect: a-known-chat-handle-could-not-be-mapped-back-to-board-identity-for-verification
+  - id: bus-strict-addressing
+    control_class: enforced-gate
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_message_to_registered_project_renders_sessions_address
+    motivating_defect: free-text-bus-addressees-accepted-typos-and-unregistered-recipients-without-any-refusal
+  - id: staged-migration-preserves-v3
+    control_class: enforced-gate
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_v3_board_keeps_schema_until_explicit_migrate
+    motivating_defect: an-implicit-schema-rewrite-on-first-write-would-fail-live-older-parsers-mid-flight-on-a-shared-board
+  - id: peer-send-registered-target-passes
+    control_class: acceptance-test
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_peer_registered_active_target_passes
+    motivating_defect: a-guard-that-blocks-legitimate-resolved-traffic-gets-bypassed-rather-than-obeyed
+  - id: peer-send-unregistered-target-blocks
+    control_class: enforced-gate
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_peer_unregistered_target_blocks_with_resolve_guidance
+    motivating_defect: the-2026-08-19-lesson-stayed-doctrine-without-a-mechanism-and-misdelivery-kept-happening
+  - id: peer-send-missing-board-fails-closed
+    control_class: enforced-gate
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_peer_missing_board_blocks
+    motivating_defect: a-guard-that-cannot-read-its-authority-source-must-block-not-warn-and-pass
+  - id: peer-doc-contract
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_peer_resolution_documented_on_public_surfaces
+    motivating_defect: a-protocol-that-lives-only-in-code-gets-rediscovered-as-folklore-and-then-violated
+  - id: conformance-accepts-declared-v3
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_conformance_board_check_accepts_declared_v3_and_v4
+    motivating_defect: a-parity-checker-pinned-to-the-new-schema-would-fail-every-machine-during-the-staged-window
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
@@ -71,7 +103,7 @@ cases:
   - id: release-manifest-parity
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
-    motivating_defect: a-hotfix-version-that-reaches-only-one-client-manifest-cannot-be-reliably-installed-or-audited
+    motivating_defect: a-version-that-reaches-only-one-client-manifest-cannot-be-reliably-installed-or-audited
   - id: release-changelog-parity
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed

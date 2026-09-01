@@ -1388,10 +1388,16 @@ def coordination_checks(board: Path, *, required: bool = True) -> list[Check]:
             heading,
             required=required,
         )
-    table_ok = all(
+    # v3 remains a valid declared schema during the staged v4 migration: the
+    # board upgrades only via an explicit `coordination.py migrate`, after
+    # every machine's client is current.
+    schema_ok = any(
+        f"Schema: v{version}" in text
+        for version in (COORDINATION_SCHEMA_VERSION, 3)
+    )
+    table_ok = schema_ok and all(
         column in text
         for column in (
-            f"Schema: v{COORDINATION_SCHEMA_VERSION}",
             "| session uuid |",
             "| compact id |",
             "| speakable id v1 |",

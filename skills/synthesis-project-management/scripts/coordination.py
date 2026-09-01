@@ -30,6 +30,7 @@ from coordination_schema import (
     V1_COLUMNS,
     V2_COLUMNS,
     V3_COLUMNS,
+    V4_COLUMNS,
     SessionIdentity,
     display_id,
     identity_lookup_keys,
@@ -42,13 +43,55 @@ from coordination_schema import (
 
 DEFAULT_BOARD = Path.home() / ".synthesis" / "coordination" / "active-sessions.md"
 DEFAULT_ACTIVE_PROJECT = Path.home() / ".synthesis" / "active-project.json"
-TABLE_COLUMNS = V3_COLUMNS
-TABLE_HEADER = (
-    "| " + " | ".join(TABLE_COLUMNS) + " |\n"
-    + "|"
-    + "|".join("---" for _ in TABLE_COLUMNS)
-    + "|"
-)
+TABLE_COLUMNS = V4_COLUMNS
+
+
+def table_header(columns: tuple[str, ...]) -> str:
+    return (
+        "| " + " | ".join(columns) + " |\n"
+        + "|"
+        + "|".join("---" for _ in columns)
+        + "|"
+    )
+
+
+TABLE_HEADER = table_header(TABLE_COLUMNS)
+
+# A client session ref is the client-native delivery handle for a session,
+# recorded as a scheme-prefixed URI so the delivery adapter stays at the edge:
+#   ccd:local_<uuid>   Claude Code chat session (ccd send_message target)
+#   codex:<uuid>       OpenAI Codex session (board bus is its delivery lane)
+# The scheme namespace is open (an a2a: adapter would slot in the same way).
+CLIENT_REF_PATTERN = re.compile(r"^[a-z][a-z0-9+.-]*:[A-Za-z0-9._:@-]+$")
+
+
+def normalize_client_ref(value: str) -> str:
+    candidate = (value or "").strip()
+    if candidate in {"", "-"}:
+        return ""
+    if not CLIENT_REF_PATTERN.match(candidate):
+        raise ValueError(
+            f"client session ref must be scheme-prefixed (like ccd:local_...): "
+            f"{candidate!r}"
+        )
+    return candidate
+
+
+def detect_client_ref() -> str:
+    """Best available self-identity for the running client session.
+
+    SYNTHESIS_CLIENT_SESSION_REF is the generic override any client (or its
+    SessionStart hook) can export. Claude Code exposes its chat-session id as
+    CLAUDE_CODE_HOST_SESSION_ID, which is exactly what ccd send_message
+    targets. An invalid value fails closed rather than registering garbage.
+    """
+    explicit = os.environ.get("SYNTHESIS_CLIENT_SESSION_REF", "").strip()
+    if explicit:
+        return normalize_client_ref(explicit)
+    host = os.environ.get("CLAUDE_CODE_HOST_SESSION_ID", "").strip()
+    if host:
+        return normalize_client_ref(f"ccd:{host}")
+    return ""
 TERMINAL_STATUSES = {"released", "complete", "completed", "closed"}
 CONTEXT_RESERVED_PATTERNS = (
     "context.md",
@@ -77,6 +120,7 @@ class Session:
     claims: list[str]
     context_role: str
     status: str
+    client_ref: str = ""
 
     @property
     def identity(self) -> SessionIdentity:
@@ -96,14 +140,15 @@ class Session:
     def label(self) -> str:
         return display_id(self.identity)
 
-    def cells(self) -> list[str]:
-        return [
+    def cells(self, columns: tuple[str, ...] = TABLE_COLUMNS) -> list[str]:
+        values = [
             self.session_uuid,
             self.compact_id,
             self.speakable_id,
             self.legacy_id,
             self.agent,
             self.machine,
+            self.client_ref or "-",
             self.project,
             self.started,
             self.heartbeat,
@@ -114,6 +159,9 @@ class Session:
             self.context_role,
             self.status,
         ]
+        if "client session ref" not in columns:
+            del values[6]
+        return values
 
 
 def timestamp() -> str:
@@ -136,6 +184,8 @@ def template() -> str:
         "4. One session owns project context; contributors write separate handoff artifacts.\n"
         "5. Existing autonomous claims keep priority over interactive sessions.\n"
         "6. Heartbeat at checkpoints; release or narrow claims at pause and session end.\n"
+        "7. Address peers through resolve — board identity, never client labels; "
+        "an unresolvable peer gets a board message, not a broadcast.\n"
     )
 
 
@@ -559,7 +609,27 @@ def parse_cells(line: str) -> list[str] | None:
 
 
 def session_from_cells(cells: list[str]) -> Session:
-    if len(cells) == len(TABLE_COLUMNS):
+    if len(cells) == len(V4_COLUMNS):
+        raw_ref = plain(cells[6])
+        return Session(
+            session_uuid=plain(cells[0]),
+            compact_id=plain(cells[1]),
+            speakable_id=plain(cells[2]),
+            legacy_id=plain(cells[3]),
+            agent=plain(cells[4]),
+            machine=plain(cells[5]),
+            client_ref="" if raw_ref == "-" else raw_ref,
+            project=plain(cells[7]),
+            started=plain(cells[8]),
+            heartbeat=plain(cells[9]),
+            mode=plain(cells[10]),
+            workspaces=split_values(cells[11]),
+            goal=plain(cells[12]),
+            claims=split_values(cells[13]),
+            context_role=plain(cells[14]).lower(),
+            status=plain(cells[15]).lower(),
+        )
+    if len(cells) == len(V3_COLUMNS):
         return Session(
             session_uuid=plain(cells[0]),
             compact_id=plain(cells[1]),
@@ -616,7 +686,8 @@ def session_from_cells(cells: list[str]) -> Session:
         )
     raise ValueError(
         f"active-session row has {len(cells)} columns; expected "
-        f"{len(TABLE_COLUMNS)}, {len(V2_COLUMNS)}, or {len(V1_COLUMNS)}"
+        f"{len(V4_COLUMNS)}, {len(V3_COLUMNS)}, {len(V2_COLUMNS)}, or "
+        f"{len(V1_COLUMNS)}"
     )
 
 
@@ -628,6 +699,7 @@ def with_identity(session: Session, identity: SessionIdentity) -> Session:
         legacy_id=identity.legacy_id,
         agent=session.agent,
         machine=session.machine,
+        client_ref=session.client_ref,
         project=session.project,
         started=session.started,
         heartbeat=session.heartbeat,
@@ -701,11 +773,30 @@ def stale(session: Session, minutes: int) -> bool:
     return now - heartbeat > timedelta(minutes=minutes)
 
 
-def replace_table(text: str, sessions: list[Session]) -> str:
+def board_schema(text: str) -> int | None:
+    """The schema version a board declares in its header, or None."""
+    match = re.search(r"(?m)^Schema:\s*v(\d+)\s*$", text)
+    return int(match.group(1)) if match else None
+
+
+def replace_table(
+    text: str, sessions: list[Session], *, force_schema: int | None = None
+) -> str:
+    """Rewrite the Active sessions table, honoring the board's declared schema.
+
+    A board keeps its declared schema until an explicit `migrate` passes
+    force_schema — older clients on other machines parse the shared board, so
+    an implicit rewrite here would fail them closed mid-flight. Client refs
+    are dropped on a v3 emission and re-registered on the next claim after
+    migration.
+    """
     sessions = ensure_identities(sessions)
-    rendered = [TABLE_HEADER]
+    declared = board_schema(text)
+    effective = force_schema or declared or SCHEMA_VERSION
+    columns = TABLE_COLUMNS if effective >= 4 else V3_COLUMNS
+    rendered = [table_header(columns)]
     rendered.extend(
-        "| " + " | ".join(sanitize(value) for value in session.cells()) + " |"
+        "| " + " | ".join(sanitize(value) for value in session.cells(columns)) + " |"
         for session in sessions
     )
     block = "\n".join(rendered)
@@ -716,7 +807,7 @@ def replace_table(text: str, sessions: list[Session]) -> str:
     if re.search(r"(?m)^Schema:\s*v\d+\s*$", updated):
         return re.sub(
             r"(?m)^Schema:\s*v\d+\s*$",
-            f"Schema: v{SCHEMA_VERSION}",
+            f"Schema: v{effective}",
             updated,
             count=1,
         )
@@ -725,7 +816,7 @@ def replace_table(text: str, sessions: list[Session]) -> str:
         raise ValueError("board lacks Active sessions heading")
     return (
         updated[: marker.start()]
-        + f"Schema: v{SCHEMA_VERSION}\n\n"
+        + f"Schema: v{effective}\n\n"
         + updated[marker.start() :]
     )
 
@@ -1058,6 +1149,19 @@ def validate_sessions(sessions: list[Session]) -> list[str]:
                 f"{session.context_role}"
             )
     live = [session for session in sessions if active(session)]
+    seen_refs: dict[str, str] = {}
+    for session in live:
+        if not session.client_ref:
+            continue
+        previous = seen_refs.get(session.client_ref)
+        if previous is not None:
+            problems.append(
+                f"duplicate active client session ref {session.client_ref} "
+                f"({previous}, {session.label}); release the stale row or "
+                "re-claim with --session to update the existing one"
+            )
+        else:
+            seen_refs[session.client_ref] = session.label
     for index, left in enumerate(live):
         if left.context_role == "contributor":
             for claim in left.claims:
@@ -1111,6 +1215,7 @@ def command_status(args) -> int:
         )
     payload = {
         "schema_version": SCHEMA_VERSION,
+        "board_schema": board_schema(content),
         "board": str(args.board),
         "lease": lease,
         "sessions": [
@@ -1396,7 +1501,17 @@ def command_claim(args) -> int:
             )
             return 10
 
-    claimed: dict[str, SessionIdentity] = {}
+    try:
+        requested_ref = (
+            normalize_client_ref(args.client_ref)
+            if getattr(args, "client_ref", None)
+            else detect_client_ref()
+        )
+    except ValueError as exc:
+        print(f"coordination claim refused: {exc}", file=sys.stderr)
+        return 10
+
+    claimed: dict[str, object] = {}
 
     def operation(content: str) -> str:
         current = ensure_identities(rows(content))
@@ -1412,6 +1527,24 @@ def command_claim(args) -> int:
                 "strong session selector was not found; omit --session to "
                 "allocate a new identity or use an unused legacy label"
             )
+        if existing_self is None and not selector and requested_ref:
+            # The same client session re-claiming without a selector updates
+            # its own row instead of allocating another identity.
+            same_seat = [
+                session
+                for session in current
+                if active(session) and session.client_ref == requested_ref
+            ]
+            if len(same_seat) > 1:
+                raise RuntimeError(
+                    f"client session ref {requested_ref} has "
+                    f"{len(same_seat)} active rows ("
+                    + ", ".join(session.label for session in same_seat)
+                    + "); release the stale ones before claiming"
+                )
+            if same_seat:
+                existing_self = same_seat[0]
+                claimed["reused"] = existing_self.identity.compact_id
         identity = (
             existing_self.identity
             if existing_self is not None
@@ -1421,6 +1554,7 @@ def command_claim(args) -> int:
             )
         )
         claimed["identity"] = identity
+        claimed["board_schema"] = board_schema(content)
         replacement = Session(
             session_uuid=identity.session_uuid,
             compact_id=identity.compact_id,
@@ -1428,6 +1562,8 @@ def command_claim(args) -> int:
             legacy_id=identity.legacy_id,
             agent=args.agent,
             machine=args.machine,
+            client_ref=requested_ref
+            or (existing_self.client_ref if existing_self else ""),
             project=args.project,
             started=existing_self.started if existing_self else now,
             heartbeat=now,
@@ -1463,6 +1599,22 @@ def command_claim(args) -> int:
         f"Claimed {', '.join(requested)} for session {identity.compact_id} "
         f"({identity.speakable_id}; uuid={identity.session_uuid}{legacy})."
     )
+    if claimed.get("reused"):
+        print(
+            "Reused this client session's existing active row "
+            f"({claimed['reused']}) instead of allocating a new identity."
+        )
+    if requested_ref:
+        declared = claimed.get("board_schema")
+        if declared is not None and declared < 4:
+            print(
+                f"Client session ref {requested_ref} was detected but the "
+                f"board declares schema v{declared}, which has no column for "
+                "it; run 'coordination.py migrate' once every machine's "
+                "client is current to enable peer-session resolution."
+            )
+        else:
+            print(f"Registered client session ref {requested_ref}.")
     return 0
 
 
@@ -1564,6 +1716,58 @@ def archive_owned_pointer(
         return destination
 
 
+def resolve_targets(
+    sessions: list[Session], selector: str
+) -> tuple[str, list[Session]]:
+    """Resolve a peer selector to board sessions, most exact form first.
+
+    Accepted forms: any identity selector (UUID, compact, speakable, legacy),
+    a client session ref (bare `local_...` is accepted as `ccd:local_...`),
+    or a registered project name (optionally suffixed " sessions"). Client
+    titles and display labels are deliberately not selectors — they are the
+    guessing vector this resolver exists to remove.
+    """
+    identity = [
+        session
+        for session in sessions
+        if selector_matches(session.identity, selector)
+    ]
+    if identity:
+        return "identity", identity
+    candidate = selector.strip()
+    ref_forms = {candidate}
+    if candidate.startswith("local_"):
+        ref_forms.add(f"ccd:{candidate}")
+    refs = [
+        session
+        for session in sessions
+        if session.client_ref and session.client_ref in ref_forms
+    ]
+    if refs:
+        return "client-ref", refs
+    base = candidate[: -len(" sessions")] if candidate.endswith(" sessions") else candidate
+    projects = [
+        session
+        for session in sessions
+        if session.project not in {"", "unknown", "none"}
+        and session.project.casefold() == base.casefold()
+    ]
+    if projects:
+        return "project", projects
+    return "none", []
+
+
+def delivery_lane(session: Session) -> str:
+    if session.client_ref.startswith("ccd:"):
+        return (
+            f"ccd send_message to session_id {session.client_ref[4:]} "
+            f"(valid on machine {session.machine})"
+        )
+    if session.client_ref.startswith("codex:") or "codex" in session.agent.lower():
+        return "board message bus (Codex sessions have no direct push channel)"
+    return "board message bus (session has no registered client ref)"
+
+
 def command_message(args) -> int:
     body = args.text if args.text is not None else sys.stdin.read().strip()
     if not body:
@@ -1573,11 +1777,26 @@ def command_message(args) -> int:
     def operation(content: str) -> str:
         current = rows(content)
         sender = find_session(current, args.sender)
-        recipient = find_session(current, args.to)
         sender_label = sender.label if sender is not None else sanitize(args.sender)
-        recipient_label = (
-            recipient.label if recipient is not None else sanitize(args.to)
-        )
+        kind, matches = resolve_targets(current, args.to)
+        if kind in {"identity", "client-ref"}:
+            if len(matches) > 1:
+                raise RuntimeError(
+                    f"recipient selector {args.to!r} is ambiguous: "
+                    + ", ".join(session.label for session in matches)
+                )
+            recipient_label = matches[0].label
+        elif kind == "project":
+            recipient_label = f"{matches[0].project} sessions"
+        elif getattr(args, "free_address", False):
+            recipient_label = sanitize(args.to)
+        else:
+            raise RuntimeError(
+                f"recipient {args.to!r} matches no session identity, client "
+                "ref, or registered project on this board; use 'resolve' to "
+                "find the target, or pass --free-address to record a "
+                "deliberately unregistered addressee"
+            )
         heading = (
             f"### → {recipient_label}, from {sender_label} — {timestamp()}"
         )
@@ -1599,13 +1818,105 @@ def command_message(args) -> int:
     return 0
 
 
+def command_resolve(args) -> int:
+    """Resolve a peer selector to an exact, deliverable session target.
+
+    Exit codes: 0 exactly one target; 20 several candidates (never broadcast —
+    narrow with --role or address one exact id, or use the board bus addressed
+    to the project); 21 no target (the peer is unregistered; use the board
+    bus). The lesson this mechanizes: the board id is the identity, the client
+    label is a display string.
+    """
+    lease_refresh(args.board)
+    if not args.board.is_file():
+        print(f"resolve: no coordination board at {args.board}", file=sys.stderr)
+        return 21
+    content = args.board.read_text(encoding="utf-8")
+    sessions = rows(content)
+    pool = (
+        sessions
+        if args.include_released
+        else [session for session in sessions if active(session)]
+    )
+    kind, matches = resolve_targets(pool, args.to)
+    if args.role:
+        matches = [
+            session for session in matches if session.context_role == args.role
+        ]
+    entries = [
+        {
+            "session": session.compact_id,
+            "uuid": session.session_uuid,
+            "speakable": session.speakable_id,
+            "agent": session.agent,
+            "machine": session.machine,
+            "project": session.project,
+            "context_role": session.context_role,
+            "status": session.status,
+            "heartbeat": session.heartbeat,
+            "stale": stale(session, args.stale_after_minutes),
+            "client_ref": session.client_ref,
+            "delivery": delivery_lane(session),
+        }
+        for session in matches
+    ]
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "selector": args.to,
+                    "matched_by": kind,
+                    "board_schema": board_schema(content),
+                    "matches": entries,
+                },
+                indent=2,
+            )
+        )
+    else:
+        for entry in entries:
+            marker = " STALE" if entry["stale"] else ""
+            print(
+                f"{entry['session']}  {entry['project']}  "
+                f"[{entry['context_role']}/{entry['status']}{marker}]  "
+                f"{entry['agent']} on {entry['machine']}"
+            )
+            print(f"  uuid: {entry['uuid']}")
+            print(f"  client ref: {entry['client_ref'] or '-'}")
+            print(f"  delivery: {entry['delivery']}")
+    if len(entries) == 1:
+        return 0
+    if len(entries) > 1:
+        print(
+            f"resolve: {len(entries)} candidates for {args.to!r} — do not "
+            "broadcast; narrow with --role, address one exact session id, or "
+            "post to the board bus addressed to the project",
+            file=sys.stderr,
+        )
+        return 20
+    hint = ""
+    if kind != "none":
+        hint = f" (matched {kind} rows, but none passed the filters)"
+    if board_schema(content) is not None and board_schema(content) < 4:
+        hint += (
+            "; note the board declares a pre-v4 schema, which carries no "
+            "client refs until 'migrate' runs"
+        )
+    print(
+        f"resolve: no active target for {args.to!r}{hint} — the peer has not "
+        "registered a claim, so deliver via the board message bus and let it "
+        "self-select; do not guess a chat session by title",
+        file=sys.stderr,
+    )
+    return 21
+
+
 def command_migrate(args) -> int:
     def operation(content: str) -> str:
         migrated = ensure_identities(rows(content))
         problems = validate_sessions(migrated)
         if problems:
             raise RuntimeError("; ".join(problems))
-        return replace_table(content, migrated)
+        return replace_table(content, migrated, force_schema=SCHEMA_VERSION)
 
     try:
         locked_update(args.board, operation)
@@ -1829,14 +2140,26 @@ def command_doctor(args) -> int:
     missing = [heading for heading in required if heading not in content]
     if missing:
         problems.extend(f"missing heading: {heading}" for heading in missing)
-    if f"Schema: v{SCHEMA_VERSION}" not in content:
-        problems.append(f"missing Schema: v{SCHEMA_VERSION}")
+    declared = board_schema(content)
+    schema_note = ""
+    if declared is None:
+        problems.append("missing Schema declaration")
+    elif declared > SCHEMA_VERSION:
+        problems.append(
+            f"board declares schema v{declared}, newer than this client "
+            f"(v{SCHEMA_VERSION}); update the installed plugin before mutating"
+        )
+    elif declared < SCHEMA_VERSION:
+        schema_note = (
+            f" (declared v{declared}; run migrate once every machine's "
+            "client is current to enable client session refs)"
+        )
     if problems:
         for problem in problems:
             print(f"FAIL coordination: {problem}", file=sys.stderr)
         return 1
     print(
-        f"PASS coordination: schema v{SCHEMA_VERSION}, "
+        f"PASS coordination: schema v{declared}{schema_note}, "
         f"{len(sessions)} session(s){lease_line}"
     )
     return 0
@@ -1904,6 +2227,15 @@ def parser() -> argparse.ArgumentParser:
         choices=("owner", "contributor", "none"),
         required=True,
     )
+    claim.add_argument(
+        "--client-ref",
+        help=(
+            "Client-native delivery handle for this session, scheme-prefixed "
+            "(ccd:local_..., codex:...). Auto-detected from "
+            "SYNTHESIS_CLIENT_SESSION_REF or CLAUDE_CODE_HOST_SESSION_ID "
+            "when omitted."
+        ),
+    )
     heartbeat = commands.add_parser("heartbeat")
     heartbeat.add_argument("--id", "--session", dest="id", required=True)
     release = commands.add_parser("release")
@@ -1915,6 +2247,27 @@ def parser() -> argparse.ArgumentParser:
     message.add_argument("--from", dest="sender", required=True)
     message.add_argument("--to", required=True)
     message.add_argument("--text")
+    message.add_argument(
+        "--free-address",
+        action="store_true",
+        help=(
+            "Record an addressee that matches no session or registered "
+            "project. Without it, an unresolvable --to refuses."
+        ),
+    )
+    resolve = commands.add_parser(
+        "resolve",
+        help=(
+            "Resolve a peer selector (identity, client ref, or project) to "
+            "an exact deliverable target; refuses ambiguity instead of "
+            "guessing or broadcasting."
+        ),
+    )
+    resolve.add_argument("--to", required=True)
+    resolve.add_argument("--role", choices=("owner", "contributor", "none"))
+    resolve.add_argument("--include-released", action="store_true")
+    resolve.add_argument("--stale-after-minutes", type=int, default=240)
+    resolve.add_argument("--json", action="store_true")
     commands.add_parser("migrate")
     commands.add_parser("doctor")
     stale = commands.add_parser(
@@ -1952,6 +2305,8 @@ def main() -> int:
         return command_release(args)
     if args.command == "message":
         return command_message(args)
+    if args.command == "resolve":
+        return command_resolve(args)
     if args.command == "migrate":
         return command_migrate(args)
     if args.command == "lease-disable":

@@ -11,6 +11,16 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**A peer session is addressed by what it owns, never by what a client calls
+it (September 2026).** Release **4.75.0** joins the coordination board to
+each client's native delivery handle: claims self-register a `client session
+ref` (board schema v4, staged migration), `coordination.py resolve` turns a
+project or any session identity into the one exact deliverable target —
+refusing ambiguity and absence instead of guessing or broadcasting — the
+board bus refuses unresolvable addressees, and message-guard v1.4.0 can
+block any direct peer send whose target is not a registered active ref. See
+the [4.75.0 release notes](CHANGELOG.md).
+
 **A plugin update must not break the task applying it (September 2026).**
 Release **4.74.1** repairs both failure surfaces found by the first 4.74.0
 SessionStart: the stock python.org macOS runtime now resolves the stable release

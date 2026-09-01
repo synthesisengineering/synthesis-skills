@@ -185,3 +185,112 @@ def test_wire_absent_config_is_off() -> None:
         "mcp__workspace-mcp__send_gmail_message", {"body_format": "plain"},
         RAGENIE_PLAIN, {})
     assert fails == []
+
+
+# --- peer-session send resolution (2026-09-01) ------------------------------
+#
+# Misdelivery, not register drift, is the peer-lane failure mode: a target
+# chosen by chat-title guesswork. The check requires the target session id to
+# be a registered ACTIVE client ref on the coordination board.
+
+PEER_BOARD = (
+    "# Coordination\n\nSchema: v4\n\n## Active sessions\n\n"
+    "| session uuid | compact id | speakable id v1 | legacy id | agent | "
+    "machine | client session ref | project | started | heartbeat | mode | "
+    "workspace(s) / branch | goal | claimed areas (advisory lock) | "
+    "context role | status |\n"
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+    "| u1 | s-aaaa-aaaa-aaaa | a-b-c-d-00001 |  | Claude Code | m1 | "
+    "ccd:local_good | proj-a | t | t | interactive | w | g | a/** | owner | "
+    "active |\n"
+    "| u2 | s-bbbb-bbbb-bbbb | a-b-c-d-00002 |  | Claude Code | m1 | "
+    "ccd:local_gone | proj-b | t | t | interactive | w | g | b/** | owner | "
+    "released |\n"
+    "\n## Messages\n\n---\n\n## Protocol\n"
+)
+
+
+def peer_cfg(board_path) -> dict:
+    return {
+        "peer_send_resolution": {
+            "tool_pattern": "ccd_session_mgmt__send_message$",
+            "target_field": "session_id",
+            "board": str(board_path),
+        }
+    }
+
+
+def test_peer_registered_active_target_passes(tmp_path: Path) -> None:
+    board = tmp_path / "board.md"
+    board.write_text(PEER_BOARD, encoding="utf-8")
+    handled, fails = MODULE.peer_send_resolution_failures(
+        "mcp__ccd_session_mgmt__send_message",
+        {"session_id": "local_good", "message": "hello"},
+        peer_cfg(board),
+    )
+    assert handled and fails == []
+
+
+def test_peer_unregistered_target_blocks_with_resolve_guidance(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "board.md"
+    board.write_text(PEER_BOARD, encoding="utf-8")
+    handled, fails = MODULE.peer_send_resolution_failures(
+        "mcp__ccd_session_mgmt__send_message",
+        {"session_id": "local_guessed", "message": "hello"},
+        peer_cfg(board),
+    )
+    assert handled
+    joined = " ".join(fails)
+    assert "resolve" in joined
+    assert "never guess" in joined
+
+
+def test_peer_released_target_blocks(tmp_path: Path) -> None:
+    board = tmp_path / "board.md"
+    board.write_text(PEER_BOARD, encoding="utf-8")
+    handled, fails = MODULE.peer_send_resolution_failures(
+        "mcp__ccd_session_mgmt__send_message",
+        {"session_id": "local_gone"},
+        peer_cfg(board),
+    )
+    assert handled and fails
+
+
+def test_peer_missing_board_blocks(tmp_path: Path) -> None:
+    handled, fails = MODULE.peer_send_resolution_failures(
+        "mcp__ccd_session_mgmt__send_message",
+        {"session_id": "local_good"},
+        peer_cfg(tmp_path / "absent.md"),
+    )
+    assert handled and any("unreadable" in f for f in fails)
+
+
+def test_peer_missing_target_field_blocks(tmp_path: Path) -> None:
+    board = tmp_path / "board.md"
+    board.write_text(PEER_BOARD, encoding="utf-8")
+    handled, fails = MODULE.peer_send_resolution_failures(
+        "mcp__ccd_session_mgmt__send_message",
+        {"message": "hello"},
+        peer_cfg(board),
+    )
+    assert handled and any("fails closed" in f for f in fails)
+
+
+def test_peer_absent_config_is_not_handled() -> None:
+    handled, fails = MODULE.peer_send_resolution_failures(
+        "mcp__ccd_session_mgmt__send_message", {"session_id": "x"}, {}
+    )
+    assert (handled, fails) == (False, [])
+
+
+def test_peer_other_tools_stay_in_correspondence_lane(tmp_path: Path) -> None:
+    board = tmp_path / "board.md"
+    board.write_text(PEER_BOARD, encoding="utf-8")
+    handled, fails = MODULE.peer_send_resolution_failures(
+        "mcp__abc__slack_send_message",
+        {"session_id": "local_good"},
+        peer_cfg(board),
+    )
+    assert (handled, fails) == (False, [])
