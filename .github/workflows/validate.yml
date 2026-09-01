@@ -22,7 +22,7 @@ jobs:
       - run: python skills/synthesis-agent-conformance/scripts/conformance.py source
       - run: python skills/synthesis-agent-conformance/scripts/conformance.py instructions --repo-root .
       - run: python -m pytest skills/synthesis-agent-conformance/scripts/test_*.py -q
-      - run: python -m pytest skills/synthesis-project-management/scripts/test_coordination.py -q
+      - run: python -m pytest skills/synthesis-project-management/scripts/ -q
       - run: python -m pytest skills/synthesis-promotion-gate/scripts/ -q
       - run: python -m pytest skills/synthesis-context-lifecycle/scripts/ skills/synthesis-implementation-integrity/scripts/ -q
       - name: Consume transaction-bound R5 acceptance

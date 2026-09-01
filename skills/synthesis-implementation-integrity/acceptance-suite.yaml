@@ -1,39 +1,49 @@
-# AGENT HEURISTIC: authored for the 4.76.4 client-metadata digest repair.
+# AGENT HEURISTIC: authored for the 4.76.5 ci-doc-parity release.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: codex-cache-client-metadata-boundary
+suite: ci-doc-parity
 membership: closed
-production_entry_point: skills/synthesis-skills-manager/scripts/release.py
-enforcing_boundary: recovery-tree digest before the gated Codex refresh can receive a preservation receipt
+production_entry_point: .github/workflows/validate.yml
+enforcing_boundary: documented verification list held equal to the CI conformance job, with the project-management suite widened at every boundary
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: hermetic tests prove that declared client metadata is outside the recovery digest while unknown extras remain inside it; the state-changing Codex refresh and delayed live-root survival are verified by release.py only after the accepted commit is published
+unverified_remainder: hermetic tests prove the fence/workflow equality under its stated normalization, the widened project-management step at the CI and release-gate boundaries, and manifest/changelog parity; that the hosted runner executes the workflow as written is CI's own concern, and the equality test deliberately excludes the CI-only dependency install and the env-bound acceptance step
 changed_surfaces:
+  - path: AGENTS.md
+    cases: [agents-ci-parity]
+  - path: .github/workflows/validate.yml
+    cases: [agents-ci-parity, pm-suite-widened]
+  - path: skills/synthesis-skills-manager/scripts/release.py
+    cases: [pm-suite-widened]
+  - path: skills/synthesis-skills-manager/scripts/test_release.py
+    cases: [agents-ci-parity, pm-suite-widened]
+  - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
+    cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
     cases: [release-manifest-parity]
   - path: .codex-plugin/plugin.json
     cases: [release-manifest-parity]
   - path: CHANGELOG.md
-    cases: [release-changelog-parity, public-contract]
+    cases: [release-changelog-parity]
   - path: README.md
-    cases: [public-contract]
-  - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
-    cases: [shipped-manifest-self-consumption]
-  - path: skills/synthesis-skills-manager/SKILL.md
-    cases: [public-contract]
-  - path: skills/synthesis-skills-manager/scripts/release.py
-    cases: [client-metadata-digest-boundary]
-  - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [client-metadata-digest-boundary, release-manifest-parity, release-changelog-parity, public-contract]
+    cases: [agents-ci-parity]
 cases:
-  - id: client-metadata-digest-boundary
+  - id: agents-ci-parity
     control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_recovery_digest_ignores_client_metadata_but_rejects_unknown_extras
-    motivating_defect: a-new-current-root-is-source-complete-but-the-client-adds-administrative-paths-that-are-not-part-of-the-recovery-tree
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
+    motivating_defect: a-locally-green-branch-failed-ci-because-the-workflow-grew-five-steps-beyond-the-documented-list
+  - id: pm-suite-widened
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_execute_r5_integrity_suite
+    motivating_defect: the-handoff-and-worktree-retirement-suites-ran-at-no-boundary-while-looking-covered-by-the-skill-directory
+  - id: shipped-manifest-self-consumption
+    control_class: acceptance-test
+    fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
+    motivating_defect: an-acceptance-manifest-that-its-own-runner-cannot-consume-issues-authority-it-never-earned
   - id: release-manifest-parity
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
@@ -42,11 +52,3 @@ cases:
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
     motivating_defect: a-release-whose-changelog-disagrees-with-its-manifests-cannot-be-audited-later
-  - id: public-contract
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_cache_survival_release_contract_is_public_and_coherent
-    motivating_defect: a-recovery-digest-boundary-without-an-accurate-public-contract-cannot-be-operated-or-reviewed
-  - id: shipped-manifest-self-consumption
-    control_class: acceptance-test
-    fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-    motivating_defect: an-acceptance-manifest-that-its-own-runner-cannot-consume-issues-authority-it-never-earned
