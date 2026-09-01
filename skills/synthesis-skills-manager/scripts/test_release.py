@@ -722,7 +722,10 @@ def test_tag_backed_snapshot_repairs_partial_and_missing_historical_roots(
     cache_parent = tmp_path / "codex-cache"
     partial = cache_parent / "4.74.0"
     partial.mkdir(parents=True)
-    (partial / "cache-only.json").write_text("{}\n", encoding="utf-8")
+    (partial / ".codex-marketplace-install.json").write_text(
+        "{}\n", encoding="utf-8"
+    )
+    (partial / "unowned-cache-file").write_text("discard\n", encoding="utf-8")
     newest = cache_parent / "4.75.0"
     newest.mkdir(parents=True)
     recovery = tmp_path / "recovery"
@@ -735,7 +738,10 @@ def test_tag_backed_snapshot_repairs_partial_and_missing_historical_roots(
     assert snapshot is not None
     assert snapshot.versions == ("4.74.0", "4.74.1", "4.75.0")
     assert (snapshot.backup / "4.74.0" / ".codex-plugin/plugin.json").is_file()
-    assert (snapshot.backup / "4.74.0" / "cache-only.json").is_file()
+    assert (
+        snapshot.backup / "4.74.0" / ".codex-marketplace-install.json"
+    ).is_file()
+    assert not (snapshot.backup / "4.74.0" / "unowned-cache-file").exists()
     assert (
         snapshot.backup / "4.74.1" / "skills/example/SKILL.md"
     ).read_text(encoding="utf-8") == "version: 4.74.1\nmiddle\n"
