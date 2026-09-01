@@ -321,13 +321,15 @@ def test_publish_refuses_when_receipt_bound_head_changes(tmp_path: Path) -> None
     )
 
     result = release.Result()
-    assert release.publish(repository, result, True, authority) is False
+    assert release.publish(repository, result, True, authority, "9.9.9") is False
     assert any(
         step.name == "publish.acceptance" and not step.ok for step in result.steps
     )
 
 
-def test_publish_dry_run_names_exact_receipt_bound_ref(tmp_path: Path) -> None:
+def test_publish_dry_run_names_exact_receipt_bound_channel_and_pin_refs(
+    tmp_path: Path,
+) -> None:
     repository, authority = accepted_publish_fixture(tmp_path)
     bare = tmp_path / "origin.git"
     subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
@@ -337,12 +339,60 @@ def test_publish_dry_run_names_exact_receipt_bound_ref(tmp_path: Path) -> None:
     )
 
     result = release.Result()
-    assert release.publish(repository, result, True, authority) is True
-    expected_ref = f"{authority.expected['change_head']}:refs/heads/main"
-    assert any(
-        step.name == "publish.push.origin" and expected_ref in step.detail
-        for step in result.steps
+    assert release.publish(repository, result, True, authority, "9.9.9") is True
+    detail = next(
+        step.detail for step in result.steps if step.name == "publish.push.origin"
     )
+    accepted = authority.expected["change_head"]
+    assert "atomic" in detail
+    assert f"{accepted}:refs/heads/main" in detail
+    assert f"{accepted}:refs/heads/stable" in detail
+    assert f"{accepted}:refs/tags/v9.9.9" in detail
+
+
+def test_publish_atomically_creates_edge_stable_and_version_pin_refs(
+    tmp_path: Path,
+) -> None:
+    repository, authority = accepted_publish_fixture(tmp_path)
+    bare = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "remote", "add", "origin", str(bare)],
+        check=True,
+    )
+
+    result = release.Result()
+    assert release.publish(repository, result, False, authority, "9.9.9") is True
+    accepted = authority.expected["change_head"]
+    for ref in ("refs/heads/main", "refs/heads/stable", "refs/tags/v9.9.9"):
+        actual = subprocess.run(
+            ["git", "-C", str(bare), "rev-parse", ref],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        assert actual == accepted
+
+
+def test_publish_rejects_non_exact_version_tag(tmp_path: Path) -> None:
+    repository, authority = accepted_publish_fixture(tmp_path)
+    result = release.Result()
+
+    assert release.publish(repository, result, True, authority, "latest") is False
+    assert any(
+        step.name == "publish.version-tag" and not step.ok for step in result.steps
+    )
+
+
+def test_release_manager_documents_channel_ref_contract() -> None:
+    repository = Path(__file__).resolve().parents[3]
+    text = (repository / "skills/synthesis-skills-manager/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "refs/heads/main" in text
+    assert "refs/heads/stable" in text
+    assert "refs/tags/vX.Y.Z" in text
+    assert "atomic" in text
 
 
 def test_main_carries_acceptance_authority_to_publish_boundary(
@@ -361,15 +411,16 @@ def test_main_carries_acceptance_authority_to_publish_boundary(
         result: release.Result,
         dry_run: bool,
         accepted: object,
+        version: str,
     ) -> bool:
-        received.append(accepted)
+        received.append((accepted, version))
         return result.add("publish.fixture", True)
 
     monkeypatch.setattr(release, "publish", publish)
     monkeypatch.setattr(release, "refresh_client", lambda *_args: True)
 
     assert release.main(["--repo-root", str(repo), "--dry-run"]) == 0
-    assert received == [authority]
+    assert received == [(authority, "9.9.9")]
 
 
 # --- client reporting, fail-closed -----------------------------------------

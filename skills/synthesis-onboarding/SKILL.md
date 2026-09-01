@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.0"
+  version: "1.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -36,7 +36,7 @@ Three ideas carry the whole design:
 **Terminal (works with nothing pre-installed except macOS):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/onboard.sh | sh
+curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh
 ```
 
 **Agent (when Claude Code or Codex already has this plugin):** ask the
@@ -53,7 +53,7 @@ manifest. See `references/org-manifest.md`.
 ## Commands
 
 ```bash
-onboard.py install [--manifest PATH] [--dry-run] [--json]
+onboard.py install [--manifest PATH] [--channel stable|edge] [--dry-run] [--json]
                    [--clients claude,codex] [--no-plugin-cli]
                    [--with-personal-workspace NAME]
 onboard.py update          # explicit native-plugin refresh + install convergence
@@ -71,7 +71,7 @@ engine could not establish ground truth (no git, invalid manifest).
 | Phase | Behavior |
 |-------|----------|
 | preflight | Verify git (guides through `xcode-select --install` if missing); detect clients via `SYNTHESIS_CLAUDE_BIN`/`SYNTHESIS_CODEX_BIN` → PATH → well-known locations (incl. the ChatGPT app's bundled codex). Absent clients are skipped, not fatal. |
-| ecosystem | `install` adds a missing native plugin and checks an existing one without replacing its live cache. `update` explicitly refreshes existing native plugins, verifies the resulting version when running from a source checkout, and states the client-restart and receipt-verification boundary. A first installation may use the repo's direct-copy fallback when a client lacks the plugin CLI; an installed native plugin is never replaced by duplicate copies. |
+| ecosystem | `install` adds a missing native plugin from the selected lifecycle target and checks an existing one without replacing its live cache. Stable is the default, edge is opt-in, and an org manifest's exact `version_pin` takes precedence over its channel. `update` explicitly refreshes or reconfigures existing native plugins, verifies the resulting version, and states the client-restart and receipt-verification boundary. A first installation may use the repo's direct-copy fallback when a client lacks the plugin CLI; an installed native plugin is never replaced by duplicate copies. |
 | org-skills | For each manifest `skills_repos` entry: SSH-first clone/refresh into the engine cache, then delegate to that repo's own installer with its source pinned to the fresh cache. A cache that cannot refresh stops the step (`SYNTHESIS_ONBOARD_ALLOW_STALE=1` overrides, loudly). |
 | knowledge-bases | Clone to `~/workspaces/<org-workspace>/<name>`, or **adopt** an existing clone found by matching remotes (never moved). Superseded remotes are repointed to the manifest primary (`git remote set-url`). Fast-forward pull when clean. When the repo ships `.githooks` and no global hooks engine is active, wire repo-local `core.hooksPath` so protective hooks run on fresh clones. Auth failures print the manifest's `auth_help` and mark the step "needs you" — the run continues and the re-run completes it. |
 | workspace | Generate `~/workspaces/<org-workspace>/AGENTS.md` (+ `CLAUDE.md` = `@AGENTS.md`): the welcome, what-you-can-ask list, KB contract pointers. |
@@ -87,6 +87,25 @@ current content matches its receipt is engine-owned and may be updated
 person edited is **never overwritten** — the engine warns and moves on.
 `uninstall` removes only receipt-owned files (archived first) and never
 touches knowledge-base clones or plugins.
+
+The receipt also stores the effective plugin policy. SessionStart reads that
+policy and the executing plugin-cache manifest, then compares it with a
+six-hour cached release-manifest check. It emits a notice when the installed
+cache is behind or mismatched and preserves an explicit unverifiable state
+when neither live nor cached release evidence is available. `doctor` applies
+the same comparison and exit-code contract.
+
+## Release channels
+
+- `stable` (default) follows the release-gated `stable` branch.
+- `edge` follows `main` and is opt-in through `--channel edge` or
+  `SYNTHESIS_ONBOARD_CHANNEL=edge`.
+- Organization manifests may set an exact `version_pin`; the engine resolves
+  it to the immutable `vX.Y.Z` release tag and the pin overrides the channel.
+
+The gated release publisher advances `main`, `stable`, and the version tag in
+one atomic push per remote. A pull request reaching `main` is available to
+edge; stable moves only when the release gate succeeds.
 
 ## Safe plugin upgrades
 
@@ -121,6 +140,7 @@ this scaffolds the container so day one needs no hand-wiring.
 | `SYNTHESIS_WORKSPACES_ROOT` | `~/workspaces` | Where workspaces and KBs live |
 | `SYNTHESIS_ONBOARD_CACHE_DIR` | XDG cache | Org repo caches |
 | `SYNTHESIS_ONBOARD_SOURCE_DIR` | this repo | synthesis-skills checkout to install from |
+| `SYNTHESIS_ONBOARD_CHANNEL` | `stable` | Engine/plugin channel (`stable` or opt-in `edge`) |
 | `SYNTHESIS_CLAUDE_BIN` / `SYNTHESIS_CODEX_BIN` | auto | Client binary override; set-but-empty means "treat as absent" |
 | `SYNTHESIS_ONBOARD_ALLOW_STALE` | unset | Accept an unrefreshable cache (loud) |
 | `SYNTHESIS_ONBOARD_NO_PLUGIN_CLI` | unset | Force file-copy fallback |

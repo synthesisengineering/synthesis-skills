@@ -34,6 +34,13 @@ PROJECT_MANAGEMENT_SCRIPTS_DIR = (
 )
 if str(PROJECT_MANAGEMENT_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_MANAGEMENT_SCRIPTS_DIR))
+ONBOARDING_SCRIPTS_DIR = (
+    Path(__file__).resolve().parents[2]
+    / "synthesis-onboarding"
+    / "scripts"
+)
+if str(ONBOARDING_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(ONBOARDING_SCRIPTS_DIR))
 
 from project_context import extract, next_actions, record_freshness
 from active_project import load_and_validate
@@ -47,6 +54,7 @@ from live_receipt import (
     transcript_binds_session,
     validate_receipt_event_directory,
 )
+from plugin_currency import sessionstart_notice
 
 
 DEFAULT_POINTER = Path.home() / ".synthesis" / "active-project.json"
@@ -152,6 +160,17 @@ def plugin_identity() -> tuple[str | None, str]:
         if version:
             return str(version), str(root)
     return None, str(root)
+
+
+def append_currency_notice(message: str, payload: dict[str, object]) -> str:
+    """Prepend the lifecycle notice to genuine SessionStart output."""
+    if payload.get("hook_event_name") != "SessionStart":
+        return message
+    try:
+        notice = sessionstart_notice(plugin_identity()[1])
+    except Exception as exc:
+        notice = f"Synthesis plugin currency could not be verified: {exc}."
+    return notice + "\n" + message if notice else message
 
 
 def client_provenance(
@@ -468,6 +487,7 @@ def main() -> int:
     except Exception as exc:
         print(f"synthesis project context failed closed: {exc}", file=sys.stderr)
         return 2
+    message = append_currency_notice(message, payload)
     try:
         record_live_receipt(payload, args.live_receipt.expanduser())
     except Exception as exc:

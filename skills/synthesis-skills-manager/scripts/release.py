@@ -42,6 +42,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -79,6 +80,7 @@ ACCEPTANCE_RUNNER = Path(
 ACCEPTANCE_CONSUMER_ID = (
     "synthesis-skills-manager.release.consume-acceptance.v1"
 )
+RELEASE_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 
 # The required checks, mirroring the repository's own verification contract.
 # Kept as data so a reader can see exactly what a release runs.
@@ -615,8 +617,9 @@ def publish(
     result: Result,
     dry_run: bool,
     authority: AcceptanceAuthority,
+    version: str,
 ) -> bool:
-    """Push the exact receipt-bound commit to every configured push remote."""
+    """Atomically publish edge, stable, and immutable pin refs per remote."""
     branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo).stdout.strip()
     if not result.add("publish.on-main", branch == "main", f"branch={branch or 'unknown'}"):
         return False
@@ -628,6 +631,15 @@ def publish(
         return result.add(
             "publish.accepted-head", False, "receipt-bound head is unavailable"
         )
+    if not RELEASE_VERSION_RE.fullmatch(version):
+        return result.add(
+            "publish.version-tag", False, f"invalid release version: {version}"
+        )
+    refspecs = [
+        f"{accepted_head}:refs/heads/main",
+        f"{accepted_head}:refs/heads/stable",
+        f"{accepted_head}:refs/tags/v{version}",
+    ]
     remotes = sorted(
         {
             line.split()[0]
@@ -641,20 +653,25 @@ def publish(
         valid, detail = revalidate_acceptance_authority(repo, authority)
         if not result.add(f"publish.acceptance.{remote}", valid, detail):
             return False
-        refspec = f"{accepted_head}:refs/heads/main"
         if dry_run:
-            result.add(f"publish.push.{remote}", True, f"dry-run: {refspec}")
+            result.add(
+                f"publish.push.{remote}", True, "dry-run atomic: " + " ".join(refspecs)
+            )
             continue
         # PRINCIPAL RULE (controlling plan D4): the pushed object is immutable.
         # A concurrent branch movement cannot substitute a different commit
         # after the final authority check.
         completed = run(
-            ["git", "push", remote, refspec], cwd=repo, timeout=600
+            ["git", "push", "--atomic", remote] + refspecs,
+            cwd=repo,
+            timeout=600,
         )
         if completed.returncode != 0:
             tail = (completed.stderr or completed.stdout).strip().splitlines()
             return result.add(f"publish.push.{remote}", False, tail[-1] if tail else "push failed")
-        result.add(f"publish.push.{remote}", True, f"pushed {refspec}")
+        result.add(
+            f"publish.push.{remote}", True, "atomically pushed " + " ".join(refspecs)
+        )
     return True
 
 
@@ -723,7 +740,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.check_only:
             print(f"\nCHECKS PASSED for {version}. Nothing published (--check-only).")
             return 0
-        if not publish(repo, result, args.dry_run, authority):
+        if not publish(repo, result, args.dry_run, authority, version):
             print("\nRELEASE ABORTED: publish failed. Clients left untouched.")
             return 1
 

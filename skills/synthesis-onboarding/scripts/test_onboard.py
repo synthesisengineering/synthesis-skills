@@ -213,8 +213,65 @@ class ParserTests(unittest.TestCase):
             onboard.validate_manifest(
                 {"version": 1, "org": {"id": "x", "workspace": "x"}, "bogus": 1}, "t")
 
+    def test_manifest_accepts_release_channel_and_exact_org_pin(self):
+        data = onboard.validate_manifest(
+            {
+                "version": 1,
+                "org": {"id": "x", "workspace": "x"},
+                "ecosystem": {
+                    "plugin": True,
+                    "clients": ["claude", "codex"],
+                    "channel": "stable",
+                    "version_pin": "4.74.0",
+                },
+            },
+            "t",
+        )
+        self.assertEqual(data["ecosystem"]["version_pin"], "4.74.0")
+
+    def test_manifest_rejects_unknown_channel_and_non_exact_pin(self):
+        for ecosystem in (
+            {"channel": "preview"},
+            {"channel": "stable", "version_pin": "4.74"},
+        ):
+            with self.assertRaises(ValueError):
+                onboard.validate_manifest(
+                    {
+                        "version": 1,
+                        "org": {"id": "x", "workspace": "x"},
+                        "ecosystem": ecosystem,
+                    },
+                    "t",
+                )
+
+    def test_manifest_clients_and_plugin_switch_are_enforced(self):
+        manifest = onboard.validate_manifest(
+            {
+                "version": 1,
+                "org": {"id": "x", "workspace": "x"},
+                "ecosystem": {"plugin": False, "clients": ["codex"]},
+            },
+            "t",
+        )
+        self.assertEqual(onboard.effective_clients(None, manifest), ["codex"])
+        self.assertEqual(
+            onboard.effective_clients("claude,codex", manifest),
+            ["claude", "codex"],
+        )
+        with self.assertRaises(ValueError):
+            onboard.validate_manifest(
+                {
+                    "version": 1,
+                    "org": {"id": "x", "workspace": "x"},
+                    "ecosystem": {"plugin": "yes"},
+                },
+                "t",
+            )
+
 
 class PluginTests(unittest.TestCase):
+    policy = {"channel": "stable", "version_pin": None}
+
     def test_plugin_record_reads_codex_and_claude_versions(self):
         codex = {"installed": [{
             "pluginId": "synthesis-skills@synthesis-engineering",
@@ -234,13 +291,17 @@ class PluginTests(unittest.TestCase):
 
     def test_refresh_plugin_uses_each_clients_native_update_contract(self):
         with patch.object(onboard, "run", return_value=(0, "", "")) as runner:
-            self.assertTrue(onboard.refresh_plugin("codex", "codex")[0])
+            self.assertTrue(onboard.refresh_plugin("codex", "codex", self.policy)[0])
             self.assertEqual(
                 runner.call_args_list[0].args[0],
                 ["codex", "plugin", "marketplace", "upgrade", "synthesis-engineering", "--json"],
             )
+            self.assertEqual(
+                runner.call_args_list[1].args[0],
+                ["codex", "plugin", "add", "synthesis-skills@synthesis-engineering"],
+            )
         with patch.object(onboard, "run", return_value=(0, "", "")) as runner:
-            self.assertTrue(onboard.refresh_plugin("claude", "claude")[0])
+            self.assertTrue(onboard.refresh_plugin("claude", "claude", self.policy)[0])
             self.assertEqual(runner.call_count, 2)
             self.assertEqual(
                 runner.call_args_list[1].args[0],
@@ -257,6 +318,7 @@ class PluginTests(unittest.TestCase):
                 {"codex": "codex"},
                 dry_run=False,
                 no_plugin_cli=False,
+                policy=self.policy,
                 refresh_native_plugins=False,
             )
         refresh.assert_not_called()
@@ -272,6 +334,8 @@ class PluginTests(unittest.TestCase):
         ), patch.object(
             onboard, "expected_source_plugin_version", return_value=None
         ), patch.object(
+            onboard, "resolve_target_version", return_value=("4.24.0", "fixture")
+        ), patch.object(
             onboard, "refresh_plugin", return_value=(True, "refreshed")
         ) as refresh:
             onboard.phase_ecosystem(
@@ -279,9 +343,12 @@ class PluginTests(unittest.TestCase):
                 {"codex": "codex"},
                 dry_run=False,
                 no_plugin_cli=False,
+                policy=self.policy,
                 refresh_native_plugins=True,
             )
-        refresh.assert_called_once_with("codex", "codex")
+        refresh.assert_called_once_with(
+            "codex", "codex", self.policy, reconfigure=True
+        )
         self.assertEqual(report.steps[0]["status"], onboard.CHANGED)
         self.assertIn("4.23.0 -> 4.24.0", report.steps[0]["detail"])
 
@@ -299,6 +366,106 @@ class PluginTests(unittest.TestCase):
 
             with patch.object(onboard, "source_root", return_value=cache):
                 self.assertIsNone(onboard.expected_source_plugin_version())
+
+    def test_marketplace_add_targets_stable_edge_and_version_pin(self):
+        self.assertEqual(
+            onboard.marketplace_add_command("claude", "claude", self.policy),
+            [
+                "claude", "plugin", "marketplace", "add",
+                "synthesisengineering/synthesis-skills@stable",
+            ],
+        )
+        self.assertEqual(
+            onboard.marketplace_add_command(
+                "codex", "codex", {"channel": "edge", "version_pin": None}
+            ),
+            [
+                "codex", "plugin", "marketplace", "add",
+                "synthesisengineering/synthesis-skills", "--ref", "main", "--json",
+            ],
+        )
+        self.assertIn(
+            "synthesisengineering/synthesis-skills@v4.74.0",
+            onboard.marketplace_add_command(
+                "claude",
+                "claude",
+                {"channel": "stable", "version_pin": "4.74.0"},
+            ),
+        )
+
+    def test_existing_marketplace_is_reconfigured_before_fresh_install(self):
+        calls = [
+            (1, "", "already configured"),
+            (0, "", ""),
+            (0, "", ""),
+            (0, "", ""),
+        ]
+        with patch.object(onboard, "run", side_effect=calls) as runner:
+            success, _ = onboard.install_plugin("codex", "codex", self.policy)
+        self.assertTrue(success)
+        self.assertEqual(
+            runner.call_args_list[1].args[0],
+            ["codex", "plugin", "marketplace", "remove", "synthesis-engineering"],
+        )
+        self.assertIn("--ref", runner.call_args_list[2].args[0])
+
+    def test_exact_pin_is_the_version_expectation_even_from_newer_source(self):
+        policy = {"channel": "stable", "version_pin": "4.73.0"}
+        with patch.object(
+            onboard, "expected_source_plugin_version", return_value="4.74.0"
+        ), patch.object(onboard, "resolve_target_version") as resolver:
+            self.assertEqual(
+                onboard.expected_policy_version(policy),
+                ("4.73.0", "exact version pin"),
+            )
+        resolver.assert_not_called()
+
+    def test_bootstrap_defaults_to_stable_and_maps_edge_to_main(self):
+        bootstrap = (REPO_ROOT / "onboard.sh").read_text(encoding="utf-8")
+        self.assertIn('CHANNEL="${SYNTHESIS_ONBOARD_CHANNEL:-stable}"', bootstrap)
+        self.assertIn('stable) SOURCE_REF="stable"', bootstrap)
+        self.assertIn('edge) SOURCE_REF="main"', bootstrap)
+        self.assertIn('git clone --branch "$SOURCE_REF" --single-branch', bootstrap)
+
+    def test_public_docs_expose_stable_edge_and_org_pin_contract(self):
+        skill = (REPO_ROOT / "skills/synthesis-onboarding/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        manifest = (
+            REPO_ROOT / "skills/synthesis-onboarding/references/org-manifest.md"
+        ).read_text(encoding="utf-8")
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        for text in (skill, manifest, readme):
+            self.assertIn("stable", text)
+            self.assertIn("edge", text)
+        self.assertIn("version_pin", manifest)
+        self.assertIn("/stable/onboard.sh", skill)
+        self.assertIn("/stable/onboard.sh", readme)
+
+    def test_doctor_reports_current_behind_and_unverifiable_currency(self):
+        with patch.object(onboard, "run", return_value=(0, "", "")), \
+             patch.object(onboard, "resolve_client", return_value="codex"), \
+             patch.object(onboard, "plugin_record", return_value=(True, "4.74.0")), \
+             patch.object(onboard, "resolve_target_version", return_value=("4.74.0", "fixture")):
+            report = onboard.Report(as_json=True)
+            self.assertEqual(onboard.doctor(report, None, ["codex"], self.policy), 0)
+            self.assertEqual(report.steps[-1]["status"], onboard.OK)
+
+        with patch.object(onboard, "run", return_value=(0, "", "")), \
+             patch.object(onboard, "resolve_client", return_value="codex"), \
+             patch.object(onboard, "plugin_record", return_value=(True, "4.73.0")), \
+             patch.object(onboard, "resolve_target_version", return_value=("4.74.0", "fixture")):
+            report = onboard.Report(as_json=True)
+            self.assertEqual(onboard.doctor(report, None, ["codex"], self.policy), 1)
+            self.assertEqual(report.steps[-1]["status"], onboard.ACTION)
+
+        with patch.object(onboard, "run", return_value=(0, "", "")), \
+             patch.object(onboard, "resolve_client", return_value="codex"), \
+             patch.object(onboard, "plugin_record", return_value=(True, "4.74.0")), \
+             patch.object(onboard, "resolve_target_version", return_value=(None, "offline")):
+            report = onboard.Report(as_json=True)
+            self.assertEqual(onboard.doctor(report, None, ["codex"], self.policy), 2)
+            self.assertEqual(report.steps[-1]["status"], onboard.WARN)
 
 
 class EngineTests(unittest.TestCase):

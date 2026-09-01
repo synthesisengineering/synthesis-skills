@@ -3,7 +3,7 @@
 # synthesis ecosystem. Close active Claude Code and Codex sessions before a
 # re-run: the default update refreshes their versioned plugin caches.
 #
-#   curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/onboard.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh
 #   curl -fsSL .../onboard.sh | sh -s -- install --with-personal-workspace alice
 #
 # Running from a checkout uses that checkout as the source; otherwise the
@@ -13,6 +13,14 @@ set -eu
 
 PUBLIC_REPO="https://github.com/synthesisengineering/synthesis-skills.git"
 ENGINE_REL="skills/synthesis-onboarding/scripts/onboard.py"
+CHANNEL="${SYNTHESIS_ONBOARD_CHANNEL:-stable}"
+case "$CHANNEL" in
+  stable) SOURCE_REF="stable" ;;
+  edge) SOURCE_REF="main" ;;
+  *)
+    echo "SYNTHESIS_ONBOARD_CHANNEL must be stable or edge (got: $CHANNEL)."
+    exit 2 ;;
+esac
 
 if ! command -v git >/dev/null 2>&1; then
   echo "git is required and not found."
@@ -32,18 +40,19 @@ else
   SRC="${SYNTHESIS_ONBOARD_SOURCE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/synthesis-skills}"
   # -e, not -d: .git is a file in git worktrees
   if [ -e "$SRC/.git" ]; then
-    if ! git -C "$SRC" pull --ff-only; then
+    if ! git -C "$SRC" fetch origin "$SOURCE_REF" || \
+       ! git -C "$SRC" checkout --detach FETCH_HEAD; then
       if [ "${SYNTHESIS_ONBOARD_ALLOW_STALE:-}" = "1" ]; then
-        echo "warning: continuing with the cached copy at $SRC (allow-stale)"
+        echo "warning: continuing with the cached copy at $SRC; $CHANNEL could not be verified (allow-stale)"
       else
-        echo "Could not refresh $SRC — refusing to install from stale sources."
+        echo "Could not refresh $CHANNEL from $SRC — refusing to install from stale sources."
         echo "Fix network access and re-run, or set SYNTHESIS_ONBOARD_ALLOW_STALE=1."
         exit 1
       fi
     fi
   else
     mkdir -p "$(dirname "$SRC")"
-    git clone "$PUBLIC_REPO" "$SRC"
+    git clone --branch "$SOURCE_REF" --single-branch "$PUBLIC_REPO" "$SRC"
   fi
 fi
 

@@ -70,6 +70,29 @@ def test_build_includes_active_coordination(tmp_path: Path) -> None:
     assert "verify claims before writes" in message
 
 
+def test_sessionstart_prepends_plugin_update_notice(monkeypatch) -> None:
+    monkeypatch.setattr(
+        MODULE,
+        "sessionstart_notice",
+        lambda root: "Synthesis update available: installed plugin 4.73.0; stable channel is 4.74.0.",
+    )
+
+    message = MODULE.append_currency_notice(
+        "Context integrity: OK.", {"hook_event_name": "SessionStart"}
+    )
+
+    assert message.startswith("Synthesis update available:")
+    assert message.endswith("Context integrity: OK.")
+
+
+def test_non_sessionstart_output_has_no_plugin_currency_probe(monkeypatch) -> None:
+    def fail(_root):
+        raise AssertionError("currency probe should not run")
+
+    monkeypatch.setattr(MODULE, "sessionstart_notice", fail)
+    assert MODULE.append_currency_notice("context", {}) == "context"
+
+
 def test_build_displays_compact_v3_session_identity(tmp_path: Path) -> None:
     board = tmp_path / "active-sessions.md"
     identity = identity_from_uuid(

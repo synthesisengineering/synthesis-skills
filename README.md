@@ -527,7 +527,7 @@ without tool-owned workflow copies or date-field drift. See the
 ### One-command onboarding (new machines, non-engineers, whole ecosystem)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/onboard.sh | sh
+curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh
 ```
 
 The `synthesis-onboarding` engine converges your machine: plugin installed
@@ -536,7 +536,9 @@ into whichever of Claude Code / Codex is present, optional
 Close active Claude Code and Codex sessions before re-running the bootstrap;
 it explicitly updates versioned plugin caches, repairs the remaining setup,
 and never overwrites files you edited. Organizations layer their own knowledge bases and shared
-skills on the same engine with one declarative manifest (no installer code);
+skills on the same engine with one declarative manifest (no installer code).
+Stable is the default release channel, edge follows `main`, and organizations
+can pin an exact plugin version in the manifest;
 see `skills/synthesis-onboarding/references/org-manifest.md`.
 
 ### Native plugin for ChatGPT, Codex, and Claude Code

@@ -270,9 +270,12 @@ The sequence, each stage gating the next:
   changes. CI invokes the same consumer with the pull request base supplied by
   its event record.
 - **Publish** revalidates the accepted state immediately before every remote
-  mutation and pushes the immutable accepted commit SHA to `refs/heads/main`,
-  never a mutable local branch name. This is the PRINCIPAL RULE D4 repair for
-  `R5-REV-002`.
+  mutation and atomically pushes the immutable accepted commit SHA to three
+  lifecycle refs: `refs/heads/main` (edge), `refs/heads/stable` (default), and
+  `refs/tags/vX.Y.Z` (exact org pins). It never publishes a mutable local
+  branch name. A per-remote atomic push prevents a channel or pin from moving
+  without the others. This is the PRINCIPAL RULE D4 repair for `R5-REV-002`
+  extended to the release-channel contract.
 - **Install** uses each client's own commands, in the order each client
   requires. For Codex that means `plugin marketplace upgrade` **before**
   `plugin add`, because Codex installs *from* its git marketplace snapshot —
