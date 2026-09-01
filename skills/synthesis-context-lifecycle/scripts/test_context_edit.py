@@ -352,3 +352,108 @@ def test_cli_success_reports_line_count(tmp_path: Path, capsys) -> None:
     assert code == 0
     assert "changed" in captured.out and "1 replacement(s)" in captured.out
     assert "**Status:** Complete" in path.read_text(encoding="utf-8")
+
+
+def test_insert_before_refuses_text_without_trailing_newline(
+    tmp_path: Path,
+) -> None:
+    """The 2026-09-01 corruption: an insert whose text lacked a trailing
+    newline fused three logical lines into one, every gate reported success,
+    and the damage shipped in two commits. The helper must refuse instead."""
+    path = record(tmp_path, "intro line\nParent seat: [x](y)\n")
+    before = path.read_text(encoding="utf-8")
+
+    with pytest.raises(ContextEditError, match="end the text with a newline"):
+        insert_before(
+            path, anchor="Parent seat:", text="(reader briefing sits alongside)"
+        )
+
+    assert path.read_text(encoding="utf-8") == before
+    assert "alongside)Parent" not in path.read_text(encoding="utf-8")
+
+
+def test_insert_before_refuses_a_mid_line_anchor(tmp_path: Path) -> None:
+    path = record(tmp_path, "prefix text Parent seat: [x](y)\n")
+    before = path.read_text(encoding="utf-8")
+
+    with pytest.raises(ContextEditError, match="begins mid-line \\(line 1\\)"):
+        insert_before(path, anchor="Parent seat:", text="new line\n")
+
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_insert_before_multi_line_text_succeeds_at_a_line_boundary(
+    tmp_path: Path,
+) -> None:
+    path = record(tmp_path, "intro line\nParent seat: [x](y)\n")
+
+    insert_before(
+        path, anchor="Parent seat:", text="Plan link:\n[p](q)\n(note)\n"
+    )
+
+    text = path.read_text(encoding="utf-8")
+    assert "(note)\nParent seat:" in text
+    assert text.count("\n") == 5
+
+
+def test_replace_refuses_dropping_a_boundary_newline(tmp_path: Path) -> None:
+    path = record(tmp_path, "keep\nfoo\nnext\n")
+    before = path.read_text(encoding="utf-8")
+
+    with pytest.raises(ContextEditError, match="fusing it with line 3"):
+        replace_once(path, anchor="foo\n", replacement="foo")
+
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_replace_refuses_deleting_a_leading_separator(tmp_path: Path) -> None:
+    path = record(tmp_path, "prev\nfoo more\n")
+    before = path.read_text(encoding="utf-8")
+
+    with pytest.raises(ContextEditError, match="separator after line 1"):
+        replace_once(path, anchor="\nfoo", replacement="")
+
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_replace_allows_whole_line_deletion(tmp_path: Path) -> None:
+    path = record(tmp_path, "keep\nfoo\nnext\n")
+
+    replace_once(path, anchor="foo\n", replacement="")
+
+    assert path.read_text(encoding="utf-8") == "keep\nnext\n"
+
+
+def test_replace_allows_collapsing_lines_inside_the_region(
+    tmp_path: Path,
+) -> None:
+    """Interior restructuring is deliberate editing; only the region's outer
+    boundaries are protected."""
+    path = record(tmp_path, "start\none\ntwo\nend\n")
+
+    replace_once(path, anchor="one\ntwo", replacement="one two")
+
+    assert path.read_text(encoding="utf-8") == "start\none two\nend\n"
+
+
+def test_cli_insert_refusal_exits_nonzero_without_success_output(
+    tmp_path: Path, capsys
+) -> None:
+    path = record(tmp_path, "intro line\nParent seat: [x](y)\n")
+
+    code = main(
+        [
+            "insert-before",
+            "--file",
+            str(path),
+            "--anchor",
+            "Parent seat:",
+            "--text",
+            "no trailing newline",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "corrupt line structure" in captured.err
+    assert "changed" not in captured.out
