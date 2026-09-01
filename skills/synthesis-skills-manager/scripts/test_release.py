@@ -620,7 +620,7 @@ def test_cache_survival_release_contract_is_public_and_coherent() -> None:
     readme = (repository / "README.md").read_text(encoding="utf-8")
     changelog = (repository / "CHANGELOG.md").read_text(encoding="utf-8")
 
-    assert "Every version retained by either client" in manager
+    assert "every archived version except the newest" in manager
     assert "single-writer transition lock" in readme
     assert "pre-tag" in readme
     assert "## [4.76.4]" in changelog
@@ -628,6 +628,23 @@ def test_cache_survival_release_contract_is_public_and_coherent() -> None:
     assert "512 MiB hard limit" in changelog
     assert readme.count("**4.76.1**") == 1
     assert changelog.count("## [4.76.1]") == 1
+
+
+def test_delayed_cache_guardian_release_contract_is_public_and_coherent() -> None:
+    repository = Path(__file__).resolve().parents[3]
+    manager = (repository / "skills/synthesis-skills-manager/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    guardian = (repository / release.CACHE_GUARDIAN).read_text(encoding="utf-8")
+    readme = (repository / "README.md").read_text(encoding="utf-8")
+    changelog = (repository / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    assert "Version 2.5.0" in manager
+    assert "outside the client-owned cache" in manager
+    assert "current_excluded" in guardian
+    assert "KeepAlive" in guardian and "Restart=always" in guardian
+    assert "4.77.1" in readme
+    assert "## [4.77.1]" in changelog
 
 
 def test_whole_system_onboarding_release_contract_is_public_and_coherent() -> None:
@@ -1160,6 +1177,41 @@ def test_codex_cache_transition_lock_refuses_a_second_writer(
             release._acquire_codex_cache_lock()
     finally:
         release._release_codex_cache_lock(first)
+
+
+def test_guardian_install_uses_source_checkout_and_surfaces_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / release.CACHE_GUARDIAN
+    source.parent.mkdir(parents=True)
+    source.write_text("print('guardian')\n", encoding="utf-8")
+    calls: list[tuple[list[str], Path | None, int]] = []
+
+    def fake_run(command, cwd=None, timeout=900):
+        calls.append((command, cwd, timeout))
+        return subprocess.CompletedProcess(
+            command, 0, stdout='{"verified": 61}\n', stderr=""
+        )
+
+    monkeypatch.setattr(release, "run", fake_run)
+    result = release.Result()
+
+    assert release.install_codex_cache_guardian(tmp_path, result, False)
+    assert calls == [
+        ([sys.executable, str(source), "--install"], tmp_path, 120)
+    ]
+    step = next(
+        step for step in result.steps if step.name == "install.codex.cache-guardian"
+    )
+    assert step.ok is True
+    assert step.detail == '{"verified": 61}'
+
+
+def test_guardian_install_fails_closed_without_source(tmp_path: Path) -> None:
+    result = release.Result()
+
+    assert release.install_codex_cache_guardian(tmp_path, result, False) is False
+    assert result.failed[0].name == "install.codex.cache-guardian"
 
 
 def test_codex_refresh_restores_real_version_root_deleted_by_client(

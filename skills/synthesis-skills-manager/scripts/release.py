@@ -83,6 +83,9 @@ ACCEPTANCE_MANIFEST = Path(
 ACCEPTANCE_RUNNER = Path(
     "skills/synthesis-implementation-integrity/scripts/acceptance_suite.py"
 )
+CACHE_GUARDIAN = Path(
+    "skills/synthesis-skills-manager/scripts/cache_guardian.py"
+)
 ACCEPTANCE_CONSUMER_ID = (
     "synthesis-skills-manager.release.consume-acceptance.v1"
 )
@@ -1098,6 +1101,32 @@ def refresh_client(
             _release_codex_cache_lock(cache_lock)
 
 
+def install_codex_cache_guardian(
+    repo: Path, result: Result, dry_run: bool
+) -> bool:
+    """Install the durable supervisor that repairs later Codex cache generations."""
+    source = repo / CACHE_GUARDIAN
+    if not source.is_file() or source.is_symlink():
+        return result.add(
+            "install.codex.cache-guardian",
+            False,
+            f"guardian source is unavailable or unsafe: {source}",
+        )
+    command = [sys.executable, str(source), "--install"]
+    if dry_run:
+        return result.add(
+            "install.codex.cache-guardian",
+            True,
+            "dry-run: " + " ".join(command[1:]),
+        )
+    completed = run(command, cwd=repo, timeout=120)
+    output = (completed.stdout or completed.stderr).strip().splitlines()
+    detail = output[-1] if output else "guardian command produced no receipt"
+    return result.add(
+        "install.codex.cache-guardian", completed.returncode == 0, detail
+    )
+
+
 def _coordination_board_path() -> Path:
     override = os.environ.get("SYNTHESIS_COORDINATION_BOARD", "").strip()
     return Path(override).expanduser() if override else DEFAULT_COORDINATION_BOARD
@@ -1366,6 +1395,8 @@ def main(argv: list[str] | None = None) -> int:
 
     for client in ("claude", "codex"):
         refresh_client(client, result, args.dry_run, repo=repo)
+
+    install_codex_cache_guardian(repo, result, args.dry_run)
 
     if args.dry_run:
         print(f"\nDRY RUN complete for {version}. No state changed.")

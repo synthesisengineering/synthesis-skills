@@ -5,23 +5,23 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.4.0"
+  version: "2.5.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
 
-**Version 2.4.0** (2026-09-01) makes Codex cache survival source-backed and
-post-command verified. Every version retained by either client is preserved.
-Immutable release tags supply authoritative tracked bytes; complete peer roots
-cover releases that predate tags. The budgeted archive repairs missing or
-partial Codex roots and verifies them through a bounded quiet window after the
-client command. Recovery digests exclude only client-owned metadata: checkout,
-liveness, and install-record paths. Every other unexpected path still fails
-verification.
-client command returns. The whole-system onboarding suite and its
-scaffold/component catalog audit remain required release checks.
+**Version 2.5.0** (2026-09-01) makes Codex cache survival durable beyond the
+release command. The budgeted, tag-backed archive remains authoritative, and a
+standard-library guardian installed outside the client-owned cache restores
+historical roots whenever Codex creates a later cache generation. The newest
+version remains exclusively client-owned; the guardian shares the transition
+lock, refuses unsafe links or differing existing content, runs under the user
+supervisor, and is installed and verified by the gated publisher before it
+returns. Recovery digests still exclude only client-owned metadata. The
+whole-system onboarding suite and its scaffold/component catalog audit remain
+required release checks.
 
 Manage synthesis skills across a three-repo architecture. Skills are executable
 methodology. Public skills are also packaged as a native plugin for clients that
@@ -300,9 +300,17 @@ The sequence, each stage gating the next:
   not promoted into recovery state. The
   publisher holds a single-writer transition lock, restores missing Codex roots,
   repairs partial ones, and repeats the check until the tree has remained
-  unchanged for ten seconds after the client command returned. An already-running
-  task therefore keeps the complete skill and hook tree its SessionStart loaded
-  even when Codex had already removed that version before this release began.
+  unchanged for ten seconds after the client command returned. That synchronous
+  receipt covers the release transaction; it cannot prove that the client will
+  not create another cache generation minutes later. The publisher therefore
+  installs `cache_guardian.py` under the durable recovery root and verifies its
+  user-level launchd or systemd supervisor before returning. The guardian shares
+  the release lock, protects every archived version except the newest
+  client-owned version, and rehydrates missing historical roots after any later
+  cache replacement. It never deletes a cache path or overwrites differing
+  existing content. An already-running task therefore keeps the complete skill
+  and hook tree its SessionStart loaded even when reconciliation occurs after
+  the publisher has exited.
   The archive has a 512 MiB hard budget and never deletes a historical root
   automatically when that budget is reached; unverifiable cleanup fails the
   release closed. Symlink recovery artifacts and client liveness markers are not
