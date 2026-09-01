@@ -446,7 +446,8 @@ def test_cache_survival_release_contract_is_public_and_coherent() -> None:
     assert "Every version retained by either client" in manager
     assert "single-writer transition lock" in readme
     assert "pre-tag" in readme
-    assert "## [4.76.3]" in changelog
+    assert "## [4.76.4]" in changelog
+    assert "client-owned metadata" in manager
     assert "512 MiB hard limit" in changelog
     assert readme.count("**4.76.1**") == 1
     assert changelog.count("## [4.76.1]") == 1
@@ -615,6 +616,30 @@ def test_deep_verify_fails_when_client_silent(
     monkeypatch.setattr(release, "installed_root", lambda client, version: tmp_path / "nope")
     result = release.Result()
     assert release.deep_verify("claude", "4.30.1", result) is False
+
+
+def test_recovery_digest_ignores_client_metadata_but_rejects_unknown_extras(
+    tmp_path: Path,
+) -> None:
+    expected = tmp_path / "expected"
+    installed = tmp_path / "installed"
+    (expected / "skills/example").mkdir(parents=True)
+    (expected / "skills/example/SKILL.md").write_text(
+        "name: example\n", encoding="utf-8"
+    )
+    shutil.copytree(expected, installed)
+    (installed / ".git").mkdir()
+    (installed / ".git/config").write_text("[core]\n", encoding="utf-8")
+    (installed / ".in_use").mkdir()
+    (installed / ".in_use/123").touch()
+    (installed / ".codex-marketplace-install.json").write_text(
+        '{"revision":"fixture"}\n', encoding="utf-8"
+    )
+
+    assert release._tree_digest(expected) == release._tree_digest(installed)
+
+    (installed / "unexpected").write_text("unowned\n", encoding="utf-8")
+    assert release._tree_digest(expected) != release._tree_digest(installed)
 
 
 # --- install sequencing ----------------------------------------------------

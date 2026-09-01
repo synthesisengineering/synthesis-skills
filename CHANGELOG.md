@@ -4,6 +4,22 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.76.4] - 2026-09-01
+
+**Recovery verification now distinguishes client-owned metadata from the
+plugin tree it protects.** Codex creates its own `.git` checkout and install
+record in the newly installed current-version root; Claude maintains liveness
+markers in retained roots. These paths are outside the immutable recovery-tree
+digest, while every source file, hook, skill, symlink, and unknown extra remains
+covered.
+
+The 4.76.3 publisher installed byte-current source in both clients but refused
+its final preservation receipt when the new Codex root contained that expected
+client metadata. A regression fixture now proves the three client-owned paths
+do not change the recovery digest and that an arbitrary extra still does. The
+publisher therefore keeps the strict unknown-content boundary without treating
+the client's own administrative files as source drift.
+
 ## [4.76.3] - 2026-09-01
 
 **A Codex plugin refresh no longer strands tasks that started on an older
