@@ -11,6 +11,13 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Recovery checks separate plugin content from client metadata (September
+2026).** Release **4.76.4** keeps source files, hooks, skills, links, and
+unknown extras inside the strict recovery digest while excluding the clients'
+own checkout, liveness, and install-record paths. This lets the 4.76.3
+historical-root repair verify a newly installed Codex root without weakening
+its fail-closed content boundary. See the [4.76.4 release notes](CHANGELOG.md).
+
 **Codex refreshes preserve running tasks (September 2026).** Release
 **4.76.3** reconstructs every historical plugin root retained by either
 supported client before a Codex refresh. Tagged source is authoritative;

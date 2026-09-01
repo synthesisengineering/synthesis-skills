@@ -88,6 +88,9 @@ ACCEPTANCE_CONSUMER_ID = (
 )
 RELEASE_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 HOOK_PLUGIN_PATH_RE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\s\"']+)")
+RECOVERY_DIGEST_IGNORED_ROOTS = frozenset(
+    {".git", ".in_use", ".codex-marketplace-install.json"}
+)
 CODEX_CACHE_ARCHIVE_BUDGET_BYTES = 512 * 1024 * 1024
 CODEX_CACHE_QUIET_SECONDS = 10.0
 CODEX_CACHE_SETTLE_TIMEOUT_SECONDS = 60.0
@@ -496,10 +499,16 @@ def plugin_cache_parent(client: str) -> Path:
 
 
 def _tree_digest(root: Path) -> str:
-    """Hash paths, entry types, symlink targets, and file bytes deterministically."""
+    """Hash recovery-owned paths and bytes, excluding client-managed metadata."""
     digest = hashlib.sha256()
     for path in sorted(root.rglob("*"), key=lambda item: str(item.relative_to(root))):
-        relative = str(path.relative_to(root)).encode("utf-8")
+        relative_path = path.relative_to(root)
+        if (
+            relative_path.parts
+            and relative_path.parts[0] in RECOVERY_DIGEST_IGNORED_ROOTS
+        ):
+            continue
+        relative = str(relative_path).encode("utf-8")
         if path.is_symlink():
             digest.update(b"L\0" + relative + b"\0" + os.readlink(path).encode("utf-8"))
         elif path.is_dir():

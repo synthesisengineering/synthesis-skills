@@ -17,6 +17,9 @@ post-command verified. Every version retained by either client is preserved.
 Immutable release tags supply authoritative tracked bytes; complete peer roots
 cover releases that predate tags. The budgeted archive repairs missing or
 partial Codex roots and verifies them through a bounded quiet window after the
+client command. Recovery digests exclude only client-owned metadata: checkout,
+liveness, and install-record paths. Every other unexpected path still fails
+verification.
 client command returns. The whole-system onboarding suite and its
 scaffold/component catalog audit remain required release checks.
 
