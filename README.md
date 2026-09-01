@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**A documented check list that CI outgrew is now a test failure (September
+2026).** Release **4.76.5** syncs AGENTS.md's Verification list with the CI
+workflow and pins their equality with a test, and widens the
+project-management test step to the full scripts directory in CI, the
+release gate, and the docs. See the [4.76.5 release notes](CHANGELOG.md).
+
 **Recovery checks separate plugin content from client metadata (September
 2026).** Release **4.76.4** keeps source files, hooks, skills, links, and
 unknown extras inside the strict recovery digest while excluding the clients'

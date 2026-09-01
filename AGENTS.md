@@ -57,11 +57,16 @@ Run the same checks required by CI:
 python3 skills/synthesis-agent-conformance/scripts/conformance.py source
 python3 skills/synthesis-agent-conformance/scripts/conformance.py instructions --repo-root .
 python3 -m pytest skills/synthesis-agent-conformance/scripts/test_*.py -q
-python3 -m pytest skills/synthesis-project-management/scripts/test_coordination.py -q
+python3 -m pytest skills/synthesis-project-management/scripts/ -q
+python3 -m pytest skills/synthesis-promotion-gate/scripts/ -q
+python3 -m pytest skills/synthesis-context-lifecycle/scripts/ skills/synthesis-implementation-integrity/scripts/ -q
 python3 -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q
 python3 -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py -q
 python3 -m pytest skills/synthesis-onboarding/scripts/test_onboard.py -q
+python3 skills/synthesis-onboarding/scripts/check_scaffolds.py .
+python3 -m pytest skills/synthesis-skills-manager/scripts/test_release.py -q
 python3 skills/synthesis-meeting-transcripts/test_verify_transcripts.py
+python3 skills/synthesis-meeting-transcripts/test_transcript_primary.py
 sh -n install.sh onboard.sh tests/test_installer.sh
 ./tests/test_installer.sh
 python3 -m compileall -q skills
@@ -69,6 +74,12 @@ python3 skills/synthesis-inbox-cleanup/tests/run_poisoned.py
 python3 skills/synthesis-inbox-cleanup/tests/run_resolver.py
 sh skills/synthesis-inbox-cleanup/tests/test_runtime_installer.sh
 ```
+
+This fenced list and the `conformance` job in
+`.github/workflows/validate.yml` are held equal (modulo the CI-only
+`pip install` and env-bound acceptance steps) by
+`test_release.py::test_agents_verification_list_matches_ci_workflow` —
+change them together, or CI fails.
 
 For a cross-client release, also run:
 

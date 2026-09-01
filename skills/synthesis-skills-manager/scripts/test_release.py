@@ -13,6 +13,7 @@ converts an unknown into a false assurance.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -151,6 +152,44 @@ def test_required_checks_execute_whole_system_onboarding_contract() -> None:
         "skills/synthesis-onboarding/scripts/check_scaffolds.py",
         ".",
     ]
+
+
+def test_agents_verification_list_matches_ci_workflow() -> None:
+    """2026-09-01: a locally-green branch failed CI because validate.yml had
+    grown five steps beyond AGENTS.md's documented Verification list. The
+    fenced list and the conformance job now move together, or this fails.
+    Excluded by design: the CI-only dependency install and the env-bound
+    acceptance step (documented under Releases instead)."""
+    repository = Path(__file__).resolve().parents[3]
+    workflow = yaml.safe_load(
+        (repository / ".github" / "workflows" / "validate.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    ci_steps = [
+        step["run"].strip()
+        for step in workflow["jobs"]["conformance"]["steps"]
+        if "run" in step
+        and "pip install" not in step["run"]
+        and "--acceptance-only" not in step["run"]
+    ]
+    normalized_ci = [
+        "python3 " + command[len("python "):]
+        if command.startswith("python ")
+        else command
+        for command in ci_steps
+    ]
+    agents = (repository / "AGENTS.md").read_text(encoding="utf-8")
+    section = agents.split("## Verification", 1)[1].split(
+        "For a cross-client release", 1
+    )[0]
+    fence = re.search(r"```bash\n(.*?)```", section, re.S).group(1)
+    documented = [line.strip() for line in fence.splitlines() if line.strip()]
+    assert documented == normalized_ci, (
+        "AGENTS.md Verification fence and validate.yml conformance steps "
+        "drifted; change them together.\ndocumented=%r\nci=%r"
+        % (documented, normalized_ci)
+    )
 
 
 def test_repository_ci_executes_release_wiring_tests() -> None:

@@ -4,6 +4,18 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.76.5] - 2026-09-01
+
+**The documented check list and CI now move together or fail together.**
+On 2026-09-01 a locally-green branch failed CI because validate.yml had
+grown five steps beyond AGENTS.md's Verification list — test_release.py
+had never run locally. The fenced list is synced to the workflow's
+conformance job, and a parity test holds them equal from now on (modulo
+the CI-only dependency install and the env-bound acceptance step). The
+project-management test step widens from test_coordination.py to the whole
+scripts directory in CI, the release gate, and the docs, so the handoff
+and worktree-retirement suites finally run at both boundaries.
+
 ## [4.76.4] - 2026-09-01
 
 **Recovery verification now distinguishes client-owned metadata from the
