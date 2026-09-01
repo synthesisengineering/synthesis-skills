@@ -11,6 +11,14 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**A sync now proves what it re-read, to the minute (September 2026).**
+Release **4.79.0** replaces day-granular sync watermarks with timestamps
+per surface and per declared read target: `begin` stamps a run,
+`status --since run` names every target the run skipped, `window` prints
+the epoch bound a read call takes beside human-readable time, and the Slack
+protocol treats the user's own outbound as sweep state. See the [4.79.0
+release notes](CHANGELOG.md).
+
 **A stale engine now diagnoses itself instead of blaming the board
 (September 2026).** Release **4.78.0** makes the coordination engine refuse
 a board newer than itself with a message naming the engine to run, reports

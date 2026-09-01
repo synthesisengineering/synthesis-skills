@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.7.0"
+  version: "3.8.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -15,6 +15,22 @@ metadata:
 A protocol for syncing Slack channels and threads to local transcript files using Slack MCP. Designed for AI-assisted workflows where an agent reads Slack on behalf of a user, saves transcripts locally, and updates a daily action plan.
 
 This skill provides the **protocol** — the sync methodology, thread re-reading discipline, transcript format, and action plan update rules. A per-project **config file** provides the specifics: which channels, which paths, which DMs. Prefer `.agents/slack-sync.yaml`; existing `.claude/slack-sync.yaml` configs remain supported.
+
+## v3.8.0 — Windows are computed, coverage is recorded, the user's own outbound counts
+
+v3.8.0 (2026-09-01) closes three defects from one day. A hand-typed `oldest`
+(07:50 *today* instead of yesterday) reported five channels empty that were
+not; two mid-day syncs re-read only the targets the morning had skipped,
+so a DM answered at 09:27 was reported unanswered at 17:51 on a 09:15 read;
+and the user's own replies were not treated as sweep state that discharges
+owed items. Steps 1, 3, and 3b now take `oldest` from
+`sync_watermark.py window` (synthesis-daily-rituals) and quote its
+human-readable bounds in the report; Step 4 records every saved read with
+`sync_watermark.py advance --target`; Step 5 cross-references the user's
+own outbound against every owed item and forbids "unanswered" or "unsent"
+on a read older than the current run, which `status --since run` proves.
+Every sync re-reads every declared target — "already read today" is a
+statement about the past.
 
 ## v3.7.0 — The sweep steps consume preflight instead of contradicting it
 
@@ -374,11 +390,19 @@ of the sweep and included in the sync report.)
 For each channel in the preflight's resolved-target list:
 
 ```
-slack_read_channel(resolved_channel_id, oldest=LAST_SYNC_TIMESTAMP, limit=30)
+slack_read_channel(resolved_channel_id, oldest=WINDOW_OLDEST, limit=30)
 ```
 
-- On **first sync of the day** (no channels transcript file exists yet): omit `oldest` or use midnight timestamp.
-- On **subsequent syncs**: use the timestamp of the last sync recorded in the channels transcript file.
+- **`WINDOW_OLDEST` is the `oldest=` epoch printed by**
+  `python3 <synthesis-daily-rituals-root>/scripts/sync_watermark.py window --workspace <W> --surface slack --target <resolved id>`
+  — never hand-computed, never copied from a transcript header, never
+  midnight. Quote the human-readable bounds the command prints in the sync
+  report, so the window is checkable by eye (v3.8.0; a hand-typed `oldest`
+  of 07:50 *today* once reported five channels empty that were not).
+- A **bootstrap window** (no watermark yet for that target or surface) reads
+  to the workspace's backfill bound and states that bound in the report.
+- **Every declared target is read every sync**, including targets read
+  earlier the same day — the window simply starts where the last read stopped.
 - Note the **reply count** on every message that has threads. These will be re-read in Step 2.
 
 ### Step 2: Re-read ALL active threads — today AND recent days
@@ -415,7 +439,7 @@ Rules:
 For each 1:1 DM in the preflight's resolved-target list:
 
 ```
-slack_read_channel(channel_id=RESOLVED_CONVERSATION_ID, oldest=LAST_SYNC_TIMESTAMP, limit=20)
+slack_read_channel(channel_id=RESOLVED_CONVERSATION_ID, oldest=WINDOW_OLDEST, limit=20)
 ```
 
 The resolved conversation id comes from preflight (Step 0), never from a
@@ -428,7 +452,7 @@ unresolved instead of silently skipping it.
 For each group DM in the preflight's resolved-target list:
 
 ```
-slack_read_channel(channel_id=RESOLVED_GROUP_DM_ID, oldest=LAST_SYNC_TIMESTAMP, limit=20)
+slack_read_channel(channel_id=RESOLVED_GROUP_DM_ID, oldest=WINDOW_OLDEST, limit=20)
 ```
 
 Group DMs (multi-party IMs) are separate from 1:1 DMs. They use channel IDs, not user IDs. Only check group DMs the preflight resolved from the config's declared list.
@@ -447,12 +471,20 @@ For each file:
 - Record the sync time (e.g., `## Mid-day sync (~14:30 EDT)`).
 - If the file doesn't exist, create it with the standard header and create directories as needed.
 - If no messages of that type were found, skip that file (do not create empty files).
+- **Record the read once it is saved (v3.8.0):** for each target whose window
+  was read and whose messages (or confirmed absence) are now on disk, run
+  `python3 <synthesis-daily-rituals-root>/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <the window's latest>`.
+  The watermark advances only after the write, so a read that failed to save
+  cannot claim coverage — and the gate at the end of the sync
+  (`sync_watermark.py status --workspace <W> --surface slack --since run --targets-from <declared.json>`)
+  lists exactly the targets this sync did not re-read.
 
 Meeting transcripts are NOT part of Slack sync — they are handled by the daily-rituals skill and placed in `{transcripts_repo}/{transcripts_path}/meetings/YYYY-MM-DD-<slug>.md`.
 
 ### Step 5: Update action plan
 
 - **Mark sent messages as SENT** with timestamps. Cross-reference messages the user sent against draft messages in the action plan.
+- **The user's own outbound is first-class sweep state (v3.8.0).** Every message the user sent that Steps 1-3b returned — in channels, threads, DMs, group DMs — is cross-referenced against every owed item, draft, and waiting-on entry, and each item it discharged is marked with the message time. A claim that something is unanswered or unsent must cite the read that established it, and that read must belong to this run: `status --since run` green for that target, or the claim is not made. Origin (2026-09-01): a question answered by the user at 09:27 was reported unanswered at 17:51, citing a 09:15 read.
 - **Update waiting-on-others** table with any new information from thread replies.
 - **Note new action items** or signals worth responding to in the "Things to Know" section.
 - **Draft replies with grounding research.** When a Slack message requires a response (technical question, status request, bug report), research the answer in primary sources (source code, config files, PRs, deploy scripts, running systems) BEFORE drafting. Never draft a reply based solely on transcripts or conversation memory. The user's credibility depends on accuracy.

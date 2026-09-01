@@ -4,6 +4,36 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.79.0] - 2026-09-01
+
+**Sync watermarks now carry a time and a target, and a run proves its own
+coverage.** The v2.27.0 watermarks were day-granular, and a day cannot see
+the hours: on one day-start a Slack surface written at 09:15 counted as
+current for the rest of the day, the mid-day passes re-read only the targets
+the morning had skipped, and at 17:51 the agent reported a question still
+unanswered on the strength of the 09:15 read while the answer had gone out
+at 09:27. A first pass that morning had also hand-typed an `oldest` of 07:50
+*today* and reported five channels empty that were not.
+
+`sync_watermark.py` (synthesis-daily-rituals 2.30.0) now records ISO-8601
+moments — the last moment actually written, never the last attempted — and
+one watermark per declared read target within a surface; `begin` stamps a
+run and `status --since run` exits non-zero naming every declared surface
+or target this run did not re-read (with `--max-age` as the alternative
+bound, `--targets-from` for the declared target set, and per-target
+deferrals); `window` prints human-readable bounds beside the epoch `oldest`
+a read call takes, so a window parameter is computed and echoed rather than
+typed; a bare date means complete through the END of that day and is
+refused for today until the day is over. Schema-1 stores are read as what
+they meant and rewritten on the next write. synthesis-slack-sync 3.8.0
+takes every `oldest` from `window`, records every saved read with
+`advance --target`, re-reads every declared target every sync, and treats
+the user's own outbound as first-class sweep state: owed items it
+discharged are marked, and "unanswered" or "unsent" is never claimed on a
+read older than the current run. Thirty-seven tests pin the mechanism and
+the documented rules; contract and rationale live in the new
+`references/sync-watermarks.md`.
+
 ## [4.78.0] - 2026-09-01
 
 **A coordination engine older than the board it reads now says so, and
