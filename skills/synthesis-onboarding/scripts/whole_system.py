@@ -125,12 +125,24 @@ def validate_answers(answers: dict, require_workspace: bool) -> dict:
             isinstance(item, str) and item.strip() for item in value
         ):
             raise ValueError("answers.%s must be a list of non-empty strings" % key)
+    git_name = str(answers.get("git_name") or "").strip()
+    git_email = str(answers.get("git_email") or "").strip()
+    if bool(git_name) != bool(git_email):
+        raise ValueError("answers.git_name and answers.git_email must be provided together")
+    if git_name and ("\n" in git_name or "\r" in git_name):
+        raise ValueError("answers.git_name must be one line")
+    if git_email and (
+        any(char.isspace() for char in git_email) or "@" not in git_email
+    ):
+        raise ValueError("answers.git_email must be a valid single-token email address")
     return {
         **answers,
         "workspace": workspace,
         "timezone": timezone,
         "tone": [item.strip() for item in tone],
         "avoid_phrases": [item.strip() for item in avoid],
+        "git_name": git_name,
+        "git_email": git_email,
     }
 
 

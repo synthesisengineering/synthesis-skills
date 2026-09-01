@@ -69,7 +69,7 @@ from whole_system import (
     validate_personal_policy,
 )
 
-ENGINE_VERSION = "1.4.0"
+ENGINE_VERSION = "1.4.1"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -940,6 +940,28 @@ def git(args, cwd=None, timeout=300):
     return run(["git"] + args, cwd=cwd, timeout=timeout)
 
 
+def configured_git_identity():
+    name = str(
+        os.environ.get("GIT_AUTHOR_NAME")
+        or os.environ.get("GIT_COMMITTER_NAME")
+        or ""
+    ).strip()
+    email = str(
+        os.environ.get("GIT_AUTHOR_EMAIL")
+        or os.environ.get("GIT_COMMITTER_EMAIL")
+        or ""
+    ).strip()
+    if not name:
+        rc, out, _ = git(["config", "--global", "--get", "user.name"])
+        if rc == 0:
+            name = out.strip()
+    if not email:
+        rc, out, _ = git(["config", "--global", "--get", "user.email"])
+        if rc == 0:
+            email = out.strip()
+    return (name, email) if name and email else None
+
+
 def origin_url(repo):
     rc, out, _ = git(["remote", "get-url", "origin"], cwd=repo)
     return out.strip() if rc == 0 else None
@@ -1449,7 +1471,9 @@ Cross-project lessons and patterns. One file per lesson, named
 """
 
 
-def init_workspace(report, receipts, workspace, dry_run, remote=None):
+def init_workspace(
+    report, receipts, workspace, dry_run, remote=None, git_identity=None
+):
     ws_dir = WORKSPACES_ROOT / workspace
     repo = ws_dir / ("ai-knowledge-%s" % workspace)
     if dry_run:
@@ -1473,6 +1497,27 @@ def init_workspace(report, receipts, workspace, dry_run, remote=None):
         if rc != 0:
             report.add("init-workspace", ERROR, "git init failed", hint=err.strip())
             return
+    rc, _, _ = git(["rev-parse", "--verify", "HEAD"], cwd=repo)
+    if rc != 0:
+        if git_identity:
+            name, email = git_identity
+            for key, value in (("user.name", name), ("user.email", email)):
+                config_rc, _, config_err = git(
+                    ["config", "--local", key, value], cwd=repo
+                )
+                if config_rc != 0:
+                    report.add(
+                        "init-workspace",
+                        ERROR,
+                        "could not configure repository-local Git identity",
+                        hint=config_err.strip(),
+                    )
+                    return
+            report.add(
+                "init-workspace",
+                CHANGED,
+                "configured repository-local Git identity",
+            )
         git(["add", "-A"], cwd=repo)
         rc, _, err = git(["commit", "-m", "Initialize ai-knowledge workspace"], cwd=repo)
         if rc == 0:
@@ -1546,6 +1591,21 @@ def collect_init_inputs(args, manifest, catalog):
         inbox = _ask("Configure the optional inbox runtime? (yes/no)", "no")
         answers.setdefault("inbox_cleanup", inbox.lower() in ("y", "yes"))
     answers = validate_answers(answers, require_workspace=require_workspace)
+    if profile == "full" and configured_git_identity() is None:
+        if not answers.get("git_name") and args.answers is None:
+            answers["git_name"] = _ask(
+                "Git author name for the personal repository",
+                answers.get("display_name") or "",
+            )
+            answers["git_email"] = _ask(
+                "Git author email for the personal repository", ""
+            )
+            answers = validate_answers(answers, require_workspace=True)
+        if not answers.get("git_name"):
+            raise ValueError(
+                "Git identity is not configured; answers.git_name and "
+                "answers.git_email are required for a non-interactive full init"
+            )
     choices = profile_choices(catalog, profile, manifest_present=manifest is not None)
     return profile, answers, choices
 
@@ -1825,7 +1885,16 @@ def run_whole_system_init(
     receipts.data["profile"] = profile
     receipts.data["personal_workspace"] = answers.get("workspace") or None
     if choices.get("knowledge-bases") == "selected":
-        init_workspace(report, receipts, answers["workspace"], dry_run)
+        answer_identity = None
+        if answers.get("git_name") and answers.get("git_email"):
+            answer_identity = (answers["git_name"], answers["git_email"])
+        init_workspace(
+            report,
+            receipts,
+            answers["workspace"],
+            dry_run,
+            git_identity=answer_identity,
+        )
         personal_repo = (
             WORKSPACES_ROOT
             / answers["workspace"]

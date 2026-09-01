@@ -11,6 +11,14 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**An empty home no longer stops at Git identity (September 2026).** Release
+**4.76.1** makes guided whole-system onboarding collect the personal
+repository's author name and email before mutation when Git has no configured
+identity. Non-interactive runs accept `git_name` and `git_email`; both paths
+configure only the new repository and complete its initial commit. A rerun also
+repairs the half-finished repository produced by 4.76.0. See the [4.76.1
+release notes](CHANGELOG.md).
+
 **The bootstrap now installs the system, not only its skills (September
 2026).** Release **4.76.0** adds a guided eleven-layer `init`, generic personal
 policy scaffolders, one-source kernel generation with a stable propagation
@@ -561,6 +569,10 @@ knowledge workspace, user-authored policy, one instruction-kernel source for
 both clients, runtime engines, coordination, conformance tools, and lifecycle
 receipts. Its doctor always prints all eleven layers as `installed`, `declined`,
 or `missing`; a selected missing layer is never silently green.
+When Git has no author identity, the guided interview collects one for the new
+personal repository before it changes the machine. Reviewed non-interactive
+answers provide the same values as `git_name` and `git_email`; the installer
+does not change global Git configuration.
 Close active Claude Code and Codex sessions before re-running the bootstrap;
 it explicitly updates versioned plugin caches, repairs the remaining setup,
 and never overwrites files you edited. The kernel's 55 KB budget is checked

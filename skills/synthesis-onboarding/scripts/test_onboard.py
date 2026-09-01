@@ -193,7 +193,7 @@ class Sandbox:
             )
         return proc
 
-    def fake_client(self, version="4.76.0"):
+    def fake_client(self, version="4.76.1"):
         path = self.root / "fake-client"
         path.write_text(
             "#!/bin/sh\n"
@@ -206,7 +206,7 @@ class Sandbox:
         path.chmod(0o755)
         return path
 
-    def seed_currency(self, version="4.76.0", ref="stable"):
+    def seed_currency(self, version="4.76.1", ref="stable"):
         path = self.home / ".synthesis" / "onboarding" / "plugin-currency.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
@@ -221,21 +221,22 @@ class Sandbox:
             encoding="utf-8",
         )
 
-    def answers(self, workspace="example-user"):
+    def answers(self, workspace="example-user", git_identity=None):
+        data = {
+            "workspace": workspace,
+            "display_name": "Example User",
+            "timezone": "UTC",
+            "tone": ["direct", "substantive", "kind"],
+            "avoid_phrases": ["empty promise"],
+            "personal_remote_patterns": ["[:/]example-user/"],
+            "confidential_terms": [],
+            "inbox_cleanup": False,
+        }
+        if git_identity:
+            data["git_name"], data["git_email"] = git_identity
         path = self.root / "answers.json"
         path.write_text(
-            json.dumps(
-                {
-                    "workspace": workspace,
-                    "display_name": "Example User",
-                    "timezone": "UTC",
-                    "tone": ["direct", "substantive", "kind"],
-                    "avoid_phrases": ["empty promise"],
-                    "personal_remote_patterns": ["[:/]example-user/"],
-                    "confidential_terms": [],
-                    "inbox_cleanup": False,
-                }
-            ),
+            json.dumps(data),
             encoding="utf-8",
         )
         return path
@@ -415,18 +416,23 @@ class WholeSystemTests(unittest.TestCase):
     def test_guided_interview_builds_full_profile_without_stdin_assumptions(self):
         args = SimpleNamespace(profile=None, answers=None, workspace=None)
         catalog = whole_system.load_catalog(REPO_ROOT)
-        with patch.object(
-            onboard,
-            "_ask",
-            side_effect=[
-                "full",
-                "example-user",
-                "Example User",
-                "UTC",
-                "direct, kind",
-                "empty promise",
-                "no",
-            ],
+        with (
+            patch.object(onboard, "configured_git_identity", return_value=None),
+            patch.object(
+                onboard,
+                "_ask",
+                side_effect=[
+                    "full",
+                    "example-user",
+                    "Example User",
+                    "UTC",
+                    "direct, kind",
+                    "empty promise",
+                    "no",
+                    "Example User",
+                    "example@example.invalid",
+                ],
+            ),
         ):
             profile, answers, choices = onboard.collect_init_inputs(
                 args, None, catalog
@@ -434,7 +440,85 @@ class WholeSystemTests(unittest.TestCase):
         self.assertEqual(profile, "full")
         self.assertEqual(answers["display_name"], "Example User")
         self.assertEqual(answers["tone"], ["direct", "kind"])
+        self.assertEqual(answers["git_name"], "Example User")
+        self.assertEqual(answers["git_email"], "example@example.invalid")
         self.assertEqual(choices["organization"], "declined")
+
+    def test_noninteractive_full_init_requires_git_identity_before_mutation(self):
+        box = Sandbox()
+        self.addCleanup(box.cleanup)
+        args = SimpleNamespace(
+            profile="full", answers=box.answers(), workspace=None
+        )
+        catalog = whole_system.load_catalog(REPO_ROOT)
+        with patch.object(onboard, "configured_git_identity", return_value=None):
+            with self.assertRaisesRegex(ValueError, "git_name"):
+                onboard.collect_init_inputs(args, None, catalog)
+
+    def test_full_init_configures_repo_local_identity_from_answers(self):
+        box = Sandbox()
+        self.addCleanup(box.cleanup)
+        client = box.fake_client()
+        answers = box.answers(
+            git_identity=("Example User", "example@example.invalid")
+        )
+        box.seed_currency()
+        env = dict(os.environ)
+        env.update(box.env_overrides())
+        for key in (
+            "GIT_AUTHOR_NAME",
+            "GIT_AUTHOR_EMAIL",
+            "GIT_COMMITTER_NAME",
+            "GIT_COMMITTER_EMAIL",
+        ):
+            env.pop(key, None)
+        env.update({
+            "SYNTHESIS_CLAUDE_BIN": str(client),
+            "SYNTHESIS_CODEX_BIN": str(client),
+            "GIT_CONFIG_GLOBAL": str(box.root / "empty-gitconfig"),
+        })
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(ENGINE),
+                "init",
+                "--profile",
+                "full",
+                "--answers",
+                str(answers),
+                "--no-services",
+                "--json",
+            ],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        data = json.loads(proc.stdout)
+        self.assertFalse(
+            [step for step in data["steps"] if step["status"] == "action-needed"]
+        )
+        repo = (
+            box.home
+            / "workspaces"
+            / "example-user"
+            / "ai-knowledge-example-user"
+        )
+        name = sh(
+            ["git", "-C", str(repo), "config", "--local", "user.name"],
+            env=env,
+        ).strip()
+        email = sh(
+            ["git", "-C", str(repo), "config", "--local", "user.email"],
+            env=env,
+        ).strip()
+        self.assertEqual((name, email), ("Example User", "example@example.invalid"))
+        log = sh(
+            ["git", "-C", str(repo), "log", "--oneline"],
+            env=env,
+        )
+        self.assertEqual(len(log.strip().splitlines()), 1)
 
 
 class PluginTests(unittest.TestCase):

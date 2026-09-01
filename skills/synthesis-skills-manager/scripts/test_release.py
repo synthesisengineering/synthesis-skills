@@ -447,11 +447,13 @@ def test_whole_system_onboarding_release_contract_is_public_and_coherent() -> No
         json.loads((repository / path).read_text(encoding="utf-8"))["version"]
         for path in release.MANIFESTS
     }
-    assert versions == {"4.76.0"}
+    assert versions == {"4.76.1"}
     assert "set -- init" in bootstrap
     assert "eleven layers" in readme
     assert "Skills-only alternative" in readme
     assert "stable PostToolUse hook" in onboarding
+    assert "git_name" in onboarding and "repository, never globally" in onboarding
+    assert "does not change global Git configuration" in readme
     assert "default_branch" in org_manifest
     assert "whole-system onboarding suite" in manager
 
