@@ -206,6 +206,43 @@ on the board changes. An agent must never administratively release a peer on
 its own initiative — route the request through the board's message log or
 the user, exactly as with any other overlap.
 
+## Commit authority — check-staged selector precedence
+
+`check-staged` selects the committing session from, in order: an explicit
+`--session`, then `SYNTHESIS_COORDINATION_SESSION`, then `owner_session` in
+the active-project pointer. The board is refreshed from its configured lease
+before evaluation. A missing or unreadable board, an inactive session, a
+detached branch, an unregistered worktree, or an unreadable index refuses.
+To make a deliberately exceptional commit, pass `--override-reason` (or set
+`SYNTHESIS_COORDINATION_OVERRIDE_REASON` when the git-hook boundary invokes
+the check); the override is not authority until its board write completes
+and the index revalidates unchanged.
+
+## Resuming and the active-project pointer
+
+When resuming work from another agent, resolve the named project through the
+git-tracked `projects/index.yaml`, run local continuity for a stopped
+project, read `CONTEXT.md` and the linked plan, and inspect Git status and
+diff before acting. Working-tree truth supersedes cached project prose after
+an interrupted task. The continuity source of truth is the
+filesystem-backed synthesis record, not the previous assistant's chat
+transcript.
+
+The pointer is a leased acceleration cache for a live context owner. Claim
+release archives it recoverably into
+`~/.synthesis/active-project-history/`, so its absence after a clean stop is
+expected. Never replace it with one git-tracked global "current project"
+value: parallel Claude Code and Codex sessions can legitimately work
+different projects. A stopped task resumes by named-project registry
+resolution; a task opened inside the project directory can also be
+discovered from its durable file structure.
+
+Cross-computer recovery adds two preconditions: the source machine must
+reach `REMOTE_READY` through synthesis-mac-sync or day-end, and the
+destination must fetch and fast-forward before Session Start. Offline,
+divergent, behind, unpublished, or overlapping-claim states are reported
+explicitly and are not remote-continuity passes.
+
 ## Cross-machine boundary
 
 Git carries durable project state and contribution artifacts between machines.
@@ -285,3 +322,22 @@ base, refuses main worktrees, dirty trees, detached heads, and a working
 directory inside the target, and deletes branches with safe delete only.
 "Merged on the remote" is the retirement bar — a stale local ref proving
 nothing.
+
+The helper holds the shared handoff lifecycle lock across preparation,
+removal, and reconciliation; pins the remote commit; content-addresses its
+reconciler outside the target; and fsyncs a resumable intent before removal.
+Unexplained missing paths remain blocking Stop failures. There is no offline
+or local-ref escape hatch. If interruption lands after removal, rerun the
+same helper command: it finds the matching prepared intent, executes that
+exact pinned reconciler, completes reconciliation idempotently, and then
+finishes branch cleanup. Optional remote deletion uses a compare-and-delete
+lease and refuses an advanced or differently sourced branch.
+
+## Handoff queue mechanics
+
+`handoff.py` payloads are stored as durable files under
+`resources/handoffs/` with a sha256 recorded at write time; `read` refuses a
+payload whose bytes have changed since the handoff. The queue
+(`resources/handoffs/queue.json`) is written atomically. Reader identity
+comes from `--as` or `SYNTHESIS_HANDOFF_SELF` — with neither, `read` refuses
+rather than guess, because guessing could claim another agent's work.

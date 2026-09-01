@@ -4,6 +4,36 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.76.2] - 2026-09-01
+
+**The project-management skill document is back inside its own budget.**
+`synthesis-project-management/SKILL.md` had grown to 660 lines against the
+repository's below-500 rule. v2.9.0 restructures rather than trims: every
+operating rule stays in the main document (498 lines), while worked
+examples, full formats, and rationale moved to `references/` — a new
+`records-and-conventions.md` (built-in-memory rationale, naming rationale,
+full index example, lesson formats, attribution rules), a new
+`codex-dispatch.md` (the wrapper's production incident detail), and an
+extended `parallel-agent-protocol.md` (check-staged selector precedence,
+active-project pointer semantics, handoff-queue mechanics, worktree
+retirement internals). A pinned test now enforces the budget, keeps the
+load-bearing rules in the main document, verifies each moved block exists
+in its reference, and refuses orphaned references — so the next growth
+lands in `references/` instead of silently rebreaking the rule.
+
+**A truly empty home now reaches a committed personal workspace without a
+manual repair step.** The 4.76.0 live-stable acceptance run found that a new
+user with no configured Git author could receive every scaffold but stop at
+the first repository commit. Guided `init` now detects that condition before
+mutation and asks for the author name and email it needs. Reviewed
+non-interactive answers can provide the same values as `git_name` and
+`git_email`.
+
+The engine applies those values only to the new personal repository, retries
+the initial commit when repairing a half-finished 4.76.0 run, and leaves global
+Git configuration untouched. Acceptance tests prove both the pre-mutation
+validation boundary and a successful repository-local first commit.
+
 ## [4.76.1] - 2026-09-01
 
 **A truly empty home now reaches a committed personal workspace without a
