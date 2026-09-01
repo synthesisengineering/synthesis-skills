@@ -1711,3 +1711,71 @@ def test_status_json_reports_client_ref_and_board_schema(
     payload = json.loads(capsys.readouterr().out)
     assert payload["board_schema"] == 4
     assert payload["sessions"][0]["client_ref"] == "ccd:local_feed-beef"
+
+
+def test_peer_resolution_documented_on_public_surfaces() -> None:
+    """The protocol must live on every public maintenance surface, not only
+    in code — undocumented mechanisms get rediscovered as folklore."""
+    repo = Path(__file__).resolve().parents[3]
+    skill_dir = repo / "skills" / "synthesis-project-management"
+    surfaces = {
+        repo / "README.md": "resolve",
+        repo / "CHANGELOG.md": "client session ref",
+        skill_dir / "SKILL.md": "client session ref",
+        skill_dir / "references" / "parallel-agent-protocol.md": (
+            "Addressing a peer session"
+        ),
+        skill_dir / "references" / "session-identity.md": "client session ref",
+        repo / "skills" / "synthesis-message-guard" / "SKILL.md": (
+            "peer_send_resolution"
+        ),
+    }
+    for path, marker in surfaces.items():
+        assert marker in path.read_text(encoding="utf-8"), (
+            f"{path.name} does not document {marker!r}"
+        )
+
+
+def test_conformance_board_check_accepts_declared_v3_and_v4(tmp_path) -> None:
+    """The parity checker must accept both declared schemas during the staged
+    migration window, and still reject anything older."""
+    conformance_path = (
+        Path(__file__).resolve().parents[2]
+        / "synthesis-agent-conformance"
+        / "scripts"
+        / "conformance.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "conformance_for_board_check", conformance_path
+    )
+    assert spec and spec.loader
+    conformance = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = conformance
+    spec.loader.exec_module(conformance)
+
+    def board_with(schema_line: str) -> Path:
+        board = tmp_path / f"board-{schema_line.split('v')[-1]}.md"
+        columns = (
+            MODULE.TABLE_COLUMNS
+            if schema_line.endswith("v4")
+            else MODULE.V3_COLUMNS
+        )
+        board.write_text(
+            f"# Coordination\n\n{schema_line}\n\n## Active sessions\n\n"
+            + MODULE.table_header(columns)
+            + "\n\n## Messages\n\n---\n\n## Protocol\n",
+            encoding="utf-8",
+        )
+        return board
+
+    def schema_check(board: Path) -> bool:
+        checks = conformance.coordination_checks(board, required=False)
+        return next(
+            check.ok
+            for check in checks
+            if check.name == "coordination.active-table-schema"
+        )
+
+    assert schema_check(board_with("Schema: v4"))
+    assert schema_check(board_with("Schema: v3"))
+    assert not schema_check(board_with("Schema: v2"))
