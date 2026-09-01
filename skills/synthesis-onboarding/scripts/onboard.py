@@ -32,7 +32,16 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-ENGINE_VERSION = "1.1.0"
+from plugin_currency import (
+    compare_versions,
+    normalize_policy,
+    policy_from_manifest,
+    policy_label,
+    policy_ref,
+    resolve_target_version,
+)
+
+ENGINE_VERSION = "1.3.0"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -250,6 +259,7 @@ def parse_subset_yaml(text, source="manifest"):
 TOP_KEYS = {"version", "org", "ecosystem", "skills_repos", "knowledge_bases",
             "auth_help", "welcome", "migrations", "workspace_instructions"}
 ORG_KEYS = {"id", "name", "workspace"}
+ECOSYSTEM_KEYS = {"plugin", "clients", "channel", "version_pin"}
 SKILLS_REPO_KEYS = {"name", "primary", "fallbacks", "installer", "installer_args",
                     "source_env", "status_args"}
 KB_KEYS = {"name", "primary", "superseded_remotes", "local_hooks", "default_branch"}
@@ -270,6 +280,25 @@ def validate_manifest(data, path):
     org = data.get("org") or {}
     _require(isinstance(org, dict) and not set(org) - ORG_KEYS, "org block has unknown keys")
     _require(org.get("id") and org.get("workspace"), "org.id and org.workspace are required")
+    ecosystem = data.get("ecosystem") or {}
+    _require(
+        isinstance(ecosystem, dict) and not set(ecosystem) - ECOSYSTEM_KEYS,
+        "ecosystem block has unknown keys",
+    )
+    clients = ecosystem.get("clients", ["claude", "codex"])
+    _require(
+        isinstance(ecosystem.get("plugin", True), bool),
+        "ecosystem.plugin must be true or false",
+    )
+    _require(
+        isinstance(clients, list)
+        and all(client in ("claude", "codex") for client in clients),
+        "ecosystem.clients must be a list containing only claude and codex",
+    )
+    try:
+        normalize_policy(ecosystem.get("channel"), ecosystem.get("version_pin"))
+    except ValueError as exc:
+        raise ValueError("manifest: ecosystem.%s" % exc)
     for repo in data.get("skills_repos") or []:
         _require(isinstance(repo, dict) and not set(repo) - SKILLS_REPO_KEYS,
                  "skills_repos entry has unknown keys: %r" % repo)
@@ -300,6 +329,19 @@ def load_manifest(path):
     except ImportError:
         data = parse_subset_yaml(text, source=str(path))
     return validate_manifest(data, path)
+
+
+def effective_clients(cli_value, manifest):
+    if cli_value is not None:
+        clients = [client.strip() for client in cli_value.split(",") if client.strip()]
+    else:
+        clients = list(((manifest or {}).get("ecosystem") or {}).get(
+            "clients", ["claude", "codex"]
+        ))
+    unknown = set(clients) - {"claude", "codex"}
+    if unknown:
+        raise ValueError("clients must contain only claude and codex")
+    return clients
 
 
 # ---------------------------------------------------------------------------
@@ -459,16 +501,46 @@ def expected_source_plugin_version():
     return None
 
 
-def refresh_plugin(client, binary):
-    """Refresh an installed native plugin without replacing it with copies."""
+def expected_policy_version(policy):
+    """Resolve the exact desired version without accepting stale evidence."""
+    if policy.get("version_pin"):
+        return policy["version_pin"], "exact version pin"
+    source_version = expected_source_plugin_version()
+    if source_version:
+        return source_version, "selected source checkout"
+    version, detail = resolve_target_version(policy, ttl_seconds=0)
+    if "stale" in detail:
+        return None, detail
+    return version, detail
+
+
+def marketplace_add_command(client, binary, policy):
+    ref = policy_ref(policy)
     if client == "claude":
+        return [binary, "plugin", "marketplace", "add", "%s@%s" % (PUBLIC_MARKETPLACE_REF, ref)]
+    return [binary, "plugin", "marketplace", "add", PUBLIC_MARKETPLACE_REF, "--ref", ref, "--json"]
+
+
+def refresh_plugin(client, binary, policy, reconfigure=False):
+    """Refresh an installed native plugin on the selected release target."""
+    if reconfigure:
+        commands = [
+            [binary, "plugin", "marketplace", "remove", MARKETPLACE_NAME],
+            marketplace_add_command(client, binary, policy),
+        ]
+        verb = "install" if client == "claude" else "add"
+        commands.append(
+            [binary, "plugin", verb, "%s@%s" % (PLUGIN_NAME, MARKETPLACE_NAME)]
+        )
+    elif client == "claude":
         commands = [
             [binary, "plugin", "marketplace", "update", MARKETPLACE_NAME],
             [binary, "plugin", "update", "%s@%s" % (PLUGIN_NAME, MARKETPLACE_NAME)],
         ]
     else:
         commands = [
-            [binary, "plugin", "marketplace", "upgrade", MARKETPLACE_NAME, "--json"]
+            [binary, "plugin", "marketplace", "upgrade", MARKETPLACE_NAME, "--json"],
+            [binary, "plugin", "add", "%s@%s" % (PLUGIN_NAME, MARKETPLACE_NAME)],
         ]
     for command in commands:
         rc, out, err = run(command, timeout=300)
@@ -477,11 +549,19 @@ def refresh_plugin(client, binary):
     return True, "marketplace and installed plugin refreshed"
 
 
-def install_plugin(client, binary):
+def install_plugin(client, binary, policy):
     """Best-effort native plugin install. Returns (success, detail)."""
-    add_cmd = [binary, "plugin", "marketplace", "add", PUBLIC_MARKETPLACE_REF]
+    add_cmd = marketplace_add_command(client, binary, policy)
     rc, out, err = run(add_cmd, timeout=180)
-    if rc != 0 and "already" not in (out + err).lower():
+    if "already" in (out + err).lower():
+        remove = [binary, "plugin", "marketplace", "remove", MARKETPLACE_NAME]
+        remove_rc, remove_out, remove_err = run(remove, timeout=180)
+        if remove_rc != 0:
+            return False, "marketplace reconfiguration failed: %s" % (
+                remove_err.strip() or remove_out.strip()
+            )
+        rc, out, err = run(add_cmd, timeout=180)
+    if rc != 0:
         return False, "marketplace add failed: %s" % (err.strip() or out.strip())
     verb = "install" if client == "claude" else "add"
     rc, out, err = run([binary, "plugin", verb, "%s@%s" % (PLUGIN_NAME, MARKETPLACE_NAME)], timeout=300)
@@ -568,7 +648,12 @@ def phase_preflight(report, clients_wanted):
 
 
 def phase_ecosystem(
-    report, clients, dry_run, no_plugin_cli, refresh_native_plugins=False
+    report,
+    clients,
+    dry_run,
+    no_plugin_cli,
+    policy,
+    refresh_native_plugins=False,
 ):
     """Public synthesis-skills into each present client; fallback to install.sh."""
     need_fallback = False
@@ -584,7 +669,7 @@ def phase_ecosystem(
                     (PLUGIN_NAME, name, before_version or "unknown version"),
                 )
                 continue
-            expected = expected_source_plugin_version()
+            expected, expectation_detail = expected_policy_version(policy)
             if not refresh_native_plugins:
                 if expected and before_version != expected:
                     report.add(
@@ -609,7 +694,12 @@ def phase_ecosystem(
                     "would refresh %s plugin for %s" % (PLUGIN_NAME, name),
                 )
                 continue
-            success, detail = refresh_plugin(name, binary)
+            success, detail = refresh_plugin(
+                name,
+                binary,
+                policy,
+                reconfigure=True,
+            )
             if not success:
                 report.add(
                     "ecosystem", ERROR,
@@ -626,6 +716,14 @@ def phase_ecosystem(
                     "ecosystem", ERROR,
                     "%s plugin for %s is %s after refresh; expected %s" %
                     (PLUGIN_NAME, name, after_version, expected),
+                )
+            elif expected is None:
+                report.add(
+                    "ecosystem",
+                    ERROR,
+                    "%s plugin refreshed for %s at %s, but %s could not be verified" %
+                    (PLUGIN_NAME, name, after_version or "unknown", policy_label(policy)),
+                    hint=expectation_detail,
                 )
             elif after_version != before_version:
                 restart = "restart Claude Code" if name == "claude" else "restart Codex"
@@ -648,8 +746,25 @@ def phase_ecosystem(
         if dry_run:
             report.add("ecosystem", CHANGED, "would install %s plugin via %s CLI" % (PLUGIN_NAME, name))
             continue
-        success, detail = install_plugin(name, binary)
-        if success and plugin_enabled(name, binary):
+        success, detail = install_plugin(name, binary, policy)
+        after_state, after_version = plugin_record(name, binary)
+        expected, expectation_detail = expected_policy_version(policy)
+        if success and after_state is True and expected and after_version != expected:
+            report.add(
+                "ecosystem",
+                ERROR,
+                "%s installed for %s at %s; %s resolves to %s" %
+                (PLUGIN_NAME, name, after_version or "unknown", policy_label(policy), expected),
+            )
+        elif success and after_state is True and expected is None:
+            report.add(
+                "ecosystem",
+                ERROR,
+                "%s installed for %s at %s, but %s could not be verified" %
+                (PLUGIN_NAME, name, after_version or "unknown", policy_label(policy)),
+                hint=expectation_detail,
+            )
+        elif success and after_state is True:
             restart = "restart Claude Code" if name == "claude" else "restart Codex"
             report.add(
                 "ecosystem", CHANGED,
@@ -991,23 +1106,78 @@ def init_workspace(report, receipts, workspace, dry_run, remote=None):
 # doctor
 # ---------------------------------------------------------------------------
 
-def doctor(report, manifest, clients_wanted):
+def doctor(report, manifest, clients_wanted, policy):
     rc, _, _ = run(["git", "--version"], timeout=15)
     if rc != 0:
         report.add("doctor", ERROR, "git unavailable — cannot verify anything else")
         return 2
     verified_any = False
+    currency_unverifiable = False
+    target_checked = False
+    target_version = None
+    target_detail = "not checked"
     for name in clients_wanted:
         binary = resolve_client(name)
         if not binary:
             report.add("doctor", SKIP, "%s not installed" % name)
             continue
-        state = plugin_enabled(name, binary)
+        state, installed_version = plugin_record(name, binary)
         fallback = (HOME / (".claude" if name == "claude" else ".agents") / "skills")
         copies = sorted(p.name for p in fallback.glob("synthesis-*")) if fallback.exists() else []
         if state is True:
             verified_any = True
-            report.add("doctor", OK, "%s: %s plugin enabled" % (name, PLUGIN_NAME))
+            if not target_checked:
+                target_version, target_detail = resolve_target_version(
+                    policy, ttl_seconds=0
+                )
+                target_checked = True
+            if target_version is None:
+                currency_unverifiable = True
+                report.add(
+                    "doctor",
+                    WARN,
+                    "%s: %s plugin enabled at %s; %s is unverifiable" %
+                    (name, PLUGIN_NAME, installed_version or "unknown", policy_label(policy)),
+                    hint=target_detail,
+                )
+            elif "stale" in target_detail:
+                currency_unverifiable = True
+                report.add(
+                    "doctor",
+                    WARN,
+                    "%s: %s plugin %s; %s could not be confirmed live" %
+                    (name, PLUGIN_NAME, installed_version or "unknown", policy_label(policy)),
+                    hint=target_detail,
+                )
+            else:
+                currency = compare_versions(installed_version, target_version)
+                if currency == "current":
+                    report.add(
+                        "doctor",
+                        OK,
+                        "%s: %s plugin %s matches %s (%s)" %
+                        (name, PLUGIN_NAME, installed_version, policy_label(policy), target_detail),
+                    )
+                elif currency in ("behind", "ahead"):
+                    report.add(
+                        "doctor",
+                        ACTION,
+                        "%s: %s plugin %s is %s; %s resolves to %s" %
+                        (name, PLUGIN_NAME, installed_version, currency,
+                         policy_label(policy), target_version),
+                        hint=(
+                            "Close other Claude Code and Codex sessions, then run "
+                            "onboard.py update as the invoking session's last action."
+                        ),
+                    )
+                else:
+                    currency_unverifiable = True
+                    report.add(
+                        "doctor",
+                        WARN,
+                        "%s: %s plugin version is unreadable; %s resolves to %s" %
+                        (name, PLUGIN_NAME, policy_label(policy), target_version),
+                    )
         elif copies:
             verified_any = True
             report.add("doctor", OK, "%s: %d fallback skill copies present" % (name, len(copies)))
@@ -1055,6 +1225,10 @@ def doctor(report, manifest, clients_wanted):
     counts = report.counts()
     if counts.get(ERROR):
         return 1
+    if counts.get(ACTION):
+        return 1
+    if currency_unverifiable:
+        return 2
     if not verified_any and not manifest:
         return 2
     return 0
@@ -1101,8 +1275,14 @@ def build_parser():
     parser.add_argument("command", nargs="?", default="install",
                         choices=["install", "update", "doctor", "init-workspace", "uninstall"])
     parser.add_argument("--manifest", type=Path, help="org onboarding manifest (.agents/onboarding.yaml)")
-    parser.add_argument("--clients", default="claude,codex",
-                        help="comma-separated clients to target (default: claude,codex)")
+    parser.add_argument("--clients",
+                        help="comma-separated clients to target (default: manifest or claude,codex)")
+    parser.add_argument(
+        "--channel",
+        choices=["stable", "edge"],
+        default=os.environ.get("SYNTHESIS_ONBOARD_CHANNEL"),
+        help="public plugin channel (default: stable; org version_pin takes precedence)",
+    )
     parser.add_argument("--workspace", help="workspace name for init-workspace")
     parser.add_argument("--remote", help="optional git remote URL for init-workspace")
     parser.add_argument("--with-personal-workspace", metavar="NAME",
@@ -1117,7 +1297,6 @@ def build_parser():
 def main(argv=None):
     args = build_parser().parse_args(argv)
     report = Report(dry_run=args.dry_run, as_json=args.json)
-    clients_wanted = [c.strip() for c in args.clients.split(",") if c.strip()]
     manifest = None
     if args.manifest:
         try:
@@ -1126,8 +1305,18 @@ def main(argv=None):
             report.add("manifest", ERROR, str(exc))
             return finish(report, args, 2)
 
+    try:
+        policy = policy_from_manifest(manifest, channel_override=args.channel)
+        clients_wanted = effective_clients(args.clients, manifest)
+    except ValueError as exc:
+        report.add("manifest", ERROR, str(exc))
+        return finish(report, args, 2)
+    plugin_requested = ((manifest or {}).get("ecosystem") or {}).get("plugin", True)
+
     if args.command == "doctor":
-        code = doctor(report, manifest, clients_wanted)
+        code = doctor(
+            report, manifest, clients_wanted if plugin_requested else [], policy
+        )
         return finish(report, args, code)
 
     if args.command == "init-workspace":
@@ -1147,16 +1336,20 @@ def main(argv=None):
     # install / update
     receipts = Receipts()
     no_plugin_cli = args.no_plugin_cli or os.environ.get("SYNTHESIS_ONBOARD_NO_PLUGIN_CLI") == "1"
-    clients = phase_preflight(report, clients_wanted)
+    clients = phase_preflight(report, clients_wanted if plugin_requested else [])
     if clients is None:
         return finish(report, args, 2)
-    phase_ecosystem(
-        report,
-        clients,
-        args.dry_run,
-        no_plugin_cli,
-        refresh_native_plugins=args.command == "update",
-    )
+    if plugin_requested:
+        phase_ecosystem(
+            report,
+            clients,
+            args.dry_run,
+            no_plugin_cli,
+            policy,
+            refresh_native_plugins=args.command == "update",
+        )
+    else:
+        report.add("ecosystem", SKIP, "public plugin disabled by manifest")
     if manifest:
         phase_org_skills(report, manifest, args.dry_run)
         phase_kbs(report, manifest, receipts, args.dry_run)
@@ -1165,6 +1358,7 @@ def main(argv=None):
     if args.with_personal_workspace:
         init_workspace(report, receipts, args.with_personal_workspace, args.dry_run)
     if not args.dry_run:
+        receipts.data["plugin_policy"] = policy
         receipts.data.setdefault("runs", []).append(
             {"at": utcnow(), "command": args.command, "manifest": str(args.manifest) if args.manifest else None,
              "engine": ENGINE_VERSION})

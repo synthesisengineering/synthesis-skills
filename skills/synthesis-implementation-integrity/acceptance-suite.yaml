@@ -1,25 +1,45 @@
-# AGENT HEURISTIC: authored for the 4.73.0 cited-script-directory release.
+# AGENT HEURISTIC: authored for the 4.74.0 onboarding-lifecycle release.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff, proved by the runner before release.py consumes
 # the receipt.
 schema: 2
-suite: synthesis-cited-script-directory-release
+suite: synthesis-onboarding-lifecycle-release
 membership: closed
-production_entry_point: skills/synthesis-context-lifecycle/scripts/context_doctor.py --json
-enforcing_boundary: the corpus health signal consumed at SessionStart and at day-start Step 1
+production_entry_point: skills/synthesis-onboarding/scripts/onboard.py update
+enforcing_boundary: SessionStart update notice, onboarding doctor currency result, and the acceptance-bound release publisher
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the check establishes that a cited target was preserved and nothing more — a directory holding files proves the scripts exist, never that they run, that they are the version the artifact described, or that they still do what the citation claims; the corpus instance that motivated this comes from a private corpus and cannot be reproduced in CI
+unverified_remainder: hermetic tests prove policy parsing, semantic comparison, bounded cache behavior, client command construction, doctor outcomes, SessionStart injection, and atomic Git ref publication; they do not make live marketplace mutations or prove remote network availability, while release.py deep verification remains the live installed-cache boundary after publication
 changed_surfaces:
-  - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
-    cases: [cited-directory-accepted, empty-directory-still-fails, missing-target-still-fails]
-  - path: skills/synthesis-context-lifecycle/scripts/test_context_doctor.py
-    cases: [cited-directory-accepted, empty-directory-still-fails, missing-target-still-fails, v18-vocabulary-documented]
-  - path: skills/synthesis-context-lifecycle/SKILL.md
-    cases: [v18-vocabulary-documented]
+  - path: skills/synthesis-onboarding/scripts/plugin_currency.py
+    cases: [policy-ref-resolution, semantic-version-comparison, release-cache-evidence, sessionstart-cache-comparison]
+  - path: skills/synthesis-onboarding/scripts/test_plugin_currency.py
+    cases: [policy-ref-resolution, semantic-version-comparison, release-cache-evidence, sessionstart-cache-comparison]
+  - path: skills/synthesis-onboarding/scripts/onboard.py
+    cases: [manifest-policy-validation, marketplace-target-selection, doctor-plugin-currency]
+  - path: skills/synthesis-onboarding/scripts/test_onboard.py
+    cases: [manifest-policy-validation, marketplace-target-selection, doctor-plugin-currency, public-channel-docs]
+  - path: skills/synthesis-onboarding/SKILL.md
+    cases: [public-channel-docs]
+  - path: skills/synthesis-onboarding/references/org-manifest.md
+    cases: [public-channel-docs]
+  - path: onboard.sh
+    cases: [bootstrap-channel-selection, public-channel-docs]
+  - path: README.md
+    cases: [public-channel-docs, release-changelog-parity]
+  - path: skills/synthesis-agent-conformance/scripts/session_context.py
+    cases: [sessionstart-lifecycle-notice]
+  - path: skills/synthesis-agent-conformance/scripts/test_session_context.py
+    cases: [sessionstart-lifecycle-notice]
+  - path: skills/synthesis-skills-manager/scripts/release.py
+    cases: [atomic-channel-publication]
+  - path: skills/synthesis-skills-manager/scripts/test_release.py
+    cases: [atomic-channel-publication, release-manager-doc-contract]
+  - path: skills/synthesis-skills-manager/SKILL.md
+    cases: [release-manager-doc-contract]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -28,25 +48,55 @@ changed_surfaces:
     cases: [release-manifest-parity]
   - path: CHANGELOG.md
     cases: [release-changelog-parity]
-  - path: README.md
-    cases: [release-changelog-parity]
 cases:
-  - id: cited-directory-accepted
+  - id: policy-ref-resolution
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::CitedScriptTargetTests::test_a_directory_of_scripts_is_a_valid_citation
-    motivating_defect: referencing-a-multi-file-tool-by-its-directory-is-the-ordinary-way-to-do-it-and-requiring-a-regular-file-reported-preserved-work-as-a-missing-target
-  - id: empty-directory-still-fails
+    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_stable_edge_and_pin_resolve_to_distinct_git_refs
+    motivating_defect: stable-edge-and-exact-pins-are-only-real-when-they-resolve-to-distinct-enforceable-git-targets
+  - id: semantic-version-comparison
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_version_comparison_is_semantic_not_lexical
+    motivating_defect: lexical-ordering-reports-4-10-as-older-than-4-9-and-inverts-the-update-notice
+  - id: release-cache-evidence
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_live_resolution_is_cached_and_stale_cache_remains_labeled
+    motivating_defect: a-sessionstart-network-check-without-bounded-cache-evidence-either-blocks-startup-or-turns-an-outage-into-an-uncited-current-claim
+  - id: sessionstart-cache-comparison
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_sessionstart_notice_compares_executing_cache_to_stable
+    motivating_defect: the-notice-must-compare-the-executing-cache-manifest-not-a-source-checkout-or-client-self-report
+  - id: manifest-policy-validation
     control_class: enforced-gate
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::CitedScriptTargetTests::test_an_empty_directory_is_still_a_missing_target
-    motivating_defect: accepting-any-directory-would-let-an-empty-folder-stand-in-for-the-executable-nobody-preserved-which-is-the-exact-failure-the-check-exists-to-catch
-  - id: missing-target-still-fails
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::ParserTests::test_manifest_rejects_unknown_channel_and_non_exact_pin
+    motivating_defect: accepting-an-unknown-channel-or-non-exact-pin-converts-org-policy-into-guesswork
+  - id: marketplace-target-selection
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::CitedScriptTargetTests::test_a_missing_target_still_fires
-    motivating_defect: widening-a-check-must-not-cost-the-case-it-was-written-for
-  - id: v18-vocabulary-documented
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_marketplace_add_targets_stable_edge_and_version_pin
+    motivating_defect: a-manifest-label-without-client-marketplace-ref-selection-is-not-channel-support
+  - id: doctor-plugin-currency
+    control_class: enforced-gate
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_doctor_reports_current_behind_and_unverifiable_currency
+    motivating_defect: doctor-must-not-collapse-behind-and-unverifiable-release-state-into-the-same-green-presence-check
+  - id: bootstrap-channel-selection
     control_class: acceptance-test
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SkillDocContractTests::test_the_v18_vocabulary_is_documented_by_name
-    motivating_defect: a-report-names-the-check-that-fired-so-a-name-absent-from-the-skill-hands-the-operator-a-string-instead-of-a-remedy
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_bootstrap_defaults_to_stable_and_maps_edge_to_main
+    motivating_defect: a-stable-engine-default-is-bypassed-if-the-public-bootstrap-still-clones-main
+  - id: public-channel-docs
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_public_docs_expose_stable_edge_and_org_pin_contract
+    motivating_defect: an-engine-capability-hidden-behind-the-old-main-bootstrap-or-an-undocumented-pin-field-cannot-be-used-correctly
+  - id: sessionstart-lifecycle-notice
+    control_class: acceptance-test
+    fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_sessionstart_prepends_plugin_update_notice
+    motivating_defect: an-update-check-that-never-enters-the-real-sessionstart-envelope-is-dead-code-not-a-lifecycle-notice
+  - id: atomic-channel-publication
+    control_class: enforced-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_publish_atomically_creates_edge_stable_and_version_pin_refs
+    motivating_defect: publishing-main-stable-and-the-pin-separately-can-leave-users-on-three-different-releases-after-one-failed-push
+  - id: release-manager-doc-contract
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_manager_documents_channel_ref_contract
+    motivating_defect: maintainers-need-the-same-channel-boundary-the-publisher-enforces-or-a-later-release-can-regress-to-main-only
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates

@@ -4,6 +4,25 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.74.0] - 2026-09-01
+
+**`synthesis-onboarding` v1.3.0 — plugin upgrades now have a lifecycle instead
+of a floating default.** Stable is the default release-gated channel, edge is
+an explicit opt-in to `main`, and organization manifests can set an exact
+`version_pin` backed by an immutable release tag. The engine configures both
+native marketplaces to the selected Git ref and records the effective policy
+in its receipt.
+
+SessionStart now compares the executing plugin-cache manifest with the selected
+release target and surfaces an update or policy-mismatch notice. The onboarding
+doctor performs the same comparison, distinguishes behind from ahead, and
+returns unverifiable rather than green when it cannot establish current release
+state. Release discovery uses a bounded cache; stale evidence stays labeled.
+
+The gated publisher now advances `main`, `stable`, and `vX.Y.Z` from the exact
+acceptance-bound commit in one atomic push per remote. The one-command bootstrap
+follows stable by default and maps the explicit edge channel to `main`.
+
 ## [4.73.0] - 2026-08-31
 
 **`synthesis-context-lifecycle` doctor v1.8.1 — a cited directory of scripts is

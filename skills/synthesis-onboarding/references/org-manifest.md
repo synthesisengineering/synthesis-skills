@@ -20,6 +20,8 @@ org:
 ecosystem:
   plugin: true                 # install the public synthesis-skills plugin
   clients: [claude, codex]     # attempted only where the client is present
+  channel: stable              # stable (default) or edge
+  version_pin: "4.74.0"        # optional exact org pin; overrides channel
 
 skills_repos:                  # org shared skills (optional)
   - name: example-shared-skills
@@ -72,7 +74,7 @@ workspace_instructions: true   # generate ~/workspaces/<workspace>/AGENTS.md
 |-----|----------|---------|
 | `version` | yes | Manifest schema version; currently `1`. Unknown keys anywhere are hard errors — the engine fails closed rather than guessing. |
 | `org.id`, `org.workspace` | yes | Slug and workspace directory name. `org.name` optional display name. |
-| `ecosystem` | no | `plugin` (default true) and `clients` list. |
+| `ecosystem` | no | `plugin` (default true), `clients` list, `channel` (`stable` default or `edge`), and optional exact `version_pin` (`X.Y.Z`). A pin overrides the channel and resolves to the immutable `vX.Y.Z` release tag. |
 | `skills_repos[]` | no | `name` + `primary` required. `installer` is invoked as `sh <installer> install <installer_args...>` from the engine's cache clone; `source_env` names the env var your installer honors to skip its own network fetch; `status_args` enables `doctor` verification. |
 | `knowledge_bases[]` | no | `name` + `primary` required. `superseded_remotes` powers remote migrations (e.g., moving from a personal mirror to the canonical host). `local_hooks` wires `.githooks` on machines without a global hooks engine. |
 | `auth_help` | no | Printed verbatim when a repo is unreachable — write it for a non-engineer, with the exact clicks. |
@@ -95,11 +97,11 @@ if ! command -v git >/dev/null 2>&1; then
   echo "git is required. On macOS run:  xcode-select --install  (then re-run)"; exit 2
 fi
 if [ -e "$SRC/.git" ]; then
-  git -C "$SRC" pull --ff-only || {
+  git -C "$SRC" fetch origin stable && git -C "$SRC" checkout --detach FETCH_HEAD || {
     [ "${SYNTHESIS_ONBOARD_ALLOW_STALE:-}" = "1" ] || {
       echo "Could not refresh $SRC and refusing to run stale."; exit 1; }; }
 else
-  git clone https://github.com/synthesisengineering/synthesis-skills.git "$SRC"
+  git clone --branch stable --single-branch https://github.com/synthesisengineering/synthesis-skills.git "$SRC"
 fi
 CMD="install"
 case "${1:-}" in
