@@ -39,6 +39,7 @@ Exit codes: 0 released/verified, 1 a step failed, 2 preconditions unverifiable.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import io
 import json
@@ -86,6 +87,7 @@ ACCEPTANCE_CONSUMER_ID = (
     "synthesis-skills-manager.release.consume-acceptance.v1"
 )
 RELEASE_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+HOOK_PLUGIN_PATH_RE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\s\"']+)")
 CODEX_CACHE_ARCHIVE_BUDGET_BYTES = 512 * 1024 * 1024
 CODEX_CACHE_QUIET_SECONDS = 10.0
 CODEX_CACHE_SETTLE_TIMEOUT_SECONDS = 60.0
@@ -518,6 +520,32 @@ def codex_cache_archive() -> Path:
     )
 
 
+def _acquire_codex_cache_lock():
+    """Acquire the single-writer lock for the Codex cache transition."""
+    lock_path = codex_cache_archive().parent / f".{PLUGIN_NAME}.release.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_RDWR | os.O_CREAT
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(lock_path, flags, 0o600)
+    handle = os.fdopen(descriptor, "a+")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (BlockingIOError, OSError):
+        handle.close()
+        raise OSError(
+            "another release process owns the Codex cache transition lock"
+        ) from None
+    return handle
+
+
+def _release_codex_cache_lock(handle) -> None:
+    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    handle.close()
+
+
 def _version_key(version: str) -> tuple[int, int, int]:
     return tuple(int(part) for part in version.split("."))  # type: ignore[return-value]
 
@@ -607,6 +635,8 @@ def _copy_cache_extras(source: Path, destination: Path, tracked: set[str]) -> No
         relative = path.relative_to(source)
         relative_text = relative.as_posix()
         target = destination / relative
+        if relative.parts and relative.parts[0] in {".git", ".in_use"}:
+            continue
         if relative_text in tracked:
             continue
         if path.is_symlink():
@@ -622,6 +652,46 @@ def _copy_cache_extras(source: Path, destination: Path, tracked: set[str]) -> No
         elif path.is_file():
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, target)
+
+
+def _cache_root_completeness(root: Path, version: str) -> tuple[bool, str]:
+    """Validate an untagged peer/archive root before trusting it as recovery source."""
+    if not root.is_dir() or root.is_symlink():
+        return False, "root is absent, not a directory, or a symlink"
+    manifest_versions = {
+        read_manifest_version(root / manifest)
+        for manifest in MANIFESTS
+        if (root / manifest).is_file()
+    }
+    if version not in manifest_versions:
+        return False, f"no plugin manifest reports {version}"
+    hooks = root / "hooks" / "hooks.json"
+    if not hooks.is_file():
+        return False, "hooks/hooks.json is missing"
+    try:
+        hook_text = hooks.read_text(encoding="utf-8")
+        json.loads(hook_text)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return False, f"hooks/hooks.json is unreadable: {exc}"
+    hook_targets = sorted(set(HOOK_PLUGIN_PATH_RE.findall(hook_text)))
+    if not hook_targets:
+        return False, "hooks/hooks.json declares no plugin-root command target"
+    missing_targets = [target for target in hook_targets if not (root / target).is_file()]
+    if missing_targets:
+        return False, f"missing hook target(s): {', '.join(missing_targets[:3])}"
+    if not any(root.glob("skills/*/SKILL.md")):
+        return False, "no skill entry point is present"
+    return True, f"{len(hook_targets)} hook target(s) and skill tree present"
+
+
+def _copy_legacy_cache_root(source: Path, destination: Path) -> None:
+    """Copy a complete pre-tag cache tree without client liveness markers."""
+    shutil.copytree(
+        source,
+        destination,
+        symlinks=True,
+        ignore=shutil.ignore_patterns(".git", ".in_use"),
+    )
 
 
 def _tree_bytes(root: Path) -> int:
@@ -658,8 +728,9 @@ def snapshot_codex_caches(
     backup = Path(tempfile.mkdtemp(prefix="synthesis-codex-cache-"))
     try:
         cache_roots = _real_version_roots(parent)
+        peer_roots = _real_version_roots(plugin_cache_parent("claude"))
         archive_roots = _real_version_roots(archive) if archive is not None else {}
-        boundary_versions = set(cache_roots) | set(archive_roots)
+        boundary_versions = set(cache_roots) | set(peer_roots) | set(archive_roots)
         preserved_versions = set(boundary_versions)
         seed_versions = set(boundary_versions)
         tags: list[str] = []
@@ -692,7 +763,29 @@ def snapshot_codex_caches(
                 shutil.copytree(source, destination, symlinks=True)
                 continue
             if version not in tags:
-                raise OSError(f"immutable tag v{version} is unavailable")
+                candidates = [
+                    ("recovery archive", archive_roots.get(version)),
+                    ("Claude cache", peer_roots.get(version)),
+                    ("Codex cache", cache_roots.get(version)),
+                ]
+                rejected: list[str] = []
+                for label, source in candidates:
+                    if source is None:
+                        continue
+                    complete, completeness_detail = _cache_root_completeness(
+                        source, version
+                    )
+                    if complete:
+                        _copy_legacy_cache_root(source, destination)
+                        break
+                    rejected.append(f"{label}: {completeness_detail}")
+                else:
+                    detail = "; ".join(rejected) or "no peer or archive root exists"
+                    raise OSError(
+                        f"immutable tag v{version} is unavailable and no complete "
+                        f"legacy recovery root was found ({detail})"
+                    )
+                continue
             tracked = _export_release_tag(
                 repo,
                 version,
@@ -701,6 +794,8 @@ def snapshot_codex_caches(
             )
             if version in archive_roots:
                 _copy_cache_extras(archive_roots[version], destination, tracked)
+            if version in peer_roots:
+                _copy_cache_extras(peer_roots[version], destination, tracked)
             if version in cache_roots:
                 _copy_cache_extras(cache_roots[version], destination, tracked)
 
@@ -719,7 +814,7 @@ def snapshot_codex_caches(
             result.add(
                 "install.codex.cache-archive",
                 True,
-                f"verified {len(seed_versions)} immutable recovery root(s)",
+                f"verified {len(seed_versions)} complete recovery root(s)",
             )
     except (OSError, subprocess.SubprocessError, tarfile.TarError) as exc:
         result.add(
@@ -930,29 +1025,40 @@ def refresh_client(
             [binary, "plugin", "marketplace", "upgrade", MARKETPLACE],
             [binary, "plugin", "add", f"{PLUGIN_NAME}@{MARKETPLACE}"],
         ]
-    cache_snapshot = None
-    if client == "codex" and not dry_run:
-        cache_snapshot = snapshot_codex_caches(result, repo=repo)
-        if cache_snapshot is None:
-            return False
+    cache_lock = None
+    if client == "codex" and not dry_run and repo is not None:
+        try:
+            cache_lock = _acquire_codex_cache_lock()
+        except OSError as exc:
+            return result.add("install.codex.cache-lock", False, str(exc))
+        result.add("install.codex.cache-lock", True, "single writer acquired")
+    try:
+        cache_snapshot = None
+        if client == "codex" and not dry_run:
+            cache_snapshot = snapshot_codex_caches(result, repo=repo)
+            if cache_snapshot is None:
+                return False
 
-    commands_ok = True
-    for command in commands:
-        label = f"install.{client}.{command[2] if len(command) > 2 else 'run'}"
-        if dry_run:
-            result.add(label, True, "dry-run: " + " ".join(command[1:]))
-            continue
-        completed = run(command, timeout=600)
-        if completed.returncode != 0:
-            tail = (completed.stderr or completed.stdout).strip().splitlines()
-            result.add(label, False, tail[-1] if tail else "command failed")
-            commands_ok = False
-            break
-        result.add(label, True, " ".join(command[1:]))
-    caches_ok = True
-    if cache_snapshot is not None:
-        caches_ok = restore_codex_caches(cache_snapshot, result)
-    return commands_ok and caches_ok
+        commands_ok = True
+        for command in commands:
+            label = f"install.{client}.{command[2] if len(command) > 2 else 'run'}"
+            if dry_run:
+                result.add(label, True, "dry-run: " + " ".join(command[1:]))
+                continue
+            completed = run(command, timeout=600)
+            if completed.returncode != 0:
+                tail = (completed.stderr or completed.stdout).strip().splitlines()
+                result.add(label, False, tail[-1] if tail else "command failed")
+                commands_ok = False
+                break
+            result.add(label, True, " ".join(command[1:]))
+        caches_ok = True
+        if cache_snapshot is not None:
+            caches_ok = restore_codex_caches(cache_snapshot, result)
+        return commands_ok and caches_ok
+    finally:
+        if cache_lock is not None:
+            _release_codex_cache_lock(cache_lock)
 
 
 def preflight(repo: Path, result: Result, install_only: bool) -> str | None:

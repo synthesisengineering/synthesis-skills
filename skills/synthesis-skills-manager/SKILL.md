@@ -287,17 +287,20 @@ The sequence, each stage gating the next:
   requires. For Codex that means `plugin marketplace upgrade` **before**
   `plugin add`, because Codex installs *from* its git marketplace snapshot —
   skipping the upgrade installs the previous release while appearing to
-  succeed. Before that destructive Codex refresh, the publisher snapshots each
-  real versioned cache root into a durable recovery archive, reconstructs all
-  tracked bytes from immutable release tags, and retains client-only metadata.
-  It restores missing roots, repairs partial ones, and repeats the check until
-  the tree has remained unchanged for ten seconds after the client command
-  returned. An already-running task therefore keeps the complete skill and
-  hook tree its SessionStart loaded, not merely whichever files happened to
-  survive the last transition. The archive has a 512 MiB hard budget and never
-  deletes a historical root automatically when that budget is reached;
-  unverifiable cleanup fails the release closed. Symlink recovery artifacts are
-  not preserved.
+  succeed. Before that destructive Codex refresh, the publisher snapshots every
+  real versioned cache root retained by either client into a durable recovery archive.
+  Immutable release tags supply authoritative tracked bytes. For releases that
+  predate immutable tags, a peer-client or prior archive root is accepted only
+  after its manifests, complete hook target set, and skill tree validate. The
+  publisher holds a single-writer transition lock, restores missing Codex roots,
+  repairs partial ones, and repeats the check until the tree has remained
+  unchanged for ten seconds after the client command returned. An already-running
+  task therefore keeps the complete skill and hook tree its SessionStart loaded
+  even when Codex had already removed that version before this release began.
+  The archive has a 512 MiB hard budget and never deletes a historical root
+  automatically when that budget is reached; unverifiable cleanup fails the
+  release closed. Symlink recovery artifacts and client liveness markers are not
+  preserved.
 - **Verify** is the point of the whole script, and it checks each client
   **twice**: what the CLI reports, and the plugin manifest at the path the CLI
   says it loads. Agreement of both with the source version is the only pass.
