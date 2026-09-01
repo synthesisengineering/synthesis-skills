@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import re
@@ -47,9 +48,11 @@ import secrets
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
+import time
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR.parents[1] / "synthesis-agent-conformance" / "scripts"))
@@ -83,6 +86,10 @@ ACCEPTANCE_CONSUMER_ID = (
     "synthesis-skills-manager.release.consume-acceptance.v1"
 )
 RELEASE_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+CODEX_CACHE_ARCHIVE_BUDGET_BYTES = 512 * 1024 * 1024
+CODEX_CACHE_QUIET_SECONDS = 10.0
+CODEX_CACHE_SETTLE_TIMEOUT_SECONDS = 60.0
+CODEX_CACHE_POLL_SECONDS = 0.1
 
 # The required checks, mirroring the repository's own verification contract.
 # Kept as data so a reader can see exactly what a release runs.
@@ -135,6 +142,15 @@ class AcceptanceAuthority:
     change_base: str
     expected: dict[str, object]
     receipt: dict[str, object]
+
+
+@dataclass(frozen=True)
+class CodexCacheSnapshot:
+    """Complete recovery trees retained across Codex's cache transition."""
+
+    backup: Path
+    versions: tuple[str, ...]
+    archive: Path | None = None
 
 
 def run(cmd: list[str], cwd: Path | None = None, timeout: int = 900) -> subprocess.CompletedProcess:
@@ -491,43 +507,234 @@ def _tree_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
-def snapshot_codex_caches(result: Result) -> tuple[Path, list[str]] | None:
-    """Copy real version roots before Codex's destructive plugin refresh.
+def codex_cache_archive() -> Path:
+    """Durable recovery source for cache roots retained by running tasks."""
+    return (
+        Path.home()
+        / ".synthesis"
+        / "plugin-cache-recovery"
+        / MARKETPLACE
+        / PLUGIN_NAME
+    )
 
-    A running Codex task retains the absolute plugin root from its SessionStart
-    hook definition. Codex's plugin add currently replaces the cache and removes
-    that root, which strands the task's later Stop hook. Claude already retains
-    historical roots. The release publisher therefore preserves every real
-    Codex version directory that exists at the transition boundary. Symlinks are
-    deliberately excluded: they are recovery artifacts, not installed versions.
+
+def _version_key(version: str) -> tuple[int, int, int]:
+    return tuple(int(part) for part in version.split("."))  # type: ignore[return-value]
+
+
+def _real_version_roots(parent: Path) -> dict[str, Path]:
+    if not parent.is_dir():
+        return {}
+    return {
+        source.name: source
+        for source in sorted(parent.iterdir(), key=lambda path: path.name)
+        if not source.is_symlink()
+        and source.is_dir()
+        and RELEASE_VERSION_RE.fullmatch(source.name) is not None
+    }
+
+
+def _release_tags(repo: Path) -> list[str]:
+    completed = run(["git", "tag", "--list", "v*"], cwd=repo)
+    if completed.returncode != 0:
+        raise OSError(completed.stderr.strip() or "could not list release tags")
+    return sorted(
+        {
+            tag[1:]
+            for tag in completed.stdout.splitlines()
+            if tag.startswith("v") and RELEASE_VERSION_RE.fullmatch(tag[1:])
+        },
+        key=_version_key,
+    )
+
+
+def _export_release_tag(
+    repo: Path,
+    version: str,
+    destination: Path,
+    *,
+    current_version: str,
+) -> set[str]:
+    """Export one immutable release tree without trusting tar member paths."""
+    reference = "HEAD" if version == current_version else f"v{version}"
+    completed = subprocess.run(
+        ["git", "archive", "--format=tar", reference],
+        cwd=str(repo),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=120,
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", errors="replace").strip()
+        raise OSError(detail or f"could not export v{version}")
+    tracked: set[str] = set()
+    destination.mkdir(parents=True, exist_ok=False)
+    with tarfile.open(fileobj=io.BytesIO(completed.stdout), mode="r:") as archive:
+        for member in archive.getmembers():
+            relative = PurePosixPath(member.name)
+            if relative.is_absolute() or ".." in relative.parts:
+                raise OSError(f"unsafe path in v{version}: {member.name}")
+            target = destination.joinpath(*relative.parts)
+            if member.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+                target.chmod(member.mode & 0o777)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if member.isfile():
+                source = archive.extractfile(member)
+                if source is None:
+                    raise OSError(f"unreadable file in v{version}: {member.name}")
+                target.write_bytes(source.read())
+                target.chmod(member.mode & 0o777)
+            elif member.issym():
+                link = PurePosixPath(member.linkname)
+                if link.is_absolute() or ".." in link.parts:
+                    raise OSError(
+                        f"unsafe symlink in v{version}: {member.name} -> {member.linkname}"
+                    )
+                target.symlink_to(member.linkname)
+            else:
+                raise OSError(f"unsupported archive entry in v{version}: {member.name}")
+            tracked.add(relative.as_posix())
+    return tracked
+
+
+def _copy_cache_extras(source: Path, destination: Path, tracked: set[str]) -> None:
+    """Retain client metadata while immutable tag bytes win every collision."""
+    if not source.is_dir() or source.is_symlink():
+        return
+    for path in sorted(source.rglob("*"), key=lambda item: str(item.relative_to(source))):
+        relative = path.relative_to(source)
+        relative_text = relative.as_posix()
+        target = destination / relative
+        if relative_text in tracked:
+            continue
+        if path.is_symlink():
+            link = PurePosixPath(os.readlink(path))
+            if link.is_absolute() or ".." in link.parts:
+                raise OSError(f"unsafe cache symlink: {path}")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target.exists() or target.is_symlink():
+                target.unlink()
+            target.symlink_to(os.readlink(path))
+        elif path.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+        elif path.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+
+
+def _tree_bytes(root: Path) -> int:
+    return sum(path.stat().st_size for path in root.rglob("*") if path.is_file())
+
+
+def _persist_codex_archive(
+    backup: Path, versions: list[str], archive: Path
+) -> None:
+    archive.mkdir(parents=True, exist_ok=True)
+    for version in versions:
+        source = backup / version
+        destination = archive / version
+        if destination.is_symlink():
+            raise OSError(f"recovery archive root is a symlink: {destination}")
+        shutil.copytree(source, destination, dirs_exist_ok=True, symlinks=True)
+        if _tree_digest(source) != _tree_digest(destination):
+            raise OSError(f"recovery archive differs after write: {destination}")
+
+
+def snapshot_codex_caches(
+    result: Result, repo: Path | None = None
+) -> CodexCacheSnapshot | None:
+    """Build complete tag-backed snapshots before Codex's destructive refresh.
+
+    Existing cache roots alone are not proof of completeness: a prior refresh
+    can leave only the one file a stranded Stop hook needed. When a source
+    checkout is supplied, immutable release tags provide every tracked byte;
+    cache-only metadata is layered on top. A durable, budgeted archive lets a
+    later release recover roots that a previous client transition removed.
     """
     parent = plugin_cache_parent("codex")
+    archive = codex_cache_archive() if repo is not None else None
     backup = Path(tempfile.mkdtemp(prefix="synthesis-codex-cache-"))
-    versions = []
     try:
-        if parent.is_dir():
-            for source in sorted(parent.iterdir(), key=lambda path: path.name):
-                if (
-                    source.is_symlink()
-                    or not source.is_dir()
-                    or RELEASE_VERSION_RE.fullmatch(source.name) is None
-                ):
-                    continue
-                shutil.copytree(source, backup / source.name, symlinks=True)
-                versions.append(source.name)
-    except OSError as exc:
+        cache_roots = _real_version_roots(parent)
+        archive_roots = _real_version_roots(archive) if archive is not None else {}
+        boundary_versions = set(cache_roots) | set(archive_roots)
+        preserved_versions = set(boundary_versions)
+        seed_versions = set(boundary_versions)
+        tags: list[str] = []
+        current_version: str | None = None
+        if repo is not None:
+            tags = _release_tags(repo)
+            current_version, detail = source_version(repo)
+            if current_version is None:
+                raise OSError(detail)
+            if current_version not in tags:
+                tags.append(current_version)
+                tags.sort(key=_version_key)
+            if boundary_versions:
+                low = min(boundary_versions, key=_version_key)
+                high = max(boundary_versions, key=_version_key)
+                preserved_versions.update(
+                    version
+                    for version in tags
+                    if _version_key(low) <= _version_key(version) <= _version_key(high)
+                )
+            seed_versions.update(preserved_versions)
+            seed_versions.add(current_version)
+
+        for version in sorted(seed_versions, key=_version_key):
+            destination = backup / version
+            if repo is None:
+                source = cache_roots.get(version) or archive_roots.get(version)
+                if source is None:
+                    raise OSError(f"no recovery source for cache version {version}")
+                shutil.copytree(source, destination, symlinks=True)
+                continue
+            if version not in tags:
+                raise OSError(f"immutable tag v{version} is unavailable")
+            tracked = _export_release_tag(
+                repo,
+                version,
+                destination,
+                current_version=current_version or "",
+            )
+            if version in archive_roots:
+                _copy_cache_extras(archive_roots[version], destination, tracked)
+            if version in cache_roots:
+                _copy_cache_extras(cache_roots[version], destination, tracked)
+
+        if archive is not None:
+            projected_bytes = _tree_bytes(backup)
+            if projected_bytes > CODEX_CACHE_ARCHIVE_BUDGET_BYTES:
+                raise OSError(
+                    "recovery archive would exceed the 512 MiB hard budget; "
+                    "no historical root was deleted automatically"
+                )
+            _persist_codex_archive(
+                backup, sorted(seed_versions, key=_version_key), archive
+            )
+            if _tree_bytes(archive) > CODEX_CACHE_ARCHIVE_BUDGET_BYTES:
+                raise OSError("recovery archive exceeds the 512 MiB hard budget")
+            result.add(
+                "install.codex.cache-archive",
+                True,
+                f"verified {len(seed_versions)} immutable recovery root(s)",
+            )
+    except (OSError, subprocess.SubprocessError, tarfile.TarError) as exc:
         result.add(
             "install.codex.cache-snapshot",
             False,
-            f"could not preserve active-session cache roots; recovery copy kept at {backup}: {exc}",
+            f"could not preserve complete active-session cache roots; recovery copy kept at {backup}: {exc}",
         )
         return None
+    versions = tuple(sorted(preserved_versions, key=_version_key))
     result.add(
         "install.codex.cache-snapshot",
         True,
-        f"preserved {len(versions)} real version root(s) before refresh",
+        f"preserved {len(versions)} complete version root(s) before refresh",
     )
-    return backup, versions
+    return CodexCacheSnapshot(backup=backup, versions=versions, archive=archive)
 
 
 def _remove_transition_backup(backup: Path) -> None:
@@ -543,37 +750,72 @@ def _remove_transition_backup(backup: Path) -> None:
     shutil.rmtree(resolved)
 
 
-def restore_codex_caches(
-    backup: Path, versions: list[str], result: Result
-) -> bool:
-    """Restore missing version roots and prove every preserved tree is exact."""
+def _restore_codex_caches_once(
+    snapshot: CodexCacheSnapshot,
+) -> tuple[set[str], set[str]]:
+    """Restore or repair one observed generation of the cache tree."""
     parent = plugin_cache_parent("codex")
-    restored = []
+    restored: set[str] = set()
+    repaired: set[str] = set()
+    parent.mkdir(parents=True, exist_ok=True)
+    for version in snapshot.versions:
+        source = snapshot.backup / version
+        destination = parent / version
+        if destination.is_symlink():
+            raise OSError(f"version root became a symlink: {destination}")
+        if not destination.exists():
+            shutil.copytree(source, destination, symlinks=True)
+            restored.add(version)
+        elif not destination.is_dir():
+            raise OSError(f"version root is not a directory: {destination}")
+        elif _tree_digest(source) != _tree_digest(destination):
+            shutil.copytree(source, destination, dirs_exist_ok=True, symlinks=True)
+            repaired.add(version)
+        if _tree_digest(source) != _tree_digest(destination):
+            raise OSError(f"version root changed during refresh: {destination}")
+    return restored, repaired
+
+
+def restore_codex_caches(
+    snapshot: CodexCacheSnapshot,
+    result: Result,
+    *,
+    clock=time.monotonic,
+    sleeper=time.sleep,
+) -> bool:
+    """Restore complete roots and require a quiet post-command cache window."""
+    restored: set[str] = set()
+    repaired: set[str] = set()
+    started = clock()
+    quiet_since = started
     try:
-        parent.mkdir(parents=True, exist_ok=True)
-        for version in versions:
-            source = backup / version
-            destination = parent / version
-            if destination.is_symlink():
-                raise OSError(f"version root became a symlink: {destination}")
-            if not destination.exists():
-                shutil.copytree(source, destination, symlinks=True)
-                restored.append(version)
-            if not destination.is_dir():
-                raise OSError(f"version root is not a directory: {destination}")
-            if _tree_digest(source) != _tree_digest(destination):
-                raise OSError(f"version root changed during refresh: {destination}")
-        _remove_transition_backup(backup)
+        while True:
+            new_restored, new_repaired = _restore_codex_caches_once(snapshot)
+            now = clock()
+            if new_restored or new_repaired:
+                restored.update(new_restored)
+                repaired.update(new_repaired)
+                quiet_since = now
+            if now - quiet_since >= CODEX_CACHE_QUIET_SECONDS:
+                _remove_transition_backup(snapshot.backup)
+                break
+            if now - started >= CODEX_CACHE_SETTLE_TIMEOUT_SECONDS:
+                raise OSError(
+                    "Codex cache did not remain unchanged for the required quiet window"
+                )
+            sleeper(CODEX_CACHE_POLL_SECONDS)
     except OSError as exc:
         return result.add(
             "install.codex.cache-restore",
             False,
-            f"active-session cache preservation failed; recovery copy kept at {backup}: {exc}",
+            f"active-session cache preservation failed; recovery copy kept at {snapshot.backup}: {exc}",
         )
     return result.add(
         "install.codex.cache-restore",
         True,
-        f"verified {len(versions)} preserved root(s); restored {len(restored)}",
+        f"verified {len(snapshot.versions)} complete root(s) after a "
+        f"{CODEX_CACHE_QUIET_SECONDS:g}s quiet window; restored {len(restored)}, "
+        f"repaired {len(repaired)}",
     )
 
 
@@ -668,7 +910,9 @@ def deep_verify(client: str, expected: str, result: Result,
     return ok_reported and ok_disk and ok_content
 
 
-def refresh_client(client: str, result: Result, dry_run: bool) -> bool:
+def refresh_client(
+    client: str, result: Result, dry_run: bool, repo: Path | None = None
+) -> bool:
     """Refresh one client's marketplace snapshot and installed plugin."""
     binary = resolve_client_binary(client)
     if not binary:
@@ -688,7 +932,7 @@ def refresh_client(client: str, result: Result, dry_run: bool) -> bool:
         ]
     cache_snapshot = None
     if client == "codex" and not dry_run:
-        cache_snapshot = snapshot_codex_caches(result)
+        cache_snapshot = snapshot_codex_caches(result, repo=repo)
         if cache_snapshot is None:
             return False
 
@@ -707,7 +951,7 @@ def refresh_client(client: str, result: Result, dry_run: bool) -> bool:
         result.add(label, True, " ".join(command[1:]))
     caches_ok = True
     if cache_snapshot is not None:
-        caches_ok = restore_codex_caches(*cache_snapshot, result)
+        caches_ok = restore_codex_caches(cache_snapshot, result)
     return commands_ok and caches_ok
 
 
@@ -866,7 +1110,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     for client in ("claude", "codex"):
-        refresh_client(client, result, args.dry_run)
+        refresh_client(client, result, args.dry_run, repo=repo)
 
     if args.dry_run:
         print(f"\nDRY RUN complete for {version}. No state changed.")
