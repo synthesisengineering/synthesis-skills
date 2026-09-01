@@ -5,17 +5,20 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.3.0"
+  version: "2.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
 
-**Version 2.3.0** (2026-09-01) makes the whole-system onboarding suite and
-its scaffold/component catalog audit required release checks. A release cannot
-publish an onboarding change that passed repository CI but was omitted from the
-publisher's own transaction.
+**Version 2.4.0** (2026-09-01) makes Codex cache survival source-backed and
+post-command verified. Every version retained by either client is preserved.
+Immutable release tags supply authoritative tracked bytes; complete peer roots
+cover releases that predate tags. The budgeted archive repairs missing or
+partial Codex roots and verifies them through a bounded quiet window after the
+client command returns. The whole-system onboarding suite and its
+scaffold/component catalog audit remain required release checks.
 
 Manage synthesis skills across a three-repo architecture. Skills are executable
 methodology. Public skills are also packaged as a native plugin for clients that
@@ -285,10 +288,22 @@ The sequence, each stage gating the next:
   requires. For Codex that means `plugin marketplace upgrade` **before**
   `plugin add`, because Codex installs *from* its git marketplace snapshot —
   skipping the upgrade installs the previous release while appearing to
-  succeed. Before that destructive Codex refresh, the publisher snapshots
-  every real versioned cache root and afterwards restores and byte-verifies
-  any root the client removed. An already-running task keeps the exact hook
-  code its SessionStart loaded. Symlink recovery artifacts are not preserved.
+  succeed. Before that destructive Codex refresh, the publisher snapshots every
+  real versioned cache root retained by either client into a durable recovery archive.
+  Immutable release tags supply authoritative tracked bytes. For releases that
+  predate immutable tags, a peer-client or prior archive root is accepted only
+  after its manifests, complete hook target set, and skill tree validate. Known
+  Codex installation metadata is retained; arbitrary untracked cache files are
+  not promoted into recovery state. The
+  publisher holds a single-writer transition lock, restores missing Codex roots,
+  repairs partial ones, and repeats the check until the tree has remained
+  unchanged for ten seconds after the client command returned. An already-running
+  task therefore keeps the complete skill and hook tree its SessionStart loaded
+  even when Codex had already removed that version before this release began.
+  The archive has a 512 MiB hard budget and never deletes a historical root
+  automatically when that budget is reached; unverifiable cleanup fails the
+  release closed. Symlink recovery artifacts and client liveness markers are not
+  preserved.
 - **Verify** is the point of the whole script, and it checks each client
   **twice**: what the CLI reports, and the plugin manifest at the path the CLI
   says it loads. Agreement of both with the source version is the only pass.

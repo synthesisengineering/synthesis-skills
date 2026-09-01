@@ -11,20 +11,20 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Codex refreshes preserve running tasks (September 2026).** Release
+**4.76.3** reconstructs every historical plugin root retained by either
+supported client before a Codex refresh. Tagged source is authoritative;
+pre-tag roots must prove complete manifests, hooks, targets, skills, and safe
+links. A single-writer transition lock, bounded recovery archive, partial-root
+repair, and post-command quiet-window verification keep already-running tasks'
+absolute hook paths valid. See the [4.76.3 release notes](CHANGELOG.md).
+
 **A rule about document budgets now enforces itself (September 2026).**
 Release **4.76.2** restructures the project-management skill back under the
 repository's 500-line SKILL.md rule — every operating rule stays in the main
 document; formats, rationale, and mechanics moved to `references/` — and
 pins the budget with a test so regrowth fails CI instead of accumulating.
 See the [4.76.2 release notes](CHANGELOG.md).
-
-**An empty home no longer stops at Git identity (September 2026).** Release
-**4.76.1** makes guided whole-system onboarding collect the personal
-repository's author name and email before mutation when Git has no configured
-identity. Non-interactive runs accept `git_name` and `git_email`; both paths
-configure only the new repository and complete its initial commit. A rerun also
-repairs the half-finished repository produced by 4.76.0. See the [4.76.1
-release notes](CHANGELOG.md).
 
 **An empty home no longer stops at Git identity (September 2026).** Release
 **4.76.1** makes guided whole-system onboarding collect the personal

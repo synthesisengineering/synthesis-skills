@@ -1,63 +1,63 @@
-# AGENT HEURISTIC: authored for the 4.76.2 skill-document-budget release.
+# AGENT HEURISTIC: authored for the 4.76.3 Codex cache-survival release.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: pm-skill-document-budget
+suite: codex-cache-post-refresh-survival
 membership: closed
-production_entry_point: skills/synthesis-project-management/SKILL.md
-enforcing_boundary: repository 500-line SKILL.md budget with pinned load-bearing rules and reference linkage
+production_entry_point: skills/synthesis-skills-manager/scripts/release.py
+enforcing_boundary: single-writer snapshot, refresh, repair, and post-command verification before gated release completion
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: hermetic tests prove the line budget, the survival of load-bearing rules in the main document, the presence of every moved block in its reference, no orphaned references, the peer-resolution doc contract across public surfaces, version-neutral release fixtures, and manifest/changelog parity; whether the restructured summary reads well to a human, and how in-context agent behavior shifts with the shorter document, remain editorial judgments outside the suite
+unverified_remainder: hermetic cases and a read-only real-cache probe prove reconstruction and failure behavior before publication; the state-changing client refresh, both installed-tree comparisons, and delayed live-root survival are verified by release.py only after the accepted commit is published
 changed_surfaces:
-  - path: skills/synthesis-project-management/SKILL.md
-    cases: [skill-doc-budget, peer-doc-contract]
-  - path: skills/synthesis-project-management/references/parallel-agent-protocol.md
-    cases: [skill-doc-budget, peer-doc-contract]
-  - path: skills/synthesis-project-management/references/records-and-conventions.md
-    cases: [skill-doc-budget]
-  - path: skills/synthesis-project-management/references/codex-dispatch.md
-    cases: [skill-doc-budget]
-  - path: skills/synthesis-project-management/scripts/test_coordination.py
-    cases: [skill-doc-budget]
-  - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
-    cases: [shipped-manifest-self-consumption]
-  - path: skills/synthesis-onboarding/scripts/test_onboard.py
-    cases: [onboarding-fixture-version-neutrality]
-  - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [release-contract-version-neutrality]
   - path: .claude-plugin/plugin.json
     cases: [release-manifest-parity]
   - path: .codex-plugin/plugin.json
     cases: [release-manifest-parity]
   - path: CHANGELOG.md
-    cases: [release-changelog-parity, peer-doc-contract]
+    cases: [release-changelog-parity, public-contract]
   - path: README.md
-    cases: [peer-doc-contract]
+    cases: [public-contract]
+  - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
+    cases: [shipped-manifest-self-consumption]
+  - path: skills/synthesis-skills-manager/SKILL.md
+    cases: [public-contract]
+  - path: skills/synthesis-skills-manager/scripts/release.py
+    cases: [tag-backed-repair, pre-tag-peer-recovery, post-command-deletion, single-writer-transition, unsafe-symlink-refusal, unknown-extra-refusal, archive-budget-refusal]
+  - path: skills/synthesis-skills-manager/scripts/test_release.py
+    cases: [tag-backed-repair, pre-tag-peer-recovery, post-command-deletion, single-writer-transition, unsafe-symlink-refusal, unknown-extra-refusal, archive-budget-refusal, release-manifest-parity, release-changelog-parity, public-contract]
 cases:
-  - id: skill-doc-budget
+  - id: tag-backed-repair
     control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_skill_document_stays_within_repo_budget
-    motivating_defect: a-length-rule-nobody-measures-drifted-160-lines-past-its-budget-while-every-release-stayed-green
-  - id: peer-doc-contract
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_tag_backed_snapshot_repairs_partial_and_missing_historical_roots
+    motivating_defect: a-version-directory-can-exist-with-only-one-recreated-hook-file-while-the-rest-of-its-tagged-tree-is-missing
+  - id: pre-tag-peer-recovery
+    control_class: enforced-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_snapshot_imports_complete_untagged_peer_root_missing_from_codex
+    motivating_defect: an-active-task-can-reference-a-version-that-codex-already-removed-and-that-predates-immutable-release-tags
+  - id: post-command-deletion
+    control_class: enforced-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_restore_repeats_after_post_command_cache_deletion
+    motivating_defect: an-immediate-restore-receipt-can-pass-before-the-client-finishes-reconciling-and-removes-the-root-again
+  - id: single-writer-transition
+    control_class: enforced-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_cache_transition_lock_refuses_a_second_writer
+    motivating_defect: two-release-processes-mutating-the-same-cache-and-recovery-archive-can-invalidate-each-others-verification
+  - id: unsafe-symlink-refusal
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_peer_resolution_documented_on_public_surfaces
-    motivating_defect: a-restructure-that-moves-prose-can-silently-drop-the-documentation-contract-a-prior-release-pinned
-  - id: onboarding-fixture-version-neutrality
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_untagged_peer_root_rejects_unsafe_symlink
+    motivating_defect: a-peer-root-with-an-escaping-symlink-must-not-be-promoted-into-durable-recovery-state
+  - id: unknown-extra-refusal
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_full_init_converges_every_layer_and_reruns_cleanly
-    motivating_defect: a-fixture-pinned-to-the-shipping-release-version-was-hand-repinned-in-two-consecutive-releases
-  - id: release-contract-version-neutrality
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_whole_system_onboarding_release_contract_is_public_and_coherent
-    motivating_defect: a-release-contract-test-asserting-the-shipping-version-literal-fails-every-future-version-bump
-  - id: shipped-manifest-self-consumption
-    control_class: acceptance-test
-    fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-    motivating_defect: an-acceptance-manifest-that-its-own-runner-cannot-consume-issues-authority-it-never-earned
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_refresh_fails_if_unowned_extra_survives_repair
+    motivating_defect: overlay-copy-cannot-prove-repair-when-an-unowned-extra-remains-in-the-destination-tree
+  - id: archive-budget-refusal
+    control_class: enforced-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_tag_backed_snapshot_refuses_archive_budget_overflow
+    motivating_defect: unbounded-historical-cache-retention-can-turn-lifecycle-safety-into-unbounded-disk-growth
   - id: release-manifest-parity
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
@@ -66,3 +66,11 @@ cases:
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
     motivating_defect: a-release-whose-changelog-disagrees-with-its-manifests-cannot-be-audited-later
+  - id: public-contract
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_cache_survival_release_contract_is_public_and_coherent
+    motivating_defect: a-cache-survival-mechanism-without-an-accurate-public-contract-cannot-be-operated-or-reviewed
+  - id: shipped-manifest-self-consumption
+    control_class: acceptance-test
+    fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
+    motivating_defect: an-acceptance-manifest-that-its-own-runner-cannot-consume-issues-authority-it-never-earned

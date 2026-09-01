@@ -4,6 +4,23 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.76.3] - 2026-09-01
+
+**A Codex plugin refresh no longer strands tasks that started on an older
+cache root.** The gated publisher now constructs a complete recovery set from
+the real version roots retained by both supported clients. Immutable release
+tags supply authoritative tracked bytes. For versions that predate release
+tags, the publisher accepts a peer or prior archive root only after its plugin
+manifest, hook commands, hook targets, skill tree, and symlinks validate.
+
+The Codex transition is single-writer, repairs missing and partial roots, keeps
+only known client metadata, and rechecks the restored trees through a bounded
+post-command quiet window. The recovery archive has a 512 MiB hard limit and
+never silently deletes historical versions. Failures leave the transition copy
+in place and stop the release. Regression coverage includes delayed deletion,
+pre-tag recovery, partial roots, changed bytes, unsafe symlinks, concurrent
+writers, unknown extras, and archive-budget exhaustion.
+
 ## [4.76.2] - 2026-09-01
 
 **The project-management skill document is back inside its own budget.**
@@ -20,19 +37,6 @@ retirement internals). A pinned test now enforces the budget, keeps the
 load-bearing rules in the main document, verifies each moved block exists
 in its reference, and refuses orphaned references — so the next growth
 lands in `references/` instead of silently rebreaking the rule.
-
-**A truly empty home now reaches a committed personal workspace without a
-manual repair step.** The 4.76.0 live-stable acceptance run found that a new
-user with no configured Git author could receive every scaffold but stop at
-the first repository commit. Guided `init` now detects that condition before
-mutation and asks for the author name and email it needs. Reviewed
-non-interactive answers can provide the same values as `git_name` and
-`git_email`.
-
-The engine applies those values only to the new personal repository, retries
-the initial commit when repairing a half-finished 4.76.0 run, and leaves global
-Git configuration untouched. Acceptance tests prove both the pre-mutation
-validation boundary and a successful repository-local first commit.
 
 ## [4.76.1] - 2026-09-01
 
