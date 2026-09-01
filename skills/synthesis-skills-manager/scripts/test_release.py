@@ -809,6 +809,17 @@ def test_snapshot_rejects_incomplete_untagged_peer_root(
     assert "missing hook target" in failure.detail
 
 
+def test_untagged_peer_root_rejects_unsafe_symlink(tmp_path: Path) -> None:
+    root = tmp_path / "4.73.0"
+    seed_complete_cache_root(root, "4.73.0")
+    (root / "unsafe").symlink_to("../../outside")
+
+    complete, detail = release._cache_root_completeness(root, "4.73.0")
+
+    assert complete is False
+    assert "unsafe symlink" in detail
+
+
 def test_restore_repeats_after_post_command_cache_deletion(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

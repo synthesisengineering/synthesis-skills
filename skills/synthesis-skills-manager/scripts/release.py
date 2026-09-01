@@ -658,6 +658,12 @@ def _cache_root_completeness(root: Path, version: str) -> tuple[bool, str]:
     """Validate an untagged peer/archive root before trusting it as recovery source."""
     if not root.is_dir() or root.is_symlink():
         return False, "root is absent, not a directory, or a symlink"
+    for path in root.rglob("*"):
+        if not path.is_symlink():
+            continue
+        link = PurePosixPath(os.readlink(path))
+        if link.is_absolute() or ".." in link.parts:
+            return False, f"unsafe symlink is present: {path.relative_to(root)}"
     manifest_versions = {
         read_manifest_version(root / manifest)
         for manifest in MANIFESTS
@@ -727,8 +733,17 @@ def snapshot_codex_caches(
     archive = codex_cache_archive() if repo is not None else None
     backup = Path(tempfile.mkdtemp(prefix="synthesis-codex-cache-"))
     try:
+        peers = {
+            "Codex cache": parent,
+            "Claude cache": plugin_cache_parent("claude"),
+        }
+        if archive is not None:
+            peers["recovery archive"] = archive
+        for label, root in peers.items():
+            if root.is_symlink():
+                raise OSError(f"{label} root is a symlink: {root}")
         cache_roots = _real_version_roots(parent)
-        peer_roots = _real_version_roots(plugin_cache_parent("claude"))
+        peer_roots = _real_version_roots(peers["Claude cache"])
         archive_roots = _real_version_roots(archive) if archive is not None else {}
         boundary_versions = set(cache_roots) | set(peer_roots) | set(archive_roots)
         preserved_versions = set(boundary_versions)
