@@ -291,7 +291,9 @@ The sequence, each stage gating the next:
   real versioned cache root retained by either client into a durable recovery archive.
   Immutable release tags supply authoritative tracked bytes. For releases that
   predate immutable tags, a peer-client or prior archive root is accepted only
-  after its manifests, complete hook target set, and skill tree validate. The
+  after its manifests, complete hook target set, and skill tree validate. Known
+  Codex installation metadata is retained; arbitrary untracked cache files are
+  not promoted into recovery state. The
   publisher holds a single-writer transition lock, restores missing Codex roots,
   repairs partial ones, and repeats the check until the tree has remained
   unchanged for ten seconds after the client command returned. An already-running

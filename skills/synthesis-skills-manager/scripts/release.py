@@ -628,14 +628,14 @@ def _export_release_tag(
 
 
 def _copy_cache_extras(source: Path, destination: Path, tracked: set[str]) -> None:
-    """Retain client metadata while immutable tag bytes win every collision."""
+    """Retain known client metadata while immutable tag bytes win collisions."""
     if not source.is_dir() or source.is_symlink():
         return
     for path in sorted(source.rglob("*"), key=lambda item: str(item.relative_to(source))):
         relative = path.relative_to(source)
         relative_text = relative.as_posix()
         target = destination / relative
-        if relative.parts and relative.parts[0] in {".git", ".in_use"}:
+        if not relative.parts or relative.parts[0] != ".codex-marketplace-install.json":
             continue
         if relative_text in tracked:
             continue
