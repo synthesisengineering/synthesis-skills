@@ -447,7 +447,12 @@ def test_whole_system_onboarding_release_contract_is_public_and_coherent() -> No
         json.loads((repository / path).read_text(encoding="utf-8"))["version"]
         for path in release.MANIFESTS
     }
-    assert versions == {"4.76.1"}
+    # One agreed version, well-formed — pinning the shipping literal here
+    # broke the first branch that bumped the manifests.
+    assert len(versions) == 1, versions
+    (version,) = versions
+    assert all(part.isdigit() for part in version.split(".")), version
+    assert version.count(".") == 2, version
     assert "set -- init" in bootstrap
     assert "eleven layers" in readme
     assert "Skills-only alternative" in readme

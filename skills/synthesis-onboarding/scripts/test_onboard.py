@@ -193,7 +193,12 @@ class Sandbox:
             )
         return proc
 
-    def fake_client(self, version="4.76.1"):
+    def fake_client(self, version=None):
+        # Default to the live source manifest: a literal here breaks on the
+        # first branch that bumps the release version, since the engine's
+        # expectation is read from the same manifest at run time.
+        if version is None:
+            version = onboard.source_plugin_version()
         path = self.root / "fake-client"
         path.write_text(
             "#!/bin/sh\n"
@@ -206,7 +211,9 @@ class Sandbox:
         path.chmod(0o755)
         return path
 
-    def seed_currency(self, version="4.76.1", ref="stable"):
+    def seed_currency(self, version=None, ref="stable"):
+        if version is None:
+            version = onboard.source_plugin_version()
         path = self.home / ".synthesis" / "onboarding" / "plugin-currency.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(

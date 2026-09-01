@@ -1,60 +1,68 @@
-# AGENT HEURISTIC: closed acceptance universe for the 4.76.1 empty-home Git
-# identity repair. changed_surfaces is rebound to the base-to-head Git diff for
-# every release transaction before this receipt can authorize publication.
+# AGENT HEURISTIC: authored for the 4.76.2 skill-document-budget release.
+# Fresh per transaction: changed_surfaces must equal the authoritative
+# base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: synthesis-onboarding-git-identity
+suite: pm-skill-document-budget
 membership: closed
-production_entry_point: skills/synthesis-onboarding/scripts/onboard.py
-enforcing_boundary: pre-mutation identity collection and repository-local initial commit
+production_entry_point: skills/synthesis-project-management/SKILL.md
+enforcing_boundary: repository 500-line SKILL.md budget with pinned load-bearing rules and reference linkage
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the release gate proves the repair against hermetic empty homes and the exact half-finished 4.76.0 fixture before publication; a live stable curl bootstrap and second-run idempotence check necessarily occur after publication
+unverified_remainder: hermetic tests prove the line budget, the survival of load-bearing rules in the main document, the presence of every moved block in its reference, no orphaned references, the peer-resolution doc contract across public surfaces, version-neutral release fixtures, and manifest/changelog parity; whether the restructured summary reads well to a human, and how in-context agent behavior shifts with the shorter document, remain editorial judgments outside the suite
 changed_surfaces:
+  - path: skills/synthesis-project-management/SKILL.md
+    cases: [skill-doc-budget, peer-doc-contract]
+  - path: skills/synthesis-project-management/references/parallel-agent-protocol.md
+    cases: [skill-doc-budget, peer-doc-contract]
+  - path: skills/synthesis-project-management/references/records-and-conventions.md
+    cases: [skill-doc-budget]
+  - path: skills/synthesis-project-management/references/codex-dispatch.md
+    cases: [skill-doc-budget]
+  - path: skills/synthesis-project-management/scripts/test_coordination.py
+    cases: [skill-doc-budget]
+  - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
+    cases: [shipped-manifest-self-consumption]
+  - path: skills/synthesis-onboarding/scripts/test_onboard.py
+    cases: [onboarding-fixture-version-neutrality]
+  - path: skills/synthesis-skills-manager/scripts/test_release.py
+    cases: [release-contract-version-neutrality]
   - path: .claude-plugin/plugin.json
     cases: [release-manifest-parity]
   - path: .codex-plugin/plugin.json
     cases: [release-manifest-parity]
   - path: CHANGELOG.md
-    cases: [release-changelog-parity, public-contract]
+    cases: [release-changelog-parity, peer-doc-contract]
   - path: README.md
-    cases: [public-contract]
-  - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
-    cases: [shipped-manifest-self-consumption]
-  - path: skills/synthesis-onboarding/SKILL.md
-    cases: [public-contract]
-  - path: skills/synthesis-onboarding/scripts/onboard.py
-    cases: [identity-required-before-mutation, repo-local-identity-and-first-commit]
-  - path: skills/synthesis-onboarding/scripts/test_onboard.py
-    cases: [identity-required-before-mutation, repo-local-identity-and-first-commit]
-  - path: skills/synthesis-onboarding/scripts/whole_system.py
-    cases: [identity-required-before-mutation, repo-local-identity-and-first-commit]
-  - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [release-manifest-parity, release-changelog-parity, public-contract]
+    cases: [peer-doc-contract]
 cases:
-  - id: identity-required-before-mutation
+  - id: skill-doc-budget
     control_class: enforced-gate
-    fixture: ../synthesis-onboarding/scripts/test_onboard.py::WholeSystemTests::test_noninteractive_full_init_requires_git_identity_before_mutation
-    motivating_defect: a-noninteractive-empty-home-must-refuse-before-writing-when-the-answers-cannot-author-the-first-commit
-  - id: repo-local-identity-and-first-commit
-    control_class: enforced-gate
-    fixture: ../synthesis-onboarding/scripts/test_onboard.py::WholeSystemTests::test_full_init_configures_repo_local_identity_from_answers
-    motivating_defect: a-whole-system-run-that-stops-at-an-uncommitted-personal-workspace-has-not-converged
-  - id: release-manifest-parity
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_skill_document_stays_within_repo_budget
+    motivating_defect: a-length-rule-nobody-measures-drifted-160-lines-past-its-budget-while-every-release-stayed-green
+  - id: peer-doc-contract
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
-    motivating_defect: client-manifest-version-drift-makes-a-dual-client-release-uninstallable-or-unauditable
-  - id: release-changelog-parity
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_peer_resolution_documented_on_public_surfaces
+    motivating_defect: a-restructure-that-moves-prose-can-silently-drop-the-documentation-contract-a-prior-release-pinned
+  - id: onboarding-fixture-version-neutrality
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
-    motivating_defect: a-release-whose-changelog-does-not-match-its-manifests-cannot-be-reconstructed
-  - id: public-contract
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_full_init_converges_every_layer_and_reruns_cleanly
+    motivating_defect: a-fixture-pinned-to-the-shipping-release-version-was-hand-repinned-in-two-consecutive-releases
+  - id: release-contract-version-neutrality
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_whole_system_onboarding_release_contract_is_public_and_coherent
-    motivating_defect: a-guided-fix-without-a-reviewed-answers-contract-is-not-usable-by-agents-or-automation
+    motivating_defect: a-release-contract-test-asserting-the-shipping-version-literal-fails-every-future-version-bump
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
     motivating_defect: an-acceptance-manifest-that-its-own-runner-cannot-consume-issues-authority-it-never-earned
+  - id: release-manifest-parity
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
+    motivating_defect: a-version-that-reaches-only-one-client-manifest-cannot-be-reliably-installed-or-audited
+  - id: release-changelog-parity
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
+    motivating_defect: a-release-whose-changelog-disagrees-with-its-manifests-cannot-be-audited-later

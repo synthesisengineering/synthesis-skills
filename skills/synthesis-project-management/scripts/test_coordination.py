@@ -1779,3 +1779,45 @@ def test_conformance_board_check_accepts_declared_v3_and_v4(tmp_path) -> None:
     assert schema_check(board_with("Schema: v4"))
     assert schema_check(board_with("Schema: v3"))
     assert not schema_check(board_with("Schema: v2"))
+
+
+def test_skill_document_stays_within_repo_budget() -> None:
+    """AGENTS.md: keep SKILL.md below 500 lines; detailed material lives in
+    references/. The 2026-09-01 restructure moved formats, rationale, and
+    mechanics out of the main document; this pins the budget, keeps the
+    load-bearing rules in the main document, verifies each moved block still
+    exists in its reference, and requires every content reference to be
+    linked so nothing becomes an orphan."""
+    skill_dir = Path(__file__).resolve().parents[1]
+    skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    assert len(skill.splitlines()) < 500, "SKILL.md broke the 500-line budget"
+
+    for rule_anchor in (
+        "### Cross-Agent Session Coordination",
+        "addresses are resolved, never guessed",
+        "Generic verbs are banned",
+        "Archive FIRST, delete second",
+        "## Project Discovery",
+        "Git-index collisions.",
+    ):
+        assert rule_anchor in skill, f"load-bearing rule left SKILL.md: {rule_anchor}"
+
+    refs = skill_dir / "references"
+    for reference_name, marker in (
+        ("records-and-conventions.md", "Single-tool."),
+        ("records-and-conventions.md", "adds ceremony, not information"),
+        ("records-and-conventions.md", "type: incident"),
+        ("records-and-conventions.md", "this is provenance, not telemetry"),
+        ("codex-dispatch.md", "Reading additional input from stdin"),
+        ("parallel-agent-protocol.md", "selector precedence"),
+        ("parallel-agent-protocol.md", "active-project-history"),
+        ("parallel-agent-protocol.md", "SYNTHESIS_HANDOFF_SELF"),
+        ("parallel-agent-protocol.md", "resumable intent"),
+    ):
+        text = (refs / reference_name).read_text(encoding="utf-8")
+        assert marker in text, f"moved block missing from {reference_name}: {marker}"
+
+    for reference in refs.glob("*.md"):
+        if reference.name == "session-words-v1.LICENSE.md":
+            continue
+        assert reference.name in skill, f"unlinked reference: {reference.name}"
