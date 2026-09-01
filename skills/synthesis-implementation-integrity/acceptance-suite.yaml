@@ -1,110 +1,116 @@
-# AGENT HEURISTIC: authored for the 4.75.0 peer-session-resolution release.
-# Fresh per transaction: changed_surfaces must equal the authoritative
-# base-to-head Git diff before release.py can consume the receipt.
+# AGENT HEURISTIC: closed acceptance universe for the 4.76.0 whole-system
+# onboarding release. changed_surfaces is rebound to the base-to-head Git diff
+# for every release transaction before this receipt can authorize publication.
 schema: 2
-suite: peer-session-resolution
+suite: synthesis-onboarding-whole-system
 membership: closed
-production_entry_point: skills/synthesis-project-management/scripts/coordination.py
-enforcing_boundary: board-registered peer resolution, strict bus addressing, and staged v4 migration
+production_entry_point: skills/synthesis-onboarding/scripts/onboard.py
+enforcing_boundary: guided convergence, layer doctor, kernel propagation, and gated public release
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: hermetic tests prove ref registration and seat idempotency, resolve's fail-closed ambiguity and absence exits, strict bus addressing with the recorded exception, staged v3-write preservation, the guard's peer lane in all three outcomes, schema-tolerant conformance, and documentation on every public surface; live cross-session delivery, migration of the real lease-backed board, private guard adoption and hook wiring, and Codex-side ref export remain boundary work outside this suite
+unverified_remainder: hermetic fresh-home tests prove full and skills-only convergence, idempotence, no-clobber behavior, stable kernel propagation, uninstall cleanup, scaffold and component catalog closure, platform classification, public documentation, and release-gate wiring; hosted macOS and Linux matrix execution occurs in pull-request CI, while a live stable bootstrap and exact post-release SessionStart receipt necessarily occur after publication
 changed_surfaces:
-  - path: skills/synthesis-project-management/scripts/coordination.py
-    cases: [client-ref-registration, seat-idempotency, duplicate-seat-refusal, resolve-refuses-ambiguity, resolve-refuses-absence, resolve-by-client-ref, bus-strict-addressing, staged-migration-preserves-v3]
-  - path: skills/synthesis-project-management/scripts/coordination_schema.py
-    cases: [client-ref-registration, staged-migration-preserves-v3]
-  - path: skills/synthesis-project-management/scripts/test_coordination.py
-    cases: [client-ref-registration, seat-idempotency, duplicate-seat-refusal, resolve-refuses-ambiguity, resolve-refuses-absence, resolve-by-client-ref, bus-strict-addressing, staged-migration-preserves-v3, peer-doc-contract, conformance-accepts-declared-v3]
-  - path: skills/synthesis-project-management/SKILL.md
-    cases: [peer-doc-contract]
-  - path: skills/synthesis-project-management/references/parallel-agent-protocol.md
-    cases: [peer-doc-contract]
-  - path: skills/synthesis-project-management/references/session-identity.md
-    cases: [peer-doc-contract]
-  - path: skills/synthesis-message-guard/scripts/message_guard.py
-    cases: [peer-send-registered-target-passes, peer-send-unregistered-target-blocks, peer-send-missing-board-fails-closed]
-  - path: skills/synthesis-message-guard/scripts/test_message_guard.py
-    cases: [peer-send-registered-target-passes, peer-send-unregistered-target-blocks, peer-send-missing-board-fails-closed]
-  - path: skills/synthesis-message-guard/SKILL.md
-    cases: [peer-doc-contract]
-  - path: skills/synthesis-agent-conformance/scripts/conformance.py
-    cases: [conformance-accepts-declared-v3]
-  - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
-    cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
     cases: [release-manifest-parity]
   - path: .codex-plugin/plugin.json
     cases: [release-manifest-parity]
+  - path: .github/workflows/validate.yml
+    cases: [platform-portability, release-gate-wiring]
   - path: CHANGELOG.md
-    cases: [release-changelog-parity, peer-doc-contract]
+    cases: [release-changelog-parity, public-door-contract]
   - path: README.md
-    cases: [peer-doc-contract]
+    cases: [public-door-contract]
+  - path: onboard.sh
+    cases: [public-door-contract]
+  - path: skills/synthesis-chief-of-staff/SKILL.md
+    cases: [scaffold-and-catalog-closure]
+  - path: skills/synthesis-chief-of-staff/preferences.example.json
+    cases: [scaffold-and-catalog-closure]
+  - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
+    cases: [shipped-manifest-self-consumption]
+  - path: skills/synthesis-knowledge-capture/SKILL.md
+    cases: [scaffold-and-catalog-closure]
+  - path: skills/synthesis-knowledge-capture/config.example.json
+    cases: [scaffold-and-catalog-closure]
+  - path: skills/synthesis-message-guard/SKILL.md
+    cases: [scaffold-and-catalog-closure]
+  - path: skills/synthesis-message-guard/patterns.example.json
+    cases: [scaffold-and-catalog-closure]
+  - path: skills/synthesis-onboarding/SKILL.md
+    cases: [full-init-convergence, skills-only-visibility, public-door-contract]
+  - path: skills/synthesis-onboarding/references/components.json
+    cases: [scaffold-and-catalog-closure]
+  - path: skills/synthesis-onboarding/references/kernel.example.md
+    cases: [kernel-propagation-and-no-clobber]
+  - path: skills/synthesis-onboarding/references/layers.json
+    cases: [full-init-convergence, skills-only-visibility]
+  - path: skills/synthesis-onboarding/references/org-manifest.md
+    cases: [public-door-contract]
+  - path: skills/synthesis-onboarding/references/personal-policy.example.json
+    cases: [full-init-convergence]
+  - path: skills/synthesis-onboarding/references/scaffolds.json
+    cases: [scaffold-and-catalog-closure]
+  - path: skills/synthesis-onboarding/scripts/check_scaffolds.py
+    cases: [scaffold-and-catalog-closure]
+  - path: skills/synthesis-onboarding/scripts/kernel_sync.py
+    cases: [kernel-propagation-and-no-clobber]
+  - path: skills/synthesis-onboarding/scripts/onboard.py
+    cases: [full-init-convergence, skills-only-visibility, codex-hook-enablement, kernel-propagation-and-no-clobber, platform-portability]
+  - path: skills/synthesis-onboarding/scripts/test_onboard.py
+    cases: [full-init-convergence, skills-only-visibility, codex-hook-enablement, kernel-propagation-and-no-clobber, platform-portability, scaffold-and-catalog-closure]
+  - path: skills/synthesis-onboarding/scripts/whole_system.py
+    cases: [full-init-convergence, kernel-propagation-and-no-clobber, scaffold-and-catalog-closure]
+  - path: skills/synthesis-skills-manager/SKILL.md
+    cases: [release-gate-wiring, public-door-contract]
+  - path: skills/synthesis-skills-manager/scripts/release.py
+    cases: [release-gate-wiring]
+  - path: skills/synthesis-skills-manager/scripts/test_release.py
+    cases: [release-gate-wiring, public-door-contract, release-manifest-parity, release-changelog-parity]
 cases:
-  - id: client-ref-registration
+  - id: full-init-convergence
     control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_claim_registers_detected_client_ref
-    motivating_defect: three-naming-layers-covered-one-session-population-with-no-join-so-senders-guessed-targets-by-chat-title
-  - id: seat-idempotency
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_full_init_converges_every_layer_and_reruns_cleanly
+    motivating_defect: a-plugin-only-install-can-look-finished-while-the-rest-of-the-work-system-is-absent
+  - id: skills-only-visibility
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_claim_reuses_active_row_for_same_client_seat
-    motivating_defect: one-client-session-allocated-a-fresh-board-identity-per-claim-scattering-one-seat-across-many-rows
-  - id: duplicate-seat-refusal
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_skills_only_profile_is_visibly_partial_but_healthy
+    motivating_defect: a-legitimate-partial-install-must-record-declined-layers-instead-of-hiding-them
+  - id: kernel-propagation-and-no-clobber
     control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_second_seat_with_same_ref_and_selector_is_refused
-    motivating_defect: a-zombie-row-sharing-a-live-seat-ref-would-make-the-delivery-lookup-silently-ambiguous
-  - id: resolve-refuses-ambiguity
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_full_init_converges_every_layer_and_reruns_cleanly
+    motivating_defect: a-kernel-generator-without-propagation-or-receipt-checked-ownership-either-drifts-or-overwrites-user-work
+  - id: codex-hook-enablement
     control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_resolve_ambiguity_refuses_instead_of_broadcasting
-    motivating_defect: an-unsure-sender-broadcast-to-several-sessions-and-a-wrong-session-may-comply-with-a-dispatch
-  - id: resolve-refuses-absence
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::WholeSystemTests::test_codex_hooks_feature_merge_is_narrow_and_respects_false
+    motivating_defect: a-valid-codex-hooks-json-file-does-not-run-when-the-client-feature-is-disabled
+  - id: scaffold-and-catalog-closure
     control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_resolve_unknown_target_points_to_board_bus
-    motivating_defect: an-unregistered-peer-invited-title-guessing-instead-of-the-durable-self-selecting-bus
-  - id: resolve-by-client-ref
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::WholeSystemTests::test_every_hard_stop_has_a_real_scaffold
+    motivating_defect: a-fail-closed-consumer-without-a-scaffolder-and-an-installer-outside-the-catalog-create-doors-without-keys
+  - id: platform-portability
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_resolve_by_bare_local_ref
-    motivating_defect: a-known-chat-handle-could-not-be-mapped-back-to-board-identity-for-verification
-  - id: bus-strict-addressing
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::WholeSystemTests::test_platform_detection_treats_wsl_as_supported_linux_userland
+    motivating_defect: undocumented-best-effort-platform-behavior-cannot-support-a-stranger-facing-bootstrap
+  - id: release-gate-wiring
     control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_message_to_registered_project_renders_sessions_address
-    motivating_defect: free-text-bus-addressees-accepted-typos-and-unregistered-recipients-without-any-refusal
-  - id: staged-migration-preserves-v3
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_v3_board_keeps_schema_until_explicit_migrate
-    motivating_defect: an-implicit-schema-rewrite-on-first-write-would-fail-live-older-parsers-mid-flight-on-a-shared-board
-  - id: peer-send-registered-target-passes
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_execute_whole_system_onboarding_contract
+    motivating_defect: repository-ci-coverage-that-the-release-publisher-does-not-run-can-be-bypassed-at-the-publication-boundary
+  - id: public-door-contract
     control_class: acceptance-test
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_peer_registered_active_target_passes
-    motivating_defect: a-guard-that-blocks-legitimate-resolved-traffic-gets-bypassed-rather-than-obeyed
-  - id: peer-send-unregistered-target-blocks
-    control_class: enforced-gate
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_peer_unregistered_target_blocks_with_resolve_guidance
-    motivating_defect: the-2026-08-19-lesson-stayed-doctrine-without-a-mechanism-and-misdelivery-kept-happening
-  - id: peer-send-missing-board-fails-closed
-    control_class: enforced-gate
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_peer_missing_board_blocks
-    motivating_defect: a-guard-that-cannot-read-its-authority-source-must-block-not-warn-and-pass
-  - id: peer-doc-contract
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_whole_system_onboarding_release_contract_is_public_and_coherent
+    motivating_defect: a-working-whole-system-path-is-not-a-front-door-if-public-installation-surfaces-still-lead-with-plugin-only-commands
+  - id: release-manifest-parity
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_peer_resolution_documented_on_public_surfaces
-    motivating_defect: a-protocol-that-lives-only-in-code-gets-rediscovered-as-folklore-and-then-violated
-  - id: conformance-accepts-declared-v3
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
+    motivating_defect: client-manifest-version-drift-makes-a-dual-client-release-uninstallable-or-unauditable
+  - id: release-changelog-parity
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_conformance_board_check_accepts_declared_v3_and_v4
-    motivating_defect: a-parity-checker-pinned-to-the-new-schema-would-fail-every-machine-during-the-staged-window
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
+    motivating_defect: a-release-whose-changelog-does-not-match-its-manifests-cannot-be-reconstructed
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
     motivating_defect: an-acceptance-manifest-that-its-own-runner-cannot-consume-issues-authority-it-never-earned
-  - id: release-manifest-parity
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
-    motivating_defect: a-version-that-reaches-only-one-client-manifest-cannot-be-reliably-installed-or-audited
-  - id: release-changelog-parity
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
-    motivating_defect: a-release-whose-changelog-disagrees-with-its-manifests-cannot-be-audited-later

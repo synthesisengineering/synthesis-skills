@@ -1,10 +1,11 @@
 #!/bin/sh
-# synthesis-onboarding bootstrap — one command from a bare Mac to a working
-# synthesis ecosystem. Close active Claude Code and Codex sessions before a
-# re-run: the default update refreshes their versioned plugin caches.
+# synthesis-onboarding bootstrap — one guided command from a bare machine to
+# the whole synthesis work system. Close active Claude Code and Codex sessions
+# before a re-run: init converges and refreshes their versioned plugin caches.
 #
 #   curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh
-#   curl -fsSL .../onboard.sh | sh -s -- install --with-personal-workspace alice
+#   curl -fsSL .../onboard.sh | sh -s -- init --profile full --answers answers.json
+#   curl -fsSL .../onboard.sh | sh -s -- init --profile skills-only
 #
 # Running from a checkout uses that checkout as the source; otherwise the
 # public repo is cloned (or refreshed) under the user's cache directory.
@@ -63,6 +64,6 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 if [ "$#" -eq 0 ]; then
-  set -- update
+  set -- init
 fi
 exec python3 "$SRC/$ENGINE_REL" "$@"

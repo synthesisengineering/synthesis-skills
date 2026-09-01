@@ -11,6 +11,13 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**The bootstrap now installs the system, not only its skills (September
+2026).** Release **4.76.0** adds a guided eleven-layer `init`, generic personal
+policy scaffolders, one-source kernel generation with a stable propagation
+hook, an honest layer-aware doctor, and static CI catalogs covering every skill
+and installer. Fresh-home tests run on macOS and Linux, including the WSL-first
+Windows contract. See the [4.76.0 release notes](CHANGELOG.md).
+
 **A peer session is addressed by what it owns, never by what a client calls
 it (September 2026).** Release **4.75.0** joins the coordination board to
 each client's native delivery handle: claims self-register a `client session
@@ -548,21 +555,29 @@ without tool-owned workflow copies or date-field drift. See the
 curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh
 ```
 
-The `synthesis-onboarding` engine converges your machine: plugin installed
-into whichever of Claude Code / Codex is present, optional
-`ai-knowledge-<workspace>` scaffold, verified by its built-in doctor.
+The guided `synthesis-onboarding init` flow converges the whole work system:
+skills, SessionStart context, stable commit and pre-send gates, a personal
+knowledge workspace, user-authored policy, one instruction-kernel source for
+both clients, runtime engines, coordination, conformance tools, and lifecycle
+receipts. Its doctor always prints all eleven layers as `installed`, `declined`,
+or `missing`; a selected missing layer is never silently green.
 Close active Claude Code and Codex sessions before re-running the bootstrap;
 it explicitly updates versioned plugin caches, repairs the remaining setup,
-and never overwrites files you edited. Organizations layer their own knowledge bases and shared
+and never overwrites files you edited. The kernel's 55 KB budget is checked
+before generation, and a stable edit hook propagates valid source changes to
+both client files. Organizations layer their own knowledge bases and shared
 skills on the same engine with one declarative manifest (no installer code).
 Stable is the default release channel, edge follows `main`, and organizations
 can pin an exact plugin version in the manifest;
 see `skills/synthesis-onboarding/references/org-manifest.md`.
 
-### Native plugin for ChatGPT, Codex, and Claude Code
+### Skills-only alternative: native plugin for ChatGPT, Codex, and Claude Code
 
-The repository is a dual-runtime plugin. The same `skills/` source tree is
-packaged for the ChatGPT/Codex plugin system and Claude Code.
+Choose this route when you want the portable skill catalog and plugin lifecycle
+without the personal policy, stable runtime engines, kernel generator, or
+knowledge workspace. The repository is a dual-runtime plugin: the same
+`skills/` source tree is packaged for the ChatGPT/Codex plugin system and
+Claude Code.
 
 ```bash
 # Codex / ChatGPT desktop

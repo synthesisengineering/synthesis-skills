@@ -132,11 +132,30 @@ def test_required_checks_execute_release_wiring_tests() -> None:
     ]
 
 
+def test_required_checks_execute_whole_system_onboarding_contract() -> None:
+    commands = {name: command for name, command in release.REQUIRED_CHECKS}
+    assert commands["pytest.onboarding"] == [
+        "python3",
+        "-m",
+        "pytest",
+        "skills/synthesis-onboarding/scripts/test_onboard.py",
+        "-q",
+    ]
+    assert commands["onboarding.catalog-scaffolds"] == [
+        "python3",
+        "skills/synthesis-onboarding/scripts/check_scaffolds.py",
+        ".",
+    ]
+
+
 def test_repository_ci_executes_release_wiring_tests() -> None:
     repository = Path(__file__).resolve().parents[3]
     workflow = (repository / ".github" / "workflows" / "validate.yml").read_text(
         encoding="utf-8"
     )
+
+    assert "python skills/synthesis-onboarding/scripts/check_scaffolds.py ." in workflow
+    assert "ubuntu-latest, macos-latest" in workflow
     assert (
         "python -m pytest skills/synthesis-skills-manager/scripts/test_release.py -q"
         in workflow
@@ -409,6 +428,32 @@ def test_lifecycle_hotfix_is_documented_on_every_public_maintenance_surface() ->
     assert "operating-system CA bundle" in onboarding
     assert "4.74.1" in readme
     assert "full TLS and" in readme
+
+
+def test_whole_system_onboarding_release_contract_is_public_and_coherent() -> None:
+    repository = Path(__file__).resolve().parents[3]
+    onboarding = (repository / "skills/synthesis-onboarding/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    readme = (repository / "README.md").read_text(encoding="utf-8")
+    bootstrap = (repository / "onboard.sh").read_text(encoding="utf-8")
+    org_manifest = (
+        repository / "skills/synthesis-onboarding/references/org-manifest.md"
+    ).read_text(encoding="utf-8")
+    manager = (
+        repository / "skills/synthesis-skills-manager/SKILL.md"
+    ).read_text(encoding="utf-8")
+    versions = {
+        json.loads((repository / path).read_text(encoding="utf-8"))["version"]
+        for path in release.MANIFESTS
+    }
+    assert versions == {"4.76.0"}
+    assert "set -- init" in bootstrap
+    assert "eleven layers" in readme
+    assert "Skills-only alternative" in readme
+    assert "stable PostToolUse hook" in onboarding
+    assert "default_branch" in org_manifest
+    assert "whole-system onboarding suite" in manager
 
 
 def test_main_carries_acceptance_authority_to_publish_boundary(

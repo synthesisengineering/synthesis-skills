@@ -1,0 +1,15 @@
+{
+  "config_version": 1,
+  "default_tier": "private",
+  "domains": {
+    "personal": {
+      "repo": "~/workspaces/example-workspace/ai-knowledge-example-workspace",
+      "tier": "private",
+      "bundle_path": "source"
+    }
+  },
+  "confidential_terms": [],
+  "push_posture": {
+    "personal": "hold-for-approval"
+  }
+}

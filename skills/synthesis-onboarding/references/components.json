@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "skills": [
+    "synthesis-absence-coordination",
+    "synthesis-adversarial-review",
+    "synthesis-agent-conformance",
+    "synthesis-agent-correspondence",
+    "synthesis-anti-shortcuts",
+    "synthesis-article-refresh",
+    "synthesis-article-writing",
+    "synthesis-autopilot",
+    "synthesis-bitbucket",
+    "synthesis-catchup-ledger",
+    "synthesis-checkpoint",
+    "synthesis-chief-of-staff",
+    "synthesis-clean-text",
+    "synthesis-code-audit",
+    "synthesis-code-integration",
+    "synthesis-code-planning",
+    "synthesis-codebase-review",
+    "synthesis-concise-messaging",
+    "synthesis-content-distribution",
+    "synthesis-content-framing",
+    "synthesis-content-quality",
+    "synthesis-context-lifecycle",
+    "synthesis-creative-writer",
+    "synthesis-daily-rituals",
+    "synthesis-decision-packet",
+    "synthesis-disclosure-policy",
+    "synthesis-executive-communication",
+    "synthesis-fact-checking",
+    "synthesis-git-hooks",
+    "synthesis-grounding-discipline",
+    "synthesis-implementation-integrity",
+    "synthesis-inbox-cleanup",
+    "synthesis-kb-edit",
+    "synthesis-knowledge-capture",
+    "synthesis-link-research",
+    "synthesis-llm-setup",
+    "synthesis-local-model-runtime",
+    "synthesis-mac-sync",
+    "synthesis-meeting-transcripts",
+    "synthesis-message-guard",
+    "synthesis-model-tiers",
+    "synthesis-okf",
+    "synthesis-onboarding",
+    "synthesis-pr-review",
+    "synthesis-preflight",
+    "synthesis-preplan",
+    "synthesis-project-management",
+    "synthesis-promotion-gate",
+    "synthesis-reader-briefing",
+    "synthesis-repo-guard",
+    "synthesis-response-merger",
+    "synthesis-review-triage",
+    "synthesis-skill-router",
+    "synthesis-skills-manager",
+    "synthesis-slack-sync",
+    "synthesis-technical-advisor",
+    "synthesis-text-provenance",
+    "synthesis-thinking-framework",
+    "synthesis-tree-of-thought",
+    "synthesis-voice-profiler",
+    "synthesis-writing-craft",
+    "synthesis-writing-pitfalls"
+  ],
+  "installers": [
+    {
+      "path": "install.sh",
+      "layer": "skills"
+    },
+    {
+      "path": "onboard.sh",
+      "layer": "lifecycle"
+    },
+    {
+      "path": "skills/synthesis-daily-rituals/scripts/install_day_end.py",
+      "layer": "runtime-engines"
+    },
+    {
+      "path": "skills/synthesis-git-hooks/scripts/install.sh",
+      "layer": "hooks-gates"
+    },
+    {
+      "path": "skills/synthesis-inbox-cleanup/scripts/install.sh",
+      "layer": "runtime-engines"
+    }
+  ]
+}

@@ -5,12 +5,19 @@ license: "Apache-2.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.0"
+  version: "1.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Message Guard
+
+**Version 1.3.0** (2026-09-01) adds `patterns.example.json`, the public,
+validator-backed starting point used by `synthesis-onboarding init`. The
+scaffolder preserves the user's local copy and can add interview-supplied wording
+boundaries without putting personal policy in this repository. A fail-closed
+message gate now ships the route to a valid config instead of requiring adopters
+to reconstruct one from prose.
 
 **Version 1.2.0** (2026-08-28) — adds `check_header_hygiene`: the gate now inspects the
 RFC threading headers (`in_reply_to`, `references`) in the tool input, not only the message
@@ -66,7 +73,8 @@ composing agent                      engine (stdlib python, fail closed)
   failed open for weeks). Any internal error blocks the send.
 - **Config:** `~/.synthesis/message-guard/patterns.json` — private, per-person.
   Block/warn regexes, gated tool patterns, exemptions, freshness window.
-  The engine refuses to run without it.
+  The engine refuses to run without it. Start with `patterns.example.json` or run
+  `synthesis-onboarding init`; both paths are validated before wiring the guard.
 - **Ledger:** `~/.synthesis/message-guard/ledger.json` — written per message,
   consumed on use (single-shot; no reuse across messages). Passed sends are
   appended to `log.jsonl` with the full ledger for audit.

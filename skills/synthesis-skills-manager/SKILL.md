@@ -5,12 +5,17 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.2.1"
+  version: "2.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+
+**Version 2.3.0** (2026-09-01) makes the whole-system onboarding suite and
+its scaffold/component catalog audit required release checks. A release cannot
+publish an onboarding change that passed repository CI but was omitted from the
+publisher's own transaction.
 
 Manage synthesis skills across a three-repo architecture. Skills are executable
 methodology. Public skills are also packaged as a native plugin for clients that
