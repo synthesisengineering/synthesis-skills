@@ -669,6 +669,41 @@ def commit_release(repo: Path, version: str, marker: str) -> None:
     )
 
 
+def seed_complete_cache_root(root: Path, version: str) -> None:
+    write_manifests(root, version, version)
+    target = root / "skills" / "synthesis-autopilot" / "scripts" / "autopilot_gate.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("print('gate')\n", encoding="utf-8")
+    (target.parents[1] / "SKILL.md").write_text(
+        f"---\nname: synthesis-autopilot\nversion: {version}\n---\n",
+        encoding="utf-8",
+    )
+    hooks = root / "hooks" / "hooks.json"
+    hooks.parent.mkdir(parents=True, exist_ok=True)
+    hooks.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "Stop": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": (
+                                        "python3 ${CLAUDE_PLUGIN_ROOT}/skills/"
+                                        "synthesis-autopilot/scripts/autopilot_gate.py --gate"
+                                    ),
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_tag_backed_snapshot_repairs_partial_and_missing_historical_roots(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -710,6 +745,73 @@ def test_tag_backed_snapshot_repairs_partial_and_missing_historical_roots(
     assert next(
         step for step in result.steps if step.name == "install.codex.cache-archive"
     ).ok
+
+
+def test_snapshot_imports_complete_untagged_peer_root_missing_from_codex(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    commit_release(source, "4.74.0", "tagged")
+    codex_cache = tmp_path / "codex-cache"
+    (codex_cache / "4.74.0").mkdir(parents=True)
+    claude_cache = tmp_path / "claude-cache"
+    peer = claude_cache / "4.73.0"
+    seed_complete_cache_root(peer, "4.73.0")
+    (peer / ".in_use").mkdir()
+    (peer / ".in_use" / "123").touch()
+    recovery = tmp_path / "recovery"
+
+    monkeypatch.setattr(
+        release,
+        "plugin_cache_parent",
+        lambda client: claude_cache if client == "claude" else codex_cache,
+    )
+    monkeypatch.setattr(release, "codex_cache_archive", lambda: recovery)
+
+    result = release.Result()
+    snapshot = release.snapshot_codex_caches(result, repo=source)
+
+    assert snapshot is not None
+    assert snapshot.versions == ("4.73.0", "4.74.0")
+    recovered = snapshot.backup / "4.73.0"
+    assert (recovered / "skills/synthesis-autopilot/scripts/autopilot_gate.py").is_file()
+    assert not (recovered / ".in_use").exists()
+    assert release.restore_codex_caches(snapshot, result)
+    assert (
+        codex_cache / "4.73.0/skills/synthesis-autopilot/scripts/autopilot_gate.py"
+    ).is_file()
+
+
+def test_snapshot_rejects_incomplete_untagged_peer_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    commit_release(source, "4.74.0", "tagged")
+    codex_cache = tmp_path / "codex-cache"
+    (codex_cache / "4.74.0").mkdir(parents=True)
+    claude_cache = tmp_path / "claude-cache"
+    peer = claude_cache / "4.73.0"
+    seed_complete_cache_root(peer, "4.73.0")
+    (peer / "skills/synthesis-autopilot/scripts/autopilot_gate.py").unlink()
+
+    monkeypatch.setattr(
+        release,
+        "plugin_cache_parent",
+        lambda client: claude_cache if client == "claude" else codex_cache,
+    )
+    monkeypatch.setattr(
+        release, "codex_cache_archive", lambda: tmp_path / "recovery"
+    )
+
+    result = release.Result()
+    assert release.snapshot_codex_caches(result, repo=source) is None
+    failure = next(
+        step for step in result.steps if step.name == "install.codex.cache-snapshot"
+    )
+    assert failure.ok is False
+    assert "missing hook target" in failure.detail
 
 
 def test_restore_repeats_after_post_command_cache_deletion(
@@ -808,6 +910,20 @@ def test_refresh_fails_closed_without_binary(monkeypatch: pytest.MonkeyPatch) ->
     result = release.Result()
     assert release.refresh_client("codex", result, dry_run=True) is False
     assert result.failed
+
+
+def test_codex_cache_transition_lock_refuses_a_second_writer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        release, "codex_cache_archive", lambda: tmp_path / "recovery" / "plugin"
+    )
+    first = release._acquire_codex_cache_lock()
+    try:
+        with pytest.raises(OSError, match="another release process"):
+            release._acquire_codex_cache_lock()
+    finally:
+        release._release_codex_cache_lock(first)
 
 
 def test_codex_refresh_restores_real_version_root_deleted_by_client(
