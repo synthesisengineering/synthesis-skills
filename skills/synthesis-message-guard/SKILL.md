@@ -75,6 +75,31 @@ composing agent                      engine (stdlib python, fail closed)
   the send/draft tool family across all MCP servers by name pattern. The doctor
   requires every installed client to carry the guard.
 
+## Peer-session sends (config-adopted)
+
+Agent-to-agent session messaging has a different failure mode from
+correspondence: not register drift but **misdelivery** — a target chat
+session chosen by guessing a title or display label. Adopting
+`peer_send_resolution` in `patterns.json` gives those tools their own lane,
+which runs before the exempt list and replaces the ledger lane for matching
+calls:
+
+```json
+"peer_send_resolution": {
+  "tool_pattern": "ccd_session_mgmt__send_message$",
+  "target_field": "session_id",
+  "board": "~/.synthesis/coordination/active-sessions.md"
+}
+```
+
+The target session id must appear as an **active client session ref** on the
+coordination board (schema v4, registered at claim time) — otherwise the send
+blocks with instructions to run `coordination.py resolve` or use the board
+message bus. An unreadable board blocks (fail closed). Unadopted instances
+keep the old posture — inter-session tools stay in `exempt_tool_patterns` —
+and the doctor says which posture is live. Requires the tool's PreToolUse
+wiring to route these calls to the guard; the doctor checks that too.
+
 ## The ledger contract
 
 `--ledger-template` prints the skeleton. Fields the engine enforces:

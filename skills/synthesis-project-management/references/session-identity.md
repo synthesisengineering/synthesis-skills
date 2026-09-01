@@ -13,6 +13,13 @@ remain the source-area paths attached to the session.
 | Speakable v1 | `crater-sunset-alone-okay-23906` | 60 | Dictation, reading, and short-term recall |
 | Legacy | `AX` | historical | Explicit lookup mapping for migrated v1/v2 boards |
 
+Since schema v4 a row also carries a **client session ref** (for example
+`ccd:local_<uuid>`), which is not an identity: it is the client-native
+delivery address registered at claim time, resolvable through
+`coordination.py resolve` but never a substitute for the UUID in pointers,
+leases, or receipts. See the parallel-agent protocol's "Addressing a peer
+session."
+
 UUIDv7 follows RFC 9562: 48 milliseconds-of-Unix-time bits, required version
 and variant fields, and 74 random bits. The alias token uses only the low 60
 bits of `rand_b`; no timestamp, version, or variant bit enters either

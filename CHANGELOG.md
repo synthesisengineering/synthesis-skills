@@ -4,6 +4,43 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.75.0] - 2026-09-01
+
+**Peer-session messages now resolve through the board instead of guesswork.**
+Messages between agent sessions too often reached the wrong chat session, or
+an unsure sender broadcast to several — three naming layers (board identities,
+client chat handles, harness display labels) covered one population with no
+join between them, and the 2026-08-19 "labels are not seat identity" lesson
+was doctrine without a mechanism.
+
+Coordination board schema v4 adds the join: a `client session ref` column
+carrying each session's client-native delivery handle (`ccd:local_<uuid>`,
+`codex:<uuid>`), registered automatically at claim time from the session's own
+environment (`CLAUDE_CODE_HOST_SESSION_ID`, or `SYNTHESIS_CLIENT_SESSION_REF`
+for any client). A new `coordination.py resolve --to <project|session|ref>`
+returns the exact deliverable target with its delivery lane, refusing
+ambiguity (exit 20) and absence (exit 21) instead of guessing or
+broadcasting; chat titles and display labels are deliberately not selectors.
+`message --to` now refuses addressees that match no session or registered
+project unless `--free-address` records the exception. A claim with no
+`--session` whose detected ref matches its own active row updates that row
+in place — one client seat, one row — and duplicate active refs refuse with
+the stale rows named.
+
+Migration is staged for shared boards: the engine reads schemas v1–v4 but
+writes each board's declared schema, so live sessions on older plugin
+versions keep working until an explicit `migrate` flips the board to v4.
+The doctor and `conformance coordination` accept a declared v3 board with a
+migrate note during the transition.
+
+synthesis-message-guard v1.4.0 adds the fail-closed backstop: adopting
+`peer_send_resolution` in patterns.json gates direct peer-session sends —
+the target session id must be an active client ref on the board, or the
+send blocks with resolve/board-bus guidance. The peer lane runs before the
+exempt list and replaces the correspondence ledger lane for those tools;
+unadopted instances keep the previous exempt posture, and the doctor reports
+which posture is live plus the required hook wiring.
+
 ## [4.74.1] - 2026-09-01
 
 **The lifecycle now survives the release that advances it.** The first 4.74.0

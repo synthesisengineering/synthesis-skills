@@ -23,6 +23,15 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_client_session_env(monkeypatch):
+    """Keep the suite hermetic: a developer shell inside a real client session
+    carries that session's ref, which would register one seat on every
+    simulated session and trip the duplicate-ref refusal."""
+    monkeypatch.delenv("SYNTHESIS_CLIENT_SESSION_REF", raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_HOST_SESSION_ID", raising=False)
+
+
 def args(board: Path, **values):
     return type("Args", (), {"board": board, **values})()
 
@@ -502,7 +511,7 @@ def test_v1_board_migrates_without_losing_messages(tmp_path: Path) -> None:
     assert MODULE.command_migrate(args(board)) == 0
     text = board.read_text(encoding="utf-8")
     migrated = MODULE.rows(text)
-    assert "Schema: v3" in text
+    assert "Schema: v4" in text
     assert "Keep this handoff." in text
     assert uuid.UUID(migrated[0].session_uuid).version == 7
     assert migrated[0].legacy_id == "A"
@@ -588,7 +597,11 @@ def test_message_accepts_annotated_protocol_heading(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    message = args(board, sender="B", to="A", text="Sequencing update.")
+    strict = args(board, sender="B", to="A", text="Sequencing update.")
+    assert MODULE.command_message(strict) == 10
+    message = args(
+        board, sender="B", to="A", text="Sequencing update.", free_address=True
+    )
     assert MODULE.command_message(message) == 0
     text = board.read_text(encoding="utf-8")
     assert "Sequencing update." in text
@@ -1428,3 +1441,273 @@ def test_json_mode_is_machine_readable(tmp_path):
     data = json.loads(r.stdout)
     assert data["stale_total"] == 1
     assert data["shown"][0]["worktree_gone"] is True
+
+
+# --- peer-session resolution (schema v4 client refs) -----------------------
+#
+# The board is the only join between coordination identity and each client's
+# native delivery handle. These tests pin the whole contract: registration at
+# claim time, one row per client seat, fail-closed ambiguity in resolve, and
+# the staged v3→v4 migration that keeps older parsers alive on shared boards.
+
+
+def seatless_claim(board, project, workspace, area, agent="seat"):
+    return args(
+        board,
+        id=None,
+        agent=agent,
+        machine="machine-seat",
+        project=project,
+        mode="interactive",
+        goal=f"goal-{project}",
+        workspace=[workspace],
+        area=[area],
+        context_role="owner",
+    )
+
+
+def resolve_args(board, to, **overrides):
+    values = {
+        "to": to,
+        "role": None,
+        "include_released": False,
+        "stale_after_minutes": 240,
+        "json": False,
+    }
+    values.update(overrides)
+    return args(board, **values)
+
+
+def test_claim_registers_detected_client_ref(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local_feed-beef")
+    board = tmp_path / "board.md"
+    request = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/wt-a @ feature/a",
+        area="repo-a/**",
+    )
+    assert MODULE.command_claim(request) == 0
+    row = MODULE.rows(board.read_text(encoding="utf-8"))[0]
+    assert row.client_ref == "ccd:local_feed-beef"
+    assert "| ccd:local_feed-beef |" in board.read_text(encoding="utf-8")
+
+
+def test_generic_ref_env_overrides_client_specific(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local_feed-beef")
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:0a0a-1b1b")
+    board = tmp_path / "board.md"
+    assert (
+        MODULE.command_claim(
+            seatless_claim(board, "project-a", "/tmp/wt-a @ feature/a", "repo-a/**")
+        )
+        == 0
+    )
+    assert MODULE.rows(board.read_text(encoding="utf-8"))[0].client_ref == (
+        "codex:0a0a-1b1b"
+    )
+
+
+def test_claim_reuses_active_row_for_same_client_seat(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local_feed-beef")
+    board = tmp_path / "board.md"
+    assert (
+        MODULE.command_claim(
+            seatless_claim(board, "project-a", "/tmp/wt-a @ feature/a", "repo-a/**")
+        )
+        == 0
+    )
+    first = MODULE.rows(board.read_text(encoding="utf-8"))[0]
+    assert (
+        MODULE.command_claim(
+            seatless_claim(board, "project-b", "/tmp/wt-b @ feature/b", "repo-b/**")
+        )
+        == 0
+    )
+    table = MODULE.rows(board.read_text(encoding="utf-8"))
+    assert len(table) == 1
+    assert table[0].session_uuid == first.session_uuid
+    assert table[0].project == "project-b"
+
+
+def test_second_seat_with_same_ref_and_selector_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local_feed-beef")
+    board = tmp_path / "board.md"
+    first = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/wt-a @ feature/a",
+        area="repo-a/**",
+    )
+    assert MODULE.command_claim(first) == 0
+    second = claim_args(
+        board,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/wt-b @ feature/b",
+        area="repo-b/**",
+    )
+    assert MODULE.command_claim(second) == 10
+
+
+def test_explicit_invalid_client_ref_refuses(tmp_path):
+    board = tmp_path / "board.md"
+    request = seatless_claim(
+        board, "project-a", "/tmp/wt-a @ feature/a", "repo-a/**"
+    )
+    request.client_ref = "not a scheme ref"
+    assert MODULE.command_claim(request) == 10
+    assert not board.exists()
+
+
+def _v3_board(tmp_path):
+    board = tmp_path / "board.md"
+    board.write_text(
+        "# Coordination\n\nSchema: v3\n\n## Active sessions\n\n"
+        + MODULE.table_header(MODULE.V3_COLUMNS)
+        + "\n\n## Messages\n\n---\n\n## Protocol\n",
+        encoding="utf-8",
+    )
+    return board
+
+
+def test_v3_board_keeps_schema_until_explicit_migrate(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local_feed-beef")
+    board = _v3_board(tmp_path)
+    assert (
+        MODULE.command_claim(
+            seatless_claim(board, "project-a", "/tmp/wt-a @ feature/a", "repo-a/**")
+        )
+        == 0
+    )
+    text = board.read_text(encoding="utf-8")
+    assert "Schema: v3" in text
+    assert "ccd:" not in text
+    row = MODULE.rows(text)[0]
+    assert row.client_ref == ""
+
+    assert MODULE.command_migrate(args(board)) == 0
+    migrated = board.read_text(encoding="utf-8")
+    assert "Schema: v4" in migrated
+    assert "| client session ref |" in migrated
+
+    request = seatless_claim(
+        board, "project-a", "/tmp/wt-a @ feature/a", "repo-a/**"
+    )
+    request.id = row.compact_id
+    assert MODULE.command_claim(request) == 0
+    assert "ccd:local_feed-beef" in board.read_text(encoding="utf-8")
+
+
+def test_resolve_unique_project_target(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local_feed-beef")
+    board = tmp_path / "board.md"
+    assert (
+        MODULE.command_claim(
+            seatless_claim(board, "project-a", "/tmp/wt-a @ feature/a", "repo-a/**")
+        )
+        == 0
+    )
+    assert MODULE.command_resolve(resolve_args(board, "project-a")) == 0
+    output = capsys.readouterr().out
+    assert "ccd send_message to session_id local_feed-beef" in output
+
+
+def test_resolve_by_bare_local_ref(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local_feed-beef")
+    board = tmp_path / "board.md"
+    assert (
+        MODULE.command_claim(
+            seatless_claim(board, "project-a", "/tmp/wt-a @ feature/a", "repo-a/**")
+        )
+        == 0
+    )
+    capsys.readouterr()
+    request = resolve_args(board, "local_feed-beef", json=True)
+    assert MODULE.command_resolve(request) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["matched_by"] == "client-ref"
+    assert payload["matches"][0]["client_ref"] == "ccd:local_feed-beef"
+
+
+def test_resolve_ambiguity_refuses_instead_of_broadcasting(tmp_path, capsys):
+    board = tmp_path / "board.md"
+    owner = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/wt-a @ feature/a",
+        area="repo-a/impl/**",
+    )
+    assert MODULE.command_claim(owner) == 0
+    helper = claim_args(
+        board,
+        session_id="B",
+        project="project-a",
+        workspace="/tmp/wt-b @ feature/b",
+        area="repo-a/docs/**",
+        context_role="contributor",
+    )
+    assert MODULE.command_claim(helper) == 0
+    assert MODULE.command_resolve(resolve_args(board, "project-a")) == 20
+    err = capsys.readouterr().err
+    assert "do not broadcast" in err
+    assert (
+        MODULE.command_resolve(resolve_args(board, "project-a", role="owner"))
+        == 0
+    )
+
+
+def test_resolve_unknown_target_points_to_board_bus(tmp_path, capsys):
+    board = tmp_path / "board.md"
+    assert (
+        MODULE.command_claim(
+            seatless_claim(board, "project-a", "/tmp/wt-a @ feature/a", "repo-a/**")
+        )
+        == 0
+    )
+    assert MODULE.command_resolve(resolve_args(board, "project-zz")) == 21
+    err = capsys.readouterr().err
+    assert "board message bus" in err
+    assert "do not guess" in err
+
+
+def test_message_to_registered_project_renders_sessions_address(tmp_path):
+    board = tmp_path / "board.md"
+    assert (
+        MODULE.command_claim(
+            seatless_claim(board, "project-a", "/tmp/wt-a @ feature/a", "repo-a/**")
+        )
+        == 0
+    )
+    message = args(board, sender="ops", to="project-a", text="Handoff ready.")
+    assert MODULE.command_message(message) == 0
+    text = board.read_text(encoding="utf-8")
+    assert "→ project-a sessions," in text
+    suffixed = args(
+        board, sender="ops", to="project-a sessions", text="Second note."
+    )
+    assert MODULE.command_message(suffixed) == 0
+
+
+def test_status_json_reports_client_ref_and_board_schema(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local_feed-beef")
+    board = tmp_path / "board.md"
+    assert (
+        MODULE.command_claim(
+            seatless_claim(board, "project-a", "/tmp/wt-a @ feature/a", "repo-a/**")
+        )
+        == 0
+    )
+    capsys.readouterr()
+    status = args(
+        board, json=True, strict=False, stale_after_minutes=240
+    )
+    assert MODULE.command_status(status) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["board_schema"] == 4
+    assert payload["sessions"][0]["client_ref"] == "ccd:local_feed-beef"

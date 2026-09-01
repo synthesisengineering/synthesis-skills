@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.7.0"
+  version: "2.8.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -14,21 +14,24 @@ metadata:
 
 A lightweight project management system designed for human-agent collaboration. Optimized for context preservation across conversation sessions and context compaction events.
 
-## v2.5.0 — Staged paths enforced against coordination claims
+## v2.8.0 — Peer-session resolution: the board is the address book
 
-`coordination.py check-staged` compares both sides of every staged rename and
-all other staged paths with the selected active session's source-area claims.
-The exact Git worktree and branch must also appear on that session's board row.
-The authority snapshot is taken under the board lock; a lease-backed board
-passes through a compare-and-swap fence so a concurrent release is read before
-the check can issue a receipt. Equivalent filesystem spellings resolve before
-claim matching.
-An outside path refuses by default; an explicit override succeeds only after
-its reason, staged tree, repository, branch, and outside paths are appended
-atomically to `## Messages`. Every result separates its authority label from
-its enforcement outcome and names the unverified remainder. The receipt binds
-that outcome and its outside-path list alongside the staged tree. The board
-remains schema v3; this release adds no columns or sidecar state.
+Board schema v4 adds one column, `client session ref` — the client-native
+delivery handle (`ccd:local_<uuid>` for a Claude Code chat session,
+`codex:<uuid>` for Codex), registered automatically at claim time from the
+session's own environment. `coordination.py resolve --to <project|session|ref>`
+turns any board identity or registered project into the exact deliverable
+target, refusing ambiguity (exit 20) and absence (exit 21) instead of
+guessing or broadcasting; `message --to` now refuses an addressee that
+matches no session or registered project unless `--free-address` is passed.
+A claim with no `--session` whose detected ref matches its own active row
+updates that row instead of allocating a new identity. Migration is staged:
+the engine reads v1–v4 but writes each board's declared schema, so a shared
+board upgrades only via an explicit `migrate` after every machine's client
+is current. Doctrine source: the 2026-08-19 lesson — the board id is the
+identity; the client label is a display string. Full protocol:
+[references/parallel-agent-protocol.md](references/parallel-agent-protocol.md)
+("Addressing a peer session").
 
 ## Configuration
 
@@ -342,7 +345,12 @@ python3 <synthesis-project-management-root>/scripts/coordination.py heartbeat \
 python3 <synthesis-project-management-root>/scripts/coordination.py \
   check-staged --session s-6adk-06yc-yqb2 --repository /path/to/worktree
 
-# Leave an asynchronous handoff
+# Resolve a peer to its exact deliverable target before messaging it
+python3 <synthesis-project-management-root>/scripts/coordination.py resolve \
+  --to example-project --role owner
+
+# Leave an asynchronous handoff (--to must resolve to a session or a
+# registered project; --free-address records a deliberate exception)
 printf '%s\n' "Source checks pass; live install awaits authorization." |
   python3 <synthesis-project-management-root>/scripts/coordination.py message \
     --from s-6adk-06yc-yqb2 --to crater-sunset-alone-okay-23907
@@ -392,8 +400,12 @@ Rules:
 6. **Autonomous claim keeps priority.** When an autonomous and interactive
    session overlap, the autonomous session keeps its existing claim; the
    interactive session yields unless the user explicitly reorders them.
-7. **Messages are asynchronous.** Address the other session in the message log;
-   the recipient reads it at its next checkpoint.
+7. **Messages are asynchronous, and addresses are resolved, never guessed.**
+   Address the other session in the message log; the recipient reads it at
+   its next checkpoint. Before any direct client-channel send to a peer
+   session, run `resolve` and address the exact ref it returns; a client's
+   display labels and chat titles are not identities, and an unresolvable
+   peer gets a board message, not a broadcast.
 8. **Heartbeat and release explicitly.** Refresh the heartbeat at checkpoints.
    A paused or completed session releases or narrows its claims. Stale `active`
    rows remain blocking until explicitly resolved; time alone never transfers

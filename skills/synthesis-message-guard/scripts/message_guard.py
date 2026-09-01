@@ -51,7 +51,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 
-ENGINE_VERSION = "1.3.0"
+ENGINE_VERSION = "1.4.0"
 
 
 def config_path():
@@ -305,6 +305,86 @@ def validate_ledger(ledger, text, cfg, tool_name):
 
 
 # --------------------------------------------------------------------------
+# Peer-session sends (config-adopted, 2026-09-01)
+# --------------------------------------------------------------------------
+#
+# Correspondence tools carry Rajiv-register text to humans and take the full
+# ledger lane below. Peer-session tools carry agent-to-agent traffic; their
+# failure mode is not register drift but MISDELIVERY — a target chosen by
+# guessing a chat title or display label. The mechanical fix: the target
+# session id must be registered as an ACTIVE client ref on the coordination
+# board (schema v4), which only happens when that session claimed its seat.
+# The lesson this makes mechanical: the board id is the identity; the client
+# label is a display string.
+
+def _board_has_active_ref(content, ref):
+    """Self-contained active-row scan; no cross-skill import at hook time."""
+    terminal = {"released", "complete", "completed", "closed"}
+    in_table = False
+    for line in content.splitlines():
+        if line.strip() == "## Active sessions":
+            in_table = True
+            continue
+        if in_table and line.startswith("## "):
+            break
+        if not in_table or not line.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.split("|")[1:-1]]
+        if not cells or cells[0] in {"id", "session uuid"}:
+            continue
+        if set(cells[0]) <= {"-"}:
+            continue
+        if ref in cells and cells[-1].lower() not in terminal:
+            return True
+    return False
+
+
+def peer_send_resolution_failures(tool_name, tool_input, cfg):
+    """Return (handled, failures) for the peer-session send lane.
+
+    handled is True when the tool matches the configured peer pattern; the
+    peer lane then replaces the correspondence lane for this call. Absent
+    config means not handled — adoption is deliberate, per instance.
+    """
+    peer = cfg.get("peer_send_resolution")
+    if not isinstance(peer, dict):
+        return False, []
+    pattern = peer.get("tool_pattern")
+    if not pattern or not re.search(pattern, tool_name):
+        return False, []
+    field = peer.get("target_field", "session_id")
+    target = tool_input.get(field)
+    if not isinstance(target, str) or not target.strip():
+        return True, [
+            "peer send carries no %r target; unknown shape fails closed" % field
+        ]
+    target = target.strip()
+    board = os.path.expanduser(
+        peer.get("board", "~/.synthesis/coordination/active-sessions.md")
+    )
+    try:
+        with open(board, "r", encoding="utf-8") as fh:
+            content = fh.read()
+    except OSError as exc:
+        return True, [
+            "coordination board unreadable (%s) so the target cannot be "
+            "verified: %s" % (board, exc)
+        ]
+    if _board_has_active_ref(content, "ccd:" + target) or _board_has_active_ref(
+        content, target
+    ):
+        return True, []
+    return True, [
+        "target session id %r is not a registered active client ref on the "
+        "coordination board (%s). Run coordination.py resolve "
+        "--to <project-or-session> and address the exact ref it returns; if "
+        "the peer has not claimed a seat, deliver via the board message bus "
+        "and let it self-select — never guess a chat session by title or "
+        "broadcast" % (target, board)
+    ]
+
+
+# --------------------------------------------------------------------------
 # Gate
 # --------------------------------------------------------------------------
 
@@ -320,6 +400,25 @@ def run_gate():
         tool_input = payload.get("tool_input") or {}
 
         cfg, cblock, cwarn, gated, exempt = load_config()
+
+        # Peer-session lane runs BEFORE the exempt list: while unadopted,
+        # instances may exempt inter-session tools; once adopted, the peer
+        # pattern owns those tools and the exemption no longer bypasses it.
+        peer_handled, peer_fails = peer_send_resolution_failures(
+            tool_name, tool_input, cfg
+        )
+        if peer_handled:
+            if peer_fails:
+                block("peer-session resolution — " + " | ".join(peer_fails))
+            os.makedirs(state_dir(), exist_ok=True)
+            with open(log_path(), "a", encoding="utf-8") as fh:
+                fh.write(json.dumps({
+                    "at": datetime.now(timezone.utc).isoformat(),
+                    "kind": "peer-send",
+                    "tool": tool_name,
+                    "engine": ENGINE_VERSION,
+                }) + "\n")
+            sys.exit(0)
 
         if any(rx.search(tool_name) for rx in exempt):
             sys.exit(0)
@@ -513,8 +612,26 @@ def run_doctor():
     missed = [t for t in sample_tools if not any(rx.search(t) for rx in gated)]
     report(not missed, "gated patterns cover the send/draft tool family",
            "missed: %s" % ", ".join(missed) if missed else "all covered")
-    report(any(rx.search("mcp__ccd_session_mgmt__send_message") for rx in exempt),
-           "inter-session messaging is exempted")
+    peer_sample = "mcp__ccd_session_mgmt__send_message"
+    peer_cfg = cfg.get("peer_send_resolution")
+    if isinstance(peer_cfg, dict):
+        try:
+            peer_rx = re.compile(peer_cfg.get("tool_pattern") or "")
+            report(bool(peer_cfg.get("tool_pattern"))
+                   and bool(peer_rx.search(peer_sample)),
+                   "peer-session pattern covers inter-session sends",
+                   peer_cfg.get("tool_pattern", ""))
+        except re.error as exc:
+            report(False, "peer-session tool pattern compiles", str(exc))
+        peer_board = os.path.expanduser(peer_cfg.get(
+            "board", "~/.synthesis/coordination/active-sessions.md"))
+        report(os.path.isfile(peer_board),
+               "coordination board readable for peer resolution", peer_board)
+    else:
+        report(any(rx.search(peer_sample) for rx in exempt),
+               "inter-session messaging is exempted (peer_send_resolution "
+               "not adopted; adopt it to gate peer sends on board "
+               "registration)")
 
     client_configs = [
         (
@@ -550,6 +667,12 @@ def run_doctor():
                 "%s PreToolUse wiring covers the tool family" % label,
                 config_file,
             )
+            if isinstance(peer_cfg, dict) and label == "Claude Code":
+                report(
+                    hook_config_covers(config_file, [peer_sample]),
+                    "%s PreToolUse wiring routes peer-session sends" % label,
+                    config_file,
+                )
         except Exception as exc:
             report(False, "%s hook config readable" % label, str(exc))
     report(active_clients > 0, "at least one supported agent client is active")

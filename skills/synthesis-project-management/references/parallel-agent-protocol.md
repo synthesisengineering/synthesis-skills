@@ -30,6 +30,52 @@ machine:
    with `retire_worktree.py`, never by hand. Publish the attributed batch
    only for explicit remote handoff or day-end.
 
+## Addressing a peer session — resolve, never guess
+
+Three naming systems cover one population of sessions: the board's
+identities (UUIDv7 with compact and speakable aliases), each client's chat
+handles (Claude Code's `local_<uuid>` session ids with free-text titles),
+and the harness's display labels (directory-plus-recency strings that
+duplicate freely). Only the board answers "what does this session own," and
+since schema v4 it also carries the join: each row's **client session ref**,
+the client-native delivery handle registered automatically at claim time
+(`ccd:local_<uuid>` from `CLAUDE_CODE_HOST_SESSION_ID`, or any scheme-prefixed
+value exported as `SYNTHESIS_CLIENT_SESSION_REF`, e.g. `codex:<uuid>`).
+
+The addressing protocol:
+
+1. **Resolve first.** `coordination.py resolve --to <project|session|ref>`
+   returns the exact target with its delivery lane. Exactly one match exits
+   0; several exit 20 and are printed — narrow with `--role owner` or
+   address one exact id; none exits 21. Titles and display labels are
+   deliberately not selectors.
+2. **Deliver on the returned lane.** A `ccd:` ref is a direct-push target
+   for Claude Code's session-messaging tool on that machine. A Codex session
+   or an unregistered peer is reached through the board message bus
+   (`message --to`), which now also refuses addressees that match no
+   session or registered project (`--free-address` records a deliberate
+   exception). Substance belongs on the durable bus either way; the direct
+   channel is the pointer (the 2026-08-19 rule).
+3. **Never assign work to a guess.** An unresolvable peer means broadcast
+   informationally on the bus and let sessions self-select — a dispatch to
+   the wrong session starts work in a context with the wrong claims, and
+   the receiving session cannot tell it was a guess.
+4. **One seat, one row.** A claim with no `--session` whose detected ref
+   matches its own active row updates that row in place; two active rows
+   with one ref refuse until the stale one is released. Sub-agents spawned
+   by a session inherit its environment and therefore its seat — they must
+   not claim as independent sessions.
+5. **Enforcement.** Instances that adopt `peer_send_resolution` in
+   synthesis-message-guard get the fail-closed backstop: a direct
+   peer-session send whose target id is not an active board ref is blocked
+   at the PreToolUse boundary with resolve/bus guidance.
+
+Migration is staged: the engine reads schemas v1–v4 and writes each board's
+declared schema; a shared board flips to v4 only via an explicit `migrate`
+run after every machine's client is current, so older parsers mid-flight
+fail closed on nothing. Until migration, refs print a notice at claim time
+and drop harmlessly; resolve says the board is pre-v4.
+
 ## Digests — what survives a crash
 
 Semantic continuity does not come from copying chat transcripts. The durable

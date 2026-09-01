@@ -16,7 +16,25 @@ from pathlib import Path
 from typing import Iterable
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
+V4_COLUMNS = (
+    "session uuid",
+    "compact id",
+    "speakable id v1",
+    "legacy id",
+    "agent",
+    "machine",
+    "client session ref",
+    "project",
+    "started",
+    "heartbeat",
+    "mode",
+    "workspace(s) / branch",
+    "goal",
+    "claimed areas (advisory lock)",
+    "context role",
+    "status",
+)
 V3_COLUMNS = (
     "session uuid",
     "compact id",
@@ -303,7 +321,9 @@ def parse_table_rows(text: str) -> list[dict[str, str]]:
             "session uuid",
         }:
             continue
-        if len(cells) == len(V3_COLUMNS):
+        if len(cells) == len(V4_COLUMNS):
+            result.append(dict(zip(V4_COLUMNS, cells)))
+        elif len(cells) == len(V3_COLUMNS):
             result.append(dict(zip(V3_COLUMNS, cells)))
         elif len(cells) == len(V2_COLUMNS):
             result.append(dict(zip(V2_COLUMNS, cells)))
@@ -312,7 +332,8 @@ def parse_table_rows(text: str) -> list[dict[str, str]]:
         else:
             raise ValueError(
                 f"active-session row has {len(cells)} columns; expected "
-                f"{len(V3_COLUMNS)}, {len(V2_COLUMNS)}, or {len(V1_COLUMNS)}"
+                f"{len(V4_COLUMNS)}, {len(V3_COLUMNS)}, {len(V2_COLUMNS)}, "
+                f"or {len(V1_COLUMNS)}"
             )
     return result
 
