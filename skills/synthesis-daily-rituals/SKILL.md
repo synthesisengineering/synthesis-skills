@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.29.0"
+  version: "2.30.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,23 @@ metadata:
 # Daily Rituals — Global Checklists
 
 Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
+
+## v2.30.0 — Watermarks carry a time and a target, and a run proves its own coverage
+
+v2.30.0 (2026-09-01) fixes what a day-granular watermark could not see: a
+surface written at 09:15 counted as current for the rest of the day, so a
+mid-day pass that re-read only what the morning had skipped let the
+morning's own reads go stale — and an "unanswered" claim at 17:51 rested on
+a 09:15 read while the answer had gone out at 09:27. Four defects, one
+mechanism: watermarks are ISO-8601 timestamps (the last moment actually WRITTEN,
+never the last attempted); a surface carries one watermark per
+declared read target; `begin` stamps a run and
+`status --since run` exits non-zero on every declared surface or target not
+re-read during THIS run; and `window` echoes human-readable bounds beside
+the epoch `oldest` a read call takes — a window parameter is a claim about
+time and is computed, not typed. Every sync re-reads every declared target:
+"already read today" is a statement about the past. Contract, store, and
+rationale: [references/sync-watermarks.md](references/sync-watermarks.md).
 
 ## v2.27.0 — Sync windows follow the last write, and a recorded gap blocks
 
@@ -583,14 +600,19 @@ The set of remotes for each repo comes from `git remote -v` inside that repo. Th
 - [ ] **Email sync (v2.19.0)** — when the workspace routinely syncs email (established `transcripts/email/` practice or explicit config): sweep the window's inbound mail AND the user's own sent mail (sent items are correspondence records too — the user's outbound exec mail is often the day's most consequential artifact), using the workspace's designated email tooling and account. Save to the workspace convention (e.g., `transcripts/email/YYYY-MM-DD-<slug>.md`).
 - [ ] **Document-comment sync (v2.19.0)** — when the workspace has an established docs-sweep practice (`transcripts/docs/` or explicit config): Drive documents modified in the window, open comment threads where the newest reply is not the user's (ball in their court), and engagement on documents the user shared out.
 - [ ] **Name any surface not swept.** The declared surface set is the complete decision (v2.12.1 applied to channels); a sync that skips one must say so in its report rather than reporting as complete.
-- [ ] **Watermark gate (v2.28.0):** after the sweeps, run
-  `python3 <skill-root>/scripts/sync_watermark.py status --workspace <W> --surface <s>` with
-  **every declared surface passed explicitly** — the store only knows surfaces
-  that have already been written, so a status that consults only the store
-  walks straight past a declared surface that has never been swept (the
-  command refuses an empty surface set for exactly that reason). Non-zero exit
-  means an unclosed gap: close it this run or defer it with an explicit
-  reason before the ritual proceeds.
+- [ ] **Watermark gate (v2.30.0):** the sweep opened with
+  `python3 <skill-root>/scripts/sync_watermark.py begin --workspace <W> --label day-start`,
+  every read target's `oldest` came from `sync_watermark.py window`, and every
+  saved read was recorded with `sync_watermark.py advance` (per target for
+  Slack and Chat). Now run
+  `python3 <skill-root>/scripts/sync_watermark.py status --workspace <W> --surface <s> --since run`
+  with **every declared surface passed explicitly** and the declared read
+  targets via `--targets-from` — the store only knows what has already been
+  written, so a status that consults only the store walks straight past a
+  declared surface never swept (the command refuses an empty surface set for
+  exactly that reason). Non-zero exit names each surface or target this run
+  did not re-read: read it now or defer it with an explicit reason before the
+  ritual proceeds.
 - [ ] Run any project-specific sync steps (see project supplement).
 
 #### 3c. Meeting Transcripts
@@ -988,6 +1010,8 @@ The day-start checklist does a full sync. The user will ask for syncs repeatedly
 
 The key discipline encoded in that skill: **every sync must re-read ALL threads with replies from today**, not just fetch new channel-level messages. Thread replies don't appear as channel messages — skipping thread re-reads causes stale action plans and duplicate message sends.
 
+**Every sync re-reads every declared target (v2.30.0).** A DM or channel read at day-start is not current at mid-day: "already read today" is a statement about the past, not about now, and a twelve-minute-old reply is the normal case for a DM. Open each sync with `python3 <skill-root>/scripts/sync_watermark.py begin --workspace <W> --label mid-day`, take each target's `oldest` from `sync_watermark.py window --target <resolved id>`, record each saved read with `sync_watermark.py advance --target <resolved id>`, and close with `sync_watermark.py status --workspace <W> --surface <s> --since run --targets-from <declared.json>` — its BLOCKING list is exactly the set this sync skipped, and the sync is not complete while it is non-empty. The user's own outbound is first-class sweep state: list every owed item their messages discharged since the window opened, and never call anything "unanswered" or "unsent" on a read older than this run. Origin (2026-09-01): two mid-day syncs covered group DMs and channels only; a DM answered at 09:27 was reported unanswered at 17:51 on the strength of a 09:15 read.
+
 **Record after every sync.** Any sync that creates or updates transcripts, daily plans, or context files must leave session-attributed local state. Day-start and mid-day sync do not push merely to make same-machine client switching work; day-end and explicit remote handoff publish the batch.
 
 ---
@@ -1062,11 +1086,14 @@ The Weekly Loose-Ends Review (Step 10) attaches to whichever ritual runs first o
 - [ ] **Run `/synthesis-slack-sync`** for final capture of the day. The `synthesis-slack-sync` skill ensures all channels, threads, and DMs are captured.
 - [ ] **Google Chat final capture (v2.17.0)** — if the workspace declares `.agents/gchat-sync.yaml`, run the same Chat sweep as Day-Start Step 3b for the day's window (fresh space enumeration; raw sender IDs preserved).
 - [ ] **Email + document-comment final capture (v2.19.0)** — when the workspace syncs those surfaces (per Day-Start 3b's declared-set rule): the day's inbound and sent mail, meeting transcripts for any meeting that ended since the last sync, and document comments/engagement for the day's window. Name any surface not swept.
-- [ ] **Watermark gate (v2.28.0):** run
-  `python3 <skill-root>/scripts/sync_watermark.py status --workspace <W> --surface <s>` with
-  every declared surface passed explicitly (same rule and same reason as
-  Day-Start Step 3b's gate). The day does not close over a blocking gap:
-  close it or defer it with a reason now.
+- [ ] **Watermark gate (v2.30.0):** the final capture opened with
+  `sync_watermark.py begin --workspace <W> --label day-end` and recorded each
+  saved read with `advance`; now run
+  `python3 <skill-root>/scripts/sync_watermark.py status --workspace <W> --surface <s> --since run`
+  with every declared surface and read target passed explicitly (same rule
+  and same reason as Day-Start Step 3b's gate). The day does not close over a
+  surface or target this run did not re-read: read it or defer it with a
+  reason now.
 - [ ] Update CONTEXT.md to mark any items resolved by day's conversations (so tomorrow's day-start does not re-propose them).
 
 ### 2. Source-Code Sync

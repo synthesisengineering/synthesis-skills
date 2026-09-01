@@ -1,30 +1,28 @@
-# AGENT HEURISTIC: authored for the 4.78.0 coordination-engine hardening.
+# AGENT HEURISTIC: authored for the 4.79.0 sync-watermark v2 transaction.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: coordination-engine-version-skew-and-section-hygiene
+suite: sync-watermarks-carry-time-and-target
 membership: closed
-production_entry_point: skills/synthesis-project-management/scripts/coordination.py
-enforcing_boundary: the coordination engine refuses to parse or rewrite a board newer than itself and names the engine to run, and every Active-sessions rewrite emits a fixed-shape section
+production_entry_point: skills/synthesis-daily-rituals/scripts/sync_watermark.py
+enforcing_boundary: the ritual watermark gate exits non-zero naming every declared surface or read target the current run did not re-read, and read windows are computed from the last written moment rather than typed
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: engines released before 4.78.0 keep their bare column-count message on a newer board and cannot be repaired retroactively; the live collapse of a real board's accumulated padding is proven in the release record rather than by a hermetic case
+unverified_remainder: the live migration of a real workspace store and the first ritual run under the new gate are proven in the release record; the message-guard ledger age limit that already bounds agent sends is unchanged and not re-proven here
 changed_surfaces:
-  - path: skills/synthesis-project-management/scripts/coordination.py
-    cases: [newer-board-refused-with-remedy, wider-row-names-newer-engine, section-padding-collapses]
-  - path: skills/synthesis-project-management/scripts/coordination_schema.py
-    cases: [remedy-names-newest-cached-engine, wider-row-names-newer-engine]
-  - path: skills/synthesis-project-management/scripts/test_coordination.py
-    cases: [newer-board-refused-with-remedy, wider-row-names-newer-engine, section-padding-collapses, remedy-names-newest-cached-engine, skew-doc-contract]
-  - path: skills/synthesis-project-management/references/session-identity.md
-    cases: [skew-doc-contract]
-  - path: skills/synthesis-project-management/references/active-sessions-template.md
-    cases: [skew-doc-contract]
-  - path: skills/synthesis-project-management/SKILL.md
-    cases: [skill-budget]
+  - path: skills/synthesis-daily-rituals/scripts/sync_watermark.py
+    cases: [run-bound-blocks-stale-read, targets-block-individually, window-echoes-epoch-bounds, bare-date-is-end-of-day, schema-one-store-migrates]
+  - path: skills/synthesis-daily-rituals/scripts/test_sync_watermark.py
+    cases: [run-bound-blocks-stale-read, targets-block-individually, window-echoes-epoch-bounds, bare-date-is-end-of-day, schema-one-store-migrates, rituals-doc-contract, slack-doc-contract]
+  - path: skills/synthesis-daily-rituals/references/sync-watermarks.md
+    cases: [rituals-doc-contract]
+  - path: skills/synthesis-daily-rituals/SKILL.md
+    cases: [rituals-doc-contract]
+  - path: skills/synthesis-slack-sync/SKILL.md
+    cases: [slack-doc-contract]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -32,34 +30,38 @@ changed_surfaces:
   - path: .codex-plugin/plugin.json
     cases: [release-manifest-parity]
   - path: CHANGELOG.md
-    cases: [release-changelog-parity, skew-doc-contract]
+    cases: [release-changelog-parity]
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: newer-board-refused-with-remedy
+  - id: run-bound-blocks-stale-read
     control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_rows_refuses_a_board_newer_than_the_engine
-    motivating_defect: a-stale-engine-reported-the-freshly-migrated-shared-board-as-corrupt-with-a-bare-column-count
-  - id: wider-row-names-newer-engine
+    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_begin_then_status_since_run_lists_exactly_what_was_skipped
+    motivating_defect: a-surface-written-at-0915-counted-as-current-all-day-so-no-run-could-see-its-own-staleness
+  - id: targets-block-individually
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_wider_rows_than_the_engine_knows_name_the_newer_engine
-    motivating_defect: a-row-wider-than-the-engine-knows-has-one-cause-and-the-message-did-not-say-it
-  - id: section-padding-collapses
+    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_a_target_read_before_the_run_is_stale
+    motivating_defect: mid-day-passes-re-read-only-the-targets-the-morning-skipped-and-a-0927-answer-was-reported-unanswered-at-1751
+  - id: window-echoes-epoch-bounds
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_replace_table_collapses_padding_and_stays_fixed
-    motivating_defect: every-table-rewrite-grew-the-board-by-one-blank-line-until-a-thousand-read-as-a-second-table
-  - id: remedy-names-newest-cached-engine
+    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_window_prints_the_epoch_bounds_a_read_call_takes
+    motivating_defect: a-hand-typed-oldest-of-0750-today-reported-five-channels-empty-that-were-not
+  - id: bare-date-is-end-of-day
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_engine_remedy_names_the_newest_cached_engine
-    motivating_defect: a-remedy-that-says-update-without-naming-the-path-sends-the-operator-back-to-guessing
-  - id: skew-doc-contract
+    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_a_bare_date_means_end_of_day_so_today_is_refused_mid_day
+    motivating_defect: a-mid-day-run-that-stamps-today-declares-hours-it-has-not-read
+  - id: schema-one-store-migrates
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_version_skew_documented_on_public_surfaces
-    motivating_defect: a-refusal-nobody-is-told-about-reads-as-a-new-corruption
-  - id: skill-budget
+    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_a_schema_one_date_reads_as_complete_through_end_of_that_day
+    motivating_defect: existing-stores-hold-bare-dates-and-a-wrong-reading-would-reopen-or-hide-a-day
+  - id: rituals-doc-contract
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_skill_document_stays_within_repo_budget
-    motivating_defect: a-version-bump-must-not-be-an-excuse-for-the-main-document-to-regrow
+    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_rituals_open_every_sync_with_begin_and_reread_every_target
+    motivating_defect: a-mechanism-nobody-is-told-to-run-is-not-a-control
+  - id: slack-doc-contract
+    control_class: acceptance-test
+    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_slack_sync_counts_the_users_own_outbound
+    motivating_defect: the-principals-own-replies-were-not-sweep-state-so-discharged-items-stayed-owed
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
