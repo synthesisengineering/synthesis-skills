@@ -6,6 +6,22 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v2.34.0 — Google Chat gets a declared target set; wholesale advance is refused
+
+v2.34.0 (2026-09-02): the fifth sync defect from the field. A surface-level
+watermark on the Chat surface recorded coverage that no per-space read
+backed, and a colleague's four DMs asking to schedule a meeting went
+unsurfaced through two syncs and a day-end. `scripts/gchat_preflight.py`
+now derives the declared set — the config's explicit, labeled `targets`
+plus the saved enumeration filtered client-side and marked BOUNDED when the
+wrapper's page cap or a short page makes completeness unprovable — and
+`sync_watermark.py advance` refuses a surface-level write on a surface that
+carries per-target entries unless `--surface-level` asserts it. The
+enumeration's defects (text output, an ignored type filter, no paging
+cursor, undocumented order, every DM shown as "Unnamed Space") are stated
+in the script and in references/sync-watermarks.md; the missing cursor is
+an upstream wrapper defect to file, not a thing to design around silently.
+
 ## v2.33.0 — Placeholders resolve under the stable plugin path; parity checks the pointer
 
 v2.33.0 (2026-09-01): SKILL.md says where every `<…-root>` placeholder

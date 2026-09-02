@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.33.0"
+  version: "2.34.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -109,7 +109,7 @@ The set of remotes for each repo comes from `git remote -v` inside that repo. Th
 
 - [ ] Check for new PRs, CI results, overnight pushes (now that local repos are current).
 - [ ] **Run `/synthesis-slack-sync`** — the `synthesis-slack-sync` skill handles the full Slack sync protocol: verify connector auth, read all channels, re-read all threads with replies, check DMs, save to local transcripts, and update the action plan. See that skill for the detailed protocol and the rationale behind each step. Configuration is in `.agents/slack-sync.yaml` per project, with `.claude/slack-sync.yaml` supported for existing projects.
-- [ ] **Google Chat sync (v2.17.0)** — if the workspace declares `.agents/gchat-sync.yaml`: enumerate spaces fresh via the Chat space-list call (never a hand-maintained ID list — per-meeting spaces churn daily), read DMs/groups/named/meeting spaces per the config's scope windowed by `createTime` since the last sync, treat a full page as possibly-truncated (narrow the window and re-read), keep the raw `users/<id>` on every line beside any resolved name, and save to the workspace convention (e.g., `transcripts/gchat/gchat-YYYY-MM-DD.md`). Same confidentiality handling as Slack DMs. Skip silently when no config exists.
+- [ ] **Google Chat sync (v2.34.0)** — if the workspace declares `.agents/gchat-sync.yaml`: enumerate spaces fresh via the Chat space-list call and save the call's text output to a file (never a hand-maintained ID list — per-meeting spaces churn daily), then run `python3 <skill-root>/scripts/gchat_preflight.py --config .agents/gchat-sync.yaml --spaces <that file> --json --out <declared.json>`. It takes the config's explicit `targets` (space ids with labels — the auditable core, since the enumeration shows every DM as "Unnamed Space") plus the enumeration filtered client-side by the config's `scope` (the wrapper's type filter is not trusted), prints the resolved-target table with a census by type and a BOUND line whenever the enumeration was capped or short (the wrapper pages at 100 and exposes no cursor), and writes the declared set the watermark gate consumes. Read each target with `oldest` from `sync_watermark.py window --surface gchat --target <space id>`, windowed by `createTime`; treat a full page as possibly-truncated (narrow the window and re-read); keep the raw `users/<id>` on every line beside any resolved name; save to the workspace convention (e.g., `transcripts/gchat/gchat-YYYY-MM-DD.md`); record each saved read with `sync_watermark.py advance --surface gchat --target <space id> --through <latest>` — a surface-level advance is refused once targets exist. A bounded enumeration is partial coverage: defer the surface with the bound as the reason, never advance past it. Same confidentiality handling as Slack DMs. Skip silently when no config exists.
 - [ ] **Email sync (v2.19.0)** — when the workspace routinely syncs email (established `transcripts/email/` practice or explicit config): sweep the window's inbound mail AND the user's own sent mail (sent items are correspondence records too — the user's outbound exec mail is often the day's most consequential artifact), using the workspace's designated email tooling and account. Save to the workspace convention (e.g., `transcripts/email/YYYY-MM-DD-<slug>.md`).
 - [ ] **Document-comment sync (v2.19.0)** — when the workspace has an established docs-sweep practice (`transcripts/docs/` or explicit config): Drive documents modified in the window, open comment threads where the newest reply is not the user's (ball in their court), and engagement on documents the user shared out.
 - [ ] **Name any surface not swept.** The declared surface set is the complete decision (v2.12.1 applied to channels); a sync that skips one must say so in its report rather than reporting as complete.
@@ -206,7 +206,7 @@ The daily plan is both a live dashboard and the day's record. **Preserve all inf
 The day-start checklist does a full sync. The user will ask for syncs repeatedly throughout the day ("sync from Slack", "what's new", "check channels"). **A sync request covers EVERY surface the workspace routinely syncs — not Slack alone, and not only chat surfaces (v2.19.0):**
 
 1. **Slack** — always.
-2. **Google Chat** — when `.agents/gchat-sync.yaml` exists.
+2. **Google Chat** — when `.agents/gchat-sync.yaml` exists; per target, from the declared set `gchat_preflight.py` writes this run (v2.34.0).
 3. **Email** — when the workspace routinely syncs it (evidenced by an established `transcripts/email/` directory or an explicit config). Use the workspace's designated email tooling and account; sweep inbound AND the user's own sent mail for the window.
 4. **Meeting transcripts** — when `.agents/meeting-transcripts.yaml` exists: any meeting that ended during the window gets its transcript fetched (or re-checked, for ones whose notes had not yet generated).
 5. **Document comments** — when the workspace has an established docs-sweep practice (evidenced by `transcripts/docs/` or an explicit config): Drive documents modified in the window, and open comment threads addressed to the user.
@@ -284,7 +284,7 @@ The Weekly Loose-Ends Review (Step 10) attaches to whichever ritual runs first o
 ### 1. Transcript Sync
 
 - [ ] **Run `/synthesis-slack-sync`** for final capture of the day. The `synthesis-slack-sync` skill ensures all channels, threads, and DMs are captured.
-- [ ] **Google Chat final capture (v2.17.0)** — if the workspace declares `.agents/gchat-sync.yaml`, run the same Chat sweep as Day-Start Step 3b for the day's window (fresh space enumeration; raw sender IDs preserved).
+- [ ] **Google Chat final capture (v2.17.0)** — if the workspace declares `.agents/gchat-sync.yaml`, run the same Chat sweep as Day-Start Step 3b for the day's window (fresh space enumeration through `gchat_preflight.py`, per-target reads and advances, raw sender IDs preserved).
 - [ ] **Email + document-comment final capture (v2.19.0)** — when the workspace syncs those surfaces (per Day-Start 3b's declared-set rule): the day's inbound and sent mail, meeting transcripts for any meeting that ended since the last sync, and document comments/engagement for the day's window. Name any surface not swept.
 - [ ] **Watermark gate (v2.30.0):** the final capture opened with `sync_watermark.py begin --workspace <W> --label day-end` and recorded each saved read with `advance`; now run `python3 <skill-root>/scripts/sync_watermark.py status --workspace <W> --surface <s> --since run` with every declared surface and read target passed explicitly (same rule and same reason as Day-Start Step 3b's gate). The day does not close over a surface or target this run did not re-read: read it or defer it with a reason now.
 - [ ] Update CONTEXT.md to mark any items resolved by day's conversations (so tomorrow's day-start does not re-propose them).

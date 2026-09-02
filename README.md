@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Google Chat coverage is now claimed per space, never wholesale
+(September 2026).** Release **4.89.0** derives a declared target set for the
+Chat surface from an explicit config core plus a bounded enumeration, and
+refuses a surface-level watermark advance once per-target entries exist.
+See the [4.89.0 release notes](CHANGELOG.md).
+
 **A self-report is a claim, not evidence (September 2026).** Release
 **4.88.0** makes daily parity read each client's installed manifest on disk
 beside the CLI report, and makes the message guard's clean doctor control a

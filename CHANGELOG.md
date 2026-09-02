@@ -4,6 +4,26 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.89.0] - 2026-09-02
+
+**Google Chat gets a declared target set, and a surface that carries
+targets can no longer be advanced wholesale.** The fifth sync defect from
+the field: a surface-level watermark on the Chat surface recorded coverage
+no per-space read backed, and a colleague's four DMs went unsurfaced through
+two syncs and a day-end. daily-rituals 2.34.0 ships
+`scripts/gchat_preflight.py`: the declared set is the config's explicit,
+labeled `targets` (the auditable core — the enumeration shows every DM as
+"Unnamed Space") plus the saved enumeration text, parsed line by line,
+filtered client-side by the config's `scope` because the wrapper ignores
+its own type filter, and marked BOUNDED when the header count exceeds the
+records or the 100-record page cap is hit, since no paging cursor is
+exposed; a bounded set is partial coverage that the report and the deferral
+name rather than a completeness claim. `sync_watermark.py advance` now
+refuses a surface-level write on a surface with per-target entries unless
+`--surface-level` asserts it. Thirteen preflight tests and two watermark
+tests pin the behavior; the missing cursor is recorded as an upstream
+wrapper defect.
+
 ## [4.88.0] - 2026-09-02
 
 **Two old coordination-board asks closed.** (1) Daily parity now reads each

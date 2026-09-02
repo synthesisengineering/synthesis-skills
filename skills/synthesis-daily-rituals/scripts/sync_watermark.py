@@ -281,6 +281,7 @@ def advance(
     targets: tuple[str, ...] | list[str] = (),
     now: datetime | None = None,
     home: Path | None = None,
+    surface_level: bool = False,
 ) -> dict:
     """Record a successful write. Never moves a watermark backwards or into
     the future; with targets, records each target's own read."""
@@ -302,6 +303,17 @@ def advance(
     if targets:
         slots = [(t, surface_entry["targets"].setdefault(t, {})) for t in targets]
     else:
+        if surface_entry.get("targets") and not surface_level:
+            # 2026-09-01: a surface-level advance on the Chat surface recorded
+            # coverage that no per-space read backed, and four DMs went
+            # unsurfaced. Once a surface carries per-target watermarks, a
+            # wholesale advance is a claim without evidence — refuse it.
+            raise ValueError(
+                f"{surface} carries per-target watermarks "
+                f"({len(surface_entry['targets'])} target(s)); a surface-level advance would "
+                "claim coverage no target read backs — advance the targets you read, or pass "
+                "--surface-level to assert whole-surface coverage explicitly"
+            )
         slots = [(None, surface_entry)]
     for target, entry in slots:
         key = _key(surface, target)
@@ -527,6 +539,8 @@ def main(argv: list[str] | None = None) -> int:
         if name == "advance":
             p.add_argument("--through", required=True)
             p.add_argument("--target", action="append", default=[])
+            p.add_argument("--surface-level", action="store_true",
+                           help="assert whole-surface coverage on a surface that carries targets")
         if name == "defer":
             p.add_argument("--reason", required=True)
         if name == "status":
@@ -545,7 +559,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "window":
             result = window(args.workspace, args.surface, args.target)
         elif args.command == "advance":
-            result = advance(args.workspace, args.surface, args.through, tuple(args.target))
+            result = advance(args.workspace, args.surface, args.through, tuple(args.target),
+                             surface_level=args.surface_level)
         elif args.command == "defer":
             result = defer(args.workspace, args.surface, args.reason, args.target)
         else:
