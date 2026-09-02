@@ -98,12 +98,32 @@ def append_event(rec: dict) -> dict:
             "cap even after trimming free text. Shorten the structured fields.")
     p = log_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     try:
         os.write(fd, blob)          # one write, under PIPE_BUF -> atomic
     finally:
         os.close(fd)
+    tighten(p)
+    tighten(p.parent, 0o700)
     return rec
+
+
+def tighten(p: Path, want: int = 0o600) -> bool:
+    """Keep the ledger private. Returns True when it had to change something.
+
+    Hold purposes name meetings, colleagues and clients. The predecessor file
+    was 0600; a store that widens that while replacing it trades one defect
+    for a quieter one. The mode is enforced on every write rather than only at
+    creation, because the file outlives the umask that made it.
+    """
+    try:
+        cur = os.stat(p).st_mode & 0o777
+        if cur != want:
+            os.chmod(p, want)
+            return True
+    except OSError:
+        pass
+    return False
 
 
 def load_events() -> list[dict]:
@@ -338,6 +358,15 @@ def run_doctor() -> int:
 
     live = current(events, today)
     report(True, "live holds", "%d" % len(live))
+
+    if p.exists():
+        fmode = os.stat(p).st_mode & 0o777
+        dmode = os.stat(p.parent).st_mode & 0o777
+        report(fmode == 0o600 and dmode == 0o700, "ledger is private",
+               "log %o, dir %o — hold purposes name meetings and people; "
+               "expected 600/700 (the next append repairs this)"
+               % (fmode, dmode) if (fmode != 0o600 or dmode != 0o700)
+               else "600/700")
 
     legacy = legacy_path()
     if legacy.exists():

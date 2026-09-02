@@ -4,6 +4,18 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.85.1] - 2026-09-02
+
+**The two new state stores are created private.** 4.85.0 replaced a 0600
+holds ledger with a log left at the umask default, and wrote grounding
+ledgers the same way — a store that widens permissions while fixing a
+concurrency bug trades one defect for a quieter one. Hold purposes name
+meetings, colleagues and clients; a grounding ledger carries the full
+outgoing text and every source behind it. Both are now 0600 inside a 0700
+directory, created that way rather than chmodded after the write, and the
+mode is reasserted on every append because the file outlives the umask that
+made it. Both doctors report a loose store, and the next write repairs it.
+
 ## [4.85.0] - 2026-09-02
 
 **Two shared single-slot files are now append-only logs, because one slot

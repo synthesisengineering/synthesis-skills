@@ -169,3 +169,25 @@ def test_engine_self_test_passes() -> None:
                           capture_output=True, text=True)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "FAIL" not in proc.stdout, proc.stdout
+
+
+def test_ledger_is_created_private(store) -> None:
+    """Hold purposes name meetings, colleagues and clients.
+
+    The file this replaced was 0600. A store that widens that while fixing a
+    concurrency bug trades one defect for a quieter one.
+    """
+    place("h", "2026-09-04T14:00:00-04:00", "2026-09-04T16:00:00-04:00")
+    log = Path(H.log_path())
+    assert log.stat().st_mode & 0o777 == 0o600
+    assert log.parent.stat().st_mode & 0o777 == 0o700
+
+
+def test_loose_permissions_are_repaired_on_the_next_append(store) -> None:
+    place("h", "2026-09-04T14:00:00-04:00", "2026-09-04T16:00:00-04:00")
+    log = Path(H.log_path())
+    os.chmod(log, 0o644)
+    os.chmod(log.parent, 0o755)
+    place("h2", "2026-09-04T16:00:00-04:00", "2026-09-04T17:00:00-04:00")
+    assert log.stat().st_mode & 0o777 == 0o600
+    assert log.parent.stat().st_mode & 0o777 == 0o700

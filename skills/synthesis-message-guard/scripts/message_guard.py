@@ -92,6 +92,25 @@ def ledger_path_for(sha):
     return os.path.join(ledger_dir(), "%s.json" % sha)
 
 
+def tighten_ledger_store():
+    """Keep the ledger directory private, on every write rather than at
+    creation only — the directory outlives the umask that made it."""
+    changed = []
+    try:
+        d = ledger_dir()
+        if os.stat(d).st_mode & 0o777 != 0o700:
+            os.chmod(d, 0o700)
+            changed.append(d)
+        for name in os.listdir(d):
+            fp = os.path.join(d, name)
+            if os.path.isfile(fp) and os.stat(fp).st_mode & 0o777 != 0o600:
+                os.chmod(fp, 0o600)
+                changed.append(fp)
+    except OSError:
+        pass
+    return changed
+
+
 def sweep_orphan_ledgers(cfg):
     """Delete ledgers far past max age. Returns the count removed.
 
@@ -785,6 +804,16 @@ def run_doctor():
                if names else "empty (the normal resting state)")
     else:
         report(True, "ledger store", "not yet created (normal before first use)")
+    if os.path.isdir(ledger_dir()):
+        dmode = os.stat(ledger_dir()).st_mode & 0o777
+        loose = [n for n in os.listdir(ledger_dir())
+                 if os.path.isfile(os.path.join(ledger_dir(), n))
+                 and os.stat(os.path.join(ledger_dir(), n)).st_mode & 0o777 != 0o600]
+        report(dmode == 0o700 and not loose, "ledger store is private",
+               "dir %o, %d file(s) not 600 — a ledger carries the full "
+               "outgoing text and its sources (the next --write-ledger "
+               "repairs this)" % (dmode, len(loose))
+               if (dmode != 0o700 or loose) else "700/600")
 
     currency_cfg = currency_config(cfg)
     if currency_cfg:
@@ -1212,10 +1241,14 @@ def main():
                   "the EXACT final text (pipe it to --sha). Got: %r" % (sha,),
                   file=sys.stderr)
             sys.exit(2)
-        os.makedirs(ledger_dir(), exist_ok=True)
+        os.makedirs(ledger_dir(), mode=0o700, exist_ok=True)
+        tighten_ledger_store()
         dest = ledger_path_for(sha.lower())
         tmp = dest + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
+        # 0600 from creation: a ledger carries the full outgoing text and its
+        # sources, and a mode set after the write leaves a readable window.
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(ledger, fh, indent=2)
         os.replace(tmp, dest)          # atomic; never a half-written ledger
         print(dest)

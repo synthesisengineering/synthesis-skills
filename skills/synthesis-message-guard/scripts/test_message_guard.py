@@ -447,3 +447,37 @@ def test_engine_behavioral_suite_passes() -> None:
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "FAIL" not in proc.stdout, proc.stdout
+
+
+def test_written_ledger_is_private(monkeypatch, tmp_path) -> None:
+    """A ledger carries the full outgoing text and every source behind it."""
+    import os as _os
+    import subprocess
+
+    monkeypatch.setenv("MESSAGE_GUARD_STATE_DIR", str(tmp_path))
+    payload = {"message_sha256": MODULE.sha256_text("hello"), "claims": []}
+    proc = subprocess.run(
+        [sys.executable, str(MODULE_PATH), "--write-ledger"],
+        input=json.dumps(payload), capture_output=True, text=True,
+        env={**_os.environ, "MESSAGE_GUARD_STATE_DIR": str(tmp_path)},
+    )
+    assert proc.returncode == 0, proc.stderr
+    written = Path(proc.stdout.strip())
+    assert written.stat().st_mode & 0o777 == 0o600
+    assert written.parent.stat().st_mode & 0o777 == 0o700
+    assert not list(written.parent.glob("*.tmp")), "no temp file left behind"
+
+
+def test_loose_ledger_permissions_are_repaired(monkeypatch, tmp_path) -> None:
+    import os as _os
+
+    monkeypatch.setenv("MESSAGE_GUARD_STATE_DIR", str(tmp_path))
+    d = Path(MODULE.ledger_dir())
+    d.mkdir(parents=True, exist_ok=True)
+    stray = d / ("c" * 64 + ".json")
+    stray.write_text("{}")
+    _os.chmod(stray, 0o644)
+    _os.chmod(d, 0o755)
+    MODULE.tighten_ledger_store()
+    assert stray.stat().st_mode & 0o777 == 0o600
+    assert d.stat().st_mode & 0o777 == 0o700

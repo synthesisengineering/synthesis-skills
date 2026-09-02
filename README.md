@@ -12,6 +12,7 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 ## What's new
 
 **The stable plugin path is checked every morning (September 2026).**
+Release **4.85.1** creates both new state stores private (0600/0700).
 Release **4.85.0** replaces two shared single-slot state files with
 append-only logs: the message-guard grounding ledger is now keyed by message
 sha, and the chief-of-staff holds ledger is an event log with a mechanical
