@@ -1949,3 +1949,31 @@ def test_cli_presents_a_refusal_as_one_error_line(tmp_path):
     assert done.stderr.startswith("error: board declares schema v")
     assert "Traceback" not in done.stderr
 
+
+def test_every_command_notes_a_newer_installed_engine(tmp_path):
+    """The resolved-path foot-gun: a session keeps a versioned path for hours
+    while releases ship. Every invocation from an older cached engine now says
+    so on stderr, naming the newer path, without changing its behavior."""
+    cache = tmp_path / "plugins" / "synthesis-skills"
+    relative = Path("skills") / "synthesis-project-management" / "scripts"
+    older = cache / "4.80.0" / relative
+    older.mkdir(parents=True)
+    for name in ("coordination.py", "coordination_schema.py", "pointer_lock.py"):
+        (older / name).write_bytes((MODULE_PATH.parent / name).read_bytes())
+    newer = cache / "4.81.0" / relative
+    newer.mkdir(parents=True)
+    (newer / "coordination.py").write_text("#\n", encoding="utf-8")
+
+    done = subprocess.run(
+        [sys.executable, str(older / "coordination.py"), "--board", str(tmp_path / "board.md"), "doctor"],
+        capture_output=True, text=True, check=False,
+    )
+    assert "note: this coordination engine is 4.80.0 but 4.81.0 is installed" in done.stderr
+    assert str(newer / "coordination.py") in done.stderr
+
+    current = subprocess.run(
+        [sys.executable, str(MODULE_PATH), "--board", str(tmp_path / "board.md"), "doctor"],
+        capture_output=True, text=True, check=False,
+    )
+    assert "note: this coordination engine" not in current.stderr
+

@@ -515,6 +515,56 @@ def plugin_cache_parent(client: str) -> Path:
     return installed_root(client, "0.0.0").parent
 
 
+STABLE_ROOT = Path(
+    os.environ.get("SYNTHESIS_STABLE_PLUGIN_ROOT", str(Path.home() / ".synthesis" / "plugins"))
+)
+
+
+def stable_path() -> Path:
+    """The version-independent path instruction files and sessions may pin.
+
+    Versioned cache paths go stale on the next release — a session on a
+    months-old engine read the shared board as corrupt on 2026-09-01, and the
+    personal workspace's own day-start commands pinned a release twenty
+    versions behind. The stable path is synthesis-owned, outside the
+    client-owned caches (which the clients replace on their own schedule),
+    and is repointed atomically only after both clients verified a version.
+    """
+    return STABLE_ROOT / PLUGIN_NAME / "current"
+
+
+def refresh_stable_path(
+    version: str, result: Result, dry_run: bool, *, target: Path | None = None
+) -> bool:
+    link = stable_path()
+    root = target or installed_root("claude", version)
+    if dry_run:
+        return result.add("install.stable-path", True, f"would point {link} -> {root}")
+    manifest = root / ".claude-plugin" / "plugin.json"
+    try:
+        installed = json.loads(manifest.read_text(encoding="utf-8"))["version"]
+    except (OSError, ValueError, KeyError) as exc:
+        return result.add(
+            "install.stable-path", False, f"{root} is not a verified install root: {exc}"
+        )
+    if installed != version:
+        return result.add(
+            "install.stable-path", False, f"{root} carries {installed}, expected {version}"
+        )
+    link.parent.mkdir(parents=True, exist_ok=True)
+    staging = link.with_name(link.name + ".tmp")
+    if staging.is_symlink() or staging.exists():
+        staging.unlink()
+    os.symlink(root, staging)
+    os.replace(staging, link)
+    resolved = Path(os.path.realpath(link))
+    return result.add(
+        "install.stable-path",
+        resolved == Path(os.path.realpath(root)),
+        f"{link} -> {root}",
+    )
+
+
 def _tree_digest(root: Path) -> str:
     """Hash recovery-owned paths and bytes, excluding client-managed metadata."""
     digest = hashlib.sha256()
@@ -1410,6 +1460,12 @@ def main(argv: list[str] | None = None) -> int:
             f"\nRELEASE INCOMPLETE for {version}: "
             f"{len(result.failed)} step(s) failed. The clients are NOT confirmed current — "
             "re-run with --install-only after fixing."
+        )
+        return 1
+    if not refresh_stable_path(version, result, args.dry_run):
+        print(
+            f"\nRELEASE INCOMPLETE for {version}: the stable path could not be "
+            "repointed at the verified install — re-run with --install-only."
         )
         return 1
     print(f"\nRELEASED {version}: published, installed, and verified on both clients.")

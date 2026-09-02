@@ -13,6 +13,7 @@ converts an unknown into a false assurance.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -117,6 +118,44 @@ def test_first_json_handles_nested_arrays() -> None:
 
 def test_first_json_returns_empty_when_absent() -> None:
     assert release._first_json("no json here") == ""
+
+
+def _install_root(tmp_path: Path, version: str) -> Path:
+    root = tmp_path / "cache" / version
+    (root / ".claude-plugin").mkdir(parents=True)
+    (root / ".claude-plugin" / "plugin.json").write_text(
+        json.dumps({"version": version}), encoding="utf-8"
+    )
+    return root
+
+
+def test_stable_path_points_at_the_verified_install_root(tmp_path, monkeypatch) -> None:
+    """Instruction files pin the stable path; it must follow every verified
+    release atomically and never point at an unverified tree."""
+    monkeypatch.setattr(release, "STABLE_ROOT", tmp_path / "plugins")
+    first = _install_root(tmp_path, "4.82.0")
+    assert release.refresh_stable_path("4.82.0", release.Result(), False, target=first)
+    link = release.stable_path()
+    assert link.is_symlink()
+    assert Path(os.path.realpath(link)) == first.resolve()
+
+    second = _install_root(tmp_path, "4.83.0")
+    assert release.refresh_stable_path("4.83.0", release.Result(), False, target=second)
+    assert Path(os.path.realpath(link)) == second.resolve()
+    assert not link.with_name(link.name + ".tmp").exists()
+
+
+def test_stable_path_refuses_an_unverified_or_mismatched_root(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(release, "STABLE_ROOT", tmp_path / "plugins")
+    bare = tmp_path / "cache" / "4.82.0"
+    bare.mkdir(parents=True)
+    result = release.Result()
+    assert not release.refresh_stable_path("4.82.0", result, False, target=bare)
+    assert not release.stable_path().exists()
+
+    other = _install_root(tmp_path, "4.81.0")
+    assert not release.refresh_stable_path("4.82.0", release.Result(), False, target=other)
+    assert not release.stable_path().exists()
 
 
 def test_required_checks_do_not_depend_on_shell_glob_expansion() -> None:

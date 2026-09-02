@@ -332,6 +332,26 @@ The general rule this encodes, worth applying beyond releases: **when a
 verification asks a system to describe itself, verify the description against
 the artifact.** A self-report is a claim, not evidence.
 
+## The stable path — never pin a version
+
+Instruction files and long-lived sessions that pin a versioned cache path
+(`…/synthesis-skills/4.59.0/…`) go stale on the next release — on 2026-09-01
+a session on a months-old engine read the shared coordination board as
+corrupt, and a workspace's own day-start commands pinned a release twenty
+versions behind. The gated release therefore maintains a synthesis-owned,
+version-independent path:
+
+```
+~/.synthesis/plugins/synthesis-skills/current  ->  <the verified install root>
+```
+
+It lives outside the client-owned caches (which the clients replace on their
+own schedule), is repointed atomically by `release.py` only after both
+clients verified the version, and is refused when the target root is not a
+verified install (`install.stable-path`). Reference it from instruction
+files and scripts instead of a version; `--install-only` repoints it on a
+new machine. `SYNTHESIS_STABLE_PLUGIN_ROOT` overrides the parent for tests.
+
 ## The release train — one publisher at a time
 
 On 2026-09-01, two agent sessions releasing this repository in parallel

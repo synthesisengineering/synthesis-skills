@@ -1,38 +1,32 @@
-# AGENT HEURISTIC: authored for the 4.81.0 Slack preflight transaction.
+# AGENT HEURISTIC: authored for the 4.82.0 stable-path and stale-engine-notice transaction.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: slack-preflight-owns-target-resolution
+suite: stable-plugin-path-and-stale-engine-notice
 membership: closed
-production_entry_point: skills/synthesis-slack-sync/scripts/preflight.py
-enforcing_boundary: the preflight resolves one read id per declared target from the sync config, refuses user ids and wrong-class prefixes, prints a census, and writes the declared set the watermark gate consumes, failing closed on an empty set or a malformed config
+production_entry_point: skills/synthesis-skills-manager/scripts/release.py
+enforcing_boundary: the gated release repoints the synthesis-owned stable path only at a verified install root, and every coordination command announces an engine older than the newest installed
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the run against a real workspace config is recorded in the private session record only; whether the Slack API accepts G-prefixed group-DM ids in every workspace is not exercised here
+unverified_remainder: the live repoint of the real stable path happens in this release's own install phase and is proven by its receipt; instruction files outside this repository adopt the path in their own commits
 changed_surfaces:
-  - path: skills/synthesis-slack-sync/scripts/preflight.py
-    cases: [dm-read-id-is-the-conversation-id, user-id-refused, declared-set-feeds-the-gate, census-shows-shape, cli-fails-closed]
-  - path: skills/synthesis-slack-sync/scripts/test_preflight.py
-    cases: [dm-read-id-is-the-conversation-id, user-id-refused, declared-set-feeds-the-gate, census-shows-shape, cli-fails-closed, slack-doc-contract, rituals-doc-contract, ci-membership]
-  - path: skills/synthesis-slack-sync/SKILL.md
-    cases: [slack-doc-contract, slack-budget]
-  - path: skills/synthesis-slack-sync/references/version-history.md
-    cases: [slack-budget]
-  - path: skills/synthesis-daily-rituals/SKILL.md
-    cases: [rituals-doc-contract, rituals-budget]
-  - path: skills/synthesis-daily-rituals/references/version-history.md
-    cases: [rituals-budget]
-  - path: .github/workflows/validate.yml
-    cases: [ci-membership, ci-doc-parity]
-  - path: AGENTS.md
-    cases: [ci-membership, ci-doc-parity]
   - path: skills/synthesis-skills-manager/scripts/release.py
-    cases: [release-gate-membership]
+    cases: [stable-path-atomic-repoint, stable-path-refuses-unverified]
   - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [release-gate-membership, ci-doc-parity]
+    cases: [stable-path-atomic-repoint, stable-path-refuses-unverified]
+  - path: skills/synthesis-skills-manager/SKILL.md
+    cases: [stable-path-doc-contract]
+  - path: skills/synthesis-project-management/scripts/coordination_schema.py
+    cases: [stale-engine-notice]
+  - path: skills/synthesis-project-management/scripts/coordination.py
+    cases: [stale-engine-notice]
+  - path: skills/synthesis-project-management/scripts/test_coordination.py
+    cases: [stale-engine-notice]
+  - path: skills/synthesis-project-management/references/session-identity.md
+    cases: [stable-path-doc-contract]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -44,54 +38,22 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: dm-read-id-is-the-conversation-id
+  - id: stable-path-atomic-repoint
     control_class: enforced-gate
-    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_dms_resolve_to_the_conversation_id_never_the_user_id
-    motivating_defect: a-uniform-read-of-id-hands-user-ids-to-a-conversation-read-call-and-reports-quiet-empties
-  - id: user-id-refused
-    control_class: enforced-gate
-    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_a_user_id_offered_as_a_conversation_id_is_refused
-    motivating_defect: a-user-id-in-a-read-set-is-always-a-bug-and-was-never-refused
-  - id: declared-set-feeds-the-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_stable_path_points_at_the_verified_install_root
+    motivating_defect: a-versioned-cache-path-pinned-in-instructions-or-a-session-is-stale-by-the-next-release
+  - id: stable-path-refuses-unverified
     control_class: acceptance-test
-    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_declared_set_is_the_shape_the_watermark_gate_takes
-    motivating_defect: a-hand-maintained-declared-set-is-a-second-source-of-truth-that-drifts-or-is-wrong-when-written
-  - id: census-shows-shape
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_stable_path_refuses_an_unverified_or_mismatched_root
+    motivating_defect: a-stable-path-that-can-point-at-an-unverified-tree-is-a-stale-path-with-a-better-name
+  - id: stale-engine-notice
     control_class: acceptance-test
-    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_census_shows_the_shape
-    motivating_defect: a-wrong-derivation-showed-as-quiet-empties-instead-of-a-visibly-wrong-shape
-  - id: cli-fails-closed
-    control_class: acceptance-test
-    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_cli_refuses_an_empty_resolved_set
-    motivating_defect: an-empty-resolved-set-reported-as-a-quiet-day-is-a-completeness-claim-with-no-evidence
-  - id: slack-doc-contract
-    control_class: acceptance-test
-    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_slack_sync_names_the_preflight_command_and_census
-    motivating_defect: a-script-the-protocol-does-not-invoke-is-not-a-control
-  - id: rituals-doc-contract
-    control_class: acceptance-test
-    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_rituals_take_the_declared_set_from_preflight
-    motivating_defect: a-gate-fed-by-a-stored-copy-goes-green-over-an-incomplete-sweep
-  - id: ci-membership
-    control_class: acceptance-test
-    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_preflight_is_in_the_shared_ci_group
-    motivating_defect: tests-outside-the-ci-list-run-at-no-boundary
-  - id: ci-doc-parity
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_every_command_notes_a_newer_installed_engine
+    motivating_defect: a-session-kept-a-resolved-path-across-six-releases-and-nothing-in-its-output-said-so
+  - id: stable-path-doc-contract
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
-    motivating_defect: a-documented-check-list-that-ci-outgrew-fails-locally-green-branches
-  - id: release-gate-membership
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_cover_ci_pytest_groups
-    motivating_defect: the-release-gate-skipped-two-test-groups-ci-runs-until-a-coverage-test-asked
-  - id: slack-budget
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_slack_sync_skill_document_stays_within_repo_budget
-    motivating_defect: a-restructured-document-must-not-regrow-with-its-next-feature
-  - id: rituals-budget
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_skill_document_stays_within_repo_budget
-    motivating_defect: a-restructured-document-must-not-regrow-with-its-next-feature
+    motivating_defect: a-path-nobody-is-told-to-pin-keeps-getting-pinned-by-version
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates

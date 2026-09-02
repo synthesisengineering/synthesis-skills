@@ -310,6 +310,33 @@ def _version_key(name: str) -> tuple[int, ...]:
     return tuple(int(part) for part in name.split("."))
 
 
+def newer_installed_engine(script_path: Path | str) -> tuple[str, str, Path] | None:
+    """(running version, newest installed version, newest script path) when the
+    running script lives in a versioned plugin cache and a newer sibling
+    version carries the same script; None otherwise."""
+    script = Path(script_path).resolve()
+    version_dir = next(
+        (
+            parent
+            for parent in script.parents
+            if _VERSION_DIR.match(parent.name) and (parent / "skills").is_dir()
+        ),
+        None,
+    )
+    if version_dir is None:
+        return None
+    relative = script.relative_to(version_dir)
+    siblings = [
+        candidate
+        for candidate in version_dir.parent.iterdir()
+        if _VERSION_DIR.match(candidate.name) and (candidate / relative).is_file()
+    ]
+    newest = max(siblings, key=lambda candidate: _version_key(candidate.name))
+    if _version_key(newest.name) > _version_key(version_dir.name):
+        return version_dir.name, newest.name, newest / relative
+    return None
+
+
 def engine_remedy(script_path: Path | str) -> str:
     """Name the engine a stale script should hand off to.
 
