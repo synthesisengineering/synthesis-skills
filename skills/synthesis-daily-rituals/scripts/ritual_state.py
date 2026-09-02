@@ -29,6 +29,15 @@ A principal closes one workspace at 18:00 and may start another at 18:30; closes
 are often written the next morning for the prior day. `date` is REQUIRED and never
 inferred from `ts` — inferring it is how a 01:30 close lands on the wrong day.
 
+EXERCISING THIS FROM OUTSIDE
+---------------------------
+`--state-dir DIR` (or the RITUAL_STATE_DIR env var) points every command at an
+alternate log + config. Copy the real ones into a scratch directory and any seat
+can exercise every arm of the tripwire — including the alarming arms, which
+cannot be reached in production because the log is append-only. Raised by the
+seat adopting this engine: the two arms that matter were self-attested, and an
+escape hatch nobody can find is not an escape hatch.
+
 APPEND ATOMICITY
 ----------------
 POSIX guarantees atomic appends only below PIPE_BUF (typically 4096 bytes).
@@ -638,6 +647,12 @@ def cmd_baseline(a) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
         description="Derive daily-ritual state from an append-only log. No mutable state file.")
+    ap.add_argument(
+        "--state-dir", default=None, metavar="DIR",
+        help="use this directory's history.jsonl and config.json instead of "
+             "~/.synthesis/rituals. Copy the real files into a scratch dir to exercise "
+             "behaviour — including the tripwire's alarming arms — without writing to the "
+             "production log. Equivalent to the RITUAL_STATE_DIR environment variable.")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     r = sub.add_parser("record", help="append one ritual record")
@@ -671,6 +686,8 @@ def main(argv=None) -> int:
     sub.add_parser("test", help="behavioural suite").set_defaults(func=cmd_test)
 
     a = ap.parse_args(argv)
+    if a.state_dir:
+        os.environ["RITUAL_STATE_DIR"] = a.state_dir
     return a.func(a)
 
 
