@@ -728,6 +728,32 @@ def test_whole_system_onboarding_release_contract_is_public_and_coherent() -> No
     assert "whole-system onboarding suite" in manager
 
 
+def test_quick_answers_skill_release_contract_is_public_and_coherent() -> None:
+    repository = Path(__file__).resolve().parents[3]
+    skill = (
+        repository / "skills/synthesis-quick-answers/SKILL.md"
+    ).read_text(encoding="utf-8")
+    readme = (repository / "README.md").read_text(encoding="utf-8")
+    changelog = (repository / "CHANGELOG.md").read_text(encoding="utf-8")
+    components = json.loads(
+        (
+            repository
+            / "skills/synthesis-onboarding/references/components.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert "synthesis-quick-answers" in readme
+    assert 'version: "1.1.0"' in skill
+    assert "## [4.86.0]" in changelog
+    assert "synthesis-quick-answers" in changelog
+    assert "synthesis-quick-answers" in components["skills"]
+    # The defining feature this transaction adds: every answer states its
+    # source and one of these three tiers, never silently.
+    assert "Verified" in skill and "Cached" in skill and "Uncertain" in skill
+    assert "synthesis-grounding-discipline" in skill
+    assert "cache-vs-truth" in skill
+
+
 def test_main_carries_acceptance_authority_to_publish_boundary(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

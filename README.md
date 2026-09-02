@@ -824,6 +824,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | `synthesis-daily-rituals` | Day-start and day-end checklists with dependency-ordered rituals |
 | `synthesis-catchup-ledger` | Reconcile missed and incomplete commitments after a gap in the ritual cadence into a dated catch-up ledger |
 | `synthesis-chief-of-staff` | Chief-of-staff duty: meeting triage, calendar-aware scheduling, look-ahead reviews, overcommitment checks, tracked holds |
+| `synthesis-quick-answers` | Low-cost, read-mostly lookup companion for ad hoc questions — keeps focused project sessions from absorbing quick lookups, with question-routing, strict grounding, and a self-building FAQ log |
 
 ### Knowledge Bases
 

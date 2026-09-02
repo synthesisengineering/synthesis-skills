@@ -4,6 +4,10 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.86.0] - 2026-09-02
+
+**New skill: `synthesis-quick-answers` v1.1.0 — a low-cost, read-mostly lookup companion for ad hoc workspace questions.** Ships already at 1.1.0: the confidence-disclosure feature below landed before this first release. Stands up a separate, cheap-model-tier project per workspace whose only mandate is answering one-off questions (people, teams, project status, releases, decisions) so a focused project session doesn't absorb quick lookups into its context or spend premium-model budget answering them. Operating protocol: classify the question, query only the narrow source that answers it (never load a whole other project's context for one fact), verify anything volatile against `synthesis-grounding-discipline`'s cache-vs-truth rule before asserting it, and — the defining feature — carry a one-line grounding trailer on every answer naming its source and a Verified / Cached / Uncertain confidence tier, so speed never reads as certainty. Answers append to a self-building `FAQ.md` log; durable facts route onward through `synthesis-knowledge-capture` rather than accumulating as a second copy in the companion's own files. Deliberately not a "seat" in the operations sense — it owns no workflow, only a read path across everything else, and its write scope stays limited to its own project files. Depends on `synthesis-project-management`, `synthesis-context-lifecycle`, `synthesis-grounding-discipline`, `synthesis-concise-messaging`, `synthesis-model-tiers`.
+
 ## [4.85.1] - 2026-09-02
 
 **The two new state stores are created private.** 4.85.0 replaced a 0600

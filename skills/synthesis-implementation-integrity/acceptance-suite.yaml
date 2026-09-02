@@ -1,26 +1,26 @@
-# AGENT HEURISTIC: authored for the 4.85.1 private-state-store transaction.
+# AGENT HEURISTIC: authored for the 4.86.0 synthesis-quick-answers transaction.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: state-stores-are-created-private
+suite: add-synthesis-quick-answers-skill
 membership: closed
-production_entry_point: skills/synthesis-chief-of-staff/scripts/holds_state.py
-enforcing_boundary: both new state stores are 0600 inside a 0700 directory from creation, and every append reasserts the mode, so a store cannot end up world-readable through the umask that happened to be in force when it was first written
+production_entry_point: skills/synthesis-quick-answers/SKILL.md
+enforcing_boundary: the new skill's defining feature (a source + Verified/Cached/Uncertain confidence trailer on every answer, reusing synthesis-grounding-discipline's cache-vs-truth vocabulary) is present in the shipped skill text, the skill is registered for both clients (SKILL.md plus its agents/openai.yaml), and every release-plumbing surface (both plugin manifests, CHANGELOG, README) agrees on version 4.86.0 before the release gate consumes this receipt
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the live repair of this machine's holds log is quoted in the release record rather than checked here; anything that already read a world-readable ledger during the 4.85.0 window is outside what a permission mode can address; stores created by a future writer that bypasses these engines are not covered
+unverified_remainder: the new skill's actual behavior inside a live Claude Code or Codex session (question routing, live source verification, trailer formatting under real questions) is not exercised by this suite — only the shipped text's presence and cross-surface version coherence are checked; first real usage happens once a colleague stands up the pattern in their own workspace
 changed_surfaces:
-  - path: skills/synthesis-chief-of-staff/scripts/holds_state.py
-    cases: [holds-store-created-private, holds-store-repaired-on-append]
-  - path: skills/synthesis-chief-of-staff/scripts/test_holds_state.py
-    cases: [holds-store-created-private, holds-store-repaired-on-append]
-  - path: skills/synthesis-message-guard/scripts/message_guard.py
-    cases: [ledger-written-private, ledger-store-repaired]
-  - path: skills/synthesis-message-guard/scripts/test_message_guard.py
-    cases: [ledger-written-private, ledger-store-repaired]
+  - path: skills/synthesis-quick-answers/SKILL.md
+    cases: [quick-answers-skill-release-contract]
+  - path: skills/synthesis-quick-answers/agents/openai.yaml
+    cases: [quick-answers-skill-release-contract]
+  - path: skills/synthesis-onboarding/references/components.json
+    cases: [quick-answers-skill-release-contract]
+  - path: skills/synthesis-skills-manager/scripts/test_release.py
+    cases: [quick-answers-skill-release-contract]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -32,22 +32,10 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: holds-store-created-private
-    control_class: enforced-gate
-    fixture: ../synthesis-chief-of-staff/scripts/test_holds_state.py::test_ledger_is_created_private
-    motivating_defect: replacing-a-0600-file-with-a-umask-default-log-widens-access-while-appearing-to-fix-a-bug
-  - id: holds-store-repaired-on-append
-    control_class: enforced-gate
-    fixture: ../synthesis-chief-of-staff/scripts/test_holds_state.py::test_loose_permissions_are_repaired_on_the_next_append
-    motivating_defect: a-mode-set-only-at-creation-does-not-survive-a-file-that-outlives-it
-  - id: ledger-written-private
-    control_class: enforced-gate
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_written_ledger_is_private
-    motivating_defect: a-grounding-ledger-carries-the-full-outgoing-text-and-every-source-behind-it
-  - id: ledger-store-repaired
-    control_class: enforced-gate
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_loose_ledger_permissions_are_repaired
-    motivating_defect: a-chmod-after-the-write-leaves-a-window-in-which-the-file-is-readable
+  - id: quick-answers-skill-release-contract
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_quick_answers_skill_release_contract_is_public_and_coherent
+    motivating_defect: a-skill-can-ship-with-its-defining-feature-undocumented-or-missing-the-codex-registration-file-every-other-skill-carries
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
