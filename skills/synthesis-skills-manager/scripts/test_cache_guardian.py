@@ -72,6 +72,18 @@ def test_restore_protects_history_but_never_installs_current(tmp_path: Path) -> 
     assert json.loads(guardian.receipt_path(home).read_text(encoding="utf-8"))["verified"] == 1
 
 
+def test_restore_prioritizes_newest_historical_roots(tmp_path: Path) -> None:
+    home = seeded_home(tmp_path)
+    archive = guardian.archive_root(home)
+    seed_root(archive / "4.74.0", "4.74.0", "newer history")
+    seed_root(archive / "4.75.0", "4.75.0", "newest history")
+
+    record = guardian.restore_once(home)
+
+    assert record["protected_versions"] == ["4.73.0", "4.74.0", "4.75.0"]
+    assert record["restored"] == ["4.75.0", "4.74.0", "4.73.0"]
+
+
 def test_later_parent_generation_is_repaired_without_touching_current(
     tmp_path: Path,
 ) -> None:

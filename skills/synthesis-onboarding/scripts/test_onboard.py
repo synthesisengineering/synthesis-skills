@@ -596,7 +596,11 @@ class PluginTests(unittest.TestCase):
             onboard, "resolve_target_version", return_value=("4.24.0", "fixture")
         ), patch.object(
             onboard, "refresh_plugin", return_value=(True, "refreshed")
-        ) as refresh:
+        ) as refresh, patch.object(
+            onboard,
+            "synchronize_codex_history",
+            return_value=(True, "historical root restored"),
+        ) as synchronize:
             onboard.phase_ecosystem(
                 report,
                 {"codex": "codex"},
@@ -608,8 +612,60 @@ class PluginTests(unittest.TestCase):
         refresh.assert_called_once_with(
             "codex", "codex", self.policy, reconfigure=True
         )
+        synchronize.assert_called_once_with("4.23.0")
         self.assertEqual(report.steps[0]["status"], onboard.CHANGED)
         self.assertIn("4.23.0 -> 4.24.0", report.steps[0]["detail"])
+
+    def test_update_fails_when_invoking_codex_history_is_not_restored(self):
+        report = onboard.Report(as_json=True)
+        with patch.object(
+            onboard, "plugin_record", return_value=(True, "4.23.0")
+        ), patch.object(
+            onboard, "expected_policy_version", return_value=("4.24.0", "fixture")
+        ), patch.object(
+            onboard, "refresh_plugin", return_value=(True, "refreshed")
+        ), patch.object(
+            onboard,
+            "synchronize_codex_history",
+            return_value=(False, "historical root is still absent"),
+        ) as synchronize:
+            onboard.phase_ecosystem(
+                report,
+                {"codex": "codex"},
+                dry_run=False,
+                no_plugin_cli=False,
+                policy=self.policy,
+                refresh_native_plugins=True,
+            )
+
+        synchronize.assert_called_once_with("4.23.0")
+        self.assertEqual(report.steps[0]["status"], onboard.ERROR)
+        self.assertIn("historical cache preservation failed", report.steps[0]["detail"])
+        self.assertEqual(report.steps[0]["hint"], "historical root is still absent")
+        self.assertNotIn("plugin updated", report.steps[0]["detail"])
+
+    def test_claude_update_does_not_invoke_codex_history_guardian(self):
+        report = onboard.Report(as_json=True)
+        with patch.object(
+            onboard,
+            "plugin_record",
+            side_effect=[(True, "4.23.0"), (True, "4.24.0")],
+        ), patch.object(
+            onboard, "expected_policy_version", return_value=("4.24.0", "fixture")
+        ), patch.object(
+            onboard, "refresh_plugin", return_value=(True, "refreshed")
+        ), patch.object(onboard, "synchronize_codex_history") as synchronize:
+            onboard.phase_ecosystem(
+                report,
+                {"claude": "claude"},
+                dry_run=False,
+                no_plugin_cli=False,
+                policy=self.policy,
+                refresh_native_plugins=True,
+            )
+
+        synchronize.assert_not_called()
+        self.assertEqual(report.steps[0]["status"], onboard.CHANGED)
 
     def test_installed_plugin_cache_never_becomes_version_expectation(self):
         with tempfile.TemporaryDirectory(prefix="onboard-plugin-cache-") as root:
