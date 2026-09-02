@@ -1,28 +1,34 @@
-# AGENT HEURISTIC: authored for the 4.79.0 sync-watermark v2 transaction.
+# AGENT HEURISTIC: authored for the 4.80.0 SKILL.md budget restructure.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: sync-watermarks-carry-time-and-target
+suite: rituals-and-slack-sync-documents-under-budget
 membership: closed
-production_entry_point: skills/synthesis-daily-rituals/scripts/sync_watermark.py
-enforcing_boundary: the ritual watermark gate exits non-zero naming every declared surface or read target the current run did not re-read, and read windows are computed from the last written moment rather than typed
+production_entry_point: skills/synthesis-daily-rituals/scripts/test_skill_documents.py
+enforcing_boundary: CI fails when either restructured SKILL.md reaches the repository line budget, loses a load-bearing rule anchor, drops a moved block from its reference, or leaves a reference or template unlinked
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the live migration of a real workspace store and the first ritual run under the new gate are proven in the release record; the message-guard ledger age limit that already bounds agent sends is unchanged and not re-proven here
+unverified_remainder: the re-flow of wrapped lines is asserted markdown-neutral by review, not by a renderer comparison; consumers that read these documents by heading names keep every heading that existed before the restructure, verified by the anchor sets
 changed_surfaces:
-  - path: skills/synthesis-daily-rituals/scripts/sync_watermark.py
-    cases: [run-bound-blocks-stale-read, targets-block-individually, window-echoes-epoch-bounds, bare-date-is-end-of-day, schema-one-store-migrates]
-  - path: skills/synthesis-daily-rituals/scripts/test_sync_watermark.py
-    cases: [run-bound-blocks-stale-read, targets-block-individually, window-echoes-epoch-bounds, bare-date-is-end-of-day, schema-one-store-migrates, rituals-doc-contract, slack-doc-contract]
-  - path: skills/synthesis-daily-rituals/references/sync-watermarks.md
-    cases: [rituals-doc-contract]
   - path: skills/synthesis-daily-rituals/SKILL.md
-    cases: [rituals-doc-contract]
+    cases: [rituals-budget-and-anchors, rituals-moved-blocks, rituals-no-orphans, watermark-doc-contract]
+  - path: skills/synthesis-daily-rituals/references/version-history.md
+    cases: [rituals-moved-blocks, rituals-no-orphans]
+  - path: skills/synthesis-daily-rituals/references/plan-format.md
+    cases: [rituals-moved-blocks, rituals-no-orphans]
+  - path: skills/synthesis-daily-rituals/references/draft-grounding.md
+    cases: [rituals-moved-blocks, rituals-no-orphans]
+  - path: skills/synthesis-daily-rituals/scripts/test_skill_documents.py
+    cases: [rituals-budget-and-anchors, rituals-moved-blocks, rituals-no-orphans, slack-budget-and-anchors, slack-moved-blocks, slack-no-orphans]
   - path: skills/synthesis-slack-sync/SKILL.md
-    cases: [slack-doc-contract]
+    cases: [slack-budget-and-anchors, slack-moved-blocks, slack-no-orphans, slack-doc-contract]
+  - path: skills/synthesis-slack-sync/references/version-history.md
+    cases: [slack-moved-blocks, slack-no-orphans]
+  - path: skills/synthesis-slack-sync/references/transcript-formats.md
+    cases: [slack-moved-blocks, slack-no-orphans]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -34,34 +40,38 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: run-bound-blocks-stale-read
+  - id: rituals-budget-and-anchors
     control_class: enforced-gate
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_begin_then_status_since_run_lists_exactly_what_was_skipped
-    motivating_defect: a-surface-written-at-0915-counted-as-current-all-day-so-no-run-could-see-its-own-staleness
-  - id: targets-block-individually
+    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_skill_document_stays_within_repo_budget
+    motivating_defect: a-1319-line-main-document-against-a-500-line-rule-with-nothing-that-fails-when-it-grows
+  - id: rituals-moved-blocks
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_a_target_read_before_the_run_is_stale
-    motivating_defect: mid-day-passes-re-read-only-the-targets-the-morning-skipped-and-a-0927-answer-was-reported-unanswered-at-1751
-  - id: window-echoes-epoch-bounds
+    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_moved_blocks_survive_in_their_references
+    motivating_defect: a-restructure-that-drops-a-block-on-the-way-to-its-reference-loses-a-rule-silently
+  - id: rituals-no-orphans
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_window_prints_the_epoch_bounds_a_read_call_takes
-    motivating_defect: a-hand-typed-oldest-of-0750-today-reported-five-channels-empty-that-were-not
-  - id: bare-date-is-end-of-day
+    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_references_are_all_linked
+    motivating_defect: a-reference-nobody-links-is-a-document-nobody-reads
+  - id: slack-budget-and-anchors
+    control_class: enforced-gate
+    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_slack_sync_skill_document_stays_within_repo_budget
+    motivating_defect: a-762-line-main-document-against-a-500-line-rule-with-nothing-that-fails-when-it-grows
+  - id: slack-moved-blocks
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_a_bare_date_means_end_of_day_so_today_is_refused_mid_day
-    motivating_defect: a-mid-day-run-that-stamps-today-declares-hours-it-has-not-read
-  - id: schema-one-store-migrates
+    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_slack_sync_moved_blocks_survive_in_their_references
+    motivating_defect: a-restructure-that-drops-a-block-on-the-way-to-its-reference-loses-a-rule-silently
+  - id: slack-no-orphans
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_a_schema_one_date_reads_as_complete_through_end_of_that_day
-    motivating_defect: existing-stores-hold-bare-dates-and-a-wrong-reading-would-reopen-or-hide-a-day
-  - id: rituals-doc-contract
+    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_slack_sync_references_and_templates_are_all_linked
+    motivating_defect: a-reference-nobody-links-is-a-document-nobody-reads
+  - id: watermark-doc-contract
     control_class: acceptance-test
     fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_rituals_open_every_sync_with_begin_and_reread_every_target
-    motivating_defect: a-mechanism-nobody-is-told-to-run-is-not-a-control
+    motivating_defect: a-restructure-must-not-move-a-documented-rule-that-a-mechanism-depends-on-out-of-the-main-document
   - id: slack-doc-contract
     control_class: acceptance-test
     fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_slack_sync_counts_the_users_own_outbound
-    motivating_defect: the-principals-own-replies-were-not-sweep-state-so-discharged-items-stayed-owed
+    motivating_defect: a-restructure-must-not-move-a-documented-rule-that-a-mechanism-depends-on-out-of-the-main-document
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
