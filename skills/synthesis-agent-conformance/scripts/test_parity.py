@@ -11,6 +11,7 @@ closed rather than pass vacuously.
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import unittest
 from pathlib import Path
@@ -43,6 +44,18 @@ class ParityTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
+    def stable(self, version: str) -> Path:
+        """Point the fake home's stable pointer at a fake install root."""
+        root = Path(self._tmp.name) / "cache" / version
+        (root / ".claude-plugin").mkdir(parents=True, exist_ok=True)
+        (root / ".claude-plugin" / "plugin.json").write_text(json.dumps({"version": version}))
+        link = self.home / ".synthesis" / "plugins" / MODULE.PLUGIN_NAME / "current"
+        link.parent.mkdir(parents=True, exist_ok=True)
+        if link.is_symlink():
+            link.unlink()
+        link.symlink_to(root)
+        return root
+
     def checks(self, claude: str | None, codex: str | None):
         versions = {"claude": claude, "codex": codex}
         with patch.object(
@@ -53,8 +66,28 @@ class ParityTests(unittest.TestCase):
             return MODULE.parity_checks(self.src, home=self.home)
 
     def test_everything_current_passes(self):
+        self.stable("4.13.0")
         ok = by_name(self.checks("4.13.0", "4.13.0"))
         self.assertTrue(all(ok.values()), ok)
+
+    def test_missing_stable_path_fails(self):
+        """A pointer nobody created is a pin that resolves to nothing."""
+        ok = by_name(self.checks("4.13.0", "4.13.0"))
+        self.assertFalse(ok["parity.stable-path"])
+        self.assertTrue(ok["parity.clients-current"])
+
+    def test_dangling_stable_path_fails(self):
+        """The client replaced its cache under the pointer."""
+        root = self.stable("4.13.0")
+        shutil.rmtree(root)
+        ok = by_name(self.checks("4.13.0", "4.13.0"))
+        self.assertFalse(ok["parity.stable-path"])
+
+    def test_stable_path_behind_installed_fails(self):
+        """An install made without the gated release left the pointer stale."""
+        self.stable("4.12.0")
+        ok = by_name(self.checks("4.13.0", "4.13.0"))
+        self.assertFalse(ok["parity.stable-path"])
 
     def test_one_client_behind_fails_match_and_current(self):
         ok = by_name(self.checks("4.13.0", "4.12.0"))

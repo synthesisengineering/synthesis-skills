@@ -6,6 +6,16 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v2.33.0 — Placeholders resolve under the stable plugin path; parity checks the pointer
+
+v2.33.0 (2026-09-01): SKILL.md says where every `<…-root>` placeholder
+resolves on a machine provisioned by the gated release
+(`~/.synthesis/plugins/synthesis-skills/current/skills/`) and that Day-Start
+Step 1's parity check now fails when that pointer is missing, dangling, or
+behind the installed version. Origin: a workspace's own day-start commands
+had pinned a release twenty versions behind, and a session on a stale
+cached engine read the shared board as corrupt.
+
 ## v2.32.0 — The watermark gate's declared set comes from the preflight script
 
 v2.32.0 (2026-09-01): Day-Start 3b, Day-End 1, and the Mid-Day protocol
