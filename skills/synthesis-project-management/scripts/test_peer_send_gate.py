@@ -157,6 +157,21 @@ def test_ccd_session_id_needs_a_matching_receipt(world) -> None:
     assert not wrong.allow
 
 
+def test_a_reclaimed_seat_is_not_shadowed_by_its_old_receipt(world, monkeypatch) -> None:
+    """Live on 2026-09-02: a thread was released and claimed again under a new
+    board identity with the same handle; the gate matched the stale receipt
+    first and refused a send the fresh receipt authorized."""
+    resolve(world)
+    assert ENGINE.command_release(args(world.board, id=world.target.compact_id)) == 0
+    reclaimed = claim(world.board, "project-t2", TARGET_ENV, monkeypatch)
+    for key, value in SENDER_ENV.items():
+        monkeypatch.setenv(key, value)
+    resolve(world, reclaimed.compact_id)
+    decision = evaluate(world, payload("mcp__ccd_session_mgmt__send_message", {"session_id": "local_target", "message": body(world)}))
+    assert decision.allow, decision.reason
+    assert decision.target_uuid == reclaimed.session_uuid
+
+
 def test_released_target_is_refused_even_with_a_receipt(world) -> None:
     resolve(world)
     assert ENGINE.command_release(args(world.board, id=world.target.compact_id)) == 0
@@ -217,6 +232,18 @@ def test_codex_queue_needs_a_receipt_for_that_thread(world, monkeypatch) -> None
     allowed = evaluate(world, payload("Bash", {"command": command}))
     assert allowed.allow, allowed.reason
     assert evaluate(world, payload("exec_command", {"cmd": "codex queue --message x"})).allow is False
+
+
+def test_shell_lane_boundary_is_stated_in_the_protocol_and_the_gate() -> None:
+    """The command-text gate cannot see a codex queue wrapped in a script; the
+    protocol and the gate's own docstring must say so rather than imply
+    coverage the gate does not have."""
+    protocol = (SCRIPTS_DIR.parent / "references" / "parallel-agent-protocol.md").read_text(encoding="utf-8")
+    assert "inside a script file is invisible to it" in protocol
+    assert "Invoke `codex queue` directly in the tool" in protocol
+    assert "inside a script" in (GATE.__doc__ or "")
+    wrapped = GATE.classify("Bash", {"command": "bash /tmp/run-queue.sh"})
+    assert wrapped.allow and not wrapped.logged, "a wrapper is not classified as a peer send; the doc states why"
 
 
 # --- process contract -----------------------------------------------------------------------

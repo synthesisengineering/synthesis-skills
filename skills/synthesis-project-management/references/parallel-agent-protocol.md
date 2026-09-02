@@ -81,6 +81,12 @@ that moment.
    message this session received — the harness wrote that address. In-process
    targets (`main`, spawned agent ids, named teammates) pass. Every decision
    lands in `peer-sends.jsonl`. Anything the gate cannot verify blocks.
+   One boundary is stated rather than hidden: on the shell lane the gate
+   reads the command text of the tool call, so a `codex queue` invoked
+   from inside a script file is invisible to it — the boundary every
+   shell-level guard shares. Invoke `codex queue` directly in the tool
+   call; wrapping it in a script is evasion, not delivery, and the send
+   log will show no decision for it.
 4. **Never assign work to a guess.** An unresolvable peer means a bus
    message addressed to the project, which its sessions self-select at their
    next prompt — a dispatch to the wrong session starts work in a context

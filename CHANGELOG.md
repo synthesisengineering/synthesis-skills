@@ -4,6 +4,24 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.90.3] - 2026-09-02
+
+**The shell-lane gate's boundary is stated where agents read it.** The
+codex lane was verified end to end against a live thread (registration,
+resolve, receipt, `codex queue` without the app-server daemon), and the
+verification showed the one place the gate cannot see: it reads the tool
+call's command text, so a `codex queue` run from inside a script file
+passes as an ordinary command — the boundary every shell-level guard
+shares. The protocol reference and the gate's docstring now say so and
+require the direct invocation; a test pins both statements.
+
+**A stale receipt no longer shadows a fresh one.** The same verification
+found a gate defect: a session that releases and claims again keeps its
+client handle under a new board identity, so two receipts can name one
+address, and the gate judged whichever sorted first — refusing a send the
+fresh receipt authorized. It now judges the newest receipt whose target
+row is still active. synthesis-project-management 2.11.2.
+
 ## [4.90.2] - 2026-09-02
 
 **A Codex update no longer returns while the invoking task's historical hook
