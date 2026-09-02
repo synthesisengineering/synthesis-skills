@@ -924,6 +924,15 @@ def run_tests():
     me = os.path.abspath(__file__)
     tmp = tempfile.mkdtemp(prefix="msg-guard-test-")
     cfg_src = config_path()
+    if not os.path.exists(cfg_src):
+        # The suite proves the ENGINE, not one machine's private patterns.
+        # 2026-09-02: main sat red for hours while every developer machine
+        # was green, because CI has no ~/.synthesis and the harness reached
+        # for it. Fall back to the skill's example config and say so.
+        example = os.path.join(os.path.dirname(me), "..", "patterns.example.json")
+        if os.path.exists(example):
+            print("config: %s is absent; running against patterns.example.json" % cfg_src)
+            cfg_src = os.path.abspath(example)
     env = dict(os.environ)
     env["MESSAGE_GUARD_CONFIG"] = cfg_src
     env["MESSAGE_GUARD_STATE_DIR"] = tmp

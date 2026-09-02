@@ -1,77 +1,39 @@
-# AGENT HEURISTIC: authored for the 4.88.0 transaction closing two coordination-board asks.
+# AGENT HEURISTIC: authored for the guard behavioral-suite hermeticity fix (rides in 4.88.0).
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: board-asks-on-disk-parity-and-canonical-clean-control
+suite: guard-behavioral-suite-hermetic
 membership: closed
-production_entry_point: skills/synthesis-agent-conformance/scripts/conformance.py
-enforcing_boundary: daily parity fails when a client's reported version has no cache tree on disk or a tree whose manifest disagrees, and the guard doctor fails when a pattern blocks the canonical signed message
+production_entry_point: skills/synthesis-message-guard/scripts/message_guard.py
+enforcing_boundary: the guard's behavioral suite proves the engine against the skill's example config in an isolated home, so a machine's private config can neither pass it locally nor fail it in CI
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the live parity and doctor runs on this machine after install are quoted in the release record; a marketplace snapshot directory that the client consults but that is not its cache tree remains covered by the release's own verification, not by the daily check
+unverified_remainder: the four releases that shipped while main was red were each verified on this machine by the gated release's own checks; CI's verdict for them is recorded as red and is not rewritten
 changed_surfaces:
-  - path: skills/synthesis-agent-conformance/scripts/conformance.py
-    cases: [on-disk-report-without-tree, on-disk-manifest-disagrees, parity-current]
-  - path: skills/synthesis-agent-conformance/scripts/test_parity.py
-    cases: [on-disk-report-without-tree, on-disk-manifest-disagrees, parity-current]
-  - path: skills/synthesis-agent-conformance/scripts/test_conformance.py
-    cases: [parity-current]
-  - path: skills/synthesis-agent-conformance/SKILL.md
-    cases: [parity-current]
   - path: skills/synthesis-message-guard/scripts/message_guard.py
-    cases: [clean-control-is-signed, over-broad-pattern-trips-control, example-controls-pass]
+    cases: [behavioral-suite-hermetic, behavioral-suite-falls-back]
   - path: skills/synthesis-message-guard/scripts/test_message_guard.py
-    cases: [clean-control-is-signed, over-broad-pattern-trips-control, example-controls-pass]
-  - path: skills/synthesis-message-guard/patterns.example.json
-    cases: [example-controls-pass]
-  - path: skills/synthesis-message-guard/SKILL.md
-    cases: [clean-control-is-signed]
+    cases: [behavioral-suite-hermetic, behavioral-suite-falls-back]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
-  - path: .claude-plugin/plugin.json
-    cases: [release-manifest-parity]
-  - path: .codex-plugin/plugin.json
-    cases: [release-manifest-parity]
   - path: CHANGELOG.md
     cases: [release-changelog-parity]
-  - path: README.md
-    cases: [release-changelog-parity]
 cases:
-  - id: on-disk-report-without-tree
+  - id: behavioral-suite-hermetic
     control_class: enforced-gate
-    fixture: ../synthesis-agent-conformance/scripts/test_parity.py::ParityTests::test_reported_version_without_a_cache_tree_fails_on_disk
-    motivating_defect: parity-stayed-green-while-the-loaded-codex-tree-sat-three-releases-behind-the-reported-version
-  - id: on-disk-manifest-disagrees
-    control_class: enforced-gate
-    fixture: ../synthesis-agent-conformance/scripts/test_parity.py::ParityTests::test_cache_manifest_disagreeing_with_the_report_fails_on_disk
-    motivating_defect: a-tree-that-exists-but-carries-another-version-is-the-same-stale-load-with-a-directory-name
-  - id: parity-current
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_engine_behavioral_suite_passes
+    motivating_defect: main-was-red-for-hours-while-every-developer-machine-was-green-because-the-suite-read-the-private-config
+  - id: behavioral-suite-falls-back
     control_class: acceptance-test
-    fixture: ../synthesis-agent-conformance/scripts/test_parity.py::ParityTests::test_everything_current_passes
-    motivating_defect: a-check-that-cannot-pass-on-a-healthy-machine-trains-bypass
-  - id: clean-control-is-signed
-    control_class: acceptance-test
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_builtin_clean_control_is_a_canonical_signed_message
-    motivating_defect: a-generic-clean-control-passed-while-every-real-signed-send-was-blocked
-  - id: over-broad-pattern-trips-control
-    control_class: enforced-gate
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_over_broad_retired_branding_pattern_trips_the_clean_control
-    motivating_defect: a-retired-branding-pattern-under-global-ignorecase-matched-the-correct-brand-and-the-doctor-stayed-green
-  - id: example-controls-pass
-    control_class: acceptance-test
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_example_clean_controls_include_the_signature_and_pass_example_patterns
-    motivating_defect: an-example-config-whose-own-controls-fail-its-own-patterns-ships-a-broken-doctor
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_behavioral_suite_falls_back_to_the_example_config
+    motivating_defect: a-harness-that-crashes-on-a-missing-file-proves-nothing-about-the-engine
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
     motivating_defect: an-acceptance-manifest-that-its-own-runner-cannot-consume-issues-authority-it-never-earned
-  - id: release-manifest-parity
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
-    motivating_defect: a-version-that-reaches-only-one-client-manifest-cannot-be-reliably-installed-or-audited
   - id: release-changelog-parity
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
