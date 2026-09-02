@@ -6,6 +6,14 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v2.32.0 — The watermark gate's declared set comes from the preflight script
+
+v2.32.0 (2026-09-01): Day-Start 3b, Day-End 1, and the Mid-Day protocol
+take `--targets-from` from the file synthesis-slack-sync's `preflight.py
+--json --out` writes during the run, so the declared set has one source
+(the sync config) and one resolver (the script), never a hand-maintained
+copy.
+
 ## v2.31.0 — Restructured under the 500-line budget
 
 v2.31.0 (2026-09-01) moves version history, plan formats, draft-grounding

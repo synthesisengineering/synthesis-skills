@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.9.0"
+  version: "3.10.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -154,7 +154,7 @@ Skip any file that does not yet exist (e.g., no DMs synced today). Combine the o
 
 Before any read, build the resolved-target list for this sweep. For every surface the config declares — channels, 1:1 DMs, group DMs — record the one id a conversation-read call accepts: the channel id for channels and group DMs, the **conversation id (`D…`), never the user id (`U…`)**, for DMs. A surface whose read id cannot be established is recorded as **unresolved** and reported that way — never as unreadable, never as a config defect, because the sweep has evidence for neither. An empty resolved-target list refuses the sweep rather than reporting a quiet day.
 
-Steps 1, 3, and 3b iterate ONLY this resolved-target list. Reaching back into the config for an id mid-sweep is the banned move from v3.6.0: where an entry carries two id-like fields, the wrong one usually resolves, so the bug hides until the person behind it leaves. (A deterministic preflight script generalizing the worked private implementation is queued as extraction item P2; until it lands, the resolved-target table is produced by hand at the top of the sweep and included in the sync report.)
+Run `python3 <synthesis-slack-sync-root>/scripts/preflight.py --config .agents/slack-sync.yaml` (v3.10.0): it prints the resolved-target table for the sync report and a prefix **census** line (for example `census: 9 C / 4 D / 0 unresolved`), and `--json --out <declared.json>` writes the declared set the watermark gate consumes — derived from the config this run, never a stored copy. It validates the id prefix per class (`C`/`G` for channels and group DMs, `D` for DMs; a `U`-prefixed id is never a read target), exits 1 when any declared target is unresolved so the report must name it, and exits 2 on an empty resolved set or a malformed config. Steps 1, 3, and 3b iterate ONLY its resolved-target list. Reaching back into the config for an id mid-sweep is the banned move from v3.6.0: where an entry carries two id-like fields, the wrong one usually resolves, so the bug hides until the person behind it leaves — and on 2026-09-01 a careful reader with the config open, warned minutes earlier, still derived every DM target as a user id; the census makes that a visibly wrong shape instead of quiet empties.
 
 ### Step 1: Read channels for new top-level messages
 
@@ -232,7 +232,7 @@ For each file:
 - Record the sync time (e.g., `## Mid-day sync (~14:30 EDT)`).
 - If the file doesn't exist, create it with the standard header and create directories as needed.
 - If no messages of that type were found, skip that file (do not create empty files).
-- **Record the read once it is saved (v3.8.0):** for each target whose window was read and whose messages (or confirmed absence) are now on disk, run `python3 <synthesis-daily-rituals-root>/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <the window's latest>`. The watermark advances only after the write, so a read that failed to save cannot claim coverage — and the gate at the end of the sync (`sync_watermark.py status --workspace <W> --surface slack --since run --targets-from <declared.json>`, the declared set derived from the sync config at sync time and never a stored copy) lists exactly the targets this sync did not re-read.
+- **Record the read once it is saved (v3.8.0):** for each target whose window was read and whose messages (or confirmed absence) are now on disk, run `python3 <synthesis-daily-rituals-root>/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <the window's latest>`. The watermark advances only after the write, so a read that failed to save cannot claim coverage — and the gate at the end of the sync (`sync_watermark.py status --workspace <W> --surface slack --since run --targets-from <declared.json>`, the declared set written by `preflight.py --json --out` this run and never a stored copy) lists exactly the targets this sync did not re-read.
 
 Meeting transcripts are NOT part of Slack sync — they are handled by the daily-rituals skill and placed in `{transcripts_repo}/{transcripts_path}/meetings/YYYY-MM-DD-<slug>.md`.
 

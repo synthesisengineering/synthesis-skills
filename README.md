@@ -11,6 +11,13 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Slack read targets are resolved by a script that fails closed
+(September 2026).** Release **4.81.0** ships the sync preflight: one read
+id per target from the config, id prefixes validated per class, a census
+that makes a wrong derivation visible, and the declared set the watermark
+gate consumes written fresh each run. See the [4.81.0 release
+notes](CHANGELOG.md).
+
 **Two operational documents are back under the line budget, with a test
 holding them there (September 2026).** Release **4.80.0** restructures the
 daily-rituals and Slack-sync skills: every rule and checklist step stays in

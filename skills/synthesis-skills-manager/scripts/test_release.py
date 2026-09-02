@@ -1342,3 +1342,37 @@ def test_main_refuses_a_non_checkout(tmp_path: Path) -> None:
 def test_main_aborts_on_manifest_disagreement(repo: Path) -> None:
     write_manifests(repo, "9.9.9", "9.9.8")
     assert release.main(["--repo-root", str(repo), "--check-only"]) == 2
+
+
+def _pytest_group_dirs(tokens: list[str]) -> set[str]:
+    return {
+        token.split("/test_")[0].rstrip("/")
+        for token in tokens
+        if token.startswith("skills/")
+    }
+
+
+def test_required_checks_cover_ci_pytest_groups() -> None:
+    """A test group CI runs but the release gate skips ships unverified (found
+    2026-09-01 when the Slack skill's first test directory joined CI): every
+    pytest path in the conformance job must be covered by a REQUIRED_CHECKS
+    pytest command; a directory covers its test_*.py glob."""
+    repository = Path(__file__).resolve().parents[3]
+    workflow = yaml.safe_load(
+        (repository / ".github" / "workflows" / "validate.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    ci_groups: set[str] = set()
+    for step in workflow["jobs"]["conformance"]["steps"]:
+        run = step.get("run", "")
+        if "-m pytest" in run:
+            ci_groups |= _pytest_group_dirs(run.split())
+    gate_groups: set[str] = set()
+    for _name, command in release.REQUIRED_CHECKS:
+        if "pytest" in command:
+            gate_groups |= _pytest_group_dirs(list(command))
+    missing = sorted(ci_groups - gate_groups)
+    assert not missing, (
+        "CI pytest groups absent from release.py REQUIRED_CHECKS: " + repr(missing)
+    )

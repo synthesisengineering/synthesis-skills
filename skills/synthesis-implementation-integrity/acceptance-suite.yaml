@@ -1,34 +1,38 @@
-# AGENT HEURISTIC: authored for the 4.80.0 SKILL.md budget restructure.
+# AGENT HEURISTIC: authored for the 4.81.0 Slack preflight transaction.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: rituals-and-slack-sync-documents-under-budget
+suite: slack-preflight-owns-target-resolution
 membership: closed
-production_entry_point: skills/synthesis-daily-rituals/scripts/test_skill_documents.py
-enforcing_boundary: CI fails when either restructured SKILL.md reaches the repository line budget, loses a load-bearing rule anchor, drops a moved block from its reference, or leaves a reference or template unlinked
+production_entry_point: skills/synthesis-slack-sync/scripts/preflight.py
+enforcing_boundary: the preflight resolves one read id per declared target from the sync config, refuses user ids and wrong-class prefixes, prints a census, and writes the declared set the watermark gate consumes, failing closed on an empty set or a malformed config
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the re-flow of wrapped lines is asserted markdown-neutral by review, not by a renderer comparison; consumers that read these documents by heading names keep every heading that existed before the restructure, verified by the anchor sets
+unverified_remainder: the run against a real workspace config is recorded in the private session record only; whether the Slack API accepts G-prefixed group-DM ids in every workspace is not exercised here
 changed_surfaces:
-  - path: skills/synthesis-daily-rituals/SKILL.md
-    cases: [rituals-budget-and-anchors, rituals-moved-blocks, rituals-no-orphans, watermark-doc-contract]
-  - path: skills/synthesis-daily-rituals/references/version-history.md
-    cases: [rituals-moved-blocks, rituals-no-orphans]
-  - path: skills/synthesis-daily-rituals/references/plan-format.md
-    cases: [rituals-moved-blocks, rituals-no-orphans]
-  - path: skills/synthesis-daily-rituals/references/draft-grounding.md
-    cases: [rituals-moved-blocks, rituals-no-orphans]
-  - path: skills/synthesis-daily-rituals/scripts/test_skill_documents.py
-    cases: [rituals-budget-and-anchors, rituals-moved-blocks, rituals-no-orphans, slack-budget-and-anchors, slack-moved-blocks, slack-no-orphans]
+  - path: skills/synthesis-slack-sync/scripts/preflight.py
+    cases: [dm-read-id-is-the-conversation-id, user-id-refused, declared-set-feeds-the-gate, census-shows-shape, cli-fails-closed]
+  - path: skills/synthesis-slack-sync/scripts/test_preflight.py
+    cases: [dm-read-id-is-the-conversation-id, user-id-refused, declared-set-feeds-the-gate, census-shows-shape, cli-fails-closed, slack-doc-contract, rituals-doc-contract, ci-membership]
   - path: skills/synthesis-slack-sync/SKILL.md
-    cases: [slack-budget-and-anchors, slack-moved-blocks, slack-no-orphans, slack-doc-contract]
+    cases: [slack-doc-contract, slack-budget]
   - path: skills/synthesis-slack-sync/references/version-history.md
-    cases: [slack-moved-blocks, slack-no-orphans]
-  - path: skills/synthesis-slack-sync/references/transcript-formats.md
-    cases: [slack-moved-blocks, slack-no-orphans]
+    cases: [slack-budget]
+  - path: skills/synthesis-daily-rituals/SKILL.md
+    cases: [rituals-doc-contract, rituals-budget]
+  - path: skills/synthesis-daily-rituals/references/version-history.md
+    cases: [rituals-budget]
+  - path: .github/workflows/validate.yml
+    cases: [ci-membership, ci-doc-parity]
+  - path: AGENTS.md
+    cases: [ci-membership, ci-doc-parity]
+  - path: skills/synthesis-skills-manager/scripts/release.py
+    cases: [release-gate-membership]
+  - path: skills/synthesis-skills-manager/scripts/test_release.py
+    cases: [release-gate-membership, ci-doc-parity]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -40,38 +44,54 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: rituals-budget-and-anchors
+  - id: dm-read-id-is-the-conversation-id
     control_class: enforced-gate
-    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_skill_document_stays_within_repo_budget
-    motivating_defect: a-1319-line-main-document-against-a-500-line-rule-with-nothing-that-fails-when-it-grows
-  - id: rituals-moved-blocks
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_moved_blocks_survive_in_their_references
-    motivating_defect: a-restructure-that-drops-a-block-on-the-way-to-its-reference-loses-a-rule-silently
-  - id: rituals-no-orphans
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_references_are_all_linked
-    motivating_defect: a-reference-nobody-links-is-a-document-nobody-reads
-  - id: slack-budget-and-anchors
+    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_dms_resolve_to_the_conversation_id_never_the_user_id
+    motivating_defect: a-uniform-read-of-id-hands-user-ids-to-a-conversation-read-call-and-reports-quiet-empties
+  - id: user-id-refused
     control_class: enforced-gate
-    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_slack_sync_skill_document_stays_within_repo_budget
-    motivating_defect: a-762-line-main-document-against-a-500-line-rule-with-nothing-that-fails-when-it-grows
-  - id: slack-moved-blocks
+    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_a_user_id_offered_as_a_conversation_id_is_refused
+    motivating_defect: a-user-id-in-a-read-set-is-always-a-bug-and-was-never-refused
+  - id: declared-set-feeds-the-gate
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_slack_sync_moved_blocks_survive_in_their_references
-    motivating_defect: a-restructure-that-drops-a-block-on-the-way-to-its-reference-loses-a-rule-silently
-  - id: slack-no-orphans
+    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_declared_set_is_the_shape_the_watermark_gate_takes
+    motivating_defect: a-hand-maintained-declared-set-is-a-second-source-of-truth-that-drifts-or-is-wrong-when-written
+  - id: census-shows-shape
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_slack_sync_references_and_templates_are_all_linked
-    motivating_defect: a-reference-nobody-links-is-a-document-nobody-reads
-  - id: watermark-doc-contract
+    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_census_shows_the_shape
+    motivating_defect: a-wrong-derivation-showed-as-quiet-empties-instead-of-a-visibly-wrong-shape
+  - id: cli-fails-closed
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_rituals_open_every_sync_with_begin_and_reread_every_target
-    motivating_defect: a-restructure-must-not-move-a-documented-rule-that-a-mechanism-depends-on-out-of-the-main-document
+    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_cli_refuses_an_empty_resolved_set
+    motivating_defect: an-empty-resolved-set-reported-as-a-quiet-day-is-a-completeness-claim-with-no-evidence
   - id: slack-doc-contract
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_slack_sync_counts_the_users_own_outbound
-    motivating_defect: a-restructure-must-not-move-a-documented-rule-that-a-mechanism-depends-on-out-of-the-main-document
+    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_slack_sync_names_the_preflight_command_and_census
+    motivating_defect: a-script-the-protocol-does-not-invoke-is-not-a-control
+  - id: rituals-doc-contract
+    control_class: acceptance-test
+    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_rituals_take_the_declared_set_from_preflight
+    motivating_defect: a-gate-fed-by-a-stored-copy-goes-green-over-an-incomplete-sweep
+  - id: ci-membership
+    control_class: acceptance-test
+    fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_preflight_is_in_the_shared_ci_group
+    motivating_defect: tests-outside-the-ci-list-run-at-no-boundary
+  - id: ci-doc-parity
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
+    motivating_defect: a-documented-check-list-that-ci-outgrew-fails-locally-green-branches
+  - id: release-gate-membership
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_cover_ci_pytest_groups
+    motivating_defect: the-release-gate-skipped-two-test-groups-ci-runs-until-a-coverage-test-asked
+  - id: slack-budget
+    control_class: acceptance-test
+    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_slack_sync_skill_document_stays_within_repo_budget
+    motivating_defect: a-restructured-document-must-not-regrow-with-its-next-feature
+  - id: rituals-budget
+    control_class: acceptance-test
+    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_skill_document_stays_within_repo_budget
+    motivating_defect: a-restructured-document-must-not-regrow-with-its-next-feature
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
