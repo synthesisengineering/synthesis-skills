@@ -14,6 +14,13 @@ matched the expected number of times, that content actually changed, and that
 the change is present in the file after writing. Anything else exits non-zero
 without writing. There is no flag to make a missing anchor succeed.
 
+Line structure is load-bearing: header fields, as-of markers, and every
+downstream line-anchored reader parse these records by line. An edit whose
+boundary would fuse previously separate lines — an insert-before whose text
+lacks a trailing newline, an anchor that begins mid-line, a replacement that
+drops the anchor's boundary newline against surviving neighbors — is refused
+with the merge point named, never normalized silently.
+
 Use it from any session or script that edits a durable context file, rather
 than reimplementing replacement logic per project.
 
@@ -286,6 +293,69 @@ def _atomic_write(path: Path, text: str) -> None:
         raise
 
 
+def _line_number(text: str, offset: int) -> int:
+    return text.count("\n", 0, offset) + 1
+
+
+def _line_merge_refusals(text: str, anchor: str, replacement: str) -> list[str]:
+    """Boundary merges an edit would create: previously separate lines fused.
+
+    Interior restructuring of the replaced region is deliberate editing; these
+    refusals cover only the region's outer boundaries, where a dropped
+    separator silently rewrites a line the anchor never named. The effective
+    boundary character is what survives the edit — the replacement's edge when
+    it has one, the untouched neighbor otherwise — so whole-line deletions
+    (anchor ``"foo\\n"`` replaced by nothing) stay legitimate.
+    """
+    refusals: list[str] = []
+    offset = text.find(anchor)
+    while offset != -1:
+        end = offset + len(anchor)
+        if anchor.endswith("\n") and end < len(text):
+            last = (
+                replacement[-1:]
+                if replacement
+                else (text[offset - 1] if offset > 0 else "\n")
+            )
+            if last != "\n":
+                refusals.append(
+                    "the edited region leaves its last line unterminated, "
+                    f"fusing it with line {_line_number(text, end)}"
+                )
+        if anchor.startswith("\n") and offset > 0:
+            first = (
+                replacement[:1] if replacement else (text[end : end + 1] or "\n")
+            )
+            if first != "\n":
+                refusals.append(
+                    "the edited region drops the separator after line "
+                    f"{_line_number(text, offset)}, fusing it with what follows"
+                )
+        offset = text.find(anchor, end)
+    return refusals
+
+
+def _insert_refusals(text: str, anchor: str, inserted: str) -> list[str]:
+    """Insert-before is line-oriented: the anchor must start a line and the
+    inserted text must end one, or the splice corrupts an existing line."""
+    refusals: list[str] = []
+    if not inserted.endswith("\n"):
+        refusals.append(
+            "--text does not end with a newline, so its last line would fuse "
+            "with the anchor's line; end the text with a newline"
+        )
+    offset = text.find(anchor)
+    while offset != -1:
+        if offset > 0 and text[offset - 1] != "\n":
+            refusals.append(
+                f"the anchor begins mid-line (line {_line_number(text, offset)}); "
+                "inserting there would splice into an existing line — anchor "
+                "on the start of a line instead"
+            )
+        offset = text.find(anchor, offset + len(anchor))
+    return refusals
+
+
 def apply_replacement(
     text: str,
     anchor: str,
@@ -311,6 +381,15 @@ def apply_replacement(
         raise ContextEditError(
             f"anchor matched {found} time(s), expected {count}: {anchor[:80]!r}\n"
             "Narrow the anchor, or pass --count to confirm the intended number."
+        )
+
+    merges = _line_merge_refusals(text, anchor, replacement)
+    if merges:
+        raise ContextEditError(
+            "edit would merge previously separate lines: "
+            + "; ".join(merges)
+            + ".\nKeep the boundary newline in the replacement, or include "
+            "the neighboring line explicitly in both anchor and replacement."
         )
 
     edited = text.replace(anchor, replacement, count)
@@ -342,11 +421,19 @@ def replace_once(
     allow_header_lag: bool = False,
     allow_stale_body: bool = False,
     state_reviewed: bool = False,
+    inserted_text: str | None = None,
 ) -> dict:
     """Apply one verified replacement to a durable context file."""
     path = Path(path)
     original = _read(path)
     edited = apply_replacement(original, anchor, replacement, count=count)
+    if inserted_text is not None:
+        insert_problems = _insert_refusals(original, anchor, inserted_text)
+        if insert_problems:
+            raise ContextEditError(
+                "insert-before would corrupt line structure: "
+                + "; ".join(insert_problems)
+            )
     lines = _check_budget(edited, max_lines, path)
     note = _coherence_gate(
         path,
@@ -451,6 +538,11 @@ def insert_before(
     forgetting to do so deletes the very heading you anchored on. The edit
     still "succeeds", because content did change. This operation removes that
     footgun by construction: the anchor is never consumed.
+
+    The operation is line-oriented: the anchor must begin a line and the text
+    must end with a newline, or the splice fuses previously separate lines —
+    a corruption that once shipped through two commits while every gate
+    reported success. Violations are refused with the merge point named.
     """
     return replace_once(
         path,
@@ -461,6 +553,7 @@ def insert_before(
         allow_header_lag=allow_header_lag,
         allow_stale_body=allow_stale_body,
         state_reviewed=state_reviewed,
+        inserted_text=text,
     )
 
 

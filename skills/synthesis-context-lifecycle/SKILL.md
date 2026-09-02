@@ -465,7 +465,14 @@ python3 scripts/context_edit.py insert-before --file sessions/2026-08.md \
 It refuses, without writing, when the anchor is absent, when it matches a
 different number of times than declared, when the replacement would leave the
 file byte-identical, when the result would exceed a stated line budget, or when
-the target is a symlink. It writes atomically and then re-reads the file to
+the target is a symlink. Line structure is protected the same way, because
+header fields, as-of markers, and every downstream line-anchored reader parse
+these records by line: an edit whose boundary would fuse previously separate
+lines is refused with the merge point named. `insert-before` requires an
+anchor that begins a line and text that ends with a newline; a `replace` may
+not drop the anchor's boundary newline against a surviving neighbor (interior
+restructuring of the replaced region stays legitimate, as do whole-line
+deletions). Nothing is normalized silently. It writes atomically and then re-reads the file to
 confirm the change is actually on disk. There is no flag that makes a missing
 anchor succeed. `--dry-run` previews without writing and still refuses a bad
 anchor. Import `replace_once` or `set_field` to use it from Python.
