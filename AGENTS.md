@@ -61,7 +61,7 @@ python3 -m pytest skills/synthesis-project-management/scripts/ -q
 python3 -m pytest skills/synthesis-promotion-gate/scripts/ -q
 python3 -m pytest skills/synthesis-context-lifecycle/scripts/ skills/synthesis-implementation-integrity/scripts/ -q
 python3 -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q
-python3 -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py -q
+python3 -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py skills/synthesis-slack-sync/scripts/test_*.py -q
 python3 -m pytest skills/synthesis-onboarding/scripts/test_onboard.py -q
 python3 skills/synthesis-onboarding/scripts/check_scaffolds.py .
 python3 -m pytest skills/synthesis-skills-manager/scripts/test_release.py -q

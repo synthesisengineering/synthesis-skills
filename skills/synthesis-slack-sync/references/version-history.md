@@ -5,6 +5,19 @@ release-by-release record of why each rule exists — the incidents and the
 design choices — so the main document stays within the repository's
 500-line budget without losing the reasoning. Newest first.
 
+## v3.10.0 — The preflight script owns target resolution
+
+v3.10.0 (2026-09-01) ships extraction item P2: `scripts/preflight.py` reads
+the sync config, resolves the one read id per target (`dm_id` for DMs,
+never the user id), validates the id prefix per class, prints the
+resolved-target table with a prefix census, writes the declared set the
+daily-rituals watermark gate consumes, and fails closed on an empty set or
+a malformed config. Origin: on the day the gate shipped, a careful reader
+with the config open — warned about the two-id trap minutes earlier —
+still derived every DM target as a user id. A per-seat derivation is a
+correctness surface, not a convenience, and the census turns a wrong
+derivation into a visibly wrong shape.
+
 ## v3.9.0 — Restructured under the 500-line budget
 
 v3.9.0 (2026-09-01) moves version history, the transcript and permalink

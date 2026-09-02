@@ -4,6 +4,28 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.81.0] - 2026-09-01
+
+**The Slack sync preflight is a script, and the watermark gate's declared
+set comes from it.** A sync config carries two valid-looking ids per DM
+entry — the user id and the conversation id — while channels and group DMs
+use the field that is wrong for DMs, so a uniform read hands user ids to a
+conversation-read call and reports quiet empties. On the day the coverage
+gate shipped, a careful reader with the config open, warned about the trap
+minutes earlier, still derived every DM target as a user id. Per-seat
+derivation is a correctness surface, not a convenience.
+`synthesis-slack-sync/scripts/preflight.py` (slack-sync 3.10.0) now owns
+it: it resolves the one read id per target, validates the id prefix per
+class (`C`/`G` for channels and group DMs, `D` for DMs; a `U`-prefixed id is
+never a target), prints the resolved-target table with a prefix census so a
+wrong derivation shows as a wrong shape, writes the declared set the
+daily-rituals gate takes with `--targets-from` (derived this run, never a
+stored copy — daily-rituals 2.32.0 says so at every gate), exits 1 when a
+declared target is unresolved so the report must name it, and exits 2 on
+an empty set or a malformed config. Fourteen tests, including the gate
+consuming the script's output; the Slack skill's tests join the shared CI
+group, the AGENTS.md verification list, and the release gate.
+
 ## [4.80.0] - 2026-09-01
 
 **The daily-rituals and Slack-sync documents are back under the 500-line
