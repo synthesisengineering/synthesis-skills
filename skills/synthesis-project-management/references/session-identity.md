@@ -95,6 +95,13 @@ same, run the current engine's `coordination.py`. `doctor` reports the same
 line. Origin (2026-09-01): a session on an older cache read the freshly
 migrated v4 board and reported the board itself as corrupt.
 
+Since 4.82.0 every command also prints a one-line stderr notice whenever a
+newer engine is installed beside the one running (`note: this coordination
+engine is X but Y is installed; run <path>`), so a path resolved once and
+kept for hours shows its age in output the agent is already reading. The
+version-independent path to pin is `~/.synthesis/plugins/synthesis-skills/current`,
+maintained by the gated release (see synthesis-skills-manager).
+
 ## Collision boundary
 
 The UUID remains authoritative even if a human alias collision were ever

@@ -35,6 +35,7 @@ from coordination_schema import (
     column_count_error,
     display_id,
     engine_remedy,
+    newer_installed_engine,
     identity_lookup_keys,
     new_identity,
     selector_keys,
@@ -2315,9 +2316,30 @@ COMMANDS = {
 }
 
 
+def stale_engine_notice(script_path: Path | str = __file__) -> str | None:
+    """One line for stderr when this engine is older than the newest installed.
+
+    A session resolves a plugin path once and keeps it for hours while the
+    ecosystem ships several releases a day; the path goes stale by design of
+    the cadence, and nothing said so until a newer board broke the old
+    parser. The notice makes staleness visible in output an agent is already
+    reading, on every invocation, without changing the command's behavior."""
+    found = newer_installed_engine(script_path)
+    if found is None:
+        return None
+    running, newest, path = found
+    return (
+        f"note: this coordination engine is {running} but {newest} is installed; "
+        f"run {path} (or the stable path ~/.synthesis/plugins/synthesis-skills/current)"
+    )
+
+
 def main() -> int:
     args = parser().parse_args()
     args.board = args.board.expanduser()
+    notice = stale_engine_notice()
+    if notice:
+        print(notice, file=sys.stderr)
     command = COMMANDS.get(args.command, command_doctor)
     try:
         return command(args)

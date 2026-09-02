@@ -4,6 +4,25 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.82.0] - 2026-09-01
+
+**A stable plugin path, and every coordination command says when it is
+running from an old engine.** Versioned cache paths go stale on the next
+release: a session that resolved `coordination.py` at lunch and kept the
+path for four hours crossed six releases and read the migrated board with a
+parser that could not know it, and the personal workspace's own day-start
+commands pinned a release twenty versions behind. Two fixes. The gated
+release now maintains `~/.synthesis/plugins/synthesis-skills/current`, a
+synthesis-owned symlink outside the client-owned caches, repointed
+atomically only after both clients verified the version and refused when
+the target is not a verified install root (`install.stable-path`);
+instruction files and scripts reference it instead of a version. And every
+`coordination.py` invocation from an engine older than the newest installed
+prints a one-line stderr notice naming the newer path, so staleness shows
+in output the agent is already reading — behavior otherwise unchanged.
+Tests pin the atomic repoint, the refusal of unverified or mismatched
+roots, the notice from an older cache, and its absence from the newest.
+
 ## [4.81.0] - 2026-09-01
 
 **The Slack sync preflight is a script, and the watermark gate's declared

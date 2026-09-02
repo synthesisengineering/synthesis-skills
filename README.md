@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Pin a stable path, not a version (September 2026).** Release **4.82.0**
+adds `~/.synthesis/plugins/synthesis-skills/current`, maintained by the
+gated release and repointed only after both clients verify, and makes every
+coordination command announce when it is running from an engine older than
+the newest installed. See the [4.82.0 release notes](CHANGELOG.md).
+
 **Slack read targets are resolved by a script that fails closed
 (September 2026).** Release **4.81.0** ships the sync preflight: one read
 id per target from the config, id prefixes validated per class, a census
