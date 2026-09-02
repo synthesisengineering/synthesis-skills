@@ -5,7 +5,8 @@ v1.1.0 (2026-07-29)
 
 A PreToolUse hook engine that blocks message-sending and draft-creating tool
 calls unless (a) the outgoing text passes a deterministic register scan against
-a configured pattern set, and (b) a fresh, single-use grounding ledger exists
+a configured pattern set, and (b) a fresh, single-use grounding ledger — stored
+at ledger/<message-sha>.json so concurrent seats cannot clobber one another —
 that is cryptographically bound (sha256) to the exact outgoing text and attests
 that the composing agent did the research: read the full thread, searched prior
 correspondence, and mapped every factual claim to a source.
@@ -27,6 +28,10 @@ Modes:
   --scan            read message text on stdin, print scan findings, exit 2 if
                     any block-tier hit. Lets an agent pre-check wording.
   --ledger-template print a skeleton ledger JSON.
+  --write-ledger    read a ledger JSON on stdin and file it at the path its own
+                    message_sha256 dictates, atomically. THE way to stage a
+                    ledger: the agent never types a path, so it cannot misfile.
+  --ledger-path     read message text on stdin, print where its ledger belongs.
   --doctor          self-check, including every active client hook config;
                     exit 0 HEALTHY / 2 UNHEALTHY.
   --test            behavioral test suite; exit 0 all pass / 2 failures.
@@ -67,8 +72,55 @@ def state_dir():
     )
 
 
-def ledger_path():
-    return os.path.join(state_dir(), "ledger.json")
+LEDGER_ORPHAN_SWEEP_MULTIPLE = 4     # sweep ledgers this many times past max age
+
+
+def ledger_dir():
+    return os.path.join(state_dir(), "ledger")
+
+
+def ledger_path_for(sha):
+    """One ledger per message, named by the sha it is already bound to.
+
+    The predecessor used a single `ledger.json`. Two seats composing at once
+    clobbered each other: the first seat's send then failed the sha check and
+    was told it had "edited the text after grounding" — false, and pointing at
+    the wrong repair — while the second seat sailed through on a ledger the
+    first had never seen. Keying by sha removes the collision with no new
+    concept: the ledger was always bound to this exact text.
+    """
+    return os.path.join(ledger_dir(), "%s.json" % sha)
+
+
+def sweep_orphan_ledgers(cfg):
+    """Delete ledgers far past max age. Returns the count removed.
+
+    A ledger is single-use and short-lived; one left behind means a compose that
+    never sent. Stale ones are harmless — the sha gate makes a ledger unusable
+    for any other message — but they accumulate, and an unbounded directory of
+    grounding records is its own small liability.
+    """
+    try:
+        max_age = float(cfg.get("ledger_max_age_minutes", 120))
+    except (TypeError, ValueError):
+        return 0
+    cutoff = time.time() - (max_age * 60 * LEDGER_ORPHAN_SWEEP_MULTIPLE)
+    removed = 0
+    try:
+        names = os.listdir(ledger_dir())
+    except OSError:
+        return 0
+    for name in names:
+        if not name.endswith(".json"):
+            continue
+        fp = os.path.join(ledger_dir(), name)
+        try:
+            if os.path.getmtime(fp) < cutoff:
+                os.remove(fp)
+                removed += 1
+        except OSError:
+            continue
+    return removed
 
 
 def log_path():
@@ -505,16 +557,23 @@ def run_gate():
         if header_fails:
             block("threading headers malformed — " + " | ".join(header_fails))
 
-        lp = ledger_path()
+        sweep_orphan_ledgers(cfg)
+        text_sha = sha256_text(text)
+        lp = ledger_path_for(text_sha)
         if not os.path.exists(lp):
-            block("no grounding ledger at %s. Before composing you must: "
+            block("no grounding ledger for this exact message at %s. Before "
+                  "composing you must: "
                   "(1) read the FULL thread including quoted history, "
                   "(2) search prior correspondence for this recipient/topic "
                   "across all mailboxes and local transcripts, "
                   "(3) map every factual claim to a source, "
-                  "(4) run the voice pass. Then write the ledger "
-                  "(--ledger-template for the skeleton, --sha for the hash) "
-                  "and retry. One ledger per message; it is consumed on use."
+                  "(4) run the voice pass. Then file the ledger with "
+                  "--write-ledger (it computes this path from the ledger's own "
+                  "message_sha256, so it cannot be misfiled); --ledger-template "
+                  "gives the skeleton and --sha the hash. One ledger per "
+                  "message, named by that message's sha, consumed on use. "
+                  "A ledger written for DIFFERENT text lives at a different "
+                  "path and is never silently substituted for this one."
                   % lp)
         try:
             with open(lp, "r", encoding="utf-8") as fh:
@@ -531,7 +590,7 @@ def run_gate():
             "at": datetime.now(timezone.utc).isoformat(),
             "tool": tool_name,
             "field": field,
-            "sha256": sha256_text(text),
+            "sha256": text_sha,
             "warns": [{"name": n, "match": s} for n, s in warns],
             "ledger": ledger,
             "engine": ENGINE_VERSION,
@@ -684,6 +743,49 @@ def run_doctor():
                "not adopted; adopt it to gate peer sends on board "
                "registration)")
 
+    # --- ledger store ---
+    # The ledger directory is the concurrency fix's load-bearing surface, so
+    # the doctor must be able to see it, not assume it.
+    legacy = os.path.join(state_dir(), "ledger.json")
+    report(not os.path.exists(legacy),
+           "no legacy single-slot ledger.json",
+           "found %s — a leftover from the pre-sha layout. It is inert (the "
+           "gate reads ledger/<sha>.json) but delete it so nothing hand-edits "
+           "the wrong file." % legacy if os.path.exists(legacy) else
+           "sha-keyed store only")
+
+    d = ledger_dir()
+    if os.path.isdir(d):
+        names = [n for n in os.listdir(d) if n.endswith(".json")]
+        misnamed = [n for n in names if len(n) != 69 or not all(
+            c in "0123456789abcdef" for c in n[:-5].lower())]
+        report(not misnamed,
+               "every ledger filename is a sha256 digest",
+               "misnamed: %s — these can never match a send and are dead "
+               "weight; --write-ledger cannot produce them, so they were "
+               "hand-placed" % ", ".join(sorted(misnamed)[:5])
+               if misnamed else "%d ledger(s) present" % len(names))
+        try:
+            max_age = float(cfg.get("ledger_max_age_minutes", 120))
+        except (TypeError, ValueError):
+            max_age = 120.0
+        cutoff = time.time() - (max_age * 60)
+        stale = []
+        for n in names:
+            try:
+                if os.path.getmtime(os.path.join(d, n)) < cutoff:
+                    stale.append(n)
+            except OSError:
+                continue
+        # Stale ledgers are unusable, not unsafe — the sha binds each to one
+        # exact text. Report rather than alarm; the gate sweeps them.
+        report(True, "ledger store age",
+               "%d of %d past max age (%s min); swept automatically at %dx"
+               % (len(stale), len(names), max_age, LEDGER_ORPHAN_SWEEP_MULTIPLE)
+               if names else "empty (the normal resting state)")
+    else:
+        report(True, "ledger store", "not yet created (normal before first use)")
+
     currency_cfg = currency_config(cfg)
     if currency_cfg:
         stale_probe = any(rx.search("still unanswered by the recipient")
@@ -770,10 +872,20 @@ def run_tests():
     env["MESSAGE_GUARD_CONFIG"] = cfg_src
     env["MESSAGE_GUARD_STATE_DIR"] = tmp
 
-    def invoke(payload, ledger=None):
-        lp = os.path.join(tmp, "ledger.json")
-        if os.path.exists(lp):
-            os.remove(lp)
+    def invoke(payload, ledger=None, keep=False):
+        # File the ledger where its own sha says it belongs, exactly as
+        # --write-ledger does in production. Staging it anywhere else would
+        # test a path the gate no longer reads.
+        sha = (ledger or {}).get("message_sha256") or "0" * 64
+        os.makedirs(os.path.join(tmp, "ledger"), exist_ok=True)
+        lp = os.path.join(tmp, "ledger", "%s.json" % sha)
+        d = os.path.join(tmp, "ledger")
+        if os.path.isdir(d) and not keep:
+            for stale_name in os.listdir(d):
+                try:
+                    os.remove(os.path.join(d, stale_name))
+                except OSError:
+                    pass
         if ledger is not None:
             with open(lp, "w") as fh:
                 json.dump(ledger, fh)
@@ -847,9 +959,74 @@ def run_tests():
                     "tool_input": {"message": clean}}, direct)
     check("direct slack send with branding check -> allow", rc, 0)
 
-    rc, _ = invoke({"tool_name": "mcp__ccd_session_mgmt__send_message",
-                    "tool_input": {"message": "inter-session handoff"}})
-    check("inter-session messaging exempt -> allow", rc, 0)
+    # --- peer-session send lane ---
+    # This asserted a bare exemption until peer_send_resolution was adopted;
+    # that lane now OWNS the tool and demands a target that resolves on the
+    # coordination board. The old assertion outlived the design it described,
+    # and it read the LIVE board, so its result moved with unrelated work.
+    # Both faults are fixed here: a board fixture, and the adopted contract.
+    board = os.path.join(tmp, "active-sessions.md")
+    live_ref = "ccd:local_1111aaaa-0000-4000-8000-000000000001"
+    with open(board, "w", encoding="utf-8") as fh:
+        fh.write("## Active sessions\n\n"
+                 "| id | ref | project | status |\n"
+                 "| --- | --- | --- | --- |\n"
+                 "| 01 | %s | peer-a | owner |\n"
+                 "| 02 | ccd:local_1111aaaa-0000-4000-8000-000000000002 | "
+                 "peer-b | released |\n" % live_ref)
+    peer_cfg_path = os.path.join(tmp, "patterns-peer.json")
+    with open(cfg_src, "r", encoding="utf-8") as fh:
+        peer_cfg = json.load(fh)
+    peer_cfg.setdefault("peer_send_resolution", {
+        "tool_pattern": "mcp__ccd_session_mgmt__send_message$",
+        "target_field": "session_id",
+    })["board"] = board
+    with open(peer_cfg_path, "w", encoding="utf-8") as fh:
+        json.dump(peer_cfg, fh)
+
+    def peer_invoke(tool_input, cfg_file=peer_cfg_path):
+        penv = dict(env)
+        penv["MESSAGE_GUARD_CONFIG"] = cfg_file
+        proc = subprocess.run(
+            [sys.executable, me, "--gate"],
+            input=json.dumps({"tool_name": "mcp__ccd_session_mgmt__send_message",
+                              "tool_input": tool_input}),
+            capture_output=True, text=True, env=penv)
+        return proc.returncode, proc.stderr
+
+    rc, _ = peer_invoke({"message": "handoff", "session_id": live_ref})
+    check("peer send to a board-active ref -> allow", rc, 0)
+
+    rc, err = peer_invoke({"message": "handoff"})
+    check("peer send with no target -> block", rc, 2)
+    check("...and names the missing field, not a generic failure",
+          int("session_id" in err), 1)
+
+    rc, _ = peer_invoke({"message": "handoff",
+                         "session_id": "local_dead-beef-not-on-the-board"})
+    check("peer send to an unregistered ref -> block", rc, 2)
+
+    rc, _ = peer_invoke({"message": "handoff",
+                         "session_id": "ccd:local_1111aaaa-0000-4000-8000-"
+                                       "000000000002"})
+    check("peer send to a RELEASED seat -> block", rc, 2)
+
+    missing_board = dict(peer_cfg)
+    missing_board["peer_send_resolution"] = dict(
+        peer_cfg["peer_send_resolution"], board=os.path.join(tmp, "gone.md"))
+    nb_path = os.path.join(tmp, "patterns-noboard.json")
+    with open(nb_path, "w", encoding="utf-8") as fh:
+        json.dump(missing_board, fh)
+    rc, _ = peer_invoke({"message": "handoff", "session_id": live_ref}, nb_path)
+    check("unreadable board -> block (fail closed)", rc, 2)
+
+    # Without the peer block configured, the plain exemption still applies.
+    unadopted = {k: v for k, v in peer_cfg.items() if k != "peer_send_resolution"}
+    ua_path = os.path.join(tmp, "patterns-unadopted.json")
+    with open(ua_path, "w", encoding="utf-8") as fh:
+        json.dump(unadopted, fh)
+    rc, _ = peer_invoke({"message": "handoff"}, ua_path)
+    check("peer lane unadopted -> exemption still allows", rc, 0)
 
     rc, _ = invoke({"tool_name": slack_tool, "tool_input": {"weird_field": "x"}},
                    None)
@@ -867,6 +1044,112 @@ def run_tests():
     rc, _ = invoke({"tool_name": slack_tool, "tool_input": {"message": clean}},
                    ledger_for(clean, claims=[], no_factual_claims=False))
     check("no claims and no attestation -> block", rc, 2)
+
+    # --- concurrent seats (the reason the ledger is keyed by sha) ---
+    # Two seats compose different messages at the same moment. Under the old
+    # single ledger.json the second write clobbered the first, and the first
+    # seat's send then failed the sha check with "edited after grounding" — a
+    # false diagnosis pointing at the wrong repair.
+    other = clean + " Second seat's entirely separate message."
+    os.makedirs(os.path.join(tmp, "ledger"), exist_ok=True)
+    for led in (ledger_for(clean), ledger_for(other)):
+        with open(os.path.join(tmp, "ledger",
+                               led["message_sha256"] + ".json"), "w") as fh:
+            json.dump(led, fh)
+    rc, _ = invoke({"tool_name": slack_tool,
+                    "tool_input": {"message": clean}}, keep=True)
+    check("two seats' ledgers coexist -> first seat's message allowed", rc, 0)
+    rc, _ = invoke({"tool_name": slack_tool,
+                    "tool_input": {"message": other}}, keep=True)
+    check("two seats' ledgers coexist -> second seat's message allowed", rc, 0)
+
+    # A ledger written for OTHER text must never authorise this send. Under one
+    # fixed path this surfaced as a sha mismatch; now the path simply has no
+    # ledger, which is the honest diagnosis.
+    rc, err = invoke({"tool_name": slack_tool,
+                      "tool_input": {"message": clean}}, ledger_for(other))
+    check("another message's ledger does not authorise this one -> block", rc, 2)
+    check("...and the block says no ledger, not sha mismatch",
+          int("no grounding ledger for this exact message" in err), 1)
+
+    # Consuming one seat's ledger must not consume the other's.
+    for led in (ledger_for(clean), ledger_for(other)):
+        with open(os.path.join(tmp, "ledger",
+                               led["message_sha256"] + ".json"), "w") as fh:
+            json.dump(led, fh)
+    invoke({"tool_name": slack_tool, "tool_input": {"message": clean}}, keep=True)
+    rc, _ = invoke({"tool_name": slack_tool,
+                    "tool_input": {"message": other}}, keep=True)
+    check("consuming one seat's ledger leaves the other's intact", rc, 0)
+    rc, _ = invoke({"tool_name": slack_tool,
+                    "tool_input": {"message": clean}}, keep=True)
+    check("a consumed ledger is still single-use -> block on reuse", rc, 2)
+
+    # Real threads, not just distinct paths. The first half is a positive
+    # control: it reproduces the original defect against a single fixed slot,
+    # so a pass below is evidence of a fix rather than of an easy test.
+    from concurrent.futures import ThreadPoolExecutor
+    seats = 8
+    texts = ["%s Seat %d's own distinct message." % (clean, i) for i in range(seats)]
+    fixed = os.path.join(tmp, "old-layout.json")
+
+    def old_write(text):
+        with open(fixed, "w") as fh:
+            json.dump(ledger_for(text), fh)
+
+    with ThreadPoolExecutor(max_workers=seats) as ex:
+        list(ex.map(old_write, texts))
+    with open(fixed) as fh:
+        survivor = json.load(fh)["message_sha256"]
+    check("positive control: one fixed slot loses all but one seat",
+          sum(1 for x in texts if sha256_text(x) == survivor), 1)
+
+    def stage(text):
+        proc = subprocess.run([sys.executable, me, "--write-ledger"],
+                              input=json.dumps(ledger_for(text)),
+                              capture_output=True, text=True, env=env)
+        return proc.returncode
+
+    with ThreadPoolExecutor(max_workers=seats) as ex:
+        codes = list(ex.map(stage, texts))
+    check("N seats stage ledgers concurrently -> all succeed",
+          sum(1 for c in codes if c == 0), seats)
+    check("N seats stage ledgers concurrently -> N distinct files",
+          len([n for n in os.listdir(os.path.join(tmp, "ledger"))
+               if n.endswith(".json")]), seats)
+
+    def fire(text):
+        proc = subprocess.run(
+            [sys.executable, me, "--gate"], env=env, text=True,
+            capture_output=True,
+            input=json.dumps({"tool_name": slack_tool,
+                              "tool_input": {"message": text}}))
+        return proc.returncode
+
+    with ThreadPoolExecutor(max_workers=seats) as ex:
+        fired = list(ex.map(fire, texts))
+    check("N seats send concurrently -> all allowed",
+          sum(1 for c in fired if c == 0), seats)
+    with ThreadPoolExecutor(max_workers=seats) as ex:
+        again = list(ex.map(fire, texts))
+    check("N seats replay concurrently -> none allowed (single-use holds)",
+          sum(1 for c in again if c == 0), 0)
+
+    # --write-ledger files by the ledger's own sha, so it cannot be misfiled.
+    proc = subprocess.run([sys.executable, me, "--write-ledger"],
+                          input=json.dumps(ledger_for(clean)),
+                          capture_output=True, text=True, env=env)
+    wrote = proc.stdout.strip()
+    check("--write-ledger files at the sha path",
+          int(wrote.endswith(sha256_text(clean) + ".json")
+              and os.path.exists(wrote)), 1)
+
+    # A ledger whose sha is not a real digest is refused, never filed.
+    proc = subprocess.run(
+        [sys.executable, me, "--write-ledger"],
+        input=json.dumps(ledger_for(clean, message_sha256="nope")),
+        capture_output=True, text=True, env=env)
+    check("--write-ledger refuses a non-digest sha", proc.returncode, 2)
 
     failures = [r for r in results if not r[0]]
     print("%d/%d passed" % (len(results) - len(failures), len(results)))
@@ -912,6 +1195,33 @@ def main():
             "recipient_address_check": False,
             "ragbot_branding_check": False,
         }, indent=2))
+    elif mode == "--write-ledger":
+        # Read a ledger JSON on stdin and file it where its own message_sha256
+        # says it belongs. The composing agent never types the path, so it
+        # cannot misfile one — and a ledger whose sha it did not compute from
+        # the final text simply will not match at the gate.
+        try:
+            ledger = json.loads(sys.stdin.read())
+        except Exception as exc:
+            print("write-ledger: stdin is not valid JSON (%s)" % exc, file=sys.stderr)
+            sys.exit(2)
+        sha = ledger.get("message_sha256")
+        if not isinstance(sha, str) or len(sha) != 64 or not all(
+                c in "0123456789abcdef" for c in sha.lower()):
+            print("write-ledger: message_sha256 must be a 64-char hex digest of "
+                  "the EXACT final text (pipe it to --sha). Got: %r" % (sha,),
+                  file=sys.stderr)
+            sys.exit(2)
+        os.makedirs(ledger_dir(), exist_ok=True)
+        dest = ledger_path_for(sha.lower())
+        tmp = dest + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(ledger, fh, indent=2)
+        os.replace(tmp, dest)          # atomic; never a half-written ledger
+        print(dest)
+    elif mode == "--ledger-path":
+        # Print where THIS text's ledger must live. Read-only.
+        print(ledger_path_for(sha256_text(sys.stdin.read())))
     elif mode == "--doctor":
         sys.exit(run_doctor())
     elif mode == "--test":

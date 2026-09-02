@@ -75,8 +75,14 @@ composing agent                      engine (stdlib python, fail closed)
   Block/warn regexes, gated tool patterns, exemptions, freshness window.
   The engine refuses to run without it. Start with `patterns.example.json` or run
   `synthesis-onboarding init`; both paths are validated before wiring the guard.
-- **Ledger:** `~/.synthesis/message-guard/ledger.json` — written per message,
-  consumed on use (single-shot; no reuse across messages). Passed sends are
+- **Ledger:** `~/.synthesis/message-guard/ledger/<message-sha256>.json` — one
+  per message, consumed on use (single-shot; no reuse across messages). File it
+  with `--write-ledger`, which derives the path from the ledger's own
+  `message_sha256`: you never type a path, so you cannot misfile one. Keying by
+  sha is what lets several seats compose at once. A single shared slot could
+  not: the second seat's write replaced the first's, and the first seat's send
+  was then refused for a sha mismatch — reported as "you edited the text after
+  grounding," which was false and pointed at the wrong repair. Passed sends are
   appended to `log.jsonl` with the full ledger for audit.
 - **Wiring:** equivalent `PreToolUse` entries in Claude Code's
   `~/.claude/settings.json` and Codex's `~/.codex/hooks.json`, each matching
@@ -159,8 +165,10 @@ message_guard.py --gate            # hook mode (stdin: tool-call JSON)
 message_guard.py --scan  < draft   # pre-check wording; exit 2 on block hits
 message_guard.py --sha   < draft   # sha256 for the ledger
 message_guard.py --ledger-template # skeleton
+message_guard.py --write-ledger    # stdin: ledger JSON -> files it at its own sha
+message_guard.py --ledger-path < draft  # where this text's ledger belongs
 message_guard.py --doctor          # config, controls, all client wiring, state dir
-message_guard.py --test            # behavioral suite (12 cases)
+message_guard.py --test            # behavioral suite (31 cases)
 ```
 
 ## Guarantees and their proofs
@@ -206,7 +214,8 @@ message_guard.py --test            # behavioral suite (12 cases)
    thesaurus-dodging the regex.
 4. Map every factual claim to its source. A claim you cannot source becomes a
    question to the recipient or gets cut.
-5. Write the ledger (`--sha` for the hash). Call the tool. The gate verifies.
+5. File the ledger: `--sha` for the hash, then pipe the JSON to
+   `--write-ledger`. Call the tool. The gate verifies.
 
 ## Related
 

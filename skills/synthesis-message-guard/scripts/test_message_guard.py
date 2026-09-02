@@ -373,3 +373,77 @@ def test_ledger_template_carries_read_at() -> None:
     text = json.dumps(template) if template is not None else MODULE_PATH.read_text(encoding="utf-8")
     assert "read_at" in text
 
+
+
+# ---------------------------------------------------------------------------
+# Ledger storage — the surface that broke.
+#
+# The suite above validates ledger CONTENT and never touched ledger STORAGE,
+# so a single shared ledger.json passed CI for its whole life while silently
+# losing one seat's grounding record every time two seats composed at once.
+# These cases pin the storage contract, and the last one runs the engine's
+# own behavioral suite so CI stops depending on someone running --test by hand.
+# ---------------------------------------------------------------------------
+
+
+def test_ledger_path_is_keyed_by_message_sha(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("MESSAGE_GUARD_STATE_DIR", str(tmp_path))
+    a, b = MODULE.sha256_text("first seat"), MODULE.sha256_text("second seat")
+    assert a != b
+    assert MODULE.ledger_path_for(a) != MODULE.ledger_path_for(b)
+    assert MODULE.ledger_path_for(a).endswith(a + ".json")
+    # Both live under one directory, so a sweep can still find them all.
+    assert Path(MODULE.ledger_path_for(a)).parent == Path(MODULE.ledger_dir())
+
+
+def test_no_single_shared_ledger_slot_remains() -> None:
+    """A fixed-path helper is the defect itself; its absence is the fix."""
+    assert not hasattr(MODULE, "ledger_path"), (
+        "ledger_path() returned one shared slot for every seat. Restoring it "
+        "reintroduces the clobber."
+    )
+
+
+def test_write_ledger_refuses_a_non_digest_sha(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("MESSAGE_GUARD_STATE_DIR", str(tmp_path))
+    import subprocess
+
+    for bad in ("nope", "", "z" * 64, "a" * 63):
+        proc = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "--write-ledger"],
+            input=json.dumps({"message_sha256": bad}),
+            capture_output=True, text=True,
+            env={**__import__("os").environ,
+                 "MESSAGE_GUARD_STATE_DIR": str(tmp_path)},
+        )
+        assert proc.returncode == 2, f"accepted a bad digest: {bad!r}"
+    assert not list(tmp_path.glob("ledger/*.json"))
+
+
+def test_orphan_sweep_spares_fresh_ledgers(monkeypatch, tmp_path) -> None:
+    import os
+    import time
+
+    monkeypatch.setenv("MESSAGE_GUARD_STATE_DIR", str(tmp_path))
+    d = Path(MODULE.ledger_dir())
+    d.mkdir(parents=True, exist_ok=True)
+    fresh, ancient = d / ("a" * 64 + ".json"), d / ("b" * 64 + ".json")
+    fresh.write_text("{}")
+    ancient.write_text("{}")
+    cfg = {"ledger_max_age_minutes": 30}
+    old = time.time() - (30 * 60 * MODULE.LEDGER_ORPHAN_SWEEP_MULTIPLE) - 60
+    os.utime(ancient, (old, old))
+    assert MODULE.sweep_orphan_ledgers(cfg) == 1
+    assert fresh.exists() and not ancient.exists()
+
+
+def test_engine_behavioral_suite_passes() -> None:
+    """Run the engine's own --test so CI covers the gate end to end."""
+    import subprocess
+
+    proc = subprocess.run(
+        [sys.executable, str(MODULE_PATH), "--test"],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "FAIL" not in proc.stdout, proc.stdout
