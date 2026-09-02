@@ -266,6 +266,21 @@ def test_inbox_delivers_seat_and_project_addressed_messages_once(tmp_path, monke
     assert PA.unread_messages(board.read_text(encoding="utf-8"), board=board, sender_key="cc:x", identity_forms=forms, project="project-b") == []
 
 
+def test_project_messages_older_than_the_seat_are_history_not_inbox() -> None:
+    """A fresh seat on a busy project must not be greeted with every message
+    ever addressed to that project as unread; the SessionStart board read
+    covers history. A message naming the session exactly is always its own."""
+    old = PA.BoardMessage(recipient="project-b sessions", sender="s-1", timestamp="2026-08-17T21:44:31-04:00", body="x")
+    new = PA.BoardMessage(recipient="project-b sessions", sender="s-1", timestamp="2026-09-02T18:00:00-04:00", body="y")
+    direct = PA.BoardMessage(recipient="s-2", sender="s-1", timestamp="2026-08-17T21:44:31-04:00", body="z")
+    since = "2026-09-02T17:00:00-04:00"
+    assert not PA.addressed_to(old, {"s-2"}, "project-b", since)
+    assert PA.addressed_to(new, {"s-2"}, "project-b", since)
+    assert PA.addressed_to(direct, {"s-2"}, "project-b", since)
+    assert PA.addressed_to(old, {"s-2"}, "project-b", "2026-07-29 ~14:00"), "an unparseable floor disables the bound, not the delivery"
+    assert PA.addressed_to(old, {"s-2"}, "project-b", None)
+
+
 def test_free_text_addressees_are_never_delivered() -> None:
     message = PA.BoardMessage(recipient="whoever is holding the train", sender="s-1", timestamp="t", body="x")
     assert not PA.addressed_to(message, {"s-2"}, "project-b")

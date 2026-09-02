@@ -50,24 +50,24 @@ def pointer_project(pointer: Path) -> str:
     return Path(str(project)).name if project else ""
 
 
-def identity_forms_for(board: Path, identity: SelfIdentity) -> tuple[set[str], str, str]:
-    """(identity forms, project, compact id) for this session's seat, if any."""
+def identity_forms_for(board: Path, identity: SelfIdentity) -> tuple[set[str], str, str, str]:
+    """(identity forms, project, compact id, started) for this session's seat, if any."""
     seat = seat_for_identity(board, identity)
     if seat is None:
-        return set(), "", ""
+        return set(), "", "", ""
     from coordination import rows  # local import: the engine parses the board
 
     try:
         board_rows = rows(board.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return set(), "", ""
+        return set(), "", "", ""
     row = next((r for r in board_rows if r.session_uuid == seat.session_uuid), None)
     if row is None:
-        return set(), "", ""
+        return set(), "", "", ""
     forms = {row.session_uuid, row.compact_id, row.speakable_id}
     if row.legacy_id:
         forms.add(row.legacy_id)
-    return forms, row.project, row.compact_id
+    return forms, row.project, row.compact_id, row.started
 
 
 def identity_notice(identity: SelfIdentity) -> str:
@@ -98,14 +98,15 @@ def inbox_text(
         text = board.read_text(encoding="utf-8")
     except OSError:
         return ""
-    forms, project, _compact = identity_forms_for(board, identity)
+    forms, project, _compact, started = identity_forms_for(board, identity)
     if not forms:
         project = pointer_project(pointer)
+        started = ""
     if not forms and not project:
         notice = identity_notice(identity)
         return notice
     messages = unread_messages(
-        text, board=board, sender_key=key, identity_forms=forms, project=project
+        text, board=board, sender_key=key, identity_forms=forms, project=project, since=started
     )
     rendered = render_inbox(messages)
     if messages and mark:

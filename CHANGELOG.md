@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.90.1] - 2026-09-02
+
+**The delivered inbox starts at the seat's claim.** The first live run of
+4.90.0's inbox greeted a seat with every message ever addressed to its
+project as unread — thirty-two of them, all handled weeks earlier — and
+every fresh seat on a busy project would have seen the same. A message
+addressed to a project's sessions was for the sessions of its time: the
+inbox now delivers it only when it was posted at or after the seat's claim
+moment (the board row's `started`), while a message that names the session
+exactly is always delivered. The SessionStart board read still covers
+history. An unparseable claim moment disables the bound, never the
+delivery. synthesis-project-management 2.11.1.
+
 ## [4.90.0] - 2026-09-02
 
 **Peer messages can no longer be addressed by a name, and every direct send

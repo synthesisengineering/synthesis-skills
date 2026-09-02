@@ -2091,7 +2091,12 @@ def command_inbox(args) -> int:
         key = identity.sender_key or f"seat:{row.session_uuid}"
     forms = {row.session_uuid, row.compact_id, row.speakable_id} | ({row.legacy_id} if row.legacy_id else set())
     messages = unread_messages(
-        content, board=args.board, sender_key=key, identity_forms=forms, project=row.project
+        content,
+        board=args.board,
+        sender_key=key,
+        identity_forms=forms,
+        project=row.project,
+        since=row.started,
     )
     if getattr(args, "json", False):
         print(

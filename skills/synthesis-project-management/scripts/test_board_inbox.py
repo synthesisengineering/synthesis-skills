@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -58,6 +59,27 @@ def test_inbox_delivers_once_to_the_named_seat(board, tmp_path) -> None:
     assert "Handoff: the review is yours." in text and "For every project-m session." in text
     assert "Not for me." not in text
     assert INBOX.inbox_text(payload, board=board, pointer=tmp_path / "pointer.json", environ=ME_ENV) == ""
+
+
+def test_project_history_before_the_claim_is_not_delivered_to_a_new_seat(tmp_path, monkeypatch) -> None:
+    """An earlier seat of the project received a message weeks ago; a seat
+    claimed today must not see it as unread, while a message posted after
+    its claim is delivered."""
+    path = tmp_path / "board.md"
+    other = claim(path, "project-o", {}, monkeypatch)
+    earlier = claim(path, "project-m", {}, monkeypatch)
+    assert ENGINE.command_message(args(path, sender=other.compact_id, to="project-m", text="Posted before the seat existed.")) == 0
+    assert ENGINE.command_release(args(path, id=earlier.compact_id)) == 0
+    text = path.read_text(encoding="utf-8")
+    text = re.sub(r"(### → project-m sessions, from \S+ — )\S+", r"\g<1>2026-01-01T00:00:00-05:00", text, count=1)
+    path.write_text(text, encoding="utf-8")
+    me = claim(path, "project-m", ME_ENV, monkeypatch)
+    assert ENGINE.command_message(args(path, sender=other.compact_id, to="project-m", text="Posted after the claim.")) == 0
+    delivered = INBOX.inbox_text({"session_id": ME_SID}, board=path, pointer=tmp_path / "pointer.json", environ=ME_ENV)
+    assert "Posted after the claim." in delivered
+    assert "Posted before the seat existed." not in delivered
+    assert "1 unread message(s)" in delivered
+    assert me.project == "project-m"
 
 
 def test_unseated_session_gets_project_messages_from_the_active_pointer(board, tmp_path) -> None:

@@ -647,16 +647,31 @@ def parse_messages(board_text: str) -> list[BoardMessage]:
     return messages
 
 
-def addressed_to(message: BoardMessage, identity_forms: set[str], project: str = "") -> bool:
+def addressed_to(
+    message: BoardMessage,
+    identity_forms: set[str],
+    project: str = "",
+    since: object = None,
+) -> bool:
     """Whether a message names this seat exactly, or its project's sessions.
 
-    Free-text addressees are never delivered: the sender was told the
-    address did not resolve when it posted."""
+    A message that names the session exactly is always its own. A message
+    addressed to the project's sessions was for the sessions of its time:
+    it is delivered only when posted at or after ``since`` (the seat's claim
+    moment), so a new seat is not greeted with the project's whole history
+    as unread — the SessionStart board read still covers history. A
+    ``since`` that does not parse disables the bound rather than the
+    delivery. Free-text addressees are never delivered: the sender was told
+    the address did not resolve when it posted."""
     recipient = message.recipient.strip()
     tokens = {token.strip(",;") for token in recipient.split()}
     if any(form and form in tokens for form in identity_forms):
         return True
     if project and recipient.casefold().startswith(f"{project.casefold()} sessions"):
+        floor = parse_iso(since) if since else None
+        posted = parse_iso(message.timestamp)
+        if floor is not None and posted is not None and posted < floor:
+            return False
         return True
     return False
 
@@ -692,12 +707,13 @@ def unread_messages(
     sender_key: str,
     identity_forms: set[str],
     project: str = "",
+    since: object = None,
 ) -> list[BoardMessage]:
     seen = seen_keys(board, sender_key) if sender_key else set()
     return [
         message
         for message in parse_messages(board_text)
-        if addressed_to(message, identity_forms, project) and message.key not in seen
+        if addressed_to(message, identity_forms, project, since) and message.key not in seen
     ]
 
 
