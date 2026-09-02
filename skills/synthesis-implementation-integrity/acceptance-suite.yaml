@@ -1,62 +1,30 @@
-# AGENT HEURISTIC: authored for the 4.90.0 peer-addressing transaction.
+# AGENT HEURISTIC: authored for the 4.90.1 inbox since-claim transaction.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: peer-sends-need-a-resolver-receipt-and-the-bus-is-delivered
+suite: inbox-delivers-project-messages-since-the-claim
 membership: closed
-production_entry_point: skills/synthesis-project-management/scripts/peer_send_gate.py
-enforcing_boundary: a direct session-to-session send in either client passes the plugin's PreToolUse gate only when its address equals a live delivery receipt issued by resolve for this sender, the target row is still active, the harness registry still maps that socket to the resolved session, the sender holds a seat, the message carries the sender's board id, and the same text has not gone to a second session; the board bus is delivered to the addressed seat at its next prompt
+production_entry_point: skills/synthesis-project-management/scripts/board_inbox.py
+enforcing_boundary: a message addressed to a project's sessions is delivered to a seat only when posted at or after that seat's claim moment, while a message naming the session exactly is always delivered; an unparseable claim moment disables the bound, never the delivery
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: delivery into a live Codex thread through codex queue is proven only to the thread-store lookup (a null thread id is refused by name); Codex sessions register a seat only after their agent exports the ref the SessionStart context states; hook trust for the changed hooks.json is granted by the human in Codex
+unverified_remainder: seats claimed by engines before 4.90.0 carry the row's started field in whatever form that engine wrote; a non-ISO value disables the bound for that seat and the SessionStart board read covers its history
 changed_surfaces:
   - path: skills/synthesis-project-management/scripts/peer_addressing.py
-    cases: [names-are-not-addresses, receipt-binds-intent, live-reverification, seat-at-claim, bus-delivered-once]
-  - path: skills/synthesis-project-management/scripts/peer_send_gate.py
-    cases: [names-are-not-addresses, receipt-binds-intent, live-reverification, sender-must-hold-a-seat, no-broadcast, codex-queue-gated, gate-fails-closed]
+    cases: [history-is-not-inbox]
   - path: skills/synthesis-project-management/scripts/board_inbox.py
-    cases: [bus-delivered-once, codex-learns-its-identity, sessionstart-carries-the-inbox]
+    cases: [new-seat-sees-only-what-followed-its-claim]
   - path: skills/synthesis-project-management/scripts/coordination.py
-    cases: [seat-at-claim, resolve-issues-receipt, ambiguity-issues-nothing, cc-ref-for-terminal-sessions]
+    cases: [history-is-not-inbox]
   - path: skills/synthesis-project-management/scripts/test_peer_addressing.py
-    cases: [seat-at-claim, resolve-issues-receipt, ambiguity-issues-nothing, cc-ref-for-terminal-sessions, bus-delivered-once]
-  - path: skills/synthesis-project-management/scripts/test_peer_send_gate.py
-    cases: [names-are-not-addresses, receipt-binds-intent, live-reverification, sender-must-hold-a-seat, no-broadcast, codex-queue-gated, gate-fails-closed]
+    cases: [history-is-not-inbox]
   - path: skills/synthesis-project-management/scripts/test_board_inbox.py
-    cases: [bus-delivered-once, codex-learns-its-identity, sessionstart-carries-the-inbox]
-  - path: skills/synthesis-project-management/scripts/test_coordination.py
-    cases: [pm-budget]
+    cases: [new-seat-sees-only-what-followed-its-claim]
   - path: skills/synthesis-project-management/SKILL.md
     cases: [pm-budget]
-  - path: skills/synthesis-project-management/references/parallel-agent-protocol.md
-    cases: [pm-budget]
-  - path: skills/synthesis-project-management/references/session-identity.md
-    cases: [pm-budget]
-  - path: skills/synthesis-project-management/references/active-sessions-template.md
-    cases: [pm-budget]
-  - path: skills/synthesis-agent-conformance/scripts/session_context.py
-    cases: [sessionstart-carries-the-inbox]
-  - path: skills/synthesis-agent-conformance/scripts/conformance.py
-    cases: [hook-contract-requires-the-gate, shipped-hooks-route-through-the-gate]
-  - path: skills/synthesis-agent-conformance/scripts/test_conformance.py
-    cases: [hook-contract-requires-the-gate, shipped-hooks-route-through-the-gate]
-  - path: skills/synthesis-agent-conformance/SKILL.md
-    cases: [hook-contract-requires-the-gate]
-  - path: hooks/hooks.json
-    cases: [shipped-hooks-route-through-the-gate]
-  - path: skills/synthesis-git-hooks/scripts/test_pre_commit.py
-    cases: [engine-module-set-complete]
-  - path: skills/synthesis-git-hooks/scripts/install.sh
-    cases: [engine-module-set-complete]
-  - path: skills/synthesis-git-hooks/scripts/_load_config.py
-    cases: [engine-module-set-complete]
-  - path: skills/synthesis-git-hooks/SKILL.md
-    cases: [engine-module-set-complete]
-  - path: skills/synthesis-onboarding/scripts/onboard.py
-    cases: [engine-module-set-complete]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -68,74 +36,14 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: names-are-not-addresses
+  - id: history-is-not-inbox
     control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_display_names_and_refs_are_refused_as_addresses
-    motivating_defect: seven-misdeliveries-chose-a-target-by-a-display-name-or-title-at-the-moment-of-sending
-  - id: receipt-binds-intent
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_socket_address_needs_a_receipt_then_passes
-    motivating_defect: an-existence-check-passed-a-registered-but-wrong-session-the-day-after-the-resolver-shipped
-  - id: live-reverification
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_socket_that_no_longer_maps_to_the_resolved_session_is_refused
-    motivating_defect: a-receipt-older-than-the-target-process-would-otherwise-deliver-to-whoever-inherited-the-socket
-  - id: sender-must-hold-a-seat
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_sender_without_a_seat_is_refused
-    motivating_defect: a-reply-to-an-unregistered-sender-can-only-be-guessed
-  - id: no-broadcast
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_same_text_to_a_second_session_is_a_broadcast
-    motivating_defect: an-unsure-sender-sent-the-same-text-to-every-candidate-three-times-in-the-record
-  - id: codex-queue-gated
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_codex_queue_needs_a_receipt_for_that_thread
-    motivating_defect: the-lane-table-said-codex-had-no-push-channel-while-codex-queue-existed-ungated
-  - id: gate-fails-closed
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_missing_session_id_and_unreadable_board_fail_closed
-    motivating_defect: a-guard-that-cannot-verify-must-block-not-warn-and-pass
-  - id: seat-at-claim
+    fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_project_messages_older_than_the_seat_are_history_not_inbox
+    motivating_defect: the-first-live-inbox-run-greeted-a-seat-with-thirty-two-handled-messages-as-unread
+  - id: new-seat-sees-only-what-followed-its-claim
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_claim_writes_a_seat_release_removes_it
-    motivating_defect: the-board-carried-one-handle-per-session-while-each-client-addresses-by-a-different-one
-  - id: resolve-issues-receipt
-    control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_resolve_prints_exact_lanes_and_issues_a_receipt
-    motivating_defect: resolve-was-doctrine-an-agent-could-skip-and-the-gate-could-not-tell
-  - id: ambiguity-issues-nothing
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_ambiguous_resolve_issues_no_receipt
-    motivating_defect: a-resolver-that-refuses-ambiguity-but-leaves-the-send-ungated-changes-nothing
-  - id: cc-ref-for-terminal-sessions
-    control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_terminal_session_claim_registers_cc_ref
-    motivating_defect: a-terminal-session-registered-no-handle-and-was-unreachable-by-any-direct-lane
-  - id: bus-delivered-once
-    control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_inbox_delivers_once_to_the_named_seat
-    motivating_defect: a-bus-nobody-reads-is-a-dead-letter-so-senders-reached-for-the-guessing-lane
-  - id: codex-learns-its-identity
-    control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_codex_session_learns_its_identity
-    motivating_defect: no-codex-session-ever-registered-a-ref-because-its-shell-cannot-see-its-thread-id
-  - id: sessionstart-carries-the-inbox
-    control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_session_context_appends_the_inbox
-    motivating_defect: a-message-posted-while-the-recipient-was-away-must-arrive-when-it-returns
-  - id: hook-contract-requires-the-gate
-    control_class: acceptance-test
-    fixture: ../synthesis-agent-conformance/scripts/test_conformance.py::test_hook_definition_checks_require_the_peer_gate_and_the_inbox
-    motivating_defect: a-gate-that-can-be-unregistered-silently-is-not-a-control
-  - id: shipped-hooks-route-through-the-gate
-    control_class: acceptance-test
-    fixture: ../synthesis-agent-conformance/scripts/test_conformance.py::test_shipped_hook_config_routes_peer_sends_through_the_gate
-    motivating_defect: the-shipped-hook-file-is-the-only-registration-both-clients-load
-  - id: engine-module-set-complete
-    control_class: acceptance-test
-    fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_configured_hook_consumes_bound_receipt
-    motivating_defect: a-fixture-that-copies-the-engine-without-its-new-module-proves-nothing
+    fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_project_history_before_the_claim_is_not_delivered_to_a_new_seat
+    motivating_defect: every-fresh-seat-on-a-busy-project-would-have-seen-the-same-backlog
   - id: pm-budget
     control_class: acceptance-test
     fixture: ../synthesis-project-management/scripts/test_coordination.py::test_skill_document_stays_within_repo_budget
