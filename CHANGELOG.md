@@ -4,6 +4,25 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.84.0] - 2026-09-01
+
+**The stable plugin path has a daily heartbeat, and the docs say who pins
+it.** 4.82.0 created `~/.synthesis/plugins/synthesis-skills/current` and
+verified it at repoint time; a receipt at repoint time is not a heartbeat.
+`conformance.py parity` — already run at every day-start — now carries
+`parity.stable-path`: the pointer must exist, resolve to a root with a
+readable plugin manifest, and carry the version the Claude client reports
+installed; missing, dangling (a cache replaced under it), and behind (an
+install made without the gated release) all fail with the remedy. The
+skills-manager document states the two-caller rule: hooks and guards that
+must run without an install resolve from a source checkout, while
+everything an agent is instructed to run pins the stable path, because the
+installed pointer is the verified release and a source checkout may be
+mid-transaction. daily-rituals 2.33.0 says where every `<…-root>`
+placeholder resolves on a provisioned machine. Hermetic parity tests cover
+current, missing, dangling, and behind; a release test pins the rule to
+the document.
+
 ## [4.83.0] - 2026-09-01
 
 **Grounding-ledger claims about what is unanswered or unsent must say when

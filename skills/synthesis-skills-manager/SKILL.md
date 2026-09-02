@@ -352,6 +352,17 @@ verified install (`install.stable-path`). Reference it from instruction
 files and scripts instead of a version; `--install-only` repoints it on a
 new machine. `SYNTHESIS_STABLE_PLUGIN_ROOT` overrides the parent for tests.
 
+Two kinds of caller, two paths. Hooks and guards that must run even when no
+plugin is installed, or while an install is mid-transition, resolve their
+engine from a source checkout (a resolver that does so belongs with the
+hook, not in an instruction file). Everything an agent is *instructed* to
+run — day-start commands, board verbs, gates — pins the stable path: the
+installed pointer is the verified release, while a source checkout may be
+mid-transaction on a feature branch. `conformance.py parity` checks the
+pointer daily (`parity.stable-path`): missing, dangling, or behind the
+installed version all fail, so a stale pin is caught before a command runs
+from it.
+
 ## The release train — one publisher at a time
 
 On 2026-09-01, two agent sessions releasing this repository in parallel

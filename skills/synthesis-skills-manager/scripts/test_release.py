@@ -158,6 +158,15 @@ def test_stable_path_refuses_an_unverified_or_mismatched_root(tmp_path, monkeypa
     assert not release.stable_path().exists()
 
 
+def test_stable_path_doc_states_the_two_caller_rule() -> None:
+    """Instruction files pin the installed pointer; hooks resolve from source.
+    A rule nobody wrote down gets re-decided per session."""
+    text = (Path(__file__).resolve().parents[1] / "SKILL.md").read_text(encoding="utf-8")
+    assert "## The stable path" in text
+    assert "Two kinds of caller, two paths" in text
+    assert "parity.stable-path" in text
+
+
 def test_required_checks_do_not_depend_on_shell_glob_expansion() -> None:
     """subprocess receives argv directly; wildcard tokens therefore run zero tests."""
     wildcard_arguments = [

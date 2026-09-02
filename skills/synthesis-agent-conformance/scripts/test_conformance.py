@@ -75,6 +75,18 @@ def write_skill(root: Path, name: str) -> None:
     )
 
 
+def stable_pointer(link: Path, version: str) -> Path:
+    """A fake stable plugin pointer resolving to a fake verified install root."""
+    root = link.parent / "roots" / version
+    (root / ".claude-plugin").mkdir(parents=True, exist_ok=True)
+    (root / ".claude-plugin" / "plugin.json").write_text(json.dumps({"version": version}))
+    link.parent.mkdir(parents=True, exist_ok=True)
+    if link.is_symlink():
+        link.unlink()
+    link.symlink_to(root)
+    return root
+
+
 def write_manifests(root: Path) -> None:
     payload = json.dumps(
         {
@@ -1925,6 +1937,8 @@ def test_parity_uses_configured_client_homes(tmp_path: Path, monkeypatch) -> Non
         ),
     )
 
+    monkeypatch.setenv("SYNTHESIS_STABLE_PLUGIN_ROOT", str(tmp_path / "stable"))
+    stable_pointer(tmp_path / "stable" / "synthesis-skills" / "current", "1.0.0")
     checks = MODULE.parity_checks(source)
 
     assert all(check.ok for check in checks)
@@ -1993,6 +2007,7 @@ def test_parity_uses_enabled_inventory_not_newest_cache(
         ),
     )
 
+    stable_pointer(tmp_path / ".synthesis" / "plugins" / "synthesis-skills" / "current", "1.0.0")
     checks = MODULE.parity_checks(source, tmp_path)
 
     assert all(check.ok for check in checks)

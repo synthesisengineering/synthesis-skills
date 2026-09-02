@@ -647,6 +647,45 @@ def enabled_plugin_version(client: str, home: Path | None = None) -> str | None:
     return str(matches[0]["version"]) if len(matches) == 1 else None
 
 
+STABLE_PLUGIN_ROOT_ENV = "SYNTHESIS_STABLE_PLUGIN_ROOT"
+
+
+def stable_plugin_path(home: Path | None = None) -> Path:
+    """The version-independent pointer the gated release maintains.
+
+    Synthesis-owned and outside the client caches; instruction files pin it
+    instead of a versioned cache path. With an explicit home (tests) the env
+    override is ignored so a fixture cannot be redirected by the shell."""
+    override = os.environ.get(STABLE_PLUGIN_ROOT_ENV)
+    if override and home is None:
+        return Path(override) / PLUGIN_NAME / "current"
+    return (home or Path.home()) / ".synthesis" / "plugins" / PLUGIN_NAME / "current"
+
+
+def stable_path_check(checks: list[Check], home: Path | None, installed: str | None) -> None:
+    """The pointer must exist, resolve to a verified install root, and carry
+    the version the client reports installed. A receipt at repoint time is not
+    a heartbeat: this runs with every parity check, so a pointer that goes
+    missing, dangles after a cache replacement, or falls behind an install
+    made without the gated release is caught before a command runs from it."""
+    link = stable_plugin_path(home)
+    if not link.is_symlink() and not link.exists():
+        add(checks, "parity.stable-path", False,
+            f"{link} is missing; run release.py --install-only to create it")
+        return
+    target = Path(os.path.realpath(link))
+    manifest = target / ".claude-plugin" / "plugin.json"
+    try:
+        version = str(json.loads(manifest.read_text(encoding="utf-8")).get("version"))
+    except (OSError, ValueError):
+        add(checks, "parity.stable-path", False,
+            f"{link} -> {target} is not a verified install root (no readable plugin manifest); "
+            "run release.py --install-only")
+        return
+    add(checks, "parity.stable-path", installed is not None and version == installed,
+        f"{link} -> {target.name} (pointer {version}; claude installed {installed})")
+
+
 def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
     """Dual-client version-drift detection against enabled inventories.
 
@@ -724,6 +763,7 @@ def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
         f"source={source_version} claude={installed['claude']} "
         f"codex={installed['codex']}",
     )
+    stable_path_check(checks, home, installed["claude"])
     return checks
 
 

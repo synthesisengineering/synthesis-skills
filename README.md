@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**The stable plugin path is checked every morning (September 2026).**
+Release **4.84.0** adds `parity.stable-path` to the daily dual-client parity
+check — missing, dangling, or behind the installed version all fail — and
+states which callers pin the stable path and which resolve from source.
+See the [4.84.0 release notes](CHANGELOG.md).
+
 **An "unanswered" claim now has to say when you last looked (September
 2026).** Release **4.83.0** adds a config-adopted currency lane to the
 message guard: claims about what is unanswered, unsent, or still open must
