@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.8.0"
+  version: "3.9.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -16,207 +16,7 @@ A protocol for syncing Slack channels and threads to local transcript files usin
 
 This skill provides the **protocol** — the sync methodology, thread re-reading discipline, transcript format, and action plan update rules. A per-project **config file** provides the specifics: which channels, which paths, which DMs. Prefer `.agents/slack-sync.yaml`; existing `.claude/slack-sync.yaml` configs remain supported.
 
-## v3.8.0 — Windows are computed, coverage is recorded, the user's own outbound counts
-
-v3.8.0 (2026-09-01) closes three defects from one day. A hand-typed `oldest`
-(07:50 *today* instead of yesterday) reported five channels empty that were
-not; two mid-day syncs re-read only the targets the morning had skipped,
-so a DM answered at 09:27 was reported unanswered at 17:51 on a 09:15 read;
-and the user's own replies were not treated as sweep state that discharges
-owed items. Steps 1, 3, and 3b now take `oldest` from
-`sync_watermark.py window` (synthesis-daily-rituals) and quote its
-human-readable bounds in the report; Step 4 records every saved read with
-`sync_watermark.py advance --target`; Step 5 cross-references the user's
-own outbound against every owed item and forbids "unanswered" or "unsent"
-on a read older than the current run, which `status --since run` proves.
-Every sync re-reads every declared target — "already read today" is a
-statement about the past.
-
-## v3.7.0 — The sweep steps consume preflight instead of contradicting it
-
-v3.7.0 (2026-08-29) closes the gap an external adversarial review found in
-v3.6.0: the rule banned config-derived ids while the numbered steps still
-said "for each channel in the config." Step 0 now defines the mandatory
-resolved-target preflight, Steps 1/3/3b iterate only its output, an empty
-resolved set refuses the sweep, and unresolved surfaces are reported as
-unresolved. The deterministic preflight script is extraction item P2; the
-contract binds now either way. Frontmatter version also catches up — v3.6.0
-shipped with stale skill metadata.
-
-## v3.6.0 — Read targets come from preflight; deriving ids in the sweep is banned
-
-v3.6.0 (2026-08-27) fixes a class of bug that hides for months and then looks
-like something else entirely.
-
-**The defect.** A DM config entry carries two id-like fields: `id`, the user id
-(`U…`), and `dm_id`, the conversation id (`D…`). A reader that reaches for `id`
-hands a user id to a conversation-read API. That resolves implicitly while the
-account is active, so the mistake is invisible — and it starts failing only once
-that person leaves. The symptom then appears as a phantom "dead surface" for
-exactly one person, which reads as a configuration problem. It cost days of
-false unreadable-DM reports and a wrong public claim that the config was
-misaligned, when the config was correct and the reader was not.
-
-**The rule.** Sweeps take their read targets from preflight output, which emits
-the resolved read id per surface and fails closed when one cannot be resolved.
-Deriving ids from config inside the sweep is banned. A sweep that cannot obtain
-a resolved read target reports that surface as unresolved — never as unreadable,
-and never as a config defect, since it has no evidence for either.
-
-**Generalize it.** Any config whose entries carry two id-like fields has this
-trap, and the failure is always asymmetric: the wrong field usually works, so
-the bug is discovered by an unrelated change months later. Where two ids exist,
-resolution belongs in one place that fails closed, and every reader takes the
-resolved value from it rather than choosing a field.
-
-## v3.5.0 — Backfills and archive imports
-
-v3.5.0 (2026-08-19) adds a section for the operation a windowed sync is not: reading a
-conversation to its first message. Retrieval rules (page to the true beginning and report the
-earliest date as proof, expand every thread, name a partial capture by its date range rather
-than "full history") sit alongside the rule that matters more — **everything in a backfill is
-history and reads present-tense, so nothing in it may be reported as currently open without
-reconciling against newer material already held.** Origin: a backfill reported a colleague's
-settled employment arrangement as a six-week-old open loop, to the person who had settled it,
-while a calendar query run two hours earlier already showed the completed account migration.
-
-## v3.4.0 — Question-shape trigger + zero-result absence protocol
-
-v3.4.0 (2026-08-18) hardens the transcripts-first rule at the two seams where it
-historically failed to fire. First, the **question-shape trigger**: verification
-questions ("did X get sent?", "did anyone reply?", "did that happen?") are
-historical lookups wearing a different hat — the rule triggers on the question
-shape, never on whether the task felt like a lookup. Second, **a zero-result
-search is never evidence of absence**: absence claims require a bounded direct
-channel read with the bounds stated in the finding, and any null from a
-modifier-bearing query must be re-run without the modifier before it is trusted.
-Both sections live inside the "NEVER Use Slack Search API" block; the general
-evidence discipline is cross-linked to the new synthesis-grounding-discipline
-skill.
-
-## v3.3.1 — Runtime-resolved checker
-
-v3.3.1 (2026-07-29) invokes the thread checker relative to the skill root
-resolved by the active plugin runtime. The protocol no longer binds Slack sync
-to an `.agents` copy, so Codex and Claude Code execute the same checker from the
-same committed skill version.
-
-## v3.3.0 — Two-Tier Draft Block: Templates Move into Files
-
-In v3.3.0 (2026-04-29), the draft block format gets restructured around a glanceable summary at the top and collapsed verification detail at the bottom. The templates also move out of this prose file and into dedicated files in `templates/`.
-
-The earlier shape (v3.2.0 and prior) put all metadata at uniform visual weight in the rendered output: title + Send-to + body + Grounding bullets all rendered inline as paragraphs and lists. That made the most frequent purpose of the daily plan — glanceable "what's next" reading — hostile, because the verification trail (Grounding) crowded the substance (the message body) at the same visual scale.
-
-v3.3.0 separates two tiers explicitly in the source:
-
-1. **Always-visible glance surface.** Brief H3 title (≤60 char target, ≤80 hard cap), compressed `**Send to:**` line, optional one-line context, the message body itself.
-2. **Click-to-expand detail.** Grounding wrapped in `<details>/<summary>` — markdown-it (and any CommonMark-compliant renderer) renders this as a native HTML collapsible. Closed by default, click to expand. The verification trail is one click away, not occupying glance-bar real estate.
-
-The brief-title rule is the same axis: keep H3 a scannable label, not a summary. Routing metadata, status markers, IDs, timestamps, commit hashes, compound clauses NEVER go in the title; they live in `**Send to:**`, the optional context paragraph, the body, the Grounding `<details>`, or the `**Sent:**` paragraph.
-
-### Templates in their own files
-
-The canonical formats now live as standalone artifacts:
-
-- [`templates/draft-block.md`](templates/draft-block.md) — active draft template (schema v1)
-- [`templates/sent-marker.md`](templates/sent-marker.md) — sent-state marker template (schema v1)
-
-The agent reads the template files literally when writing a draft into a daily plan. SKILL.md describes WHEN and WHY to use the template; the template files ARE the canonical structural form. This separation establishes a pattern the rest of the synthesis-skills ecosystem can adopt — `templates/<name>.md` as a sibling to `SKILL.md` for any skill whose protocol generates a structural artifact.
-
-Why split:
-
-- The template IS the producer-consumer contract artifact. Easier to diff template changes without scrolling through protocol prose.
-- Agents can read template files directly (cheap to load, no parse-the-protocol-prose-to-find-the-format).
-- Independent versioning: protocol stays at v3.x; template can ship its own schema version (`schema v1` in the file header).
-
-### Backward compatibility
-
-Pre-v3.3.0 draft sections (everything inline at uniform visual weight) continue to render correctly through the cockpit's existing parser — the parser doesn't require `<details>` blocks, just recognizes them when present. New drafts written by agents should follow the v3.3.0 templates. Agents rewriting an existing draft for any reason (mid-day update, edit before send, mark sent) should also rewrite the structure to the v3.3.0 form at that opportunity.
-
-This release follows the producer-consumer-contract pattern: when the consumer is the synthesis-console cockpit and the producer is a generative agent, the format and the parser must change together. Cross-reference: synthesis-console `docs/cockpit-design.md` "Drafts" section.
-
-## v3.2.0 — Canonical Sent-State Marker Location
-
-In v3.2.0 (2026-04-29), the prescribed format for marking a draft as SENT changes from H3-jammed metadata to a separate `**Sent:**` paragraph below the draft body.
-
-The pre-v3.2.0 form jammed the entire SENT metadata into the H3 heading text:
-
-```markdown
-### ~~Draft N: title~~ ✅ SENT by Rajiv at Thu Apr 2 6:16 PM EDT in #channel-name
-```
-
-That format renders as four lines of giant strikethrough in synthesis-console (H3 typography is ~1.75rem; long heading text wraps painfully). It also breaks the cockpit's sent-state detection — synthesis-console's parser looks for `**Sent:**` paragraphs to recognize sent drafts and replace the action bar with a "Sent" badge + "Open in Slack" link. With SENT in the H3, the parser doesn't notice, and the user sees Copy/Edit/Send buttons on a draft that already shipped.
-
-The v3.2.0 canonical form keeps the H3 short and puts the metadata in its own paragraph:
-
-```markdown
-### ~~Draft N: title~~
-
-**Send to:** ...
-
-` ` `
-[Message text]
-` ` `
-
-**Sent:** Thu Apr 2 6:16 PM EDT — by Rajiv in #channel-name (TS=1775141956.643419) https://acme.slack.com/archives/C0XXXXXX/p1775141956643419
-
-**Grounding:**
-- ...
-```
-
-**Backward compatibility.** The skill's `thread_checker.py` and synthesis-console v0.8.6+'s parser both accept the legacy H3-jammed form as well as the new canonical form. Existing daily-plan files don't need to be rewritten retroactively — but new SENT markers should use the canonical form, and any time the agent rewrites a sent draft for any reason, it should bring it to the canonical form.
-
-This release follows the same producer-consumer-contract pattern as recent updates to other skills: when the consumer is the synthesis-console cockpit and the producer is a generative agent, the format and the parser must change together. Cross-reference: synthesis-console's `docs/cockpit-design.md` "Drafts" section.
-
-## v3.1.0 — Workspace Domain, Permalinks, and Provenance Discipline
-
-In v3.1.0 (2026-04-29), the skill gains three changes that work together:
-
-1. **A new optional `slack_workspace_domain` config field.** Each project's `slack-sync.yaml` declares the Slack workspace's URL host (e.g., `acme.slack.com`). The skill stays generic — workspace-specific values live in per-project config, never hardcoded.
-
-2. **Clickable permalinks replace bare Unix timestamps in transcript and draft formats.** Previous format wrote `(TS: 1234567890.123456)` as visible text. The new format hides the TS inside a Slack permalink URL — the visible text is the human-readable date/time, the link target is `https://{slack_workspace_domain}/archives/{channel_id}/p{ts_no_dot}`. The TS is still machine-readable (extractable from the URL); it's just not cluttering the rendered view in synthesis-console or any other Markdown viewer. Both formats are accepted by `thread_checker.py` during the transition; new sync output should use the permalink form when `slack_workspace_domain` is configured.
-
-3. **Provenance discipline becomes explicit.** Every `## ... sync (~HH:MM TZ)` section header added to a transcript file MUST be backed by a `slack_read_channel` or `slack_read_thread` call in the same turn. Section bodies may ONLY contain messages those MCP calls returned. If MCP returned no new messages, the section says "No new messages since last sync" and stops — no quotes, no TSes, no claims about specific people having sent specific things. See the dedicated "Provenance Discipline" section below for the full rule and the rationale (2026-04-29 fabrication incident).
-
-### Why these three changes are coupled
-
-Permalinks make TSes machine-traceable in the file (every linked time is a TS visible in the URL), which makes provenance violations grep-able. The Stop-hook backstop at `~/.claude/hooks/quote-provenance-checker.py` looks for TSes that appear in transcript writes but nowhere else in the session — and it parses TSes from BOTH the legacy `(TS: ...)` text and the new `/pNNNNNNNNNNNNNNNN` URL form. The format change and the discipline change reinforce each other.
-
-## v3.0.0 — Per-Channel-Per-Day Layout
-
-In v3.0.0 (2026-04-22 afternoon), the transcript layout changed again within the same day as v2.0.0 was released. The refinement:
-
-**Transcripts now live one-file-per-channel-per-day** inside a dated directory:
-
-```
-{transcripts_repo}/{transcripts_path}/slack/
-├── YYYY-MM-DD/
-│   ├── <channel-name>.md       (one file per channel)
-│   ├── _dms.md                  (all 1:1 DMs for the day, aggregated)
-│   ├── _group-dms.md            (all group DMs for the day, aggregated)
-│   └── _misc.md                 (cross-channel sync notes, if any)
-└── _historical-pre-v3/          (legacy pre-v3 content if any)
-```
-
-### Why v3.0.0
-
-v2.0.0 used one-file-per-day-per-type (`channels/YYYY-MM-DD.md`, `dms/YYYY-MM-DD.md`, `group-dms/YYYY-MM-DD.md`). That worked but had two weaknesses:
-
-1. **Heavy days produced large channel files.** A busy day with 50+ active channels would pack everything into one file.
-2. **Type-based directories made new primitives awkward.** Adding Slack huddles or canvases would mean new top-level folders.
-
-Per-channel-per-day solves both: each file is scoped to one channel's activity on one day (naturally smaller), and new primitives within Slack are new file patterns within the same dated dir, not new folders.
-
-### Aggregation conventions
-
-- **Channels get one file each per day.** `mmc-product-growth-squad.md`, `tech-csa-pull-requests.md`, etc.
-- **DMs are aggregated** into `_dms.md` per day. DMs are typically lower-volume; daily context across all people is more useful than per-person files.
-- **Group DMs are aggregated** into `_group-dms.md` per day. Same rationale.
-- **The `_`-prefix** on `_dms.md` and `_group-dms.md` sorts them to the top of the directory listing, visually signaling they are aggregators rather than channel files.
-
-### `-private` Discovery Protocol (ADR-014)
-
-Any repo matching `ai-knowledge-*-private` is filtered from auto-discovery by default. This skill writes to a `-private` repo intentionally — the config file points at it explicitly. Other tools (ragbot auto-discovery, etc.) must NOT include these repos in their discovery scans unless running in explicit owner context. A sentinel file `.ai-knowledge-private-owner` at the repo root confirms ownership.
+Version history and the incidents behind each rule: [references/version-history.md](references/version-history.md). Transcript and permalink formats: [references/transcript-formats.md](references/transcript-formats.md). Draft templates: [templates/draft-block.md](templates/draft-block.md) and [templates/sent-marker.md](templates/sent-marker.md).
 
 ## Configuration
 
@@ -276,13 +76,15 @@ If the config file is missing, the skill should warn and ask the user to create 
 - DM transcripts (aggregated per day): `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_dms.md`
 - Group DM transcripts (aggregated per day): `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_group-dms.md`
 - Cross-channel sync notes (if any): `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/_misc.md`
-- Meeting transcripts (written by synthesis-meeting-transcripts): `{transcripts_repo}/{transcripts_path}/meetings/YYYY-MM-DD-<slug>.mdYYYY-MM-DD-<slug>.md`
+- Meeting transcripts (written by synthesis-meeting-transcripts): `{transcripts_repo}/{transcripts_path}/meetings/YYYY-MM-DD-<slug>.md`
 - Google Chat transcripts (if any): `{transcripts_repo}/{transcripts_path}/gchat/YYYY-MM-DD.md`
 - Email threads (if any): `{transcripts_repo}/{transcripts_path}/email/<thread-id>.md`
 - Attachments: `{transcripts_repo}/{transcripts_path}/attachments/`
 - Daily action plan: `{action_plan_repo}/{action_plan_path}/YYYY-MM-DD.md`
 
 The workspace identifier no longer appears in transcript paths — it's implicit in `transcripts_repo` (the workspace-private repo is named after its workspace). The `<channel-name>` in the per-channel filename is the Slack channel name WITHOUT the leading `#`.
+
+Repos matching `ai-knowledge-*-private` are excluded from auto-discovery by default (ADR-014); this skill writes to one deliberately — the config names it — and a `.ai-knowledge-private-owner` sentinel at the repo root confirms ownership. Other tools must not include these repos in discovery scans unless running in explicit owner context.
 
 ---
 
@@ -318,35 +120,17 @@ Not weak evidence — none. The search index lags, misses thread replies, and fa
 
 Absence claims are a grounding problem: a negative result is only evidence if the instrument could have produced a positive one. The general discipline — positive controls, scoped negative findings, truncated-output rules — lives in [synthesis-grounding-discipline](../synthesis-grounding-discipline/SKILL.md); this section is its Slack instance.
 
-
 ### Backfills and archive imports
 
-A backfill — reading a conversation to its first message rather than to a window — is a
-different operation from a sync, and it fails differently.
+A backfill — reading a conversation to its first message rather than to a window — is a different operation from a sync, and it fails differently.
 
-**Retrieval.** Page until the source says there are no more messages; a page limit or a date
-bound is not the beginning. Report the **earliest message's actual date** per conversation, so
-the reader can tell you reached the start rather than that a cursor quit early. Expand every
-thread: replies do not appear in channel history, and skipping them is the standard way a
-backfill silently loses half a conversation. Preserve raw user IDs beside resolved names.
+**Retrieval.** Page until the source says there are no more messages; a page limit or a date bound is not the beginning. Report the **earliest message's actual date** per conversation, so the reader can tell you reached the start rather than that a cursor quit early. Expand every thread: replies do not appear in channel history, and skipping them is the standard way a backfill silently loses half a conversation. Preserve raw user IDs beside resolved names.
 
-**Naming and framing.** A backfill file states the span it covers and the date it was captured.
-When a conversation is *partly* captured already, name the new file by its date range rather
-than "full history" — that name claims a completeness it does not have.
+**Naming and framing.** A backfill file states the span it covers and the date it was captured. When a conversation is *partly* captured already, name the new file by its date range rather than "full history" — that name claims a completeness it does not have.
 
-**The analysis rule, which matters more than the retrieval.** Everything in a backfill is
-history, and it all reads present-tense. **Do not report anything from it as currently open
-without reconciling against newer material already held locally.** A conversation that stops is
-not a question that stayed unanswered — the thread often continued somewhere else. Scope every
-finding to where you looked ("unanswered in this conversation through <date>"), and title the
-output by what it establishes: a list of where conversations stopped, not a list of open loops.
-The general discipline, with the incident that produced it, is entry 12 of
-[synthesis-grounding-discipline](../synthesis-grounding-discipline/SKILL.md).
+**The analysis rule, which matters more than the retrieval.** Everything in a backfill is history, and it all reads present-tense. **Do not report anything from it as currently open without reconciling against newer material already held locally.** A conversation that stops is not a question that stayed unanswered — the thread often continued somewhere else. Scope every finding to where you looked ("unanswered in this conversation through <date>"), and title the output by what it establishes: a list of where conversations stopped, not a list of open loops. The general discipline, with the incident that produced it, is entry 12 of [synthesis-grounding-discipline](../synthesis-grounding-discipline/SKILL.md).
 
-Candidate open items surfaced this way are exactly what
-[synthesis-catchup-ledger](../synthesis-catchup-ledger/SKILL.md) exists to classify — route them
-through its still-relevant / obsolete / ambiguous triage rather than reporting them raw.
-
+Candidate open items surfaced this way are exactly what [synthesis-catchup-ledger](../synthesis-catchup-ledger/SKILL.md) exists to classify — route them through its still-relevant / obsolete / ambiguous triage rather than reporting them raw.
 
 ---
 
@@ -368,22 +152,9 @@ Skip any file that does not yet exist (e.g., no DMs synced today). Combine the o
 
 ### Step 0: Preflight — resolve every read target (v3.7.0, REQUIRED)
 
-Before any read, build the resolved-target list for this sweep. For every
-surface the config declares — channels, 1:1 DMs, group DMs — record the one
-id a conversation-read call accepts: the channel id for channels and group
-DMs, the **conversation id (`D…`), never the user id (`U…`)**, for DMs. A
-surface whose read id cannot be established is recorded as **unresolved**
-and reported that way — never as unreadable, never as a config defect,
-because the sweep has evidence for neither. An empty resolved-target list
-refuses the sweep rather than reporting a quiet day.
+Before any read, build the resolved-target list for this sweep. For every surface the config declares — channels, 1:1 DMs, group DMs — record the one id a conversation-read call accepts: the channel id for channels and group DMs, the **conversation id (`D…`), never the user id (`U…`)**, for DMs. A surface whose read id cannot be established is recorded as **unresolved** and reported that way — never as unreadable, never as a config defect, because the sweep has evidence for neither. An empty resolved-target list refuses the sweep rather than reporting a quiet day.
 
-Steps 1, 3, and 3b iterate ONLY this resolved-target list. Reaching back
-into the config for an id mid-sweep is the banned move from v3.6.0: where an
-entry carries two id-like fields, the wrong one usually resolves, so the bug
-hides until the person behind it leaves. (A deterministic preflight script
-generalizing the worked private implementation is queued as extraction item
-P2; until it lands, the resolved-target table is produced by hand at the top
-of the sweep and included in the sync report.)
+Steps 1, 3, and 3b iterate ONLY this resolved-target list. Reaching back into the config for an id mid-sweep is the banned move from v3.6.0: where an entry carries two id-like fields, the wrong one usually resolves, so the bug hides until the person behind it leaves. (A deterministic preflight script generalizing the worked private implementation is queued as extraction item P2; until it lands, the resolved-target table is produced by hand at the top of the sweep and included in the sync report.)
 
 ### Step 1: Read channels for new top-level messages
 
@@ -393,16 +164,9 @@ For each channel in the preflight's resolved-target list:
 slack_read_channel(resolved_channel_id, oldest=WINDOW_OLDEST, limit=30)
 ```
 
-- **`WINDOW_OLDEST` is the `oldest=` epoch printed by**
-  `python3 <synthesis-daily-rituals-root>/scripts/sync_watermark.py window --workspace <W> --surface slack --target <resolved id>`
-  — never hand-computed, never copied from a transcript header, never
-  midnight. Quote the human-readable bounds the command prints in the sync
-  report, so the window is checkable by eye (v3.8.0; a hand-typed `oldest`
-  of 07:50 *today* once reported five channels empty that were not).
-- A **bootstrap window** (no watermark yet for that target or surface) reads
-  to the workspace's backfill bound and states that bound in the report.
-- **Every declared target is read every sync**, including targets read
-  earlier the same day — the window simply starts where the last read stopped.
+- **`WINDOW_OLDEST` is the `oldest=` epoch printed by** `python3 <synthesis-daily-rituals-root>/scripts/sync_watermark.py window --workspace <W> --surface slack --target <resolved id>` — never hand-computed, never copied from a transcript header, never midnight. Quote the human-readable bounds the command prints in the sync report, so the window is checkable by eye (v3.8.0; a hand-typed `oldest` of 07:50 *today* once reported five channels empty that were not).
+- A **bootstrap window** (no watermark yet for that target or surface) reads to the workspace's backfill bound and states that bound in the report.
+- **Every declared target is read every sync**, including targets read earlier the same day — the window simply starts where the last read stopped.
 - Note the **reply count** on every message that has threads. These will be re-read in Step 2.
 
 ### Step 2: Re-read ALL active threads — today AND recent days
@@ -442,10 +206,7 @@ For each 1:1 DM in the preflight's resolved-target list:
 slack_read_channel(channel_id=RESOLVED_CONVERSATION_ID, oldest=WINDOW_OLDEST, limit=20)
 ```
 
-The resolved conversation id comes from preflight (Step 0), never from a
-config field chosen mid-sweep. Only check DMs the config marks active —
-preflight carries that scoping — and report any DM preflight marked
-unresolved instead of silently skipping it.
+The resolved conversation id comes from preflight (Step 0), never from a config field chosen mid-sweep. Only check DMs the config marks active — preflight carries that scoping — and report any DM preflight marked unresolved instead of silently skipping it.
 
 ### Step 3b: Check Group DMs
 
@@ -471,13 +232,7 @@ For each file:
 - Record the sync time (e.g., `## Mid-day sync (~14:30 EDT)`).
 - If the file doesn't exist, create it with the standard header and create directories as needed.
 - If no messages of that type were found, skip that file (do not create empty files).
-- **Record the read once it is saved (v3.8.0):** for each target whose window
-  was read and whose messages (or confirmed absence) are now on disk, run
-  `python3 <synthesis-daily-rituals-root>/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <the window's latest>`.
-  The watermark advances only after the write, so a read that failed to save
-  cannot claim coverage — and the gate at the end of the sync
-  (`sync_watermark.py status --workspace <W> --surface slack --since run --targets-from <declared.json>`)
-  lists exactly the targets this sync did not re-read.
+- **Record the read once it is saved (v3.8.0):** for each target whose window was read and whose messages (or confirmed absence) are now on disk, run `python3 <synthesis-daily-rituals-root>/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <the window's latest>`. The watermark advances only after the write, so a read that failed to save cannot claim coverage — and the gate at the end of the sync (`sync_watermark.py status --workspace <W> --surface slack --since run --targets-from <declared.json>`, the declared set derived from the sync config at sync time and never a stored copy) lists exactly the targets this sync did not re-read.
 
 Meeting transcripts are NOT part of Slack sync — they are handled by the daily-rituals skill and placed in `{transcripts_repo}/{transcripts_path}/meetings/YYYY-MM-DD-<slug>.md`.
 
@@ -500,24 +255,6 @@ The shape (v3.3.0+) is two-tier:
 1. **Glanceable summary** — brief H3 title (≤60 char target), compressed `**Send to:**` line, optional one-line framing context, the message body itself.
 2. **Click-to-expand detail** — Grounding wrapped in `<details>/<summary>` so verification metadata is one click away rather than crowding the glance surface.
 
-```markdown
-### Draft N: <action> <recipient/topic>
-
-**Send to:** #channel · <thread or new>
-
-[Optional one-line context if helpful]
-
-` ` `
-[Message text]
-` ` `
-
-<details><summary>Grounding (N facts verified)</summary>
-
-- ...
-
-</details>
-```
-
 **Protocol rules** (full field-by-field detail in `templates/draft-block.md`):
 
 - **H3 title** is a scannable label. ≤60 char target, ≤80 hard cap. Format: `Draft N: <action> <recipient/topic>`. NEVER include channel IDs, user IDs, thread timestamps, commit hashes, PR numbers, status markers, or compound clauses in the title.
@@ -534,148 +271,13 @@ The shape (v3.3.0+) is two-tier:
 
 ---
 
-## Transcript File Format
+## Transcript Files and Permalinks
 
-Each file under `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/` follows one of three shapes: per-channel, `_dms.md` aggregator, or `_group-dms.md` aggregator.
+The per-channel, `_dms.md`, and `_group-dms.md` file shapes, the permalink construction rule, the `Send to:` line form, and the retrofit script are in [references/transcript-formats.md](references/transcript-formats.md). The rules that bind every write:
 
-### Channel file (`slack/YYYY-MM-DD/<channel>.md`)
-
-One file per channel per day. The filename is the channel name without the leading `#` (e.g., `mmc-product-growth-squad.md`).
-
-```markdown
-# Slack #[channel-name] — [Day], [Month] [Date], [Year]
-# Workspace: [workspace]
-
-Last synced: ~HH:MM TZ
-
----
-
-### [Author Name] — [HH:MM TZ]({permalink})
-[Message content]
-**Thread ([N] replies):**
-- [Reply Author] [HH:MM]({reply_permalink}): "[reply text]"
-- [Reply Author] [HH:MM]({reply_permalink}): "[reply text]"
-**Reactions:** [emoji_name] ([count])
-
----
-
-## Mid-day sync (~HH:MM TZ)
-
-### [Author Name] — [HH:MM TZ]({permalink})
-[New message]
-
-#### Thread update — [N] replies — [HH:MM]({thread_permalink})
-- [New reply details]
-
----
-```
-
-Within a single channel file, the channel name appears in the `# Slack #<channel>` top-level header only; messages below don't need `## #channel` subheaders (the entire file is about that channel).
-
-`{permalink}` is constructed per "Slack Permalink Construction" below: the visible text is the human-readable time, the link target carries the TS (`/pNNNNNNNNNNNNNNNN`). Files written before v3.1.0 may carry the legacy `(TS: 1234567890.123456)` format; both are accepted by `thread_checker.py` during the transition.
-
-### DMs aggregator file (`slack/YYYY-MM-DD/_dms.md`)
-
-```markdown
-# Slack DMs — [Day], [Month] [Date], [Year]
-# Workspace: [workspace]
-
-Last synced: ~HH:MM TZ
-
----
-
-## DM with [Person Name] (DM_CHANNEL_ID)
-
-### [Author Name] — [HH:MM TZ]({permalink})
-[Message content]
-
----
-```
-
-### Group DMs aggregator file (`slack/YYYY-MM-DD/_group-dms.md`)
-
-```markdown
-# Slack Group DMs — [Day], [Month] [Date], [Year]
-# Workspace: [workspace]
-
-Last synced: ~HH:MM TZ
-
----
-
-## Group DM: [Group Name or Members] (GROUP_DM_ID)
-
-### [Author Name] — [HH:MM TZ]({permalink})
-[Message content]
-
----
-```
-
-Key rules:
-- **Always record the TS** for every significant message. In v3.1.0+ the TS is embedded in the Slack permalink URL (`/pNNNNNNNNNNNNNNNN`); in pre-v3.1.0 files it appears as `(TS: 1234567890.123456)` text. Both forms are valid; `thread_checker.py` accepts both.
-- **Note reply counts** so the next sync can detect new replies.
-- **Separate sync sessions** with a horizontal rule and a timestamp header.
-- **Each file is scoped to its subject.** A per-channel file contains only that channel's messages. `_dms.md` contains only 1:1 DMs. `_group-dms.md` contains only group DMs. Mid-day syncs append to the same file; they don't fan out to new files.
-- **Directory listing tells the story.** `ls slack/YYYY-MM-DD/` shows which channels were active that day. File sizes show where activity concentrated.
-
----
-
-## Slack Permalink Construction
-
-Every Slack message recorded in a transcript or quoted in a draft message MUST be presented as a clickable permalink (when `slack_workspace_domain` is configured). The permalink format:
-
-```
-https://{slack_workspace_domain}/archives/{channel_id}/p{ts_no_dot}
-```
-
-Where:
-- `{slack_workspace_domain}` is read from `.agents/slack-sync.yaml` (e.g., `acme.slack.com`).
-- `{channel_id}` is the channel ID (e.g., `C0EXAMPLE01`) — comes from the same config or from the MCP read result.
-- `{ts_no_dot}` is the message TS with the `.` removed. Example: TS `1234567890.123456` becomes `1234567890123456`.
-
-For thread replies, the same simple form navigates to the reply within its thread — Slack's permalink resolver handles thread context automatically. (Slack's "Copy link to message" UI emits a richer form with `?thread_ts=...&cid=...` query parameters; the simple `/pNNNNNNNNNNNNNNNN` form is sufficient for navigation and is what we generate.)
-
-### Visible text is human-readable; TS hides in the URL
-
-Instead of:
-
-```markdown
-### Author Name — HH:MM TZ (TS: 1234567890.123456)
-```
-
-Use:
-
-```markdown
-### Author Name — [HH:MM TZ](https://acme.slack.com/archives/C0XXXX/p1234567890123456)
-```
-
-The link target carries the TS for machine extraction (regex: `/p(\d{10})(\d{6})\b`). The visible time renders as a clickable link in synthesis-console, GitHub, VSCode preview, and any other Markdown viewer. No `(TS: ...)` clutter in the rendered view.
-
-### Draft message "Send to:" line
-
-Replies:
-
-```markdown
-**Send to:** #channel-name — reply to **Author's** message at [Wed, Apr 29, 4:09 PM EDT](https://acme.slack.com/archives/C0XXXX/p1777493393596089)
-```
-
-New top-level messages don't need a permalink — there's no parent to link to.
-
-### Fallback when `slack_workspace_domain` is absent
-
-If the per-project config does not set `slack_workspace_domain`, the skill MUST emit a one-time warning ("permalinks disabled — set `slack_workspace_domain` to enable clickable links in transcripts and drafts") and fall back to the legacy `(TS: 1234567890.123456)` text format. The skill does not invent a domain.
-
-### Retrofitting older daily plans
-
-`retrofit_permalinks.py` (shipped alongside `thread_checker.py` in this skill directory) converts a legacy daily plan or transcript file from the bare-TS format to the clickable-permalink format in one pass. It reads the workspace domain and channel-name → channel-ID map from a `slack-sync.yaml` config — generic-skill, no hardcoded workspace.
-
-```bash
-python3 retrofit_permalinks.py <plan.md> --config <slack-sync.yaml>
-python3 retrofit_permalinks.py <plan.md> --config <slack-sync.yaml> --dry-run
-```
-
-Skip rules: lines containing only "parent thread TS" references are left as-is (the visible time on those lines refers to the reply, not the parent — linking it to the parent's TS would be wrong); lines with no resolvable channel hint are left unchanged (the script needs at least one `#channel-name` or `D0…`/`C0…` ID inline to construct a permalink). The script is idempotent — running it on an already-retrofitted file is a no-op.
-
-For multi-workspace daily plans (a single plan referencing messages from more than one Slack workspace), run the script once per workspace's `slack-sync.yaml`. Each pass linkifies only the TSes whose channel resolves via the config it was given; other lines fall through to the next pass.
+- **Always record the TS** for every significant message — embedded in a Slack permalink (`https://{slack_workspace_domain}/archives/{channel_id}/p{ts_no_dot}`) whose visible text is the human-readable time. When `slack_workspace_domain` is absent, warn once per session and fall back to the legacy `(TS: 1234567890.123456)` text; never invent a domain.
+- **Note reply counts** so the next sync can detect new replies; **separate sync sessions** with a horizontal rule and a timestamped `## … sync (~HH:MM TZ)` header; **each file is scoped to its subject** — mid-day syncs append to the same file and never fan out to new ones.
+- `retrofit_permalinks.py <plan.md> --config <slack-sync.yaml>` converts a legacy bare-TS file to permalinks in one idempotent pass (`--dry-run` to preview); for multi-workspace plans run it once per workspace config.
 
 ---
 
@@ -748,15 +350,5 @@ When a channel message references or continues an earlier discussion (broadcast 
 
 This skill is invoked:
 - **By the user** typing `/synthesis-slack-sync` or "sync from Slack" or similar
-- **By `synthesis-daily-rituals`** during Day-Start (Step 2: Sync), Mid-Day Sync, and Day-End (Step 1: Transcript Sync)
+- **By `synthesis-daily-rituals`** during Day-Start (Step 3: Sync), Mid-Day Sync, and Day-End (Step 1: Transcript Sync)
 - **Before drafting any Slack reply** — the daily-rituals skill requires re-reading the actual thread before drafting, to avoid stale-information replies
-
----
-
-## Why Each Step Matters
-
-These steps were developed through real incidents, not theory:
-
-- **Step 2 (thread re-reading):** On 2026-03-24, a mid-day sync skipped thread re-reads. The action plan showed a draft as "unsent" when the user had already sent it hours earlier. The agent proposed sending it again, which would have been a duplicate message.
-- **Step 4 (save to local):** Transcripts are the persistence layer. Without them, every sync starts from scratch, re-reading entire channels. With them, syncs are incremental and fast.
-- **Step 5 (action plan update):** The action plan is the user's dashboard. If it shows stale information (unsent drafts that were sent, unresolved items that were resolved), the user makes wrong decisions.

@@ -4,6 +4,30 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.80.0] - 2026-09-01
+
+**The daily-rituals and Slack-sync documents are back under the 500-line
+rule, and a test keeps them there.** `synthesis-daily-rituals/SKILL.md` had
+grown to 1,319 lines and `synthesis-slack-sync/SKILL.md` to 762 against the
+repository's below-500 rule, most of it release-by-release history stacked
+above the checklists, followed by plan formats, worked examples, and
+rationale. Both were restructured rather than trimmed: every operating rule
+and checklist step stays in the main document (454 and 357 lines), while the
+version history and the incidents behind each rule, the daily-plan format
+and cockpit vocabulary, the full draft-grounding protocol, and the
+transcript and permalink formats moved verbatim into `references/`
+(daily-rituals 2.31.0: `version-history.md`, `plan-format.md`,
+`draft-grounding.md`; slack-sync 3.9.0: `version-history.md`,
+`transcript-formats.md`). Where a block was condensed, the main document
+carries a rule digest; wrapped list items and paragraphs were re-flowed to
+the files' single-line style, which is markdown-neutral. A pinned test
+(`synthesis-daily-rituals/scripts/test_skill_documents.py`, in the CI group
+both skills share) fails when either document reaches 500 lines, when a
+load-bearing rule anchor leaves it, when a moved block is missing from its
+reference, or when a reference or template is not linked from the main
+document. Nothing in either protocol changed; every existing documented-rule
+contract test still passes against the main documents.
+
 ## [4.79.0] - 2026-09-01
 
 **Sync watermarks now carry a time and a target, and a run proves its own

@@ -11,6 +11,13 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Two operational documents are back under the line budget, with a test
+holding them there (September 2026).** Release **4.80.0** restructures the
+daily-rituals and Slack-sync skills: every rule and checklist step stays in
+`SKILL.md` (454 and 357 lines, down from 1,319 and 762), while history,
+formats, examples, and rationale live in `references/`; regrowth now fails
+CI. See the [4.80.0 release notes](CHANGELOG.md).
+
 **A sync now proves what it re-read, to the minute (September 2026).**
 Release **4.79.0** replaces day-granular sync watermarks with timestamps
 per surface and per declared read target: `begin` stamps a run,
