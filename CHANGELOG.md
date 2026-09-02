@@ -4,6 +4,24 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.90.2] - 2026-09-02
+
+**A Codex update no longer returns while the invoking task's historical hook
+root is still missing.** A native refresh returned successfully, and the task's
+immediately following Stop hook failed because its prior version root had not
+yet been restored. The durable guardian did recover the root, but a 77-version
+archive took 55 seconds and restored oldest first, making the immediately prior
+version last.
+
+synthesis-skills-manager 2.5.1 now restores historical roots newest first.
+synthesis-onboarding 1.4.2 invokes the installed guardian synchronously after a
+Codex refresh, then verifies that the exact version root and every plugin-root
+hook target used by the invoking task are present before reporting success. A
+configured guardian that is missing, unsafe, fails its doctor, or cannot restore
+that exact hook tree makes the ecosystem step non-green. Machines without the
+publisher-installed recovery archive retain the explicit close-other-tasks
+update contract; Claude's update path does not invoke the Codex guardian.
+
 ## [4.90.1] - 2026-09-02
 
 **The delivered inbox starts at the seat's claim.** The first live run of

@@ -69,11 +69,13 @@ from whole_system import (
     validate_personal_policy,
 )
 
-ENGINE_VERSION = "1.4.1"
+ENGINE_VERSION = "1.4.2"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
 MARKETPLACE_NAME = "synthesis-engineering"
+VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+HOOK_PLUGIN_PATH_RE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\s\"']+)")
 
 HOME = Path(os.environ.get("SYNTHESIS_ONBOARD_HOME", str(Path.home())))
 STATE_DIR = Path(os.environ.get("SYNTHESIS_ONBOARD_STATE_DIR", str(HOME / ".synthesis" / "onboarding")))
@@ -904,6 +906,63 @@ def refresh_plugin(client, binary, policy, reconfigure=False):
     return True, "marketplace and installed plugin refreshed"
 
 
+def synchronize_codex_history(before_version):
+    """Synchronously restore the cache root used by the invoking Codex task.
+
+    A release publisher installs the guardian outside Codex's client-owned
+    cache. When that durable runtime is present, an onboarding update consumes
+    it before reporting success; the background watcher remains responsible
+    for any later cache generation. Machines without the publisher-installed
+    recovery archive retain the documented close-other-tasks update contract.
+    """
+    recovery = (
+        HOME
+        / ".synthesis"
+        / "plugin-cache-recovery"
+        / MARKETPLACE_NAME
+    )
+    runtime = recovery / (".%s-cache-guardian.py" % PLUGIN_NAME)
+    if runtime.is_symlink():
+        return False, "durable Codex cache guardian has an unsafe type: %s" % runtime
+    if not runtime.exists():
+        return True, "durable Codex cache guardian is not installed"
+    if not runtime.is_file():
+        return False, "durable Codex cache guardian has an unsafe type: %s" % runtime
+    version = str(before_version or "")
+    if VERSION_RE.fullmatch(version) is None:
+        return False, "invoking Codex cache version could not be determined"
+    rc, out, err = run(
+        [sys.executable, str(runtime), "--doctor"],
+        env={"HOME": str(HOME)},
+        timeout=600,
+    )
+    if rc != 0:
+        return False, err.strip() or out.strip() or "cache guardian exited %d" % rc
+    historical = (
+        HOME
+        / ".codex"
+        / "plugins"
+        / "cache"
+        / MARKETPLACE_NAME
+        / PLUGIN_NAME
+        / version
+    )
+    if historical.is_symlink() or not historical.is_dir():
+        return False, "invoking Codex cache root %s is absent after guardian verification" % version
+    hooks = historical / "hooks" / "hooks.json"
+    try:
+        hook_text = hooks.read_text(encoding="utf-8")
+        json.loads(hook_text)
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        return False, "invoking Codex hook definition is unavailable for %s: %s" % (version, exc)
+    targets = sorted(set(HOOK_PLUGIN_PATH_RE.findall(hook_text)))
+    missing = [target for target in targets if not (historical / target).is_file()]
+    if not targets or missing:
+        detail = ", ".join(missing[:3]) if missing else "no plugin-root targets"
+        return False, "invoking Codex hook targets are unavailable for %s: %s" % (version, detail)
+    return True, "invoking Codex cache root %s restored and verified" % version
+
+
 def install_plugin(client, binary, policy):
     """Best-effort native plugin install. Returns (success, detail)."""
     add_cmd = marketplace_add_command(client, binary, policy)
@@ -1116,6 +1175,17 @@ def phase_ecosystem(
                     hint=detail,
                 )
                 continue
+            if name == "codex":
+                history_ok, history_detail = synchronize_codex_history(before_version)
+                if not history_ok:
+                    report.add(
+                        "ecosystem",
+                        ERROR,
+                        "%s historical cache preservation failed for %s" %
+                        (PLUGIN_NAME, name),
+                        hint=history_detail,
+                    )
+                    continue
             after_state, after_version = plugin_record(name, binary)
             if after_state is not True:
                 report.add("ecosystem", ERROR,
