@@ -25,6 +25,23 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from pointer_lock import locked_pointer
+from peer_addressing import (
+    CLIENT_CODEX,
+    SelfIdentity,
+    all_seats,
+    delivery_lanes,
+    detect_self,
+    lane_invocations,
+    load_receipts,
+    mark_seen,
+    read_seat,
+    remove_seat,
+    render_inbox,
+    seat_for_identity,
+    unread_messages,
+    write_receipt,
+    write_seat,
+)
 from coordination_schema import (
     SCHEMA_VERSION,
     V1_COLUMNS,
@@ -94,7 +111,28 @@ def detect_client_ref() -> str:
     host = os.environ.get("CLAUDE_CODE_HOST_SESSION_ID", "").strip()
     if host:
         return normalize_client_ref(f"ccd:{host}")
+    harness = os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
+    if harness:
+        # A terminal session has no desktop chat id; its harness session id
+        # is still a real delivery handle (the peer registry maps it to a
+        # socket), so it registers under the cc: scheme.
+        return normalize_client_ref(f"cc:{harness}")
     return ""
+
+
+def self_identity(requested_ref: str = "") -> SelfIdentity:
+    """What this shell knows about its own session, honoring an explicit ref."""
+    identity = detect_self()
+    if requested_ref.startswith("codex:") and identity.client != CLIENT_CODEX:
+        return SelfIdentity(
+            client=CLIENT_CODEX,
+            harness_session_id=requested_ref[len("codex:"):],
+            explicit_ref=requested_ref,
+            pid=identity.pid,
+        )
+    if requested_ref and not identity.primary_ref:
+        return SelfIdentity(explicit_ref=requested_ref, pid=identity.pid)
+    return identity
 TERMINAL_STATUSES = {"released", "complete", "completed", "closed"}
 CONTEXT_RESERVED_PATTERNS = (
     "context.md",
@@ -188,7 +226,8 @@ def template() -> str:
         "5. Existing autonomous claims keep priority over interactive sessions.\n"
         "6. Heartbeat at checkpoints; release or narrow claims at pause and session end.\n"
         "7. Address peers through resolve — board identity, never client labels; "
-        "an unresolvable peer gets a board message, not a broadcast.\n"
+        "resolve issues the delivery receipt the send gate requires, and an "
+        "unresolvable peer gets a board message, not a broadcast.\n"
     )
 
 
@@ -1611,6 +1650,15 @@ def command_claim(args) -> int:
         f"Claimed {', '.join(requested)} for session {identity.compact_id} "
         f"({identity.speakable_id}; uuid={identity.session_uuid}{legacy})."
     )
+    seat = write_seat(
+        args.board,
+        session_uuid=identity.session_uuid,
+        compact_id=identity.compact_id,
+        machine=args.machine,
+        identity=self_identity(requested_ref),
+    )
+    if seat is not None:
+        print(f"Seat recorded at {seat} (delivery handles for peer resolution).")
     if claimed.get("reused"):
         print(
             "Reused this client session's existing active row "
@@ -1650,6 +1698,21 @@ def command_heartbeat(args) -> int:
         print(f"coordination heartbeat failed: {exc}", file=sys.stderr)
         return 10
     print(f"Heartbeat updated for session {updated['identity'].compact_id}.")
+    existing = read_seat(args.board, updated["identity"].session_uuid)
+    if existing is not None:
+        write_seat(
+            args.board,
+            session_uuid=existing.session_uuid,
+            compact_id=existing.compact_id,
+            machine=existing.machine,
+            identity=self_identity() if self_identity().primary_ref else SelfIdentity(
+                client=existing.client,
+                harness_session_id=existing.harness_session_id,
+                host_session_id=existing.host_session_id,
+                pid=existing.pid,
+            ),
+            cwd=existing.cwd,
+        )
     return 0
 
 
@@ -1686,6 +1749,8 @@ def command_release(args) -> int:
             return 11
         if archived:
             print(f"Archived released session's active-project pointer: {archived}")
+    if remove_seat(args.board, released["identity"].session_uuid):
+        print("Seat removed.")
     print(f"Released session {released['identity'].compact_id}.")
     return 0
 
@@ -1775,8 +1840,18 @@ def delivery_lane(session: Session) -> str:
             f"ccd send_message to session_id {session.client_ref[4:]} "
             f"(valid on machine {session.machine})"
         )
-    if session.client_ref.startswith("codex:") or "codex" in session.agent.lower():
-        return "board message bus (Codex sessions have no direct push channel)"
+    if session.client_ref.startswith("codex:"):
+        return (
+            f"codex queue --thread {session.client_ref[len('codex:'):]} on machine "
+            f"{session.machine}, or the board message bus"
+        )
+    if session.client_ref.startswith("cc:"):
+        return (
+            "harness SendMessage to the uds: socket the resolver prints (valid on "
+            f"machine {session.machine} while the session runs), or the board message bus"
+        )
+    if "codex" in session.agent.lower():
+        return "board message bus (Codex session registered no thread id)"
     return "board message bus (session has no registered client ref)"
 
 
@@ -1872,6 +1947,59 @@ def command_resolve(args) -> int:
         }
         for session in matches
     ]
+    lanes: dict[str, dict] = {}
+    receipt_path = None
+    receipt_note = ""
+    sender_compact = ""
+    if len(entries) == 1:
+        target = matches[0]
+        lanes = delivery_lanes(
+            client_ref=target.client_ref,
+            compact_id=target.compact_id,
+            target_machine=target.machine,
+            seat=read_seat(args.board, target.session_uuid),
+            local_machine=getattr(args, "local_machine", None),
+            registry=getattr(args, "registry", None),
+        )
+        sender = self_identity()
+        own_seat = seat_for_identity(args.board, sender)
+        sender_row = next(
+            (s for s in sessions if own_seat and s.session_uuid == own_seat.session_uuid and active(s)),
+            None,
+        )
+        sender_compact = sender_row.compact_id if sender_row else ""
+        if not getattr(args, "no_receipt", False):
+            receipt_path = write_receipt(
+                args.board,
+                sender=sender,
+                sender_row=(
+                    {"uuid": sender_row.session_uuid, "compact": sender_row.compact_id, "project": sender_row.project}
+                    if sender_row
+                    else None
+                ),
+                selector=args.to,
+                matched_by=kind,
+                target={
+                    "uuid": target.session_uuid,
+                    "compact": target.compact_id,
+                    "project": target.project,
+                    "machine": target.machine,
+                    "agent": target.agent,
+                    "client_ref": target.client_ref,
+                },
+                lanes=lanes,
+            )
+            if receipt_path is None:
+                receipt_note = (
+                    "no delivery receipt issued: this shell carries no session identity "
+                    "(CLAUDE_CODE_SESSION_ID or SYNTHESIS_CLIENT_SESSION_REF), so the send "
+                    "gate will refuse direct lanes; the bus lane remains"
+                )
+            elif sender_row is None:
+                receipt_note = (
+                    "receipt issued, but this session holds no active seat: the send gate "
+                    "requires one (claim before sending) so the peer can resolve a reply"
+                )
     if args.json:
         print(
             json.dumps(
@@ -1880,6 +2008,10 @@ def command_resolve(args) -> int:
                     "matched_by": kind,
                     "board_schema": board_schema(content),
                     "matches": entries,
+                    "lanes": lanes,
+                    "receipt": str(receipt_path) if receipt_path else None,
+                    "receipt_note": receipt_note or None,
+                    "sender": sender_compact or None,
                 },
                 indent=2,
             )
@@ -1895,6 +2027,14 @@ def command_resolve(args) -> int:
             print(f"  uuid: {entry['uuid']}")
             print(f"  client ref: {entry['client_ref'] or '-'}")
             print(f"  delivery: {entry['delivery']}")
+        if lanes:
+            print("Exact invocations (copy verbatim; the message must start with your board id):")
+            for line in lane_invocations(lanes, sender_compact):
+                print(f"  {line}")
+            if receipt_path is not None:
+                print(f"Delivery receipt: {receipt_path} (valid 20 minutes; the send gate matches it)")
+            if receipt_note:
+                print(f"note: {receipt_note}", file=sys.stderr)
     if len(entries) == 1:
         return 0
     if len(entries) > 1:
@@ -1920,6 +2060,111 @@ def command_resolve(args) -> int:
         file=sys.stderr,
     )
     return 21
+
+
+def command_inbox(args) -> int:
+    """Unread board messages addressed to a seat (any identity form) or its project."""
+    lease_refresh(args.board)
+    if not args.board.is_file():
+        print(f"inbox: no coordination board at {args.board}", file=sys.stderr)
+        return 1
+    content = args.board.read_text(encoding="utf-8")
+    sessions = rows(content)
+    selector = getattr(args, "id", None)
+    identity = self_identity()
+    if selector:
+        row = find_session(sessions, selector)
+        if row is None:
+            print(f"inbox: session not found: {selector}", file=sys.stderr)
+            return 1
+        key = f"seat:{row.session_uuid}"
+    else:
+        seat = seat_for_identity(args.board, identity)
+        row = next((s for s in sessions if seat and s.session_uuid == seat.session_uuid), None)
+        if row is None:
+            print(
+                "inbox: this shell holds no seat on the board; pass --session <id> or "
+                "claim first",
+                file=sys.stderr,
+            )
+            return 1
+        key = identity.sender_key or f"seat:{row.session_uuid}"
+    forms = {row.session_uuid, row.compact_id, row.speakable_id} | ({row.legacy_id} if row.legacy_id else set())
+    messages = unread_messages(
+        content, board=args.board, sender_key=key, identity_forms=forms, project=row.project
+    )
+    if getattr(args, "json", False):
+        print(
+            json.dumps(
+                {
+                    "session": row.compact_id,
+                    "unread": [
+                        {"from": m.sender, "to": m.recipient, "at": m.timestamp, "body": m.body}
+                        for m in messages
+                    ],
+                },
+                indent=2,
+            )
+        )
+    else:
+        print(render_inbox(messages, limit=len(messages) or 1) or f"No unread messages for {row.compact_id}.")
+    if messages and getattr(args, "mark_read", False):
+        mark_seen(args.board, key, {m.key for m in messages})
+        print(f"Marked {len(messages)} message(s) read for {row.compact_id}.")
+    return 0
+
+
+def command_whoami(args) -> int:
+    """This shell's session identity, seat, board row, and the lanes peers would use."""
+    identity = self_identity()
+    seat = seat_for_identity(args.board, identity) if args.board.is_file() else None
+    sessions = rows(args.board.read_text(encoding="utf-8")) if args.board.is_file() else []
+    row = next((s for s in sessions if seat and s.session_uuid == seat.session_uuid), None)
+    lanes = (
+        delivery_lanes(
+            client_ref=row.client_ref,
+            compact_id=row.compact_id,
+            target_machine=row.machine,
+            seat=seat,
+            local_machine=getattr(args, "local_machine", None),
+            registry=getattr(args, "registry", None),
+        )
+        if row is not None
+        else {}
+    )
+    receipts = load_receipts(args.board, identity.sender_key) if identity.sender_key else []
+    payload = {
+        "client": identity.client or None,
+        "harness_session_id": identity.harness_session_id or None,
+        "host_session_id": identity.host_session_id or None,
+        "primary_ref": identity.primary_ref or None,
+        "sender_key": identity.sender_key or None,
+        "seat": str(seat.compact_id) if seat else None,
+        "row": (
+            {"session": row.compact_id, "uuid": row.session_uuid, "project": row.project, "status": row.status}
+            if row
+            else None
+        ),
+        "lanes_peers_use": lanes,
+        "receipts_held": [r.get("target", {}).get("compact") for r in receipts],
+    }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2))
+        return 0
+    print(f"client: {payload['client'] or '-'}")
+    print(f"harness session id: {payload['harness_session_id'] or '-'}")
+    print(f"host session id: {payload['host_session_id'] or '-'}")
+    print(f"primary ref: {payload['primary_ref'] or '-'}")
+    print(f"sender key: {payload['sender_key'] or '- (direct sends will be refused)'}")
+    if row is None:
+        print("seat: none — claim before messaging peers")
+    else:
+        print(f"seat: {row.compact_id} ({row.project}, {row.status})")
+        print("lanes peers use to reach this session:")
+        for line in lane_invocations(lanes, "<their id>"):
+            print(f"  {line}")
+    print(f"receipts held: {', '.join(r for r in payload['receipts_held'] if r) or 'none'}")
+    return 0 if row is not None and identity.sender_key else 1
 
 
 def command_migrate(args) -> int:
@@ -2170,9 +2415,17 @@ def command_doctor(args) -> int:
         for problem in problems:
             print(f"FAIL coordination: {problem}", file=sys.stderr)
         return 1
+    seats = all_seats(args.board)
+    active_uuids = {session.session_uuid for session in sessions if active(session)}
+    stale_seats = [seat for seat in seats if seat.session_uuid not in active_uuids]
+    seat_line = f", {len(seats)} seat(s)" + (
+        f" ({len(stale_seats)} without an active row; release removes them, resolve ignores them)"
+        if stale_seats
+        else ""
+    )
     print(
         f"PASS coordination: schema v{declared}{schema_note}, "
-        f"{len(sessions)} session(s){lease_line}"
+        f"{len(sessions)} session(s){seat_line}{lease_line}"
     )
     return 0
 
@@ -2280,6 +2533,27 @@ def parser() -> argparse.ArgumentParser:
     resolve.add_argument("--include-released", action="store_true")
     resolve.add_argument("--stale-after-minutes", type=int, default=240)
     resolve.add_argument("--json", action="store_true")
+    resolve.add_argument(
+        "--no-receipt",
+        action="store_true",
+        help="Look up only; do not issue the delivery receipt the send gate matches.",
+    )
+    resolve.add_argument("--registry", type=Path, default=None, help=argparse.SUPPRESS)
+    resolve.add_argument("--local-machine", default=None, help=argparse.SUPPRESS)
+    inbox = commands.add_parser(
+        "inbox",
+        help="Unread board messages addressed to this seat (any identity form) or its project.",
+    )
+    inbox.add_argument("--id", "--session", dest="id")
+    inbox.add_argument("--mark-read", action="store_true")
+    inbox.add_argument("--json", action="store_true")
+    whoami = commands.add_parser(
+        "whoami",
+        help="This shell's session identity, seat, row, and the lanes peers use to reach it.",
+    )
+    whoami.add_argument("--json", action="store_true")
+    whoami.add_argument("--registry", type=Path, default=None, help=argparse.SUPPRESS)
+    whoami.add_argument("--local-machine", default=None, help=argparse.SUPPRESS)
     commands.add_parser("migrate")
     commands.add_parser("doctor")
     stale = commands.add_parser(
@@ -2310,6 +2584,8 @@ COMMANDS = {
     "release": command_release,
     "message": command_message,
     "resolve": command_resolve,
+    "inbox": command_inbox,
+    "whoami": command_whoami,
     "migrate": command_migrate,
     "lease-disable": command_lease_disable,
     "stale": command_stale,

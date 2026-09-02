@@ -976,6 +976,7 @@ def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
         "coordination.py",
         "coordination_schema.py",
         "pointer_lock.py",
+        "peer_addressing.py",
         "source-path",
     }
     assert (

@@ -30,7 +30,10 @@ Append addressed messages here. Use a heading:
 4. Every root session that writes git state uses an isolated worktree and branch.
 5. One session owns canonical project context; contributors use separate artifacts.
 6. An existing autonomous claim keeps priority over an interactive session.
-7. Put asynchronous handoffs under `## Messages`.
+7. Put asynchronous handoffs under `## Messages`, addressed to a session id or
+   `<project> sessions`; the addressed seat receives them at its next prompt.
+   Direct sends go through `resolve` (which issues the delivery receipt the
+   send gate requires); display names and chat titles are never addresses.
 8. Heartbeat at checkpoints; release or narrow claims at pause and session end.
 
 ## Identity

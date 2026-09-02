@@ -17,7 +17,12 @@ Since schema v4 a row also carries a **client session ref** (for example
 `ccd:local_<uuid>`), which is not an identity: it is the client-native
 delivery address registered at claim time, resolvable through
 `coordination.py resolve` but never a substitute for the UUID in pointers,
-leases, or receipts. See the parallel-agent protocol's "Addressing a peer
+leases, or receipts. A session's other handles (harness session id,
+desktop id, pid, machine) live in a **seat** sidecar,
+`seats/<session uuid>.json` beside the board, written at claim and removed
+at release; `resolve` joins the row, the seat, and the harness's live peer
+registry into exact per-lane addresses and issues a delivery receipt the
+send gate matches. See the parallel-agent protocol's "Addressing a peer
 session."
 
 UUIDv7 follows RFC 9562: 48 milliseconds-of-Unix-time bits, required version

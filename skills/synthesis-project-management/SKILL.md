@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.10.0"
+  version: "2.11.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -14,14 +14,11 @@ metadata:
 
 A lightweight project management system designed for human-agent collaboration. Optimized for context preservation across conversation sessions and context compaction events.
 
-## v2.9.0 — One document, load-bearing; depth in references
+## v2.11.0 — One document, load-bearing; depth in references
 
-Every operating rule stays here, inside the repository's 500-line budget;
-worked examples, full formats, and rationale moved to `references/` with
-pointers in place. Nothing was dropped. v2.8.0's peer-session resolution
-(board v4 client refs, `resolve`, strict bus addressing, staged migration)
-is under Cross-Agent Session Coordination below and in full in
-[references/parallel-agent-protocol.md](references/parallel-agent-protocol.md).
+Every operating rule stays here, inside the 500-line budget; examples and
+rationale live in `references/`. Peer addressing (resolve, receipts, gated
+lanes, delivered bus) is in full in [references/parallel-agent-protocol.md](references/parallel-agent-protocol.md).
 
 ## Configuration
 
@@ -270,9 +267,13 @@ python3 <synthesis-project-management-root>/scripts/coordination.py heartbeat \
 python3 <synthesis-project-management-root>/scripts/coordination.py \
   check-staged --session s-6adk-06yc-yqb2 --repository /path/to/worktree
 
-# Resolve a peer to its exact deliverable target before messaging it
+# Resolve a peer: exact address per lane + the receipt the send gate matches
 python3 <synthesis-project-management-root>/scripts/coordination.py resolve \
   --to example-project --role owner
+
+# This shell's identity, seat, and lanes; unread bus messages for its seat
+python3 <synthesis-project-management-root>/scripts/coordination.py whoami
+python3 <synthesis-project-management-root>/scripts/coordination.py inbox --mark-read
 
 # Leave a handoff (--to must resolve; --free-address records exceptions)
 printf '%s\n' "Source checks pass; live install awaits authorization." |
@@ -312,12 +313,12 @@ Rules:
 6. **Autonomous claim keeps priority.** When an autonomous and interactive
    session overlap, the autonomous session keeps its existing claim; the
    interactive session yields unless the user explicitly reorders them.
-7. **Messages are asynchronous, and addresses are resolved, never guessed.**
-   Address the other session in the message log; the recipient reads it at
-   its next checkpoint. Before any direct client-channel send to a peer
-   session, run `resolve` and address the exact ref it returns; a client's
-   display labels and chat titles are not identities, and an unresolvable
-   peer gets a board message, not a broadcast.
+7. **Direct sends need a receipt; addresses are resolved, never guessed.**
+   `resolve` issues a delivery receipt for one target; the plugin's gate
+   admits a direct send only at that exact address, re-verified live. Names,
+   titles, and `[ref]` labels are never addresses; the message carries your
+   board id; the same text to a second peer is a refused broadcast. The bus
+   reaches the addressed seat at its next prompt: unresolvable means bus.
 8. **Heartbeat and release explicitly.** Refresh the heartbeat at checkpoints.
    A paused or completed session releases or narrows its claims. Stale `active`
    rows remain blocking until explicitly resolved; time alone never transfers

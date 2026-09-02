@@ -12,6 +12,41 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-project-management/scripts/board_inbox.py --hook",
+            "timeout": 10,
+            "statusMessage": "Delivering coordination board messages addressed to this session"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "SendMessage|mcp__ccd_session_mgmt__send_message",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-project-management/scripts/peer_send_gate.py --gate",
+            "timeout": 15,
+            "statusMessage": "Verifying the peer address against a delivery receipt and the coordination board"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|exec_command|exec|shell|local_shell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-project-management/scripts/peer_send_gate.py --gate",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

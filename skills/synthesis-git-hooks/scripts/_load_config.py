@@ -69,6 +69,7 @@ COORDINATION_ENGINE_FILES = (
     "coordination.py",
     "coordination_schema.py",
     "pointer_lock.py",
+    "peer_addressing.py",
 )
 ENGINE_FILES = CORE_ENGINE_FILES + COORDINATION_ENGINE_FILES
 COORDINATION_ASSET = "session-words-v1.txt.zlib.b85"

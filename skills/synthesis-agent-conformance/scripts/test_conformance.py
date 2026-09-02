@@ -836,32 +836,69 @@ def test_render_treats_required_unknown_as_non_success(capsys) -> None:
     assert payload["checks"][0]["ok"] is None
 
 
+def _hook_config(*, gate: bool = True, inbox: bool = True) -> dict:
+    hooks: dict = {
+        "SessionStart": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-agent-conformance/scripts/session_context.py --format claude",
+                    }
+                ]
+            }
+        ]
+    }
+    if gate:
+        hooks["PreToolUse"] = [
+            {
+                "matcher": "SendMessage|mcp__ccd_session_mgmt__send_message",
+                "hooks": [{"type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-project-management/scripts/peer_send_gate.py --gate"}],
+            },
+            {
+                "matcher": "Bash|exec_command|exec|shell|local_shell",
+                "hooks": [{"type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-project-management/scripts/peer_send_gate.py --gate"}],
+            },
+        ]
+    if inbox:
+        hooks["UserPromptSubmit"] = [
+            {
+                "hooks": [{"type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-project-management/scripts/board_inbox.py --hook"}]
+            }
+        ]
+    return {"hooks": hooks}
+
+
 def test_hook_definition_checks_require_session_context(tmp_path: Path) -> None:
     hook_file = tmp_path / "hooks" / "hooks.json"
     hook_file.parent.mkdir()
-    hook_file.write_text(
-        json.dumps(
-            {
-                "hooks": {
-                    "SessionStart": [
-                        {
-                            "hooks": [
-                                {
-                                    "type": "command",
-                                    "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-agent-conformance/scripts/session_context.py --format claude",
-                                }
-                            ]
-                        }
-                    ]
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
+    hook_file.write_text(json.dumps(_hook_config()), encoding="utf-8")
 
     checks = MODULE.hook_definition_checks(tmp_path)
 
-    assert all(check.ok for check in checks)
+    assert all(check.ok for check in checks), [c for c in checks if not c.ok]
+
+
+def test_hook_definition_checks_require_the_peer_gate_and_the_inbox(tmp_path: Path) -> None:
+    """A plugin whose hooks.json stops routing peer sends through the gate, or
+    stops delivering the board inbox, fails source conformance: the 2026-09-02
+    recurrence was a lane nothing gated."""
+    hook_file = tmp_path / "hooks" / "hooks.json"
+    hook_file.parent.mkdir()
+    hook_file.write_text(json.dumps(_hook_config(gate=False, inbox=False)), encoding="utf-8")
+
+    checks = {check.name: check for check in MODULE.hook_definition_checks(tmp_path)}
+
+    assert checks["hook-definition.public-sessionstart"].ok
+    assert not checks["hook-definition.public-peer-gate"].ok
+    assert not checks["hook-definition.public-inbox"].ok
+
+
+def test_shipped_hook_config_routes_peer_sends_through_the_gate() -> None:
+    source_root = Path(__file__).resolve().parents[3]
+    checks = {check.name: check for check in MODULE.hook_definition_checks(source_root)}
+    assert checks["hook-definition.public-peer-gate"].ok, checks["hook-definition.public-peer-gate"].detail
+    assert checks["hook-definition.public-inbox"].ok, checks["hook-definition.public-inbox"].detail
 
 
 def test_hook_live_checks_reject_static_absence_and_accept_receipts(
