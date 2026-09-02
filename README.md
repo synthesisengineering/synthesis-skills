@@ -725,8 +725,11 @@ restart verification fails or the client cannot rehydrate an existing task.
 Installing a cache in place is not a lifecycle reload. Native plugin refresh
 also replaces a versioned cache used by hook commands, so close other live
 sessions before running `onboard.py update`, and make the update the invoking
-session's last action. `install` and `doctor` do not refresh an existing native
-plugin.
+session's last action. On machines where the gated publisher installed the
+durable Codex cache guardian, the update engine restores newest historical
+roots first and verifies the invoking task's exact hook tree synchronously
+before reporting success. `install` and `doctor` do not refresh an existing
+native plugin.
 
 The Codex package also restores the active synthesis project after context
 compaction. Run `synthesis-agent-conformance` to verify both runtime

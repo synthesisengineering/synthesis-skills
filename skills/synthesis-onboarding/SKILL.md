@@ -5,12 +5,19 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.4.1"
+  version: "1.4.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Onboarding
+
+**Version 1.4.2** (2026-09-02) closes the invoking-task gap in a Codex
+plugin update on machines with the durable historical-cache guardian. After
+the native refresh returns, the engine runs that guardian synchronously and
+verifies the exact version root and hook targets the current task started
+with before it reports success. A missing or failed configured guardian makes
+the ecosystem step non-green.
 
 Everything a new person needs to go from a bare machine to a working
 synthesis setup — close to one command plus an auth step. Built for two
@@ -157,7 +164,11 @@ match the installed release. Start a new conversation/task only if restart
 verification fails or the client cannot rehydrate it. Native clients resolve
 plugin hooks to versioned cache paths; replacing that cache can invalidate hook
 commands already loaded by another live session. Ordinary `install` and
-`doctor` runs never refresh an existing native plugin.
+`doctor` runs never refresh an existing native plugin. When the gated publisher
+has installed the durable Codex cache guardian on this machine, `update`
+synchronously restores and verifies the invoking task's exact historical hook
+root before it returns; that narrows the unavoidable last-action boundary to
+the client lifecycle reload instead of leaving a post-command restoration race.
 
 ## Scaffolding a personal knowledge workspace
 

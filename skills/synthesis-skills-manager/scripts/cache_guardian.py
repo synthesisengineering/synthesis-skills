@@ -252,7 +252,10 @@ def restore_once(home: Path | None = None, *, blocking: bool = False) -> dict[st
         cache.mkdir(parents=True, exist_ok=True)
         if cache.is_symlink():
             raise GuardianError(f"cache parent is a symlink: {cache}")
-        for version in protected:
+        # A task is most likely to be pinned to the version immediately before
+        # the current release. Restore from newest to oldest so that root is
+        # available first even when a large archive takes time to rehydrate.
+        for version in reversed(protected):
             source = archived[version]
             _validate_root(source, version)
             destination = cache / version

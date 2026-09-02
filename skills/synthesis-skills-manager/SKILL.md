@@ -5,23 +5,20 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.5.0"
+  version: "2.5.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
 
-**Version 2.5.0** (2026-09-01) makes Codex cache survival durable beyond the
-release command. The budgeted, tag-backed archive remains authoritative, and a
-standard-library guardian installed outside the client-owned cache restores
-historical roots whenever Codex creates a later cache generation. The newest
-version remains exclusively client-owned; the guardian shares the transition
-lock, refuses unsafe links or differing existing content, runs under the user
-supervisor, and is installed and verified by the gated publisher before it
-returns. Recovery digests still exclude only client-owned metadata. The
-whole-system onboarding suite and its scaffold/component catalog audit remain
-required release checks.
+**Version 2.5.1** (2026-09-02) prioritizes the newest historical Codex roots
+during recovery, so the version most likely to be pinned by a just-updated task
+returns first instead of last. The onboarding update engine now consumes the
+durable guardian synchronously before reporting a successful Codex refresh and
+verifies the invoking task's exact hook tree. The budgeted, tag-backed archive,
+single-writer transition lock, supervisor, refusal of unsafe or differing
+content, and client-owned newest-version boundary remain unchanged.
 
 Manage synthesis skills across a three-repo architecture. Skills are executable
 methodology. Public skills are also packaged as a native plugin for clients that
@@ -308,9 +305,12 @@ The sequence, each stage gating the next:
   the release lock, protects every archived version except the newest
   client-owned version, and rehydrates missing historical roots after any later
   cache replacement. It never deletes a cache path or overwrites differing
-  existing content. An already-running task therefore keeps the complete skill
-  and hook tree its SessionStart loaded even when reconciliation occurs after
-  the publisher has exited.
+  existing content. Restoration runs newest-history-first so the immediately
+  preceding version is available before older roots during a large recovery.
+  The onboarding engine invokes the installed guardian synchronously after a
+  Codex refresh and refuses to report success until the invoking task's exact
+  version root and hook targets are present. The watcher continues protecting
+  those roots against later reconciliation after either command exits.
   The archive has a 512 MiB hard budget and never deletes a historical root
   automatically when that budget is reached; unverifiable cleanup fails the
   release closed. Symlink recovery artifacts and client liveness markers are not
