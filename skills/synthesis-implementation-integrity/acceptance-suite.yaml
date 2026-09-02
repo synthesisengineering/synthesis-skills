@@ -1,32 +1,38 @@
-# AGENT HEURISTIC: authored for the 4.84.0 stable-path doctor transaction.
+# AGENT HEURISTIC: authored for the 4.85.0 concurrent-seat state transaction.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: stable-path-daily-heartbeat
+suite: append-only-state-for-concurrent-seats
 membership: closed
-production_entry_point: skills/synthesis-agent-conformance/scripts/conformance.py
-enforcing_boundary: the daily parity check fails when the stable plugin path is missing, dangling, or carries a version other than the one the client reports installed
+production_entry_point: skills/synthesis-chief-of-staff/scripts/holds_state.py
+enforcing_boundary: a hold is releasable only when the log carries a place event the agent wrote for that id, and a send is authorised only by a ledger filed under that exact message's sha — so neither answer can be lost when a second seat writes at the same moment
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the live parity run on this machine after install is quoted in the release record; a pointer that resolves correctly but to a tree whose contents drifted from the manifest is covered by the release's byte verification, not by this check
+unverified_remainder: the live migration of this machine's holds ledger reconciled 1:1 in the release record, not here; whether every seat in the field has been restarted onto the new engine is covered by the install verification, not by this check; ordering of records written in the same microsecond is unconstrained and irrelevant, since state is derived per id rather than by position
 changed_surfaces:
-  - path: skills/synthesis-agent-conformance/scripts/conformance.py
-    cases: [stable-path-current, stable-path-missing, stable-path-dangling, stable-path-behind]
-  - path: skills/synthesis-agent-conformance/scripts/test_parity.py
-    cases: [stable-path-current, stable-path-missing, stable-path-dangling, stable-path-behind]
-  - path: skills/synthesis-agent-conformance/scripts/test_conformance.py
-    cases: [stable-path-current]
-  - path: skills/synthesis-skills-manager/SKILL.md
-    cases: [two-caller-rule-documented]
-  - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [two-caller-rule-documented]
-  - path: skills/synthesis-daily-rituals/SKILL.md
-    cases: [rituals-budget]
-  - path: skills/synthesis-daily-rituals/references/version-history.md
-    cases: [rituals-budget]
+  - path: skills/synthesis-chief-of-staff/scripts/holds_state.py
+    cases: [holds-invariant-mechanical, holds-concurrent-seats, holds-old-shape-loses-data, holds-atomic-bound, holds-migration-invents-nothing, holds-torn-line]
+  - path: skills/synthesis-chief-of-staff/scripts/test_holds_state.py
+    cases: [holds-invariant-mechanical, holds-concurrent-seats, holds-old-shape-loses-data, holds-atomic-bound, holds-migration-invents-nothing, holds-torn-line]
+  - path: skills/synthesis-chief-of-staff/SKILL.md
+    cases: [holds-invariant-mechanical]
+  - path: skills/synthesis-chief-of-staff/preferences.example.json
+    cases: [holds-invariant-mechanical]
+  - path: skills/synthesis-message-guard/scripts/message_guard.py
+    cases: [ledger-keyed-by-sha, ledger-no-shared-slot, ledger-write-refuses-bad-sha, ledger-sweep-spares-fresh, ledger-gate-end-to-end]
+  - path: skills/synthesis-message-guard/scripts/test_message_guard.py
+    cases: [ledger-keyed-by-sha, ledger-no-shared-slot, ledger-write-refuses-bad-sha, ledger-sweep-spares-fresh, ledger-gate-end-to-end]
+  - path: skills/synthesis-message-guard/SKILL.md
+    cases: [ledger-keyed-by-sha]
+  - path: AGENTS.md
+    cases: [ci-runs-the-new-suites]
+  - path: .github/workflows/validate.yml
+    cases: [ci-runs-the-new-suites]
+  - path: skills/synthesis-skills-manager/scripts/release.py
+    cases: [ci-runs-the-new-suites]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -38,30 +44,54 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: stable-path-current
-    control_class: acceptance-test
-    fixture: ../synthesis-agent-conformance/scripts/test_parity.py::ParityTests::test_everything_current_passes
-    motivating_defect: a-check-that-cannot-pass-on-a-healthy-machine-trains-bypass
-  - id: stable-path-missing
+  - id: holds-invariant-mechanical
     control_class: enforced-gate
-    fixture: ../synthesis-agent-conformance/scripts/test_parity.py::ParityTests::test_missing_stable_path_fails
-    motivating_defect: a-pointer-nobody-created-is-a-pin-that-resolves-to-nothing
-  - id: stable-path-dangling
+    fixture: ../synthesis-chief-of-staff/scripts/test_holds_state.py::test_only_placed_holds_are_releasable
+    motivating_defect: an-agent-recalling-what-it-created-earlier-is-not-evidence-it-created-it
+  - id: holds-concurrent-seats
     control_class: enforced-gate
-    fixture: ../synthesis-agent-conformance/scripts/test_parity.py::ParityTests::test_dangling_stable_path_fails
-    motivating_defect: the-client-replaces-its-cache-on-its-own-schedule-and-a-symlink-into-it-dangles
-  - id: stable-path-behind
+    fixture: ../synthesis-chief-of-staff/scripts/test_holds_state.py::test_append_only_log_keeps_every_seat
+    motivating_defect: a-lost-place-record-makes-a-real-calendar-event-permanently-unreleasable
+  - id: holds-old-shape-loses-data
+    control_class: positive-control
+    fixture: ../synthesis-chief-of-staff/scripts/test_holds_state.py::test_shared_array_rewrite_loses_holds
+    motivating_defect: a-concurrency-test-that-cannot-fail-on-the-broken-shape-proves-nothing
+  - id: holds-atomic-bound
     control_class: enforced-gate
-    fixture: ../synthesis-agent-conformance/scripts/test_parity.py::ParityTests::test_stable_path_behind_installed_fails
-    motivating_defect: an-install-made-without-the-gated-release-leaves-the-pointer-on-yesterdays-version
-  - id: two-caller-rule-documented
+    fixture: ../synthesis-chief-of-staff/scripts/test_holds_state.py::test_records_stay_within_the_atomic_append_bound
+    motivating_defect: an-append-over-pipe-buf-can-interleave-and-tear-the-record-it-was-meant-to-preserve
+  - id: holds-migration-invents-nothing
+    control_class: enforced-gate
+    fixture: ../synthesis-chief-of-staff/scripts/test_holds_state.py::test_unparsable_window_keeps_prose_rather_than_inventing_a_time
+    motivating_defect: a-guessed-start-time-for-a-calendar-hold-is-worse-than-an-admittedly-unstructured-record
+  - id: holds-torn-line
+    control_class: enforced-gate
+    fixture: ../synthesis-chief-of-staff/scripts/test_holds_state.py::test_torn_line_is_skipped_not_guessed_at
+    motivating_defect: a-half-written-line-reconstructed-by-guesswork-authorises-a-hold-nobody-placed
+  - id: ledger-keyed-by-sha
+    control_class: enforced-gate
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_ledger_path_is_keyed_by_message_sha
+    motivating_defect: two-seats-composing-at-once-clobbered-one-slot-and-the-loser-was-told-it-had-edited-its-own-text
+  - id: ledger-no-shared-slot
+    control_class: enforced-gate
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_no_single_shared_ledger_slot_remains
+    motivating_defect: restoring-a-fixed-path-helper-silently-reintroduces-the-clobber
+  - id: ledger-write-refuses-bad-sha
+    control_class: enforced-gate
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_write_ledger_refuses_a_non_digest_sha
+    motivating_defect: a-ledger-filed-under-a-name-no-send-can-resolve-is-grounding-that-never-arrives
+  - id: ledger-sweep-spares-fresh
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_stable_path_doc_states_the_two_caller_rule
-    motivating_defect: a-rule-nobody-wrote-down-gets-re-decided-per-session
-  - id: rituals-budget
-    control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_skill_document_stays_within_repo_budget
-    motivating_defect: a-restructured-document-must-not-regrow-with-its-next-feature
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_orphan_sweep_spares_fresh_ledgers
+    motivating_defect: a-sweep-that-takes-a-live-ledger-blocks-the-send-it-was-meant-to-permit
+  - id: ledger-gate-end-to-end
+    control_class: enforced-gate
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_engine_behavioral_suite_passes
+    motivating_defect: ci-ran-only-the-content-tests-so-a-storage-defect-passed-for-the-life-of-the-file
+  - id: ci-runs-the-new-suites
+    control_class: enforced-gate
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_cover_ci_pytest_groups
+    motivating_defect: a-suite-wired-into-ci-but-not-the-release-gate-lets-a-release-ship-past-it
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
