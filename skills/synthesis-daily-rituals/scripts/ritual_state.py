@@ -42,6 +42,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -218,6 +219,28 @@ def unknown_count(records) -> int:
     return sum(1 for r in records
                if not r.get("workspace") or r.get("workspace") == UNKNOWN_WS)
 
+
+def unattributed_status(records, cfg) -> tuple[int, int | None, str]:
+    """Compare unattributed records against an ACKNOWLEDGED baseline.
+
+    Legacy records that predate per-seat stamping can never be attributed —
+    guessing them would be worse than leaving them out. But a note that appears
+    on every call and can never clear is noise, and noise trains a reader to
+    skip the line: the same failure as a gap field nothing consumes.
+
+    So the baseline is acknowledged once and then silent. What surfaces is
+    DEVIATION: a count above baseline means something is writing unstamped
+    records TODAY, which is a live defect; a count below means the log lost
+    records. Either is worth interrupting for. Equality is not.
+    """
+    n = unknown_count(records)
+    base = cfg.get("legacy_unattributed_baseline")
+    if not isinstance(base, int):
+        return n, None, "unacknowledged"
+    if n == base:
+        return n, base, "baseline"
+    return n, base, "above" if n > base else "below"
+
 # ---------------------------------------------------------------- commands
 
 
@@ -287,12 +310,24 @@ def cmd_query(a) -> int:
             raise SystemExit("ritual_state: query streak needs --workspace")
         out = {"workspace": a.workspace, "streak": q_streak(records, cfg, a.workspace, today)}
 
-    unk = unknown_count(records)
-    if unk:
-        out["unattributed_records"] = unk
-        out["unattributed_note"] = (
-            "records with no workspace, excluded from per-workspace views rather than "
-            "guessed at — see the migration note in the log's header record")
+    n, base, status = unattributed_status(records, cfg)
+    if status == "above":
+        out["unattributed_records"] = n
+        out["unattributed_alarm"] = (
+            f"{n - base} record(s) ABOVE the acknowledged baseline of {base} — something is "
+            "writing records with no workspace NOW. Per-workspace views silently omit them.")
+    elif status == "below":
+        out["unattributed_records"] = n
+        out["unattributed_alarm"] = (
+            f"{base - n} record(s) BELOW the acknowledged baseline of {base} — the log has "
+            "lost records; it is append-only, so this should be impossible.")
+    elif status == "unacknowledged" and n:
+        out["unattributed_records"] = n
+        out["unattributed_alarm"] = (
+            f"{n} unattributed record(s) and no acknowledged baseline. Run "
+            "`ritual_state.py baseline --accept` once the count is understood; until then "
+            "this cannot distinguish legacy residue from a live defect.")
+    # status == "baseline": silent. Acknowledged, permanent, and reported by doctor.
     if bad:
         out["malformed_lines"] = len(bad)
 
@@ -318,8 +353,8 @@ def _print_human(out: dict) -> None:
             print(f"     OPEN  {o['workspace']:14} {o['date']}")
     if "last_weekly_review" in out:
         print(f"  last weekly review: {out['last_weekly_review'] or '—'}")
-    if out.get("unattributed_records"):
-        print(f"  ({out['unattributed_records']} unattributed legacy records excluded)")
+    if out.get("unattributed_alarm"):
+        print(f"  ALARM: {out['unattributed_alarm']}")
     if out.get("malformed_lines"):
         print(f"  WARNING: {out['malformed_lines']} malformed line(s) in the log")
 
@@ -415,6 +450,7 @@ def cmd_migrate(a) -> int:
         for r in merged:
             fh.write(json.dumps(r, separators=(",", ":"), sort_keys=True) + "\n")
     unk = sum(1 for r in merged if r["workspace"] == UNKNOWN_WS)
+    _set_baseline(unk + (1 if header["workspace"] == UNKNOWN_WS else 0))
     print(f"migrated {len(merged)} record(s) into {log_path()}")
     print(f"  {unk} unattributed (excluded from per-workspace views, not guessed)")
     print(f"  {len(merged) - unk} attributed")
@@ -461,10 +497,16 @@ def cmd_doctor(a) -> int:
     chk(not over, f"every record is within the {MAX_RECORD_BYTES}B atomic-append bound "
                   f"({len(over)} over)")
 
-    unk = unknown_count(records)
-    if unk:
-        print(f"  note  {unk} unattributed legacy record(s) — excluded from per-workspace "
-              f"views by design, not silently attributed")
+    n, base, status = unattributed_status(records, cfg)
+    if status == "baseline":
+        print(f"  note  {n} unattributed legacy record(s) at the acknowledged baseline — "
+              f"excluded from per-workspace views by design, and silent in `query` because a "
+              f"note that can never clear stops being read")
+    elif status == "unacknowledged" and n:
+        chk(False, f"{n} unattributed record(s) with no acknowledged baseline — run "
+                   f"`baseline --accept` so deviation becomes detectable")
+    elif status in ("above", "below"):
+        chk(False, f"unattributed count {n} deviates from baseline {base} ({status})")
 
     print("HEALTHY: ritual state is derived, not stored." if ok
           else "UNHEALTHY: see FAIL lines above.")
@@ -531,6 +573,21 @@ def cmd_test(a) -> int:
         eq(q_last(records, "w")["date"], "2026-09-15", "seat w preserved")
         eq(q_last(records, "other")["date"], "2026-09-15", "seat other preserved")
 
+        # The unattributable baseline is a TRIPWIRE, not a permanent note.
+        cfg_b = dict(cfg); cfg_b["legacy_unattributed_baseline"] = 0
+        eq(unattributed_status(records, cfg_b)[2], "baseline",
+           "zero unstamped at baseline 0 is silent")
+        append_record({"ts": "x", "date": "2026-09-20", "direction": "day-end",
+                       "workspace": UNKNOWN_WS, "mode": "m", "outcome": "o"})
+        records, _ = read_records()
+        eq(unattributed_status(records, cfg_b)[2], "above",
+           "a new unstamped record trips the wire")
+        cfg_b["legacy_unattributed_baseline"] = 5
+        eq(unattributed_status(records, cfg_b)[2], "below",
+           "losing records below baseline also trips")
+        eq(unattributed_status(records, {})[2], "unacknowledged",
+           "no baseline means the count cannot be interpreted")
+
         # Oversized records are refused.
         try:
             append_record({"ts": "x", "date": "2026-09-16", "direction": "day-end",
@@ -544,6 +601,36 @@ def cmd_test(a) -> int:
         print(f"  FAIL  {f}")
     print(f"{'all tests pass' if not fails else str(len(fails)) + ' failure(s)'}")
     return 0 if not fails else 2
+
+
+def _set_baseline(n: int) -> None:
+    """Acknowledge the unattributable residue so deviation from it can alarm."""
+    p = config_path()
+    cfg = json.loads(p.read_text(encoding="utf-8")) if p.exists() else json.loads(json.dumps(DEFAULT_CONFIG))
+    cfg["legacy_unattributed_baseline"] = n
+    cfg["_legacy_unattributed_baseline_note"] = (
+        "Count of records that predate per-seat stamping and can never be attributed. "
+        "Acknowledged once so `query` stays silent about it; ANY deviation alarms, because "
+        "a rise means something is writing unstamped records now and a fall means the "
+        "append-only log lost data.")
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent))
+    with os.fdopen(fd, "w") as fh:
+        json.dump(cfg, fh, indent=2)
+        fh.write("\n")
+    os.replace(tmp, p)
+
+
+def cmd_baseline(a) -> int:
+    records, _ = read_records()
+    n = unknown_count(records)
+    if not a.accept:
+        cfg = load_config()
+        cur = cfg.get("legacy_unattributed_baseline")
+        print(f"  unattributed now: {n}   acknowledged baseline: {cur if cur is not None else '(none)'}")
+        return 0
+    _set_baseline(n)
+    print(f"  baseline accepted at {n}; `query` is now silent unless the count moves")
+    return 0
 
 # ---------------------------------------------------------------- cli
 
@@ -575,6 +662,10 @@ def main(argv=None) -> int:
     m = sub.add_parser("migrate", help="fold legacy logs/state into the new log")
     m.add_argument("--force", action="store_true")
     m.set_defaults(func=cmd_migrate)
+
+    b = sub.add_parser("baseline", help="show or accept the unattributable-residue baseline")
+    b.add_argument("--accept", action="store_true")
+    b.set_defaults(func=cmd_baseline)
 
     sub.add_parser("doctor", help="self-check; exit 0 HEALTHY / 2 UNHEALTHY").set_defaults(func=cmd_doctor)
     sub.add_parser("test", help="behavioural suite").set_defaults(func=cmd_test)
