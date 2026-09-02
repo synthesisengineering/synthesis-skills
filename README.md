@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**An "unanswered" claim now has to say when you last looked (September
+2026).** Release **4.83.0** adds a config-adopted currency lane to the
+message guard: claims about what is unanswered, unsent, or still open must
+carry a fresh `read_at`, or the send is blocked. See the [4.83.0 release
+notes](CHANGELOG.md).
+
 **Pin a stable path, not a version (September 2026).** Release **4.82.0**
 adds `~/.synthesis/plugins/synthesis-skills/current`, maintained by the
 gated release and repointed only after both clients verify, and makes every

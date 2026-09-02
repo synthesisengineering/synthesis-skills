@@ -4,6 +4,23 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.83.0] - 2026-09-01
+
+**Grounding-ledger claims about what is unanswered or unsent must say when
+the source was read.** The guard's ledger mapped every factual claim to a
+source but not to a moment, so a claim that a question was "still
+unanswered" — resting on a read eight hours old while the answer had gone
+out that morning — passed as verified on 2026-09-01. A false receipt in the
+layer built to stop exactly that is worse than no receipt. message-guard
+1.5.0 adds a config-adopted currency lane: claims whose text matches
+`currency_claim_patterns` (unanswered, unsent, no reply, still open, has
+not responded) must carry `read_at`, and the send is blocked when it is
+missing or older than `currency_claim_max_age_minutes`; stable facts need
+none; the ledger template shows the field; the doctor reports the lane.
+Six tests pin refusal without `read_at`, refusal on a stale read, pass on
+a fresh one, pass for a stable fact, and the lane staying off until
+adopted.
+
 ## [4.82.0] - 2026-09-01
 
 **A stable plugin path, and every coordination command says when it is

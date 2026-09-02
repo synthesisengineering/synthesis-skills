@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -294,3 +295,81 @@ def test_peer_other_tools_stay_in_correspondence_lane(tmp_path: Path) -> None:
         peer_cfg(board),
     )
     assert (handled, fails) == (False, [])
+
+
+# --- currency claims carry read freshness (v1.5.0) ----------------------------------------------
+
+CURRENCY_CFG = {
+    "ledger_max_age_minutes": 30,
+    "currency_claim_patterns": [MODULE.DEFAULT_CURRENCY_PATTERN],
+    "currency_claim_max_age_minutes": 30,
+}
+PLAIN_CFG = {"ledger_max_age_minutes": 30}
+TEXT = "Following up on the deploy question from this morning."
+
+
+def _ledger(claims: list[dict]) -> dict:
+    return {
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "message_sha256": MODULE.sha256_text(TEXT),
+        "is_reply": False,
+        "claims": claims,
+        "voice_rules_pass": True,
+        "invented_precision_scan": True,
+        "recipient_address_check": True,
+    }
+
+
+def _moment(minutes_ago: float) -> str:
+    return (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
+
+
+def test_currency_claim_without_read_at_is_refused() -> None:
+    """The 2026-09-01 failure: 'still unanswered' rested on a read eight hours
+    old, and the ledger could not tell because it recorded where, not when."""
+    ledger = _ledger([{"claim": "Jordan's question is still unanswered", "source": "DM D0EXAMPLE"}])
+
+    fails = MODULE.validate_ledger(ledger, TEXT, CURRENCY_CFG, "mcp__x__send_gmail_message")
+
+    assert any("read_at" in f and "currency state" in f for f in fails), fails
+
+
+def test_currency_claim_with_a_stale_read_is_refused() -> None:
+    ledger = _ledger([{"claim": "no reply from Jordan yet", "source": "DM D0EXAMPLE",
+                       "read_at": _moment(8 * 60)}])
+
+    fails = MODULE.validate_ledger(ledger, TEXT, CURRENCY_CFG, "mcp__x__send_gmail_message")
+
+    assert any("min old" in f for f in fails), fails
+
+
+def test_currency_claim_with_a_fresh_read_passes() -> None:
+    ledger = _ledger([{"claim": "no reply from Jordan yet", "source": "DM D0EXAMPLE",
+                       "read_at": _moment(5)}])
+
+    fails = MODULE.validate_ledger(ledger, TEXT, CURRENCY_CFG, "mcp__x__send_gmail_message")
+
+    assert not [f for f in fails if "claims[" in f], fails
+
+
+def test_a_stable_fact_needs_no_read_at() -> None:
+    ledger = _ledger([{"claim": "PR 96 merged this afternoon", "source": "gh pr view 96"}])
+
+    fails = MODULE.validate_ledger(ledger, TEXT, CURRENCY_CFG, "mcp__x__send_gmail_message")
+
+    assert not [f for f in fails if "claims[" in f], fails
+
+
+def test_currency_lane_is_off_until_adopted() -> None:
+    ledger = _ledger([{"claim": "Jordan's question is still unanswered", "source": "DM D0EXAMPLE"}])
+
+    fails = MODULE.validate_ledger(ledger, TEXT, PLAIN_CFG, "mcp__x__send_gmail_message")
+
+    assert not [f for f in fails if "read_at" in f], fails
+
+
+def test_ledger_template_carries_read_at() -> None:
+    template = MODULE.ledger_template() if hasattr(MODULE, "ledger_template") else None
+    text = json.dumps(template) if template is not None else MODULE_PATH.read_text(encoding="utf-8")
+    assert "read_at" in text
+

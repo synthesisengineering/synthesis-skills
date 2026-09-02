@@ -1,32 +1,26 @@
-# AGENT HEURISTIC: authored for the 4.82.0 stable-path and stale-engine-notice transaction.
+# AGENT HEURISTIC: authored for the 4.83.0 message-guard read-freshness transaction.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: stable-plugin-path-and-stale-engine-notice
+suite: currency-claims-carry-read-freshness
 membership: closed
-production_entry_point: skills/synthesis-skills-manager/scripts/release.py
-enforcing_boundary: the gated release repoints the synthesis-owned stable path only at a verified install root, and every coordination command announces an engine older than the newest installed
+production_entry_point: skills/synthesis-message-guard/scripts/message_guard.py
+enforcing_boundary: with the lane adopted, the pre-send gate blocks any ledger claim about an unanswered, unsent, or still-open state whose read_at is missing or older than the configured maximum
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the live repoint of the real stable path happens in this release's own install phase and is proven by its receipt; instruction files outside this repository adopt the path in their own commits
+unverified_remainder: adoption in a private config is an operator act recorded in the session log; the default pattern list is a starting vocabulary, not a complete taxonomy of currency claims
 changed_surfaces:
-  - path: skills/synthesis-skills-manager/scripts/release.py
-    cases: [stable-path-atomic-repoint, stable-path-refuses-unverified]
-  - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [stable-path-atomic-repoint, stable-path-refuses-unverified]
-  - path: skills/synthesis-skills-manager/SKILL.md
-    cases: [stable-path-doc-contract]
-  - path: skills/synthesis-project-management/scripts/coordination_schema.py
-    cases: [stale-engine-notice]
-  - path: skills/synthesis-project-management/scripts/coordination.py
-    cases: [stale-engine-notice]
-  - path: skills/synthesis-project-management/scripts/test_coordination.py
-    cases: [stale-engine-notice]
-  - path: skills/synthesis-project-management/references/session-identity.md
-    cases: [stable-path-doc-contract]
+  - path: skills/synthesis-message-guard/scripts/message_guard.py
+    cases: [missing-read-at-refused, stale-read-refused, fresh-read-passes, stable-fact-exempt, lane-off-until-adopted]
+  - path: skills/synthesis-message-guard/scripts/test_message_guard.py
+    cases: [missing-read-at-refused, stale-read-refused, fresh-read-passes, stable-fact-exempt, lane-off-until-adopted, template-carries-read-at]
+  - path: skills/synthesis-message-guard/patterns.example.json
+    cases: [lane-off-until-adopted]
+  - path: skills/synthesis-message-guard/SKILL.md
+    cases: [template-carries-read-at]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -38,22 +32,30 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: stable-path-atomic-repoint
+  - id: missing-read-at-refused
     control_class: enforced-gate
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_stable_path_points_at_the_verified_install_root
-    motivating_defect: a-versioned-cache-path-pinned-in-instructions-or-a-session-is-stale-by-the-next-release
-  - id: stable-path-refuses-unverified
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_currency_claim_without_read_at_is_refused
+    motivating_defect: a-still-unanswered-claim-resting-on-an-eight-hour-old-read-passed-as-verified
+  - id: stale-read-refused
+    control_class: enforced-gate
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_currency_claim_with_a_stale_read_is_refused
+    motivating_defect: a-read-from-earlier-today-is-a-statement-about-the-past
+  - id: fresh-read-passes
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_stable_path_refuses_an_unverified_or_mismatched_root
-    motivating_defect: a-stable-path-that-can-point-at-an-unverified-tree-is-a-stale-path-with-a-better-name
-  - id: stale-engine-notice
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_currency_claim_with_a_fresh_read_passes
+    motivating_defect: a-gate-that-blocks-fresh-reads-trains-bypass
+  - id: stable-fact-exempt
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_every_command_notes_a_newer_installed_engine
-    motivating_defect: a-session-kept-a-resolved-path-across-six-releases-and-nothing-in-its-output-said-so
-  - id: stable-path-doc-contract
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_a_stable_fact_needs_no_read_at
+    motivating_defect: taxing-every-claim-for-a-defect-in-currency-claims-adds-friction-without-safety
+  - id: lane-off-until-adopted
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
-    motivating_defect: a-path-nobody-is-told-to-pin-keeps-getting-pinned-by-version
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_currency_lane_is_off_until_adopted
+    motivating_defect: a-lane-that-switches-on-by-surprise-blocks-configs-that-never-declared-it
+  - id: template-carries-read-at
+    control_class: acceptance-test
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_ledger_template_carries_read_at
+    motivating_defect: a-field-the-template-does-not-show-is-a-field-nobody-fills
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
