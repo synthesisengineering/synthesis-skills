@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.6.1"
+  version: "1.7.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -152,6 +152,9 @@ python3 scripts/conformance.py all \
 
 Fix every failed required check. Record genuine client-owned differences as
 boundaries with evidence; do not report parity from matching inventories alone.
+Since 1.7.0 parity also reads each client's installed manifest on disk beside
+the CLI report (`parity.<client>-on-disk`): a self-report is a claim, not
+evidence — it once stayed green while the loaded tree sat three releases behind.
 
 ## Lifecycle hooks
 

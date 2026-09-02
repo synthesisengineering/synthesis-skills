@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**A self-report is a claim, not evidence (September 2026).** Release
+**4.88.0** makes daily parity read each client's installed manifest on disk
+beside the CLI report, and makes the message guard's clean doctor control a
+canonical signed message so a pattern that blocks real signed sends fails
+the doctor. See the [4.88.0 release notes](CHANGELOG.md).
+
 **The stable plugin path is checked every morning (September 2026).**
 Release **4.85.1** creates both new state stores private (0600/0700).
 Release **4.85.0** replaces two shared single-slot state files with

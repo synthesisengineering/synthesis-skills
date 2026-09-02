@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.5.0"
+  version: "1.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -179,7 +179,12 @@ message_guard.py --test            # behavioral suite (31 cases)
    missing-config invocation.
 2. **Positive controls.** `--doctor` requires a known-bad text to trip the
    scanner and a known-clean text to pass — a scanner that stops matching is
-   detected, not trusted.
+   detected, not trusted. Since 1.6.0 the known-clean text is a canonical
+   SIGNED agent message (the Ragbot signature line in Slack wire form): on
+   2026-08-03 a generic clean control passed while a retired-branding pattern
+   compiled under IGNORECASE blocked every real signed send. Add your own
+   canonical messages with `doctor_clean_controls` so a pattern change that
+   blocks real traffic fails the doctor.
 3. **Calibration.** The pattern set must PASS the principal's real sent
    messages and BLOCK the incident drafts. Re-run calibration whenever
    patterns change; a guard that blocks the principal's own voice is

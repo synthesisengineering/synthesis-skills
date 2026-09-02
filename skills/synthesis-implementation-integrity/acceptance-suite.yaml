@@ -1,26 +1,34 @@
-# AGENT HEURISTIC: authored for the 4.87.0 quick-answers-self-bootstrap transaction.
+# AGENT HEURISTIC: authored for the 4.88.0 transaction closing two coordination-board asks.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: quick-answers-self-bootstrap-and-quiet-onboarding
+suite: board-asks-on-disk-parity-and-canonical-clean-control
 membership: closed
-production_entry_point: skills/synthesis-quick-answers/SKILL.md
-enforcing_boundary: synthesis-quick-answers's Setup section now bootstraps a missing personal knowledge workspace itself (via synthesis-onboarding's onboard.py init-workspace) and states the AGENTS.md/CLAUDE.md routing line as the explicit mechanism that makes the pattern automatic, rather than assuming both; onboard.py's plugin-update messages read as plain human status rather than internal agent-protocol jargon; and the CLI's asymmetric single-client behavior (Claude present without Codex, or the reverse) is proven correct by executable tests rather than asserted from a read of the code
+production_entry_point: skills/synthesis-agent-conformance/scripts/conformance.py
+enforcing_boundary: daily parity fails when a client's reported version has no cache tree on disk or a tree whose manifest disagrees, and the guard doctor fails when a pattern blocks the canonical signed message
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the onboarding CLI's other front door — a downstream organization's own install.sh wrapper, whose git pull/clone calls were the actual source of the diffstat wall a live colleague hit — is a separate private repo outside this one's acceptance boundary; that fix is tracked and shipped there, not verified here
+unverified_remainder: the live parity and doctor runs on this machine after install are quoted in the release record; a marketplace snapshot directory that the client consults but that is not its cache tree remains covered by the release's own verification, not by the daily check
 changed_surfaces:
-  - path: skills/synthesis-quick-answers/SKILL.md
-    cases: [quick-answers-self-bootstrap]
-  - path: skills/synthesis-onboarding/scripts/onboard.py
-    cases: [quick-answers-self-bootstrap, dual-client-graceful-degradation]
-  - path: skills/synthesis-onboarding/scripts/test_onboard.py
-    cases: [dual-client-graceful-degradation]
-  - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [quick-answers-self-bootstrap]
+  - path: skills/synthesis-agent-conformance/scripts/conformance.py
+    cases: [on-disk-report-without-tree, on-disk-manifest-disagrees, parity-current]
+  - path: skills/synthesis-agent-conformance/scripts/test_parity.py
+    cases: [on-disk-report-without-tree, on-disk-manifest-disagrees, parity-current]
+  - path: skills/synthesis-agent-conformance/scripts/test_conformance.py
+    cases: [parity-current]
+  - path: skills/synthesis-agent-conformance/SKILL.md
+    cases: [parity-current]
+  - path: skills/synthesis-message-guard/scripts/message_guard.py
+    cases: [clean-control-is-signed, over-broad-pattern-trips-control, example-controls-pass]
+  - path: skills/synthesis-message-guard/scripts/test_message_guard.py
+    cases: [clean-control-is-signed, over-broad-pattern-trips-control, example-controls-pass]
+  - path: skills/synthesis-message-guard/patterns.example.json
+    cases: [example-controls-pass]
+  - path: skills/synthesis-message-guard/SKILL.md
+    cases: [clean-control-is-signed]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -29,15 +37,33 @@ changed_surfaces:
     cases: [release-manifest-parity]
   - path: CHANGELOG.md
     cases: [release-changelog-parity]
+  - path: README.md
+    cases: [release-changelog-parity]
 cases:
-  - id: quick-answers-self-bootstrap
+  - id: on-disk-report-without-tree
+    control_class: enforced-gate
+    fixture: ../synthesis-agent-conformance/scripts/test_parity.py::ParityTests::test_reported_version_without_a_cache_tree_fails_on_disk
+    motivating_defect: parity-stayed-green-while-the-loaded-codex-tree-sat-three-releases-behind-the-reported-version
+  - id: on-disk-manifest-disagrees
+    control_class: enforced-gate
+    fixture: ../synthesis-agent-conformance/scripts/test_parity.py::ParityTests::test_cache_manifest_disagreeing_with_the_report_fails_on_disk
+    motivating_defect: a-tree-that-exists-but-carries-another-version-is-the-same-stale-load-with-a-directory-name
+  - id: parity-current
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_quick_answers_self_bootstrap_release_contract_is_public_and_coherent
-    motivating_defect: a-setup-procedure-that-assumes-infrastructure-the-reader-does-not-have-yet-strands-the-first-real-adopter-and-a-pattern-that-never-states-its-own-automatic-mechanism-degrades-into-manual-invocation-with-extra-steps
-  - id: dual-client-graceful-degradation
+    fixture: ../synthesis-agent-conformance/scripts/test_parity.py::ParityTests::test_everything_current_passes
+    motivating_defect: a-check-that-cannot-pass-on-a-healthy-machine-trains-bypass
+  - id: clean-control-is-signed
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_ecosystem_phase_only_touches_the_present_client
-    motivating_defect: an-installer-that-crashes-or-misreports-when-only-one-of-two-supported-clients-is-present-fails-the-common-case-not-the-edge-case
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_builtin_clean_control_is_a_canonical_signed_message
+    motivating_defect: a-generic-clean-control-passed-while-every-real-signed-send-was-blocked
+  - id: over-broad-pattern-trips-control
+    control_class: enforced-gate
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_over_broad_retired_branding_pattern_trips_the_clean_control
+    motivating_defect: a-retired-branding-pattern-under-global-ignorecase-matched-the-correct-brand-and-the-doctor-stayed-green
+  - id: example-controls-pass
+    control_class: acceptance-test
+    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_example_clean_controls_include_the_signature_and_pass_example_patterns
+    motivating_defect: an-example-config-whose-own-controls-fail-its-own-patterns-ships-a-broken-doctor
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates

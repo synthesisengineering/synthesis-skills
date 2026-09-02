@@ -481,3 +481,41 @@ def test_loose_ledger_permissions_are_repaired(monkeypatch, tmp_path) -> None:
     MODULE.tighten_ledger_store()
     assert stray.stat().st_mode & 0o777 == 0o600
     assert d.stat().st_mode & 0o777 == 0o700
+
+
+# --- the clean control is a canonical signed message (v1.6.0, board ask 2026-08-03) ------
+
+
+def test_builtin_clean_control_is_a_canonical_signed_message() -> None:
+    assert "ragbot.ai" in MODULE.POSITIVE_CONTROL_CLEAN
+    assert "🤖" in MODULE.POSITIVE_CONTROL_CLEAN
+
+
+def test_over_broad_retired_branding_pattern_trips_the_clean_control() -> None:
+    """The exact 2026-08-03 defect: 'RagBot|RAGbot' under the engine's global
+    IGNORECASE matched the correct 'Ragbot' and blocked every real send while
+    the generic clean control kept passing. The canonical control catches it;
+    the scoped fix passes it."""
+    import re
+
+    over_broad = [("retired-branding", re.compile("RagBot|RAGbot", re.IGNORECASE))]
+    hits, _ = MODULE.scan_text(MODULE.POSITIVE_CONTROL_CLEAN, over_broad, [])
+    assert hits, "the canonical control must expose the over-broad pattern"
+
+    scoped = [("retired-branding", re.compile(r"(?-i:RagBot|RAGbot|ragbot(?!\.ai))", re.IGNORECASE))]
+    hits2, _ = MODULE.scan_text(MODULE.POSITIVE_CONTROL_CLEAN, scoped, [])
+    assert hits2 == [], hits2
+
+
+def test_example_clean_controls_include_the_signature_and_pass_example_patterns() -> None:
+    import re
+
+    example = json.loads((MODULE_PATH.parent.parent / "patterns.example.json").read_text(encoding="utf-8"))
+    cblock = [(p["name"], re.compile(p["regex"], re.IGNORECASE)) for p in example["block_patterns"]]
+    cwarn = [(p["name"], re.compile(p["regex"], re.IGNORECASE)) for p in example["warn_patterns"]]
+    controls = example["doctor_clean_controls"]
+    assert any("ragbot.ai" in c for c in controls)
+    for control in controls:
+        hits, _ = MODULE.scan_text(control, cblock, cwarn)
+        assert hits == [], (control, hits)
+
