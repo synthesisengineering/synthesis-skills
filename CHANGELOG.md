@@ -4,6 +4,44 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.85.0] - 2026-09-02
+
+**Two shared single-slot files are now append-only logs, because one slot
+with N writers loses data by shape and no lock fixes that.** The principal
+runs the same rituals from more than one workspace seat, and both of these
+were read-modify-written by every seat. message-guard kept one
+`ledger.json`: the second seat's write replaced the first's, and the first
+seat's send was then refused for a sha mismatch — reported as an edit made
+after grounding, which was false and pointed at the wrong repair. Ledgers
+now live at `ledger/<message-sha256>.json`; the sha was already bound to
+the exact outgoing text, so keying by it adds no concept and makes the
+collision impossible by construction. `--write-ledger` derives the path
+from the ledger's own sha and writes atomically, so an agent never types a
+path and cannot misfile one; the gate sweeps abandoned ledgers, and
+`--doctor` inspects the store.
+
+The chief-of-staff holds ledger was a shared JSON array, and its invariant
+made loss worse than cosmetic: the agent may release only a hold it can
+prove it placed, so a lost `place` record makes a real calendar event
+permanently unreleasable, while a lost `release` leaves a freed window
+looking defended. Under 12 concurrent seats it did not merely lose records
+— it ended unreadable, one seat reading while another had it truncated
+mid-write. `holds_state.py` replaces it with an append-only event log:
+`is-releasable <id>` answers the invariant mechanically instead of from an
+agent's recollection, and windows are ISO-8601 with an offset, so expiry
+is computed rather than interpreted — it was aspirational while windows
+were prose like "end of its own day". All 9 live holds migrated, 1:1, no
+purposes lost; the doctor immediately named two expired-but-open holds the
+prose ledger could not have computed.
+
+Both suites carry positive controls that reproduce the original defects, so
+a pass is evidence of a fix rather than of an easy test. Two test faults
+found on the way: the message-guard inter-session case still asserted a
+bare exemption after the peer-session lane took ownership of that tool, and
+it read the live coordination board, so unrelated work moved its result;
+and CI ran no chief-of-staff test at all while message-guard's storage went
+uncovered for the life of the file.
+
 ## [4.84.0] - 2026-09-01
 
 **The stable plugin path has a daily heartbeat, and the docs say who pins
