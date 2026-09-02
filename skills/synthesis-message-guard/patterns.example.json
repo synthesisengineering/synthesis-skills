@@ -27,5 +27,9 @@
   ],
   "doctor_clean_controls": [
     "Thanks for the note. I reviewed the full thread and can meet Tuesday at 10."
-  ]
+  ],
+  "currency_claim_patterns": [
+    "\\b(unanswered|unsent|not (yet )?(replied|responded|answered|sent)|no (reply|response|answer)( yet)?|still (open|waiting|pending|unanswered)|has(n't| not) (replied|responded|answered|sent))\\b"
+  ],
+  "currency_claim_max_age_minutes": 30
 }

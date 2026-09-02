@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.0"
+  version: "1.5.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -107,6 +107,29 @@ message bus. An unreadable board blocks (fail closed). Unadopted instances
 keep the old posture — inter-session tools stay in `exempt_tool_patterns` —
 and the doctor says which posture is live. Requires the tool's PreToolUse
 wiring to route these calls to the guard; the doctor checks that too.
+
+## Currency claims carry read freshness (config-adopted, v1.5.0)
+
+A claim such as "still unanswered", "unsent", or "no reply yet" is a
+statement about NOW that rests on a read taken at some moment. The ledger
+recorded WHERE such a claim came from but not WHEN the source was read, so
+on 2026-09-01 a "still unanswered by the principal" claim resting on a read
+eight hours old passed as verified while the answer had gone out that
+morning — a false receipt in the layer built to stop exactly that.
+
+Adopt the lane by adding to the config:
+
+```json
+"currency_claim_patterns": ["\\b(unanswered|unsent|not (yet )?(replied|responded|answered|sent)|no (reply|response|answer)( yet)?|still (open|waiting|pending|unanswered)|has(n't| not) (replied|responded|answered|sent))\\b"],
+"currency_claim_max_age_minutes": 30
+```
+
+With it adopted, every `claims[]` entry whose text matches a pattern must
+carry `read_at` (ISO-8601, the moment the source was read THIS run), and
+the send is blocked when `read_at` is missing or older than the maximum —
+the remedy is to re-read the source and refresh it. Stable facts ("PR 96
+merged") need no `read_at`. Without the keys the lane is off and the doctor
+says so. `--ledger-template` shows the field.
 
 ## The ledger contract
 

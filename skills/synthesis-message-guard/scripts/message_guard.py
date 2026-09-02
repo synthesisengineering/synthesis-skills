@@ -51,7 +51,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 
-ENGINE_VERSION = "1.4.0"
+ENGINE_VERSION = "1.5.0"
 
 
 def config_path():
@@ -82,6 +82,42 @@ def log_path():
 REQUIRED_CONFIG_KEYS = ("gated_tool_patterns", "exempt_tool_patterns",
                         "block_patterns", "warn_patterns",
                         "ledger_max_age_minutes", "text_field_candidates")
+
+
+DEFAULT_CURRENCY_PATTERN = (
+    r"\b(unanswered|unsent|not (yet )?(replied|responded|answered|sent)|"
+    r"no (reply|response|answer)( yet)?|still (open|waiting|pending|unanswered)|"
+    r"has(n't| not) (replied|responded|answered|sent))\b"
+)
+
+
+def currency_config(cfg):
+    """The read-freshness lane, or None when the config has not adopted it.
+
+    A claim like "still unanswered" is a statement about NOW that rests on a
+    read taken at some moment; the ledger recorded the source but not when
+    it was read, so a claim resting on an eight-hour-old read passed as
+    verified on 2026-09-01 while the answer had gone out that morning.
+    Adopt with `currency_claim_patterns` (regexes that mark a claim as a
+    currency claim) and `currency_claim_max_age_minutes`."""
+    patterns = cfg.get("currency_claim_patterns")
+    if not isinstance(patterns, list) or not patterns:
+        return None
+    return {
+        "patterns": [re.compile(p, re.IGNORECASE) for p in patterns],
+        "max_age": float(cfg.get("currency_claim_max_age_minutes", 30)),
+    }
+
+
+def minutes_since(value):
+    """Minutes elapsed since an ISO-8601 moment, or None when unparseable."""
+    try:
+        ts = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - ts).total_seconds() / 60.0
 
 
 def load_config():
@@ -278,12 +314,27 @@ def validate_ledger(ledger, text, cfg, tool_name):
                 "local transcripts) and record each query and where it ran.")
 
     claims = ledger.get("claims")
+    currency = currency_config(cfg)
     if ledger.get("no_factual_claims") is True:
         pass
     elif isinstance(claims, list) and claims:
         for i, c in enumerate(claims):
             if not (isinstance(c, dict) and c.get("claim") and c.get("source")):
                 fails.append("claims[%d] must have non-empty claim and source" % i)
+                continue
+            if currency and any(rx.search(str(c["claim"])) for rx in currency["patterns"]):
+                age = minutes_since(c.get("read_at"))
+                snippet = str(c["claim"])[:60]
+                if age is None:
+                    fails.append(
+                        "claims[%d] asserts a currency state (%r) but has no read_at — "
+                        "re-read the source THIS RUN and record when (ISO-8601). A read "
+                        "from earlier today is a statement about the past." % (i, snippet))
+                elif age > currency["max_age"]:
+                    fails.append(
+                        "claims[%d] rests on a read %.0f min old (max %.0f for currency "
+                        "claims: %r) — re-read the source and refresh read_at."
+                        % (i, age, currency["max_age"], snippet))
     else:
         fails.append(
             "ledger needs a claims[] array mapping every factual claim to its "
@@ -633,6 +684,18 @@ def run_doctor():
                "not adopted; adopt it to gate peer sends on board "
                "registration)")
 
+    currency_cfg = currency_config(cfg)
+    if currency_cfg:
+        stale_probe = any(rx.search("still unanswered by the recipient")
+                          for rx in currency_cfg["patterns"])
+        report(stale_probe, "currency-claim freshness lane adopted (unanswered/unsent "
+               "claims must carry a fresh read_at)",
+               "max age %.0f min" % currency_cfg["max_age"])
+    else:
+        report(True, "currency-claim freshness lane not adopted (adopt "
+               "currency_claim_patterns + currency_claim_max_age_minutes to gate "
+               "unanswered/unsent claims on read freshness)", "informational")
+
     client_configs = [
         (
             "Claude Code",
@@ -842,7 +905,7 @@ def main():
             "is_reply": True,
             "thread_fully_read": {"how": "<tool used>", "source_ids": []},
             "history_searched": [{"query": "", "where": "", "results": ""}],
-            "claims": [{"claim": "", "source": ""}],
+            "claims": [{"claim": "", "source": "", "read_at": "<ISO-8601 moment the source was read this run; required for unanswered/unsent/still-open claims>"}],
             "no_factual_claims": False,
             "voice_rules_pass": False,
             "invented_precision_scan": False,
