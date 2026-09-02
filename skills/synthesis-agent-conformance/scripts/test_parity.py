@@ -56,6 +56,16 @@ class ParityTests(unittest.TestCase):
         link.symlink_to(root)
         return root
 
+    def cache_root(self, client: str, version: str, manifest_version: str | None = None) -> Path:
+        """A fake installed cache tree for one client, with its own manifest."""
+        root = self.home / f".{client}" / "plugins" / "cache" / "market" / MODULE.PLUGIN_NAME / version
+        manifest_dir = ".claude-plugin" if client == "claude" else ".codex-plugin"
+        (root / manifest_dir).mkdir(parents=True, exist_ok=True)
+        (root / manifest_dir / "plugin.json").write_text(
+            json.dumps({"version": manifest_version or version})
+        )
+        return root
+
     def checks(self, claude: str | None, codex: str | None):
         versions = {"claude": claude, "codex": codex}
         with patch.object(
@@ -67,6 +77,8 @@ class ParityTests(unittest.TestCase):
 
     def test_everything_current_passes(self):
         self.stable("4.13.0")
+        self.cache_root("claude", "4.13.0")
+        self.cache_root("codex", "4.13.0")
         ok = by_name(self.checks("4.13.0", "4.13.0"))
         self.assertTrue(all(ok.values()), ok)
 
@@ -88,6 +100,24 @@ class ParityTests(unittest.TestCase):
         self.stable("4.12.0")
         ok = by_name(self.checks("4.13.0", "4.13.0"))
         self.assertFalse(ok["parity.stable-path"])
+
+    def test_reported_version_without_a_cache_tree_fails_on_disk(self):
+        """The 2026-08-17 defect: the CLI reports the version it intends to
+        serve while no tree for it exists on disk."""
+        self.stable("4.13.0")
+        self.cache_root("claude", "4.13.0")
+        ok = by_name(self.checks("4.13.0", "4.13.0"))
+        self.assertTrue(ok["parity.codex-installed"])
+        self.assertFalse(ok["parity.codex-on-disk"])
+        self.assertTrue(ok["parity.claude-on-disk"])
+
+    def test_cache_manifest_disagreeing_with_the_report_fails_on_disk(self):
+        self.stable("4.13.0")
+        self.cache_root("claude", "4.13.0")
+        self.cache_root("codex", "4.13.0", manifest_version="4.12.0")
+        ok = by_name(self.checks("4.13.0", "4.13.0"))
+        self.assertFalse(ok["parity.codex-on-disk"])
+        self.assertTrue(ok["parity.claude-on-disk"])
 
     def test_one_client_behind_fails_match_and_current(self):
         ok = by_name(self.checks("4.13.0", "4.12.0"))

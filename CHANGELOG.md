@@ -4,6 +4,27 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.88.0] - 2026-09-02
+
+**Two old coordination-board asks closed.** (1) Daily parity now reads each
+client's installed manifest on disk beside the CLI report
+(`parity.<client>-on-disk`, agent-conformance 1.7.0). The ask from
+2026-08-17: parity had stayed green while the Codex tree the client loaded
+sat three releases behind, because the CLI reported the version it intended
+to serve — a self-report is a claim, not evidence. The tree for the reported
+version must exist and its own manifest must carry that version; tests pin
+a report with no tree and a tree whose manifest disagrees. (2) The message
+guard's built-in known-clean doctor control is now a canonical SIGNED agent
+message in Slack wire form, and the example config's `doctor_clean_controls`
+carries it (message-guard 1.6.0). The ask from 2026-08-03: a generic clean
+control passed while a retired-branding pattern compiled under IGNORECASE
+blocked every real signed send. Tests pin that the over-broad pattern now
+trips the control and the scoped fix passes it, and that every example
+clean control passes the example patterns. The doctor's leftover
+single-slot-ledger finding now names the file's `created_at`, channel, and
+recipient, so the seat whose helper script wrote it can recognise it
+(2026-09-02: one seat's stale scaffolding kept the machine-wide signal red).
+
 ## [4.87.0] - 2026-09-02
 
 **`synthesis-quick-answers` (v1.2.0) now bootstraps and wires itself into the standard workspace convention instead of assuming it or inventing a substitute.** First real colleague adoption surfaced two gaps in the same session: the skill's Setup section assumed a personal knowledge workspace already existed, which isn't true for someone who just installed the plugin — and the "automatic, no reminder needed" property the pattern promises was never actually encoded as a step, so it depended on whoever set it up remembering to wire it in by hand. Fixed by making Setup self-contained: step 1 now calls `synthesis-onboarding`'s `onboard.py init-workspace` to scaffold `~/workspaces/{workspace}/ai-knowledge-{workspace}/` when it's missing (new `depends_on: synthesis-onboarding`), and step 4 makes explicit what was previously left implicit — a single routing line in the workspace's own `AGENTS.md`/`CLAUDE.md` is the entire mechanism that makes every future session apply the skill without being told. A companion set up under the old Setup section still worked, it just required the setter-upper to already know this; now the skill says so.

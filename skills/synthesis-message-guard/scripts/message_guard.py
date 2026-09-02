@@ -56,7 +56,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 
-ENGINE_VERSION = "1.5.0"
+ENGINE_VERSION = "1.6.0"
 
 
 def config_path():
@@ -77,6 +77,25 @@ LEDGER_ORPHAN_SWEEP_MULTIPLE = 4     # sweep ledgers this many times past max ag
 
 def ledger_dir():
     return os.path.join(state_dir(), "ledger")
+
+
+def legacy_ledger_detail(path):
+    """Who a leftover single-slot ledger belongs to, so the seat that wrote it
+    can recognise it. 2026-09-02: one seat's helper script, written against
+    the previous layout, kept the machine-wide doctor red for every seat, and
+    nobody could tell whose file it was without recognising the sha."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return "unreadable"
+    if not isinstance(data, dict):
+        return "not a ledger object"
+    parts = []
+    for key in ("created_at", "channel", "recipient"):
+        if data.get(key):
+            parts.append("%s %s" % (key, str(data[key])[:80]))
+    return ", ".join(parts) or "no created_at/channel/recipient fields"
 
 
 def ledger_path_for(sha):
@@ -638,9 +657,16 @@ def run_gate():
 
 POSITIVE_CONTROL_BAD = ("I'm sorry for the delay — I went quiet on you, and "
                         "I'm the least able to judge this myself.")
+# The clean control is a CANONICAL SIGNED agent message, not generic prose
+# (board ask, 2026-08-03): a generic control passed while a retired-branding
+# pattern compiled under IGNORECASE blocked every real signed send. The
+# doctor's negative control must look like the traffic the guard exists to
+# let through — a Slack-wire-form signature line included.
 POSITIVE_CONTROL_CLEAN = ("Thank you for writing this up properly. The step "
                           "list is the valuable part. Send times that suit "
-                          "you and I will make one of them work.")
+                          "you and I will make one of them work.\n\n"
+                          "🤖 _I'm the principal's <https://ragbot.ai/|Ragbot>, "
+                          "sent under standing direction — every reply is read_")
 
 
 def hook_config_covers(path, sample_tools):
@@ -768,10 +794,11 @@ def run_doctor():
     legacy = os.path.join(state_dir(), "ledger.json")
     report(not os.path.exists(legacy),
            "no legacy single-slot ledger.json",
-           "found %s — a leftover from the pre-sha layout. It is inert (the "
-           "gate reads ledger/<sha>.json) but delete it so nothing hand-edits "
-           "the wrong file." % legacy if os.path.exists(legacy) else
-           "sha-keyed store only")
+           ("found %s (%s) — a leftover from the pre-sha layout, usually a "
+            "helper script that outlived the convention. It is inert (the gate "
+            "reads ledger/<sha>.json); whoever it belongs to should delete it."
+            % (legacy, legacy_ledger_detail(legacy)))
+           if os.path.exists(legacy) else "sha-keyed store only")
 
     d = ledger_dir()
     if os.path.isdir(d):

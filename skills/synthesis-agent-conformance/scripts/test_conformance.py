@@ -87,6 +87,13 @@ def stable_pointer(link: Path, version: str) -> Path:
     return root
 
 
+def cache_tree(root: Path) -> Path:
+    """A fake installed cache tree: both manifest dirs present, then manifests."""
+    root.mkdir(parents=True, exist_ok=True)
+    write_manifests(root)
+    return root
+
+
 def write_manifests(root: Path) -> None:
     payload = json.dumps(
         {
@@ -1893,8 +1900,8 @@ def test_parity_uses_configured_client_homes(tmp_path: Path, monkeypatch) -> Non
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
     for client_home in (codex_home, claude_home):
-        (client_home / "plugins" / "cache" / "market" / "synthesis-skills" / "1.0.0").mkdir(
-            parents=True
+        cache_tree(
+            client_home / "plugins" / "cache" / "market" / "synthesis-skills" / "1.0.0"
         )
 
     class Result:
@@ -1970,6 +1977,9 @@ def test_parity_uses_enabled_inventory_not_newest_cache(
             / "synthesis-skills"
             / "9.9.9"
         ).mkdir(parents=True)
+        cache_tree(
+            tmp_path / f".{client}" / "plugins" / "cache" / "market" / "synthesis-skills" / "1.0.0"
+        )
 
     class Result:
         returncode = 0

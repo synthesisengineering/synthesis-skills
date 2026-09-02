@@ -686,6 +686,46 @@ def stable_path_check(checks: list[Check], home: Path | None, installed: str | N
         f"{link} -> {target.name} (pointer {version}; claude installed {installed})")
 
 
+def installed_cache_root(client: str, version: str, home: Path | None = None) -> Path | None:
+    """The client's cache tree for one version, under whichever marketplace holds it."""
+    base = _client_config_dir(client, home) / "plugins" / "cache"
+    if not base.is_dir():
+        return None
+    for marketplace in sorted(base.iterdir()):
+        found = _plugin_cache_path(base.parent.parent, version, marketplace.name)
+        if found is not None:
+            return found
+    return None
+
+
+def on_disk_check(
+    checks: list[Check], client: str, reported: str | None, home: Path | None
+) -> None:
+    """A self-report is a claim, not evidence (board ask, 2026-08-17): parity
+    once passed green while the Codex tree it loaded sat three releases
+    behind, because the CLI reported the version it intended to serve. The
+    tree the client loads must exist for the reported version and its own
+    manifest must carry that version."""
+    name = f"parity.{client}-on-disk"
+    if reported is None:
+        add(checks, name, False, "no reported version to verify on disk")
+        return
+    root = installed_cache_root(client, reported, home)
+    if root is None:
+        add(checks, name, False,
+            f"{client} reports {reported} but no plugin cache tree carries that version")
+        return
+    manifest_dir = ".claude-plugin" if client == "claude" else ".codex-plugin"
+    manifest = root / manifest_dir / "plugin.json"
+    try:
+        version = str(json.loads(manifest.read_text(encoding="utf-8")).get("version"))
+    except (OSError, ValueError):
+        add(checks, name, False, f"{root} has no readable {manifest_dir}/plugin.json")
+        return
+    add(checks, name, version == reported,
+        f"{root.name}: manifest {version}, reported {reported}")
+
+
 def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
     """Dual-client version-drift detection against enabled inventories.
 
@@ -746,6 +786,9 @@ def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
             version
             or f"no single enabled {PLUGIN_NAME} installation reported by {client}",
         )
+
+    for client, version in installed.items():
+        on_disk_check(checks, client, version, home)
 
     both = all(installed.values())
     add(
