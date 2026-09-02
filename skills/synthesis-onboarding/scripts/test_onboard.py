@@ -531,6 +531,89 @@ class WholeSystemTests(unittest.TestCase):
 class PluginTests(unittest.TestCase):
     policy = {"channel": "stable", "version_pin": None}
 
+    def test_codex_history_sync_runs_durable_doctor_and_checks_started_root(self):
+        with tempfile.TemporaryDirectory(prefix="onboard-history-") as root:
+            home = Path(root)
+            runtime = (
+                home
+                / ".synthesis/plugin-cache-recovery/synthesis-engineering"
+                / ".synthesis-skills-cache-guardian.py"
+            )
+            runtime.parent.mkdir(parents=True)
+            runtime.write_text("guardian\n", encoding="utf-8")
+            historical = (
+                home
+                / ".codex/plugins/cache/synthesis-engineering/synthesis-skills/4.23.0"
+            )
+            target = historical / "skills/synthesis-autopilot/scripts/autopilot_gate.py"
+            target.parent.mkdir(parents=True)
+            target.write_text("pass\n", encoding="utf-8")
+            (historical / "hooks").mkdir()
+            (historical / "hooks/hooks.json").write_text(
+                json.dumps(
+                    {
+                        "hooks": {
+                            "Stop": [
+                                {
+                                    "hooks": [
+                                        {
+                                            "command": (
+                                                "python3 ${CLAUDE_PLUGIN_ROOT}/skills/"
+                                                "synthesis-autopilot/scripts/autopilot_gate.py --gate"
+                                            )
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(onboard, "HOME", home), patch.object(
+                onboard, "run", return_value=(0, '{"verified": 1}\n', "")
+            ) as runner:
+                success, detail = onboard.synchronize_codex_history("4.23.0")
+
+        self.assertTrue(success, detail)
+        self.assertIn("4.23.0", detail)
+        runner.assert_called_once_with(
+            [sys.executable, str(runtime), "--doctor"],
+            env={"HOME": str(home)},
+            timeout=600,
+        )
+
+    def test_codex_history_sync_fails_if_started_root_remains_absent(self):
+        with tempfile.TemporaryDirectory(prefix="onboard-history-") as root:
+            home = Path(root)
+            runtime = (
+                home
+                / ".synthesis/plugin-cache-recovery/synthesis-engineering"
+                / ".synthesis-skills-cache-guardian.py"
+            )
+            runtime.parent.mkdir(parents=True)
+            runtime.write_text("guardian\n", encoding="utf-8")
+            with patch.object(onboard, "HOME", home), patch.object(
+                onboard, "run", return_value=(0, '{"verified": 1}\n', "")
+            ):
+                success, detail = onboard.synchronize_codex_history("4.23.0")
+
+        self.assertFalse(success)
+        self.assertIn("4.23.0", detail)
+        self.assertIn("absent", detail)
+
+    def test_codex_history_sync_is_optional_without_a_durable_guardian(self):
+        with tempfile.TemporaryDirectory(prefix="onboard-history-") as root:
+            with patch.object(onboard, "HOME", Path(root)), patch.object(
+                onboard, "run"
+            ) as runner:
+                success, detail = onboard.synchronize_codex_history("4.23.0")
+
+        self.assertTrue(success, detail)
+        self.assertIn("not installed", detail)
+        runner.assert_not_called()
+
     def test_plugin_record_reads_codex_and_claude_versions(self):
         codex = {"installed": [{
             "pluginId": "synthesis-skills@synthesis-engineering",
