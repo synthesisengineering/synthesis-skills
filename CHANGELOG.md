@@ -25,6 +25,14 @@ single-slot-ledger finding now names the file's `created_at`, channel, and
 recipient, so the seat whose helper script wrote it can recognise it
 (2026-09-02: one seat's stale scaffolding kept the machine-wide signal red).
 
+Also in this release: the guard's behavioral suite is hermetic. It had run
+against the machine's private config, so it passed on every developer
+machine and failed in CI, where no private config exists — main was red
+from 4.85.0 through 4.87.0 without anyone noticing locally. The harness
+falls back to `patterns.example.json` when no config exists and says so,
+and the pytest wrapper always runs it against the example config with an
+isolated home. Two tests pin both.
+
 ## [4.87.0] - 2026-09-02
 
 **`synthesis-quick-answers` (v1.2.0) now bootstraps and wires itself into the standard workspace convention instead of assuming it or inventing a substitute.** First real colleague adoption surfaced two gaps in the same session: the skill's Setup section assumed a personal knowledge workspace already existed, which isn't true for someone who just installed the plugin — and the "automatic, no reminder needed" property the pattern promises was never actually encoded as a step, so it depended on whoever set it up remembering to wire it in by hand. Fixed by making Setup self-contained: step 1 now calls `synthesis-onboarding`'s `onboard.py init-workspace` to scaffold `~/workspaces/{workspace}/ai-knowledge-{workspace}/` when it's missing (new `depends_on: synthesis-onboarding`), and step 4 makes explicit what was previously left implicit — a single routing line in the workspace's own `AGENTS.md`/`CLAUDE.md` is the entire mechanism that makes every future session apply the skill without being told. A companion set up under the old Setup section still worked, it just required the setter-upper to already know this; now the skill says so.

@@ -437,16 +437,44 @@ def test_orphan_sweep_spares_fresh_ledgers(monkeypatch, tmp_path) -> None:
     assert fresh.exists() and not ancient.exists()
 
 
-def test_engine_behavioral_suite_passes() -> None:
-    """Run the engine's own --test so CI covers the gate end to end."""
+def test_engine_behavioral_suite_passes(tmp_path: Path) -> None:
+    """Run the engine's own --test so CI covers the gate end to end —
+    hermetically. The example config and an isolated home, so the machine's
+    private config can neither make the suite pass locally nor fail it in
+    CI (2026-09-02: main was red for hours while every developer machine
+    was green)."""
+    import os as _os
     import subprocess
 
+    env = {
+        **_os.environ,
+        "HOME": str(tmp_path),
+        "MESSAGE_GUARD_CONFIG": str(MODULE_PATH.parent.parent / "patterns.example.json"),
+        "MESSAGE_GUARD_STATE_DIR": str(tmp_path / "state"),
+    }
     proc = subprocess.run(
         [sys.executable, str(MODULE_PATH), "--test"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, env=env,
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "FAIL" not in proc.stdout, proc.stdout
+
+
+def test_behavioral_suite_falls_back_to_the_example_config(tmp_path: Path) -> None:
+    """With no private config at all (a CI runner), the harness runs against
+    the example config instead of crashing on a missing file."""
+    import os as _os
+    import subprocess
+
+    env = {k: v for k, v in _os.environ.items() if k != "MESSAGE_GUARD_CONFIG"}
+    env["HOME"] = str(tmp_path)
+    env["MESSAGE_GUARD_STATE_DIR"] = str(tmp_path / "state")
+    proc = subprocess.run(
+        [sys.executable, str(MODULE_PATH), "--test"],
+        capture_output=True, text=True, env=env,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "running against patterns.example.json" in proc.stdout
 
 
 def test_written_ledger_is_private(monkeypatch, tmp_path) -> None:
