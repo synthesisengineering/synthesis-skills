@@ -28,8 +28,9 @@
     },
     "holds": {
       "title": "Hold",
-      "ledger": "~/.synthesis/chief-of-staff/holds-ledger.json",
-      "expire": "end-of-day"
+      "ledger": "~/.synthesis/chief-of-staff/holds/events.jsonl",
+      "expire": "end-of-day",
+      "engine": "scripts/holds_state.py \u2014 append-only; never hand-edit"
     },
     "same_day_exceptions": "reuse the tiers section",
     "weekly_review_day": "Friday"

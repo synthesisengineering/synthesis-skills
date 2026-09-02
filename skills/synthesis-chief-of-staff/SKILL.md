@@ -195,12 +195,37 @@ makes the policy mechanical:
 - At the day-start ritual, place **hold events** over the day's remaining open
   windows; at day-end, over the next day's. Title them generically ("Hold");
   mark them busy.
-- **Track every hold the agent creates in a holds ledger** (id, window,
-  created-by, expiry). The agent releases or moves **only holds it created,
-  matched by id** — never any event it merely believes is a hold. This is the
-  invariant that makes the shield safe to automate.
-- Holds **expire automatically** at the end of their day. A hold that outlives
-  its purpose is calendar debt and erodes trust in every real entry.
+- **Track every hold the agent creates in the holds ledger.** The agent
+  releases or moves **only holds it created, matched by id** — never any event
+  it merely believes is a hold. This is the invariant that makes the shield
+  safe to automate, and `scripts/holds_state.py` is the only way to touch it.
+  Never hand-edit the ledger, and never decide releasability by reading it:
+
+  ```bash
+  holds_state.py record place --id <event-id> --by <seat> --calendar <cal> \
+      --title "Hold" --kind same-day-shield \
+      --start 2026-09-04T14:00:00-04:00 --end 2026-09-04T16:00:00-04:00 \
+      --purpose "why this window is worth defending"
+  holds_state.py is-releasable <event-id>   # exit 0 = the agent placed it
+  holds_state.py record release --id <event-id> --by <seat> --reason "..."
+  holds_state.py query current              # what is held today
+  holds_state.py query expired              # calendar debt to clear
+  ```
+
+- **Ask `is-releasable`; do not judge.** Exit 1 means no `place` event exists
+  for that id, so the agent did not create it: leave the event alone and ask
+  the principal. This is the whole invariant, answered mechanically rather
+  than from an agent's recollection of what it did earlier.
+- **The ledger is an append-only event log** (`holds/events.jsonl`), because
+  more than one seat runs the principal's rituals against one calendar. Its
+  predecessor was a single JSON array that every seat read, modified and
+  rewrote; under concurrent seats that loses holds outright, and a lost
+  `place` record makes a real calendar event permanently unreleasable. Events
+  are appended, never rewritten, so seats cannot overwrite one another.
+- Holds **expire automatically** at the end of their day, computed from the
+  window — which is why `--start`/`--end` are ISO-8601 with an offset and not
+  prose. A hold that outlives its purpose is calendar debt and erodes trust in
+  every real entry; `query expired` names them.
 - A request that hits the shield is not refused; it is **routed**: VIP tiers
   pass per config, everything else becomes a proposal for a later slot, in
   this skill's scheduling voice. The shield converts ambush into triage.
@@ -222,7 +247,7 @@ Under `calendar_guardian` in the private preferences file:
     },
     "holds": {
       "title": "Hold",
-      "ledger": "~/.synthesis/chief-of-staff/holds-ledger.json",
+      "ledger": "~/.synthesis/chief-of-staff/holds/events.jsonl",
       "expire": "end-of-day"
     },
     "same_day_exceptions": "reuse the tiers section",
