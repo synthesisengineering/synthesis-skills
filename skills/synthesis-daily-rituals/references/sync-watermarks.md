@@ -54,7 +54,11 @@ python3 <skill-root>/scripts/sync_watermark.py status  --workspace <W> --surface
   or a bare `YYYY-MM-DD`, which means complete through the **END of that day**
   and is therefore refused for today until the day is over: a mid-day run
   records the moment it read, not the date. With `--target` (repeatable)
-  each target's own watermark advances; without it the surface's does.
+  each target's own watermark advances; without it the surface's does — and
+  once a surface carries per-target entries, a surface-level advance is
+  refused unless `--surface-level` asserts whole-surface coverage
+  explicitly (2026-09-01: a wholesale advance on the Chat surface recorded
+  coverage no per-space read backed).
 - **`defer`** records a gap that genuinely cannot close this run, with a
   reason, for one day. A stale deferral is re-surfaced as blocking.
 - **`status`** takes the declared set — every surface with `--surface`, every
@@ -100,3 +104,36 @@ moment in the future — and rewritten as schema 2 on the next write.
   records each saved read with `advance`; Step 5 cross-references the user's
   own outbound against owed items and forbids "unanswered" on a read older
   than the run.
+
+## Google Chat targets
+
+Google Chat has no config that names every conversation, and its space
+enumeration (as the tooling returns it) is preformatted text that ignores its
+own type filter, pages at 100 with no cursor, orders undocumented, and shows
+every DM as "Unnamed Space". So the declared set for `--targets-from` has two
+parts, derived every run by `scripts/gchat_preflight.py`:
+
+1. **The config core** — explicit, labeled space ids in `.agents/gchat-sync.yaml`:
+
+   ```yaml
+   targets:
+     - space: spaces/AAAAdm000001      # the id a message-read call accepts
+       label: Jane Doe (DM)            # assigned by the workspace; "Unnamed Space" cannot be audited
+       type: DIRECT_MESSAGE            # DIRECT_MESSAGE | GROUP_CHAT | SPACE
+   ```
+
+   A `users/<id>` is a person, never a read target; an entry without a
+   `spaces/<id>` is reported unresolved.
+2. **The saved enumeration** — the text the space-list call returned this
+   run (`--spaces <file>`), parsed line by line, filtered client-side by the
+   config's `scope`, and marked BOUNDED when the header count exceeds the
+   records parsed or the page cap was hit. A bounded set is partial
+   coverage: the report names the bound, the surface is deferred with that
+   bound as the reason, and nothing advances past it.
+
+Each target is then read with `window --surface gchat --target <space id>`
+and recorded with `advance --surface gchat --target <space id>`; the gate
+runs `status --surface gchat --targets-from <declared.json> --since run`.
+Per-target coverage costs one read per space, so the config core is the
+scope that is always swept and the enumeration is the bounded remainder;
+the gate names the scope rather than claiming completeness.

@@ -240,6 +240,34 @@ def test_target_window_falls_back_to_the_surface_watermark(tmp_path: Path) -> No
     assert "surface watermark" in got["source"]
 
 
+# --- a surface that carries targets cannot be advanced wholesale (v2.34.0) --------------------
+
+
+def test_surface_level_advance_is_refused_once_targets_exist(tmp_path: Path) -> None:
+    """The 2026-09-01 Chat miss: a wholesale advance claimed coverage no
+    per-space read backed."""
+    MODULE.advance(WS, "gchat", IN_RUN, targets=["spaces/A"], now=at(11, 46), home=tmp_path)
+
+    with pytest.raises(ValueError, match="per-target watermarks"):
+        MODULE.advance(WS, "gchat", "now", now=NOW, home=tmp_path)
+
+    explicit = MODULE.advance(WS, "gchat", "now", now=NOW, home=tmp_path, surface_level=True)
+    assert explicit["moved"] is True
+
+
+def test_cli_surface_level_flag_is_required_once_targets_exist(tmp_path: Path) -> None:
+    run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "gchat",
+            "--target", "spaces/A", "--through", "now")
+
+    refused = run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "gchat", "--through", "now")
+    assert refused.returncode == 2
+    assert "--surface-level" in refused.stderr
+
+    allowed = run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "gchat", "--through", "now",
+                      "--surface-level")
+    assert allowed.returncode == 0
+
+
 # --- deferrals: explicit, dated, and spent by a write ---------------------------------
 
 

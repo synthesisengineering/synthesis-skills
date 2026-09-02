@@ -1,39 +1,83 @@
-# AGENT HEURISTIC: authored for the guard behavioral-suite hermeticity fix (rides in 4.88.0).
+# AGENT HEURISTIC: authored for the 4.89.0 Google Chat preflight transaction.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: guard-behavioral-suite-hermetic
+suite: gchat-declared-targets-and-no-wholesale-advance
 membership: closed
-production_entry_point: skills/synthesis-message-guard/scripts/message_guard.py
-enforcing_boundary: the guard's behavioral suite proves the engine against the skill's example config in an isolated home, so a machine's private config can neither pass it locally nor fail it in CI
+production_entry_point: skills/synthesis-daily-rituals/scripts/gchat_preflight.py
+enforcing_boundary: the Chat surface's declared set is derived each run from an explicit config core plus a client-side-filtered, explicitly bounded enumeration, and a surface carrying per-target watermarks refuses a wholesale advance
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the four releases that shipped while main was red were each verified on this machine by the gated release's own checks; CI's verdict for them is recorded as red and is not rewritten
+unverified_remainder: the workspace that reported the defect adds its config targets and runs the first gated Chat sync in its own record; the enumeration wrapper's missing paging cursor is an upstream defect outside this repository
 changed_surfaces:
-  - path: skills/synthesis-message-guard/scripts/message_guard.py
-    cases: [behavioral-suite-hermetic, behavioral-suite-falls-back]
-  - path: skills/synthesis-message-guard/scripts/test_message_guard.py
-    cases: [behavioral-suite-hermetic, behavioral-suite-falls-back]
+  - path: skills/synthesis-daily-rituals/scripts/gchat_preflight.py
+    cases: [person-never-a-target, wrapper-filter-not-trusted, bounded-enumeration, declared-set-feeds-the-gate, cli-fails-closed]
+  - path: skills/synthesis-daily-rituals/scripts/test_gchat_preflight.py
+    cases: [person-never-a-target, wrapper-filter-not-trusted, bounded-enumeration, declared-set-feeds-the-gate, cli-fails-closed, rituals-doc-contract]
+  - path: skills/synthesis-daily-rituals/scripts/sync_watermark.py
+    cases: [wholesale-advance-refused]
+  - path: skills/synthesis-daily-rituals/scripts/test_sync_watermark.py
+    cases: [wholesale-advance-refused]
+  - path: skills/synthesis-daily-rituals/SKILL.md
+    cases: [rituals-doc-contract, rituals-budget]
+  - path: skills/synthesis-daily-rituals/references/version-history.md
+    cases: [rituals-budget]
+  - path: skills/synthesis-daily-rituals/references/sync-watermarks.md
+    cases: [rituals-doc-contract]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
+  - path: .claude-plugin/plugin.json
+    cases: [release-manifest-parity]
+  - path: .codex-plugin/plugin.json
+    cases: [release-manifest-parity]
   - path: CHANGELOG.md
     cases: [release-changelog-parity]
+  - path: README.md
+    cases: [release-changelog-parity]
 cases:
-  - id: behavioral-suite-hermetic
+  - id: person-never-a-target
     control_class: enforced-gate
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_engine_behavioral_suite_passes
-    motivating_defect: main-was-red-for-hours-while-every-developer-machine-was-green-because-the-suite-read-the-private-config
-  - id: behavioral-suite-falls-back
+    fixture: ../synthesis-daily-rituals/scripts/test_gchat_preflight.py::test_a_person_id_is_never_a_read_target
+    motivating_defect: the-workspace-map-carries-people-ids-and-a-reader-that-takes-them-reads-nothing
+  - id: wrapper-filter-not-trusted
     control_class: acceptance-test
-    fixture: ../synthesis-message-guard/scripts/test_message_guard.py::test_behavioral_suite_falls_back_to_the_example_config
-    motivating_defect: a-harness-that-crashes-on-a-missing-file-proves-nothing-about-the-engine
+    fixture: ../synthesis-daily-rituals/scripts/test_gchat_preflight.py::test_the_wrappers_type_filter_is_not_trusted_scope_filters_client_side
+    motivating_defect: the-enumeration-header-asserted-a-filter-that-was-never-applied
+  - id: bounded-enumeration
+    control_class: enforced-gate
+    fixture: ../synthesis-daily-rituals/scripts/test_gchat_preflight.py::test_cli_exits_one_and_names_the_bound_when_the_enumeration_is_capped
+    motivating_defect: a-hundred-of-four-hundred-spaces-read-as-complete-because-nothing-stated-the-bound
+  - id: declared-set-feeds-the-gate
+    control_class: acceptance-test
+    fixture: ../synthesis-daily-rituals/scripts/test_gchat_preflight.py::test_cli_writes_the_declared_set_the_gate_consumes
+    motivating_defect: a-surface-with-no-declared-set-is-claimed-on-the-agents-say-so
+  - id: cli-fails-closed
+    control_class: acceptance-test
+    fixture: ../synthesis-daily-rituals/scripts/test_gchat_preflight.py::test_cli_refuses_an_empty_set_and_a_malformed_config
+    motivating_defect: an-empty-resolved-set-reported-as-a-quiet-day-is-a-completeness-claim-with-no-evidence
+  - id: wholesale-advance-refused
+    control_class: enforced-gate
+    fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_surface_level_advance_is_refused_once_targets_exist
+    motivating_defect: a-surface-level-advance-recorded-coverage-no-per-space-read-backed-and-four-dms-went-unsurfaced
+  - id: rituals-doc-contract
+    control_class: acceptance-test
+    fixture: ../synthesis-daily-rituals/scripts/test_gchat_preflight.py::test_rituals_run_the_gchat_preflight_per_target
+    motivating_defect: a-script-the-protocol-does-not-invoke-is-not-a-control
+  - id: rituals-budget
+    control_class: acceptance-test
+    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_skill_document_stays_within_repo_budget
+    motivating_defect: a-restructured-document-must-not-regrow-with-its-next-feature
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
     motivating_defect: an-acceptance-manifest-that-its-own-runner-cannot-consume-issues-authority-it-never-earned
+  - id: release-manifest-parity
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
+    motivating_defect: a-version-that-reaches-only-one-client-manifest-cannot-be-reliably-installed-or-audited
   - id: release-changelog-parity
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
