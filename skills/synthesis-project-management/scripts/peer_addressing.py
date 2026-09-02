@@ -512,16 +512,28 @@ def load_receipts(board: Path, sender_key: str, now: datetime | None = None) -> 
     return live
 
 
-def receipt_for_address(receipts: list[dict], lane: str, address: str) -> dict | None:
-    """The receipt whose lane address equals the one about to be used."""
+def receipts_for_address(receipts: list[dict], lane: str, address: str) -> list[dict]:
+    """Every live receipt whose lane address equals the one about to be used,
+    newest first. A session that released and claimed again keeps its client
+    handle but gets a new board identity, so two receipts can name one
+    address; the gate must judge the newest one whose target is still
+    active, not whichever file sorts first."""
     field = {"ccd": "session_id", "harness": "to", "codex": "thread"}.get(lane)
     if field is None:
-        return None
-    for receipt in receipts:
-        entry = receipt.get("lanes", {}).get(lane)
-        if isinstance(entry, dict) and str(entry.get(field, "")).strip() == address.strip():
-            return receipt
-    return None
+        return []
+    matches = [
+        receipt
+        for receipt in receipts
+        if isinstance(receipt.get("lanes", {}).get(lane), dict)
+        and str(receipt["lanes"][lane].get(field, "")).strip() == address.strip()
+    ]
+    return sorted(matches, key=lambda r: str(r.get("issued_at", "")), reverse=True)
+
+
+def receipt_for_address(receipts: list[dict], lane: str, address: str) -> dict | None:
+    """The newest receipt whose lane address equals the one about to be used."""
+    matches = receipts_for_address(receipts, lane, address)
+    return matches[0] if matches else None
 
 
 # --------------------------------------------------------------------------

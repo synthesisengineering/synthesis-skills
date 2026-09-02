@@ -15,7 +15,10 @@ that on every direct lane the plugin knows:
 - ``mcp__ccd_session_mgmt__send_message``: the ``session_id`` must equal the
   ccd address on a live receipt, and the board row must still be active.
 - shell tools: a ``codex queue --thread`` command needs a receipt naming
-  that thread; every other command passes untouched.
+  that thread; every other command passes untouched. The gate reads the
+  tool call's command text: a ``codex queue`` run from inside a script
+  file is invisible to it, the boundary every shell-level guard shares,
+  so the protocol requires the direct invocation.
 
 Every direct send must carry the sender's own board id so the recipient can
 resolve the reply without guessing, and the same text to a second peer
@@ -54,6 +57,7 @@ from peer_addressing import (  # noqa: E402
     process_alive,
     receipt_for_address,
     receipts_dir,
+    receipts_for_address,
     registry_dir,
     registry_entry_for_socket,
     seat_for_identity,
@@ -229,7 +233,14 @@ def evaluate(
         )
 
     receipts = load_receipts(board, key, moment)
-    receipt = receipt_for_address(receipts, lane, address)
+    candidates = receipts_for_address(receipts, lane, address)
+    # A handle can appear on two receipts when its session released and
+    # claimed again (new identity, same handle); the newest receipt whose
+    # target row is still active is the one that counts.
+    receipt = next(
+        (r for r in candidates if any(row.session_uuid == str(r.get("target", {}).get("uuid") or "") for row in active_rows)),
+        candidates[0] if candidates else None,
+    )
     replied = address in received_addresses(payload.get("transcript_path")) if lane in {"harness", "ccd"} else False
     target_uuid = ""
     if receipt is not None:

@@ -12,10 +12,10 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 ## What's new
 
 **Peer sessions are addressed by resolver-issued receipts, never by name
-(September 2026).** Release **4.90.1** gates every direct session-to-session
+(September 2026).** Releases **4.90.0** through **4.90.3** gate every direct session-to-session
 send in both clients on a delivery receipt from `coordination.py resolve`,
 delivers the board's message bus at each prompt, and reaches Codex threads
-through `codex queue`. See the [4.90.1 release notes](CHANGELOG.md).
+through `codex queue`. See the [4.90.3 release notes](CHANGELOG.md).
 
 **A self-report is a claim, not evidence (September 2026).** Release
 **4.88.0** makes daily parity read each client's installed manifest on disk
