@@ -11,11 +11,11 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
-**Google Chat coverage is now claimed per space, never wholesale
-(September 2026).** Release **4.89.0** derives a declared target set for the
-Chat surface from an explicit config core plus a bounded enumeration, and
-refuses a surface-level watermark advance once per-target entries exist.
-See the [4.89.0 release notes](CHANGELOG.md).
+**Peer sessions are addressed by resolver-issued receipts, never by name
+(September 2026).** Release **4.90.0** gates every direct session-to-session
+send in both clients on a delivery receipt from `coordination.py resolve`,
+delivers the board's message bus at each prompt, and reaches Codex threads
+through `codex queue`. See the [4.90.0 release notes](CHANGELOG.md).
 
 **A self-report is a claim, not evidence (September 2026).** Release
 **4.88.0** makes daily parity read each client's installed manifest on disk

@@ -218,7 +218,7 @@ synthesis-git-hooks/
 ```
 
 The installer also copies `coordination.py`, `coordination_schema.py`,
-`pointer_lock.py`, and the versioned session-word asset from the declared
+`pointer_lock.py`, `peer_addressing.py`, and the versioned session-word asset from the declared
 `synthesis-project-management` dependency into the shared runtime. Their
 canonical source remains in that owning skill; the git-hooks doctor compares
 the installed copies with those source paths and reports drift. `source-path`

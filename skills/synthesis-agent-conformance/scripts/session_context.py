@@ -449,6 +449,19 @@ def build(
     return "\n".join(lines)
 
 
+def append_inbox(message: str, payload: dict, board: Path, pointer: Path) -> str:
+    """Attach unread board messages for this seat, and for a non-Claude
+    client its coordination identity, so the bus is delivered at session
+    start and a Codex session learns the id its receipts are filed under."""
+    try:
+        from board_inbox import inbox_text
+
+        extra = inbox_text(payload, board=board, pointer=pointer)
+    except Exception as exc:  # the inbox never blocks a session start
+        extra = f"Coordination inbox unavailable: {exc}"
+    return message + ("\n" + extra if extra else "")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--active-project-file", type=Path, default=DEFAULT_POINTER)
@@ -488,6 +501,12 @@ def main() -> int:
         print(f"synthesis project context failed closed: {exc}", file=sys.stderr)
         return 2
     message = append_currency_notice(message, payload)
+    message = append_inbox(
+        message,
+        payload,
+        args.coordination_board.expanduser(),
+        args.active_project_file.expanduser(),
+    )
     try:
         record_live_receipt(payload, args.live_receipt.expanduser())
     except Exception as exc:

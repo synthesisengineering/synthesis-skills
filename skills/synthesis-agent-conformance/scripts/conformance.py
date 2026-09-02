@@ -872,6 +872,37 @@ def hook_definition_checks(source_root: Path) -> list[Check]:
             and "--format" in commands[0],
             f"{len(commands)} command hook(s): {commands}",
         )
+        gate_matchers = [
+            str(group.get("matcher", ""))
+            for group in mapping.get("PreToolUse", [])
+            if isinstance(group, dict)
+            and any(
+                "peer_send_gate.py" in hook.get("command", "") and "--gate" in hook.get("command", "")
+                for hook in group.get("hooks", [])
+                if isinstance(hook, dict) and hook.get("type") == "command"
+            )
+        ]
+        add(
+            checks,
+            "hook-definition.public-peer-gate",
+            any("SendMessage" in m for m in gate_matchers)
+            and any("ccd_session_mgmt__send_message" in m for m in gate_matchers)
+            and any("Bash" in m and "exec_command" in m for m in gate_matchers),
+            f"PreToolUse matchers routed to the peer send gate: {gate_matchers}",
+        )
+        inbox_commands = [
+            hook.get("command", "")
+            for group in mapping.get("UserPromptSubmit", [])
+            if isinstance(group, dict)
+            for hook in group.get("hooks", [])
+            if isinstance(hook, dict) and hook.get("type") == "command"
+        ]
+        add(
+            checks,
+            "hook-definition.public-inbox",
+            len(inbox_commands) == 1 and "board_inbox.py" in inbox_commands[0] and "--hook" in inbox_commands[0],
+            f"{len(inbox_commands)} UserPromptSubmit command hook(s): {inbox_commands}",
+        )
     except Exception as exc:
         add(checks, "hook-definition.public-config", False, f"{hook_file}: {exc}")
     return checks

@@ -2068,7 +2068,11 @@ def _runtime_probe(receipts):
 
 def _coordination_probe():
     root = HOME / ".synthesis" / "git-hooks"
-    required = [root / "coordination.py", root / "coordination_schema.py"]
+    required = [
+        root / "coordination.py",
+        root / "coordination_schema.py",
+        root / "peer_addressing.py",
+    ]
     if not all(path.is_file() for path in required):
         return False, "stable coordination runtime is missing"
     board = HOME / ".synthesis" / "coordination" / "active-sessions.md"

@@ -31,6 +31,9 @@ def _isolate_client_session_env(monkeypatch):
     simulated session and trip the duplicate-ref refusal."""
     monkeypatch.delenv("SYNTHESIS_CLIENT_SESSION_REF", raising=False)
     monkeypatch.delenv("CLAUDE_CODE_HOST_SESSION_ID", raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    monkeypatch.delenv("CLAUDE_PID", raising=False)
+    monkeypatch.delenv("CLAUDECODE", raising=False)
 
 
 def args(board: Path, **values):
@@ -1958,7 +1961,7 @@ def test_every_command_notes_a_newer_installed_engine(tmp_path):
     relative = Path("skills") / "synthesis-project-management" / "scripts"
     older = cache / "4.80.0" / relative
     older.mkdir(parents=True)
-    for name in ("coordination.py", "coordination_schema.py", "pointer_lock.py"):
+    for name in ("coordination.py", "coordination_schema.py", "pointer_lock.py", "peer_addressing.py"):
         (older / name).write_bytes((MODULE_PATH.parent / name).read_bytes())
     newer = cache / "4.81.0" / relative
     newer.mkdir(parents=True)

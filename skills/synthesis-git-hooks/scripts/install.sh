@@ -28,6 +28,7 @@ for source in \
     "$COORDINATION_SOURCE/coordination.py" \
     "$COORDINATION_SOURCE/coordination_schema.py" \
     "$COORDINATION_SOURCE/pointer_lock.py" \
+    "$COORDINATION_SOURCE/peer_addressing.py" \
     "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85"; do
     [ -f "$source" ] || {
         echo "✖ Required synthesis-project-management dependency missing: $source" >&2
@@ -46,6 +47,7 @@ cp -f "$SCRIPT_DIR/_load_config.py" "$TARGET_DIR/_load_config.py"
 cp -f "$COORDINATION_SOURCE/coordination.py" "$TARGET_DIR/coordination.py"
 cp -f "$COORDINATION_SOURCE/coordination_schema.py" "$TARGET_DIR/coordination_schema.py"
 cp -f "$COORDINATION_SOURCE/pointer_lock.py" "$TARGET_DIR/pointer_lock.py"
+cp -f "$COORDINATION_SOURCE/peer_addressing.py" "$TARGET_DIR/peer_addressing.py"
 printf '%s\n' "$SCRIPT_DIR" > "$TARGET_DIR/source-path"
 cp -f "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85" \
     "$TARGET_REFERENCES/session-words-v1.txt.zlib.b85"
@@ -55,7 +57,8 @@ chmod +x \
     "$TARGET_DIR/_load_config.py" \
     "$TARGET_DIR/coordination.py" \
     "$TARGET_DIR/coordination_schema.py" \
-    "$TARGET_DIR/pointer_lock.py"
+    "$TARGET_DIR/pointer_lock.py" \
+    "$TARGET_DIR/peer_addressing.py"
 chmod 644 "$TARGET_DIR/source-path"
 
 if [ -f "$CONFIG_PATH" ]; then

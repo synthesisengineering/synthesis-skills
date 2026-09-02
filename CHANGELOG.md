@@ -4,6 +4,63 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.90.0] - 2026-09-02
+
+**Peer messages can no longer be addressed by a name, and every direct send
+must match a delivery receipt the resolver issued.** Seven recorded
+misdeliveries between 2026-08-19 and 2026-09-02 — one of them the day after
+the resolver shipped — share one shape: at the moment of sending, an agent
+picked a target by a harness display name (derived from the working
+directory, duplicated by construction) or a chat title, and the only gate in
+place checked that a target was registered, not that it was the one
+resolved. The harness `SendMessage` lane, which its own listing steers
+agents toward, was ungated by design.
+
+synthesis-project-management 2.11.0 closes the whole path:
+
+- **Seats.** `claim` writes a sidecar beside the board
+  (`seats/<session uuid>.json`) with the session's delivery handles —
+  harness session id, desktop session id, pid, machine — refreshed at
+  heartbeat and removed at release; the board row's client ref is unchanged
+  (`ccd:` on the desktop, new `cc:` for terminal sessions, `codex:` for
+  Codex). No schema change; an older engine simply offers the bus.
+- **Lanes.** `resolve` now prints the exact invocation per lane from live
+  truth: the bus, the ccd session id, the harness Unix socket (`uds:…`,
+  taken from the harness peer registry only while that process is alive on
+  this machine — the registry name is shown for display and is never the
+  address), and `codex queue --thread` for Codex threads.
+- **Receipts.** A resolve that returns exactly one target writes a delivery
+  receipt under `receipts/<sender key>/`, valid 20 minutes, naming that
+  target and its addresses. An ambiguous or empty resolve issues nothing.
+- **The gate.** `scripts/peer_send_gate.py --gate` is registered in the
+  plugin's own `hooks/hooks.json` (both clients load it) on `SendMessage`,
+  the desktop session-messaging tool, and the shell tools (for
+  `codex queue`). A direct send passes only when its address equals a live
+  receipt held by this sender, the target row is still active, the harness
+  registry still maps that socket to the receipt's session, the sender holds
+  an active seat, the message carries the sender's board id, and the same
+  text has not gone to a different session within 15 minutes (a broadcast).
+  In-process targets pass; a reply may copy the `from=` of a message this
+  session received; every decision is appended to `peer-sends.jsonl`;
+  anything unverifiable blocks with the remedy.
+- **A delivered bus.** `scripts/board_inbox.py --hook` runs on every
+  UserPromptSubmit and inside the SessionStart context in both clients,
+  injecting unread board messages addressed to this seat or its project
+  with a per-seat watermark. `coordination.py inbox` and `whoami` expose
+  the same view; the doctor counts seats and names orphans.
+- **Codex.** The SessionStart context states a Codex session's coordination
+  identity (its shell carries no thread id) so it exports
+  `SYNTHESIS_CLIENT_SESSION_REF` before claiming; `codex queue --thread`
+  is the direct lane to a Codex thread and is gated like the others.
+
+synthesis-agent-conformance 1.8.0 adds `hook-definition.public-peer-gate`
+and `hook-definition.public-inbox` to source conformance, so a plugin that
+stops routing peer sends through the gate or stops delivering the inbox
+fails CI. The git-hooks installed runtime and the onboarding probe carry the
+new `peer_addressing.py` module alongside the coordination engine; re-run
+the git-hooks installer after updating so the commit gate's engine copy
+matches the source (its doctor reports the drift until then).
+
 ## [4.89.0] - 2026-09-02
 
 **Google Chat gets a declared target set, and a surface that carries
