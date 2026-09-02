@@ -62,6 +62,7 @@ from live_receipt import (
     session_receipt_path,
     transcript_binds_session,
 )
+from plan_reference import locate_plan
 from project_context import next_actions, record_freshness
 from pointer_lock import locked_pointer
 from coordination_schema import SCHEMA_VERSION as COORDINATION_SCHEMA_VERSION
@@ -1547,14 +1548,14 @@ def project_summary(project: Path) -> tuple[dict[str, object], list[Check]]:
         for key in ("Phase", "Status", "Last session"):
             match = re.search(rf"^\*\*{re.escape(key)}:\*\*\s*(.+)$", text, re.MULTILINE)
             summary[key.lower().replace(" ", "_")] = match.group(1).strip() if match else "unknown"
-        plan_match = re.search(r"\((resources/artifacts/[^)]+plan[^)]*\.md)\)", text)
-        if plan_match:
-            plan = project / plan_match.group(1)
-            summary["plan"] = str(plan)
-            add(checks, "handoff.plan", plan.is_file(), str(plan))
+        # Shared with the stopped-task payload builders so the two
+        # derivations cannot drift (plan_reference.locate_plan).
+        plan_ref = locate_plan(project, text)
+        summary["plan"] = plan_ref.value
+        if plan_ref.declared is None:
+            add(checks, "handoff.plan", False, plan_ref.detail, required=False)
         else:
-            summary["plan"] = "unknown"
-            add(checks, "handoff.plan", False, "CONTEXT.md has no linked plan", required=False)
+            add(checks, "handoff.plan", plan_ref.resolved is not None, plan_ref.detail)
 
         summary["next"] = next_actions(text)
 
