@@ -743,7 +743,6 @@ def test_quick_answers_skill_release_contract_is_public_and_coherent() -> None:
     )
 
     assert "synthesis-quick-answers" in readme
-    assert 'version: "1.1.0"' in skill
     assert "## [4.86.0]" in changelog
     assert "synthesis-quick-answers" in changelog
     assert "synthesis-quick-answers" in components["skills"]
@@ -752,6 +751,33 @@ def test_quick_answers_skill_release_contract_is_public_and_coherent() -> None:
     assert "Verified" in skill and "Cached" in skill and "Uncertain" in skill
     assert "synthesis-grounding-discipline" in skill
     assert "cache-vs-truth" in skill
+
+
+def test_quick_answers_self_bootstrap_release_contract_is_public_and_coherent() -> None:
+    repository = Path(__file__).resolve().parents[3]
+    skill = (
+        repository / "skills/synthesis-quick-answers/SKILL.md"
+    ).read_text(encoding="utf-8")
+    onboard = (
+        repository / "skills/synthesis-onboarding/scripts/onboard.py"
+    ).read_text(encoding="utf-8")
+    changelog = (repository / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    assert "## [4.87.0]" in changelog
+    assert "v1.2.0" in changelog
+    # Setup no longer assumes a personal knowledge workspace already exists,
+    # and no longer leaves "automatic" as an unstated implementation detail.
+    assert "onboard.py init-workspace" in skill
+    assert "AGENTS.md" in skill and "CLAUDE.md" in skill
+    assert "synthesis-onboarding" in skill
+    # The receipt-verification sentence that reads as internal agent protocol
+    # to a human running the installer directly is gone from onboard.py's
+    # printed messages; the fuller protocol stays documented in this skill's
+    # own SKILL.md (a human never reads that file mid-install, only an agent
+    # consulting it as instructions does), so nothing about agent behavior
+    # regressed — only what a person sees in their own terminal changed.
+    assert "verify its exact current-plugin SessionStart receipt" not in onboard
+    assert "start a new chat there" in onboard
 
 
 def test_main_carries_acceptance_authority_to_publish_boundary(

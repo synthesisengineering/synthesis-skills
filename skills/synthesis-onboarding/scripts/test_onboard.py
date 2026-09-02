@@ -729,6 +729,63 @@ class PluginTests(unittest.TestCase):
             self.assertEqual(onboard.doctor(report, None, ["codex"], self.policy), 2)
             self.assertEqual(report.steps[-1]["status"], onboard.WARN)
 
+    def test_preflight_skips_absent_codex_without_failing_when_claude_present(self):
+        with patch.object(onboard, "run", return_value=(0, "git version 2.39.5", "")), \
+             patch.object(
+                 onboard, "resolve_client",
+                 side_effect=lambda name: "/path/to/claude" if name == "claude" else None,
+             ), \
+             patch.object(onboard, "platform_family", return_value="macos"):
+            report = onboard.Report(as_json=True)
+            clients = onboard.phase_preflight(report, ["claude", "codex"])
+        self.assertEqual(clients, {"claude": "/path/to/claude", "codex": None})
+        by_phase = [s for s in report.steps if s["phase"] == "preflight"]
+        claude_step = next(s for s in by_phase if "claude" in s["detail"])
+        codex_step = next(s for s in by_phase if "codex" in s["detail"])
+        self.assertEqual(claude_step["status"], onboard.OK)
+        self.assertEqual(codex_step["status"], onboard.SKIP)
+        self.assertEqual(report.exit_code(), 0)
+
+    def test_preflight_skips_absent_claude_without_failing_when_codex_present(self):
+        with patch.object(onboard, "run", return_value=(0, "git version 2.39.5", "")), \
+             patch.object(
+                 onboard, "resolve_client",
+                 side_effect=lambda name: "/path/to/codex" if name == "codex" else None,
+             ), \
+             patch.object(onboard, "platform_family", return_value="macos"):
+            report = onboard.Report(as_json=True)
+            clients = onboard.phase_preflight(report, ["claude", "codex"])
+        self.assertEqual(clients, {"claude": None, "codex": "/path/to/codex"})
+        by_phase = [s for s in report.steps if s["phase"] == "preflight"]
+        claude_step = next(s for s in by_phase if "claude" in s["detail"])
+        codex_step = next(s for s in by_phase if "codex" in s["detail"])
+        self.assertEqual(claude_step["status"], onboard.SKIP)
+        self.assertEqual(codex_step["status"], onboard.OK)
+        self.assertEqual(report.exit_code(), 0)
+
+    def test_ecosystem_phase_only_touches_the_present_client(self):
+        # Reproduces the exact shape from a real single-client run: one name
+        # resolves to a real binary, the other to None from phase_preflight.
+        # Motivating defect: an unconditional per-client step here would either
+        # crash on the missing binary or wrongly report an error for a client
+        # the user never asked to have installed.
+        with patch.object(onboard, "plugin_record", return_value=(True, "4.86.0")), \
+             patch.object(onboard, "expected_policy_version", return_value=("4.86.0", "fixture")):
+            report = onboard.Report(as_json=True)
+            onboard.phase_ecosystem(
+                report,
+                {"claude": "/path/to/claude", "codex": None},
+                dry_run=False,
+                no_plugin_cli=False,
+                policy=self.policy,
+                refresh_native_plugins=False,
+            )
+        ecosystem_steps = [s for s in report.steps if s["phase"] == "ecosystem"]
+        self.assertEqual(len(ecosystem_steps), 1)
+        self.assertIn("claude", ecosystem_steps[0]["detail"])
+        self.assertNotEqual(ecosystem_steps[0]["status"], onboard.ERROR)
+        self.assertEqual(report.exit_code(), 0)
+
 
 class EngineTests(unittest.TestCase):
     def setUp(self):

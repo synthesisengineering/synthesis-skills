@@ -1,6 +1,6 @@
 ---
 name: synthesis-quick-answers
-description: "Stand up and operate a low-cost, read-mostly companion session that answers ad hoc lookup questions about a workspace (people, teams, project status, releases, decisions) without pulling a focused project session off task or spending premium-model budget on quick lookups. Every answer carries a one-line grounding trailer — its source and a Verified/Cached/Uncertain confidence tier — so speed never gets mistaken for certainty. Use when asked to: set up an FAQ assistant, quick-answers session, lookup companion, ask-me-anything session, fast Q&A project; or when a question arrives that is a one-off lookup rather than the focused project's actual task. Not for: deep multi-session work, decisions, drafting, sending messages, or anything that should live in its own project — those graduate out."
+description: "Stand up and operate a low-cost, read-mostly companion session that answers ad hoc lookup questions about a workspace (people, teams, project status, releases, decisions) without pulling a focused project session off task or spending premium-model budget on quick lookups. Every answer carries a one-line grounding trailer — its source and a Verified/Cached/Uncertain confidence tier — so speed never gets mistaken for certainty, and a one-line routing entry in the workspace's own AGENTS.md/CLAUDE.md makes every future session apply it automatically, with no need to ask for it by name again. Bootstraps a missing personal knowledge workspace itself via synthesis-onboarding rather than inventing an ad hoc location. Use when asked to: set up an FAQ assistant, quick-answers session, lookup companion, ask-me-anything session, fast Q&A project, an ongoing session that already knows to use a skill; or when a question arrives that is a one-off lookup rather than the focused project's actual task. Not for: deep multi-session work, decisions, drafting, sending messages, or anything that should live in its own project — those graduate out."
 license: "CC0-1.0"
 depends_on:
   - synthesis-project-management
@@ -8,9 +8,10 @@ depends_on:
   - synthesis-grounding-discipline
   - synthesis-concise-messaging
   - synthesis-model-tiers
+  - synthesis-onboarding
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -28,25 +29,31 @@ The fix is not "be disciplined about not asking." The questions are legitimate a
 
 ## The Pattern
 
-A **quick-answers companion**: one `ongoing`-status project per workspace (per `synthesis-project-management`), used from a session on a routine-tier model, whose entire mandate is answering lookups by reading everything else in the workspace and writing almost nothing back.
+A **quick-answers companion**: one `ongoing`-status project inside the user's own personal knowledge workspace (per `synthesis-project-management`, at `~/workspaces/{workspace}/ai-knowledge-{workspace}/` — the same location `synthesis-onboarding` scaffolds), used from a session on a routine-tier model, whose entire mandate is answering lookups by reading everything else in the workspace and writing almost nothing back.
 
 It is deliberately **not** a "seat" in the operations sense (compare an `<org>-operations`-style project, which *owns* rituals, syncs, and triage). It owns no workflow. It is a read path across every other project, plus the workspace's knowledge base — and its value depends on staying that narrow. The moment it starts drafting, deciding, or sending, it has become a second copy of the work it exists to protect other sessions from absorbing.
+
+**"Automatic" is a file, not a habit.** The entire reason this pattern is worth having — never needing to say "use the skill" — comes from one line in the workspace's own `AGENTS.md`/`CLAUDE.md`, read at the start of every session by convention. That line is Setup step 4 below, not an implementation detail; a companion without it is just this skill, invoked by hand, which is the exact daily friction the pattern exists to remove.
 
 ### Configuration
 
 | Setting | Value | Description |
 |---|---|---|
-| `ai_knowledge_workspace` | `ai-knowledge-{workspace}` | Same repo `synthesis-project-management` already uses |
+| `ai_knowledge_workspace` | `~/workspaces/{workspace}/ai-knowledge-{workspace}/` | Same location `synthesis-project-management` and `synthesis-onboarding` already use — never a substitute folder |
 | `project_id` | `{workspace}-quick-answers` | e.g. `acme-quick-answers` — noun name, `ongoing` status, mirrors the workspace's own ops-seat naming |
 | `faq_log` | `projects/{project_id}/resources/FAQ.md` | Append-only log of answered questions — see "The FAQ log" below |
 | `model_tier` | `routine` (per `synthesis-model-tiers`) | Set by the user per client (`/model` in Claude Code, the equivalent in Codex) — an agent cannot switch its own model, so state the recommendation and wait rather than attempting it |
 
 ### Setup
 
-1. Create the project the normal way (`synthesis-project-management`): `status: ongoing`, `bounded: false`, noun-first id. Give it a thin `CONTEXT.md` and, if the workspace has enough standing routing knowledge to be worth writing down (which sources answer which question shapes), a short `REFERENCE.md`.
-2. Register it in `projects/index.yaml` under its own initiative if the workspace doesn't already have a natural home for "standing non-ops infrastructure" — don't force it under an operations initiative that implies it owns rituals.
-3. Tell the user which model tier to select for the session, and that this is a one-time-per-session setting they make, not something this skill can do for them.
-4. Seed `resources/FAQ.md` with a header; leave it empty otherwise. It fills from use.
+This pattern needs a personal knowledge workspace — the same `ai-knowledge-{workspace}` repo `synthesis-project-management` and `synthesis-onboarding` already use, at `~/workspaces/{workspace}/ai-knowledge-{workspace}/`. Don't invent a substitute location (a loose folder somewhere else, a name that doesn't match): a companion that lives outside the convention every other project already follows is a second, incompatible system, not a lighter version of the same one.
+
+1. **No personal knowledge workspace yet?** Create one first: `onboard.py init-workspace --workspace {name}` (part of `synthesis-onboarding`, already installed alongside this skill). It scaffolds `~/workspaces/{name}/ai-knowledge-{name}/` — `AGENTS.md`, `CLAUDE.md`, a seeded `projects/index.yaml`, and a local git repo (a remote is optional; purely local is fine to start). Skip this step if one already exists — check for `~/workspaces/{workspace}/` before assuming it's missing, since an organization's own onboarding flow may have already created it.
+2. Create the project the normal way (`synthesis-project-management`): `status: ongoing`, `bounded: false`, noun-first id (e.g. `{workspace}-quick-answers`). Give it a thin `CONTEXT.md` and, if the workspace has enough standing routing knowledge to be worth writing down (which sources answer which question shapes), a short `REFERENCE.md`.
+3. Register it in `projects/index.yaml` under its own initiative if the workspace doesn't already have a natural home for "standing non-ops infrastructure" — don't force it under an operations initiative that implies it owns rituals.
+4. **Point the workspace's own `AGENTS.md`/`CLAUDE.md` at it** — one routing line, exactly the way any other standing project already gets referenced there. This one line is the entire mechanism that makes the pattern actually automatic: a client reads that file at the start of every session, so from here on the user never has to say "use the skill" again. Skipping this step is the single most common way this pattern fails to live up to its own pitch — a companion that still needs to be invoked by name every time isn't a quick-answers companion, it's an ordinary skill with extra ceremony.
+5. Tell the user which model tier to select for the session (see Configuration), and that this is a one-time-per-session setting they make, not something this skill can do for them.
+6. Seed `resources/FAQ.md` with a header; leave it empty otherwise. It fills from use.
 
 ## Operating Protocol
 
@@ -91,3 +98,4 @@ Keep the mandate narrow on purpose:
 - **`synthesis-concise-messaging`** shapes the answer format.
 - **`synthesis-model-tiers`** supplies the `routine` tier recommendation and the vocabulary for stating it without attempting to switch it.
 - **`synthesis-knowledge-capture`** is where durable facts actually get saved, not this skill.
+- **`synthesis-onboarding`** is what Setup step 1 calls when the user has no personal knowledge workspace yet (`onboard.py init-workspace`) — this skill never scaffolds a substitute of its own.

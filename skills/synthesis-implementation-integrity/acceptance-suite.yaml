@@ -1,26 +1,26 @@
-# AGENT HEURISTIC: authored for the 4.86.0 synthesis-quick-answers transaction.
+# AGENT HEURISTIC: authored for the 4.87.0 quick-answers-self-bootstrap transaction.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: add-synthesis-quick-answers-skill
+suite: quick-answers-self-bootstrap-and-quiet-onboarding
 membership: closed
 production_entry_point: skills/synthesis-quick-answers/SKILL.md
-enforcing_boundary: the new skill's defining feature (a source + Verified/Cached/Uncertain confidence trailer on every answer, reusing synthesis-grounding-discipline's cache-vs-truth vocabulary) is present in the shipped skill text, the skill is registered for both clients (SKILL.md plus its agents/openai.yaml), and every release-plumbing surface (both plugin manifests, CHANGELOG, README) agrees on version 4.86.0 before the release gate consumes this receipt
+enforcing_boundary: synthesis-quick-answers's Setup section now bootstraps a missing personal knowledge workspace itself (via synthesis-onboarding's onboard.py init-workspace) and states the AGENTS.md/CLAUDE.md routing line as the explicit mechanism that makes the pattern automatic, rather than assuming both; onboard.py's plugin-update messages read as plain human status rather than internal agent-protocol jargon; and the CLI's asymmetric single-client behavior (Claude present without Codex, or the reverse) is proven correct by executable tests rather than asserted from a read of the code
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the new skill's actual behavior inside a live Claude Code or Codex session (question routing, live source verification, trailer formatting under real questions) is not exercised by this suite — only the shipped text's presence and cross-surface version coherence are checked; first real usage happens once a colleague stands up the pattern in their own workspace
+unverified_remainder: the onboarding CLI's other front door — a downstream organization's own install.sh wrapper, whose git pull/clone calls were the actual source of the diffstat wall a live colleague hit — is a separate private repo outside this one's acceptance boundary; that fix is tracked and shipped there, not verified here
 changed_surfaces:
   - path: skills/synthesis-quick-answers/SKILL.md
-    cases: [quick-answers-skill-release-contract]
-  - path: skills/synthesis-quick-answers/agents/openai.yaml
-    cases: [quick-answers-skill-release-contract]
-  - path: skills/synthesis-onboarding/references/components.json
-    cases: [quick-answers-skill-release-contract]
+    cases: [quick-answers-self-bootstrap]
+  - path: skills/synthesis-onboarding/scripts/onboard.py
+    cases: [quick-answers-self-bootstrap, dual-client-graceful-degradation]
+  - path: skills/synthesis-onboarding/scripts/test_onboard.py
+    cases: [dual-client-graceful-degradation]
   - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [quick-answers-skill-release-contract]
+    cases: [quick-answers-self-bootstrap]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -29,13 +29,15 @@ changed_surfaces:
     cases: [release-manifest-parity]
   - path: CHANGELOG.md
     cases: [release-changelog-parity]
-  - path: README.md
-    cases: [release-changelog-parity]
 cases:
-  - id: quick-answers-skill-release-contract
+  - id: quick-answers-self-bootstrap
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_quick_answers_skill_release_contract_is_public_and_coherent
-    motivating_defect: a-skill-can-ship-with-its-defining-feature-undocumented-or-missing-the-codex-registration-file-every-other-skill-carries
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_quick_answers_self_bootstrap_release_contract_is_public_and_coherent
+    motivating_defect: a-setup-procedure-that-assumes-infrastructure-the-reader-does-not-have-yet-strands-the-first-real-adopter-and-a-pattern-that-never-states-its-own-automatic-mechanism-degrades-into-manual-invocation-with-extra-steps
+  - id: dual-client-graceful-degradation
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_ecosystem_phase_only_touches_the_present_client
+    motivating_defect: an-installer-that-crashes-or-misreports-when-only-one-of-two-supported-clients-is-present-fails-the-common-case-not-the-edge-case
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates

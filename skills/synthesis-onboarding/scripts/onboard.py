@@ -1138,7 +1138,7 @@ def phase_ecosystem(
                 restart = "restart Claude Code" if name == "claude" else "restart Codex"
                 report.add(
                     "ecosystem", CHANGED,
-                    "%s plugin updated for %s: %s -> %s; %s, resume the same root conversation, and verify its exact current-plugin SessionStart receipt plus loaded registry; create a new conversation/task only if that verification fails" %
+                    "%s plugin updated for %s: %s -> %s; %s, then start a new chat there" %
                     (PLUGIN_NAME, name, before_version, after_version, restart),
                 )
             else:
@@ -1177,7 +1177,7 @@ def phase_ecosystem(
             restart = "restart Claude Code" if name == "claude" else "restart Codex"
             report.add(
                 "ecosystem", CHANGED,
-                "%s: %s; %s, resume the same root conversation, and verify its exact current-plugin SessionStart receipt plus loaded registry; create a new conversation/task only if that verification fails" %
+                "%s: %s; %s, then start a new chat there" %
                 (name, detail, restart),
             )
         else:
