@@ -79,6 +79,25 @@ def ledger_dir():
     return os.path.join(state_dir(), "ledger")
 
 
+def legacy_ledger_detail(path):
+    """Who a leftover single-slot ledger belongs to, so the seat that wrote it
+    can recognise it. 2026-09-02: one seat's helper script, written against
+    the previous layout, kept the machine-wide doctor red for every seat, and
+    nobody could tell whose file it was without recognising the sha."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return "unreadable"
+    if not isinstance(data, dict):
+        return "not a ledger object"
+    parts = []
+    for key in ("created_at", "channel", "recipient"):
+        if data.get(key):
+            parts.append("%s %s" % (key, str(data[key])[:80]))
+    return ", ".join(parts) or "no created_at/channel/recipient fields"
+
+
 def ledger_path_for(sha):
     """One ledger per message, named by the sha it is already bound to.
 
@@ -775,10 +794,11 @@ def run_doctor():
     legacy = os.path.join(state_dir(), "ledger.json")
     report(not os.path.exists(legacy),
            "no legacy single-slot ledger.json",
-           "found %s — a leftover from the pre-sha layout. It is inert (the "
-           "gate reads ledger/<sha>.json) but delete it so nothing hand-edits "
-           "the wrong file." % legacy if os.path.exists(legacy) else
-           "sha-keyed store only")
+           ("found %s (%s) — a leftover from the pre-sha layout, usually a "
+            "helper script that outlived the convention. It is inert (the gate "
+            "reads ledger/<sha>.json); whoever it belongs to should delete it."
+            % (legacy, legacy_ledger_detail(legacy)))
+           if os.path.exists(legacy) else "sha-keyed store only")
 
     d = ledger_dir()
     if os.path.isdir(d):

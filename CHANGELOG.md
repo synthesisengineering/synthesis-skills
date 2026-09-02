@@ -20,7 +20,10 @@ carries it (message-guard 1.6.0). The ask from 2026-08-03: a generic clean
 control passed while a retired-branding pattern compiled under IGNORECASE
 blocked every real signed send. Tests pin that the over-broad pattern now
 trips the control and the scoped fix passes it, and that every example
-clean control passes the example patterns.
+clean control passes the example patterns. The doctor's leftover
+single-slot-ledger finding now names the file's `created_at`, channel, and
+recipient, so the seat whose helper script wrote it can recognise it
+(2026-09-02: one seat's stale scaffolding kept the machine-wide signal red).
 
 ## [4.87.0] - 2026-09-02
 

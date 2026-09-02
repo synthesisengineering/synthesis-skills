@@ -519,3 +519,27 @@ def test_example_clean_controls_include_the_signature_and_pass_example_patterns(
         hits, _ = MODULE.scan_text(control, cblock, cwarn)
         assert hits == [], (control, hits)
 
+
+# --- a leftover single-slot ledger names its owner (2026-09-02) ----------------------------
+
+
+def test_legacy_ledger_detail_names_the_owner(tmp_path: Path) -> None:
+    """One seat's stale helper script kept the machine-wide doctor red; the
+    finding must let its owner recognise the file without decoding a sha."""
+    leftover = tmp_path / "ledger.json"
+    leftover.write_text(json.dumps({
+        "created_at": "2026-09-02T18:11:27+00:00",
+        "channel": "gmail",
+        "recipient": "colleague@example.com",
+        "message_sha256": "abc",
+    }), encoding="utf-8")
+
+    detail = MODULE.legacy_ledger_detail(str(leftover))
+
+    assert "created_at 2026-09-02T18:11:27+00:00" in detail
+    assert "channel gmail" in detail
+    assert "recipient colleague@example.com" in detail
+
+    leftover.write_text("not json", encoding="utf-8")
+    assert MODULE.legacy_ledger_detail(str(leftover)) == "unreadable"
+
