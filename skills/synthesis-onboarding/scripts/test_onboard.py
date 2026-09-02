@@ -614,6 +614,25 @@ class PluginTests(unittest.TestCase):
         self.assertIn("not installed", detail)
         runner.assert_not_called()
 
+    def test_codex_history_sync_refuses_a_dangling_guardian_symlink(self):
+        with tempfile.TemporaryDirectory(prefix="onboard-history-") as root:
+            home = Path(root)
+            runtime = (
+                home
+                / ".synthesis/plugin-cache-recovery/synthesis-engineering"
+                / ".synthesis-skills-cache-guardian.py"
+            )
+            runtime.parent.mkdir(parents=True)
+            runtime.symlink_to(runtime.parent / "missing-guardian.py")
+            with patch.object(onboard, "HOME", home), patch.object(
+                onboard, "run"
+            ) as runner:
+                success, detail = onboard.synchronize_codex_history("4.23.0")
+
+        self.assertFalse(success)
+        self.assertIn("unsafe type", detail)
+        runner.assert_not_called()
+
     def test_plugin_record_reads_codex_and_claude_versions(self):
         codex = {"installed": [{
             "pluginId": "synthesis-skills@synthesis-engineering",
