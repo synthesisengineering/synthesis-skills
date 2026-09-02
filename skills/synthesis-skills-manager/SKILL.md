@@ -20,6 +20,11 @@ verifies the invoking task's exact hook tree. The budgeted, tag-backed archive,
 single-writer transition lock, supervisor, refusal of unsafe or differing
 content, and client-owned newest-version boundary remain unchanged.
 
+**Version 2.5.0** established the durable background guardian and kept recovery
+digests scoped to tracked release content rather than client-owned metadata.
+The whole-system onboarding suite and its scaffold/component catalog audit
+remain required release checks.
+
 Manage synthesis skills across a three-repo architecture. Skills are executable
 methodology. Public skills are also packaged as a native plugin for clients that
 support plugins; private and shared skills remain native user/project skills.

@@ -922,9 +922,11 @@ def synchronize_codex_history(before_version):
         / MARKETPLACE_NAME
     )
     runtime = recovery / (".%s-cache-guardian.py" % PLUGIN_NAME)
+    if runtime.is_symlink():
+        return False, "durable Codex cache guardian has an unsafe type: %s" % runtime
     if not runtime.exists():
         return True, "durable Codex cache guardian is not installed"
-    if runtime.is_symlink() or not runtime.is_file():
+    if not runtime.is_file():
         return False, "durable Codex cache guardian has an unsafe type: %s" % runtime
     version = str(before_version or "")
     if VERSION_RE.fullmatch(version) is None:

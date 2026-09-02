@@ -1,30 +1,30 @@
-# AGENT HEURISTIC: authored for the 4.90.1 inbox since-claim transaction.
+# AGENT HEURISTIC: authored for the 4.90.2 Codex cache recovery transaction.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: inbox-delivers-project-messages-since-the-claim
+suite: codex-update-preserves-the-invoking-hook-root
 membership: closed
-production_entry_point: skills/synthesis-project-management/scripts/board_inbox.py
-enforcing_boundary: a message addressed to a project's sessions is delivered to a seat only when posted at or after that seat's claim moment, while a message naming the session exactly is always delivered; an unparseable claim moment disables the bound, never the delivery
+production_entry_point: skills/synthesis-onboarding/scripts/onboard.py
+enforcing_boundary: a Codex plugin refresh on a machine with the durable recovery guardian cannot report success until the guardian has run synchronously and the exact cache root and every plugin-root hook target used by the invoking task are present; historical recovery restores newest roots first
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: seats claimed by engines before 4.90.0 carry the row's started field in whatever form that engine wrote; a non-ISO value disables the bound for that seat and the SessionStart board read covers its history
+unverified_remainder: machines without a publisher-installed recovery archive retain the explicit close-other-tasks update contract; the continuous guardian, rather than this synchronous boundary alone, handles a later client reconciliation after the update exits
 changed_surfaces:
-  - path: skills/synthesis-project-management/scripts/peer_addressing.py
-    cases: [history-is-not-inbox]
-  - path: skills/synthesis-project-management/scripts/board_inbox.py
-    cases: [new-seat-sees-only-what-followed-its-claim]
-  - path: skills/synthesis-project-management/scripts/coordination.py
-    cases: [history-is-not-inbox]
-  - path: skills/synthesis-project-management/scripts/test_peer_addressing.py
-    cases: [history-is-not-inbox]
-  - path: skills/synthesis-project-management/scripts/test_board_inbox.py
-    cases: [new-seat-sees-only-what-followed-its-claim]
-  - path: skills/synthesis-project-management/SKILL.md
-    cases: [pm-budget]
+  - path: skills/synthesis-skills-manager/scripts/cache_guardian.py
+    cases: [newest-history-first]
+  - path: skills/synthesis-skills-manager/scripts/test_cache_guardian.py
+    cases: [newest-history-first]
+  - path: skills/synthesis-skills-manager/SKILL.md
+    cases: [newest-history-first, synchronous-update-boundary]
+  - path: skills/synthesis-onboarding/scripts/onboard.py
+    cases: [synchronous-update-boundary, exact-invoking-root, guardian-failure-blocks-success, guardian-absence-is-explicit, unsafe-guardian-fails-closed, claude-route-isolated]
+  - path: skills/synthesis-onboarding/scripts/test_onboard.py
+    cases: [synchronous-update-boundary, exact-invoking-root, guardian-failure-blocks-success, guardian-absence-is-explicit, unsafe-guardian-fails-closed, claude-route-isolated]
+  - path: skills/synthesis-onboarding/SKILL.md
+    cases: [synchronous-update-boundary, guardian-failure-blocks-success]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -34,20 +34,36 @@ changed_surfaces:
   - path: CHANGELOG.md
     cases: [release-changelog-parity]
   - path: README.md
-    cases: [release-changelog-parity]
+    cases: [synchronous-update-boundary, guardian-absence-is-explicit]
 cases:
-  - id: history-is-not-inbox
+  - id: newest-history-first
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_restore_prioritizes_newest_historical_roots
+    motivating_defect: a-seventy-seven-version-archive-restored-the-immediately-prior-root-last-and-left-the-invoking-task-without-its-stop-hook-for-fifty-five-seconds
+  - id: synchronous-update-boundary
     control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_project_messages_older_than_the_seat_are_history_not_inbox
-    motivating_defect: the-first-live-inbox-run-greeted-a-seat-with-thirty-two-handled-messages-as-unread
-  - id: new-seat-sees-only-what-followed-its-claim
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_update_refreshes_and_accepts_newer_version_from_old_plugin_cache
+    motivating_defect: the-native-update-command-returned-before-the-background-guardian-finished-repairing-the-cache-generation-it-created
+  - id: exact-invoking-root
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_project_history_before_the_claim_is_not_delivered_to_a_new_seat
-    motivating_defect: every-fresh-seat-on-a-busy-project-would-have-seen-the-same-backlog
-  - id: pm-budget
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_codex_history_sync_runs_durable_doctor_and_checks_started_root
+    motivating_defect: a-green-guardian-receipt-without-the-version-root-the-running-task-loaded-does-not-make-that-task-safe
+  - id: guardian-failure-blocks-success
+    control_class: enforced-gate
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_update_fails_when_invoking_codex_history_is_not_restored
+    motivating_defect: the-updater-reported-success-while-its-own-next-lifecycle-hook-could-not-execute
+  - id: guardian-absence-is-explicit
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_skill_document_stays_within_repo_budget
-    motivating_defect: a-restructured-document-must-not-regrow-with-its-next-feature
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_codex_history_sync_is_optional_without_a_durable_guardian
+    motivating_defect: an-updater-must-not-imply-a-recovery-guarantee-on-a-machine-that-has-no-recovery-archive
+  - id: unsafe-guardian-fails-closed
+    control_class: enforced-gate
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_codex_history_sync_refuses_a_dangling_guardian_symlink
+    motivating_defect: a-dangling-guardian-path-is-a-broken-protection-layer-not-an-absent-optional-layer
+  - id: claude-route-isolated
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_claude_update_does_not_invoke_codex_history_guardian
+    motivating_defect: a-codex-cache-repair-must-not-change-an-unrelated-clients-native-update-contract
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
