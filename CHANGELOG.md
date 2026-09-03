@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.92.1] - 2026-09-03
+
+**One project's active pointer can no longer fail another project's aggregate
+conformance.** When the optional cache names a different project, the aggregate
+path now verifies stopped-project recovery and reports the foreign pointer as
+non-blocking diagnostic evidence. Explicit pointer validation remains strict,
+and malformed pointers still fail closed.
+
 ## [4.92.0] - 2026-09-03
 
 **A named project now resolves from the newest provable coherent state instead

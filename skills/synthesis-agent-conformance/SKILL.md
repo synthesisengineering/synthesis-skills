@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.9.0"
+  version: "1.9.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -139,6 +139,11 @@ no pending manifest and complete branch-head equality with the fetched upstream,
 not merely equality for commits touching the project subdirectory. Then open
 the project in the other client and confirm its SessionStart or first
 named-project turn recovers the same state.
+
+The aggregate `all` command treats a readable active pointer owned by another
+project as non-blocking diagnostic context and verifies stopped-project
+recovery instead. The explicit `pointer` command remains strict for whichever
+project the caller asks it to validate; malformed pointers fail in both modes.
 
 The continuity plane also runs causal project-state recovery. It enumerates
 every registered worktree and ref plus attributed manifests, receipts, pointer,

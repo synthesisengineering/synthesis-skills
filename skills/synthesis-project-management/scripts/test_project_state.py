@@ -549,9 +549,9 @@ def test_project_state_reliability_release_contract_is_coherent() -> None:
         json.loads((root / path).read_text(encoding="utf-8"))["version"]
         for path in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json")
     }
-    assert versions == {"4.92.0"}
-    assert "## [4.92.0] - 2026-09-03" in (root / "CHANGELOG.md").read_text(encoding="utf-8")
-    assert "Release **4.92.0**" in (root / "README.md").read_text(encoding="utf-8")
+    assert versions == {"4.92.1"}
+    assert "## [4.92.1] - 2026-09-03" in (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "Release **4.92.1**" in (root / "README.md").read_text(encoding="utf-8")
     hooks = json.loads((root / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     commands = [
         hook["command"]
@@ -562,7 +562,7 @@ def test_project_state_reliability_release_contract_is_coherent() -> None:
     expected = {
         "synthesis-project-management": "2.12.0",
         "synthesis-context-lifecycle": "1.18.0",
-        "synthesis-agent-conformance": "1.9.0",
+        "synthesis-agent-conformance": "1.9.1",
         "synthesis-autopilot": "2.1.0",
         "synthesis-repo-guard": "2.4.0",
     }
