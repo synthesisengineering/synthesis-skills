@@ -73,6 +73,9 @@ class Sandbox:
     def env_overrides(self):
         return {
             "HOME": str(self.home),
+            "XDG_CONFIG_HOME": str(self.home / ".config"),
+            "XDG_STATE_HOME": str(self.home / ".local" / "state"),
+            "XDG_DATA_HOME": str(self.home / ".local" / "share"),
             "SYNTHESIS_ONBOARD_HOME": str(self.home),
             "SYNTHESIS_ONBOARD_STATE_DIR": str(self.home / ".synthesis" / "onboarding"),
             "SYNTHESIS_WORKSPACES_ROOT": str(self.home / "workspaces"),
