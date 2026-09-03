@@ -132,11 +132,14 @@ def test_runtime_bytecode_does_not_invalidate_historical_source(
     )
     target.parent.mkdir()
     target.write_bytes(b"runtime bytecode\n")
+    temporary = target.with_name(f"{target.name}.123456789")
+    temporary.write_bytes(b"CPython atomic-write staging\n")
 
     record = guardian.restore_once(home)
 
     assert record["verified"] == 1
     assert target.read_bytes() == b"runtime bytecode\n"
+    assert temporary.read_bytes() == b"CPython atomic-write staging\n"
 
 
 @pytest.mark.parametrize(
@@ -145,6 +148,8 @@ def test_runtime_bytecode_does_not_invalidate_historical_source(
         ("skills/synthesis-autopilot/scripts/autopilot_gate.py", "changed source\n"),
         ("skills/synthesis-autopilot/scripts/autopilot_gate.pyc", "loose bytecode\n"),
         ("skills/synthesis-autopilot/scripts/__pycache__/unexpected.txt", "unknown\n"),
+        ("skills/synthesis-autopilot/scripts/__pycache__/hook.pyc.tmp", "unknown\n"),
+        ("skills/synthesis-autopilot/scripts/__pycache__/hook.pyc.notdigits", "unknown\n"),
     ],
 )
 def test_bytecode_exception_does_not_hide_source_or_unknown_drift(

@@ -794,11 +794,12 @@ def test_runtime_bytecode_cache_release_contract_is_public_and_coherent() -> Non
         and hook.get("command", "").startswith("python3 ")
     ]
 
-    assert release.source_version(repository)[0] == "4.91.2"
-    assert release.changelog_top_version(repository) == "4.91.2"
-    assert "Version 2.6.1" in manager and "__pycache__" in manager
+    assert release.source_version(repository)[0] == "4.91.3"
+    assert release.changelog_top_version(repository) == "4.91.3"
+    assert "Version 2.6.2" in manager and "__pycache__" in manager
+    assert "publisher" in manager and "one canonical integrity policy" in manager
     assert "running older tasks" in readme
-    assert "## [4.91.2]" in changelog
+    assert "## [4.91.3]" in changelog
     assert commands and all(command.startswith("python3 -B ") for command in commands)
 
 
@@ -1037,11 +1038,27 @@ def test_recovery_digest_ignores_client_metadata_but_rejects_unknown_extras(
     (installed / ".codex-marketplace-install.json").write_text(
         '{"revision":"fixture"}\n', encoding="utf-8"
     )
+    bytecode = installed / "skills/example/__pycache__/hook.cpython-312.pyc"
+    bytecode.parent.mkdir()
+    bytecode.write_bytes(b"first runtime bytecode\n")
+    temporary = bytecode.with_name(f"{bytecode.name}.123456789")
+    temporary.write_bytes(b"CPython atomic-write staging\n")
 
+    assert release._tree_digest(expected) == release._tree_digest(installed)
+    bytecode.write_bytes(b"changed while the release ran\n")
     assert release._tree_digest(expected) == release._tree_digest(installed)
 
     (installed / "unexpected").write_text("unowned\n", encoding="utf-8")
     assert release._tree_digest(expected) != release._tree_digest(installed)
+
+
+def test_recovery_digest_rejects_special_objects(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    os.mkfifo(root / "unexpected.pipe")
+
+    with pytest.raises(OSError, match="unsupported cache entry type"):
+        release._tree_digest(root)
 
 
 # --- install sequencing ----------------------------------------------------
@@ -1480,7 +1497,39 @@ def test_codex_refresh_repairs_if_existing_preserved_root_changes(
     assert "repaired 1" in restore.detail
 
 
-def test_codex_refresh_fails_if_unowned_extra_survives_repair(
+def test_codex_refresh_accepts_runtime_bytecode_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache_parent = tmp_path / "codex-cache"
+    old_root = cache_parent / "4.74.0"
+    old_root.mkdir(parents=True)
+    (old_root / "owned").write_text("before\n", encoding="utf-8")
+    bytecode = old_root / "skills/example/__pycache__/hook.cpython-312.pyc"
+    bytecode.parent.mkdir(parents=True)
+    bytecode.write_bytes(b"before runtime\n")
+
+    monkeypatch.setattr(release, "plugin_cache_parent", lambda client: cache_parent)
+    monkeypatch.setattr(release, "resolve_client_binary", lambda name: "/fake/codex")
+
+    def run(command, **_kwargs):
+        if command[1:3] == ["plugin", "add"]:
+            temporary = bytecode.with_name(f"{bytecode.name}.123456789")
+            temporary.write_bytes(b"CPython atomic-write staging\n")
+            bytecode.write_bytes(b"changed during refresh\n")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(release, "run", run)
+    result = release.Result()
+
+    assert release.refresh_client("codex", result, dry_run=False) is True
+    restore = next(
+        step for step in result.steps if step.name == "install.codex.cache-restore"
+    )
+    assert restore.ok is True
+    assert bytecode.read_bytes() == b"changed during refresh\n"
+
+
+def test_codex_refresh_atomically_replaces_unowned_extra(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cache_parent = tmp_path / "codex-cache"
@@ -1498,12 +1547,60 @@ def test_codex_refresh_fails_if_unowned_extra_survives_repair(
 
     monkeypatch.setattr(release, "run", run)
     result = release.Result()
-    assert release.refresh_client("codex", result, dry_run=False) is False
+    assert release.refresh_client("codex", result, dry_run=False) is True
     restore = next(
         step for step in result.steps if step.name == "install.codex.cache-restore"
     )
-    assert restore.ok is False
-    assert "recovery copy kept" in restore.detail
+    assert restore.ok is True
+    assert not (old_root / "unexpected").exists()
+
+
+def test_codex_refresh_does_not_write_through_nested_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache_parent = tmp_path / "codex-cache"
+    old_root = cache_parent / "4.74.0"
+    package = old_root / "pkg"
+    package.mkdir(parents=True)
+    outside = tmp_path / "outside.py"
+    outside.write_text("outside sentinel\n", encoding="utf-8")
+    (package / "module.py").symlink_to(outside)
+    backup = tmp_path / "synthesis-codex-cache-fixture"
+    trusted = backup / "4.74.0" / "pkg/module.py"
+    trusted.parent.mkdir(parents=True)
+    trusted.write_text("trusted source\n", encoding="utf-8")
+    snapshot = release.CodexCacheSnapshot(backup, ("4.74.0",))
+    monkeypatch.setattr(release, "plugin_cache_parent", lambda client: cache_parent)
+    monkeypatch.setattr(
+        release, "_remove_transition_backup", lambda path: shutil.rmtree(path)
+    )
+    result = release.Result()
+
+    assert release.restore_codex_caches(snapshot, result)
+    assert outside.read_text(encoding="utf-8") == "outside sentinel\n"
+    repaired = old_root / "pkg/module.py"
+    assert repaired.is_file() and not repaired.is_symlink()
+    assert repaired.read_text(encoding="utf-8") == "trusted source\n"
+
+
+def test_atomic_cache_repair_rolls_back_failed_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    parent = tmp_path / "cache"
+    source = tmp_path / "snapshot" / "4.74.0"
+    destination = parent / "4.74.0"
+    source.mkdir(parents=True)
+    destination.mkdir(parents=True)
+    (source / "marker").write_text("trusted\n", encoding="utf-8")
+    (destination / "marker").write_text("original\n", encoding="utf-8")
+    digests = iter(("staged", "staged", "source", "changed"))
+    monkeypatch.setattr(release, "_tree_digest", lambda _path: next(digests))
+
+    with pytest.raises(OSError, match="atomically repaired root differs"):
+        release._replace_cache_root(source, destination, parent)
+
+    assert (destination / "marker").read_text(encoding="utf-8") == "original\n"
+    assert not list(parent.glob(".release-*-4.74.0-*"))
 
 
 def test_codex_refresh_does_not_run_when_cache_snapshot_fails(
