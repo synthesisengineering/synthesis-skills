@@ -53,6 +53,8 @@ changed_surfaces:
     cases: [resolver-matrix, lifecycle-stop, release-contract]
   - path: skills/synthesis-repo-guard/SKILL.md
     cases: [lifecycle-stop, release-contract]
+  - path: skills/synthesis-skills-manager/scripts/test_release.py
+    cases: [release-contract]
 cases:
   - id: resolver-matrix
     control_class: acceptance-test

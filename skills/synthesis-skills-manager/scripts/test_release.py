@@ -794,8 +794,12 @@ def test_cache_guardian_lock_release_contract_is_public_and_coherent() -> None:
         and hook.get("command", "").startswith("python3 ")
     ]
 
-    assert release.source_version(repository)[0] == "4.91.4"
-    assert release.changelog_top_version(repository) == "4.91.4"
+    # This is a historical feature contract. Current release metadata must
+    # agree without pinning every later release to the version that introduced
+    # the feature.
+    current = release.source_version(repository)[0]
+    assert current is not None
+    assert release.changelog_top_version(repository) == current
     assert "Version 2.6.3" in manager and "wait up to 120 seconds" in manager
     assert "watcher and explicit one-shot mode stay nonblocking" in manager
     assert "bounded failure" in readme
