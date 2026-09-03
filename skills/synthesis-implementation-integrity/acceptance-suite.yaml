@@ -14,6 +14,14 @@ metadata_class: acceptance-test
 issues_authority_receipt: false
 unverified_remainder: the real installed AR-008 probe, Codex human trust, current client lifecycle receipts, historical-cache invariants, and the final installed updater are verified after the gated publisher activates this release
 changed_surfaces:
+  - path: .claude-plugin/plugin.json
+    cases: [release-surfaces, release-contract]
+  - path: .codex-plugin/plugin.json
+    cases: [release-surfaces, release-contract]
+  - path: CHANGELOG.md
+    cases: [release-surfaces, release-contract]
+  - path: README.md
+    cases: [release-surfaces, release-contract]
   - path: skills/synthesis-agent-conformance/SKILL.md
     cases: [workspace-registry-contract]
   - path: skills/synthesis-agent-conformance/scripts/session_context.py
@@ -27,6 +35,14 @@ cases:
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
     motivating_defect: a-release-manifest-could-claim-closed-membership-with-unmapped-or-invalid-cases
+  - id: release-surfaces
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_release_surfaces_agree_and_public_commands_are_pinned
+    motivating_defect: versioned-source-surfaces-could-disagree-at-the-release-boundary
+  - id: release-contract
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
+    motivating_defect: project-state-release-surfaces-could-advance-without-the-runtime-contract
   - id: workspace-registry-contract
     control_class: acceptance-test
     fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_skill_documents_workspace_registry_freshness_notice

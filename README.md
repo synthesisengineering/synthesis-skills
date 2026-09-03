@@ -11,6 +11,13 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Session start now detects stale project registries before recovery reads
+them (September 2026).** Release **4.93.1** checks the immediately discoverable
+Git-tracked project registries when a root-level task has no active pointer. A
+checkout behind its fetched upstream produces a staleness warning; an
+uncomparable registry produces an `UNKNOWN` result. Project selection remains
+with the causal resolver. See the [4.93.1 release notes](CHANGELOG.md).
+
 **The installed system now tells the truth about itself (September 2026).**
 Release **4.93.0** makes organization enrollment work from an installed
 immutable release, lets a fresh Claude session complete the live-loaded plane,

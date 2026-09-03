@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.93.1] - 2026-09-03
+
+**Session start now catches a stale canonical project registry before
+named-project recovery reads it.** When no active pointer exists and a task
+starts at a workspace or knowledge-repository root, the lifecycle hook checks
+only the immediately discoverable Git-tracked project registries against their
+fetched upstreams. It emits a staleness warning when a checkout is provably
+behind and an `UNKNOWN` result when freshness cannot be compared. The causal
+resolver still owns project selection; timestamps do not choose a winner.
+
 ## [4.93.0] - 2026-09-03
 
 **The installed system now tells the truth about itself and works from an
