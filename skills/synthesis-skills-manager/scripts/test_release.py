@@ -775,7 +775,7 @@ def test_delayed_cache_guardian_release_contract_is_public_and_coherent() -> Non
     assert "## [4.77.1]" in changelog
 
 
-def test_runtime_bytecode_cache_release_contract_is_public_and_coherent() -> None:
+def test_cache_guardian_lock_release_contract_is_public_and_coherent() -> None:
     repository = Path(__file__).resolve().parents[3]
     manager = (repository / "skills/synthesis-skills-manager/SKILL.md").read_text(
         encoding="utf-8"
@@ -794,12 +794,12 @@ def test_runtime_bytecode_cache_release_contract_is_public_and_coherent() -> Non
         and hook.get("command", "").startswith("python3 ")
     ]
 
-    assert release.source_version(repository)[0] == "4.91.3"
-    assert release.changelog_top_version(repository) == "4.91.3"
-    assert "Version 2.6.2" in manager and "__pycache__" in manager
-    assert "publisher" in manager and "one canonical integrity policy" in manager
-    assert "running older tasks" in readme
-    assert "## [4.91.3]" in changelog
+    assert release.source_version(repository)[0] == "4.91.4"
+    assert release.changelog_top_version(repository) == "4.91.4"
+    assert "Version 2.6.3" in manager and "wait up to 120 seconds" in manager
+    assert "watcher and explicit one-shot mode stay nonblocking" in manager
+    assert "bounded failure" in readme
+    assert "## [4.91.4]" in changelog
     assert commands and all(command.startswith("python3 -B ") for command in commands)
 
 

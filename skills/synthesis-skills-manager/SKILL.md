@@ -5,12 +5,20 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.6.2"
+  version: "2.6.3"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+
+**Version 2.6.3** (2026-09-03) makes synchronous historical-cache verification
+wait up to 120 seconds for the shared transition lock. This covers a complete
+budgeted historical-root restore and serializes an
+onboarding completion check behind an ordinary background guardian pass instead
+of reporting a false release collision. Watch and `--once` work remain
+nonblocking; persistent publisher contention still fails closed after the
+bounded wait.
 
 **Version 2.6.2** (2026-09-03) makes the publisher and the durable guardian
 consume one canonical integrity policy. The release snapshot and quiet-window
@@ -338,8 +346,11 @@ The sequence, each stage gating the next:
   preceding version is available before older roots during a large recovery.
   The onboarding engine invokes the installed guardian synchronously after a
   Codex refresh and refuses to report success until the invoking task's exact
-  version root and hook targets are present. The watcher continues protecting
-  those roots against later reconciliation after either command exits.
+  version root and hook targets are present. That synchronous doctor waits up
+  to 120 seconds for a guardian pass already holding the transition lock; the
+  watcher and explicit one-shot mode stay nonblocking. The watcher continues
+  protecting those roots against later reconciliation after either command
+  exits.
   The archive has a 512 MiB hard budget and never deletes a historical root
   automatically when that budget is reached; unverifiable cleanup fails the
   release closed. Symlink recovery artifacts and client liveness markers are not
