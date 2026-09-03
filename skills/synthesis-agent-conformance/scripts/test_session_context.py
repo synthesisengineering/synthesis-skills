@@ -18,6 +18,15 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 from coordination_schema import identity_from_uuid
+import system_contract
+
+
+@pytest.fixture(autouse=True)
+def isolate_authoritative_system_state(tmp_path: Path, monkeypatch) -> None:
+    """Lifecycle receipt tests must never attach evidence to the real machine."""
+    monkeypatch.setenv("SYNTHESIS_HOME", str(tmp_path))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
 
 
 def test_next_actions_prefers_unchecked_items() -> None:
@@ -237,6 +246,48 @@ def test_live_receipt_records_real_sessionstart_shape(
         "source": "startup",
         "transcript_path": str(transcript),
     }
+    state = system_contract.SystemState()
+    version = json.loads(
+        (MODULE.SCRIPTS_DIR.parents[2] / ".codex-plugin" / "plugin.json").read_text(
+            encoding="utf-8"
+        )
+    )["version"]
+    desired = system_contract.default_desired_state(
+        "skills-only", ["codex"], "stable"
+    )
+    state.run_transaction(
+        "setup",
+        desired,
+        lambda _tx: {
+            "release": {
+                "schema_version": 1,
+                "version": version,
+                "channel": "pin",
+                "ref": "v%s" % version,
+                "commit": "1" * 40,
+                "tree": "2" * 40,
+                    "content_digest": system_contract.canonical_tracked_tree_digest(
+                        MODULE.SCRIPTS_DIR.parents[2],
+                        {
+                            relative
+                            for relative, metadata, _path in system_contract._iter_tree(
+                                MODULE.SCRIPTS_DIR.parents[2]
+                            )
+                            if _path.is_file()
+                        },
+                    ),
+                "digest_algorithm": system_contract.DIGEST_ALGORITHM,
+                "tree_policy": system_contract.TREE_POLICY,
+                "source_url": "https://example.test/synthesis-skills.git",
+                "resolved_at": datetime.now(timezone.utc).isoformat(),
+            },
+            "source-provenance": {
+                "status": "verified",
+                "root": str(MODULE.SCRIPTS_DIR.parents[2]),
+            },
+            "live-loaded": {"status": "restart-required"},
+        },
+    )
 
     assert MODULE.record_live_receipt(payload, receipt)
     recorded = json.loads(receipt.read_text(encoding="utf-8"))
@@ -261,6 +312,9 @@ def test_live_receipt_records_real_sessionstart_shape(
     assert event_path.is_file()
     assert json.loads(event_path.read_text(encoding="utf-8")) == recorded
     assert not list(receipt.parent.glob("*.tmp"))
+    observed = state.read_observation()["transactions"][-1]
+    assert observed["live-loaded"]["status"] == "verified"
+    assert observed["live-loaded"]["receipts"]["codex"]["session_id"] == payload["session_id"]
 
 
 def test_live_receipt_preserves_prior_session_when_latest_advances(

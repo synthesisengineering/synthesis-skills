@@ -48,19 +48,19 @@
       "id": "agent-kernel",
       "title": "Agent kernel",
       "probe": "agent-kernel",
-      "description": "One user-owned instruction source rendered for Claude Code and Codex."
+      "description": "One Git-tracked instruction source exposed to both supported clients."
     },
     {
       "id": "runtime-engines",
       "title": "Runtime engines",
       "probe": "runtime-engines",
-      "description": "Durable local engines and launchers under ~/.synthesis."
+      "description": "Durable local engines and launchers under the synthesis state root."
     },
     {
       "id": "coordination",
       "title": "Coordination",
       "probe": "coordination",
-      "description": "Lease-aware session board, claims, and handoff machinery."
+      "description": "Lease-aware session claims, messages, and handoff machinery."
     },
     {
       "id": "doctors-conformance",
@@ -76,21 +76,21 @@
     },
     {
       "id": "organization",
-      "title": "Organization layer",
+      "title": "Organization",
       "probe": "organization",
-      "description": "Optional organization manifest, shared skills, and knowledge access."
+      "description": "Optional declarative organization configuration and knowledge access."
     },
     {
       "id": "knowledge-bases",
       "title": "Knowledge bases",
       "probe": "knowledge-bases",
-      "description": "Personal and optional organization knowledge repositories."
+      "description": "Git-backed personal and optional organization knowledge repositories."
     },
     {
       "id": "lifecycle",
       "title": "Lifecycle",
       "probe": "lifecycle",
-      "description": "Release channel policy, update notice, convergence, and receipts."
+      "description": "Release policy, update notice, reconciliation, and receipts."
     }
   ]
 }

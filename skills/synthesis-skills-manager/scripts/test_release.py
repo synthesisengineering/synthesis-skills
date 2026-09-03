@@ -207,12 +207,17 @@ def test_required_checks_execute_whole_system_onboarding_contract() -> None:
         "python3",
         "-m",
         "pytest",
-        "skills/synthesis-onboarding/scripts/test_onboard.py",
+        "skills/synthesis-onboarding/scripts/",
         "-q",
     ]
     assert commands["onboarding.catalog-scaffolds"] == [
         "python3",
         "skills/synthesis-onboarding/scripts/check_scaffolds.py",
+        ".",
+    ]
+    assert commands["onboarding.capabilities"] == [
+        "python3",
+        "skills/synthesis-onboarding/scripts/check_capabilities.py",
         ".",
     ]
 
@@ -385,11 +390,86 @@ def test_repository_ci_executes_release_wiring_tests() -> None:
     )
 
     assert "python skills/synthesis-onboarding/scripts/check_scaffolds.py ." in workflow
+    assert "python skills/synthesis-onboarding/scripts/check_capabilities.py ." in workflow
     assert "ubuntu-latest, macos-latest" in workflow
     assert (
         "python -m pytest skills/synthesis-skills-manager/scripts/test_release.py -q"
         in workflow
     )
+
+
+def test_publisher_activates_cli_through_public_release_verifier(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cli = repo / "skills" / "synthesis-onboarding" / "scripts" / "synthesis_cli.py"
+    cli.parent.mkdir(parents=True)
+    cli.write_text("print('fixture')\n", encoding="utf-8")
+    assert release.run(["git", "init", "-q", "-b", "main"], cwd=repo).returncode == 0
+    assert release.run(["git", "config", "user.name", "Fixture"], cwd=repo).returncode == 0
+    assert release.run(["git", "config", "user.email", "fixture@example.test"], cwd=repo).returncode == 0
+    assert release.run(["git", "config", "core.hooksPath", "/dev/null"], cwd=repo).returncode == 0
+    assert release.run(["git", "add", "-A"], cwd=repo).returncode == 0
+    assert release.run(["git", "commit", "-q", "-m", "fixture"], cwd=repo).returncode == 0
+    version = release.source_version(repo)[0]
+    assert version
+    assert release.run(["git", "tag", "v%s" % version], cwd=repo).returncode == 0
+    manifest = repo / ".codex-plugin" / "plugin.json"
+    # The repository fixture is already tagged at its manifest version.
+    test_home = tmp_path.parent / (tmp_path.name + "-home")
+    monkeypatch.setenv("SYNTHESIS_HOME", str(test_home))
+    result = release.Result()
+    assert release.activate_published_cli(repo, version, result, dry_run=False)
+    launcher = test_home / ".local" / "bin" / "synthesis"
+    active = test_home / ".local" / "state" / "synthesis" / "active-release.json"
+    assert launcher.is_file()
+    descriptor = json.loads(active.read_text(encoding="utf-8"))
+    assert descriptor["version"] == json.loads(manifest.read_text())["version"]
+    assert Path(descriptor["release_root"]).is_dir()
+
+
+def test_cli_activation_refuses_to_manufacture_a_missing_release_tag(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cli = repo / "skills" / "synthesis-onboarding" / "scripts" / "synthesis_cli.py"
+    cli.parent.mkdir(parents=True)
+    cli.write_text("print('fixture')\n", encoding="utf-8")
+    assert release.run(["git", "init", "-q", "-b", "main"], cwd=repo).returncode == 0
+    assert release.run(["git", "config", "user.name", "Fixture"], cwd=repo).returncode == 0
+    assert release.run(["git", "config", "user.email", "fixture@example.test"], cwd=repo).returncode == 0
+    assert release.run(["git", "config", "core.hooksPath", "/dev/null"], cwd=repo).returncode == 0
+    assert release.run(["git", "add", "-A"], cwd=repo).returncode == 0
+    assert release.run(["git", "commit", "-q", "-m", "fixture"], cwd=repo).returncode == 0
+    version = release.source_version(repo)[0]
+    assert version
+    monkeypatch.setenv("SYNTHESIS_HOME", str(tmp_path / "home"))
+    result = release.Result()
+    assert not release.activate_published_cli(repo, version, result, dry_run=False)
+    missing = release.run(
+        ["git", "rev-parse", "--verify", "refs/tags/v%s" % version], cwd=repo
+    )
+    assert missing.returncode != 0
+
+
+def test_install_only_preflight_rejects_dirty_or_untagged_source(
+    repo: Path,
+) -> None:
+    assert release.run(["git", "init", "-q", "-b", "main"], cwd=repo).returncode == 0
+    assert release.run(["git", "config", "user.name", "Fixture"], cwd=repo).returncode == 0
+    assert release.run(["git", "config", "user.email", "fixture@example.test"], cwd=repo).returncode == 0
+    assert release.run(["git", "config", "core.hooksPath", "/dev/null"], cwd=repo).returncode == 0
+    assert release.run(["git", "add", "-A"], cwd=repo).returncode == 0
+    assert release.run(["git", "commit", "-q", "-m", "fixture"], cwd=repo).returncode == 0
+    result = release.Result()
+    assert release.preflight(repo, result, install_only=True) == "9.9.9"
+    checks = {step.name: step.ok for step in result.steps}
+    assert checks["preflight.release-tag"] is False
+    (repo / "dirty").write_text("dirty\n", encoding="utf-8")
+    assert release.run(["git", "tag", "v9.9.9"], cwd=repo).returncode == 0
+    dirty_result = release.Result()
+    assert release.preflight(repo, dirty_result, install_only=True) == "9.9.9"
+    checks = {step.name: step.ok for step in dirty_result.steps}
+    assert checks["preflight.tree-clean"] is False
+    assert checks["preflight.release-tag"] is True
 
 
 def test_required_checks_execute_r5_integrity_suite() -> None:
@@ -718,12 +798,12 @@ def test_whole_system_onboarding_release_contract_is_public_and_coherent() -> No
     (version,) = versions
     assert all(part.isdigit() for part in version.split(".")), version
     assert version.count(".") == 2, version
-    assert "set -- init" in bootstrap
-    assert "eleven layers" in readme
+    assert "set -- setup" in bootstrap
+    assert "synthesis doctor" in readme
     assert "Skills-only alternative" in readme
-    assert "stable PostToolUse hook" in onboarding
-    assert "git_name" in onboarding and "repository, never globally" in onboarding
-    assert "does not change global Git configuration" in readme
+    assert ".agents/workspace-AGENTS.md" in onboarding
+    assert "content-addressed generation" in onboarding
+    assert "synthesis workspace ensure" in readme
     assert "default_branch" in org_manifest
     assert "whole-system onboarding suite" in manager
 
@@ -767,7 +847,8 @@ def test_quick_answers_self_bootstrap_release_contract_is_public_and_coherent() 
     assert "v1.2.0" in changelog
     # Setup no longer assumes a personal knowledge workspace already exists,
     # and no longer leaves "automatic" as an unstated implementation detail.
-    assert "onboard.py init-workspace" in skill
+    assert "synthesis workspace ensure" in skill
+    assert ".agents/workspace-AGENTS.md" in skill
     assert "AGENTS.md" in skill and "CLAUDE.md" in skill
     assert "synthesis-onboarding" in skill
     # The receipt-verification sentence that reads as internal agent protocol

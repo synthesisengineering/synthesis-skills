@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synthesisengineering.org/schemas/release-descriptor-v1.json",
+  "title": "Synthesis immutable release descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "oneOf": [
+    {"properties": {"channel": {"const": "stable"}, "ref": {"const": "stable"}}},
+    {"properties": {"channel": {"const": "edge"}, "ref": {"const": "main"}}},
+    {"properties": {"channel": {"const": "pin"}, "ref": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"}}}
+  ],
+  "required": [
+    "schema_version",
+    "version",
+    "channel",
+    "ref",
+    "commit",
+    "tree",
+    "content_digest",
+    "digest_algorithm",
+    "tree_policy",
+    "source_url",
+    "resolved_at"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "channel": {"enum": ["stable", "edge", "pin"]},
+    "ref": {"type": "string", "pattern": "^(stable|main|v[0-9]+\\.[0-9]+\\.[0-9]+)$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "content_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "digest_algorithm": {"const": "sha256-tree-v1"},
+    "tree_policy": {"const": "regular-files-and-directories-no-links-v1"},
+    "source_url": {"type": "string", "pattern": "^https://"},
+    "resolved_at": {"type": "string", "format": "date-time"}
+  }
+}

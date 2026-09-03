@@ -2,6 +2,7 @@
 set -eu
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+DIRECT_COPY="$REPO_ROOT/skills/synthesis-onboarding/scripts/direct_copy.sh"
 TEST_ROOT=$(mktemp -d)
 TARGET="${TEST_ROOT}/installed"
 GIT_FILE_SOURCE="${TEST_ROOT}/git-file-source"
@@ -17,7 +18,7 @@ trap cleanup EXIT INT TERM
 SYNTHESIS_SKILLS_HOME="$TEST_ROOT" \
 SYNTHESIS_SKILLS_SOURCE_DIR="$REPO_ROOT" \
 SYNTHESIS_SKILLS_TARGETS="$TARGET" \
-    "$REPO_ROOT/install.sh" install >/dev/null
+    "$DIRECT_COPY" install >/dev/null
 
 expected=$(find "$REPO_ROOT/skills" -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')
 actual=$(find "$TARGET" -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')
@@ -29,13 +30,21 @@ grep -q '"source_path": "skills/synthesis-agent-conformance/SKILL.md"' \
 SYNTHESIS_SKILLS_HOME="$TEST_ROOT" \
 SYNTHESIS_SKILLS_SOURCE_DIR="$REPO_ROOT" \
 SYNTHESIS_SKILLS_TARGETS="$TARGET" \
+    "$DIRECT_COPY" status >/dev/null
+
+# The root compatibility door delegates explicit source/target requests to the
+# same direct-copy capability; the rest of this file tests that capability
+# directly so public CLI state cannot leak into these isolated fixtures.
+SYNTHESIS_SKILLS_HOME="$TEST_ROOT" \
+SYNTHESIS_SKILLS_SOURCE_DIR="$REPO_ROOT" \
+SYNTHESIS_SKILLS_TARGETS="$TARGET" \
     "$REPO_ROOT/install.sh" status >/dev/null
 
 printf '\nDRIFT\n' >> "$TARGET/synthesis-agent-conformance/SKILL.md"
 if SYNTHESIS_SKILLS_HOME="$TEST_ROOT" \
    SYNTHESIS_SKILLS_SOURCE_DIR="$REPO_ROOT" \
    SYNTHESIS_SKILLS_TARGETS="$TARGET" \
-       "$REPO_ROOT/install.sh" status >/dev/null 2>&1; then
+       "$DIRECT_COPY" status >/dev/null 2>&1; then
     echo "status accepted a drifted installation" >&2
     exit 1
 fi
@@ -43,12 +52,12 @@ fi
 SYNTHESIS_SKILLS_HOME="$TEST_ROOT" \
 SYNTHESIS_SKILLS_SOURCE_DIR="$REPO_ROOT" \
 SYNTHESIS_SKILLS_TARGETS="$TARGET" \
-    "$REPO_ROOT/install.sh" install >/dev/null
+    "$DIRECT_COPY" install >/dev/null
 
 SYNTHESIS_SKILLS_HOME="$TEST_ROOT" \
 SYNTHESIS_SKILLS_SOURCE_DIR="$REPO_ROOT" \
 SYNTHESIS_SKILLS_TARGETS="$TARGET" \
-    "$REPO_ROOT/install.sh" uninstall >/dev/null
+    "$DIRECT_COPY" uninstall >/dev/null
 
 [ ! -d "$TARGET/synthesis-agent-conformance" ]
 [ -z "$(find "$TARGET" -mindepth 1 -maxdepth 1 -type d -name 'synthesis-*' -print -quit)" ]
@@ -59,11 +68,11 @@ WORKTREE_TARGET="${TEST_ROOT}/worktree-installed"
 SYNTHESIS_SKILLS_HOME="$TEST_ROOT" \
 SYNTHESIS_SKILLS_SOURCE_DIR="$GIT_FILE_SOURCE" \
 SYNTHESIS_SKILLS_TARGETS="$WORKTREE_TARGET" \
-    "$REPO_ROOT/install.sh" install >/dev/null
+    "$DIRECT_COPY" install >/dev/null
 SYNTHESIS_SKILLS_HOME="$TEST_ROOT" \
 SYNTHESIS_SKILLS_SOURCE_DIR="$GIT_FILE_SOURCE" \
 SYNTHESIS_SKILLS_TARGETS="$WORKTREE_TARGET" \
-    "$REPO_ROOT/install.sh" uninstall >/dev/null
+    "$DIRECT_COPY" uninstall >/dev/null
 [ -z "$(find "$WORKTREE_TARGET" -mindepth 1 -maxdepth 1 -type d -name 'synthesis-*' -print -quit)" ]
 git -C "$REPO_ROOT" worktree remove "$GIT_FILE_SOURCE" >/dev/null
 
@@ -71,11 +80,11 @@ PROVENANCE_TARGET="${TEST_ROOT}/provenance-installed"
 SYNTHESIS_SKILLS_HOME="$TEST_ROOT" \
 SYNTHESIS_SKILLS_SOURCE_DIR="$REPO_ROOT" \
 SYNTHESIS_SKILLS_TARGETS="$PROVENANCE_TARGET" \
-    "$REPO_ROOT/install.sh" install >/dev/null
+    "$DIRECT_COPY" install >/dev/null
 XDG_CACHE_HOME="${TEST_ROOT}/empty-cache" \
 SYNTHESIS_SKILLS_HOME="$TEST_ROOT" \
 SYNTHESIS_SKILLS_TARGETS="$PROVENANCE_TARGET" \
-    "$REPO_ROOT/install.sh" uninstall >/dev/null
+    "$DIRECT_COPY" uninstall >/dev/null
 [ -z "$(find "$PROVENANCE_TARGET" -mindepth 1 -maxdepth 1 -type d -name 'synthesis-*' -print -quit)" ]
 
 PLUGIN_HOME="${TEST_ROOT}/plugin-home"
@@ -94,20 +103,20 @@ for plugin_target in \
     SYNTHESIS_SKILLS_HOME="$PLUGIN_HOME" \
     SYNTHESIS_SKILLS_SOURCE_DIR="$REPO_ROOT" \
     SYNTHESIS_SKILLS_TARGETS="$plugin_target" \
-        "$REPO_ROOT/install.sh" install >/dev/null
+        "$DIRECT_COPY" install >/dev/null
 done
 
 PATH="$PLUGIN_BIN:$PATH" \
 SYNTHESIS_SKILLS_HOME="$PLUGIN_HOME" \
 SYNTHESIS_SKILLS_SOURCE_DIR="$REPO_ROOT" \
 XDG_CACHE_HOME="$TEST_ROOT/plugin-cache" \
-    "$REPO_ROOT/install.sh" install >/dev/null
+    "$DIRECT_COPY" install >/dev/null
 
 PLUGIN_STATUS=$(
     PATH="$PLUGIN_BIN:$PATH" \
     SYNTHESIS_SKILLS_HOME="$PLUGIN_HOME" \
     XDG_CACHE_HOME="$TEST_ROOT/stale-plugin-cache" \
-        "$REPO_ROOT/install.sh" status 2>&1
+        "$DIRECT_COPY" status 2>&1
 )
 printf '%s\n' "$PLUGIN_STATUS" | grep -q 'Claude Code plugin: installed and enabled'
 printf '%s\n' "$PLUGIN_STATUS" | grep -q 'Codex plugin:       installed and enabled'
@@ -124,7 +133,7 @@ DISABLED_STATUS=$(
     PATH="$PLUGIN_BIN:$PATH" \
     SYNTHESIS_SKILLS_HOME="$PLUGIN_HOME" \
     SYNTHESIS_SKILLS_TARGETS="$TEST_ROOT/disabled-target" \
-        "$REPO_ROOT/install.sh" status 2>&1 || true
+        "$DIRECT_COPY" status 2>&1 || true
 )
 printf '%s\n' "$DISABLED_STATUS" | grep -q 'Claude Code plugin: not installed or disabled'
 printf '%s\n' "$DISABLED_STATUS" | grep -q 'Codex plugin:       not installed or disabled'
@@ -150,7 +159,7 @@ OVERRIDE_STATUS=$(
     SYNTHESIS_CODEX_BIN="$PLUGIN_BIN/codex" \
     SYNTHESIS_SKILLS_HOME="$PLUGIN_HOME" \
     XDG_CACHE_HOME="$TEST_ROOT/override-cache" \
-        "$REPO_ROOT/install.sh" status 2>&1
+        "$DIRECT_COPY" status 2>&1
 )
 printf '%s\n' "$OVERRIDE_STATUS" | grep -q 'Claude Code plugin: installed and enabled'
 printf '%s\n' "$OVERRIDE_STATUS" | grep -q 'Codex plugin:       installed and enabled'
@@ -161,7 +170,7 @@ EMPTY_OVERRIDE_STATUS=$(
     SYNTHESIS_CODEX_BIN= \
     SYNTHESIS_SKILLS_HOME="$PLUGIN_HOME" \
     SYNTHESIS_SKILLS_TARGETS="$TEST_ROOT/empty-override-target" \
-        "$REPO_ROOT/install.sh" status 2>&1 || true
+        "$DIRECT_COPY" status 2>&1 || true
 )
 printf '%s\n' "$EMPTY_OVERRIDE_STATUS" | grep -q 'Claude Code plugin: not installed or disabled'
 printf '%s\n' "$EMPTY_OVERRIDE_STATUS" | grep -q 'Codex plugin:       not installed or disabled'

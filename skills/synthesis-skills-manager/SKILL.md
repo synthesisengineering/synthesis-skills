@@ -5,12 +5,19 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.5.1"
+  version: "2.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+
+**Version 2.6.0** (2026-09-02) makes public CLI activation part of the same
+gated release transaction as source publication and dual-client verification.
+The release manager resolves the immutable version tag, materializes its exact
+commit, Git tree, and canonical content digest under the synthesis-owned release
+store, and atomically activates the managed launcher and descriptor only after
+both supported clients verify the release.
 
 **Version 2.5.1** (2026-09-02) prioritizes the newest historical Codex roots
 during recovery, so the version most likely to be pinned by a just-updated task
@@ -269,7 +276,7 @@ python3 .../release.py --install-only  # refresh + verify clients (new machine, 
 
 The sequence, each stage gating the next:
 
-**preflight → required checks → publish → install both clients → verify**
+**preflight → required checks → publish → install both clients → verify → activate public CLI**
 
 - **Preflight** refuses to proceed unless both plugin manifests agree, the
   newest CHANGELOG entry matches them, and the tree is clean. It also refuses
@@ -323,6 +330,14 @@ The sequence, each stage gating the next:
 - **Verify** is the point of the whole script, and it checks each client
   **twice**: what the CLI reports, and the plugin manifest at the path the CLI
   says it loads. Agreement of both with the source version is the only pass.
+- **Activate public CLI** resolves the newly published immutable tag back to the
+  accepted commit, Git tree, and canonical content digest, materializes that
+  generation under the synthesis-owned content-addressed release store, and
+  atomically switches the managed `synthesis` launcher and active descriptor.
+  The release manager also writes the same immutable descriptor into the release
+  descriptor store, so the launcher cannot silently follow a mutable checkout or
+  disagree with the release that both clients verified. User-selected desired
+  state remains owned by `synthesis setup` and later reconciliation commands.
 
 ### Why a client's own version report is not sufficient evidence
 

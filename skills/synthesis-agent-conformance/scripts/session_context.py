@@ -55,6 +55,7 @@ from live_receipt import (
     validate_receipt_event_directory,
 )
 from plugin_currency import sessionstart_notice
+from system_contract import SystemState
 
 
 DEFAULT_POINTER = Path.home() / ".synthesis" / "active-project.json"
@@ -293,6 +294,8 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
         atomic_json_write(event_path, receipt)
         _write_latest_if_newer(client_latest, receipt)
         _write_latest_if_newer(generic_latest, receipt)
+    if version and transcript_bound_at_record:
+        SystemState().record_live_load(receipt=receipt)
     return True
 
 

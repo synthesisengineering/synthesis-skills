@@ -11,6 +11,15 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**One bootstrap now installs and manages the complete public system (September
+2026).** Release **4.91.0** adds the stable `synthesis` CLI, immutable release
+resolution, full and skills-only profiles, tracked dual-client workspace
+instructions, declarative organization enrollment, transactional desired and
+observed state, six-plane doctor results, and public outcome verification.
+Updates remain explicit. The release gate activates the same content-addressed
+generation that both clients verified. See the [4.91.0 release
+notes](CHANGELOG.md).
+
 **Peer sessions are addressed by resolver-issued receipts, never by name
 (September 2026).** Releases **4.90.0** through **4.90.3** gate every direct session-to-session
 send in both clients on a delivery receipt from `coordination.py resolve`,
@@ -663,39 +672,50 @@ without tool-owned workflow copies or date-field drift. See the
 
 ## Install
 
-### One-command onboarding (new machines, non-engineers, whole ecosystem)
+### Complete synthesis work system
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh
 ```
 
-The guided `synthesis-onboarding init` flow converges the whole work system:
-skills, SessionStart context, stable commit and pre-send gates, a personal
-knowledge workspace, user-authored policy, one instruction-kernel source for
-both clients, runtime engines, coordination, conformance tools, and lifecycle
-receipts. Its doctor always prints all eleven layers as `installed`, `declined`,
-or `missing`; a selected missing layer is never silently green.
-When Git has no author identity, the guided interview collects one for the new
-personal repository before it changes the machine. Reviewed non-interactive
-answers provide the same values as `git_name` and `git_email`; the installer
-does not change global Git configuration.
-Close active Claude Code and Codex sessions before re-running the bootstrap;
-it explicitly updates versioned plugin caches, repairs the remaining setup,
-and never overwrites files you edited. The kernel's 55 KB budget is checked
-before generation, and a stable edit hook propagates valid source changes to
-both client files. Organizations layer their own knowledge bases and shared
-skills on the same engine with one declarative manifest (no installer code).
-Stable is the default release channel, edge follows `main`, and organizations
-can pin an exact plugin version in the manifest;
-see `skills/synthesis-onboarding/references/org-manifest.md`.
+This is the primary install path for a new machine. It resolves one immutable
+release, verifies its tag, commit, Git tree, manifests, and content digest,
+then installs the stable `synthesis` command. Guided setup converges skills,
+SessionStart context, gates, a Git-backed personal knowledge workspace, one
+tracked instruction source for both clients, runtime engines, coordination,
+conformance tools, policy, and lifecycle state.
 
-### Skills-only alternative: native plugin for ChatGPT, Codex, and Claude Code
+Useful lifecycle commands after setup:
 
-Choose this route when you want the portable skill catalog and plugin lifecycle
-without the personal policy, stable runtime engines, kernel generator, or
-knowledge workspace. The repository is a dual-runtime plugin: the same
-`skills/` source tree is packaged for the ChatGPT/Codex plugin system and
-Claude Code.
+```bash
+synthesis status
+synthesis doctor
+synthesis update
+synthesis repair
+synthesis workspace ensure --name my-workspace
+```
+
+Stable is the default. Use `--channel edge` to follow `main`, or `--pin X.Y.Z`
+for an exact release. Organization enrollment uses `--org-repo URL` or a
+credential-free, time-bounded `--invite FILE`; organization repositories carry
+declarative data and one tracked instruction source, never installer code.
+
+Updates are explicit. Make an update the initiating task's last action, restart
+the selected clients, and verify a fresh lifecycle receipt before treating the
+new release as live-loaded.
+
+### Skills-only alternative
+
+The same audited bootstrap can install only the portable skill and lifecycle
+layers:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh -s -- setup --profile skills-only
+```
+
+Native plugin commands are the client-specific alternative when you only want
+the skill catalog:
+
 
 ```bash
 # Codex / ChatGPT desktop
@@ -715,62 +735,10 @@ claude plugin install synthesis-skills@synthesis-engineering
 | Codex IDE extension | Explicitly unsupported: the IDE does not load plugins, and installing duplicate public user-skill copies would collide with desktop/CLI |
 | Generic chat-only products | Unsupported for filesystem-backed execution; published prompts or copied text are not runtime parity |
 
-Skill registries are loaded by the client lifecycle. After a plugin version
-changes, preserve the durable project checkpoint, restart Claude Code or Codex,
-and resume the same root conversation when the client supports it. Continue
-there only after an exact same-session, transcript-bound SessionStart receipt
-names the current plugin version and enabled immutable root and the loaded skill
-metadata matches installed truth. Start a new conversation/task only when that
-restart verification fails or the client cannot rehydrate an existing task.
-Installing a cache in place is not a lifecycle reload. Native plugin refresh
-also replaces a versioned cache used by hook commands, so close other live
-sessions before running `onboard.py update`, and make the update the invoking
-session's last action. On machines where the gated publisher installed the
-durable Codex cache guardian, the update engine restores newest historical
-roots first and verifies the invoking task's exact hook tree synchronously
-before reporting success. `install` and `doctor` do not refresh an existing
-native plugin.
-
-The Codex package also restores the active synthesis project after context
-compaction. Run `synthesis-agent-conformance` to verify both runtime
-installations, instruction discovery, and project handoff.
-
-### Agent Skills installer
-
-**One command — installs all skills to every AI agent on your machine:**
-
-```bash
-npx skills add synthesisengineering/synthesis-skills --global --all --copy
-```
-
-This works with Claude Code, OpenAI Codex, Cursor, GitHub Copilot, and [40+ other agents](https://agentskills.io).
-
-### No Node.js? Use the shell installer
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/install.sh | sh
-```
-
-Or clone and run directly:
-
-```bash
-git clone https://github.com/synthesisengineering/synthesis-skills.git
-cd synthesis-skills
-./install.sh install
-```
-
-### Install specific skills only
-
-```bash
-npx skills add synthesisengineering/synthesis-skills --global --copy --skill synthesis-pr-review,synthesis-codebase-review
-```
-
-### Update / Uninstall
-
-```bash
-npx skills update          # Or: ./install.sh update
-npx skills remove synthesis-skills  # Or: ./install.sh uninstall
-```
+`install.sh` remains a compatibility entry point for explicit direct-copy
+targets. New users should use `onboard.sh`; it is the only bootstrap that binds
+release identity, transactional state, doctor behavior, and both-client
+lifecycle verification in one flow.
 
 ## Durable Project Memory
 
