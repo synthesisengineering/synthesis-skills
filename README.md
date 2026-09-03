@@ -11,6 +11,15 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**The installed system now tells the truth about itself (September 2026).**
+Release **4.93.0** makes organization enrollment work from an installed
+immutable release, lets a fresh Claude session complete the live-loaded plane,
+re-derives every doctor plane from current evidence, gives `synthesis status`
+and `synthesis doctor` plain summaries with a next action, seeds a tracked
+knowledge-base declaration in the workspace scaffold, adds
+`synthesis uninstall --purge`, and pins the native plugin commands to the
+stable ref. See the [4.93.0 release notes](CHANGELOG.md).
+
 **Project recovery now follows evidence across checkouts instead of trusting a
 remembered path (September 2026).** Release **4.92.1** adds causal discovery
 across worktrees, refs, attributed interruptions, lifecycle receipts, pointers,
@@ -708,6 +717,7 @@ synthesis doctor
 synthesis update
 synthesis repair
 synthesis workspace ensure --name my-workspace
+synthesis uninstall --purge
 ```
 
 Stable is the default. Use `--channel edge` to follow `main`, or `--pin X.Y.Z`
@@ -734,11 +744,11 @@ the skill catalog:
 
 ```bash
 # Codex / ChatGPT desktop
-codex plugin marketplace add synthesisengineering/synthesis-skills
+codex plugin marketplace add synthesisengineering/synthesis-skills --ref stable
 codex plugin add synthesis-skills@synthesis-engineering
 
 # Claude Code
-claude plugin marketplace add synthesisengineering/synthesis-skills
+claude plugin marketplace add synthesisengineering/synthesis-skills@stable
 claude plugin install synthesis-skills@synthesis-engineering
 ```
 

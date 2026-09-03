@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.1"
+  version: "2.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -43,13 +43,26 @@ synthesis status [--json]
 synthesis doctor [--json]
 synthesis workspace ensure --name NAME [--remote URL]
 synthesis outcome verify --task TASK --workspace PATH --source-class CLASS
-synthesis uninstall
+synthesis uninstall [--purge]
 ```
+
+`synthesis status` and `synthesis doctor` print a plain summary by default:
+profile, policy, release, generation, each truth plane, and one next action.
+`--json` returns the structured payload instead.
 
 `synthesis update` and `synthesis repair` migrate an older plugin-only receipt
 automatically when it contains no workspace, organization, or generated-resource
 state. Richer or unreadable legacy state is never guessed; run `synthesis setup`
-to select the intended profile explicitly.
+to select the intended profile explicitly. An update that finds each client
+already at the selected release on the selected marketplace ref reports
+"no refresh needed" and leaves the client installations untouched; only a
+version change or a policy transition reconfigures a marketplace.
+
+`synthesis uninstall` removes the client plugins, receipt-owned generated
+files, and hook entries, then lists what it retained: the launcher, the
+release cache, the acquisition mirror, state, and configuration. `synthesis
+uninstall --purge` removes those too after the removal verifies, archiving
+the desired state and observation history under the synthesis home first.
 
 `install.sh` remains a compatibility entry point. With explicit direct-copy
 targets it invokes the audited copy capability; otherwise it routes through
@@ -123,10 +136,16 @@ personal knowledge repository and its tracked instruction source:
 
 The workspace-root `AGENTS.md` is a relative symlink to that one complete
 source, and `CLAUDE.md` is the minimal `@AGENTS.md` adapter. Existing files with
-another owner are preserved and make the run non-green. The source is included
-in the repository's first commit; adding it to an existing repository creates
-an exact-path commit rather than leaving it untracked. Edit and commit the
-tracked source, never the workspace entry points.
+another owner are preserved and make the run non-green. The scaffold also
+seeds `.agents/knowledge-base.yaml` (declaring the `source/` bundle for the
+knowledge-base skills and the public outcome verifier), `projects/index.yaml`,
+and `lessons/`; every seeded file is user content from the moment it exists
+and is never regenerated. The tracked sources are included in the
+repository's first commit; adding them to an existing repository creates an
+exact-path commit rather than leaving them untracked. A refused commit is
+reported with Git's own reason, so a hook refusal is never mislabeled as a
+missing identity. Edit and commit the tracked source, never the workspace
+entry points.
 
 Organization instructions use the same provenance rule: exactly one tracked
 source is materialized as a pair, and both outputs activate or neither does.
@@ -143,12 +162,24 @@ updated only when their exact remote and cleanliness checks pass.
 Enroll with `synthesis setup --org-repo URL`, or use a credential-free,
 time-bounded invite file. Invites are validated before mutation, expire within
 seven days, may pin the organization commit, and are protected against replay.
-See `references/org-manifest.md` and `references/invite.schema.json`.
+See `references/org-manifest.md` and `references/invite.schema.json`. A
+schema-1 manifest is refused before any mutation with a message naming the
+migration section of that guide; the public source baseline for the rendered
+instruction pair comes from the digest-verified installed release, so
+enrollment works from the installed CLI, not only from a source checkout.
 
 ## Doctor and truth planes
 
-Doctor is read-only. It does not fetch repositories, change refs, update
-plugins, or rewrite desired state. It reports six planes independently:
+Doctor does not fetch repositories, change refs, update plugins, or rewrite
+desired state. It reads the selected release channel's manifest over HTTPS and
+caches that answer in `plugin-currency.json` under the state root, and it
+attaches fresh client SessionStart receipts from the conformance registry to
+the current generation: Claude runs its SessionStart hook before it creates
+the session transcript, so a fresh Claude session records a pending receipt
+that doctor or status promotes once the transcript binds the session. Every
+plane is re-derived at doctor time; the active release root is re-hashed
+against its descriptor rather than trusted from the last transaction. It
+reports six planes independently:
 
 1. desired
 2. resolved

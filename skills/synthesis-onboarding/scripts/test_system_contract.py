@@ -57,7 +57,15 @@ def release_repo(tmp_path: Path, version: str = "9.8.7") -> Path:
     (root / ".claude-plugin" / "plugin.json").write_text(manifest, encoding="utf-8")
     (root / ".codex-plugin" / "plugin.json").write_text(manifest, encoding="utf-8")
     (root / "skills" / "synthesis-onboarding" / "scripts" / "synthesis_cli.py").write_text(
-        "import os\nprint(os.environ.get('SYNTHESIS_ACTIVE_DESCRIPTOR', 'missing'))\n",
+        "import argparse\nimport os\n\n\n"
+        "def build_parser():\n"
+        "    parser = argparse.ArgumentParser(prog='synthesis')\n"
+        "    commands = parser.add_subparsers(dest='command', required=True)\n"
+        "    for name in ('setup', 'update', 'repair', 'status', 'doctor', 'uninstall'):\n"
+        "        commands.add_parser(name)\n"
+        "    return parser\n\n\n"
+        "if __name__ == '__main__':\n"
+        "    print(os.environ.get('SYNTHESIS_ACTIVE_DESCRIPTOR', 'missing'))\n",
         encoding="utf-8",
     )
     git(root, "init", "-q", "-b", "main")

@@ -890,7 +890,9 @@ def test_setup_rebootstraps_edge_and_pin_back_to_floating_stable(
         ) == 0
         assert engine_calls == []
         assert state.read_desired() is None
-        assert state.read_observation()["transactions"][-1]["state"] == "aborted"
+        # A policy transfer is a control handoff to the bootstrap, not a
+        # failed attempt: no transaction is recorded for it.
+        assert state.read_observation()["transactions"] == []
 
     assert transfers == [
         ("edge", "main", "stable", None),
@@ -1095,8 +1097,15 @@ def test_update_refuses_disabled_state(tmp_path: Path, capsys) -> None:
     assert "disabled" in capsys.readouterr().err
 
 
-def test_workspace_ensure_uses_stable_public_capability(tmp_path: Path) -> None:
+def test_workspace_ensure_uses_stable_public_capability(tmp_path: Path, monkeypatch) -> None:
     calls: list[list[str]] = []
+    # Without desired state the command selects the detected clients; the
+    # fixture must not depend on which clients the test machine has.
+    monkeypatch.setattr(
+        synthesis_cli.onboard,
+        "resolve_client",
+        lambda name: "/fixture/codex" if name == "codex" else None,
+    )
     state = system_contract.SystemState(home=tmp_path)
     code = synthesis_cli.main(
         ["workspace", "ensure", "--name", "example"],

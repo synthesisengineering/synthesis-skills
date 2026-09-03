@@ -47,6 +47,7 @@ from system_contract import (
     DriftError,
     file_digest,
     materialize_instruction_pair,
+    public_source_identity,
     validate_desired_state,
     validate_org_manifest,
     validate_repository_url,
@@ -78,7 +79,7 @@ from whole_system import (
     validate_personal_policy,
 )
 
-ENGINE_VERSION = "2.0.1"
+ENGINE_VERSION = "2.1.0"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -326,27 +327,45 @@ def parse_subset_yaml(text, source="manifest"):
     return build(0, len(items), items[0][0] if items else 0)
 
 
-TOP_KEYS = {"version", "org", "ecosystem", "skills_repos", "knowledge_bases",
-            "auth_help", "welcome", "migrations", "workspace_instructions"}
-ORG_KEYS = {"id", "name", "workspace"}
-ECOSYSTEM_KEYS = {"plugin", "clients", "channel", "version_pin"}
-SKILLS_REPO_KEYS = {"name", "primary", "fallbacks", "installer", "installer_args",
-                    "source_env", "status_args"}
-KB_KEYS = {"name", "primary", "superseded_remotes", "local_hooks", "default_branch"}
-WELCOME_KEYS = {"title", "try_asking", "docs"}
-MIGRATION_KEYS = {"from", "action", "to", "note"}
+LEGACY_MANIFEST_KEYS = {
+    "workspace_instructions",
+    "migrations",
+    "installer",
+    "installer_args",
+    "source_env",
+    "status_args",
+    "primary",
+    "fallbacks",
+    "superseded_remotes",
+}
+MANIFEST_MIGRATION_GUIDE = "skills/synthesis-onboarding/references/org-manifest.md"
 
 
-def _require(cond, message):
-    if not cond:
-        raise ValueError("manifest: %s" % message)
+def _legacy_manifest_hint(data):
+    """Name the schema-1 fields a refused manifest still carries."""
+    if not isinstance(data, dict):
+        return ""
+    present = set(data) & LEGACY_MANIFEST_KEYS
+    for entries in (data.get("skills_repos"), data.get("knowledge_bases")):
+        if isinstance(entries, list):
+            for entry in entries:
+                if isinstance(entry, dict):
+                    present |= set(entry) & LEGACY_MANIFEST_KEYS
+    if data.get("version") != 1 and not present:
+        return ""
+    fields = ", ".join(sorted(present)) or "version: 1"
+    return (
+        "; this repository uses schema 1 (%s), which the engine no longer accepts: "
+        "set version: 2 and follow 'Migrating from schema 1' in %s"
+        % (fields, MANIFEST_MIGRATION_GUIDE)
+    )
 
 
 def validate_manifest(data, path):
     try:
         return validate_org_manifest(data, path)
     except ContractError as exc:
-        raise ValueError("manifest: %s" % exc) from exc
+        raise ValueError("manifest: %s%s" % (exc, _legacy_manifest_hint(data))) from exc
 
 
 def load_manifest(path):
@@ -757,7 +776,8 @@ def paths_digest(paths):
 CLIENT_WELL_KNOWN = {
     "claude": [HOME / ".local/bin/claude", Path("/usr/local/bin/claude"),
                Path("/opt/homebrew/bin/claude")],
-    "codex": [Path("/Applications/ChatGPT.app/Contents/Resources/codex"),
+    "codex": [HOME / ".local/bin/codex",
+              Path("/Applications/ChatGPT.app/Contents/Resources/codex"),
               Path("/usr/local/bin/codex"), Path("/opt/homebrew/bin/codex")],
 }
 
@@ -878,6 +898,42 @@ def marketplace_add_command(client, binary, policy):
     if client == "claude":
         return [binary, "plugin", "marketplace", "add", "%s@%s" % (PUBLIC_MARKETPLACE_REF, ref)]
     return [binary, "plugin", "marketplace", "add", PUBLIC_MARKETPLACE_REF, "--ref", ref, "--json"]
+
+
+def configured_marketplace_ref(client):
+    """Return the Git ref the client's public marketplace is configured to track.
+
+    ``None`` means the configuration could not be read or names another
+    repository; callers treat that as a reason to reconfigure, never as
+    proof of currency.
+    """
+    try:
+        if client == "claude":
+            data = json.loads(
+                (HOME / ".claude" / "plugins" / "known_marketplaces.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            entry = data.get(MARKETPLACE_NAME) if isinstance(data, dict) else None
+            source = entry.get("source") if isinstance(entry, dict) else None
+            if isinstance(source, dict) and source.get("repo") == PUBLIC_MARKETPLACE_REF:
+                ref = source.get("ref")
+                return ref if isinstance(ref, str) and ref else None
+            return None
+        text = (HOME / ".codex" / "config.toml").read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return None
+    in_section = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("[") and line.endswith("]"):
+            in_section = line == "[marketplaces.%s]" % MARKETPLACE_NAME
+            continue
+        if in_section:
+            match = re.match(r'^ref\s*=\s*"([^"]+)"', line)
+            if match:
+                return match.group(1)
+    return None
 
 
 def refresh_plugin(client, binary, policy, reconfigure=False):
@@ -1085,6 +1141,14 @@ def phase_preflight(report, clients_wanted):
             "native Windows is not supported; run the installer inside WSL",
         )
         return None
+    if platform == "unsupported":
+        report.add(
+            "preflight",
+            ERROR,
+            "unsupported platform %s; this release supports macOS and Linux userlands"
+            % sys.platform,
+        )
+        return None
     if platform == "wsl":
         report.add("preflight", OK, "Windows detected through the supported WSL userland")
     elif platform == "linux":
@@ -1128,7 +1192,7 @@ def platform_family(platform=None, environ=None, proc_version=None):
         return "linux"
     if platform in ("win32", "cygwin"):
         return "native-windows"
-    return "native-windows"
+    return "unsupported"
 
 
 def phase_ecosystem(
@@ -1139,6 +1203,7 @@ def phase_ecosystem(
     policy,
     refresh_native_plugins=False,
     preserve_ahead=False,
+    policy_transition=False,
 ):
     """Public synthesis-skills into each present client; fallback to install.sh."""
     need_fallback = False
@@ -1193,6 +1258,23 @@ def phase_ecosystem(
                     OK,
                     "%s plugin for %s is %s, ahead of floating %s at %s; kept installed version"
                     % (PLUGIN_NAME, name, before_version, policy.get("channel"), expected),
+                )
+                continue
+            configured_ref = configured_marketplace_ref(name)
+            if (
+                not policy_transition
+                and expected
+                and before_version == expected
+                and configured_ref == policy_ref(policy)
+            ):
+                # Removing and re-adding the marketplace is the destructive
+                # step that forces a Codex cache refresh; a current install on
+                # the selected ref has nothing to refresh.
+                report.add(
+                    "ecosystem",
+                    OK,
+                    "%s plugin current for %s at %s on the %s ref; no refresh needed"
+                    % (PLUGIN_NAME, name, before_version, configured_ref),
                 )
                 continue
             success, detail = refresh_plugin(
@@ -1444,45 +1526,6 @@ def phase_kbs(report, manifest, receipts, dry_run):
                     report.add("knowledge-base", CHANGED, "wired %s repo-local pre-commit protection" % name)
 
 
-def workspace_agents_md(manifest):
-    org = manifest["org"]
-    welcome = manifest.get("welcome") or {}
-    kbs = manifest.get("knowledge_bases") or []
-    lines = []
-    lines.append("<!-- %s v%s; re-runs update this file unless you edit it -->" % (GENERATED_MARK, ENGINE_VERSION))
-    lines.append("")
-    lines.append("# %s Workspace" % (org.get("name") or org["id"]))
-    lines.append("")
-    lines.append(welcome.get("title") or "Welcome to the %s knowledge workspace." % (org.get("name") or org["id"]))
-    lines.append("")
-    if kbs:
-        lines.append("## Knowledge bases")
-        lines.append("")
-        for kb in kbs:
-            lines.append("- `%s/` — shared knowledge base. Read freely; all edits ship as" % kb["name"])
-            lines.append("  review requests per its `.agents/knowledge-base.yaml` contract")
-            lines.append("  (the synthesis-kb-edit and synthesis-okf skills follow it automatically).")
-        lines.append("")
-    if welcome.get("try_asking"):
-        lines.append("## Things you can ask your AI assistant here")
-        lines.append("")
-        for item in welcome["try_asking"]:
-            lines.append("- %s" % item)
-        lines.append("")
-    if welcome.get("docs"):
-        lines.append("## Guides")
-        lines.append("")
-        for doc in welcome["docs"]:
-            lines.append("- %s" % doc)
-        lines.append("")
-    lines.append("## Keeping things current")
-    lines.append("")
-    lines.append("Re-run the installer anytime; it is safe, updates everything, and")
-    lines.append("repairs half-finished installs. The knowledge base is not exhaustive —")
-    lines.append("if an answer seems missing or stale, say so and propose an update.")
-    return "\n".join(lines) + "\n"
-
-
 def phase_workspace(report, manifest, receipts, dry_run):
     workspace = manifest["org"]["workspace"]
     ws_dir = WORKSPACES_ROOT / workspace
@@ -1492,6 +1535,11 @@ def phase_workspace(report, manifest, receipts, dry_run):
         report.add("workspace", ERROR, "organization manifest is not inside a Git repository", hint=err.strip())
         return
     org_root = Path(org_root_text.strip())
+    try:
+        public_identity = public_source_identity(source_root())
+    except ContractError as exc:
+        report.add("workspace", ERROR, "public instruction source is unavailable: %s" % exc)
+        return
     graph = {
         "schema_version": 1,
         "sources": [
@@ -1523,6 +1571,7 @@ def phase_workspace(report, manifest, receipts, dry_run):
             ws_dir,
             generation=int(receipts.data.get("instruction_generation", 0)) + 1,
             previous_receipt=previous,
+            source_identities={"public": public_identity},
         )
     except (ContractError, DriftError, OSError) as exc:
         report.add("workspace", ERROR, str(exc))
@@ -1539,35 +1588,6 @@ def phase_workspace(report, manifest, receipts, dry_run):
         report.add("workspace", OK, "tracked workspace instructions are current for both clients")
     else:
         report.add("workspace", CHANGED, "materialized tracked workspace instructions for both clients")
-
-
-def phase_migrations(report, manifest, receipts, dry_run):
-    migrations = (manifest.get("migrations") or {}).get("skills") or []
-    if not migrations:
-        return
-    targets = [HOME / ".claude" / "skills", HOME / ".agents" / "skills"]
-    for mig in migrations:
-        old = mig["from"]
-        for target in targets:
-            old_dir = target / old
-            if not old_dir.is_dir():
-                continue
-            label = "%s in %s" % (old, target)
-            if dry_run:
-                report.add("migrations", CHANGED, "would %s %s" % (mig["action"], label))
-                continue
-            backup = archive_path(old_dir)
-            shutil.move(str(old_dir), str(backup))
-            if mig["action"] == "rename":
-                new_dir = target / mig["to"]
-                if new_dir.exists():
-                    report.add("migrations", OK, "%s superseded by existing %s (old copy archived)" % (old, mig["to"]))
-                else:
-                    shutil.copytree(backup, new_dir)
-                    report.add("migrations", CHANGED, "renamed %s -> %s" % (old, mig["to"]))
-            else:
-                note = mig.get("note")
-                report.add("migrations", CHANGED, "retired %s (archived first)%s" % (label, " — " + note if note else ""))
 
 
 def phase_welcome(report, manifest):
@@ -1699,6 +1719,101 @@ Cross-project lessons and patterns. One file per lesson, named
 `YYYY-MM-DD-topic-slug.md`. No index file — `ls -t` shows recent.
 """
 
+# Knowledge-base configuration contract v1 (synthesis-kb-edit). The bundle
+# path is unquoted so the release-owned outcome verifier and the kb-edit
+# validator read the same value.
+KB_DECLARATION = """# Knowledge-base configuration (contract v1) for this personal workspace.
+# Read by synthesis-kb-edit, synthesis-okf, synthesis-knowledge-capture, and
+# the release-owned outcome verifier (synthesis outcome verify).
+bundle_path: source
+git_host: "github"
+default_branch: "main"
+branch_prefix: "kb/"
+ship: "direct"
+
+review:
+  who_merges: "The workspace owner"
+  default_reviewers: []
+  setup_guide: null
+
+editable:
+  - "source/**"
+refuse:
+  - ".agents/**"
+generated_artifacts: []
+
+topic_routing:
+  "knowledge": "source/"
+
+taxonomy_path: null
+
+frontmatter:
+  required:
+    - "type"
+  house:
+    - "title"
+    - "description"
+    - "tags"
+    - "owner"
+    - "timestamp"
+    - "status"
+    - "resource"
+  date_field: "timestamp"
+  reserved_files:
+    - "index.md"
+    - "log.md"
+
+confidentiality:
+  forbidden_words_source: null
+  hook_path: null
+  visible_to: "The workspace owner"
+
+notes: >
+  Scaffolded by synthesis-onboarding. Projects and lessons live beside this
+  bundle and follow synthesis-project-management.
+"""
+
+SOURCE_README = """# Knowledge bundle
+
+Durable knowledge for this workspace lives here as Markdown. The bundle is
+declared in `.agents/knowledge-base.yaml`, which the knowledge-base skills
+read before editing and which the public outcome verifier checks.
+"""
+
+# Seeds that later scaffold runs must commit when a repository already
+# exists; every other seed is user content from the moment it is created.
+SCAFFOLD_TRACKED_SOURCES = (
+    ".agents/workspace-AGENTS.md",
+    ".agents/knowledge-base.yaml",
+    "source/README.md",
+)
+
+GIT_IDENTITY_MARKERS = ("ident", "user.name", "user.email", "who you are")
+
+
+def _report_commit_refusal(report, repo, output, what):
+    """Report a refused commit with Git's own reason, not a guessed one."""
+    text = (output or "").strip()
+    lowered = text.lower()
+    if any(marker in lowered for marker in GIT_IDENTITY_MARKERS):
+        return report.add(
+            "init-workspace",
+            ACTION,
+            "repository created; %s needs your git identity" % what,
+            hint=(
+                'Run:\n  git config --global user.name "Your Name"\n'
+                '  git config --global user.email "you@example.com"\n'
+                "then commit inside %s" % repo
+            ),
+        )
+    return report.add(
+        "init-workspace",
+        ACTION,
+        "repository created; the %s was refused" % what,
+        hint="Git reported:\n%s\nResolve the refusal, then commit inside %s"
+        % (text[-600:] or "no output", repo),
+    )
+
 
 def init_workspace(
     report, receipts, workspace, dry_run, remote=None, git_identity=None,
@@ -1710,18 +1825,22 @@ def init_workspace(
         report.add("init-workspace", CHANGED, "would scaffold %s" % repo)
         return
     repo.mkdir(parents=True, exist_ok=True)
-    ensure_file(report, receipts, repo / "AGENTS.md", kb_agents_md(workspace), "init-workspace", dry_run)
-    ensure_file(report, receipts, repo / "CLAUDE.md", "@AGENTS.md\n", "init-workspace", dry_run)
-    ensure_file(report, receipts, repo / "README.md",
-                "# ai-knowledge-%s\n\nKnowledge base for the %s workspace. See AGENTS.md.\n" % (workspace, workspace),
-                "init-workspace", dry_run)
-    ensure_file(report, receipts, repo / ".gitignore", ".DS_Store\n", "init-workspace", dry_run)
-    projects = repo / "projects"
-    projects.mkdir(exist_ok=True)
-    ensure_file(report, receipts, projects / "index.yaml", INDEX_YAML_SEED, "init-workspace", dry_run)
-    lessons = repo / "lessons"
-    lessons.mkdir(exist_ok=True)
-    ensure_file(report, receipts, lessons / "README.md", LESSONS_README, "init-workspace", dry_run)
+    seeds = (
+        (repo / "AGENTS.md", kb_agents_md(workspace)),
+        (repo / "CLAUDE.md", "@AGENTS.md\n"),
+        (
+            repo / "README.md",
+            "# ai-knowledge-%s\n\nKnowledge base for the %s workspace. See AGENTS.md.\n"
+            % (workspace, workspace),
+        ),
+        (repo / ".gitignore", ".DS_Store\n"),
+        (repo / "projects" / "index.yaml", INDEX_YAML_SEED),
+        (repo / "lessons" / "README.md", LESSONS_README),
+        (repo / ".agents" / "knowledge-base.yaml", KB_DECLARATION),
+        (repo / "source" / "README.md", SOURCE_README),
+    )
+    for path, content in seeds:
+        ensure_user_source(report, receipts, path, content, "init-workspace", dry_run)
     ensure_workspace_entrypoints(
         report,
         receipts,
@@ -1757,30 +1876,35 @@ def init_workspace(
                 "configured repository-local Git identity",
             )
         git(["add", "-A"], cwd=repo)
-        rc, _, err = git(["commit", "-m", "Initialize ai-knowledge workspace"], cwd=repo)
+        rc, out, err = git(["commit", "-m", "Initialize ai-knowledge workspace"], cwd=repo)
         if rc == 0:
             report.add("init-workspace", CHANGED, "initialized git repository with first commit")
         else:
-            report.add("init-workspace", ACTION, "repository created; first commit needs your git identity",
-                       hint='Run:\n  git config --global user.name "Your Name"\n  git config --global user.email "you@example.com"\nthen commit inside %s' % repo)
+            _report_commit_refusal(report, repo, err or out, "first commit")
     elif not dry_run:
-        source_rel = ".agents/workspace-AGENTS.md"
-        tracked_rc, _, _ = git(["ls-files", "--error-unmatch", source_rel], cwd=repo)
-        if tracked_rc != 0:
-            add_rc, _, add_err = git(["add", "--", source_rel], cwd=repo)
-            commit_rc, _, commit_err = git(
-                ["commit", "--only", "-m", "Add workspace instruction source", "--", source_rel],
-                cwd=repo,
-            ) if add_rc == 0 else (add_rc, "", add_err)
-            if commit_rc == 0:
-                report.add("init-workspace", CHANGED, "committed the tracked workspace instruction source")
+        untracked = [
+            relative
+            for relative in SCAFFOLD_TRACKED_SOURCES
+            if (repo / relative).is_file()
+            and git(["ls-files", "--error-unmatch", relative], cwd=repo)[0] != 0
+        ]
+        if untracked:
+            add_rc, _, add_err = git(["add", "--", *untracked], cwd=repo)
+            if add_rc == 0:
+                commit_rc, out, commit_err = git(
+                    ["commit", "--only", "-m", "Add workspace scaffold sources", "--", *untracked],
+                    cwd=repo,
+                )
             else:
+                commit_rc, out, commit_err = add_rc, "", add_err
+            if commit_rc == 0:
                 report.add(
                     "init-workspace",
-                    ACTION,
-                    "workspace instruction source exists but is not committed",
-                    hint=(commit_err or add_err).strip(),
+                    CHANGED,
+                    "committed the tracked workspace scaffold sources: %s" % ", ".join(untracked),
                 )
+            else:
+                _report_commit_refusal(report, repo, commit_err or out, "scaffold commit")
     if remote:
         current = origin_url(repo)
         if current is None:
@@ -3156,10 +3280,19 @@ def main(argv=None):
         return finish(report, args, 1)
     if desired_state is not None and selected_clients != desired_state["clients"]:
         missing = sorted(set(desired_state["clients"]) - set(selected_clients))
+        if selected_clients:
+            hint = (
+                "Install the missing client and re-run, or keep only the present "
+                "client(s) with:\n  synthesis setup --clients %s"
+                % ",".join(selected_clients)
+            )
+        else:
+            hint = "Install Claude Code or Codex, then re-run synthesis setup."
         report.add(
             "preflight",
             ACTION,
             "desired clients are unavailable: %s" % ", ".join(missing),
+            hint=hint,
         )
         return finish(report, args, 1)
     if plugin_requested:
@@ -3171,6 +3304,7 @@ def main(argv=None):
             policy,
             refresh_native_plugins=args.command in ("update", "repair", "init"),
             preserve_ahead=args.command in ("update", "repair") and not args.policy_transition,
+            policy_transition=args.policy_transition,
         )
     else:
         report.add("ecosystem", SKIP, "public plugin disabled by manifest")
@@ -3178,7 +3312,6 @@ def main(argv=None):
         phase_org_skills(report, manifest, receipts, args.dry_run)
         phase_kbs(report, manifest, receipts, args.dry_run)
         phase_workspace(report, manifest, receipts, args.dry_run)
-        phase_migrations(report, manifest, receipts, args.dry_run)
     if args.with_personal_workspace:
         init_workspace(report, receipts, args.with_personal_workspace, args.dry_run)
     if args.command == "init":

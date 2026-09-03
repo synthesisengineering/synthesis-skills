@@ -8,28 +8,34 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 import onboard
 import organization
 from system_contract import (
+    DESCRIPTOR_FIELDS,
+    LAUNCHER_MARK,
+    TRUTH_PLANES,
     ContractError,
     SystemState,
+    active_release_descriptor,
     consume_invite,
     default_desired_state,
     json_digest,
     validate_invite,
     validate_desired_state,
-    validate_release_descriptor,
     validate_repository_url,
+    verify_materialized_release,
     verify_outcome,
 )
 
 
-ENGINE_VERSION = "2.0.1"
+ENGINE_VERSION = "2.1.0"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
     "setup",
@@ -105,6 +111,11 @@ def build_parser() -> argparse.ArgumentParser:
     _common_output(verify)
 
     uninstall = commands.add_parser("uninstall", help="archive and remove generated resources")
+    uninstall.add_argument(
+        "--purge",
+        action="store_true",
+        help="after verified removal, also delete the launcher, release caches, state, and configuration",
+    )
     _common_output(uninstall)
     return parser
 
@@ -117,33 +128,415 @@ def _clients(value: str) -> list[str]:
 
 
 def _active_release() -> dict[str, Any] | None:
-    path_value = os.environ.get("SYNTHESIS_ACTIVE_DESCRIPTOR")
-    if not path_value:
-        return None
+    return active_release_descriptor()
+
+
+def _policy_text(channel: str, version_pin: str | None) -> str:
+    if version_pin:
+        return "pinned release %s" % version_pin
+    return "%s channel" % channel
+
+
+def _transcript_binder() -> Callable[[Path, str, str], bool]:
+    """The conformance transcript-binding check, loaded from this release tree."""
+    scripts = REPO_ROOT / "skills" / "synthesis-agent-conformance" / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
     try:
-        path = Path(path_value)
-        if path.is_symlink() or not path.is_file():
-            raise ContractError("active release descriptor must be a regular file")
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise ContractError("active release descriptor is unreadable: %s" % exc)
-    if not isinstance(value, dict):
-        raise ContractError("active release descriptor must be an object")
-    release = validate_release_descriptor(
-        {key: value.get(key) for key in (
-            "schema_version", "version", "channel", "ref", "commit", "tree",
-            "content_digest", "digest_algorithm", "tree_policy", "source_url",
-            "resolved_at",
-        )}
+        from live_receipt import transcript_binds_session
+    except ImportError as exc:
+        raise ContractError("live receipt binder is unavailable: %s" % exc) from exc
+    return transcript_binds_session
+
+
+def _promote_live_receipts(state: SystemState) -> tuple[list[dict[str, Any]], str | None]:
+    """Attach fresh client SessionStart receipts that bind their transcript now."""
+    try:
+        return state.promote_live_receipts(binder=_transcript_binder()), None
+    except ContractError as exc:
+        return [], str(exc)
+
+
+def _release_label(release: dict[str, Any] | None) -> str:
+    if not isinstance(release, dict) or not release.get("version"):
+        return "unknown release"
+    commit = str(release.get("commit") or "")
+    return "%s from %s%s" % (
+        release.get("version"),
+        release.get("ref"),
+        ", commit %s" % commit[:8] if commit else "",
     )
-    root_value = value.get("release_root")
-    if not isinstance(root_value, str) or not root_value:
-        raise ContractError("active release descriptor has no release root")
-    root = Path(root_value)
-    if root.is_symlink() or not root.is_dir() or root.resolve() != root:
-        raise ContractError("active release descriptor has an unsafe release root")
-    value.update(release)
-    return value
+
+
+def _current_planes(
+    desired: dict[str, Any],
+    latest: dict[str, Any] | None,
+    *,
+    disabled: bool,
+    engine_code: int,
+    engine_details: dict[str, Any] | None,
+    active: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Derive every plane from current evidence, not from the last transaction.
+
+    The transaction record is the receipt of what the update saw when it
+    ran. Doctor answers a different question: what is true now. Desired is
+    compared by digest, the resolved and source-provenance planes are
+    re-verified against the active release root, installed comes from the
+    engine that just ran, and live-loaded reflects the receipts attached so
+    far, including any promoted from the registry moments ago.
+    """
+    planes: dict[str, Any] = {
+        plane: dict((latest or {}).get(plane) or {"status": "missing"})
+        for plane in TRUTH_PLANES
+    }
+    expected_digest = (latest or {}).get(
+        "committed_desired_digest", (latest or {}).get("desired_digest")
+    )
+    if expected_digest != json_digest(desired):
+        planes["desired"] = {
+            "status": "unverified",
+            "detail": "desired state changed outside a committed synthesis transaction",
+        }
+    elif latest is not None:
+        planes["desired"] = {"status": "verified", "sha256": json_digest(desired)}
+    if latest is None:
+        return planes
+    if disabled:
+        removal_verified = (
+            engine_code == 0
+            and bool(engine_details)
+            and engine_details.get("uninstall_verified") is True
+        )
+        planes["installed"] = {
+            "status": "removed" if removal_verified else "unverified",
+            "command": "doctor",
+            "detail": (
+                "selected client plugins and receipt-owned resources are absent"
+                if removal_verified
+                else "absence could not be verified; run synthesis uninstall again"
+            ),
+        }
+        return planes
+    recorded = latest.get("release")
+    if not isinstance(recorded, dict):
+        resolved_plane = planes["resolved"]
+        recorded = resolved_plane.get("release") if isinstance(resolved_plane, dict) else None
+        if not isinstance(recorded, dict):
+            recorded = None
+    if active is not None:
+        active_release = {key: active.get(key) for key in DESCRIPTOR_FIELDS}
+        if recorded and recorded.get("content_digest") != active_release.get("content_digest"):
+            planes["resolved"] = {
+                "status": "changed",
+                "release": active_release,
+                "detail": "active release %s differs from generation %s release %s; run synthesis update"
+                % (active_release.get("version"), latest.get("generation"), recorded.get("version")),
+            }
+        else:
+            planes["resolved"] = {"status": "verified", "release": active_release}
+        try:
+            verify_materialized_release(Path(active["release_root"]), active_release)
+            planes["source-provenance"] = {
+                "status": "verified",
+                "root": active["release_root"],
+                "commit": active_release.get("commit"),
+                "tree": active_release.get("tree"),
+                "content_digest": active_release.get("content_digest"),
+                "detail": "release root matches its content digest",
+            }
+        except ContractError as exc:
+            planes["source-provenance"] = {
+                "status": "drifted",
+                "root": active["release_root"],
+                "detail": str(exc),
+            }
+    else:
+        planes["resolved"] = {
+            "status": "development-source",
+            "release": recorded,
+            "detail": "no active release descriptor; running from a source checkout",
+        }
+        planes["source-provenance"] = {
+            "status": "development-source",
+            "root": str(REPO_ROOT),
+            "detail": "no active release descriptor; running from a source checkout",
+        }
+    if engine_code == 0:
+        planes["installed"] = {
+            "status": "verified",
+            "command": "doctor",
+            "detail": "engine checks passed",
+        }
+    else:
+        failing = (engine_details or {}).get("failing_steps") or []
+        planes["installed"] = {
+            "status": "defective",
+            "command": "doctor",
+            "detail": "; ".join(failing) or "engine exited %d" % engine_code,
+        }
+    live = planes["live-loaded"]
+    release_version = (recorded or {}).get("version")
+    receipts = live.get("receipts") if isinstance(live.get("receipts"), dict) else {}
+    missing = [
+        client
+        for client in desired.get("clients") or []
+        if not (
+            isinstance(receipts.get(client), dict)
+            and receipts[client].get("plugin_version") == release_version
+        )
+    ]
+    if live.get("status") in ("missing", None):
+        live = {"status": "restart-required", "detail": "no SessionStart receipt for this generation yet"}
+    live = dict(live)
+    live["missing_clients"] = missing
+    planes["live-loaded"] = live
+    return planes
+
+
+def _non_green(planes: dict[str, Any], disabled: bool) -> bool:
+    expected_live = "not-applicable" if disabled else "verified"
+    if planes["live-loaded"].get("status") != expected_live:
+        return True
+    if any(
+        planes[name].get("status") in ("missing", "unverified", "drifted", "changed", "defective")
+        for name in ("desired", "resolved", "installed", "source-provenance")
+    ):
+        return True
+    if disabled and planes["installed"].get("status") != "removed":
+        return True
+    return False
+
+
+def _restart_instruction(client: str) -> str:
+    if client == "claude":
+        return "restart Claude Code and start a new chat"
+    return (
+        "restart Codex and start a new thread; if Codex shows pending hook review, "
+        "approve the synthesis-skills hooks (Codex runs plugin hooks only after human trust)"
+    )
+
+
+def _next_action(
+    desired: dict[str, Any],
+    planes: dict[str, Any],
+    disabled: bool,
+    promotion_note: str | None,
+) -> str:
+    if disabled:
+        if planes["installed"].get("status") == "removed":
+            return "None for the removed installation; run synthesis setup to reinstall."
+        return "Run synthesis uninstall again; removal could not be verified."
+    if planes["desired"].get("status") != "verified":
+        return "Run synthesis update to reconcile desired state that changed outside a transaction."
+    if planes["resolved"].get("status") == "changed":
+        return "Run synthesis update so the recorded generation matches the active release."
+    if planes["source-provenance"].get("status") == "drifted":
+        return (
+            "The active release root no longer matches its content digest; "
+            "run synthesis update to re-materialize the release."
+        )
+    if planes["installed"].get("status") == "defective":
+        return "Run synthesis repair; the engine reported: %s" % planes["installed"].get("detail")
+    live = planes["live-loaded"]
+    if live.get("status") != "verified":
+        clients = live.get("missing_clients") or list(desired.get("clients") or [])
+        steps = "; ".join(_restart_instruction(client) for client in clients)
+        note = " (%s)" % promotion_note if promotion_note else ""
+        return "%s; then run synthesis doctor again%s" % (steps, note)
+    if planes["outcome-verified"].get("status") in ("not-requested", "missing"):
+        return (
+            "Optional: synthesis outcome verify --task workspace-grounding-check "
+            "--workspace <personal knowledge repository> --source-class personal-knowledge"
+        )
+    return "None; every plane is verified."
+
+
+_PLANE_BADGES = {
+    "verified": "ok",
+    "removed": "ok",
+    "development-source": "--",
+    "not-requested": "--",
+    "not-applicable": "--",
+}
+
+
+def _plane_summary(name: str, plane: dict[str, Any]) -> str:
+    status = str(plane.get("status") or "missing")
+    if name == "resolved" and isinstance(plane.get("release"), dict):
+        return "%s: %s" % (status, _release_label(plane.get("release")))
+    if name == "live-loaded":
+        receipts = plane.get("receipts") if isinstance(plane.get("receipts"), dict) else {}
+        parts = []
+        for client, entry in sorted(receipts.items()):
+            if isinstance(entry, dict):
+                parts.append(
+                    "%s at %s (session %s)"
+                    % (client, entry.get("plugin_version"), str(entry.get("session_id") or "")[:8])
+                )
+        for client in plane.get("missing_clients") or []:
+            parts.append("%s missing" % client)
+        detail = "; ".join(parts) or str(plane.get("detail") or "")
+        return "%s%s" % (status, " — " + detail if detail else "")
+    detail = plane.get("detail")
+    return "%s%s" % (status, " — " + str(detail) if detail else "")
+
+
+def _render_doctor(
+    payload: dict[str, Any], desired: dict[str, Any], latest: dict[str, Any] | None
+) -> None:
+    release = (latest or {}).get("release") if latest else None
+    planes = payload["planes"]
+    header = "Synthesis doctor: %s, %s" % (
+        _release_label(release if isinstance(release, dict) else planes["resolved"].get("release")),
+        "generation %s" % latest.get("generation") if latest else "no committed generation",
+    )
+    print(header)
+    print("  Policy: %s; profile %s; clients %s" % (
+        _policy_text(desired["release"]["channel"], desired["release"].get("version_pin")),
+        desired.get("profile"),
+        ", ".join(desired.get("clients") or []),
+    ))
+    for name in TRUTH_PLANES:
+        plane = planes[name]
+        badge = _PLANE_BADGES.get(str(plane.get("status")), "!!")
+        print("  %-2s  %-18s %s" % (badge, name, _plane_summary(name, plane)))
+    if payload.get("promoted"):
+        print("  Attached fresh SessionStart evidence for: %s" % ", ".join(
+            "%s (session %s)" % (item["client"], item["session_id"][:8]) for item in payload["promoted"]
+        ))
+    print("Next action: %s" % payload.get("next_action"))
+
+
+def _render_status(payload: dict[str, Any]) -> None:
+    desired = payload.get("desired")
+    observed = payload.get("observed") or {}
+    if desired is None:
+        print("Synthesis status: no desired state on this machine; run synthesis setup.")
+        return
+    transactions = observed.get("transactions") or []
+    committed = [item for item in transactions if item.get("state") == "committed"]
+    aborted = [item for item in transactions if item.get("state") == "aborted"]
+    latest = committed[-1] if committed else None
+    release = desired["release"]
+    print("Synthesis status")
+    print("  Profile:     %s (clients: %s)%s" % (
+        desired.get("profile"),
+        ", ".join(desired.get("clients") or []),
+        "" if desired.get("enabled", True) else "; disabled by uninstall",
+    ))
+    print("  Policy:      %s" % _policy_text(release["channel"], release.get("version_pin")))
+    recorded = latest.get("release") if latest else None
+    if not isinstance(recorded, dict) and latest:
+        resolved = latest.get("resolved")
+        recorded = resolved.get("release") if isinstance(resolved, dict) else None
+    print("  Release:     %s" % (_release_label(recorded) if isinstance(recorded, dict) else "unknown (no committed generation)"))
+    if latest:
+        print("  Generation:  generation %s %s at %s (%s)" % (
+            latest.get("generation"), latest.get("state"), latest.get("finished_at"), latest.get("command"),
+        ))
+    print("  History:     %d committed, %d aborted transaction(s)" % (len(committed), len(aborted)))
+    print("  Workspace:   %s" % (desired.get("personal_workspace") or "none"))
+    live = latest.get("live-loaded") if latest else None
+    if isinstance(live, dict):
+        receipts = live.get("receipts") if isinstance(live.get("receipts"), dict) else {}
+        parts = [
+            "%s at %s" % (client, entry.get("plugin_version"))
+            for client, entry in sorted(receipts.items())
+            if isinstance(entry, dict)
+        ]
+        recorded_version = recorded.get("version") if isinstance(recorded, dict) else None
+        for client in desired.get("clients") or []:
+            entry = receipts.get(client)
+            if not (isinstance(entry, dict) and entry.get("plugin_version") == recorded_version):
+                parts.append("%s missing" % client)
+        print("  Live-loaded: %s%s" % (live.get("status"), " — " + "; ".join(parts) if parts else ""))
+    else:
+        print("  Live-loaded: unknown")
+    outcome = latest.get("outcome-verified") if latest else None
+    print("  Outcome:     %s" % (outcome.get("status") if isinstance(outcome, dict) else "unknown"))
+    if payload.get("promoted"):
+        print("  Attached fresh SessionStart evidence for: %s" % ", ".join(
+            item["client"] for item in payload["promoted"]
+        ))
+    print("Next: run synthesis doctor for the verified truth planes and the next action.")
+
+
+def _retained_paths(state: SystemState) -> list[str]:
+    candidates = [
+        state.launcher_path,
+        state.state_dir / "active-release.json",
+        state.cache_dir / "releases",
+        state.cache_dir / "acquisition",
+        state.desired_path,
+        state.config_dir,
+        state.state_dir,
+    ]
+    retained: list[str] = []
+    for path in candidates:
+        if (path.exists() or path.is_symlink()) and str(path) not in retained:
+            retained.append(str(path))
+    return retained
+
+
+def _validate_purge_target(target: Path) -> None:
+    """Independent validation of every recursive removal target."""
+    if not target.is_absolute():
+        raise ContractError("purge target is not absolute: %s" % target)
+    if target.is_symlink():
+        raise ContractError("purge target is a symbolic link: %s" % target)
+    if target.name != "synthesis":
+        raise ContractError("purge target is not a synthesis directory: %s" % target)
+    resolved = target.resolve()
+    forbidden = {Path("/"), Path.home().resolve(), Path.cwd().resolve()}
+    if resolved in forbidden or resolved.parent == Path("/"):
+        raise ContractError("purge target is a protected directory: %s" % target)
+
+
+def _force_writable(root: Path) -> None:
+    for directory, dirnames, filenames in os.walk(root):
+        current = Path(directory)
+        for name in [*dirnames, *filenames]:
+            path = current / name
+            if path.is_symlink():
+                continue
+            try:
+                os.chmod(path, 0o755 if path.is_dir() else 0o644)
+            except OSError:
+                pass
+        try:
+            os.chmod(current, 0o755)
+        except OSError:
+            pass
+
+
+def _purge_installation(state: SystemState) -> list[str]:
+    """Remove the launcher, caches, state, and configuration after a verified uninstall."""
+    desired = state.read_desired()
+    if desired is None or desired.get("enabled", True):
+        raise ContractError("purge requires a verified uninstall; desired state is still enabled")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup = state.synthesis_dir / "onboarding" / "backups" / stamp
+    backup.mkdir(parents=True, exist_ok=True)
+    for source in (state.desired_path, state.observation_path):
+        if source.is_file() and not source.is_symlink():
+            shutil.copy2(source, backup / source.name)
+    purged: list[str] = []
+    launcher = state.launcher_path
+    if launcher.exists() or launcher.is_symlink():
+        if launcher.is_symlink() or not launcher.is_file():
+            raise ContractError("refusing to remove a launcher that is not a regular file")
+        if LAUNCHER_MARK not in launcher.read_text(encoding="utf-8", errors="replace"):
+            raise ContractError("refusing to remove a launcher this engine did not generate")
+        launcher.unlink()
+        purged.append(str(launcher))
+    for target in (state.cache_dir, state.config_dir, state.state_dir):
+        _validate_purge_target(target)
+        if target.exists():
+            _force_writable(target)
+            shutil.rmtree(target)
+            purged.append(str(target))
+    return purged
 
 
 def _planes(
@@ -269,6 +662,7 @@ def _run_mutation(
     engine_runner: Callable[[list[str]], Any],
     post_success: Callable[[], None] | None = None,
     already_locked: bool = False,
+    extra_details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     previous_desired = state.read_desired()
 
@@ -289,8 +683,13 @@ def _run_mutation(
                 engine_details and engine_details.get("uninstall_verified") is True
             ),
         )
+        details: dict[str, Any] = {}
         if engine_details is not None:
-            result["details"] = {"engine": engine_details}
+            details["engine"] = engine_details
+        if extra_details:
+            details.update(extra_details)
+        if details:
+            result["details"] = details
         return result
 
     def rollback(_error: BaseException) -> None:
@@ -384,11 +783,18 @@ def _render(payload: dict[str, Any], as_json: bool) -> None:
             "Synthesis generation %s %s. Restart selected clients before live verification."
             % (payload.get("generation"), payload.get("state"))
         )
+        retained = (payload.get("details") or {}).get("retained") or []
+        if retained and not payload.get("purged"):
+            print("Retained (not removed by uninstall):")
+            for path in retained:
+                print("  - %s" % path)
+            print("Run synthesis uninstall --purge to remove them; the launcher goes with them.")
+        if payload.get("purged"):
+            print("Purged:")
+            for path in payload["purged"]:
+                print("  - %s" % path)
     elif "desired" in payload and "observed" in payload:
-        desired = payload["desired"]
-        observed = payload["observed"]
-        print("Desired state: %s" % ("configured" if desired else "missing"))
-        print("Observed generation: %s" % observed.get("generation", 0))
+        _render_status(payload)
     else:
         print(json.dumps(payload, indent=2, sort_keys=True))
 
@@ -438,6 +844,13 @@ def _execute_engine(
     effective_selection = raw.get("effective_selection")
     if effective_selection is not None:
         effective_selection = _validate_effective_selection(effective_selection)
+    failing_steps = [
+        str(step.get("detail"))
+        for step in (raw.get("steps") or [])
+        if isinstance(step, dict)
+        and step.get("status") in ("action-needed", "error")
+        and step.get("detail")
+    ]
     return code, {
         "version": raw.get("engine"),
         "status_counts": dict(sorted(safe_counts.items())),
@@ -454,6 +867,7 @@ def _execute_engine(
             if effective_selection is not None
             else {}
         ),
+        **({"failing_steps": failing_steps} if failing_steps else {}),
     }
 
 
@@ -609,6 +1023,19 @@ def main(
                 expected_commit = invite.get("repository_commit")
             if repository:
                 validate_repository_url(repository)
+            else:
+                # Without an organization the release policy is fully known
+                # here, so a needed transfer to the bootstrap happens before
+                # any transaction is opened; it is a control handoff, not a
+                # failed attempt.
+                active = _active_release()
+                probe = {
+                    "release": {"channel": args.channel or "stable", "version_pin": args.pin}
+                }
+                if active and not _active_matches_policy(active, probe):
+                    return _run_release_bootstrap(
+                        argv, active, probe["release"]["channel"], args.pin
+                    )
             request = {
                 "schema_version": 1,
                 "profile": args.profile,
@@ -750,6 +1177,21 @@ def main(
                         desired = _legacy_plugin_only_desired(state)
                     if not desired.get("enabled", True):
                         raise ContractError("the synthesis system is disabled; run synthesis setup")
+                    # Without an organization the release policy is fully
+                    # known before any transaction: a needed transfer to the
+                    # bootstrap is a control handoff, not a failed attempt.
+                    # An organization can still move the policy during
+                    # resolution, so that case keeps the in-transaction check.
+                    active_now = _active_release()
+                    if (
+                        not desired.get("organizations")
+                        and active_now
+                        and not _active_matches_policy(active_now, desired)
+                    ):
+                        release_policy = desired["release"]
+                        raise RebootstrapRequired(
+                            release_policy["channel"], release_policy.get("version_pin")
+                        )
 
                     def update_operation(_transaction: dict[str, Any]) -> dict[str, Any]:
                         resolved, manifest_path, _manifest = _prepare_organization(
@@ -792,6 +1234,24 @@ def main(
                 active = _active_release()
                 if active is None:
                     raise ContractError("update cannot transfer to its selected release")
+                asked_channel = os.environ.get("SYNTHESIS_ONBOARD_CHANNEL")
+                asked_pin = os.environ.get("SYNTHESIS_ONBOARD_VERSION_PIN") or None
+                if (
+                    os.environ.get("SYNTHESIS_BOOTSTRAP_RESOLVED") == "1"
+                    and (asked_channel, asked_pin) == (exc.channel, exc.version_pin)
+                ):
+                    # The bootstrap was already asked for exactly this policy
+                    # and activated something else: re-running it would loop.
+                    raise ContractError(
+                        "the bootstrap activated %s (%s) but the selected policy needs %s; "
+                        "the active release and desired state disagree, so the transfer "
+                        "stopped instead of looping"
+                        % (
+                            active.get("version"),
+                            active.get("ref"),
+                            _policy_text(exc.channel, exc.version_pin),
+                        )
+                    )
                 return _run_release_bootstrap(
                     argv, active, exc.channel, exc.version_pin
                 )
@@ -800,10 +1260,19 @@ def main(
 
         if args.command == "workspace":
             with state.locked():
-                desired = state.read_desired() or default_desired_state(
-                    "skills-only", ["claude", "codex"], "stable",
-                    personal_workspace=args.name,
-                )
+                desired = state.read_desired()
+                if desired is None:
+                    detected = [
+                        name for name in ("claude", "codex") if onboard.resolve_client(name)
+                    ]
+                    if not detected:
+                        raise ContractError(
+                            "no supported AI client was found and synthesis setup has not run; "
+                            "install Claude Code or Codex and run the stable bootstrap first"
+                        )
+                    desired = default_desired_state(
+                        "skills-only", detected, "stable", personal_workspace=args.name
+                    )
                 if not desired.get("enabled", True):
                     raise ContractError("the synthesis system is disabled; run synthesis setup")
                 desired = dict(desired)
@@ -834,8 +1303,10 @@ def main(
             return 0
 
         if args.command == "status":
+            promoted, _promotion_note = _promote_live_receipts(state)
             with state.locked():
                 payload = {"desired": state.read_desired(), "observed": state.read_observation()}
+            payload["promoted"] = promoted
             _render(payload, args.json)
             return 0 if payload["desired"] is not None else 1
 
@@ -849,6 +1320,7 @@ def main(
                     state, desired, verify_only=True
                 )
                 code = 0
+                engine_details: dict[str, Any] | None = None
                 if disabled:
                     engine_args = [
                         "uninstall-doctor",
@@ -869,33 +1341,38 @@ def main(
                     )
                     if manifest_path:
                         engine_args.extend(["--manifest", str(manifest_path)])
-                    code, _engine_details = _execute_engine(engine_runner, engine_args)
+                    code, engine_details = _execute_engine(engine_runner, engine_args)
+            promoted: list[dict[str, Any]] = []
+            promotion_note = None
+            if not disabled:
+                promoted, promotion_note = _promote_live_receipts(state)
+            with state.locked():
                 observation = state.read_observation()
             committed = [item for item in observation["transactions"] if item.get("state") == "committed"]
             latest = committed[-1] if committed else None
-            plane_states = {
-                plane: (latest or {}).get(plane, {"status": "missing"})
-                for plane in ("desired", "resolved", "installed", "source-provenance", "live-loaded", "outcome-verified")
+            active = None if disabled else _active_release()
+            planes = _current_planes(
+                desired,
+                latest,
+                disabled=disabled,
+                engine_code=code,
+                engine_details=engine_details,
+                active=active,
+            )
+            next_action = _next_action(desired, planes, disabled, promotion_note)
+            payload: dict[str, Any] = {
+                "engine_exit": code,
+                "planes": planes,
+                "promoted": promoted,
+                "next_action": next_action,
             }
-            expected_desired_digest = (latest or {}).get(
-                "committed_desired_digest", (latest or {}).get("desired_digest")
-            )
-            if expected_desired_digest != json_digest(desired):
-                plane_states["desired"] = {
-                    "status": "unverified",
-                    "detail": "desired state changed outside a committed synthesis transaction",
-                }
-            payload = {"engine_exit": code, "planes": plane_states}
-            _render(payload, args.json)
-            expected_live = "not-applicable" if disabled else "verified"
-            non_green = plane_states["live-loaded"].get("status") != expected_live
-            non_green = non_green or any(
-                plane_states[name].get("status") in ("missing", "unverified")
-                for name in ("desired", "resolved", "installed", "source-provenance")
-            )
-            if disabled:
-                non_green = non_green or plane_states["installed"].get("status") != "removed"
-            return 1 if code or non_green else 0
+            if promotion_note:
+                payload["promotion_note"] = promotion_note
+            if args.json:
+                _render(payload, True)
+            else:
+                _render_doctor(payload, desired, latest)
+            return 1 if code or _non_green(planes, disabled) else 0
 
         if args.command == "uninstall":
             with state.locked():
@@ -911,8 +1388,12 @@ def main(
                     ["uninstall", "--clients", ",".join(desired["clients"])],
                     engine_runner,
                     already_locked=True,
+                    extra_details={"retained": _retained_paths(state)},
                 )
-            _render(transaction, args.json)
+            payload = dict(transaction)
+            if args.purge:
+                payload["purged"] = _purge_installation(state)
+            _render(payload, args.json)
             return 0
     except EngineFailure as exc:
         if getattr(args, "json", False):

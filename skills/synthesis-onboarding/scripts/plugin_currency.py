@@ -100,14 +100,25 @@ def compare_versions(installed, target):
     return "current"
 
 
-def default_cache_path():
-    state_dir = Path(
+def _home_path():
+    return Path(os.environ.get("SYNTHESIS_HOME", str(Path.home())))
+
+
+def _state_dir():
+    """The onboarding engine's state root; one default shared with onboard.py."""
+    return Path(
         os.environ.get(
             "SYNTHESIS_ONBOARD_STATE_DIR",
-            str(Path.home() / ".synthesis" / "onboarding"),
+            str(
+                Path(os.environ.get("XDG_STATE_HOME", str(_home_path() / ".local" / "state")))
+                / "synthesis"
+            ),
         )
     )
-    return state_dir / "plugin-currency.json"
+
+
+def default_cache_path():
+    return _state_dir() / "plugin-currency.json"
 
 
 def _read_cache(path):
@@ -265,28 +276,56 @@ def resolve_target_version(
         return None, "%s ref unavailable: %s" % (ref, str(exc))
 
 
-def read_persisted_policy(receipts_path=None):
-    path = Path(
-        receipts_path
-        or os.environ.get(
-            "SYNTHESIS_ONBOARD_RECEIPTS",
-            str(
-                Path(
-                    os.environ.get(
-                        "SYNTHESIS_ONBOARD_STATE_DIR",
-                        str(Path.home() / ".synthesis" / "onboarding"),
-                    )
-                )
-                / "receipts.json"
-            ),
-        )
-    )
+def _policy_from_receipts(path):
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
         policy = data.get("plugin_policy") or {}
         return normalize_policy(policy.get("channel"), policy.get("version_pin"))
     except (OSError, ValueError, AttributeError):
-        return normalize_policy()
+        return None
+
+
+def _policy_from_desired_state():
+    """Read the release policy the public CLI committed, when one exists."""
+    config_dir = Path(
+        os.environ.get("XDG_CONFIG_HOME", str(_home_path() / ".config"))
+    )
+    path = config_dir / "synthesis" / "system-state.json"
+    try:
+        if path.is_symlink():
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or data.get("enabled", True) is not True:
+            return None
+        release = data.get("release") or {}
+        return normalize_policy(release.get("channel"), release.get("version_pin"))
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def read_persisted_policy(receipts_path=None):
+    """Resolve the release policy this machine actually selected.
+
+    Precedence: an explicit receipts path or ``SYNTHESIS_ONBOARD_RECEIPTS``,
+    then the committed desired state written by the public CLI, then the
+    engine's current receipts, then the pre-4.91 receipts location, then the
+    stable default. Reading only the legacy receipts would report the wrong
+    channel to every edge or pinned installation.
+    """
+    explicit = receipts_path or os.environ.get("SYNTHESIS_ONBOARD_RECEIPTS")
+    if explicit:
+        return _policy_from_receipts(Path(explicit)) or normalize_policy()
+    desired = _policy_from_desired_state()
+    if desired is not None:
+        return desired
+    for candidate in (
+        _state_dir() / "receipts.json",
+        _home_path() / ".synthesis" / "onboarding" / "receipts.json",
+    ):
+        policy = _policy_from_receipts(candidate)
+        if policy is not None:
+            return policy
+    return normalize_policy()
 
 
 def installed_version_from_root(plugin_root):

@@ -51,6 +51,34 @@ welcome:
     - docs/getting-started.md
 ```
 
+## Migrating from schema 1
+
+The engine accepts schema 2 only. A manifest that still declares `version: 1`
+or any schema-1 field is refused before anything is mutated, and the refusal
+names this section. Organizations that shipped installer logic in schema 1
+migrate as follows; every executable capability now belongs to the engine.
+
+| Schema 1 | Schema 2 |
+|---|---|
+| `version` `1` | `version` `2` |
+| `skills_repos[].primary` and `skills_repos[].fallbacks` | one `repository` URL per entry; a fallback host is a second entry only when both are genuine sources |
+| `skills_repos[].installer`, `installer_args`, `source_env`, `status_args` | removed; declare `capability` as `skills-install` and the engine copies the tracked skills itself |
+| `knowledge_bases[].primary` | `repository` |
+| `knowledge_bases[].superseded_remotes` | removed; an existing clone with another remote is refused rather than repointed, so members re-clone or repoint explicitly |
+| `workspace_instructions` `true` | `instruction_sources` naming exactly one tracked Markdown file in this repository; the engine materializes `AGENTS.md` and `CLAUDE.md` from it |
+| `migrations` (skill renames) | removed; retired skill directories are handled by the direct-copy capability |
+| `ecosystem`, `auth_help`, `welcome`, `org` | unchanged |
+
+After editing, validate the manifest from a checkout of the public repository:
+
+```bash
+python3 skills/synthesis-onboarding/scripts/onboard.py doctor --manifest /path/to/.agents/onboarding.yaml
+```
+
+The organization wrapper scripts that schema 1 required are not needed:
+members run `synthesis setup --org-repo URL` (or use an invite) and the
+public engine performs every step.
+
 ## Field contract
 
 | Field | Contract |

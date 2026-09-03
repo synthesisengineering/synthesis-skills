@@ -570,6 +570,87 @@ def validate_release_descriptor(descriptor: Any) -> dict[str, Any]:
     return _validate_descriptor_shape(descriptor)
 
 
+DESCRIPTOR_FIELDS = (
+    "schema_version",
+    "version",
+    "channel",
+    "ref",
+    "commit",
+    "tree",
+    "content_digest",
+    "digest_algorithm",
+    "tree_policy",
+    "source_url",
+    "resolved_at",
+)
+
+
+def active_release_descriptor() -> dict[str, Any] | None:
+    """Read the launcher-provided active release pointer, fail-closed.
+
+    Returns the validated descriptor plus its ``release_root`` when the
+    ``SYNTHESIS_ACTIVE_DESCRIPTOR`` environment variable names a regular
+    file, or ``None`` when the engine runs from a development checkout.
+    """
+    path_value = os.environ.get("SYNTHESIS_ACTIVE_DESCRIPTOR")
+    if not path_value:
+        return None
+    path = Path(path_value)
+    if path.is_symlink() or not path.is_file():
+        raise ContractError("active release descriptor must be a regular file")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ContractError("active release descriptor is unreadable: %s" % exc)
+    if not isinstance(value, dict):
+        raise ContractError("active release descriptor must be an object")
+    descriptor = validate_release_descriptor(
+        {key: value.get(key) for key in DESCRIPTOR_FIELDS}
+    )
+    root_value = value.get("release_root")
+    if not isinstance(root_value, str) or not root_value:
+        raise ContractError("active release descriptor has no release root")
+    root = Path(root_value)
+    if root.is_symlink() or not root.is_dir() or root.resolve() != root:
+        raise ContractError("active release descriptor has an unsafe release root")
+    result = dict(value)
+    result.update(descriptor)
+    result["release_root"] = str(root)
+    return result
+
+
+def public_source_identity(root: Path) -> dict[str, Any]:
+    """Identify the public instruction source root without trusting prose.
+
+    A development checkout is identified by its Git HEAD. An installed
+    immutable generation has no ``.git``; it is identified by the active
+    release descriptor whose ``release_root`` is this directory, and the
+    directory is re-verified against that descriptor's content digest before
+    any file inside it may be used as an instruction source.
+    """
+    root = Path(root)
+    if root.is_symlink() or not root.is_dir():
+        raise ContractError("public instruction source root must be a real directory")
+    toplevel = _git_optional(root, "rev-parse", "--show-toplevel")
+    if toplevel and Path(toplevel).resolve() == root.resolve():
+        commit = _git(root, "rev-parse", "HEAD^{commit}")
+        return {"kind": "git", "root": str(root.resolve()), "commit": commit}
+    active = active_release_descriptor()
+    if active is None or Path(active["release_root"]).resolve() != root.resolve():
+        raise ContractError(
+            "public instruction source root is neither a Git checkout nor the "
+            "active release: %s" % root
+        )
+    verify_materialized_release(root, {key: active.get(key) for key in DESCRIPTOR_FIELDS})
+    return {
+        "kind": "release",
+        "root": str(root.resolve()),
+        "commit": active["commit"],
+        "version": active["version"],
+        "content_digest": active["content_digest"],
+    }
+
+
 def verify_release_checkout(root: Path, descriptor: Any) -> None:
     descriptor = _validate_descriptor_shape(descriptor)
     root = Path(root)
@@ -921,18 +1002,41 @@ class SystemState:
             home = Path(os.environ.get("SYNTHESIS_HOME", str(Path.home())))
             config_base = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config")))
             state_base = Path(os.environ.get("XDG_STATE_HOME", str(home / ".local" / "state")))
+            cache_base = Path(os.environ.get("XDG_CACHE_HOME", str(home / ".cache")))
+            bin_base = Path(
+                os.environ.get("SYNTHESIS_INSTALL_BIN_DIR", str(home / ".local" / "bin"))
+            )
         else:
             home = Path(home)
             config_base = home / ".config"
             state_base = home / ".local" / "state"
+            cache_base = home / ".cache"
+            bin_base = home / ".local" / "bin"
         self.home = Path(home)
         self.config_dir = config_base / "synthesis"
         self.state_dir = state_base / "synthesis"
+        self.cache_dir = cache_base / "synthesis"
+        self.launcher_path = bin_base / "synthesis"
+        self.synthesis_dir = self.home / ".synthesis"
         self.desired_path = self.config_dir / "system-state.json"
         self.observation_path = self.state_dir / "observations.json"
         self.lock_path = self.state_dir / "transaction.lock"
         self.invites_path = self.state_dir / "consumed-invites.json"
-        self.legacy_receipts_path = self.home / ".synthesis" / "onboarding" / "receipts.json"
+        self.legacy_receipts_path = self.synthesis_dir / "onboarding" / "receipts.json"
+
+    def live_receipt_registry_root(self) -> Path:
+        """Directory holding the client SessionStart event registry.
+
+        The conformance hook writes one immutable JSON event per genuine
+        SessionStart under ``<latest receipt stem>-events/<client>/<session>/``.
+        """
+        override = os.environ.get("SYNTHESIS_PUBLIC_SESSIONSTART_RECEIPT")
+        latest = (
+            Path(override).expanduser()
+            if override
+            else self.synthesis_dir / "agent-conformance" / "live" / "public-sessionstart.json"
+        )
+        return latest.parent / (latest.stem + "-events")
 
     @contextlib.contextmanager
     def locked(self) -> Iterator[None]:
@@ -1246,12 +1350,127 @@ class SystemState:
             self._save_observation(observation)
             return dict(transaction["outcome-verified"])
 
+    def promote_live_receipts(
+        self,
+        *,
+        binder: Callable[[Path, str, str], bool],
+        registry_root: Path | None = None,
+    ) -> list[dict[str, Any]]:
+        """Attach registry SessionStart events whose transcripts bind now.
+
+        Claude invokes its SessionStart hook before it creates the session
+        transcript, so a fresh Claude session records a pending receipt that
+        cannot feed the live-loaded plane at hook time. This scan promotes the
+        newest registry event per selected client when the event belongs to
+        the active release, postdates the current generation, and its client
+        transcript now declares the same session. ``binder`` is the
+        conformance transcript-binding check.
+        """
+        registry = (
+            Path(registry_root) if registry_root is not None else self.live_receipt_registry_root()
+        )
+        if registry.is_symlink() or not registry.is_dir():
+            return []
+        if not self.desired_path.is_file() or not self.observation_path.is_file():
+            return []
+        candidates: list[tuple[datetime, str, dict[str, Any]]] = []
+        with self.locked():
+            desired = self.read_desired()
+            observation = self.read_observation()
+            committed = [
+                item for item in observation["transactions"] if item.get("state") == "committed"
+            ]
+            if desired is None or not committed or not desired.get("enabled", True):
+                return []
+            transaction = committed[-1]
+            release = transaction.get("release")
+            if not isinstance(release, dict):
+                resolved = transaction.get("resolved") or {}
+                release = resolved.get("release") if isinstance(resolved, dict) else None
+            if not isinstance(release, dict):
+                return []
+            version = release.get("version")
+            started = _parse_datetime(transaction.get("started_at"), "transaction started_at")
+            current = transaction.get("live-loaded")
+            have = dict(current.get("receipts") or {}) if isinstance(current, dict) else {}
+            for client in desired.get("clients") or []:
+                existing = have.get(client)
+                if isinstance(existing, dict) and existing.get("plugin_version") == version:
+                    continue
+                client_dir = registry / client
+                if client_dir.is_symlink() or not client_dir.is_dir():
+                    continue
+                for session_dir in sorted(client_dir.iterdir()):
+                    if session_dir.is_symlink() or not session_dir.is_dir():
+                        continue
+                    for event_path in sorted(session_dir.glob("*.json")):
+                        if (
+                            event_path.is_symlink()
+                            or not event_path.is_file()
+                            or event_path.stat().st_size > 64 * 1024
+                        ):
+                            continue
+                        try:
+                            event = json.loads(event_path.read_text(encoding="utf-8"))
+                        except (OSError, ValueError):
+                            continue
+                        if not isinstance(event, dict):
+                            continue
+                        if (
+                            event.get("client") != client
+                            or event.get("receipt_schema") != 2
+                            or event.get("hook_event_name") != "SessionStart"
+                            or event.get("plugin_version") != version
+                            or event.get("session_id") != session_dir.name
+                            or event.get("receipt_event_id") != event_path.stem
+                        ):
+                            continue
+                        try:
+                            recorded = _parse_datetime(
+                                event.get("recorded_at"), "receipt recorded_at"
+                            )
+                        except ContractError:
+                            continue
+                        if recorded < started:
+                            continue
+                        candidates.append((recorded, client, event))
+        promoted: list[dict[str, Any]] = []
+        for recorded, client, event in sorted(candidates, key=lambda item: item[0], reverse=True):
+            if any(item["client"] == client for item in promoted):
+                continue
+            transcript_value = event.get("transcript_path")
+            if not isinstance(transcript_value, str) or not transcript_value:
+                continue
+            try:
+                bound = bool(
+                    binder(Path(transcript_value).expanduser(), client, str(event["session_id"]))
+                )
+            except Exception:  # a binder failure is never promotion evidence
+                bound = False
+            if not bound:
+                continue
+            receipt = dict(event)
+            receipt["transcript_bound_at_promotion"] = True
+            try:
+                if self.record_live_load(receipt=receipt, promotion=True):
+                    promoted.append({"client": client, "session_id": str(event["session_id"])})
+            except ContractError:
+                continue
+        return promoted
+
     def record_live_load(
         self,
         *,
         receipt: dict[str, Any],
+        promotion: bool = False,
     ) -> bool:
-        """Attach genuine SessionStart evidence to its matching generation."""
+        """Attach genuine SessionStart evidence to its matching generation.
+
+        With ``promotion`` the receipt may have been recorded before its
+        transcript existed; the caller has verified that the transcript binds
+        the session now, and the receipt must postdate the active generation
+        instead of satisfying the hook-time freshness window.
+        """
         receipt = _require_mapping(receipt, "live-load receipt")
         client = receipt.get("client")
         session_id = receipt.get("session_id")
@@ -1262,7 +1481,9 @@ class SystemState:
             raise ContractError("live-load receipt client is unsupported")
         if receipt.get("receipt_schema") != 2 or receipt.get("hook_event_name") != "SessionStart":
             raise ContractError("live-load receipt is not a SessionStart event")
-        if receipt.get("transcript_bound_at_record") is not True:
+        bound_at_record = receipt.get("transcript_bound_at_record") is True
+        bound_at_promotion = promotion and receipt.get("transcript_bound_at_promotion") is True
+        if not bound_at_record and not bound_at_promotion:
             raise ContractError("live-load receipt is not transcript-bound")
         if receipt.get("provenance_env") != "%s-transcript" % client:
             raise ContractError("live-load receipt client provenance is invalid")
@@ -1276,9 +1497,10 @@ class SystemState:
         if not isinstance(plugin_root, str) or not plugin_root:
             raise ContractError("live-load receipt is incomplete")
         observed_time = _parse_datetime(recorded_at, "live-load recorded_at")
-        age = (datetime.now(timezone.utc) - observed_time).total_seconds()
-        if age < -300 or age > 15 * 60:
-            raise ContractError("live-load receipt is outside the SessionStart freshness window")
+        if not promotion:
+            age = (datetime.now(timezone.utc) - observed_time).total_seconds()
+            if age < -300 or age > 15 * 60:
+                raise ContractError("live-load receipt is outside the SessionStart freshness window")
         root = Path(plugin_root)
         try:
             root_meta = root.lstat()
@@ -1338,6 +1560,12 @@ class SystemState:
                 release = resolved.get("release") if isinstance(resolved, dict) else None
             if not isinstance(release, dict) or release.get("version") != plugin_version:
                 return False
+            if promotion:
+                started = _parse_datetime(
+                    transaction.get("started_at"), "transaction started_at"
+                )
+                if observed_time < started:
+                    raise ContractError("live-load receipt predates the active generation")
             release_digest = release.get("content_digest")
             provenance = transaction.get("source-provenance") or {}
             source_root_value = provenance.get("root") if isinstance(provenance, dict) else None
@@ -1369,6 +1597,8 @@ class SystemState:
                 "receipt_event_id": receipt["receipt_event_id"],
                 "transcript_sha256": file_digest(transcript),
                 "recorded_at": recorded_at,
+                "transcript_bound_at_record": bound_at_record,
+                "transcript_bound_at_promotion": bound_at_promotion,
             }
             selected = desired.get("clients") or []
             complete = all(
@@ -1480,10 +1710,21 @@ def consume_invite(
     return digest
 
 
-def _tracked_source(root: Path, relative: str) -> tuple[Path, str, str]:
+def _tracked_source(
+    root: Path, relative: str, identity: dict[str, Any] | None = None
+) -> tuple[Path, str, str]:
     path = contained_path(root, relative, "instruction source")
     if not path.is_file() or path.is_symlink():
         raise ContractError("required instruction source is not a regular file: %s" % relative)
+    if identity is not None and identity.get("kind") == "release":
+        if Path(str(identity.get("root") or "")).resolve() != Path(root).resolve():
+            raise ContractError(
+                "instruction source identity does not describe its root: %s" % relative
+            )
+        commit = str(identity.get("commit") or "")
+        if not HEX40_RE.fullmatch(commit):
+            raise ContractError("instruction source identity has no release commit")
+        return path, commit, file_digest(path)
     proc = subprocess.run(
         ["git", "-C", str(root), "ls-files", "--error-unmatch", "--", relative],
         text=True,
@@ -1515,8 +1756,10 @@ def materialize_instruction_pair(
     generation: int,
     previous_receipt: dict[str, Any] | None = None,
     fail_after_first: bool = False,
+    source_identities: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     graph = _require_mapping(graph, "instruction graph")
+    source_identities = source_identities or {}
     _reject_unknown(graph, {"schema_version", "sources", "output", "claude_adapter"}, "instruction graph")
     if graph.get("schema_version") != 1:
         raise ContractError("instruction graph schema_version must be 1")
@@ -1562,7 +1805,9 @@ def materialize_instruction_pair(
                 raise ContractError("required instruction source root is missing: %s" % role)
             continue
         try:
-            path, commit, digest = _tracked_source(Path(root), relative)
+            path, commit, digest = _tracked_source(
+                Path(root), relative, source_identities.get(role)
+            )
         except ContractError:
             if required:
                 raise
@@ -1670,7 +1915,10 @@ def verify_outcome(task_id: str, evidence: Any, repo_root: Path) -> dict[str, An
     match = re.search(r"(?m)^bundle_path:\s*([^\s#]+)\s*$", kb_config.read_text(encoding="utf-8"))
     if not match:
         raise ContractError("knowledge-base declaration has no bundle_path")
-    bundle = contained_path(workspace, match.group(1), "knowledge bundle")
+    bundle_value = match.group(1)
+    if len(bundle_value) >= 2 and bundle_value[0] == bundle_value[-1] and bundle_value[0] in "\"'":
+        bundle_value = bundle_value[1:-1]
+    bundle = contained_path(workspace, bundle_value, "knowledge bundle")
     bundle_relative = bundle.relative_to(workspace).as_posix()
     tracked_text = _git(workspace, "ls-files", "--", bundle_relative)
     tracked = sorted(filter(None, tracked_text.splitlines()))
