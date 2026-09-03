@@ -966,7 +966,7 @@ class SystemState:
         validate_machine_observation(value)
         atomic_write_json(self.observation_path, value)
 
-    def _legacy_migration_input(self) -> dict[str, Any] | None:
+    def legacy_migration_input(self) -> dict[str, Any] | None:
         """Return bounded legacy metadata for the first authoritative generation.
 
         The legacy receipt remains an implementation aid for conffile-safe removal,
@@ -992,31 +992,128 @@ class SystemState:
         if not isinstance(value, dict):
             raise ContractError("legacy onboarding receipt must be an object")
 
-        def choices(name: str) -> dict[str, str]:
-            source = value.get(name) or {}
+        def choices(name: str) -> tuple[dict[str, str], bool]:
+            source = value.get(name)
+            if source is None:
+                return {}, True
             if not isinstance(source, dict):
-                return {}
+                return {}, False
             result: dict[str, str] = {}
             for key, entry in source.items():
                 if not isinstance(key, str) or not isinstance(entry, dict):
-                    continue
+                    return {}, False
                 choice = entry.get("choice")
-                if choice in {"selected", "declined"}:
-                    result[key] = choice
-            return dict(sorted(result.items()))
+                if choice not in {"selected", "declined"}:
+                    return {}, False
+                result[key] = choice
+            return dict(sorted(result.items())), True
+
+        def inventory_count(name: str) -> tuple[int, bool]:
+            source = value.get(name)
+            if source is None:
+                return 0, True
+            if not isinstance(source, dict):
+                return 0, False
+            return len(source), True
+
+        layer_choices, layer_choices_valid = choices("layer_choices")
+        component_choices, component_choices_valid = choices("component_choices")
+        generated_file_count, generated_files_valid = inventory_count("generated_files")
+        adopted_repository_count, adopted_repositories_valid = inventory_count("adopted_repos")
+        managed_json_entry_count, managed_json_entries_valid = inventory_count(
+            "managed_json_entries"
+        )
+        managed_text_entry_count, managed_text_entries_valid = inventory_count(
+            "managed_text_entries"
+        )
+
+        raw_profile = value.get("profile")
+        profile_valid = raw_profile is None or raw_profile in {"full", "skills-only"}
+        receipt_version = value.get("version")
+        receipt_version_valid = (
+            isinstance(receipt_version, int)
+            and not isinstance(receipt_version, bool)
+            and receipt_version in {1, 2}
+        )
+
+        raw_policy = value.get("plugin_policy")
+        plugin_policy_valid = raw_policy is None
+        plugin_policy = None
+        if isinstance(raw_policy, dict) and not set(raw_policy) - {"channel", "version_pin"}:
+            channel = raw_policy.get("channel") or "stable"
+            version_pin = raw_policy.get("version_pin")
+            plugin_policy_valid = (
+                channel in {"stable", "edge"}
+                and (
+                    version_pin is None
+                    or (
+                        isinstance(version_pin, str)
+                        and VERSION_RE.fullmatch(version_pin) is not None
+                    )
+                )
+            )
+            if plugin_policy_valid:
+                plugin_policy = {"channel": channel, "version_pin": version_pin}
+
+        runs = value.get("runs")
+        runs_valid = runs is None or (
+            isinstance(runs, list) and all(isinstance(entry, dict) for entry in runs)
+        )
+        organization_run_count = (
+            sum(1 for entry in runs if entry.get("manifest"))
+            if isinstance(runs, list) and runs_valid
+            else 0
+        )
+        instruction_state_present = any(
+            key in value
+            for key in (
+                "instruction_generation",
+                "instruction_receipt",
+                "kernel_source_sha256",
+            )
+        )
+        known_fields = {
+            "version",
+            "profile",
+            "personal_workspace",
+            "plugin_policy",
+            "layer_choices",
+            "component_choices",
+            "generated_files",
+            "adopted_repos",
+            "managed_json_entries",
+            "managed_text_entries",
+            "runs",
+            "instruction_generation",
+            "instruction_receipt",
+            "kernel_source_sha256",
+        }
 
         return {
             "sha256": file_digest(path),
-            "receipt_version": value.get("version"),
-            "profile": value.get("profile") if value.get("profile") in {"full", "skills-only"} else None,
-            "layer_choices": choices("layer_choices"),
-            "component_choices": choices("component_choices"),
-            "generated_file_count": len(value.get("generated_files") or {})
-            if isinstance(value.get("generated_files") or {}, dict)
-            else 0,
-            "adopted_repository_count": len(value.get("adopted_repos") or {})
-            if isinstance(value.get("adopted_repos") or {}, dict)
-            else 0,
+            "receipt_version": receipt_version,
+            "receipt_version_valid": receipt_version_valid,
+            "profile": raw_profile if profile_valid else None,
+            "profile_valid": profile_valid,
+            "personal_workspace_present": value.get("personal_workspace") is not None,
+            "plugin_policy": plugin_policy,
+            "plugin_policy_valid": plugin_policy_valid,
+            "layer_choices": layer_choices,
+            "layer_choices_valid": layer_choices_valid,
+            "component_choices": component_choices,
+            "component_choices_valid": component_choices_valid,
+            "generated_file_count": generated_file_count,
+            "generated_files_valid": generated_files_valid,
+            "adopted_repository_count": adopted_repository_count,
+            "adopted_repositories_valid": adopted_repositories_valid,
+            "managed_json_entry_count": managed_json_entry_count,
+            "managed_json_entries_valid": managed_json_entries_valid,
+            "managed_text_entry_count": managed_text_entry_count,
+            "managed_text_entries_valid": managed_text_entries_valid,
+            "organization_run_count": organization_run_count,
+            "runs_valid": runs_valid,
+            "instruction_state_present": instruction_state_present,
+            "unknown_field_count": len(set(value) - known_fields),
         }
 
     def run_transaction(
@@ -1059,7 +1156,7 @@ class SystemState:
                 "started_at": utcnow(),
             }
             if not observation["transactions"] and not self.desired_path.exists():
-                legacy = self._legacy_migration_input()
+                legacy = self.legacy_migration_input()
                 if legacy is not None:
                     transaction["details"] = {"legacy_migration_input": legacy}
             observation["transactions"].append(transaction)

@@ -76,6 +76,14 @@ def test_help_exposes_every_declared_command(capsys) -> None:
         assert command.split()[0] in help_text
 
 
+def test_engine_versions_and_skill_contract_agree() -> None:
+    skill = (REPO_ROOT / "skills/synthesis-onboarding/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert synthesis_cli.ENGINE_VERSION == synthesis_cli.onboard.ENGINE_VERSION
+    assert 'version: "%s"' % synthesis_cli.ENGINE_VERSION in skill
+
+
 def test_setup_routes_through_one_transaction_and_persists_desired(tmp_path: Path) -> None:
     calls: list[list[str]] = []
 
@@ -439,6 +447,147 @@ def test_update_rejects_malformed_persisted_state_without_running_engine(
     ) == 2
     assert calls == []
     assert "missing keys" in capsys.readouterr().err
+
+
+def test_update_migrates_unambiguous_legacy_plugin_only_receipt(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    state = system_contract.SystemState(home=tmp_path)
+    state.legacy_receipts_path.parent.mkdir(parents=True)
+    state.legacy_receipts_path.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "profile": None,
+                "personal_workspace": None,
+                "plugin_policy": {"channel": "stable", "version_pin": "4.90.3"},
+                "layer_choices": {},
+                "component_choices": {},
+                "generated_files": {},
+                "adopted_repos": {},
+                "managed_json_entries": {},
+                "managed_text_entries": {},
+                "runs": [
+                    {
+                        "at": "2026-09-01T00:00:00Z",
+                        "command": "update",
+                        "manifest": None,
+                    }
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        synthesis_cli.onboard,
+        "resolve_client",
+        lambda client: "/usr/bin/%s" % client,
+    )
+    monkeypatch.setattr(
+        synthesis_cli.onboard,
+        "plugin_present",
+        lambda client, _binary: client == "codex",
+    )
+    calls: list[list[str]] = []
+    assert synthesis_cli.main(
+        ["update", "--json"],
+        state=state,
+        engine_runner=lambda argv: calls.append(argv) or 0,
+    ) == 0
+    assert calls == [[
+        "update", "--clients", "codex", "--channel", "stable",
+        "--version-pin", "4.90.3",
+    ]]
+    desired = state.read_desired()
+    assert desired["profile"] == "skills-only"
+    assert desired["clients"] == ["codex"]
+    assert desired["release"] == {"channel": "stable", "version_pin": "4.90.3"}
+    transaction = state.read_observation()["transactions"][-1]
+    assert transaction["state"] == "committed"
+    assert transaction["details"]["legacy_migration_input"]["sha256"]
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["generation"] == 1
+
+
+def test_legacy_update_refuses_richer_or_malformed_receipts(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    receipts = (
+        {"profile": "full"},
+        {"generated_files": {"/private/resource": {"sha256": "a" * 64}}},
+        {"runs": [{"manifest": "/private/organization-manifest"}]},
+        {"managed_json_entries": []},
+        {"version": 99},
+        {"unknown_state": "present"},
+        {"instruction_generation": 1},
+    )
+    monkeypatch.setattr(
+        synthesis_cli.onboard, "resolve_client", lambda _client: "/bin/client"
+    )
+    monkeypatch.setattr(synthesis_cli.onboard, "plugin_present", lambda *_args: True)
+    for index, extra in enumerate(receipts):
+        state = system_contract.SystemState(home=tmp_path / ("case-%d" % index))
+        state.legacy_receipts_path.parent.mkdir(parents=True)
+        receipt = {
+            "version": 2,
+            "profile": None,
+            "personal_workspace": None,
+            "plugin_policy": {"channel": "stable", "version_pin": None},
+            "layer_choices": {},
+            "component_choices": {},
+            "generated_files": {},
+            "adopted_repos": {},
+            "managed_json_entries": {},
+            "managed_text_entries": {},
+            "runs": [],
+        }
+        receipt.update(extra)
+        state.legacy_receipts_path.write_text(
+            json.dumps(receipt) + "\n", encoding="utf-8"
+        )
+        calls: list[list[str]] = []
+        assert synthesis_cli.main(
+            ["update"], state=state, engine_runner=lambda argv: calls.append(argv) or 0
+        ) == 2
+        assert calls == []
+        assert state.read_desired() is None
+    assert "ambiguous whole-system or organization state" in capsys.readouterr().err
+
+
+def test_legacy_update_refuses_unverifiable_client_inventory(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    state = system_contract.SystemState(home=tmp_path)
+    state.legacy_receipts_path.parent.mkdir(parents=True)
+    state.legacy_receipts_path.write_text(
+        json.dumps({"version": 2, "plugin_policy": {"channel": "stable"}}) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        synthesis_cli.onboard, "resolve_client", lambda _client: "/bin/client"
+    )
+    monkeypatch.setattr(synthesis_cli.onboard, "plugin_present", lambda *_args: None)
+    assert (
+        synthesis_cli.main(
+            ["repair"], state=state, engine_runner=lambda _argv: 0
+        )
+        == 2
+    )
+    assert "inventory is unreadable" in capsys.readouterr().err
+
+
+def test_bootstrap_update_leaves_missing_desired_state_for_legacy_migration(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        synthesis_cli,
+        "_active_release",
+        lambda: {"release_root": str(tmp_path)},
+    )
+    assert synthesis_cli._bootstrap_update(
+        ["update"], system_contract.SystemState(home=tmp_path / "home")
+    ) is None
 
 
 def test_installed_update_transfers_once_through_the_active_bootstrap(
