@@ -75,6 +75,8 @@ except ImportError:  # pragma: no cover - resolved at runtime in the repo
         return shutil.which(name)
 
 from bootstrap import materialize_release
+from cache_guardian import GuardianError as CacheGuardianError
+from cache_guardian import _tree_digest as _guardian_tree_digest
 from system_contract import ContractError, activate_cli, atomic_write_json
 
 
@@ -108,9 +110,6 @@ DEFAULT_COORDINATION_BOARD = (
 )
 DEFAULT_ACTIVE_PROJECT_POINTER = Path.home() / ".synthesis" / "active-project.json"
 HOOK_PLUGIN_PATH_RE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\s\"']+)")
-RECOVERY_DIGEST_IGNORED_ROOTS = frozenset(
-    {".git", ".in_use", ".codex-marketplace-install.json"}
-)
 CODEX_CACHE_ARCHIVE_BUDGET_BYTES = 512 * 1024 * 1024
 CODEX_CACHE_QUIET_SECONDS = 10.0
 CODEX_CACHE_SETTLE_TIMEOUT_SECONDS = 60.0
@@ -571,23 +570,11 @@ def refresh_stable_path(
 
 
 def _tree_digest(root: Path) -> str:
-    """Hash recovery-owned paths and bytes, excluding client-managed metadata."""
-    digest = hashlib.sha256()
-    for path in sorted(root.rglob("*"), key=lambda item: str(item.relative_to(root))):
-        relative_path = path.relative_to(root)
-        if (
-            relative_path.parts
-            and relative_path.parts[0] in RECOVERY_DIGEST_IGNORED_ROOTS
-        ):
-            continue
-        relative = str(relative_path).encode("utf-8")
-        if path.is_symlink():
-            digest.update(b"L\0" + relative + b"\0" + os.readlink(path).encode("utf-8"))
-        elif path.is_dir():
-            digest.update(b"D\0" + relative)
-        elif path.is_file():
-            digest.update(b"F\0" + relative + b"\0" + path.read_bytes())
-    return digest.hexdigest()
+    """Use the guardian's one canonical historical-root integrity policy."""
+    try:
+        return _guardian_tree_digest(root)
+    except CacheGuardianError as exc:
+        raise OSError(str(exc)) from exc
 
 
 def codex_cache_archive() -> Path:
@@ -941,6 +928,57 @@ def _remove_transition_backup(backup: Path) -> None:
     shutil.rmtree(resolved)
 
 
+def _remove_cache_transition_tree(path: Path, parent: Path, prefix: str) -> None:
+    if not path.exists() and not path.is_symlink():
+        return
+    if path.parent != parent or not path.name.startswith(prefix) or path.is_symlink():
+        raise OSError(f"refusing unsafe cache-transition cleanup target: {path}")
+    shutil.rmtree(path)
+
+
+def _replace_cache_root(source: Path, destination: Path, parent: Path) -> None:
+    """Replace a differing root without following any destination entry."""
+    if destination.parent != parent or parent.is_symlink():
+        raise OSError(f"refusing unsafe cache-repair boundary: {destination}")
+    staging_prefix = f".release-repair-{destination.name}-"
+    displaced_prefix = f".release-displaced-{destination.name}-"
+    nonce = f"{os.getpid()}-{time.time_ns()}"
+    staging = parent / f"{staging_prefix}{nonce}"
+    displaced = parent / f"{displaced_prefix}{nonce}"
+    moved = False
+    installed = False
+    try:
+        shutil.copytree(source, staging, symlinks=True)
+        if _tree_digest(source) != _tree_digest(staging):
+            raise OSError(f"staged repair differs from snapshot: {source}")
+        if destination.is_symlink() or not destination.is_dir():
+            raise OSError(f"version root has an unsafe type: {destination}")
+        os.rename(destination, displaced)
+        moved = True
+        os.rename(staging, destination)
+        installed = True
+        if _tree_digest(source) != _tree_digest(destination):
+            raise OSError(f"atomically repaired root differs from snapshot: {destination}")
+    except OSError as exc:
+        rollback_error: OSError | None = None
+        if moved:
+            try:
+                if installed and (destination.exists() or destination.is_symlink()):
+                    os.rename(destination, staging)
+                if displaced.exists() or displaced.is_symlink():
+                    os.rename(displaced, destination)
+            except OSError as rollback_exc:
+                rollback_error = rollback_exc
+        if rollback_error is not None:
+            raise OSError(
+                f"cache-root repair failed ({exc}); rollback failed ({rollback_error})"
+            ) from exc
+        raise
+    finally:
+        _remove_cache_transition_tree(staging, parent, staging_prefix)
+    _remove_cache_transition_tree(displaced, parent, displaced_prefix)
+
+
 def _restore_codex_caches_once(
     snapshot: CodexCacheSnapshot,
 ) -> tuple[set[str], set[str]]:
@@ -960,7 +998,7 @@ def _restore_codex_caches_once(
         elif not destination.is_dir():
             raise OSError(f"version root is not a directory: {destination}")
         elif _tree_digest(source) != _tree_digest(destination):
-            shutil.copytree(source, destination, dirs_exist_ok=True, symlinks=True)
+            _replace_cache_root(source, destination, parent)
             repaired.add(version)
         if _tree_digest(source) != _tree_digest(destination):
             raise OSError(f"version root changed during refresh: {destination}")

@@ -23,6 +23,7 @@ import os
 import plistlib
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -41,6 +42,7 @@ HOOK_PLUGIN_PATH_RE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\s\"']+)")
 IGNORED_ROOTS = frozenset({".git", ".in_use", ".codex-marketplace-install.json"})
 BYTECODE_CACHE_DIRECTORY = "__pycache__"
 BYTECODE_SUFFIXES = frozenset({".pyc", ".pyo"})
+BYTECODE_TEMP_RE = re.compile(r"^.+\.py[co]\.[0-9]+$")
 DEFAULT_INTERVAL_SECONDS = 1.0
 ERROR_RETRY_SECONDS = 10.0
 EX_TEMPFAIL = 75
@@ -107,12 +109,17 @@ def _is_ignorable_bytecode(path: Path, relative_path: Path) -> bool:
                 f"unsafe Python bytecode cache directory: {relative_path}"
             )
         return True
-    if (
-        relative_path.parent.name == BYTECODE_CACHE_DIRECTORY
-        and relative_path.parts.count(BYTECODE_CACHE_DIRECTORY) == 1
-        and relative_path.suffix in BYTECODE_SUFFIXES
-    ):
-        if path.is_symlink() or not path.is_file():
+    if relative_path.parent.name == BYTECODE_CACHE_DIRECTORY and (
+        relative_path.suffix in BYTECODE_SUFFIXES
+        or BYTECODE_TEMP_RE.fullmatch(relative_path.name) is not None
+    ) and relative_path.parts.count(BYTECODE_CACHE_DIRECTORY) == 1:
+        try:
+            mode = path.lstat().st_mode
+        except FileNotFoundError:
+            # CPython atomically replaces its numeric-suffixed temporary file;
+            # disappearance between rglob and lstat is that expected boundary.
+            return True
+        if not stat.S_ISREG(mode):
             raise GuardianError(f"unsafe Python bytecode cache entry: {relative_path}")
         return True
     return False

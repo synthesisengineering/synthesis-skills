@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.91.3] - 2026-09-03
+
+**The release snapshot and the durable guardian now apply one historical-root
+integrity policy.** The first 4.91.2 release run proved that the guardian could
+accept runtime bytecode while the publisher's pre-refresh snapshot verifier
+still rejected the same changing `.pyc`. The publisher now delegates every
+snapshot, archive, restore, and quiet-window comparison to the guardian's
+narrow policy, including CPython's numeric-suffixed atomic-write files. A
+running older task may continue executing its Python hook during an update.
+Differing roots are replaced as one directory rather than copied through
+untrusted entries, preventing nested links from redirecting repair writes;
+source and unsupported filesystem objects remain integrity failures.
+
 ## [4.91.2] - 2026-09-03
 
 **An older running task can no longer invalidate its own preserved plugin

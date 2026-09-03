@@ -5,12 +5,22 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.6.1"
+  version: "2.6.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+
+**Version 2.6.2** (2026-09-03) makes the publisher and the durable guardian
+consume one canonical integrity policy. The release snapshot and quiet-window
+verifier now tolerate the same narrowly bounded runtime bytecode as the
+guardian, so an older task can keep invoking its hook throughout a refresh
+without invalidating its preserved root. That boundary includes CPython's
+numeric-suffixed atomic-write files. A differing historical root is replaced
+as one directory instead of copying through untrusted entries, so a nested
+symlink or hard link cannot redirect repair writes outside the cache. All other
+source and filesystem-type checks remain fail-closed.
 
 **Version 2.6.1** (2026-09-03) keeps historical-cache integrity scoped to
 release source even while an older running task executes Python hooks from its
