@@ -1097,8 +1097,15 @@ def test_update_refuses_disabled_state(tmp_path: Path, capsys) -> None:
     assert "disabled" in capsys.readouterr().err
 
 
-def test_workspace_ensure_uses_stable_public_capability(tmp_path: Path) -> None:
+def test_workspace_ensure_uses_stable_public_capability(tmp_path: Path, monkeypatch) -> None:
     calls: list[list[str]] = []
+    # Without desired state the command selects the detected clients; the
+    # fixture must not depend on which clients the test machine has.
+    monkeypatch.setattr(
+        synthesis_cli.onboard,
+        "resolve_client",
+        lambda name: "/fixture/codex" if name == "codex" else None,
+    )
     state = system_contract.SystemState(home=tmp_path)
     code = synthesis_cli.main(
         ["workspace", "ensure", "--name", "example"],
