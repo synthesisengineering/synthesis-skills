@@ -12,13 +12,15 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 ## What's new
 
 **Project recovery now follows evidence across checkouts instead of trusting a
-remembered path (September 2026).** Release **4.92.0** adds causal discovery
+remembered path (September 2026).** Release **4.92.1** adds causal discovery
 across worktrees, refs, attributed interruptions, lifecycle receipts, pointers,
 and claims; structured operational state with a compiled context block;
 semantic freshness checks; and session-bound Stop receipts. Divergence and
 unreadable evidence stay explicit, safe fast-forwarding cannot overwrite
 unrelated work, and one project's autonomous lifecycle can no longer block an
-unrelated session. See the [4.92.0 release notes](CHANGELOG.md).
+unrelated session. The aggregate conformance path also ignores a valid pointer
+owned by a different project while explicit pointer validation stays strict.
+See the [4.92.1 release notes](CHANGELOG.md).
 
 **One bootstrap now installs and manages the complete public system (September
 2026).** Releases **4.91.0** through **4.91.4** add the stable `synthesis` CLI,

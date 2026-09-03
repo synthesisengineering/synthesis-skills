@@ -1,8 +1,8 @@
-# Closed acceptance universe for the project-state reliability release.
+# Closed acceptance universe for the project-isolation corrective release.
 schema: 2
-suite: synthesis-project-state-reliability
+suite: synthesis-project-state-pointer-isolation
 membership: closed
-production_entry_point: named-project resolution, SessionStart recovery, context doctor, lifecycle Stop, and autopilot Stop gate
+production_entry_point: aggregate conformance with an optional active-project pointer
 enforcing_boundary: release.py consumes this transaction-bound manifest before publishing, installation, and stable activation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
@@ -19,67 +19,25 @@ changed_surfaces:
     cases: [release-contract]
   - path: README.md
     cases: [release-contract]
-  - path: hooks/hooks.json
-    cases: [release-contract, lifecycle-stop]
   - path: skills/synthesis-agent-conformance/SKILL.md
-    cases: [session-recovery, release-contract]
+    cases: [pointer-isolation, release-contract]
   - path: skills/synthesis-agent-conformance/scripts/conformance.py
-    cases: [session-recovery]
-  - path: skills/synthesis-agent-conformance/scripts/session_context.py
-    cases: [session-recovery]
-  - path: skills/synthesis-agent-conformance/scripts/test_session_context.py
-    cases: [session-recovery]
-  - path: skills/synthesis-autopilot/SKILL.md
-    cases: [scoped-autopilot, release-contract]
-  - path: skills/synthesis-autopilot/scripts/autopilot_gate.py
-    cases: [scoped-autopilot]
-  - path: skills/synthesis-autopilot/scripts/test_autopilot_gate.py
-    cases: [scoped-autopilot]
-  - path: skills/synthesis-context-lifecycle/SKILL.md
-    cases: [semantic-doctor, release-contract]
-  - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
-    cases: [semantic-doctor]
-  - path: skills/synthesis-context-lifecycle/scripts/test_context_doctor.py
-    cases: [semantic-doctor]
+    cases: [pointer-isolation]
+  - path: skills/synthesis-agent-conformance/scripts/test_conformance.py
+    cases: [pointer-isolation]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [acceptance-self]
-  - path: skills/synthesis-project-management/SKILL.md
-    cases: [resolver-matrix, release-contract]
-  - path: skills/synthesis-project-management/references/project-state-recovery.md
-    cases: [resolver-matrix]
-  - path: skills/synthesis-project-management/scripts/project_state.py
-    cases: [resolver-matrix, lifecycle-stop]
   - path: skills/synthesis-project-management/scripts/test_project_state.py
-    cases: [resolver-matrix, lifecycle-stop, release-contract]
-  - path: skills/synthesis-repo-guard/SKILL.md
-    cases: [lifecycle-stop, release-contract]
-  - path: skills/synthesis-skills-manager/scripts/test_release.py
     cases: [release-contract]
 cases:
-  - id: resolver-matrix
+  - id: pointer-isolation
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_project_state.py::test_canonical_behind_isolated_worktree_selects_newer_without_mutation
-    motivating_defect: a-resumed-project-could-select-whichever-clean-checkout-a-task-remembered
-  - id: lifecycle-stop
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_project_state.py::test_lifecycle_hook_refuses_semantically_incomplete_stop
-    motivating_defect: a-clean-handoff-receipt-could-outlive-semantic-project-state-or-source-heads
-  - id: semantic-doctor
-    control_class: enforced-gate
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests
-    motivating_defect: structurally-valid-prose-could-contradict-later-release-evidence-and-still-report-healthy
-  - id: session-recovery
-    control_class: acceptance-test
-    fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_stopped_project_recovery_reads_newer_isolated_worktree
-    motivating_defect: session-start-could-read-a-behind-canonical-checkout-without-inventorying-isolated-state
-  - id: scoped-autopilot
-    control_class: enforced-gate
-    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_foreign_live_engagement_never_blocks_this_session
-    motivating_defect: one-projects-engagement-could-globally-block-an-unrelated-session
+    fixture: ../synthesis-agent-conformance/scripts/test_conformance.py::test_aggregate_pointer_scope_ignores_unrelated_project_state
+    motivating_defect: a-valid-pointer-owned-by-one-project-could-fail-an-unrelated-projects-aggregate-conformance
   - id: release-contract
     control_class: acceptance-test
     fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
-    motivating_defect: release-version-documentation-hook-and-skill-contracts-could-disagree
+    motivating_defect: release-version-documentation-and-skill-contracts-could-disagree
   - id: acceptance-self
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates

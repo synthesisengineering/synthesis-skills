@@ -2094,6 +2094,33 @@ def pointer_checks(
     command accepts its documented absence and validates stopped-task handoff
     instead; an existing malformed pointer still fails in both scopes.
     """
+    if not require_pointer and pointer.exists():
+        try:
+            scoped_payload = json.loads(pointer.read_text(encoding="utf-8"))
+            scoped_project = scoped_payload.get("project")
+            if not scoped_project:
+                raise ValueError("missing project")
+            if Path(str(scoped_project)).expanduser().resolve() != project.resolve():
+                stopped_pointer = (
+                    project / ".synthesis-stopped-pointer-must-not-exist.json"
+                )
+                checks = handoff_checks(
+                    project,
+                    stopped_pointer,
+                    coordination_board,
+                )
+                add(
+                    checks,
+                    "pointer.scope",
+                    True,
+                    f"active pointer belongs to unrelated project: {scoped_project}",
+                    required=False,
+                )
+                return checks
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            # Existing malformed pointers remain failures in aggregate mode;
+            # only a readable, explicitly different project is non-blocking.
+            pass
     checks = handoff_checks(project, pointer, coordination_board)
     if not require_pointer and not pointer.exists():
         return checks

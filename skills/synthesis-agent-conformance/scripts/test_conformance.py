@@ -675,6 +675,51 @@ def test_aggregate_pointer_scope_accepts_documented_cache_absence(
     assert not {check.name: check for check in explicit}["pointer.schema"].ok
 
 
+def test_aggregate_pointer_scope_ignores_unrelated_project_state(
+    tmp_path: Path,
+) -> None:
+    project = write_stopped_project(tmp_path)
+    unrelated = tmp_path / "projects" / "unrelated-project"
+    unrelated.mkdir(parents=True)
+    pointer = tmp_path / "active.json"
+    pointer.write_text(
+        json.dumps(
+            {
+                "project": str(unrelated),
+                "phase": "stale unrelated phase",
+                "status": "blocked",
+                "plan": str(unrelated / "missing-plan.md"),
+                "activated_at": "2026-01-01T00:00:00+00:00",
+                "source": "fixture",
+                "worktree": str(tmp_path / "deleted-worktree"),
+                "branch": "feature/unrelated",
+                "source_commit": "0" * 40,
+                "owner_session": "019fff79-5858-7993-a329-b301bccf5d62",
+                "owner_lease": "https://example.test/coordination.git",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    aggregate = MODULE.pointer_checks(
+        project,
+        pointer,
+        tmp_path / "missing-board.md",
+        require_pointer=False,
+    )
+    explicit = MODULE.pointer_checks(
+        project,
+        pointer,
+        tmp_path / "missing-board.md",
+    )
+
+    assert all(check.ok for check in aggregate if check.required)
+    named = {check.name: check for check in aggregate}
+    assert named["pointer.scope"].ok
+    assert "unrelated project" in named["pointer.scope"].detail
+    assert not all(check.ok for check in explicit if check.required)
+
+
 def test_local_continuity_recovers_interrupted_attributed_edits(tmp_path: Path) -> None:
     project, _stale = clone_pair_with_project(tmp_path)
     context = project / "CONTEXT.md"
