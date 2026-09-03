@@ -11,7 +11,7 @@ depends_on:
   - synthesis-onboarding
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.0"
+  version: "1.3.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -48,7 +48,7 @@ It is deliberately **not** a "seat" in the operations sense (compare an `<org>-o
 
 This pattern needs a personal knowledge workspace — the same `ai-knowledge-{workspace}` repo `synthesis-project-management` and `synthesis-onboarding` already use, at `~/workspaces/{workspace}/ai-knowledge-{workspace}/`. Don't invent a substitute location (a loose folder somewhere else, a name that doesn't match): a companion that lives outside the convention every other project already follows is a second, incompatible system, not a lighter version of the same one.
 
-1. **Ensure the personal knowledge workspace exists.** Run `synthesis workspace ensure --name {name}`. It safely scaffolds `~/workspaces/{name}/ai-knowledge-{name}/`, including a seeded `projects/index.yaml`, a Git-tracked `.agents/workspace-AGENTS.md`, and collision-safe workspace entry points for both clients. It is idempotent when the workspace already exists. A shared organization workspace is a sibling, not a substitute; this pattern's project files belong in the personal repository.
+1. **Ensure the personal knowledge workspace exists.** Run `synthesis workspace ensure --name {name}`. It safely scaffolds `~/workspaces/{name}/ai-knowledge-{name}/`, including a seeded `projects/index.yaml`, a Git-tracked `.agents/workspace-AGENTS.md`, a tracked `.agents/knowledge-base.yaml` declaring the `source/` bundle, and collision-safe workspace entry points for both clients. It is idempotent when the workspace already exists, and it leaves every seeded file alone once you have edited it. If the `synthesis` command is not installed yet (a plugin-only installation has no launcher), install it first with the stable bootstrap: `curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh -s -- setup --profile skills-only`. A shared organization workspace is a sibling, not a substitute; this pattern's project files belong in the personal repository.
 2. Create the project the normal way (`synthesis-project-management`): `status: ongoing`, `bounded: false`, noun-first id (e.g. `{workspace}-quick-answers`). Give it a thin `CONTEXT.md` and, if the workspace has enough standing routing knowledge to be worth writing down (which sources answer which question shapes), a short `REFERENCE.md`.
 3. Register it in `projects/index.yaml` under its own initiative if the workspace doesn't already have a natural home for "standing non-ops infrastructure" — don't force it under an operations initiative that implies it owns rituals.
 4. **Add one routing line to the tracked source** at `~/workspaces/{name}/ai-knowledge-{name}/.agents/workspace-AGENTS.md`. Never edit the workspace-root entry points: the onboarding engine owns those and both clients resolve the tracked source through them. Commit the source change in the personal knowledge repository so a new machine receives it.

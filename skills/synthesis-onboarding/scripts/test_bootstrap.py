@@ -167,11 +167,18 @@ def test_onboard_handoff_consumes_resolution_policy_before_update_cli(
     shutil.copyfile(SCRIPTS / "system_contract.py", fixture_scripts / "system_contract.py")
     marker = tmp_path / "cli-argv.json"
     (fixture_scripts / "synthesis_cli.py").write_text(
-        "import json, os, sys\n"
-        "from pathlib import Path\n"
-        "if sys.argv[1:] != ['update']:\n"
-        "    raise SystemExit(2)\n"
-        "Path(os.environ['SYNTHESIS_TEST_CLI_MARKER']).write_text("
+        "import argparse, json, os, sys\n"
+        "from pathlib import Path\n\n\n"
+        "def build_parser():\n"
+        "    parser = argparse.ArgumentParser(prog='synthesis')\n"
+        "    commands = parser.add_subparsers(dest='command', required=True)\n"
+        "    for name in ('setup', 'update'):\n"
+        "        commands.add_parser(name)\n"
+        "    return parser\n\n\n"
+        "if __name__ == '__main__':\n"
+        "    if sys.argv[1:] != ['update']:\n"
+        "        raise SystemExit(2)\n"
+        "    Path(os.environ['SYNTHESIS_TEST_CLI_MARKER']).write_text("
         "json.dumps(sys.argv[1:]) + '\\n', encoding='utf-8')\n",
         encoding="utf-8",
     )

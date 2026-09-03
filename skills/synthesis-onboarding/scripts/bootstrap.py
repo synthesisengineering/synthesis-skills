@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import shutil
@@ -153,8 +154,55 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _validate_cli_arguments(checkout: Path, cli_args: list[str]) -> None:
+    """Refuse an invalid command line before any generation is activated.
+
+    The public CLI that ships inside the checkout owns the argument
+    contract, so its parser is loaded from that checkout and asked to parse
+    the arguments; activation never happens for a command the CLI would
+    reject afterwards.
+    """
+    cli_path = Path(checkout) / "skills" / "synthesis-onboarding" / "scripts" / "synthesis_cli.py"
+    if cli_path.is_symlink() or not cli_path.is_file():
+        raise ContractError("release has no trusted synthesis CLI")
+    scripts_dir = str(cli_path.parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    spec = importlib.util.spec_from_file_location("synthesis_release_cli", cli_path)
+    if spec is None or spec.loader is None:
+        raise ContractError("release CLI could not be loaded for argument validation")
+    module = importlib.util.module_from_spec(spec)
+    # Loading the parser must not write bytecode into the checkout: a release
+    # checkout has to stay clean for its descriptor to be derived.
+    previous_bytecode_policy = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    except SystemExit as exc:
+        raise ContractError("release CLI exited during argument validation (%s)" % exc.code) from exc
+    finally:
+        sys.dont_write_bytecode = previous_bytecode_policy
+    build = getattr(module, "build_parser", None)
+    if not callable(build):
+        raise ContractError("release CLI has no argument parser")
+    try:
+        build().parse_args(cli_args or ["setup"])
+    except SystemExit as exc:
+        raise ContractError(
+            "invalid command line %r (parser exit %s)" % (cli_args, exc.code)
+        ) from exc
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    cli_args = list(args.cli_args)
+    if cli_args[:1] == ["--"]:
+        cli_args = cli_args[1:]
+    try:
+        _validate_cli_arguments(args.checkout, cli_args)
+    except ContractError as exc:
+        print("Synthesis bootstrap refused: %s" % exc, file=sys.stderr)
+        return 2
     try:
         generation, descriptor = materialize_release(
             args.checkout,
@@ -192,9 +240,6 @@ def main(argv: list[str] | None = None) -> int:
         print("Synthesis bootstrap refused: %s" % exc, file=sys.stderr)
         return 1
     cli = generation / "skills" / "synthesis-onboarding" / "scripts" / "synthesis_cli.py"
-    cli_args = list(args.cli_args)
-    if cli_args[:1] == ["--"]:
-        cli_args = cli_args[1:]
     command = [sys.executable, "-B", str(cli)] + (cli_args or ["setup"])
     environment = dict(os.environ)
     environment["SYNTHESIS_ACTIVE_DESCRIPTOR"] = str(args.active_descriptor)

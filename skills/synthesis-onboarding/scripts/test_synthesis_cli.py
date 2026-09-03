@@ -890,7 +890,9 @@ def test_setup_rebootstraps_edge_and_pin_back_to_floating_stable(
         ) == 0
         assert engine_calls == []
         assert state.read_desired() is None
-        assert state.read_observation()["transactions"][-1]["state"] == "aborted"
+        # A policy transfer is a control handoff to the bootstrap, not a
+        # failed attempt: no transaction is recorded for it.
+        assert state.read_observation()["transactions"] == []
 
     assert transfers == [
         ("edge", "main", "stable", None),
