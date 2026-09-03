@@ -917,3 +917,32 @@ def test_public_prose_states_preconditions_and_doctor_side_effects() -> None:
     assert "plugin-currency.json" in onboarding
     assert "--purge" in onboarding
     assert 'version: "%s"' % synthesis_cli.ENGINE_VERSION in onboarding
+
+
+def test_release_surfaces_agree_and_public_commands_are_pinned() -> None:
+    """The version surfaces agree with each other and the README installs stable.
+
+    Red at 4.92.1 on the README assertions: the native plugin commands still
+    installed from the default branch. The coherence assertions derive the
+    version from the manifests so a later release cannot fail this fixture
+    by existing.
+    """
+    manifests = {
+        json.loads((REPO_ROOT / path).read_text(encoding="utf-8"))["version"]
+        for path in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json")
+    }
+    assert len(manifests) == 1
+    version = manifests.pop()
+    changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    top = next(line for line in changelog.splitlines() if line.startswith("## ["))
+    assert top.startswith(f"## [{version}] - ")
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert f"Release **{version}**" in readme
+    assert "codex plugin marketplace add synthesisengineering/synthesis-skills --ref stable" in readme
+    assert "claude plugin marketplace add synthesisengineering/synthesis-skills@stable" in readme
+    assert "codex plugin marketplace add synthesisengineering/synthesis-skills\n" not in readme
+    assert "claude plugin marketplace add synthesisengineering/synthesis-skills\n" not in readme
+    assert "synthesis uninstall --purge" in readme
+    skill = (SCRIPTS.parent / "SKILL.md").read_text(encoding="utf-8")
+    assert f'version: "{onboard.ENGINE_VERSION}"' in skill
+    assert synthesis_cli.ENGINE_VERSION == onboard.ENGINE_VERSION

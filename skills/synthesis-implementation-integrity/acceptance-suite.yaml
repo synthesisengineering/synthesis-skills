@@ -1,4 +1,4 @@
-# AGENT HEURISTIC: closed acceptance universe for the 4.92.0 independent
+# AGENT HEURISTIC: closed acceptance universe for the 4.93.0 independent
 # onboarding review repairs. Fresh per transaction: changed_surfaces must equal
 # the authoritative base-to-head Git diff before release.py can consume the
 # receipt.
@@ -14,6 +14,14 @@ metadata_class: acceptance-test
 issues_authority_receipt: false
 unverified_remainder: the real installed update, the dual-client live receipts, the historical-cache invariant, and the organization-side manifest migration are verified after the gated publisher activates this release
 changed_surfaces:
+  - path: .claude-plugin/plugin.json
+    cases: [release-surfaces, release-contract]
+  - path: .codex-plugin/plugin.json
+    cases: [release-surfaces, release-contract]
+  - path: CHANGELOG.md
+    cases: [release-surfaces, release-contract]
+  - path: README.md
+    cases: [release-surfaces, release-contract]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [acceptance-self]
   - path: skills/synthesis-onboarding/SKILL.md
@@ -38,6 +46,8 @@ changed_surfaces:
     cases: [setup-transfer-existing, workspace-capability]
   - path: skills/synthesis-onboarding/scripts/test_system_contract.py
     cases: [bootstrap-argument-validation]
+  - path: skills/synthesis-project-management/scripts/test_project_state.py
+    cases: [release-contract]
   - path: skills/synthesis-quick-answers/SKILL.md
     cases: [public-prose]
 cases:
@@ -181,3 +191,11 @@ cases:
     control_class: acceptance-test
     fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_public_prose_states_preconditions_and_doctor_side_effects
     motivating_defect: public-prose-omitted-the-bootstrap-precondition-and-the-doctor-side-effects
+  - id: release-surfaces
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_release_surfaces_agree_and_public_commands_are_pinned
+    motivating_defect: the-public-readme-installed-the-default-branch-through-the-native-plugin-commands
+  - id: release-contract
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
+    motivating_defect: a-release-contract-fixture-pinned-the-previous-literal-version-and-failed-every-later-release

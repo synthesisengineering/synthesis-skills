@@ -549,9 +549,12 @@ def test_project_state_reliability_release_contract_is_coherent() -> None:
         json.loads((root / path).read_text(encoding="utf-8"))["version"]
         for path in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json")
     }
-    assert versions == {"4.92.1"}
-    assert "## [4.92.1] - 2026-09-03" in (root / "CHANGELOG.md").read_text(encoding="utf-8")
-    assert "Release **4.92.1**" in (root / "README.md").read_text(encoding="utf-8")
+    assert len(versions) == 1
+    version = versions.pop()
+    changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    newest = next(line for line in changelog.splitlines() if line.startswith("## ["))
+    assert newest.startswith(f"## [{version}] - ")
+    assert f"Release **{version}**" in (root / "README.md").read_text(encoding="utf-8")
     hooks = json.loads((root / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     commands = [
         hook["command"]

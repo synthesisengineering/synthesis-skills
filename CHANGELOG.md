@@ -4,6 +4,37 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.93.0] - 2026-09-03
+
+**The installed system now tells the truth about itself and works from an
+installed release, not only from a source checkout.** An independent review
+of the shipped system as a stranger, an organization member, and a returning
+user found that organization instructions could not be materialized from an
+immutable generation, that a fresh Claude session never fed the live-loaded
+plane, that the only public outcome task could not pass on the scaffolded
+workspace, that doctor echoed transaction-time planes, and that the native
+plugin commands on the public surfaces installed from `main`.
+
+`synthesis-onboarding` 2.1.0 identifies the public instruction source by the
+digest-verified active release when the source root is not a Git checkout;
+refuses a schema-1 organization manifest with the offending fields and the
+migration section of the organization guide; promotes registry SessionStart
+receipts at status and doctor time once their transcripts bind; re-derives
+every truth plane from current evidence, re-hashing the active release root
+and reporting drifted, changed, or defective states; reads the release policy
+from committed desired state before any receipts file; prints plain status
+and doctor summaries with one next action; seeds a tracked knowledge-base
+declaration and source bundle in the scaffold and keeps every seeded file
+user-owned; reports the reason Git gave for a refused first commit; selects
+detected clients for `workspace ensure`; skips marketplace reconfiguration
+when the installed version and configured ref already match, so a
+zero-change update no longer forces a Codex cache refresh; treats policy
+transfers as control handoffs rather than aborted transactions; adds
+`uninstall --purge` with a retained-path report; validates the bootstrap
+command line before activation; and removes the dead schema-1 code.
+`synthesis-quick-answers` 1.3.1 states the bootstrap precondition. README and
+both public sites pin the native plugin commands to the stable ref.
+
 ## [4.92.1] - 2026-09-03
 
 **One project's active pointer can no longer fail another project's aggregate
