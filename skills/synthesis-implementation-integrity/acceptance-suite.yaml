@@ -1,17 +1,17 @@
-# AGENT HEURISTIC: closed acceptance universe for the 4.91.3 release-snapshot repair.
+# AGENT HEURISTIC: closed acceptance universe for the 4.91.4 guardian-lock repair.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: synthesis-release-snapshot-bytecode-integrity
+suite: synthesis-cache-guardian-lock-reliability
 membership: closed
-production_entry_point: release.py -> cache_guardian._tree_digest -> preserved Codex plugin roots
+production_entry_point: synthesis update -> onboard.synchronize_codex_history -> cache_guardian --doctor -> shared transition lock
 enforcing_boundary: release.py consumes this transaction-bound closed manifest before publishing the immutable release, installing both clients, and activating the public CLI
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the live old-task update race is verified by the gated publisher after this source acceptance boundary
+unverified_remainder: the real installed update is verified after the gated publisher activates this release
 changed_surfaces:
   - path: .claude-plugin/plugin.json
     cases: [release-contract]
@@ -26,54 +26,24 @@ changed_surfaces:
   - path: skills/synthesis-skills-manager/SKILL.md
     cases: [release-contract]
   - path: skills/synthesis-skills-manager/scripts/cache_guardian.py
-    cases: [guardian-bytecode, guardian-boundary]
+    cases: [guardian-lock-policy, guardian-lock-timeout]
   - path: skills/synthesis-skills-manager/scripts/test_cache_guardian.py
-    cases: [guardian-bytecode, guardian-boundary]
-  - path: skills/synthesis-skills-manager/scripts/release.py
-    cases: [bytecode-digest, special-object, refresh-bytecode, atomic-repair, symlink-write-through, repair-rollback, source-repair]
+    cases: [guardian-lock-policy, guardian-lock-timeout]
   - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [release-contract, bytecode-digest, special-object, refresh-bytecode, atomic-repair, symlink-write-through, repair-rollback, source-repair]
+    cases: [release-contract]
 cases:
   - id: release-contract
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_runtime_bytecode_cache_release_contract_is_public_and_coherent
-    motivating_defect: a-follow-on-release-could-ship-disagreeing-version-or-integrity-policy-documentation
-  - id: bytecode-digest
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_cache_guardian_lock_release_contract_is_public_and_coherent
+    motivating_defect: a-follow-on-release-could-ship-disagreeing-version-or-lock-policy-documentation
+  - id: guardian-lock-policy
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_recovery_digest_ignores_client_metadata_but_rejects_unknown_extras
-    motivating_defect: the-publisher-could-reject-hook-generated-bytecode-or-hide-an-unknown-file
-  - id: guardian-bytecode
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_doctor_waits_for_background_guardian_but_once_remains_nonblocking
+    motivating_defect: a-synchronous-update-could-fail-when-ordinary-background-guardian-work-owned-the-lock
+  - id: guardian-lock-timeout
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_runtime_bytecode_does_not_invalidate_historical_source
-    motivating_defect: the-canonical-policy-could-reject-cpython-final-or-atomic-write-bytecode
-  - id: guardian-boundary
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_bytecode_exception_does_not_hide_source_or_unknown_drift
-    motivating_defect: a-wider-temporary-bytecode-pattern-could-mask-source-or-unknown-files
-  - id: special-object
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_recovery_digest_rejects_special_objects
-    motivating_defect: the-shared-digest-adapter-could-erase-the-guardians-special-object-failure
-  - id: refresh-bytecode
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_refresh_accepts_runtime_bytecode_change
-    motivating_defect: an-old-hook-could-change-bytecode-between-snapshot-and-restore-and-fail-the-release
-  - id: source-repair
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_refresh_repairs_if_existing_preserved_root_changes
-    motivating_defect: the-shared-bytecode-policy-could-stop-repairing-real-source-drift
-  - id: atomic-repair
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_refresh_atomically_replaces_unowned_extra
-    motivating_defect: copying-into-a-differing-root-could-leave-untrusted-entries-behind
-  - id: symlink-write-through
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_refresh_does_not_write_through_nested_symlink
-    motivating_defect: a-nested-destination-link-could-redirect-repair-writes-outside-the-cache
-  - id: repair-rollback
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_atomic_cache_repair_rolls_back_failed_verification
-    motivating_defect: a-failed-post-swap-verification-could-strand-the-original-root
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_blocking_cache_lock_wait_is_bounded
+    motivating_defect: a-real-release-transition-could-make-a-synchronous-doctor-wait-without-a-bound
   - id: acceptance-self
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates

@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.91.4] - 2026-09-03
+
+**A synchronous update no longer mistakes ordinary background guardian work
+for an active release transition.** `cache_guardian.py --doctor` now waits up
+to 120 seconds for the shared transition lock, which covers a complete
+budgeted historical-root restore and serializes the onboarding
+completion check behind a guardian pass already in progress. The continuous
+watcher and explicit `--once` mode remain nonblocking, so background work never
+queues. Persistent publisher contention still fails closed with exit 75 after
+the bounded wait, and historical-root verification is unchanged.
+
 ## [4.91.3] - 2026-09-03
 
 **The release snapshot and the durable guardian now apply one historical-root

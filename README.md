@@ -12,15 +12,17 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 ## What's new
 
 **One bootstrap now installs and manages the complete public system (September
-2026).** Releases **4.91.0** through **4.91.3** add the stable `synthesis` CLI,
+2026).** Releases **4.91.0** through **4.91.4** add the stable `synthesis` CLI,
 immutable release resolution, full and skills-only profiles, tracked dual-client workspace
 instructions, declarative organization enrollment, transactional desired and
 observed state, six-plane doctor results, and public outcome verification.
 Updates remain explicit. The release gate activates the same content-addressed
 generation that both clients verified. Existing plugin-only installations enter
 that lifecycle without another setup interview, and running older tasks cannot
-invalidate preserved roots merely by creating Python bytecode. See the [4.91.3 release
-notes](CHANGELOG.md).
+invalidate preserved roots merely by creating Python bytecode. The synchronous
+post-update cache check waits through an
+ordinary background guardian pass, while persistent lock contention remains a
+bounded failure. See the [4.91.4 release notes](CHANGELOG.md).
 
 **Peer sessions are addressed by resolver-issued receipts, never by name
 (September 2026).** Releases **4.90.0** through **4.90.3** gate every direct session-to-session

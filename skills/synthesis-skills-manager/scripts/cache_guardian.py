@@ -45,6 +45,8 @@ BYTECODE_SUFFIXES = frozenset({".pyc", ".pyo"})
 BYTECODE_TEMP_RE = re.compile(r"^.+\.py[co]\.[0-9]+$")
 DEFAULT_INTERVAL_SECONDS = 1.0
 ERROR_RETRY_SECONDS = 10.0
+LOCK_WAIT_TIMEOUT_SECONDS = 120.0
+LOCK_WAIT_INTERVAL_SECONDS = 0.1
 EX_TEMPFAIL = 75
 
 
@@ -53,7 +55,7 @@ class GuardianError(RuntimeError):
 
 
 class GuardianBusy(GuardianError):
-    """The release transition currently owns the shared cache lock."""
+    """Another cache transition currently owns the shared cache lock."""
 
 
 def archive_root(home: Path) -> Path:
@@ -231,16 +233,29 @@ def _cache_lock(home: Path, *, blocking: bool) -> Iterator[None]:
         flags |= os.O_NOFOLLOW
     descriptor = os.open(path, flags, 0o600)
     handle = os.fdopen(descriptor, "a+")
-    operation = fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB)
+    deadline = time.monotonic() + LOCK_WAIT_TIMEOUT_SECONDS if blocking else None
+    acquired = False
     try:
-        try:
-            fcntl.flock(handle.fileno(), operation)
-        except (BlockingIOError, OSError) as exc:
-            raise GuardianBusy("release transition owns the cache lock") from exc
+        while True:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except BlockingIOError as exc:
+                if deadline is None:
+                    raise GuardianBusy("another cache transition owns the cache lock") from exc
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise GuardianBusy(
+                        "another cache transition held the cache lock for more than "
+                        f"{LOCK_WAIT_TIMEOUT_SECONDS:g} seconds"
+                    ) from exc
+                time.sleep(min(LOCK_WAIT_INTERVAL_SECONDS, remaining))
         yield
     finally:
         try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            if acquired:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         finally:
             handle.close()
 
@@ -454,7 +469,11 @@ def main(argv: list[str] | None = None) -> int:
     modes.add_argument("--once", action="store_true", help="restore and verify historical roots once")
     modes.add_argument("--watch", action="store_true", help="continuously guard later cache generations")
     modes.add_argument("--install", action="store_true", help="install and start the durable user supervisor")
-    modes.add_argument("--doctor", action="store_true", help="restore once and verify the durable runtime exists")
+    modes.add_argument(
+        "--doctor",
+        action="store_true",
+        help="wait for the cache transition lock, restore once, and verify the durable runtime exists",
+    )
     parser.add_argument("--interval", type=float, default=DEFAULT_INTERVAL_SECONDS)
     args = parser.parse_args(argv)
     try:
@@ -464,7 +483,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.install:
             record = install()
         else:
-            record = restore_once()
+            # A synchronous doctor is a completion gate for onboarding. It
+            # waits through ordinary watcher work instead of turning normal
+            # lock contention into a false update failure. ``--once`` and the
+            # watcher remain nonblocking so background work never queues.
+            record = restore_once(blocking=args.doctor)
             if args.doctor:
                 runtime = runtime_path(Path.home())
                 if not runtime.is_file() or runtime.is_symlink():

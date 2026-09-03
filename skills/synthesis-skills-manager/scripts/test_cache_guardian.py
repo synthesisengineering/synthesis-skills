@@ -7,6 +7,8 @@ import os
 import plistlib
 import shutil
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -257,6 +259,67 @@ def test_release_lock_defers_guardian_without_writing(tmp_path: Path) -> None:
         fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         handle.close()
     assert not guardian.cache_parent(home).exists()
+
+
+def test_doctor_waits_for_background_guardian_but_once_remains_nonblocking(
+    tmp_path: Path,
+) -> None:
+    home = seeded_home(tmp_path)
+    runtime = guardian.runtime_path(home)
+    runtime.parent.mkdir(parents=True, exist_ok=True)
+    runtime.write_text("guardian\n", encoding="utf-8")
+    path = guardian.lock_path(home)
+    handle = path.open("a+")
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    try:
+        once = subprocess.run(
+            [sys.executable, str(SCRIPT), "--once"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=env,
+            check=False,
+        )
+        assert once.returncode == guardian.EX_TEMPFAIL
+
+        doctor = subprocess.Popen(
+            [sys.executable, str(SCRIPT), "--doctor"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        )
+        time.sleep(0.1)
+        assert doctor.poll() is None
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
+
+    stdout, stderr = doctor.communicate(timeout=5)
+    assert doctor.returncode == 0, stdout + stderr
+    assert json.loads(stdout)["verified"] == 1
+
+
+def test_blocking_cache_lock_wait_is_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = seeded_home(tmp_path)
+    path = guardian.lock_path(home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = path.open("a+")
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    moments = iter((10.0, 131.0))
+    monkeypatch.setattr(guardian.time, "monotonic", lambda: next(moments))
+    try:
+        with pytest.raises(guardian.GuardianBusy, match="more than 120 seconds"):
+            with guardian._cache_lock(home, blocking=True):
+                pytest.fail("contended lock was acquired")
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
 
 
 def test_launchd_definition_is_persistent_and_runs_stable_runtime(tmp_path: Path) -> None:
