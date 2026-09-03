@@ -54,11 +54,11 @@ def board(tmp_path, monkeypatch):
 
 def test_inbox_delivers_once_to_the_named_seat(board, tmp_path) -> None:
     payload = {"session_id": ME_SID, "hook_event_name": "UserPromptSubmit", "cwd": "/tmp"}
-    text = INBOX.inbox_text(payload, board=board, pointer=tmp_path / "pointer.json", environ=ME_ENV)
+    text = INBOX.inbox_text(payload, board=board, environ=ME_ENV)
     assert "2 unread message(s)" in text
     assert "Handoff: the review is yours." in text and "For every project-m session." in text
     assert "Not for me." not in text
-    assert INBOX.inbox_text(payload, board=board, pointer=tmp_path / "pointer.json", environ=ME_ENV) == ""
+    assert INBOX.inbox_text(payload, board=board, environ=ME_ENV) == ""
 
 
 def test_project_history_before_the_claim_is_not_delivered_to_a_new_seat(tmp_path, monkeypatch) -> None:
@@ -75,28 +75,31 @@ def test_project_history_before_the_claim_is_not_delivered_to_a_new_seat(tmp_pat
     path.write_text(text, encoding="utf-8")
     me = claim(path, "project-m", ME_ENV, monkeypatch)
     assert ENGINE.command_message(args(path, sender=other.compact_id, to="project-m", text="Posted after the claim.")) == 0
-    delivered = INBOX.inbox_text({"session_id": ME_SID}, board=path, pointer=tmp_path / "pointer.json", environ=ME_ENV)
+    delivered = INBOX.inbox_text({"session_id": ME_SID}, board=path, environ=ME_ENV)
     assert "Posted after the claim." in delivered
     assert "Posted before the seat existed." not in delivered
     assert "1 unread message(s)" in delivered
     assert me.project == "project-m"
 
 
-def test_unseated_session_gets_project_messages_from_the_active_pointer(board, tmp_path) -> None:
+def test_unseated_session_receives_nothing_even_when_a_global_pointer_names_a_project(board, tmp_path) -> None:
+    """2026-09-03: the fallback to the global active-project pointer delivered
+    another project's message to a seatless session. The pointer is another
+    session's cache; without a seat there is no address."""
     pointer = tmp_path / "pointer.json"
     pointer.write_text(json.dumps({"project": "/kb/projects/project-m"}), encoding="utf-8")
     stranger = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "99999999-9999-4999-8999-999999999999"}
-    text = INBOX.inbox_text({"session_id": stranger["CLAUDE_CODE_SESSION_ID"]}, board=board, pointer=pointer, environ=stranger)
-    assert "For every project-m session." in text and "Handoff" not in text
+    assert INBOX.inbox_text({"session_id": stranger["CLAUDE_CODE_SESSION_ID"]}, board=board, environ=stranger) == ""
+    assert not hasattr(INBOX, "pointer_project"), "the pointer fallback must not exist"
 
 
 def test_codex_session_learns_its_identity(board, tmp_path) -> None:
-    text = INBOX.inbox_text({"session_id": "0a0a0a0a-1b1b-4c1c-8d1d-2e2e2e2e2e2e"}, board=board, pointer=tmp_path / "pointer.json", environ={"CODEX_HOME": "/x"})
+    text = INBOX.inbox_text({"session_id": "0a0a0a0a-1b1b-4c1c-8d1d-2e2e2e2e2e2e"}, board=board, environ={"CODEX_HOME": "/x"})
     assert "SYNTHESIS_CLIENT_SESSION_REF=codex:0a0a0a0a-1b1b-4c1c-8d1d-2e2e2e2e2e2e" in text
 
 
 def test_no_session_id_means_silence(board, tmp_path) -> None:
-    assert INBOX.inbox_text({}, board=board, pointer=tmp_path / "pointer.json", environ={}) == ""
+    assert INBOX.inbox_text({}, board=board, environ={}) == ""
 
 
 def test_hook_process_emits_additional_context_json_or_nothing(board, tmp_path) -> None:
@@ -104,12 +107,12 @@ def test_hook_process_emits_additional_context_json_or_nothing(board, tmp_path) 
     env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE") and k != "SYNTHESIS_CLIENT_SESSION_REF"}
     env.update(ME_ENV)
     payload = json.dumps({"session_id": ME_SID, "hook_event_name": "UserPromptSubmit"})
-    first = subprocess.run([sys.executable, str(script), "--board", str(board), "--active-project-file", str(tmp_path / "pointer.json"), "--hook"], input=payload, capture_output=True, text=True, env=env)
+    first = subprocess.run([sys.executable, str(script), "--board", str(board), "--hook"], input=payload, capture_output=True, text=True, env=env)
     assert first.returncode == 0, first.stderr
     data = json.loads(first.stdout)
     assert data["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
     assert "2 unread message(s)" in data["hookSpecificOutput"]["additionalContext"]
-    second = subprocess.run([sys.executable, str(script), "--board", str(board), "--active-project-file", str(tmp_path / "pointer.json"), "--hook"], input=payload, capture_output=True, text=True, env=env)
+    second = subprocess.run([sys.executable, str(script), "--board", str(board), "--hook"], input=payload, capture_output=True, text=True, env=env)
     assert second.returncode == 0 and second.stdout == ""
 
 

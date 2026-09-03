@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -562,13 +563,20 @@ def test_project_state_reliability_release_contract_is_coherent() -> None:
         for hook in group["hooks"]
     ]
     assert any(command.endswith("project_state.py hook") for command in commands)
-    expected = {
-        "synthesis-project-management": "2.12.0",
-        "synthesis-context-lifecycle": "1.18.0",
-        "synthesis-agent-conformance": "1.9.1",
-        "synthesis-autopilot": "2.1.0",
-        "synthesis-repo-guard": "2.4.0",
+    # The reliability tranche shipped these skills at these versions; later
+    # releases may bump any of them, so the contract is a floor, never a
+    # literal to re-pin by hand (a hand-pinned literal broke the first
+    # release after this test was written).
+    floors = {
+        "synthesis-project-management": (2, 12, 0),
+        "synthesis-context-lifecycle": (1, 18, 0),
+        "synthesis-agent-conformance": (1, 9, 1),
+        "synthesis-autopilot": (2, 1, 0),
+        "synthesis-repo-guard": (2, 4, 0),
     }
-    for skill, version in expected.items():
+    for skill, floor in floors.items():
         text = (root / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
-        assert f'version: "{version}"' in text
+        match = re.search(r'^\s*version:\s*"(\d+)\.(\d+)\.(\d+)"\s*$', text, re.M)
+        assert match, f"{skill} declares no semantic version"
+        declared = tuple(int(part) for part in match.groups())
+        assert declared >= floor, f"{skill} {declared} is below the reliability floor {floor}"

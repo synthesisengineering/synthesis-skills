@@ -1,57 +1,82 @@
-# AGENT HEURISTIC: closed acceptance universe for the AR-008 named-project
-# stale-canonical recovery transaction. Fresh per transaction:
-# changed_surfaces must equal the authoritative base-to-head Git diff before
-# release.py can consume the receipt.
+# AGENT HEURISTIC: authored for the 4.93.2 pointer-never-blocks-receipts transaction.
+# Fresh per transaction: changed_surfaces must equal the authoritative
+# base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: project-state-ar008-named-project-recovery-2026-09
+suite: sessionstart-receipt-before-context-and-no-pointer-in-the-inbox
 membership: closed
-production_entry_point: native SessionStart hook -> session_context.py build -> bounded workspace registry freshness notice -> named-project causal resolver
-enforcing_boundary: release.py consumes this transaction-bound closed manifest before publishing the immutable release, installing both clients, and activating the public CLI
+production_entry_point: skills/synthesis-agent-conformance/scripts/session_context.py
+enforcing_boundary: the SessionStart hook records its transcript-bound live receipt before it builds context, ignores with a notice a global pointer it cannot validate instead of failing the session, and the inbox hook delivers only to a claimed seat, never through the global pointer
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the real installed AR-008 probe, Codex human trust, current client lifecycle receipts, historical-cache invariants, and the final installed updater are verified after the gated publisher activates this release
+unverified_remainder: a genuine transcript-bound receipt for a live Claude session under a foreign behind pointer is produced only by a real client SessionStart after this release installs; the hook was reproduced against a scratch receipt path with a fake session id before and after the change
 changed_surfaces:
-  - path: .claude-plugin/plugin.json
-    cases: [release-surfaces, release-contract]
-  - path: .codex-plugin/plugin.json
-    cases: [release-surfaces, release-contract]
-  - path: CHANGELOG.md
-    cases: [release-surfaces, release-contract]
-  - path: README.md
-    cases: [release-surfaces, release-contract]
-  - path: skills/synthesis-agent-conformance/SKILL.md
-    cases: [workspace-registry-contract]
   - path: skills/synthesis-agent-conformance/scripts/session_context.py
-    cases: [ar008-workspace-warning, registry-freshness-unknown]
+    cases: [receipt-before-context, pointer-never-blocks, unrelated-failure-still-closed]
   - path: skills/synthesis-agent-conformance/scripts/test_session_context.py
-    cases: [workspace-registry-contract, ar008-workspace-warning, registry-freshness-unknown]
+    cases: [receipt-before-context, pointer-never-blocks, unrelated-failure-still-closed]
+  - path: skills/synthesis-agent-conformance/SKILL.md
+    cases: [pointer-never-blocks]
+  - path: skills/synthesis-agent-conformance/scripts/test_conformance.py
+    cases: [payload-parity-with-ignored-pointer]
+  - path: skills/synthesis-project-management/scripts/board_inbox.py
+    cases: [inbox-never-uses-the-pointer]
+  - path: skills/synthesis-project-management/scripts/test_board_inbox.py
+    cases: [inbox-never-uses-the-pointer]
+  - path: skills/synthesis-project-management/SKILL.md
+    cases: [pm-budget]
+  - path: skills/synthesis-project-management/scripts/test_project_state.py
+    cases: [release-contract-floors]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
-    cases: [acceptance-self]
+    cases: [shipped-manifest-self-consumption]
+  - path: .claude-plugin/plugin.json
+    cases: [release-manifest-parity]
+  - path: .codex-plugin/plugin.json
+    cases: [release-manifest-parity]
+  - path: CHANGELOG.md
+    cases: [release-changelog-parity]
+  - path: README.md
+    cases: [release-changelog-parity]
 cases:
-  - id: acceptance-self
+  - id: receipt-before-context
+    control_class: enforced-gate
+    fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_main_records_the_receipt_before_building_context
+    motivating_defect: a-foreign-pointer-to-a-worktree-eleven-commits-behind-silenced-every-claude-receipt-on-the-machine
+  - id: pointer-never-blocks
+    control_class: enforced-gate
+    fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_main_ignores_a_pointer_it_cannot_validate_with_a_notice
+    motivating_defect: another-sessions-cache-was-treated-as-authority-for-the-session-starting
+  - id: unrelated-failure-still-closed
     control_class: acceptance-test
-    fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-    motivating_defect: a-release-manifest-could-claim-closed-membership-with-unmapped-or-invalid-cases
-  - id: release-surfaces
+    fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_main_still_fails_closed_on_a_non_pointer_failure
+    motivating_defect: ignoring-the-pointer-must-not-become-ignoring-every-failure
+  - id: payload-parity-with-ignored-pointer
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_release_surfaces_agree_and_public_commands_are_pinned
-    motivating_defect: versioned-source-surfaces-could-disagree-at-the-release-boundary
-  - id: release-contract
+    fixture: ../synthesis-agent-conformance/scripts/test_conformance.py::test_payload_parity_agrees_when_a_broken_pointer_is_ignored
+    motivating_defect: the-stopped-task-payload-check-failed-on-a-foreign-pointer-instead-of-reporting-it
+  - id: inbox-never-uses-the-pointer
+    control_class: enforced-gate
+    fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_unseated_session_receives_nothing_even_when_a_global_pointer_names_a_project
+    motivating_defect: the-inbox-fallback-delivered-another-projects-message-to-a-seatless-session
+  - id: release-contract-floors
     control_class: acceptance-test
     fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
-    motivating_defect: project-state-release-surfaces-could-advance-without-the-runtime-contract
-  - id: workspace-registry-contract
+    motivating_defect: a-release-contract-that-pins-skill-versions-as-literals-fails-the-first-release-after-it
+  - id: pm-budget
     control_class: acceptance-test
-    fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_skill_documents_workspace_registry_freshness_notice
-    motivating_defect: the-public-session-start-contract-could-omit-the-root-registry-freshness-gate-implemented-by-the-hook
-  - id: ar008-workspace-warning
+    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_skill_document_stays_within_repo_budget
+    motivating_defect: a-restructured-document-must-not-regrow-with-its-next-feature
+  - id: shipped-manifest-self-consumption
     control_class: acceptance-test
-    fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_build_without_pointer_warns_when_workspace_registry_is_behind
-    motivating_defect: a-root-level-named-project-start-could-read-a-canonical-record-behind-a-newer-isolated-worktree
-  - id: registry-freshness-unknown
+    fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
+    motivating_defect: an-acceptance-manifest-that-its-own-runner-cannot-consume-issues-authority-it-never-earned
+  - id: release-manifest-parity
     control_class: acceptance-test
-    fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_build_without_pointer_marks_uncomparable_registry_unknown
-    motivating_defect: an-uncomparable-project-registry-could-look-current-because-no-staleness-warning-was-emitted
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
+    motivating_defect: a-version-that-reaches-only-one-client-manifest-cannot-be-reliably-installed-or-audited
+  - id: release-changelog-parity
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
+    motivating_defect: a-release-whose-changelog-disagrees-with-its-manifests-cannot-be-audited-later
