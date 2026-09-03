@@ -42,11 +42,11 @@ ONBOARDING_SCRIPTS_DIR = (
 if str(ONBOARDING_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(ONBOARDING_SCRIPTS_DIR))
 
-from project_context import extract, next_actions, record_freshness
-from active_project import load_and_validate
-from project_state import STATE_FILE, resolve_project, semantic_issues
-from coordination_schema import display_id, parse_table_rows, row_identity
-from live_receipt import (
+from project_context import extract, next_actions, record_freshness  # noqa: E402
+from active_project import load_and_validate  # noqa: E402
+from project_state import STATE_FILE, resolve_project, semantic_issues  # noqa: E402
+from coordination_schema import display_id, parse_table_rows, row_identity  # noqa: E402
+from live_receipt import (  # noqa: E402
     claude_root_transcript_path,
     latest_receipt_paths,
     receipt_event_path,
@@ -55,8 +55,8 @@ from live_receipt import (
     transcript_binds_session,
     validate_receipt_event_directory,
 )
-from plugin_currency import sessionstart_notice
-from system_contract import SystemState
+from plugin_currency import sessionstart_notice  # noqa: E402
+from system_contract import SystemState  # noqa: E402
 
 
 DEFAULT_POINTER = Path.home() / ".synthesis" / "active-project.json"
@@ -357,6 +357,56 @@ def project_from_cwd(cwd: Path | None) -> Path | None:
     return None
 
 
+def workspace_registry_notices(cwd: Path | None) -> list[str]:
+    """Surface stale immediately discoverable project registries.
+
+    A SessionStart event occurs before the user's named-project prompt is
+    available to this hook.  At a workspace or knowledge-repository root we
+    can still inspect the bounded registry shapes that the subsequent resolver
+    will use.  This prevents a behind canonical checkout from looking healthy
+    during the gap between SessionStart and named-project resolution without
+    guessing which project the user will choose.
+    """
+    if cwd is None:
+        return []
+    try:
+        root = cwd.expanduser().resolve(strict=True)
+        if root.is_file():
+            root = root.parent
+        candidates = [root / "projects" / "index.yaml"]
+        candidates.extend(
+            child / "projects" / "index.yaml"
+            for child in sorted(root.iterdir())
+            if child.is_dir() and not child.is_symlink()
+        )
+    except OSError as exc:
+        return [f"PROJECT REGISTRY DISCOVERY UNKNOWN: {exc}."]
+
+    notices: list[str] = []
+    seen: set[Path] = set()
+    for index in candidates:
+        if not index.is_file() or index.is_symlink():
+            continue
+        resolved = index.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        fresh, detail = record_freshness(index.parent)
+        if not fresh and "behind fetched" in detail:
+            notices.append(
+                f"RECORD STALENESS WARNING: registry {index} is in a checkout "
+                f"whose {detail}. Run the named project's causal resolver before "
+                "reading its project prose."
+            )
+        elif not fresh or detail.startswith("no upstream configured"):
+            notices.append(
+                f"PROJECT REGISTRY FRESHNESS UNKNOWN: {index}: {detail}. "
+                "Do not treat its project prose as current until the named "
+                "project's causal resolver establishes a source."
+            )
+    return notices
+
+
 def linked_plan(project: Path, context: str) -> Path | None:
     match = re.search(
         r"\((resources/artifacts/[^)\n]*plan[^)\n]*\.md)\)",
@@ -469,6 +519,7 @@ def build(
                 label="Stopped synthesis project discovered from the task directory",
             )
         else:
+            lines.extend(workspace_registry_notices(cwd))
             lines.append(
                 "Stopped-task recovery remains available: when the user names a "
                 "synthesis project, run the project-state resolver from the current "
