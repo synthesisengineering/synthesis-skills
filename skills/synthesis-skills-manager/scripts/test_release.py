@@ -775,6 +775,33 @@ def test_delayed_cache_guardian_release_contract_is_public_and_coherent() -> Non
     assert "## [4.77.1]" in changelog
 
 
+def test_runtime_bytecode_cache_release_contract_is_public_and_coherent() -> None:
+    repository = Path(__file__).resolve().parents[3]
+    manager = (repository / "skills/synthesis-skills-manager/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    changelog = (repository / "CHANGELOG.md").read_text(encoding="utf-8")
+    readme = (repository / "README.md").read_text(encoding="utf-8")
+    hook_payload = json.loads(
+        (repository / "hooks/hooks.json").read_text(encoding="utf-8")
+    )
+    commands = [
+        hook["command"]
+        for registrations in hook_payload["hooks"].values()
+        for registration in registrations
+        for hook in registration["hooks"]
+        if hook.get("type") == "command"
+        and hook.get("command", "").startswith("python3 ")
+    ]
+
+    assert release.source_version(repository)[0] == "4.91.2"
+    assert release.changelog_top_version(repository) == "4.91.2"
+    assert "Version 2.6.1" in manager and "__pycache__" in manager
+    assert "running older tasks" in readme
+    assert "## [4.91.2]" in changelog
+    assert commands and all(command.startswith("python3 -B ") for command in commands)
+
+
 def test_whole_system_onboarding_release_contract_is_public_and_coherent() -> None:
     repository = Path(__file__).resolve().parents[3]
     onboarding = (repository / "skills/synthesis-onboarding/SKILL.md").read_text(

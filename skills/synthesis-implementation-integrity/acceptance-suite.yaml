@@ -1,77 +1,75 @@
-# AGENT HEURISTIC: closed acceptance universe for the 4.91.1 legacy-update repair.
+# AGENT HEURISTIC: closed acceptance universe for the 4.91.2 historical-bytecode repair.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: synthesis-onboarding-legacy-update-migration
+suite: synthesis-historical-bytecode-cache-integrity
 membership: closed
-production_entry_point: synthesis -> synthesis_cli.py -> onboard.py
+production_entry_point: release.py -> cache_guardian.py -> preserved Codex plugin roots
 enforcing_boundary: release.py consumes this transaction-bound closed manifest before publishing the immutable release, installing both clients, and activating the public CLI
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: live first-time public and organization user observation, live credential/provider behavior, and deployment of the separately built public sites remain external principal gates
+unverified_remainder: live client cache-replacement timing outside the reproduced old-task update path remains environment-dependent
 changed_surfaces:
   - path: .claude-plugin/plugin.json
-    cases: [release-identity]
+    cases: [release-contract]
   - path: .codex-plugin/plugin.json
-    cases: [release-identity]
+    cases: [release-contract]
   - path: CHANGELOG.md
-    cases: [release-identity, legacy-update-contract]
+    cases: [release-contract]
+  - path: README.md
+    cases: [release-contract]
+  - path: hooks/hooks.json
+    cases: [release-contract, hook-bytecode-prevention]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [acceptance-self]
-  - path: skills/synthesis-onboarding/SKILL.md
-    cases: [legacy-update-contract, engine-version]
-  - path: skills/synthesis-onboarding/scripts/onboard.py
-    cases: [engine-version]
-  - path: skills/synthesis-onboarding/scripts/synthesis_cli.py
-    cases: [legacy-update-migration, legacy-update-boundary, legacy-client-evidence, legacy-bootstrap-entry, persisted-policy, repair-policy]
-  - path: skills/synthesis-onboarding/scripts/system_contract.py
-    cases: [legacy-update-migration, legacy-update-boundary, legacy-audit]
-  - path: skills/synthesis-onboarding/scripts/test_synthesis_cli.py
-    cases: [engine-version, legacy-update-migration, legacy-update-boundary, legacy-client-evidence, legacy-bootstrap-entry, persisted-policy, repair-policy]
+  - path: skills/synthesis-skills-manager/SKILL.md
+    cases: [release-contract]
+  - path: skills/synthesis-skills-manager/scripts/cache_guardian.py
+    cases: [runtime-bytecode, bytecode-boundary, nested-bytecode, bytecode-symlink, bytecode-special, special-object, historical-restore]
+  - path: skills/synthesis-skills-manager/scripts/test_cache_guardian.py
+    cases: [runtime-bytecode, bytecode-boundary, nested-bytecode, bytecode-symlink, bytecode-special, special-object, hook-bytecode-prevention, historical-restore]
+  - path: skills/synthesis-skills-manager/scripts/test_release.py
+    cases: [release-contract]
 cases:
-  - id: release-identity
+  - id: release-contract
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_whole_system_onboarding_release_contract_is_public_and_coherent
-    motivating_defect: a-patch-release-could-publish-disagreeing-native-plugin-identities
-  - id: engine-version
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_runtime_bytecode_cache_release_contract_is_public_and_coherent
+    motivating_defect: a-patch-release-could-ship-disagreeing-version-documentation-or-bytecode-policy
+  - id: runtime-bytecode
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_engine_versions_and_skill_contract_agree
-    motivating_defect: the-public-cli-and-its-engine-could-report-different-contract-versions
-  - id: legacy-update-contract
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_runtime_bytecode_does_not_invalidate_historical_source
+    motivating_defect: an-old-task-could-invalidate-its-own-preserved-root-by-running-a-python-hook
+  - id: bytecode-boundary
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_update_migrates_unambiguous_legacy_plugin_only_receipt
-    motivating_defect: the-documented-zero-interview-upgrade-path-did-not-exist-at-runtime
-  - id: legacy-update-migration
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_bytecode_exception_does_not_hide_source_or_unknown_drift
+    motivating_defect: a-bytecode-exclusion-could-mask-source-loose-bytecode-or-unknown-file-drift
+  - id: bytecode-symlink
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_update_migrates_unambiguous_legacy_plugin_only_receipt
-    motivating_defect: an-existing-plugin-only-user-could-not-run-update-until-repeating-setup
-  - id: legacy-update-boundary
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_bytecode_exception_refuses_symlinked_cache_directory
+    motivating_defect: an-ignored-cache-directory-could-be-replaced-by-an-unsafe-link
+  - id: nested-bytecode
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_legacy_update_refuses_richer_or_malformed_receipts
-    motivating_defect: automatic-migration-could-guess-at-richer-or-malformed-legacy-state
-  - id: legacy-client-evidence
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_bytecode_exception_does_not_hide_nested_cache_directory
+    motivating_defect: a-generated-directory-exclusion-could-hide-an-unexpected-nested-directory
+  - id: bytecode-special
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_legacy_update_refuses_unverifiable_client_inventory
-    motivating_defect: migration-could-select-a-client-without-readable-native-plugin-evidence
-  - id: legacy-bootstrap-entry
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_bytecode_exception_refuses_special_cache_entry
+    motivating_defect: an-ignored-bytecode-path-could-hide-a-non-file-object
+  - id: special-object
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_bootstrap_update_leaves_missing_desired_state_for_legacy_migration
-    motivating_defect: the-active-launcher-refused-before-the-new-migration-path-could-run
-  - id: persisted-policy
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_tree_digest_refuses_unknown_special_object
+    motivating_defect: the-integrity-digest-could-silently-omit-an-unknown-special-object
+  - id: hook-bytecode-prevention
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_update_reuses_persisted_policy
-    motivating_defect: the-migration-repair-could-regress-normal-desired-state-updates
-  - id: repair-policy
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_shipped_python_hooks_disable_bytecode_writes
+    motivating_defect: shipped-python-hooks-could-continue-mutating-versioned-plugin-roots
+  - id: historical-restore
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_repair_reconciles_recorded_org_policy_without_advancing_it
-    motivating_defect: the-migration-repair-could-regress-recorded-organization-policy
-  - id: legacy-audit
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_first_generation_records_bounded_legacy_migration_input
-    motivating_defect: an-automatic-migration-could-omit-or-overexpose-its-legacy-source-evidence
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_restore_protects_history_but_never_installs_current
+    motivating_defect: the-bytecode-repair-could-regress-the-original-historical-root-restore-contract
   - id: acceptance-self
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
