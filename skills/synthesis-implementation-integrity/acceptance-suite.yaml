@@ -1,201 +1,41 @@
-# AGENT HEURISTIC: closed acceptance universe for the 4.93.0 independent
-# onboarding review repairs. Fresh per transaction: changed_surfaces must equal
-# the authoritative base-to-head Git diff before release.py can consume the
-# receipt.
+# AGENT HEURISTIC: closed acceptance universe for the AR-008 named-project
+# stale-canonical recovery transaction. Fresh per transaction:
+# changed_surfaces must equal the authoritative base-to-head Git diff before
+# release.py can consume the receipt.
 schema: 2
-suite: synthesis-onboarding-independent-review-2026-09
+suite: project-state-ar008-named-project-recovery-2026-09
 membership: closed
-production_entry_point: onboard.sh -> bootstrap.py -> synthesis_cli.py (setup, update, repair, status, doctor, workspace ensure, outcome verify, uninstall) -> onboard.py engine -> system_contract state, release, instruction, and live-load contracts
+production_entry_point: native SessionStart hook -> session_context.py build -> bounded workspace registry freshness notice -> named-project causal resolver
 enforcing_boundary: release.py consumes this transaction-bound closed manifest before publishing the immutable release, installing both clients, and activating the public CLI
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the real installed update, the dual-client live receipts, the historical-cache invariant, and the organization-side manifest migration are verified after the gated publisher activates this release
+unverified_remainder: the real installed AR-008 probe, Codex human trust, current client lifecycle receipts, historical-cache invariants, and the final installed updater are verified after the gated publisher activates this release
 changed_surfaces:
-  - path: .claude-plugin/plugin.json
-    cases: [release-surfaces, release-contract]
-  - path: .codex-plugin/plugin.json
-    cases: [release-surfaces, release-contract]
-  - path: CHANGELOG.md
-    cases: [release-surfaces, release-contract]
-  - path: README.md
-    cases: [release-surfaces, release-contract]
+  - path: skills/synthesis-agent-conformance/SKILL.md
+    cases: [workspace-registry-contract]
+  - path: skills/synthesis-agent-conformance/scripts/session_context.py
+    cases: [ar008-workspace-warning, registry-freshness-unknown]
+  - path: skills/synthesis-agent-conformance/scripts/test_session_context.py
+    cases: [workspace-registry-contract, ar008-workspace-warning, registry-freshness-unknown]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [acceptance-self]
-  - path: skills/synthesis-onboarding/SKILL.md
-    cases: [public-prose, human-summaries]
-  - path: skills/synthesis-onboarding/references/org-manifest.md
-    cases: [migration-guide, schema-one-refusal]
-  - path: skills/synthesis-onboarding/scripts/bootstrap.py
-    cases: [bootstrap-argument-validation, bootstrap-handoff]
-  - path: skills/synthesis-onboarding/scripts/onboard.py
-    cases: [installed-release-enrollment, schema-one-refusal, scaffold-outcome, scaffold-user-ownership, commit-refusal-diagnosis, marketplace-skip, configured-ref, unsupported-platform, missing-client-remediation, codex-well-known-path, dead-schema-one-code]
-  - path: skills/synthesis-onboarding/scripts/plugin_currency.py
-    cases: [policy-from-desired-state, currency-cache-location]
-  - path: skills/synthesis-onboarding/scripts/synthesis_cli.py
-    cases: [doctor-promotion, doctor-reverification, doctor-installed-defects, human-summaries, workspace-detected-clients, policy-transfer-no-transaction, resolved-loop-guard, setup-transfer, uninstall-retained-and-purge, purge-refusal, uninstall-human]
-  - path: skills/synthesis-onboarding/scripts/system_contract.py
-    cases: [release-source-identity, installed-release-pair, pending-receipt-promotion, receipt-generation-order, scaffold-outcome]
-  - path: skills/synthesis-onboarding/scripts/test_bootstrap.py
-    cases: [bootstrap-handoff]
-  - path: skills/synthesis-onboarding/scripts/test_independent_review.py
-    cases: [installed-release-enrollment, pending-receipt-promotion, doctor-reverification]
-  - path: skills/synthesis-onboarding/scripts/test_synthesis_cli.py
-    cases: [setup-transfer-existing, workspace-capability]
-  - path: skills/synthesis-onboarding/scripts/test_system_contract.py
-    cases: [bootstrap-argument-validation]
-  - path: skills/synthesis-project-management/scripts/test_project_state.py
-    cases: [release-contract]
-  - path: skills/synthesis-quick-answers/SKILL.md
-    cases: [public-prose]
 cases:
   - id: acceptance-self
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
     motivating_defect: a-release-manifest-could-claim-closed-membership-with-unmapped-or-invalid-cases
-  - id: release-source-identity
+  - id: workspace-registry-contract
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_public_source_identity_accepts_only_git_or_the_verified_active_release
-    motivating_defect: an-installed-immutable-release-had-no-identity-as-a-public-instruction-source
-  - id: installed-release-pair
+    fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_skill_documents_workspace_registry_freshness_notice
+    motivating_defect: the-public-session-start-contract-could-omit-the-root-registry-freshness-gate-implemented-by-the-hook
+  - id: ar008-workspace-warning
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_instruction_pair_materializes_from_a_verified_release_root
-    motivating_defect: the-instruction-pair-required-a-git-tracked-public-source
-  - id: installed-release-enrollment
+    fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_build_without_pointer_warns_when_workspace_registry_is_behind
+    motivating_defect: a-root-level-named-project-start-could-read-a-canonical-record-behind-a-newer-isolated-worktree
+  - id: registry-freshness-unknown
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_engine_materializes_organization_instructions_from_an_installed_release
-    motivating_defect: organization-enrollment-failed-from-an-installed-release-with-instruction-source-is-not-git-tracked
-  - id: schema-one-refusal
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_schema_one_manifest_refusal_names_the_migration_guide
-    motivating_defect: a-schema-one-organization-manifest-was-refused-without-naming-the-migration
-  - id: migration-guide
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_organization_guide_documents_the_schema_one_migration
-    motivating_defect: the-organization-guide-had-no-schema-one-migration-section
-  - id: pending-receipt-promotion
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_pending_claude_receipt_is_promoted_once_its_transcript_binds
-    motivating_defect: a-fresh-claude-session-never-fed-the-live-loaded-plane
-  - id: receipt-generation-order
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_promotion_ignores_receipts_that_predate_the_generation
-    motivating_defect: a-receipt-older-than-the-generation-could-be-promoted-as-live-evidence
-  - id: doctor-promotion
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_doctor_promotes_a_fresh_claude_receipt_from_the_registry
-    motivating_defect: doctor-reported-restart-required-after-the-restart-had-happened
-  - id: scaffold-outcome
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_scaffolded_workspace_declares_its_knowledge_bundle_and_passes_outcome_verification
-    motivating_defect: the-public-outcome-task-could-not-pass-on-the-scaffolded-workspace
-  - id: doctor-reverification
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_doctor_reverifies_the_active_release_root
-    motivating_defect: doctor-echoed-transaction-time-planes-and-asserted-source-provenance-without-hashing
-  - id: doctor-installed-defects
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_doctor_reports_installed_defects_from_the_engine
-    motivating_defect: an-engine-defect-left-the-installed-plane-reading-verified
-  - id: policy-from-desired-state
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_persisted_policy_prefers_desired_state_over_legacy_receipts
-    motivating_defect: the-sessionstart-notice-read-legacy-receipts-instead-of-desired-state
-  - id: currency-cache-location
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_currency_cache_lives_under_the_engine_state_root
-    motivating_defect: two-modules-defaulted-the-same-state-variable-to-different-directories
-  - id: human-summaries
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_status_and_doctor_render_human_summaries_with_a_next_action
-    motivating_defect: status-printed-two-lines-and-doctor-printed-raw-json
-  - id: scaffold-user-ownership
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_workspace_rerun_keeps_user_edits_without_a_deletion_hint
-    motivating_defect: a-scaffold-rerun-told-the-user-to-delete-their-project-index
-  - id: commit-refusal-diagnosis
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_first_commit_refusal_reports_the_real_cause
-    motivating_defect: a-hook-refused-first-commit-was-blamed-on-git-identity
-  - id: workspace-detected-clients
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_workspace_ensure_defaults_to_detected_clients
-    motivating_defect: workspace-ensure-assumed-both-clients-and-later-broke-update
-  - id: workspace-capability
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_workspace_ensure_uses_stable_public_capability
-    motivating_defect: the-workspace-capability-fixture-depended-on-the-test-machine-clients
-  - id: marketplace-skip
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_update_skips_marketplace_reconfiguration_when_already_current
-    motivating_defect: a-zero-change-update-removed-and-re-added-both-marketplaces
-  - id: configured-ref
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_configured_marketplace_ref_reads_both_clients
-    motivating_defect: the-configured-marketplace-ref-was-never-read
-  - id: policy-transfer-no-transaction
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_legacy_update_transfers_policy_without_recording_an_aborted_transaction
-    motivating_defect: a-policy-transfer-was-recorded-as-an-aborted-transaction
-  - id: resolved-loop-guard
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_resolved_bootstrap_refuses_instead_of_looping_on_a_policy_mismatch
-    motivating_defect: a-bootstrap-asked-for-the-same-policy-could-be-re-run-without-bound
-  - id: setup-transfer
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_setup_policy_transfer_without_an_organization_records_no_transaction
-    motivating_defect: a-setup-transfer-without-an-organization-opened-a-transaction-only-to-abort-it
-  - id: setup-transfer-existing
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_setup_rebootstraps_edge_and_pin_back_to_floating_stable
-    motivating_defect: the-existing-transfer-fixture-asserted-the-aborted-row
-  - id: uninstall-retained-and-purge
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_uninstall_reports_retained_paths_and_purge_removes_them
-    motivating_defect: uninstall-left-the-launcher-caches-state-and-config-silently
-  - id: purge-refusal
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_purge_refuses_when_removal_is_not_verified
-    motivating_defect: a-purge-could-run-after-an-unverified-removal
-  - id: uninstall-human
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_uninstall_human_output_lists_retained_paths
-    motivating_defect: uninstall-output-did-not-name-what-remained
-  - id: unsupported-platform
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_unknown_platforms_are_reported_as_unsupported
-    motivating_defect: unknown-platforms-were-refused-as-native-windows
-  - id: missing-client-remediation
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_missing_selected_client_names_the_remediation
-    motivating_defect: a-missing-selected-client-failed-update-without-a-remedy
-  - id: codex-well-known-path
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_user_local_codex_is_a_well_known_client_path
-    motivating_defect: the-user-local-codex-path-was-not-well-known
-  - id: bootstrap-argument-validation
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_bootstrap_refuses_an_invalid_command_line_before_activation
-    motivating_defect: the-bootstrap-activated-a-generation-before-validating-the-command-line
-  - id: bootstrap-handoff
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_bootstrap.py::test_onboard_handoff_consumes_resolution_policy_before_update_cli
-    motivating_defect: argument-validation-could-break-the-bootstrap-to-cli-handoff
-  - id: dead-schema-one-code
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_dead_schema_one_code_is_removed
-    motivating_defect: dead-schema-one-code-and-a-shadowed-function-remained-in-the-engine
-  - id: public-prose
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_public_prose_states_preconditions_and_doctor_side_effects
-    motivating_defect: public-prose-omitted-the-bootstrap-precondition-and-the-doctor-side-effects
-  - id: release-surfaces
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_release_surfaces_agree_and_public_commands_are_pinned
-    motivating_defect: the-public-readme-installed-the-default-branch-through-the-native-plugin-commands
-  - id: release-contract
-    control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
-    motivating_defect: a-release-contract-fixture-pinned-the-previous-literal-version-and-failed-every-later-release
+    fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_build_without_pointer_marks_uncomparable_registry_unknown
+    motivating_defect: an-uncomparable-project-registry-could-look-current-because-no-staleness-warning-was-emitted

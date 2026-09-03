@@ -180,6 +180,10 @@ behavior-producing implementation. The script:
 - reads the active-project pointer;
 - discovers a stopped project directly when the task directory is inside its
   durable project tree;
+- when the task starts at a workspace or knowledge-repository root without a
+  pointer, boundedly audits the immediately discoverable Git-tracked project
+  registries and warns if a canonical checkout is behind its fetched upstream
+  or if registry freshness is not comparable;
 - when neither route identifies a project, instructs the receiving agent to
   resolve the user's named project through the git-tracked registry and run
   the Session Start Protocol automatically;

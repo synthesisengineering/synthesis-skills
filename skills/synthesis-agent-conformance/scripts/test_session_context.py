@@ -18,8 +18,8 @@ MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
-from coordination_schema import identity_from_uuid
-import system_contract
+from coordination_schema import identity_from_uuid  # noqa: E402
+import system_contract  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -133,6 +133,134 @@ def test_build_without_pointer_explains_automatic_named_project_recovery(
     assert "project-state resolver" in message
     assert "projects/index.yaml" in message
     assert "never ask the user to run a context-lifecycle command" in message
+
+
+def test_skill_documents_workspace_registry_freshness_notice() -> None:
+    skill = (MODULE_PATH.parent.parent / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "boundedly audits the immediately discoverable Git-tracked project" in skill
+    assert "canonical checkout is behind its fetched upstream" in skill
+    assert "registry freshness is not comparable" in skill
+
+
+def test_build_without_pointer_warns_when_workspace_registry_is_behind(
+    tmp_path: Path,
+) -> None:
+    origin = tmp_path / "origin.git"
+    subprocess.run(
+        ["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True
+    )
+    workspace = tmp_path / "workspace"
+    canonical = workspace / "ai-knowledge-example"
+    canonical.mkdir(parents=True)
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main", str(canonical)], check=True
+    )
+    for key, value in (
+        ("user.email", "fixture@example.invalid"),
+        ("user.name", "Fixture"),
+        ("core.hooksPath", "/dev/null"),
+    ):
+        subprocess.run(
+            ["git", "-C", str(canonical), "config", key, value], check=True
+        )
+    subprocess.run(
+        ["git", "-C", str(canonical), "remote", "add", "origin", str(origin)],
+        check=True,
+    )
+    project = canonical / "projects" / "example-project"
+    project.mkdir(parents=True)
+    (canonical / "projects" / "index.yaml").write_text(
+        "projects:\n  - id: example-project\n    status: active\n",
+        encoding="utf-8",
+    )
+    (project / "CONTEXT.md").write_text("**Phase:** Old\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(canonical), "add", "projects"], check=True
+    )
+    subprocess.run(
+        ["git", "-C", str(canonical), "commit", "-q", "-m", "initial"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(canonical), "push", "-q", "-u", "origin", "main"],
+        check=True,
+    )
+
+    isolated = tmp_path / "isolated"
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(canonical),
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "feature/newer",
+            str(isolated),
+            "origin/main",
+        ],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(isolated),
+            "branch",
+            "-q",
+            "--set-upstream-to=origin/main",
+        ],
+        check=True,
+    )
+    newer_context = isolated / "projects" / "example-project" / "CONTEXT.md"
+    newer_context.write_text("**Phase:** New\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(isolated), "add", "projects/example-project/CONTEXT.md"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(isolated), "commit", "-q", "-m", "advance"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(isolated), "push", "-q", "origin", "HEAD:main"],
+        check=True,
+    )
+
+    message = MODULE.build(
+        tmp_path / "missing-pointer.json",
+        tmp_path / "no-board.md",
+        workspace,
+    )
+
+    assert "RECORD STALENESS WARNING" in message
+    assert "projects/index.yaml" in message
+    assert "1 commit(s) behind fetched origin/main" in message
+
+
+def test_build_without_pointer_marks_uncomparable_registry_unknown(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    repository = workspace / "ai-knowledge-example"
+    projects = repository / "projects"
+    projects.mkdir(parents=True)
+    (projects / "index.yaml").write_text("projects: []\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main", str(repository)], check=True
+    )
+
+    message = MODULE.build(
+        tmp_path / "missing-pointer.json",
+        tmp_path / "no-board.md",
+        workspace,
+    )
+
+    assert "PROJECT REGISTRY FRESHNESS UNKNOWN" in message
+    assert "projects/index.yaml" in message
+    assert "no upstream configured" in message
 
 
 def test_build_surfaces_interrupted_local_handoff_without_names(tmp_path: Path) -> None:
