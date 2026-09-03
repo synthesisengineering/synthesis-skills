@@ -29,7 +29,7 @@ from system_contract import (
 )
 
 
-ENGINE_VERSION = "2.0.0"
+ENGINE_VERSION = "2.0.1"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
     "setup",
@@ -489,12 +489,88 @@ def _bootstrap_update(
         return None
     desired = state.read_desired()
     if desired is None:
-        raise ContractError("no desired state exists; run synthesis setup")
+        return None
     if not desired.get("enabled", True):
         raise ContractError("the synthesis system is disabled; run synthesis setup")
     release = desired["release"]
     return _run_release_bootstrap(
         argv, active, release["channel"], release.get("version_pin")
+    )
+
+
+def _legacy_plugin_only_desired(state: SystemState) -> dict[str, Any]:
+    """Migrate only a legacy receipt that proves a plugin-only installation."""
+    legacy = state.legacy_migration_input()
+    if legacy is None:
+        raise ContractError(
+            "no desired or legacy installation state exists; run synthesis setup"
+        )
+
+    valid_fields = (
+        "receipt_version_valid",
+        "profile_valid",
+        "plugin_policy_valid",
+        "layer_choices_valid",
+        "component_choices_valid",
+        "generated_files_valid",
+        "adopted_repositories_valid",
+        "managed_json_entries_valid",
+        "managed_text_entries_valid",
+        "runs_valid",
+    )
+    no_whole_system_state = (
+        legacy.get("profile") in (None, "skills-only")
+        and not legacy.get("personal_workspace_present")
+        and not legacy.get("layer_choices")
+        and not legacy.get("component_choices")
+        and legacy.get("generated_file_count") == 0
+        and legacy.get("adopted_repository_count") == 0
+        and legacy.get("managed_json_entry_count") == 0
+        and legacy.get("managed_text_entry_count") == 0
+        and legacy.get("organization_run_count") == 0
+        and not legacy.get("instruction_state_present")
+        and legacy.get("unknown_field_count") == 0
+    )
+    if (
+        not all(legacy.get(name) is True for name in valid_fields)
+        or not no_whole_system_state
+    ):
+        raise ContractError(
+            "legacy installation contains ambiguous whole-system or organization state; "
+            "run synthesis setup to select the intended profile"
+        )
+
+    clients: list[str] = []
+    uncertain: list[str] = []
+    for client in ("claude", "codex"):
+        binary = onboard.resolve_client(client)
+        if not binary:
+            continue
+        present = onboard.plugin_present(client, binary)
+        if present is None:
+            uncertain.append(client)
+        elif present is True:
+            clients.append(client)
+    if uncertain:
+        raise ContractError(
+            "legacy client plugin inventory is unreadable for: %s; run synthesis setup"
+            % ", ".join(uncertain)
+        )
+    if not clients:
+        raise ContractError(
+            "legacy plugin-only installation has no verifiable installed client plugin; "
+            "run synthesis setup"
+        )
+
+    policy = legacy.get("plugin_policy") or {
+        "channel": "stable",
+        "version_pin": None,
+    }
+    return default_desired_state(
+        "skills-only",
+        clients,
+        policy["channel"],
+        policy.get("version_pin"),
     )
 
 
@@ -669,8 +745,9 @@ def main(
             try:
                 with state.locked():
                     desired = state.read_desired()
+                    migrated_legacy = desired is None
                     if desired is None:
-                        raise ContractError("no desired state exists; run synthesis setup")
+                        desired = _legacy_plugin_only_desired(state)
                     if not desired.get("enabled", True):
                         raise ContractError("the synthesis system is disabled; run synthesis setup")
 
@@ -688,7 +765,9 @@ def main(
                             resolved,
                             args.command,
                             args,
-                            desired_state_path=state.desired_path,
+                            desired_state_path=(
+                                None if migrated_legacy else state.desired_path
+                            ),
                         )
                         if resolved["release"] != desired["release"]:
                             engine_args.append("--policy-transition")

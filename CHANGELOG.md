@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.91.1] - 2026-09-02
+
+**Existing plugin-only installations now enter the unified lifecycle without a
+second setup interview.** `synthesis update` and `synthesis repair` migrate an
+older receipt only when it proves that no workspace, organization, generated
+resource, adopted repository, or managed entry exists. The migration preserves
+the recorded stable, edge, or exact-pin policy, discovers selected clients from
+their live native-plugin inventories, and records the bounded legacy digest in
+the first authoritative transaction. Ambiguous, malformed, or richer legacy
+state remains fail-closed and requires an explicit `synthesis setup` choice.
+
 ## [4.91.0] - 2026-09-02
 
 **The complete synthesis work system now has one public installer, one stable

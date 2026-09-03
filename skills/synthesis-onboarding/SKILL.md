@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.0.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -45,6 +45,11 @@ synthesis workspace ensure --name NAME [--remote URL]
 synthesis outcome verify --task TASK --workspace PATH --source-class CLASS
 synthesis uninstall
 ```
+
+`synthesis update` and `synthesis repair` migrate an older plugin-only receipt
+automatically when it contains no workspace, organization, or generated-resource
+state. Richer or unreadable legacy state is never guessed; run `synthesis setup`
+to select the intended profile explicitly.
 
 `install.sh` remains a compatibility entry point. With explicit direct-copy
 targets it invokes the audited copy capability; otherwise it routes through
