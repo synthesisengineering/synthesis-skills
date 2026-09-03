@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.9.1"
+  version: "1.9.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -143,7 +143,7 @@ named-project turn recovers the same state.
 The aggregate `all` command treats a readable active pointer owned by another
 project as non-blocking diagnostic context and verifies stopped-project
 recovery instead. The explicit `pointer` command remains strict for whichever
-project the caller asks it to validate; malformed pointers fail in both modes.
+project the caller asks it to validate; malformed pointers fail in both modes. The SessionStart hook records its live receipt before it builds context, and a pointer it cannot validate is ignored with a notice rather than failing the session: a pointer is another session's cache, never authority for the one starting.
 
 The continuity plane also runs causal project-state recovery. It enumerates
 every registered worktree and ref plus attributed manifests, receipts, pointer,

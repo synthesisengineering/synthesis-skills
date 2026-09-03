@@ -4,6 +4,26 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.93.2] - 2026-09-03
+
+**A pointer another session left behind can no longer silence a client's
+live receipt, and the inbox never reads it.** The global active-project
+pointer named a project in a worktree eleven commits behind `origin/main`.
+The SessionStart hook validated that pointer for every session on the
+machine, failed closed, and returned before recording its receipt, so no
+Claude session could produce a current transcript-bound receipt while the
+pointer stood; the inbox hook's fallback to the same pointer delivered that
+project's board message to a seatless session working elsewhere.
+
+synthesis-agent-conformance 1.9.2 records the live receipt before it builds
+context — the receipt is evidence that the client delivered the event, and
+nothing that happens afterwards may erase it — and treats a pointer it
+cannot validate as a notice: the session recovers exactly as if no pointer
+were set, the pointer's project is never injected, and failures unrelated
+to the pointer still fail closed. synthesis-project-management 2.12.1
+removes the inbox hook's pointer fallback: only a claimed seat receives
+messages. Tests pin all three behaviors.
+
 ## [4.93.1] - 2026-09-03
 
 **Session start now catches a stale canonical project registry before

@@ -550,14 +550,16 @@ def build(
     return "\n".join(lines)
 
 
-def append_inbox(message: str, payload: dict, board: Path, pointer: Path) -> str:
+def append_inbox(message: str, payload: dict, board: Path) -> str:
     """Attach unread board messages for this seat, and for a non-Claude
     client its coordination identity, so the bus is delivered at session
-    start and a Codex session learns the id its receipts are filed under."""
+    start and a Codex session learns the id its receipts are filed under.
+    Only a claimed seat receives messages; the global pointer is another
+    session's cache and is never an address."""
     try:
         from board_inbox import inbox_text
 
-        extra = inbox_text(payload, board=board, pointer=pointer)
+        extra = inbox_text(payload, board=board)
     except Exception as exc:  # the inbox never blocks a session start
         extra = f"Coordination inbox unavailable: {exc}"
     return message + ("\n" + extra if extra else "")
@@ -592,27 +594,46 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except Exception:
         payload = {}
-    try:
-        message = build(
-            args.active_project_file.expanduser(),
-            args.coordination_board.expanduser(),
-            Path(str(payload["cwd"])) if payload.get("cwd") else None,
-        )
-    except Exception as exc:
-        print(f"synthesis project context failed closed: {exc}", file=sys.stderr)
-        return 2
-    message = append_currency_notice(message, payload)
-    message = append_inbox(
-        message,
-        payload,
-        args.coordination_board.expanduser(),
-        args.active_project_file.expanduser(),
-    )
+    # The receipt is evidence that the client delivered this lifecycle event
+    # for this session and plugin root. It is recorded before any context is
+    # built, so a pointer left by another session, a behind worktree, or an
+    # unreadable board can never erase that proof: on 2026-09-03 a foreign
+    # pointer to a worktree eleven commits behind failed this hook closed
+    # before it recorded, and no Claude session on the machine could show a
+    # current receipt.
     try:
         record_live_receipt(payload, args.live_receipt.expanduser())
     except Exception as exc:
         print(f"synthesis live receipt failed closed: {exc}", file=sys.stderr)
         return 2
+    pointer = args.active_project_file.expanduser()
+    board = args.coordination_board.expanduser()
+    cwd = Path(str(payload["cwd"])) if payload.get("cwd") else None
+    try:
+        message = build(pointer, board, cwd)
+    except Exception as exc:
+        if not pointer.is_file():
+            print(f"synthesis project context failed closed: {exc}", file=sys.stderr)
+            return 2
+        # A pointer is a cache written by whichever session last activated a
+        # project; it is not authority for the session starting now. When it
+        # cannot be validated, say so and recover exactly as if it were absent:
+        # its project is never injected, and no session waits on another
+        # task's checkout.
+        ignored = pointer.with_name(pointer.name + ".ignored-by-this-session")
+        try:
+            message = build(ignored, board, cwd)
+        except Exception as inner:
+            print(f"synthesis project context failed closed: {inner}", file=sys.stderr)
+            return 2
+        message = (
+            f"Active-project pointer ignored: {exc}. The pointer is a cache set by "
+            "another session, not authority for this one; resolve the named project "
+            "from the tracked projects/index.yaml through the causal resolver.\n"
+            + message
+        )
+    message = append_currency_notice(message, payload)
+    message = append_inbox(message, payload, board)
 
     if args.format == "codex":
         event = payload.get("hook_event_name", "SessionStart")

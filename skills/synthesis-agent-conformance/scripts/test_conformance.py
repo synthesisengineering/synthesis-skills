@@ -588,15 +588,29 @@ def test_activate_refuses_stale_record(tmp_path: Path) -> None:
     assert not pointer.exists()
 
 
-def test_payload_parity_reports_broken_pointer(tmp_path: Path) -> None:
+def test_payload_parity_agrees_when_a_broken_pointer_is_ignored(tmp_path: Path) -> None:
+    """A pointer that cannot be validated no longer fails the hook (4.93.2):
+    both client envelopes carry the same ignore notice and the same
+    pointerless recovery context, so parity holds and the defect is visible
+    in the payload rather than in a dead session start."""
     pointer = tmp_path / "active.json"
     pointer.write_text(
         json.dumps({"project": str(tmp_path / "missing-project")}),
         encoding="utf-8",
     )
-    ok, detail = MODULE.payload_parity(pointer)
-    assert not ok
-    assert "payload failed" in detail
+    ok, detail = MODULE.payload_parity(pointer, tmp_path / "no-board.md")
+    assert ok, detail
+    assert "identical context" in detail
+    script = MODULE.SCRIPTS_DIR / "session_context.py"
+    result = MODULE.run(
+        [sys.executable, str(script), "--format", "claude", "--active-project-file", str(pointer),
+         "--coordination-board", str(tmp_path / "no-board.md")],
+        input_text="{}",
+    )
+    assert result.returncode == 0, result.stderr
+    context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert context.startswith("Active-project pointer ignored: ")
+    assert "No active synthesis project pointer is set." in context
 
 
 def write_stopped_project(tmp_path: Path) -> Path:

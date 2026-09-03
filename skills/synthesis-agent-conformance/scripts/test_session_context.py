@@ -956,3 +956,101 @@ def test_live_receipt_rejects_existing_transcript_for_another_session(
         receipt,
     )
     assert not receipt.exists()
+
+
+
+# --- receipt before context; a pointer is a cache, not authority (4.93.2) -----------------------
+
+def _drive_main(monkeypatch, capsys, tmp_path, *, pointer_text=None, build_error=None):
+    """Run main() in-process with a stubbed receipt recorder and, optionally, a
+    forced context failure; return (exit code, additionalContext, call order)."""
+    import io
+
+    calls: list[str] = []
+    pointer = tmp_path / "active-project.json"
+    if pointer_text is not None:
+        pointer.write_text(pointer_text, encoding="utf-8")
+    real_build = MODULE.build
+
+    def recording_build(pointer_arg, board, cwd, *args, **kwargs):
+        calls.append("build")
+        if build_error is not None:
+            raise build_error
+        return real_build(pointer_arg, board, cwd, *args, **kwargs)
+
+    monkeypatch.setattr(MODULE, "build", recording_build)
+    monkeypatch.setattr(
+        MODULE, "record_live_receipt", lambda payload, destination: calls.append("receipt") or True
+    )
+    monkeypatch.setattr(MODULE, "append_currency_notice", lambda message, payload: message)
+    monkeypatch.setattr(MODULE, "append_inbox", lambda message, payload, board: message)
+    payload = {
+        "hook_event_name": "SessionStart",
+        "session_id": "019fff79-5858-7993-a329-b301bccf5d31",
+        "cwd": str(tmp_path),
+        "source": "resume",
+    }
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "session_context.py",
+            "--format",
+            "claude",
+            "--active-project-file",
+            str(pointer),
+            "--coordination-board",
+            str(tmp_path / "no-board.md"),
+            "--live-receipt",
+            str(tmp_path / "receipt.json"),
+        ],
+    )
+    code = MODULE.main()
+    out = capsys.readouterr().out.strip()
+    context = json.loads(out)["hookSpecificOutput"]["additionalContext"] if out else ""
+    return code, context, calls
+
+
+def test_main_records_the_receipt_before_building_context(monkeypatch, capsys, tmp_path) -> None:
+    """The receipt proves the client delivered the event; nothing that happens
+    while building context may erase it, so it is recorded first."""
+    code, context, calls = _drive_main(monkeypatch, capsys, tmp_path)
+
+    assert code == 0
+    assert calls[0] == "receipt" and "build" in calls
+    assert "No active synthesis project pointer is set." in context
+
+
+def test_main_ignores_a_pointer_it_cannot_validate_with_a_notice(monkeypatch, capsys, tmp_path) -> None:
+    """2026-09-03: a pointer set by another session named a project in a
+    worktree eleven commits behind; the hook failed closed before recording
+    and every Claude session on the machine lost its receipt. The pointer is
+    a cache: an unvalidatable one is ignored, said so, and never injected."""
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "CONTEXT.md").write_text("**Phase:** 2\n**Status:** Active\n", encoding="utf-8")
+    code, context, calls = _drive_main(
+        monkeypatch, capsys, tmp_path,
+        pointer_text=json.dumps({"project": str(project), "plan": "unknown"}),
+    )
+
+    assert code == 0
+    assert calls == ["receipt", "build", "build"]
+    assert context.startswith("Active-project pointer ignored: ")
+    assert "not authority for this one" in context
+    assert "No active synthesis project pointer is set." in context
+    assert "Active synthesis project" not in context, "the unvalidated pointer's project was injected"
+
+
+def test_main_still_fails_closed_on_a_non_pointer_failure(monkeypatch, capsys, tmp_path) -> None:
+    """Ignoring the pointer must not become ignoring every failure: with no
+    pointer in play, a context failure still exits 2 — after the receipt."""
+    code, context, calls = _drive_main(
+        monkeypatch, capsys, tmp_path,
+        build_error=ValueError("coordination board schema is invalid"),
+    )
+
+    assert code == 2
+    assert calls == ["receipt", "build"]
+    assert context == ""

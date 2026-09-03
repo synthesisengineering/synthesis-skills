@@ -9,6 +9,9 @@ the unread messages addressed to this session's seat (any identity form) or
 to its project, then advances a per-seat watermark. Latency is one turn,
 the same class as the harness's own queue.
 
+Only a claimed seat receives messages: the global active-project pointer is
+another session's cache, never an address.
+
 For a Codex session it also states the session's coordination identity,
 because a Codex shell carries no thread id: the agent exports it as
 ``SYNTHESIS_CLIENT_SESSION_REF`` so claims and receipts are filed under the
@@ -38,16 +41,6 @@ from peer_addressing import (  # noqa: E402
 )
 
 DEFAULT_BOARD = Path.home() / ".synthesis" / "coordination" / "active-sessions.md"
-DEFAULT_POINTER = Path.home() / ".synthesis" / "active-project.json"
-
-
-def pointer_project(pointer: Path) -> str:
-    try:
-        data = json.loads(pointer.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return ""
-    project = data.get("project") if isinstance(data, dict) else None
-    return Path(str(project)).name if project else ""
 
 
 def identity_forms_for(board: Path, identity: SelfIdentity) -> tuple[set[str], str, str, str]:
@@ -86,10 +79,15 @@ def inbox_text(
     payload: dict,
     *,
     board: Path = DEFAULT_BOARD,
-    pointer: Path = DEFAULT_POINTER,
     environ: dict[str, str] | None = None,
     mark: bool = True,
 ) -> str:
+    """Messages for this session's claimed seat, or nothing.
+
+    A session without a seat has no address. The global active-project
+    pointer is another session's cache and is never consulted: on
+    2026-09-03 a fallback to it delivered one project's message to a
+    seatless session working on a different project."""
     identity = identity_from_hook(payload, environ)
     key = identity.sender_key
     if not key:
@@ -100,11 +98,7 @@ def inbox_text(
         return ""
     forms, project, _compact, started = identity_forms_for(board, identity)
     if not forms:
-        project = pointer_project(pointer)
-        started = ""
-    if not forms and not project:
-        notice = identity_notice(identity)
-        return notice
+        return identity_notice(identity)
     messages = unread_messages(
         text, board=board, sender_key=key, identity_forms=forms, project=project, since=started
     )
@@ -118,7 +112,6 @@ def inbox_text(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--board", type=Path, default=DEFAULT_BOARD)
-    parser.add_argument("--active-project-file", type=Path, default=DEFAULT_POINTER)
     parser.add_argument("--hook", action="store_true", help="read the hook payload on stdin and emit hook JSON")
     parser.add_argument("--no-mark", action="store_true", help="do not advance the watermark")
     args = parser.parse_args()
@@ -132,7 +125,7 @@ def main() -> int:
         if not isinstance(payload, dict):
             payload = {}
     try:
-        text = inbox_text(payload, board=board, pointer=args.active_project_file.expanduser(), mark=not args.no_mark)
+        text = inbox_text(payload, board=board, mark=not args.no_mark)
     except Exception as exc:  # never block a prompt on inbox trouble; say what failed
         text = f"Coordination inbox could not be read: {exc}"
     if not text:
