@@ -83,11 +83,14 @@ class Sandbox:
             "GIT_AUTHOR_NAME": "Test User", "GIT_AUTHOR_EMAIL": "test@example.com",
             "GIT_COMMITTER_NAME": "Test User", "GIT_COMMITTER_EMAIL": "test@example.com",
             "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "url.file://%s/.insteadOf" % self.remotes,
+            "GIT_CONFIG_VALUE_0": "ssh://fixture/",
         }
 
     def _commit_all(self, workdir, message):
-        sh(["git", "-C", str(workdir), "add", "-A"], env=self.git_env)
-        sh(["git", "-C", str(workdir), "commit", "-q", "-m", message], env=self.git_env)
+        sh(["git", "-c", "core.hooksPath=/dev/null", "-C", str(workdir), "add", "-A"], env=self.git_env)
+        sh(["git", "-c", "core.hooksPath=/dev/null", "-C", str(workdir), "commit", "-q", "-m", message], env=self.git_env)
 
     def _build_kb_remote(self):
         src = self.root / "kb-src"
@@ -104,44 +107,54 @@ class Sandbox:
         self._commit_all(src, "seed")
         self.kb_remote = self.remotes / "ai-knowledge-exampleco.git"
         sh(["git", "clone", "-q", "--bare", str(src), str(self.kb_remote)], env=self.git_env)
+        self.kb_url = "ssh://fixture/ai-knowledge-exampleco.git"
         self.old_kb_remote = self.remotes / "old-kb.git"
         sh(["git", "clone", "-q", "--bare", str(src), str(self.old_kb_remote)], env=self.git_env)
+        self.old_kb_url = "ssh://fixture/old-kb.git"
 
     def _build_skills_remote(self):
         src = self.root / "skills-src"
-        (src / "example-skill").mkdir(parents=True)
-        (src / "example-skill" / "SKILL.md").write_text("---\nname: example-skill\n---\n# Example\n")
-        installer = src / "install.sh"
-        installer.write_text(FIXTURE_INSTALLER)
-        installer.chmod(0o755)
+        (src / "skills" / "example-skill").mkdir(parents=True)
+        (src / "skills" / "example-skill" / "SKILL.md").write_text(
+            "---\nname: example-skill\n---\n# Example\n"
+        )
         sh(["git", "-C", str(src), "init", "-q", "-b", "main"], env=self.git_env)
         self._commit_all(src, "seed")
         self.skills_remote = self.remotes / "example-shared-skills.git"
         sh(["git", "clone", "-q", "--bare", str(src), str(self.skills_remote)], env=self.git_env)
+        self.skills_url = "ssh://fixture/example-shared-skills.git"
 
-    def manifest(self, kb_primary=None, migrations=None):
+    def _org_config(self):
+        if hasattr(self, "org_config"):
+            return self.org_config
+        self.org_config = self.root / "org-config"
+        (self.org_config / ".agents").mkdir(parents=True)
+        (self.org_config / ".agents" / "workspace-instructions.md").write_text(
+            "Use the organization knowledge sources for organization questions.\n",
+            encoding="utf-8",
+        )
+        sh(["git", "-C", str(self.org_config), "init", "-q", "-b", "main"], env=self.git_env)
+        self._commit_all(self.org_config, "seed org config")
+        return self.org_config
+
+    def manifest(self, kb_primary=None):
         lines = [
-            "version: 1",
+            "version: 2",
             "org:",
             "  id: exampleco",
             "  name: Example Co",
             "  workspace: exampleco",
             "skills_repos:",
             "  - name: example-shared-skills",
-            "    primary: %s" % self.skills_remote,
-            "    installer: install.sh",
-            "    installer_args:",
-            "      - $HOME",
-            "    source_env: EXAMPLE_SHARED_SKILLS_SOURCE_DIR",
-            "    status_args:",
-            "      - status",
-            "      - $HOME",
+            "    repository: %s" % self.skills_url,
+            "    capability: skills-install",
             "knowledge_bases:",
             "  - name: ai-knowledge-exampleco",
-            "    primary: %s" % (kb_primary or self.kb_remote),
-            "    superseded_remotes:",
-            "      - %s" % self.old_kb_remote,
+            "    repository: %s" % (kb_primary or self.kb_url),
             "    local_hooks: true",
+            "instruction_sources:",
+            "  - path: .agents/workspace-instructions.md",
+            "    required: true",
             "auth_help: |",
             "  Ask the help desk for repository access, then re-run.",
             "welcome:",
@@ -149,16 +162,10 @@ class Sandbox:
             "  try_asking:",
             "    - \"Who owns the payments platform?\"",
         ]
-        if migrations:
-            lines.append("migrations:")
-            lines.append("  skills:")
-            for mig in migrations:
-                lines.append("    - from: %s" % mig["from"])
-                lines.append("      action: %s" % mig["action"])
-                if mig.get("to"):
-                    lines.append("      to: %s" % mig["to"])
-        path = self.root / "onboarding.yaml"
+        config = self._org_config()
+        path = config / ".agents" / "onboarding.yaml"
         path.write_text("\n".join(lines) + "\n")
+        self._commit_all(config, "update manifest")
         return path
 
     def run_engine(self, *args, expect=None):
@@ -200,12 +207,19 @@ class Sandbox:
         if version is None:
             version = onboard.source_plugin_version()
         path = self.root / "fake-client"
+        state = self.root / "fake-client-plugin-installed"
+        state.write_text("installed\n", encoding="utf-8")
         path.write_text(
             "#!/bin/sh\n"
+            "state=%s\n"
             "if [ \"${1:-}\" = plugin ] && [ \"${2:-}\" = list ]; then\n"
-            "  printf '%s\\n' '{\"installed\":[{\"pluginId\":\"synthesis-skills@synthesis-engineering\",\"name\":\"synthesis-skills\",\"version\":\"%s\",\"enabled\":true}]}'\n"
+            "  if [ -f \"$state\" ]; then printf '%%s\\n' '{\"installed\":[{\"pluginId\":\"synthesis-skills@synthesis-engineering\",\"name\":\"synthesis-skills\",\"version\":\"%s\",\"enabled\":true}]}'; else printf '%%s\\n' '{\"installed\":[]}'; fi\n"
+            "elif [ \"${1:-}\" = plugin ] && { [ \"${2:-}\" = uninstall ] || [ \"${2:-}\" = remove ]; }; then\n"
+            "  rm -f \"$state\"\n"
+            "elif [ \"${1:-}\" = plugin ] && { [ \"${2:-}\" = install ] || [ \"${2:-}\" = add ]; }; then\n"
+            "  : > \"$state\"\n"
             "fi\n"
-            "exit 0\n" % ("%s", version),
+            "exit 0\n" % (str(state), version),
             encoding="utf-8",
         )
         path.chmod(0o755)
@@ -287,13 +301,14 @@ class ParserTests(unittest.TestCase):
     def test_unknown_top_key_rejected(self):
         with self.assertRaises(ValueError):
             onboard.validate_manifest(
-                {"version": 1, "org": {"id": "x", "workspace": "x"}, "bogus": 1}, "t")
+                {"version": 2, "org": {"id": "x", "workspace": "x"}, "bogus": 1}, "t")
 
     def test_manifest_accepts_release_channel_and_exact_org_pin(self):
         data = onboard.validate_manifest(
             {
-                "version": 1,
+                "version": 2,
                 "org": {"id": "x", "workspace": "x"},
+                "instruction_sources": [{"path": ".agents/instructions.md"}],
                 "ecosystem": {
                     "plugin": True,
                     "clients": ["claude", "codex"],
@@ -313,8 +328,9 @@ class ParserTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 onboard.validate_manifest(
                     {
-                        "version": 1,
+                        "version": 2,
                         "org": {"id": "x", "workspace": "x"},
+                        "instruction_sources": [{"path": ".agents/instructions.md"}],
                         "ecosystem": ecosystem,
                     },
                     "t",
@@ -323,8 +339,9 @@ class ParserTests(unittest.TestCase):
     def test_manifest_clients_and_plugin_switch_are_enforced(self):
         manifest = onboard.validate_manifest(
             {
-                "version": 1,
+                "version": 2,
                 "org": {"id": "x", "workspace": "x"},
+                "instruction_sources": [{"path": ".agents/instructions.md"}],
                 "ecosystem": {"plugin": False, "clients": ["codex"]},
             },
             "t",
@@ -337,8 +354,9 @@ class ParserTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             onboard.validate_manifest(
                 {
-                    "version": 1,
+                    "version": 2,
                     "org": {"id": "x", "workspace": "x"},
+                    "instruction_sources": [{"path": ".agents/instructions.md"}],
                     "ecosystem": {"plugin": "yes"},
                 },
                 "t",
@@ -710,6 +728,7 @@ class PluginTests(unittest.TestCase):
                 no_plugin_cli=False,
                 policy=self.policy,
                 refresh_native_plugins=True,
+                preserve_ahead=True,
             )
         refresh.assert_called_once_with(
             "codex", "codex", self.policy, reconfigure=True
@@ -717,6 +736,58 @@ class PluginTests(unittest.TestCase):
         synchronize.assert_called_once_with("4.23.0")
         self.assertEqual(report.steps[0]["status"], onboard.CHANGED)
         self.assertIn("4.23.0 -> 4.24.0", report.steps[0]["detail"])
+
+    def test_floating_update_never_downgrades_an_ahead_plugin(self):
+        report = onboard.Report(as_json=True)
+        with patch.object(
+            onboard, "plugin_record", return_value=(True, "4.24.0")
+        ), patch.object(
+            onboard, "expected_policy_version", return_value=("4.23.0", "fixture")
+        ), patch.object(onboard, "refresh_plugin") as refresh, patch.object(
+            onboard, "synchronize_codex_history"
+        ) as synchronize:
+            onboard.phase_ecosystem(
+                report,
+                {"codex": "codex"},
+                dry_run=False,
+                no_plugin_cli=False,
+                policy=self.policy,
+                refresh_native_plugins=True,
+                preserve_ahead=True,
+            )
+        refresh.assert_not_called()
+        synchronize.assert_not_called()
+        self.assertEqual(report.steps[0]["status"], onboard.OK)
+        self.assertIn("ahead of floating stable", report.steps[0]["detail"])
+        self.assertIn("kept installed version", report.steps[0]["detail"])
+
+    def test_setup_channel_transition_converges_to_the_selected_release(self):
+        report = onboard.Report(as_json=True)
+        with patch.object(
+            onboard,
+            "plugin_record",
+            side_effect=[(True, "4.24.0"), (True, "4.23.0")],
+        ), patch.object(
+            onboard, "expected_policy_version", return_value=("4.23.0", "fixture")
+        ), patch.object(
+            onboard, "refresh_plugin", return_value=(True, "refreshed")
+        ) as refresh, patch.object(
+            onboard,
+            "synchronize_codex_history",
+            return_value=(True, "historical root restored"),
+        ):
+            onboard.phase_ecosystem(
+                report,
+                {"codex": "codex"},
+                dry_run=False,
+                no_plugin_cli=False,
+                policy={"channel": "edge", "version_pin": None},
+                refresh_native_plugins=True,
+                preserve_ahead=False,
+            )
+        refresh.assert_called_once()
+        self.assertEqual(report.steps[0]["status"], onboard.CHANGED)
+        self.assertIn("4.24.0 -> 4.23.0", report.steps[0]["detail"])
 
     def test_update_fails_when_invoking_codex_history_is_not_restored(self):
         report = onboard.Report(as_json=True)
@@ -842,7 +913,8 @@ class PluginTests(unittest.TestCase):
         self.assertIn('CHANNEL="${SYNTHESIS_ONBOARD_CHANNEL:-stable}"', bootstrap)
         self.assertIn('stable) SOURCE_REF="stable"', bootstrap)
         self.assertIn('edge) SOURCE_REF="main"', bootstrap)
-        self.assertIn('git clone --branch "$SOURCE_REF" --single-branch', bootstrap)
+        self.assertIn('git init --bare -q "$MIRROR"', bootstrap)
+        self.assertIn('worktree add --detach "$CHECKOUT" "$RESOLVED_COMMIT"', bootstrap)
 
     def test_public_docs_expose_stable_edge_and_org_pin_contract(self):
         skill = (REPO_ROOT / "skills/synthesis-onboarding/SKILL.md").read_text(
@@ -961,8 +1033,10 @@ class EngineTests(unittest.TestCase):
                     "core.hooksPath"], env=self.box.git_env).strip()
         self.assertEqual(hooks, ".githooks")
         self.assertTrue(self.box.ws_agents.exists())
-        self.assertEqual((self.box.home / "workspaces" / "exampleco" / "CLAUDE.md").read_text(),
-                         "@AGENTS.md\n")
+        self.assertEqual(
+            (self.box.home / "workspaces" / "exampleco" / "CLAUDE.md").read_text(),
+            self.box.ws_agents.read_text(),
+        )
         for target in (".claude", ".agents"):
             self.assertTrue((self.box.home / target / "skills" / "example-skill" / "SKILL.md").exists())
         self.assertTrue((self.box.home / ".synthesis" / "onboarding" / "receipts.json").exists())
@@ -979,17 +1053,17 @@ class EngineTests(unittest.TestCase):
         self.assertFalse((self.box.home / ".synthesis" / "onboarding" / "receipts.json").exists())
         self.assertEqual(list(self.box.cache.iterdir()), [])
 
-    def test_superseded_remote_is_repointed(self):
+    def test_existing_wrong_remote_is_rejected_without_repointing(self):
         manifest = self.box.manifest()
         self.box.run_json("install", "--manifest", str(manifest), expect=0)
         sh(["git", "-C", str(self.box.kb_clone), "remote", "set-url", "origin",
-            str(self.box.old_kb_remote)], env=self.box.git_env)
-        data, _ = self.box.run_json("install", "--manifest", str(manifest), expect=0)
-        origin = sh(["git", "-C", str(self.box.kb_clone), "remote", "get-url", "origin"],
+            self.box.old_kb_url], env=self.box.git_env)
+        data, _ = self.box.run_json("install", "--manifest", str(manifest), expect=1)
+        origin = sh(["git", "-C", str(self.box.kb_clone), "config", "--get", "remote.origin.url"],
                     env=self.box.git_env).strip()
-        self.assertEqual(origin, str(self.box.kb_remote))
+        self.assertEqual(origin, self.box.old_kb_url)
         kb_steps = [s for s in data["steps"] if s["phase"] == "knowledge-base"]
-        self.assertTrue(any("repointed" in s["detail"] for s in kb_steps))
+        self.assertTrue(any("wrong remote" in s["detail"] for s in kb_steps))
 
     def test_user_edited_workspace_file_is_preserved(self):
         manifest = self.box.manifest()
@@ -997,21 +1071,15 @@ class EngineTests(unittest.TestCase):
         edited = self.box.ws_agents.read_text().replace(
             "generated by synthesis-onboarding", "hand-edited") + "\nMy note.\n"
         self.box.ws_agents.write_text(edited)
-        data, _ = self.box.run_json("install", "--manifest", str(manifest), expect=0)
+        data, _ = self.box.run_json("install", "--manifest", str(manifest), expect=1)
         self.assertEqual(self.box.ws_agents.read_text(), edited)
-        self.assertIn("warning", self.statuses(data, "workspace"))
+        self.assertIn("error", self.statuses(data, "workspace"))
 
-    def test_migration_removes_and_archives(self):
-        legacy = self.box.home / ".claude" / "skills" / "example-legacy-skill"
-        legacy.mkdir(parents=True)
-        (legacy / "SKILL.md").write_text("old\n")
-        manifest = self.box.manifest(migrations=[{"from": "example-legacy-skill", "action": "remove"}])
-        self.box.run_json("install", "--manifest", str(manifest), expect=0)
-        self.assertFalse(legacy.exists())
-        backups = list((self.box.home / ".synthesis" / "onboarding" / "backups").rglob("SKILL.md"))
-        self.assertTrue(backups)
-        data, _ = self.box.run_json("install", "--manifest", str(manifest), expect=0)
-        self.assertNotIn("changed", self.statuses(data, "migrations"))
+    def test_manifest_rejects_repository_selected_migration_actions(self):
+        path = self.box.manifest()
+        text = path.read_text(encoding="utf-8") + "migrations:\n  skills: []\n"
+        path.write_text(text, encoding="utf-8")
+        self.box.run_json("install", "--manifest", str(path), expect=2)
 
     def test_doctor_healthy_then_detects_missing_kb(self):
         manifest = self.box.manifest()
@@ -1031,7 +1099,7 @@ class EngineTests(unittest.TestCase):
         self.assertIn("error", self.statuses(data))
 
     def test_auth_failure_is_action_needed_with_help(self):
-        manifest = self.box.manifest(kb_primary=str(self.box.remotes / "missing.git"))
+        manifest = self.box.manifest(kb_primary="ssh://fixture/missing.git")
         data, _ = self.box.run_json("install", "--manifest", str(manifest), expect=1)
         actions = [s for s in data["steps"] if s["status"] == "action-needed"]
         self.assertTrue(actions)
@@ -1039,19 +1107,39 @@ class EngineTests(unittest.TestCase):
 
     def test_unknown_manifest_key_exits_2(self):
         path = self.box.root / "bad.yaml"
-        path.write_text("version: 1\norg:\n  id: x\n  workspace: x\nnope: 1\n")
+        path.write_text("version: 2\norg:\n  id: x\n  workspace: x\nnope: 1\n")
         self.box.run_json("install", "--manifest", str(path), expect=2)
 
     def test_init_workspace_scaffold_and_rerun(self):
         self.box.run_json("init-workspace", "--workspace", "alice", expect=0)
         repo = self.box.home / "workspaces" / "alice" / "ai-knowledge-alice"
-        for rel in ("AGENTS.md", "CLAUDE.md", "README.md", "projects/index.yaml", "lessons/README.md"):
+        for rel in ("AGENTS.md", "CLAUDE.md", "README.md", "projects/index.yaml", "lessons/README.md", ".agents/workspace-AGENTS.md"):
             self.assertTrue((repo / rel).exists(), rel)
+        root = repo.parent
+        self.assertTrue((root / "AGENTS.md").is_symlink())
+        self.assertEqual(
+            os.readlink(root / "AGENTS.md"),
+            "ai-knowledge-alice/.agents/workspace-AGENTS.md",
+        )
+        self.assertEqual((root / "CLAUDE.md").read_text(), "@AGENTS.md\n")
+        tracked = sh(
+            ["git", "-C", str(repo), "ls-files", ".agents/workspace-AGENTS.md"],
+            env=self.box.git_env,
+        )
+        self.assertEqual(tracked.strip(), ".agents/workspace-AGENTS.md")
         log = sh(["git", "-C", str(repo), "log", "--oneline"], env=self.box.git_env)
         self.assertEqual(len(log.strip().splitlines()), 1)
         self.box.run_json("init-workspace", "--workspace", "alice", expect=0)
         log2 = sh(["git", "-C", str(repo), "log", "--oneline"], env=self.box.git_env)
         self.assertEqual(len(log2.strip().splitlines()), 1)
+
+    def test_init_workspace_refuses_unowned_root_instruction_collision(self):
+        root = self.box.home / "workspaces" / "alice"
+        root.mkdir(parents=True)
+        (root / "AGENTS.md").write_text("# User-owned instructions\n")
+        data, _ = self.box.run_json("init-workspace", "--workspace", "alice", expect=1)
+        self.assertEqual((root / "AGENTS.md").read_text(), "# User-owned instructions\n")
+        self.assertTrue(any("not the managed workspace entry point" in step["detail"] for step in data["steps"]))
 
     def test_fallback_installs_on_fresh_machine_with_client(self):
         """Regression (2026-08-03 post-merge QA): with a client present and
@@ -1107,6 +1195,22 @@ class EngineTests(unittest.TestCase):
             expect=0,
         )
         data = json.loads(proc.stdout)
+        self.assertEqual(
+            data["effective_selection"],
+            {
+                "profile": "full",
+                "clients": ["claude", "codex"],
+                "personal_workspace": "example-user",
+                "personal_configuration": onboard.personal_configuration_from_answers(
+                    json.loads(answers.read_text(encoding="utf-8"))
+                ),
+                "layers": whole_system.profile_choices(
+                    whole_system.load_catalog(REPO_ROOT),
+                    "full",
+                    manifest_present=False,
+                ),
+            },
+        )
         layers = [step for step in data["steps"] if step.get("phase") == "layer"]
         self.assertEqual(len(layers), 11)
         self.assertNotIn("missing", [step.get("layer_state") for step in layers])
@@ -1115,7 +1219,8 @@ class EngineTests(unittest.TestCase):
             "declined",
         )
         workspace = self.box.home / "workspaces" / "example-user"
-        self.assertTrue((workspace / "AGENTS.source.md").is_file())
+        self.assertTrue((workspace / "ai-knowledge-example-user" / ".agents" / "workspace-AGENTS.md").is_file())
+        self.assertTrue((workspace / "AGENTS.md").is_symlink())
         self.assertTrue((workspace / "AGENTS.md").is_file())
         self.assertTrue((workspace / "CLAUDE.md").is_file())
         self.assertTrue(
@@ -1147,7 +1252,7 @@ class EngineTests(unittest.TestCase):
         changed = [step for step in data2["steps"] if step["status"] == "changed"]
         self.assertEqual(changed, [])
 
-        source = workspace / "AGENTS.source.md"
+        source = workspace / "ai-knowledge-example-user" / ".agents" / "workspace-AGENTS.md"
         source.write_text(
             source.read_text(encoding="utf-8") + "\n## Personal addition\n\nKeep evidence close.\n",
             encoding="utf-8",
@@ -1171,9 +1276,10 @@ class EngineTests(unittest.TestCase):
         )
         self.assertEqual(sync.returncode, 0, sync.stdout + sync.stderr)
         self.assertIn("Keep evidence close.", (workspace / "AGENTS.md").read_text(encoding="utf-8"))
-        self.assertIn("Keep evidence close.", (workspace / "CLAUDE.md").read_text(encoding="utf-8"))
+        self.assertEqual((workspace / "CLAUDE.md").read_text(encoding="utf-8"), "@AGENTS.md\n")
 
         agents = workspace / "AGENTS.md"
+        agents.unlink()
         agents.write_text("# My edited client instructions\n", encoding="utf-8")
         kernel = self.box.run_with_env(
             env,
@@ -1183,12 +1289,12 @@ class EngineTests(unittest.TestCase):
             "--json",
             expect=1,
         )
-        self.assertIn("your own edits", kernel.stdout)
+        self.assertIn("not the managed workspace entry point", kernel.stdout)
         self.assertEqual(agents.read_text(encoding="utf-8"), "# My edited client instructions\n")
 
         claude = workspace / "CLAUDE.md"
         before = claude.read_text(encoding="utf-8")
-        (workspace / "AGENTS.source.md").write_text(
+        source.write_text(
             "x" * (whole_system.KERNEL_HARD_LIMIT + 1), encoding="utf-8"
         )
         self.box.run_with_env(
@@ -1201,7 +1307,8 @@ class EngineTests(unittest.TestCase):
         )
         self.assertEqual(claude.read_text(encoding="utf-8"), before)
 
-        self.box.run_with_env(env, "uninstall", "--json", expect=0)
+        removal = self.box.run_with_env(env, "uninstall", "--json", expect=1)
+        self.assertIn("receipt-owned generated resources remain", removal.stdout)
         self.assertTrue(source.is_file())
         self.assertFalse(
             (

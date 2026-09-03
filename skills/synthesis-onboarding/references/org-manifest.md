@@ -1,139 +1,120 @@
-# Org Onboarding Manifest — `.agents/onboarding.yaml`
+# Organization manifest — `.agents/onboarding.yaml`
 
-How an organization gives its members a one-command synthesis install.
-The org ships **configuration, not installer code**: one manifest in its
-knowledge-base repo plus a thin wrapper script. The generic engine
-(`synthesis-onboarding/scripts/onboard.py`) does everything else, so every
-org inherits idempotence, receipts, migrations, doctor, and welcome behavior
-without maintaining an installer.
+An organization repository extends the public synthesis engine with
+declarative data. It contains no installer, shell fragment, hook command, or
+arbitrary verifier. The public engine owns every executable capability.
 
-## Complete example (generic names — substitute your org's)
+## Schema 2 example
 
 ```yaml
-version: 1
+version: 2
 
 org:
-  id: exampleco                # short slug, stable
-  name: Example Co             # display name for welcome text
-  workspace: exampleco         # lands under ~/workspaces/<workspace>/
+  id: example-team
+  name: Example Team
+  workspace: example-team
 
 ecosystem:
-  plugin: true                 # install the public synthesis-skills plugin
-  clients: [claude, codex]     # attempted only where the client is present
-  channel: stable              # stable (default) or edge
-  version_pin: "4.74.0"        # optional exact org pin; overrides channel
+  plugin: true
+  clients: [claude, codex]
+  channel: stable
+  version_pin: "4.91.0"
 
-skills_repos:                  # org shared skills (optional)
+skills_repos:
   - name: example-shared-skills
-    primary: git@github.example.com:exampleco/example-shared-skills.git
-    fallbacks:
-      - https://github.example.com/exampleco/example-shared-skills.git
-    installer: install.sh      # that repo's own installer, relative path
-    installer_args: ["$HOME"]  # $HOME expands to the user's home
-    source_env: EXAMPLE_SHARED_SKILLS_SOURCE_DIR   # engine pins source to its fresh cache
-    status_args: ["status", "$HOME"]               # lets doctor verify installs
+    repository: ssh://git@example.test/example/example-shared-skills.git
+    capability: skills-install
 
 knowledge_bases:
-  - name: ai-knowledge-exampleco
-    primary: git@git.example.com:exampleco/ai-knowledge-exampleco.git
-    default_branch: main       # documented branch for fresh clones and guidance
-    superseded_remotes:        # old URLs; clones found on these are repointed
-      - https://github.example.com/old-owner/ai-knowledge-exampleco.git
-    local_hooks: true          # wire repo-local .githooks when no global engine
+  - name: ai-knowledge-example-team
+    repository: ssh://git@example.test/example/ai-knowledge-example-team.git
+    default_branch: main
+    local_hooks: true
+
+instruction_sources:
+  - path: .agents/workspace-instructions.md
+    required: true
+
+acceptance:
+  task: workspace-grounding-check
 
 auth_help: |
-  You need SSH access to git.example.com first (the one-time auth step):
-    1. Ask #help-desk for repository access to ai-knowledge-exampleco.
-    2. Create an SSH key:  ssh-keygen -t ed25519
-    3. Add ~/.ssh/id_ed25519.pub to your git account settings.
-  Then re-run this installer — it picks up exactly where it left off.
+  Sign in to the repository host, confirm that your account can read the
+  repositories above, then run the same synthesis command again.
 
 welcome:
-  title: Welcome to the Example Co knowledge base
+  title: Your workspace is ready
   try_asking:
-    - "Who owns the payments platform?"
-    - "What is our release process?"
-    - "Summarize the current quarter's priorities."
+    - "What projects are active?"
+    - "Where is the release process documented?"
   docs:
-    - docs/guides/quickstart.md
-
-migrations:                    # optional; how re-runs clean up history
-  skills:
-    - from: example-legacy-skill
-      action: remove
-      note: superseded by the public synthesis-example skill
-    - from: example-old-name
-      action: rename
-      to: example-new-name
-
-workspace_instructions: true   # generate ~/workspaces/<workspace>/AGENTS.md
+    - docs/getting-started.md
 ```
 
-## Field reference
+## Field contract
 
-| Key | Required | Meaning |
-|-----|----------|---------|
-| `version` | yes | Manifest schema version; currently `1`. Unknown keys anywhere are hard errors — the engine fails closed rather than guessing. |
-| `org.id`, `org.workspace` | yes | Slug and workspace directory name. `org.name` optional display name. |
-| `ecosystem` | no | `plugin` (default true), `clients` list, `channel` (`stable` default or `edge`), and optional exact `version_pin` (`X.Y.Z`). A pin overrides the channel and resolves to the immutable `vX.Y.Z` release tag. |
-| `skills_repos[]` | no | `name` + `primary` required. `installer` is invoked as `sh <installer> install <installer_args...>` from the engine's cache clone; `source_env` names the env var your installer honors to skip its own network fetch; `status_args` enables `doctor` verification. |
-| `knowledge_bases[]` | no | `name` + `primary` required. `default_branch` documents the branch contributors should use (the remote default remains authoritative when omitted). `superseded_remotes` powers remote migrations (e.g., moving from a personal mirror to the canonical host). `local_hooks` wires `.githooks` on machines without a global hooks engine. |
-| `auth_help` | no | Printed verbatim when a repo is unreachable — write it for a non-engineer, with the exact clicks. |
-| `welcome` | no | `title`, `try_asking[]`, `docs[]` — shown at the end of a successful run and embedded in the generated workspace AGENTS.md. |
-| `migrations.skills[]` | no | `from` + `action` (`remove` or `rename`, `rename` needs `to`), optional `note`. Applied to user-level skill copies; everything is archived before removal. |
-| `workspace_instructions` | no | Set `false` to skip generating workspace AGENTS.md/CLAUDE.md. |
+| Field | Contract |
+|---|---|
+| `version` | Required integer `2`. Unknown fields fail closed. |
+| `org.id` | Required safe identifier. |
+| `org.name` | Optional display name used only in local welcome text. |
+| `org.workspace` | Required safe directory identifier. |
+| `ecosystem.plugin` | Optional Boolean; defaults to true. |
+| `ecosystem.clients` | Optional subset of `claude` and `codex`. |
+| `ecosystem.channel` | `stable` by default or explicit `edge`. |
+| `ecosystem.version_pin` | Optional exact `X.Y.Z`; overrides the channel. |
+| `skills_repos[]` | `name`, safe `repository`, and fixed `capability: skills-install`. The public engine performs the copy. |
+| `knowledge_bases[]` | `name`, safe `repository`, `default_branch`, and optional `local_hooks`. |
+| `instruction_sources[]` | Exactly one entry with a repository-relative `path` and Boolean `required`. The source must be Git-tracked and regular; traversal and symlinks are rejected. |
+| `acceptance.task` | A capability ID in the public release catalog. The organization cannot provide code or arguments. |
+| `auth_help` | Plain-text local guidance. It must not contain credentials. |
+| `welcome` | Local title, suggested questions, and repository-relative docs. |
 
-## The wrapper script
+Repository URLs must use authenticated HTTPS or SSH transport and must not
+embed credentials. Local paths, `file:` URLs, Git's unauthenticated protocol,
+and destination escapes are refused.
 
-Put this at your KB repo root as `install.sh` (adjust nothing but the
-public-source location if you mirror it):
-
-```sh
-#!/bin/sh
-# One-command onboarding for this organization's synthesis setup.
-set -eu
-REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-SRC="${SYNTHESIS_ONBOARD_SOURCE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/synthesis-skills}"
-if ! command -v git >/dev/null 2>&1; then
-  echo "git is required. On macOS run:  xcode-select --install  (then re-run)"; exit 2
-fi
-if [ -e "$SRC/.git" ]; then
-  git -C "$SRC" fetch origin stable && git -C "$SRC" checkout --detach FETCH_HEAD || {
-    [ "${SYNTHESIS_ONBOARD_ALLOW_STALE:-}" = "1" ] || {
-      echo "Could not refresh $SRC and refusing to run stale."; exit 1; }; }
-else
-  git clone --branch stable --single-branch https://github.com/synthesisengineering/synthesis-skills.git "$SRC"
-fi
-CMD="init"
-case "${1:-}" in
-  init|install|update|kernel|doctor|init-workspace|uninstall) CMD="$1"; shift ;;
-esac
-exec python3 "$SRC/skills/synthesis-onboarding/scripts/onboard.py" "$CMD" \
-  --manifest "$REPO_ROOT/.agents/onboarding.yaml" "$@"
-```
-
-A member's whole flow becomes:
+## Enrollment
 
 ```bash
-git clone <your-kb-ssh-url> ~/workspaces/<workspace>/<kb-name>   # the auth step lives here
-~/workspaces/<workspace>/<kb-name>/install.sh
+synthesis setup --profile full --org-repo ssh://git@example.test/example/onboarding-config.git
+synthesis setup --profile full --invite invitation.json
 ```
 
-Cloned somewhere else? Fine — the engine adopts existing clones in place by
-matching remotes; it never moves anyone's directories.
+An invite carries the repository URL, optional exact commit, issuance time,
+expiry no more than seven days later, and a nonce. It carries no credential.
+The engine records successful use and rejects replay. Repository authentication
+uses the member's normal Git credential path.
 
-## YAML subset note
+## Repository behavior
 
-On machines without PyYAML the engine parses a documented subset: nested
-maps (2-space indent), lists (`- `), scalars, literal blocks (`|`), and
-full-line comments. Everything in the example above is inside the subset.
-Anchors, flow style, and multi-line folded scalars are not — the parser
-rejects them with a line number rather than misreading them. When PyYAML is
-present it is used instead; validation is identical on both paths.
+The engine clones organization configuration under the XDG data root. A rerun
+accepts the existing clone only when it is a real Git worktree, clean, and has
+the exact declared origin. Update may fetch and advance a floating commit;
+doctor inspects the recorded commit without fetching or changing state.
 
-## Renames, removals, and generalization over time
+Knowledge bases use the workspace convention. Existing clones are accepted
+only at their declared remote; the engine never silently repoints them.
+Repository-local hooks are enabled only through the public engine's audited
+capability.
 
-When your org later renames a skill, splits one, or replaces a private
-skill with a public synthesis skill, encode it in `migrations` and every
-member's next `install.sh` run reconciles their machine — old copies
-archived, new names in place, no manual cleanup instructions to broadcast.
+Shared skills repositories are data sources, not execution authorities. The
+engine validates the repository and installs `skills/*` using its fixed
+direct-copy implementation. A repository-provided setup script is ignored and
+an executable manifest field is rejected.
+
+## Instruction provenance
+
+The declared source must be a regular Git-tracked file in the organization
+configuration repository. The engine records its repository, commit, relative
+path, and digest, then activates identical `AGENTS.md` and `CLAUDE.md` outputs
+as one transaction. If either target collides or activation fails, neither new
+output remains active. Doctor verifies both output digests against the receipt.
+
+## Public capability ownership
+
+The release catalog owns acceptance IDs and their implementations. Schema 2
+currently allows `workspace-grounding-check`, which proves a conventional
+personal knowledge workspace has a readable, safe knowledge bundle. A manifest
+can request that ID but cannot replace its logic. This keeps an organization
+from marking its own installation healthy with an arbitrary command.

@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synthesisengineering.org/schemas/system-state-v1.json",
+  "title": "Synthesis desired state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "enabled", "profile", "clients", "release", "personal_workspace", "personal_configuration", "layers", "organizations"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "enabled": {"type": "boolean"},
+    "profile": {"enum": ["full", "skills-only"]},
+    "clients": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["claude", "codex"]}
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channel", "version_pin"],
+      "properties": {
+        "channel": {"enum": ["stable", "edge"]},
+        "version_pin": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}
+          ]
+        }
+      }
+    },
+    "personal_workspace": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"},
+    "personal_configuration": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["display_name", "working_relationship", "timezone", "tone", "avoid_phrases", "git_name", "git_email", "working_hours", "protected_hours", "personal_remote_patterns", "confidential_terms", "inbox_cleanup"],
+          "properties": {
+            "display_name": {"type": "string"},
+            "working_relationship": {"type": "string", "minLength": 1},
+            "timezone": {"type": "string", "minLength": 1},
+            "tone": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+            "avoid_phrases": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "git_name": {"type": "string"},
+            "git_email": {"type": "string"},
+            "working_hours": {"type": ["object", "null"]},
+            "protected_hours": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "personal_remote_patterns": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "confidential_terms": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "inbox_cleanup": {"type": "boolean"}
+          }
+        }
+      ]
+    },
+    "layers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["skills", "session-context", "hooks-gates", "agent-kernel", "runtime-engines", "coordination", "doctors-conformance", "personal-policy", "organization", "knowledge-bases", "lifecycle"],
+      "properties": {
+        "skills": {"enum": ["selected", "declined"]},
+        "session-context": {"enum": ["selected", "declined"]},
+        "hooks-gates": {"enum": ["selected", "declined"]},
+        "agent-kernel": {"enum": ["selected", "declined"]},
+        "runtime-engines": {"enum": ["selected", "declined"]},
+        "coordination": {"enum": ["selected", "declined"]},
+        "doctors-conformance": {"enum": ["selected", "declined"]},
+        "personal-policy": {"enum": ["selected", "declined"]},
+        "organization": {"enum": ["selected", "declined"]},
+        "knowledge-bases": {"enum": ["selected", "declined"]},
+        "lifecycle": {"enum": ["selected", "declined"]}
+      }
+    },
+    "organizations": {
+      "type": "array",
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["repository", "manifest_path", "commit_policy", "commit"],
+        "properties": {
+          "repository": {"type": "string", "minLength": 1},
+          "manifest_path": {"const": ".agents/onboarding.yaml"},
+          "commit_policy": {"enum": ["floating", "pinned"]},
+          "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"profile": {"const": "full"}}, "required": ["profile"]},
+      "then": {
+        "required": ["personal_workspace", "personal_configuration"],
+        "properties": {
+          "personal_workspace": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"},
+          "personal_configuration": {"type": "object"},
+          "layers": {
+            "properties": {
+              "skills": {"const": "selected"},
+              "session-context": {"const": "selected"},
+              "hooks-gates": {"const": "selected"},
+              "agent-kernel": {"const": "selected"},
+              "runtime-engines": {"const": "selected"},
+              "coordination": {"const": "selected"},
+              "doctors-conformance": {"const": "selected"},
+              "personal-policy": {"const": "selected"},
+              "knowledge-bases": {"const": "selected"},
+              "lifecycle": {"const": "selected"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"profile": {"const": "skills-only"}}, "required": ["profile"]},
+      "then": {
+        "properties": {
+          "personal_configuration": {"type": "null"},
+          "organizations": {"maxItems": 0},
+          "layers": {
+            "properties": {
+              "skills": {"const": "selected"},
+              "session-context": {"const": "selected"},
+              "hooks-gates": {"const": "declined"},
+              "agent-kernel": {"const": "declined"},
+              "runtime-engines": {"const": "declined"},
+              "coordination": {"const": "declined"},
+              "doctors-conformance": {"const": "declined"},
+              "personal-policy": {"const": "declined"},
+              "organization": {"const": "declined"},
+              "knowledge-bases": {"const": "declined"},
+              "lifecycle": {"const": "selected"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"organizations": {"minItems": 1}}, "required": ["organizations"]},
+      "then": {"properties": {"layers": {"properties": {"organization": {"const": "selected"}}}}},
+      "else": {"properties": {"layers": {"properties": {"organization": {"const": "declined"}}}}}
+    }
+  ]
+}

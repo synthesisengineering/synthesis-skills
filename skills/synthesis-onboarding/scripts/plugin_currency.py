@@ -325,6 +325,13 @@ def sessionstart_notice(plugin_root, receipts_path=None, resolver=resolve_target
             "Run the synthesis-onboarding update flow as this session's last action."
             % (installed, label, target)
         )
+    if status == "ahead" and not policy.get("version_pin"):
+        evidence = "stale %s evidence" % label if "stale" in detail.lower() else "%s evidence" % label
+        return (
+            "Synthesis plugin currency: installed %s is ahead of %s %s; "
+            "no downgrade is requested."
+            % (installed, evidence, target)
+        )
     return (
         "Synthesis plugin policy mismatch: installed %s; %s resolves to %s. "
         "Run the synthesis-onboarding update flow as this session's last action."

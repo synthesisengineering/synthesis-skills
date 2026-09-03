@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "product": "synthesis-work-system",
+  "release_identity_source": ".codex-plugin/plugin.json",
+  "cli": {
+    "name": "synthesis",
+    "commands": [
+      "setup",
+      "update",
+      "repair",
+      "status",
+      "doctor",
+      "workspace ensure",
+      "outcome verify",
+      "uninstall"
+    ]
+  },
+  "modalities": ["agent", "terminal"],
+  "profiles": {
+    "full": {
+      "primary": true,
+      "bootstrap_arguments": ["setup", "--profile", "full"],
+      "selected_layers": [
+        "skills",
+        "session-context",
+        "hooks-gates",
+        "agent-kernel",
+        "runtime-engines",
+        "coordination",
+        "doctors-conformance",
+        "personal-policy",
+        "knowledge-bases",
+        "lifecycle"
+      ],
+      "conditional_layers": ["organization"]
+    },
+    "skills-only": {
+      "primary": false,
+      "bootstrap_arguments": ["setup", "--profile", "skills-only"],
+      "selected_layers": ["skills", "session-context", "lifecycle"],
+      "conditional_layers": []
+    }
+  },
+  "release_policy": {
+    "default_channel": "stable",
+    "channels": {"stable": "stable", "edge": "main"},
+    "exact_pin_format": "vX.Y.Z",
+    "automatic_updates": false,
+    "trust": ["authenticated-https", "immutable-tag", "commit", "git-tree", "sha256-tree-v1"]
+  },
+  "platforms": {
+    "supported": ["macos", "linux", "wsl"],
+    "unsupported": ["windows-native"]
+  },
+  "clients": ["claude", "codex"],
+  "truth_planes": [
+    "desired",
+    "resolved",
+    "installed",
+    "source-provenance",
+    "live-loaded",
+    "outcome-verified"
+  ],
+  "layers": [
+    {"id": "skills", "title": "Skills", "description": "Portable synthesis methods loaded through a native plugin or direct-copy fallback."},
+    {"id": "session-context", "title": "Session context", "description": "SessionStart time, project, coordination, and lifecycle evidence."},
+    {"id": "hooks-gates", "title": "Hooks and gates", "description": "Commit-boundary and pre-send controls running from stable local paths."},
+    {"id": "agent-kernel", "title": "Agent kernel", "description": "One Git-tracked instruction source exposed to both supported clients."},
+    {"id": "runtime-engines", "title": "Runtime engines", "description": "Durable local engines and launchers under the synthesis state root."},
+    {"id": "coordination", "title": "Coordination", "description": "Lease-aware session claims, messages, and handoff machinery."},
+    {"id": "doctors-conformance", "title": "Doctors and conformance", "description": "Health checks that distinguish defects from unverifiable state."},
+    {"id": "personal-policy", "title": "Personal policy", "description": "User-authored preferences, guard patterns, and routing policy."},
+    {"id": "organization", "title": "Organization", "description": "Optional declarative organization configuration and knowledge access."},
+    {"id": "knowledge-bases", "title": "Knowledge bases", "description": "Git-backed personal and optional organization knowledge repositories."},
+    {"id": "lifecycle", "title": "Lifecycle", "description": "Release policy, update notice, reconciliation, and receipts."}
+  ],
+  "manifest_schema_version": 2,
+  "state_schema_version": 1,
+  "observation_schema_version": 3,
+  "invite_schema_version": 1,
+  "instruction_sources_schema_version": 1,
+  "instruction_source": "ai-knowledge-{workspace}/.agents/workspace-AGENTS.md",
+  "restart_rule": "Update is the initiating task's last action; a fresh client lifecycle receipt establishes live-loaded state.",
+  "public_acceptance_tasks": [
+    {
+      "id": "workspace-grounding-check",
+      "capability": "workspace-read",
+      "source_class": "personal-knowledge"
+    }
+  ]
+}

@@ -57,6 +57,7 @@ from pathlib import Path, PurePosixPath
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR.parents[1] / "synthesis-agent-conformance" / "scripts"))
+sys.path.insert(0, str(SCRIPT_DIR.parents[1] / "synthesis-onboarding" / "scripts"))
 
 try:
     from client_binaries import resolve_client_binary
@@ -72,6 +73,9 @@ except ImportError:  # pragma: no cover - resolved at runtime in the repo
         if override == "":
             return None
         return shutil.which(name)
+
+from bootstrap import materialize_release
+from system_contract import ContractError, activate_cli, atomic_write_json
 
 
 PLUGIN_NAME = "synthesis-skills"
@@ -121,8 +125,9 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
     ("pytest.coordination", ["python3", "-m", "pytest", "skills/synthesis-project-management/scripts/", "-q"]),
     ("pytest.promotion-gate", ["python3", "-m", "pytest", "skills/synthesis-promotion-gate/scripts/", "-q"]),
     ("pytest.context-lifecycle-integrity", ["python3", "-m", "pytest", "skills/synthesis-context-lifecycle/scripts/", "skills/synthesis-implementation-integrity/scripts/", "-q"]),
-    ("pytest.onboarding", ["python3", "-m", "pytest", "skills/synthesis-onboarding/scripts/test_onboard.py", "-q"]),
+    ("pytest.onboarding", ["python3", "-m", "pytest", "skills/synthesis-onboarding/scripts/", "-q"]),
     ("onboarding.catalog-scaffolds", ["python3", "skills/synthesis-onboarding/scripts/check_scaffolds.py", "."]),
+    ("onboarding.capabilities", ["python3", "skills/synthesis-onboarding/scripts/check_capabilities.py", "."]),
     ("pytest.release", ["python3", "-m", "pytest", "skills/synthesis-skills-manager/scripts/test_release.py", "-q"]),
     ("meeting-transcripts.completeness", ["python3", "skills/synthesis-meeting-transcripts/test_verify_transcripts.py"]),
     ("meeting-transcripts.primary", ["python3", "skills/synthesis-meeting-transcripts/test_transcript_primary.py"]),
@@ -1178,6 +1183,75 @@ def install_codex_cache_guardian(
     )
 
 
+def activate_published_cli(
+    repo: Path, version: str, result: Result, dry_run: bool
+) -> bool:
+    """Materialize and activate the release through the public verifier."""
+    home = Path(os.environ.get("SYNTHESIS_HOME", str(Path.home())))
+    cache_base = Path(os.environ.get("XDG_CACHE_HOME", str(home / ".cache")))
+    state_base = Path(os.environ.get("XDG_STATE_HOME", str(home / ".local" / "state")))
+    releases = cache_base / "synthesis" / "releases"
+    state = state_base / "synthesis"
+    launcher = Path(os.environ.get("SYNTHESIS_INSTALL_BIN_DIR", str(home / ".local" / "bin"))) / "synthesis"
+    active = state / "active-release.json"
+    descriptor_path = state / "releases" / (version + ".json")
+    if dry_run:
+        return result.add(
+            "install.synthesis-cli", True,
+            "dry-run: verify v%s and activate a content-addressed generation" % version,
+        )
+    try:
+        head = run(["git", "rev-parse", "HEAD^{commit}"], cwd=repo).stdout.strip()
+        tag = run(["git", "rev-parse", "--verify", "refs/tags/v%s^{commit}" % version], cwd=repo)
+        if tag.returncode:
+            raise ContractError("published release tag v%s is unavailable locally" % version)
+        if tag.stdout.strip() != head:
+            raise ContractError("local release tag does not point at published HEAD")
+        generation, descriptor = materialize_release(
+            repo,
+            releases,
+            channel="pin",
+            ref="v%s" % version,
+            source_url="https://github.com/synthesisengineering/synthesis-skills.git",
+        )
+        activate_cli(generation, descriptor, launcher, active)
+        atomic_write_json(descriptor_path, descriptor)
+    except (ContractError, OSError) as exc:
+        return result.add("install.synthesis-cli", False, str(exc))
+    return result.add(
+        "install.synthesis-cli",
+        True,
+        "activated %s at %s" % (version, generation),
+    )
+
+
+def fetch_published_tag(repo: Path, version: str, result: Result, dry_run: bool) -> bool:
+    """Fetch and verify the remote-published immutable tag without authoring it."""
+    if dry_run:
+        return result.add(
+            "publish.fetch-tag", True, "dry-run: fetch and verify v%s" % version
+        )
+    fetched = run(["git", "fetch", "--all", "--tags"], cwd=repo, timeout=600)
+    if fetched.returncode:
+        detail = (fetched.stderr or fetched.stdout).strip().splitlines()
+        return result.add(
+            "publish.fetch-tag", False, detail[-1] if detail else "tag fetch failed"
+        )
+    head = run(["git", "rev-parse", "HEAD^{commit}"], cwd=repo)
+    tag = run(
+        ["git", "rev-parse", "--verify", "refs/tags/v%s^{commit}" % version],
+        cwd=repo,
+    )
+    matches = not head.returncode and not tag.returncode and tag.stdout.strip() == head.stdout.strip()
+    return result.add(
+        "publish.fetch-tag",
+        matches,
+        "v%s matches published HEAD" % version
+        if matches
+        else "fetched v%s does not match published HEAD" % version,
+    )
+
+
 def _coordination_board_path() -> Path:
     override = os.environ.get("SYNTHESIS_COORDINATION_BOARD", "").strip()
     return Path(override).expanduser() if override else DEFAULT_COORDINATION_BOARD
@@ -1294,19 +1368,43 @@ def preflight(repo: Path, result: Result, install_only: bool) -> str | None:
     version, detail = source_version(repo)
     if not result.add("preflight.manifests-agree", version is not None, detail):
         return None
+    status = run(["git", "status", "--porcelain"], cwd=repo)
+    dirty = [ln for ln in status.stdout.splitlines() if ln.strip()]
+    result.add(
+        "preflight.tree-clean",
+        status.returncode == 0 and not dirty,
+        (
+            f"{len(dirty)} uncommitted path(s)"
+            if dirty
+            else "clean"
+            if status.returncode == 0
+            else "git status failed"
+        ),
+    )
+    if install_only:
+        head = run(["git", "rev-parse", "HEAD^{commit}"], cwd=repo)
+        tag = run(
+            ["git", "rev-parse", "--verify", "refs/tags/v%s^{commit}" % version],
+            cwd=repo,
+        )
+        matches = (
+            head.returncode == 0
+            and tag.returncode == 0
+            and head.stdout.strip() == tag.stdout.strip()
+        )
+        result.add(
+            "preflight.release-tag",
+            matches,
+            "v%s matches HEAD" % version
+            if matches
+            else "v%s is missing or does not match HEAD" % version,
+        )
     if not install_only:
         top = changelog_top_version(repo)
         result.add(
             "preflight.changelog-matches",
             top == version,
             f"CHANGELOG newest={top}, manifests={version}",
-        )
-        status = run(["git", "status", "--porcelain"], cwd=repo)
-        dirty = [ln for ln in status.stdout.splitlines() if ln.strip()]
-        result.add(
-            "preflight.tree-clean",
-            not dirty,
-            f"{len(dirty)} uncommitted path(s)" if dirty else "clean",
         )
         train_check(result)
     return version
@@ -1443,6 +1541,9 @@ def main(argv: list[str] | None = None) -> int:
         if not publish(repo, result, args.dry_run, authority, version):
             print("\nRELEASE ABORTED: publish failed. Clients left untouched.")
             return 1
+        if not fetch_published_tag(repo, version, result, args.dry_run):
+            print("\nRELEASE ABORTED: published tag could not be verified locally. Clients left untouched.")
+            return 1
 
     for client in ("claude", "codex"):
         refresh_client(client, result, args.dry_run, repo=repo)
@@ -1460,6 +1561,12 @@ def main(argv: list[str] | None = None) -> int:
             f"\nRELEASE INCOMPLETE for {version}: "
             f"{len(result.failed)} step(s) failed. The clients are NOT confirmed current — "
             "re-run with --install-only after fixing."
+        )
+        return 1
+    if not activate_published_cli(repo, version, result, args.dry_run):
+        print(
+            f"\nRELEASE INCOMPLETE for {version}: the public synthesis CLI "
+            "could not be activated through the release verifier."
         )
         return 1
     if not refresh_stable_path(version, result, args.dry_run):

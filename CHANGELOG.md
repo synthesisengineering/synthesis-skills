@@ -4,6 +4,49 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.91.0] - 2026-09-02
+
+**The complete synthesis work system now has one public installer, one stable
+CLI, and one testable state contract.** The verified `onboard.sh` bootstrap
+resolves stable, edge, or an exact version pin once; binds the release to its
+tag, commit, Git tree, and canonical content digest; materializes an immutable
+generation; and activates the managed `synthesis` command without following a
+mutable checkout. `synthesis setup`, `update`, `repair`, `status`, `doctor`,
+`workspace ensure`, `outcome verify`, and `uninstall` all route through the same
+engine.
+
+The engine now separates desired state from machine observations and records
+every mutation under one lock with a monotonic pending, committed, or aborted
+transaction. Its doctor reports desired, resolved, installed,
+source-provenance, live-loaded, and outcome-verified state separately. Fresh
+SessionStart evidence from each selected client completes the live-loaded
+plane; trusted public task IDs can complete the outcome plane without storing
+an expected private answer. Uninstall records a disabled desired state instead
+of claiming the removed system is installed. A first generation records only a
+bounded digest and policy summary of the old receipt file as migration evidence.
+Setup commits the engine's validated effective client, workspace, and layer
+selection; repair consumes that desired state without advancing a floating
+organization policy, and legacy receipts retain only resource-ownership and
+conffile duties.
+
+Full setup creates one Git-tracked workspace instruction source and exposes it
+to both supported clients. User edits are preserved as drift, not overwritten.
+Optional organization enrollment accepts credential-free, time-bounded invites
+and declarative schema-2 manifests; it rejects local paths, path traversal,
+credential-bearing repository URLs, symlinks, wrong remotes, and
+repository-selected executables. Updates remain explicitly initiated, and an
+installed floating version ahead of stale channel evidence is never told to
+downgrade.
+
+A public release-capability document now owns the CLI, profile, layer, platform,
+truth-plane, and acceptance-task vocabulary used by tests and installation
+documentation. The skills-only path uses the same bootstrap, while native
+plugin commands remain a secondary alternative. `synthesis-quick-answers`
+1.3.0 uses `synthesis workspace ensure` and the tracked instruction source, and
+its catalog description is held below the client limit. `synthesis-onboarding`
+2.0.0 and `synthesis-skills-manager` 2.6.0 add the engine and gated public-CLI
+activation.
+
 ## [4.90.3] - 2026-09-02
 
 **The shell-lane gate's boundary is stated where agents read it.** The

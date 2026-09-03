@@ -18,7 +18,7 @@ organization's knowledge bases and shared skills, declared in the org's
 installer code. Schema: references/org-manifest.md beside this skill.
 
 Design rules: python3 stdlib only (PyYAML used when present); idempotent
-convergence with receipts at ~/.synthesis/onboarding/receipts.json; conffile
+convergence with resource receipts under the XDG state root; conffile
 semantics (never clobber user-edited files); archive before every removal;
 fail closed and loud on stale caches and unknown manifest keys.
 """
@@ -41,6 +41,15 @@ from plugin_currency import (
     policy_label,
     policy_ref,
     resolve_target_version,
+)
+from system_contract import (
+    ContractError,
+    DriftError,
+    file_digest,
+    materialize_instruction_pair,
+    validate_desired_state,
+    validate_org_manifest,
+    validate_repository_url,
 )
 from whole_system import (
     CAPTURE_TEMPLATE_REL,
@@ -69,7 +78,7 @@ from whole_system import (
     validate_personal_policy,
 )
 
-ENGINE_VERSION = "1.4.2"
+ENGINE_VERSION = "2.0.0"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -77,8 +86,19 @@ MARKETPLACE_NAME = "synthesis-engineering"
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 HOOK_PLUGIN_PATH_RE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\s\"']+)")
 
+
+def semver_tuple(value):
+    if not isinstance(value, str) or VERSION_RE.fullmatch(value) is None:
+        return None
+    return tuple(int(part) for part in value.split("."))
+
 HOME = Path(os.environ.get("SYNTHESIS_ONBOARD_HOME", str(Path.home())))
-STATE_DIR = Path(os.environ.get("SYNTHESIS_ONBOARD_STATE_DIR", str(HOME / ".synthesis" / "onboarding")))
+STATE_DIR = Path(
+    os.environ.get(
+        "SYNTHESIS_ONBOARD_STATE_DIR",
+        str(Path(os.environ.get("XDG_STATE_HOME", str(HOME / ".local" / "state"))) / "synthesis"),
+    )
+)
 WORKSPACES_ROOT = Path(os.environ.get("SYNTHESIS_WORKSPACES_ROOT", str(HOME / "workspaces")))
 CACHE_DIR = Path(os.environ.get("SYNTHESIS_ONBOARD_CACHE_DIR", os.environ.get("XDG_CACHE_HOME", str(HOME / ".cache")))) / "synthesis-onboarding"
 RECEIPTS_PATH = STATE_DIR / "receipts.json"
@@ -323,52 +343,10 @@ def _require(cond, message):
 
 
 def validate_manifest(data, path):
-    _require(isinstance(data, dict), "top level must be a mapping")
-    unknown = set(data) - TOP_KEYS
-    _require(not unknown, "unknown top-level keys: %s (fail-closed; see org-manifest.md)" % ", ".join(sorted(unknown)))
-    _require(data.get("version") == 1, "version must be 1")
-    org = data.get("org") or {}
-    _require(isinstance(org, dict) and not set(org) - ORG_KEYS, "org block has unknown keys")
-    _require(org.get("id") and org.get("workspace"), "org.id and org.workspace are required")
-    ecosystem = data.get("ecosystem") or {}
-    _require(
-        isinstance(ecosystem, dict) and not set(ecosystem) - ECOSYSTEM_KEYS,
-        "ecosystem block has unknown keys",
-    )
-    clients = ecosystem.get("clients", ["claude", "codex"])
-    _require(
-        isinstance(ecosystem.get("plugin", True), bool),
-        "ecosystem.plugin must be true or false",
-    )
-    _require(
-        isinstance(clients, list)
-        and all(client in ("claude", "codex") for client in clients),
-        "ecosystem.clients must be a list containing only claude and codex",
-    )
     try:
-        normalize_policy(ecosystem.get("channel"), ecosystem.get("version_pin"))
-    except ValueError as exc:
-        raise ValueError("manifest: ecosystem.%s" % exc)
-    for repo in data.get("skills_repos") or []:
-        _require(isinstance(repo, dict) and not set(repo) - SKILLS_REPO_KEYS,
-                 "skills_repos entry has unknown keys: %r" % repo)
-        _require(repo.get("name") and repo.get("primary"), "skills_repos entries need name + primary")
-    for kb in data.get("knowledge_bases") or []:
-        _require(isinstance(kb, dict) and not set(kb) - KB_KEYS,
-                 "knowledge_bases entry has unknown keys: %r" % kb)
-        _require(kb.get("name") and kb.get("primary"), "knowledge_bases entries need name + primary")
-    welcome = data.get("welcome") or {}
-    _require(isinstance(welcome, dict) and not set(welcome) - WELCOME_KEYS, "welcome block has unknown keys")
-    migrations = data.get("migrations") or {}
-    _require(isinstance(migrations, dict) and not set(migrations) - {"skills"}, "migrations supports only 'skills'")
-    for mig in migrations.get("skills") or []:
-        _require(isinstance(mig, dict) and not set(mig) - MIGRATION_KEYS, "migration entry has unknown keys")
-        _require(mig.get("from") and mig.get("action") in ("remove", "rename"),
-                 "migrations.skills entries need from + action (remove|rename)")
-        if mig.get("action") == "rename":
-            _require(mig.get("to"), "rename migrations need 'to'")
-    data.setdefault("_path", str(path))
-    return data
+        return validate_org_manifest(data, path)
+    except ContractError as exc:
+        raise ValueError("manifest: %s" % exc) from exc
 
 
 def load_manifest(path):
@@ -823,6 +801,30 @@ def plugin_record(client, binary):
     return False, None
 
 
+def plugin_present(client, binary):
+    """Return whether the public plugin is installed, including disabled installs."""
+    rc, out, _ = run([binary, "plugin", "list", "--json"], timeout=60)
+    if rc != 0:
+        return None
+    try:
+        entries = json.loads(out)
+    except ValueError:
+        return PLUGIN_NAME in out
+    if isinstance(entries, dict):
+        flat = []
+        for value in entries.values():
+            if isinstance(value, list):
+                flat.extend(value)
+        entries = flat
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        ident = str(entry.get("id") or entry.get("pluginId") or "")
+        if ident.startswith(PLUGIN_NAME + "@") or entry.get("name") == PLUGIN_NAME:
+            return True
+    return False
+
+
 def plugin_enabled(client, binary):
     return plugin_record(client, binary)[0]
 
@@ -1022,7 +1024,10 @@ def configured_git_identity():
 
 
 def origin_url(repo):
-    rc, out, _ = git(["remote", "get-url", "origin"], cwd=repo)
+    # Read the stored value. `git remote get-url` expands url.*.insteadOf,
+    # which can make an authenticated SSH identity appear to be a local test
+    # transport and defeats exact-remote adoption checks.
+    rc, out, _ = git(["config", "--get", "remote.origin.url"], cwd=repo)
     return out.strip() if rc == 0 else None
 
 
@@ -1034,8 +1039,19 @@ def is_dirty(repo):
 def clone_or_update(report, phase, url_list, dest, dry_run, allow_stale=ALLOW_STALE):
     """Ensure dest is a clone of url_list[0] (fallbacks tried on fresh clone).
     Fail LOUD when an existing cache cannot be refreshed (no silent stale)."""
+    try:
+        for url in url_list:
+            validate_repository_url(url)
+    except ContractError as exc:
+        return report.add(phase, ERROR, str(exc))
     dest = Path(dest)
+    if dest.exists() and not (dest / ".git").exists():
+        return report.add(phase, ERROR, "%s exists but is not a Git clone" % dest)
     if (dest / ".git").exists():
+        if origin_url(dest) != url_list[0]:
+            return report.add(phase, ERROR, "%s has an unexpected remote; refusing reuse" % dest)
+        if is_dirty(dest):
+            return report.add(phase, ERROR, "%s has local changes; refusing mutable input" % dest)
         rc, _, err = git(["pull", "--ff-only"], cwd=dest, timeout=180)
         if rc == 0:
             return report.add(phase, OK, "%s is current" % dest)
@@ -1122,6 +1138,7 @@ def phase_ecosystem(
     no_plugin_cli,
     policy,
     refresh_native_plugins=False,
+    preserve_ahead=False,
 ):
     """Public synthesis-skills into each present client; fallback to install.sh."""
     need_fallback = False
@@ -1160,6 +1177,22 @@ def phase_ecosystem(
                 report.add(
                     "ecosystem", CHANGED,
                     "would refresh %s plugin for %s" % (PLUGIN_NAME, name),
+                )
+                continue
+            if (
+                preserve_ahead
+                and not policy.get("version_pin")
+                and expected
+                and before_version
+                and semver_tuple(before_version) is not None
+                and semver_tuple(expected) is not None
+                and semver_tuple(before_version) > semver_tuple(expected)
+            ):
+                report.add(
+                    "ecosystem",
+                    OK,
+                    "%s plugin for %s is %s, ahead of floating %s at %s; kept installed version"
+                    % (PLUGIN_NAME, name, before_version, policy.get("channel"), expected),
                 )
                 continue
             success, detail = refresh_plugin(
@@ -1279,39 +1312,54 @@ def phase_ecosystem(
             report.add("ecosystem", ERROR, "fallback install.sh failed", hint=(err or out).strip()[-400:])
 
 
-def phase_org_skills(report, manifest, dry_run):
+def phase_org_skills(report, manifest, receipts, dry_run):
     for repo in manifest.get("skills_repos") or []:
         cache = CACHE_DIR / repo["name"]
-        urls = [repo["primary"]] + list(repo.get("fallbacks") or [])
+        urls = [repo["repository"]]
         status = clone_or_update(report, "org-skills", urls, cache, dry_run)
         if status in (ERROR,):
             continue
-        installer_rel = repo.get("installer")
-        if not installer_rel:
+        if repo.get("capability") != "skills-install":
+            report.add("org-skills", ERROR, "%s requested an unsupported capability" % repo["name"])
             continue
-        installer = cache / installer_rel
-        args = [str(HOME) if a == "$HOME" else a for a in (repo.get("installer_args") or [])]
+        installer = source_root() / "skills" / "synthesis-onboarding" / "scripts" / "direct_copy.sh"
+        targets = "%s %s" % (HOME / ".claude" / "skills", HOME / ".agents" / "skills")
+        env = {
+            "SYNTHESIS_SKILLS_SOURCE_DIR": str(cache),
+            "SYNTHESIS_SKILLS_HOME": str(HOME),
+            "SYNTHESIS_SKILLS_TARGETS": targets,
+            "SYNTHESIS_SKILLS_SOURCE_REPO": repo["repository"],
+            "SYNTHESIS_SKILLS_SOURCE_TYPE": "organization",
+        }
         if dry_run or status == WOULD:
-            report.add("org-skills", CHANGED, "would run %s %s" % (installer, " ".join(args)))
+            report.add("org-skills", CHANGED, "would apply public skills-install to %s" % repo["name"])
             continue
-        if not installer.exists():
-            report.add("org-skills", ERROR, "installer %s not found in %s" % (installer_rel, repo["name"]))
+        if not installer.is_file():
+            report.add("org-skills", ERROR, "public skills-install capability is unavailable")
             continue
-        env = {}
-        if repo.get("source_env"):
-            env[repo["source_env"]] = str(cache)
-        status_args = repo.get("status_args")
-        if status_args:
-            probe = [str(HOME) if a == "$HOME" else a for a in status_args]
-            rc, _, _ = run(["sh", str(installer)] + probe, env=env, timeout=300)
-            if rc == 0:
-                report.add("org-skills", OK, "%s already installed and clean" % repo["name"])
-                continue
-        rc, out, err = run(["sh", str(installer), "install"] + args, env=env, timeout=600)
+        rc, _, _ = run(["sh", str(installer), "status"], env=env, timeout=300)
+        source_names = [
+            path.parent.name for path in (cache / "skills").glob("*/SKILL.md")
+        ]
+        copies_present = bool(source_names) and all(
+            (target / name / "SKILL.md").is_file()
+            for target in (HOME / ".claude" / "skills", HOME / ".agents" / "skills")
+            for name in source_names
+        )
+        if rc == 0 and copies_present:
+            report.add("org-skills", OK, "%s already installed and clean" % repo["name"])
+            continue
+        rc, out, err = run(["sh", str(installer), "install"], env=env, timeout=600)
         if rc == 0:
-            report.add("org-skills", CHANGED, "%s installer completed" % repo["name"])
+            _, commit, _ = git(["rev-parse", "HEAD^{commit}"], cwd=cache)
+            receipts.data.setdefault("org_skill_sources", {})[repo["name"]] = {
+                "repository": repo["repository"],
+                "commit": commit.strip(),
+                "capability": "skills-install",
+            }
+            report.add("org-skills", CHANGED, "%s installed through public skills-install" % repo["name"])
         else:
-            report.add("org-skills", ERROR, "%s installer failed" % repo["name"],
+            report.add("org-skills", ERROR, "%s skills-install failed" % repo["name"],
                        hint=(err or out).strip()[-400:])
 
 
@@ -1332,8 +1380,8 @@ def phase_kbs(report, manifest, receipts, dry_run):
     workspace = manifest["org"]["workspace"]
     auth_help = (manifest.get("auth_help") or "").strip()
     for kb in manifest.get("knowledge_bases") or []:
-        name, primary = kb["name"], kb["primary"]
-        superseded = kb.get("superseded_remotes") or []
+        name, primary = kb["name"], kb["repository"]
+        superseded = []
         standard = WORKSPACES_ROOT / workspace / name
         adopted = receipts.adopted(name)
         repo = Path(adopted) if adopted and Path(adopted, ".git").exists() else None
@@ -1369,7 +1417,8 @@ def phase_kbs(report, manifest, receipts, dry_run):
                 git(["remote", "set-url", "origin", primary], cwd=repo)
                 report.add("knowledge-base", CHANGED, "repointed %s origin to the current primary remote" % name)
         elif current_origin != primary:
-            report.add("knowledge-base", WARN, "%s origin is %s (expected %s) — left as-is" % (name, current_origin, primary))
+            report.add("knowledge-base", ERROR, "%s has the wrong remote; refusing reuse" % name)
+            continue
         if not dry_run:
             if is_dirty(repo):
                 report.add("knowledge-base", WARN, "%s has local changes; skipped pull" % name)
@@ -1435,16 +1484,61 @@ def workspace_agents_md(manifest):
 
 
 def phase_workspace(report, manifest, receipts, dry_run):
-    if manifest.get("workspace_instructions") is False:
-        report.add("workspace", SKIP, "workspace instruction generation disabled by manifest")
-        return
     workspace = manifest["org"]["workspace"]
     ws_dir = WORKSPACES_ROOT / workspace
-    if not dry_run:
-        ws_dir.mkdir(parents=True, exist_ok=True)
-    ensure_file(report, receipts, ws_dir / "AGENTS.md", workspace_agents_md(manifest),
-                "workspace", dry_run)
-    ensure_file(report, receipts, ws_dir / "CLAUDE.md", "@AGENTS.md\n", "workspace", dry_run)
+    manifest_path = Path(manifest["_path"])
+    rc, org_root_text, err = git(["rev-parse", "--show-toplevel"], cwd=manifest_path.parent)
+    if rc != 0:
+        report.add("workspace", ERROR, "organization manifest is not inside a Git repository", hint=err.strip())
+        return
+    org_root = Path(org_root_text.strip())
+    graph = {
+        "schema_version": 1,
+        "sources": [
+            {
+                "role": "public",
+                "path": "skills/synthesis-onboarding/references/kernel.example.md",
+                "required": True,
+            },
+            {
+                "role": "organization",
+                "path": manifest["instruction_sources"][0]["path"],
+                "required": manifest["instruction_sources"][0].get("required", True),
+            },
+        ],
+        "output": "AGENTS.md",
+        "claude_adapter": "CLAUDE.md",
+    }
+    previous = receipts.data.get("instruction_receipt")
+    if previous is None and any((ws_dir / name).exists() for name in ("AGENTS.md", "CLAUDE.md")):
+        report.add("workspace", ERROR, "workspace instructions exist without a source receipt; preserved")
+        return
+    if dry_run:
+        report.add("workspace", CHANGED, "would materialize tracked AGENTS.md and CLAUDE.md sources")
+        return
+    try:
+        receipt = materialize_instruction_pair(
+            graph,
+            {"public": source_root(), "organization": org_root},
+            ws_dir,
+            generation=int(receipts.data.get("instruction_generation", 0)) + 1,
+            previous_receipt=previous,
+        )
+    except (ContractError, DriftError, OSError) as exc:
+        report.add("workspace", ERROR, str(exc))
+        return
+    receipts.data["instruction_generation"] = receipt["generation"]
+    receipts.data["instruction_receipt"] = receipt
+    for target in (ws_dir / "AGENTS.md", ws_dir / "CLAUDE.md"):
+        receipts.record_file(
+            target,
+            target.read_text(encoding="utf-8"),
+            "workspace-instructions",
+        )
+    if receipt.get("unchanged"):
+        report.add("workspace", OK, "tracked workspace instructions are current for both clients")
+    else:
+        report.add("workspace", CHANGED, "materialized tracked workspace instructions for both clients")
 
 
 def phase_migrations(report, manifest, receipts, dry_run):
@@ -1528,6 +1622,71 @@ ai-knowledge-%s/
 """ % (workspace, workspace, workspace)
 
 
+def workspace_agents_md(workspace):
+    return """# Workspace Context: %s
+
+This is the shared instruction source for the `%s` workspace. It is stored in
+the workspace's Git-tracked personal knowledge repository so every machine and
+supported agent client receives the same rules.
+
+## Knowledge and project continuity
+
+- Personal knowledge base: `ai-knowledge-%s/`
+- Projects are registered in `ai-knowledge-%s/projects/index.yaml`.
+- Resume named synthesis projects from their tracked `CONTEXT.md`,
+  `REFERENCE.md`, session log, and artifacts rather than chat memory.
+- Keep durable workspace-specific additions in this file. Do not edit the
+  workspace-root `AGENTS.md`; it is a generated entry point to this source.
+""" % (workspace, workspace, workspace, workspace)
+
+
+def ensure_workspace_entrypoints(report, receipts, workspace, repo, dry_run, source_content=None):
+    """Create one tracked workspace source and two collision-safe client entries."""
+    source = repo / ".agents" / "workspace-AGENTS.md"
+    ensure_user_source(
+        report,
+        receipts,
+        source,
+        source_content or workspace_agents_md(workspace),
+        "init-workspace",
+        dry_run,
+    )
+
+    ws_dir = repo.parent
+    agents_path = ws_dir / "AGENTS.md"
+    expected_target = Path(repo.name) / ".agents" / "workspace-AGENTS.md"
+    if agents_path.is_symlink():
+        if Path(os.readlink(agents_path)) == expected_target:
+            report.add("init-workspace", OK, "%s points to the tracked workspace source" % agents_path)
+        else:
+            report.add(
+                "init-workspace",
+                ERROR,
+                "%s is a symlink with a different owner; left untouched" % agents_path,
+            )
+    elif agents_path.exists():
+        report.add(
+            "init-workspace",
+            ERROR,
+            "%s already exists and is not the managed workspace entry point; left untouched" % agents_path,
+        )
+    elif dry_run:
+        report.add("init-workspace", CHANGED, "would link %s to %s" % (agents_path, expected_target))
+    else:
+        agents_path.symlink_to(expected_target)
+        receipts.record_file(agents_path, str(expected_target), "init-workspace-link")
+        report.add("init-workspace", CHANGED, "linked %s to the tracked workspace source" % agents_path)
+
+    ensure_file(
+        report,
+        receipts,
+        ws_dir / "CLAUDE.md",
+        "@AGENTS.md\n",
+        "init-workspace",
+        dry_run,
+    )
+
+
 INDEX_YAML_SEED = """# Projects Index
 # Status values: active | paused | ongoing | completed | archived
 
@@ -1542,7 +1701,8 @@ Cross-project lessons and patterns. One file per lesson, named
 
 
 def init_workspace(
-    report, receipts, workspace, dry_run, remote=None, git_identity=None
+    report, receipts, workspace, dry_run, remote=None, git_identity=None,
+    source_content=None,
 ):
     ws_dir = WORKSPACES_ROOT / workspace
     repo = ws_dir / ("ai-knowledge-%s" % workspace)
@@ -1562,6 +1722,14 @@ def init_workspace(
     lessons = repo / "lessons"
     lessons.mkdir(exist_ok=True)
     ensure_file(report, receipts, lessons / "README.md", LESSONS_README, "init-workspace", dry_run)
+    ensure_workspace_entrypoints(
+        report,
+        receipts,
+        workspace,
+        repo,
+        dry_run,
+        source_content=source_content,
+    )
     if not (repo / ".git").exists():
         rc, _, err = git(["init", "-b", "main"], cwd=repo)
         if rc != 0:
@@ -1595,6 +1763,24 @@ def init_workspace(
         else:
             report.add("init-workspace", ACTION, "repository created; first commit needs your git identity",
                        hint='Run:\n  git config --global user.name "Your Name"\n  git config --global user.email "you@example.com"\nthen commit inside %s' % repo)
+    elif not dry_run:
+        source_rel = ".agents/workspace-AGENTS.md"
+        tracked_rc, _, _ = git(["ls-files", "--error-unmatch", source_rel], cwd=repo)
+        if tracked_rc != 0:
+            add_rc, _, add_err = git(["add", "--", source_rel], cwd=repo)
+            commit_rc, _, commit_err = git(
+                ["commit", "--only", "-m", "Add workspace instruction source", "--", source_rel],
+                cwd=repo,
+            ) if add_rc == 0 else (add_rc, "", add_err)
+            if commit_rc == 0:
+                report.add("init-workspace", CHANGED, "committed the tracked workspace instruction source")
+            else:
+                report.add(
+                    "init-workspace",
+                    ACTION,
+                    "workspace instruction source exists but is not committed",
+                    hint=(commit_err or add_err).strip(),
+                )
     if remote:
         current = origin_url(repo)
         if current is None:
@@ -1790,6 +1976,7 @@ def phase_kernel_runtime(report, receipts, clients_wanted, dry_run):
 
 def phase_kernel(report, receipts, workspace, dry_run, policy_override=None):
     ws_dir = WORKSPACES_ROOT / workspace
+    repo = ws_dir / ("ai-knowledge-%s" % workspace)
     policy_path = HOME / ".synthesis" / "personal-policy" / "profile.json"
     try:
         if policy_override is not None:
@@ -1806,7 +1993,7 @@ def phase_kernel(report, receipts, workspace, dry_run, policy_override=None):
             "cannot generate the agent kernel without valid personal policy",
             hint=str(exc),
         )
-    source_path = ws_dir / "AGENTS.source.md"
+    source_path = repo / ".agents" / "workspace-AGENTS.md"
     initial = render_kernel_source(policy)
     ensure_user_source(
         report, receipts, source_path, initial, "agent-kernel", dry_run
@@ -1829,38 +2016,15 @@ def phase_kernel(report, receipts, workspace, dry_run, policy_override=None):
         )
     else:
         report.add("agent-kernel", OK, "kernel budget: %d/%d bytes" % (size, KERNEL_HARD_LIMIT))
-    statuses = []
-    for client, name in (("codex", "AGENTS.md"), ("claude", "CLAUDE.md")):
-        output = rendered_kernel(source, client)
-        output_size, output_state = kernel_budget(output)
-        if output_state == "over":
-            statuses.append(
-                report.add(
-                    "agent-kernel",
-                    ERROR,
-                    "%s output is %d bytes; hard limit is %d" %
-                    (name, output_size, KERNEL_HARD_LIMIT),
-                )
-            )
-            continue
-        statuses.append(
-            ensure_file(
-                report,
-                receipts,
-                ws_dir / name,
-                output,
-                "agent-kernel",
-                dry_run,
-            )
-        )
+    before = len(report.steps)
+    ensure_workspace_entrypoints(
+        report, receipts, workspace, repo, dry_run, source_content=initial
+    )
+    statuses = [step["status"] for step in report.steps[before:]]
     if ERROR in statuses:
         return ERROR
     if WARN in statuses:
-        return report.add(
-            "agent-kernel",
-            ACTION,
-            "generated kernel outputs need reconciliation before convergence",
-        )
+        return report.add("agent-kernel", ACTION, "workspace entry points need reconciliation")
     if not dry_run:
         receipts.data["kernel_source_sha256"] = sha256_text(source)
     return OK
@@ -1964,6 +2128,9 @@ def run_whole_system_init(
             answers["workspace"],
             dry_run,
             git_identity=answer_identity,
+            source_content=render_kernel_source(
+                build_personal_policy(source_root(), answers)
+            ),
         )
         personal_repo = (
             WORKSPACES_ROOT
@@ -2077,28 +2244,29 @@ def _hooks_probe(clients_wanted):
     return True, detail
 
 
-def _kernel_probe(receipts):
-    workspace = receipts.data.get("personal_workspace")
+def _kernel_probe(receipts, workspace=None, clients_wanted=None):
+    workspace = workspace or receipts.data.get("personal_workspace")
     if not workspace:
         return False, "no personal workspace is recorded"
     root = WORKSPACES_ROOT / workspace
-    source = root / "AGENTS.source.md"
-    outputs = {"codex": root / "AGENTS.md", "claude": root / "CLAUDE.md"}
+    source = root / ("ai-knowledge-%s" % workspace) / ".agents" / "workspace-AGENTS.md"
+    agents = root / "AGENTS.md"
+    claude = root / "CLAUDE.md"
     runtime = STATE_DIR / "bin" / "kernel_sync.py"
     if not runtime.is_file():
         return False, "stable kernel propagation runtime is missing"
     if not source.is_file():
-        return False, "canonical AGENTS.source.md is missing"
+        return False, "tracked workspace instruction source is missing"
     content = source.read_text(encoding="utf-8")
     size, budget_state = kernel_budget(content)
     if budget_state == "over":
         return False, "kernel is %d bytes; hard limit is %d" % (size, KERNEL_HARD_LIMIT)
-    for client, path in outputs.items():
-        if not path.is_file():
-            return False, "%s is missing" % path
-        if path.read_text(encoding="utf-8") != rendered_kernel(content, client):
-            return False, "%s does not match the canonical kernel source" % path
-    for client in ("claude", "codex"):
+    expected_target = Path("ai-knowledge-%s" % workspace) / ".agents" / "workspace-AGENTS.md"
+    if not agents.is_symlink() or Path(os.readlink(agents)) != expected_target:
+        return False, "%s does not point to the tracked workspace source" % agents
+    if not claude.is_file() or claude.read_text(encoding="utf-8") != "@AGENTS.md\n":
+        return False, "%s is not the Claude adapter for AGENTS.md" % claude
+    for client in (clients_wanted or ("claude", "codex")):
         hook_path = (
             HOME / ".claude" / "settings.json"
             if client == "claude"
@@ -2107,19 +2275,25 @@ def _kernel_probe(receipts):
         if not _hook_file_has_kernel_sync(hook_path):
             return False, "%s kernel propagation hook is missing" % client
     suffix = " (warning band)" if budget_state == "warning" else ""
-    return True, "both client files match the %d-byte source%s" % (size, suffix)
+    return True, "both client entry points resolve the %d-byte tracked source%s" % (size, suffix)
 
 
-def _runtime_probe(receipts):
+def _runtime_probe(receipts, personal_configuration=None):
     missing = []
     if not (HOME / ".synthesis" / "git-hooks" / "pre-commit").is_file():
         missing.append("git-hooks")
     if not (HOME / ".synthesis" / "message-guard" / "message_guard.py").is_file():
         missing.append("message-guard")
-    if receipts.component_choice("day-end") == "selected":
+    desired_runtime = personal_configuration is not None
+    if desired_runtime or receipts.component_choice("day-end") == "selected":
         if not (HOME / ".synthesis" / "day-end" / "bin" / "day-end").is_file():
             missing.append("day-end")
-    if receipts.component_choice("inbox-cleanup") == "selected":
+    inbox_selected = (
+        personal_configuration.get("inbox_cleanup")
+        if personal_configuration is not None
+        else receipts.component_choice("inbox-cleanup") == "selected"
+    )
+    if inbox_selected:
         inbox = HOME / ".synthesis" / "inbox-cleanup"
         if not (inbox / "engine" / "current").exists() or not (inbox / "config.yaml").is_file():
             missing.append("inbox-cleanup")
@@ -2128,7 +2302,13 @@ def _runtime_probe(receipts):
     declined = [
         name
         for name in ("day-end", "inbox-cleanup")
-        if receipts.component_choice(name) == "declined"
+        if (
+            (name == "inbox-cleanup" and not inbox_selected)
+            or (
+                personal_configuration is None
+                and receipts.component_choice(name) == "declined"
+            )
+        )
     ]
     detail = "selected stable runtimes are installed"
     if declined:
@@ -2212,8 +2392,8 @@ def _organization_probe(manifest, receipts):
     return True, "manifest-selected organization sources are present"
 
 
-def _knowledge_probe(manifest, receipts):
-    workspace = receipts.data.get("personal_workspace")
+def _knowledge_probe(manifest, receipts, workspace=None):
+    workspace = workspace or receipts.data.get("personal_workspace")
     if workspace:
         personal = WORKSPACES_ROOT / workspace / ("ai-knowledge-%s" % workspace)
         if not (personal / ".git").exists():
@@ -2227,8 +2407,8 @@ def _knowledge_probe(manifest, receipts):
     return True, "selected knowledge bases are present"
 
 
-def _lifecycle_probe(receipts, skills_state, currency_unverifiable):
-    if not receipts.data.get("plugin_policy"):
+def _lifecycle_probe(receipts, skills_state, currency_unverifiable, policy_declared=False):
+    if not policy_declared and not receipts.data.get("plugin_policy"):
         return False, "no channel/version policy receipt is recorded"
     if skills_state is not True:
         return False, "lifecycle policy exists but the skill installation is missing"
@@ -2243,22 +2423,38 @@ def render_layer_doctor(
     clients_wanted,
     receipts,
     currency_unverifiable,
+    desired_state=None,
 ):
     catalog = load_catalog(source_root())
+    desired_workspace = (
+        desired_state.get("personal_workspace") if desired_state else None
+    )
+    personal_configuration = (
+        desired_state.get("personal_configuration") if desired_state else None
+    )
     skills_state, skills_detail = _skills_probe(clients_wanted)
     probes = {
         "skills": lambda: (skills_state, skills_detail),
         "session-context": lambda: _session_context_probe(clients_wanted),
         "hooks-gates": lambda: _hooks_probe(clients_wanted),
-        "agent-kernel": lambda: _kernel_probe(receipts),
-        "runtime-engines": lambda: _runtime_probe(receipts),
+        "agent-kernel": lambda: _kernel_probe(
+            receipts, desired_workspace, clients_wanted
+        ),
+        "runtime-engines": lambda: _runtime_probe(
+            receipts, personal_configuration
+        ),
         "coordination": _coordination_probe,
         "doctors-conformance": _doctors_probe,
         "personal-policy": _personal_policy_probe,
         "organization": lambda: _organization_probe(manifest, receipts),
-        "knowledge-bases": lambda: _knowledge_probe(manifest, receipts),
+        "knowledge-bases": lambda: _knowledge_probe(
+            manifest, receipts, desired_workspace
+        ),
         "lifecycle": lambda: _lifecycle_probe(
-            receipts, skills_state, currency_unverifiable
+            receipts,
+            skills_state,
+            currency_unverifiable,
+            policy_declared=desired_state is not None,
         ),
     }
     if set(probes) != set(catalog_ids(catalog)):
@@ -2268,12 +2464,16 @@ def render_layer_doctor(
     for layer in catalog["layers"]:
         layer_id = layer["id"]
         state, detail = probes[layer_id]()
-        choice = receipts.layer_choice(layer_id)
-        if state is True:
-            rendered = "installed"
-            verification = "verified"
-        elif choice == "declined":
+        choice = (
+            (desired_state.get("layers") or {}).get(layer_id)
+            if desired_state is not None
+            else receipts.layer_choice(layer_id)
+        )
+        if choice == "declined":
             rendered = "declined"
+            verification = "verified"
+        elif state is True:
+            rendered = "installed"
             verification = "verified"
         else:
             rendered = "missing"
@@ -2289,7 +2489,7 @@ def render_layer_doctor(
     return unverifiable
 
 
-def doctor(report, manifest, clients_wanted, policy):
+def doctor(report, manifest, clients_wanted, policy, desired_state=None):
     rc, _, _ = run(["git", "--version"], timeout=15)
     if rc != 0:
         report.add("doctor", ERROR, "git unavailable — cannot verify anything else")
@@ -2339,6 +2539,13 @@ def doctor(report, manifest, clients_wanted, policy):
                         "%s: %s plugin %s matches %s (%s)" %
                         (name, PLUGIN_NAME, installed_version, policy_label(policy), target_detail),
                     )
+                elif currency == "ahead" and not policy.get("version_pin"):
+                    report.add(
+                        "doctor",
+                        OK,
+                        "%s: %s plugin %s is ahead of %s evidence %s; no downgrade requested" %
+                        (name, PLUGIN_NAME, installed_version, policy_label(policy), target_version),
+                    )
                 elif currency in ("behind", "ahead"):
                     report.add(
                         "doctor",
@@ -2372,18 +2579,25 @@ def doctor(report, manifest, clients_wanted, policy):
             if not (cache / ".git").exists():
                 report.add("doctor", ERROR, "org skills source %s not present" % repo["name"])
                 continue
-            status_args = repo.get("status_args")
-            if status_args and (cache / repo.get("installer", "install.sh")).exists():
-                args = [str(HOME) if a == "$HOME" else a for a in status_args]
-                env = {repo["source_env"]: str(cache)} if repo.get("source_env") else None
-                rc, out, err = run(["sh", str(cache / repo.get("installer", "install.sh"))] + args, env=env, timeout=300)
-                if rc == 0:
-                    report.add("doctor", OK, "%s status clean" % repo["name"])
-                else:
-                    report.add("doctor", ERROR, "%s status reports problems" % repo["name"],
-                               hint=(out + err).strip()[-300:])
+            if origin_url(cache) != repo["repository"]:
+                report.add("doctor", ERROR, "org skills source %s has the wrong remote" % repo["name"])
+                continue
+            installer = source_root() / "skills" / "synthesis-onboarding" / "scripts" / "direct_copy.sh"
+            env = {
+                "SYNTHESIS_SKILLS_SOURCE_DIR": str(cache),
+                "SYNTHESIS_SKILLS_HOME": str(HOME),
+                "SYNTHESIS_SKILLS_TARGETS": "%s %s" % (
+                    HOME / ".claude" / "skills", HOME / ".agents" / "skills"
+                ),
+                "SYNTHESIS_SKILLS_SOURCE_REPO": repo["repository"],
+                "SYNTHESIS_SKILLS_SOURCE_TYPE": "organization",
+            }
+            rc, out, err = run(["sh", str(installer), "status"], env=env, timeout=300)
+            if rc == 0:
+                report.add("doctor", OK, "%s status clean" % repo["name"])
             else:
-                report.add("doctor", OK, "org skills source %s present" % repo["name"])
+                report.add("doctor", ERROR, "%s status reports problems" % repo["name"],
+                           hint=(out + err).strip()[-300:])
         receipts = Receipts()
         workspace = manifest["org"]["workspace"]
         for kb in manifest.get("knowledge_bases") or []:
@@ -2392,23 +2606,29 @@ def doctor(report, manifest, clients_wanted, policy):
             if not (repo_path / ".git").exists():
                 report.add("doctor", ERROR, "knowledge base %s not installed" % kb["name"])
                 continue
-            if origin_url(repo_path) != kb["primary"]:
-                report.add("doctor", WARN, "%s origin differs from manifest primary" % kb["name"])
+            if origin_url(repo_path) != kb["repository"]:
+                report.add("doctor", ERROR, "%s origin differs from manifest repository" % kb["name"])
             else:
                 report.add("doctor", OK, "knowledge base %s present at %s" % (kb["name"], repo_path))
-        ws_agents = WORKSPACES_ROOT / workspace / "AGENTS.md"
-        if manifest.get("workspace_instructions") is False:
-            pass
-        elif ws_agents.exists():
-            report.add("doctor", OK, "workspace instructions present")
+        receipt = receipts.data.get("instruction_receipt") or {}
+        outputs = receipt.get("outputs") or {}
+        output_errors = []
+        for name in ("AGENTS.md", "CLAUDE.md"):
+            target = WORKSPACES_ROOT / workspace / name
+            expected = (outputs.get(name) or {}).get("sha256")
+            if not expected or not target.is_file() or target.is_symlink() or file_digest(target) != expected:
+                output_errors.append(name)
+        if output_errors:
+            report.add("doctor", ERROR, "workspace instruction provenance or output drift: %s" % ", ".join(output_errors))
         else:
-            report.add("doctor", ERROR, "workspace AGENTS.md missing — run install")
+            report.add("doctor", OK, "tracked workspace instruction pair matches its receipt")
     layer_unverifiable = render_layer_doctor(
         report,
         manifest,
         clients_wanted,
         Receipts(),
         currency_unverifiable=currency_unverifiable,
+        desired_state=desired_state,
     )
     counts = report.counts()
     if counts.get(ERROR):
@@ -2531,7 +2751,172 @@ def remove_managed_hooks(report, receipts, dry_run):
     return clean
 
 
-def uninstall(report, dry_run):
+def _owned_direct_copies(clients_wanted):
+    targets = []
+    if "claude" in clients_wanted:
+        targets.append(HOME / ".claude" / "skills")
+    if "codex" in clients_wanted:
+        targets.extend((HOME / ".agents" / "skills", HOME / ".codex" / "skills"))
+    owned = []
+    for target in targets:
+        if target.is_symlink() or not target.is_dir():
+            continue
+        for skill in sorted(target.glob("synthesis-*")):
+            provenance = skill / ".source.json"
+            if skill.is_symlink() or not skill.is_dir() or not provenance.is_file() or provenance.is_symlink():
+                continue
+            try:
+                source = json.loads(provenance.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if source.get("source_repo") in {
+                "github.com/synthesisengineering/synthesis-skills",
+                PUBLIC_REPO_HTTPS,
+            } and source.get("installed_by") == "install.sh":
+                owned.append(skill)
+    return owned
+
+
+def _known_plugin_artifacts(client):
+    if client == "claude":
+        return [
+            HOME / ".claude" / "plugins" / "cache" / MARKETPLACE_NAME / PLUGIN_NAME,
+        ]
+    return [
+        HOME / ".codex" / "plugins" / "cache" / MARKETPLACE_NAME / PLUGIN_NAME,
+    ]
+
+
+def verify_uninstalled(report, clients_wanted):
+    clean = True
+    for client in clients_wanted:
+        binary = resolve_client(client)
+        if not binary:
+            present = any(path.exists() or path.is_symlink() for path in _known_plugin_artifacts(client))
+            if present:
+                report.add(
+                    "uninstall-verification",
+                    ACTION,
+                    "%s client is unavailable while plugin artifacts remain" % client,
+                )
+                clean = False
+            else:
+                report.add(
+                    "uninstall-verification",
+                    OK,
+                    "%s client is unavailable and has no plugin artifacts" % client,
+                )
+            continue
+        present = plugin_present(client, binary)
+        if present is None:
+            report.add(
+                "uninstall-verification",
+                ACTION,
+                "%s plugin inventory could not be read" % client,
+            )
+            clean = False
+        elif present:
+            report.add(
+                "uninstall-verification",
+                ACTION,
+                "%s public plugin remains installed" % client,
+            )
+            clean = False
+    copies = _owned_direct_copies(clients_wanted)
+    if copies:
+        report.add(
+            "uninstall-verification",
+            ACTION,
+            "%d receipt-owned direct skill copies remain" % len(copies),
+        )
+        clean = False
+    receipts = Receipts()
+    retained = []
+    for path_text in receipts.data.get("generated_files", {}):
+        path = Path(path_text)
+        if path.exists() or path.is_symlink():
+            retained.append(path_text)
+    for key in receipts.data.get("managed_json_entries", {}):
+        path_text = key.split("#", 1)[0]
+        path = Path(path_text)
+        if path.exists() or path.is_symlink():
+            retained.append(path_text)
+    for key in receipts.data.get("managed_text_entries", {}):
+        path_text = key.split("#", 1)[0]
+        path = Path(path_text)
+        if path.exists() or path.is_symlink():
+            retained.append(path_text)
+    if retained:
+        report.add(
+            "uninstall-verification",
+            ACTION,
+            "%d receipt-owned generated resources remain" % len(set(retained)),
+        )
+        clean = False
+    if clean:
+        report.add(
+            "uninstall-verification",
+            OK,
+            "selected client plugins and receipt-owned direct copies are absent",
+            uninstall_verified=True,
+        )
+    return clean
+
+
+def _remove_plugins_and_direct_copies(report, clients_wanted, dry_run):
+    for client in clients_wanted:
+        binary = resolve_client(client)
+        if not binary:
+            if any(path.exists() or path.is_symlink() for path in _known_plugin_artifacts(client)):
+                report.add("uninstall", ACTION, "%s client is unavailable while plugin artifacts remain" % client)
+            else:
+                report.add("uninstall", OK, "%s has no installed plugin artifacts" % client)
+            continue
+        present = plugin_present(client, binary)
+        if present is None:
+            report.add("uninstall", ACTION, "%s plugin inventory could not be read" % client)
+            continue
+        if not present:
+            report.add("uninstall", OK, "%s public plugin is already absent" % client)
+            continue
+        if dry_run:
+            report.add("uninstall", CHANGED, "would remove %s public plugin" % client)
+            continue
+        identifier = "%s@%s" % (PLUGIN_NAME, MARKETPLACE_NAME)
+        command = (
+            [binary, "plugin", "uninstall", identifier, "--yes"]
+            if client == "claude"
+            else [binary, "plugin", "remove", identifier, "--json"]
+        )
+        rc, out, err = run(command, timeout=300)
+        if rc != 0:
+            report.add(
+                "uninstall",
+                ACTION,
+                "%s public plugin removal failed" % client,
+                hint=(err.strip() or out.strip() or "exit %d" % rc),
+            )
+            continue
+        report.add("uninstall", CHANGED, "removed %s public plugin" % client)
+
+    for skill in _owned_direct_copies(clients_wanted):
+        if dry_run:
+            report.add("uninstall", CHANGED, "would archive and remove %s" % skill)
+            continue
+        relative_tag = hashlib.sha256(str(skill.parent).encode("utf-8")).hexdigest()[:12]
+        destination = archive_path(skill).with_name("%s-%s" % (relative_tag, skill.name))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(skill, destination)
+        if paths_digest([skill]) != paths_digest([destination]):
+            shutil.rmtree(destination)
+            report.add("uninstall", ACTION, "direct-copy backup verification failed for %s" % skill)
+            continue
+        shutil.rmtree(skill)
+        report.add("uninstall", CHANGED, "archived and removed %s" % skill)
+
+
+def uninstall(report, dry_run, clients_wanted=None):
+    clients_wanted = list(clients_wanted or ["claude", "codex"])
     receipts = Receipts()
     hooks_clean = remove_managed_hooks(report, receipts, dry_run)
     files = list(receipts.data.get("generated_files", {}).items())
@@ -2564,8 +2949,62 @@ def uninstall(report, dry_run):
         report.add("uninstall", CHANGED, "archived and removed %s" % path)
     if not dry_run:
         receipts.save()
-    report.add("uninstall", OK, "knowledge-base clones and plugins are never auto-removed",
-               hint="Remove clones manually if desired; plugins via:  claude plugin uninstall %s@%s" % (PLUGIN_NAME, MARKETPLACE_NAME))
+    _remove_plugins_and_direct_copies(report, clients_wanted, dry_run)
+    if not dry_run:
+        verify_uninstalled(report, clients_wanted)
+    report.add(
+        "uninstall",
+        OK,
+        "knowledge-base clones are retained as user data",
+    )
+
+
+def load_desired_state(path):
+    try:
+        value = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError("desired state is unreadable: %s" % exc)
+    try:
+        return validate_desired_state(value)
+    except ContractError as exc:
+        raise ValueError(str(exc))
+
+
+def personal_configuration_from_answers(answers):
+    normalized = validate_answers(answers, require_workspace=True)
+    return {
+        "display_name": str(normalized.get("display_name") or "").strip(),
+        "working_relationship": str(
+            normalized.get("working_relationship") or "peer advisor"
+        ).strip(),
+        "timezone": normalized["timezone"],
+        "tone": normalized["tone"],
+        "avoid_phrases": normalized["avoid_phrases"],
+        "git_name": normalized["git_name"],
+        "git_email": normalized["git_email"],
+        "working_hours": normalized.get("working_hours"),
+        "protected_hours": normalized.get("protected_hours") or [],
+        "personal_remote_patterns": normalized.get("personal_remote_patterns") or [],
+        "confidential_terms": normalized.get("confidential_terms") or [],
+        "inbox_cleanup": bool(normalized.get("inbox_cleanup")),
+    }
+
+
+def reconcile_answers(desired, _receipts):
+    """Recover every selected personal input from authoritative desired state."""
+    if desired["profile"] != "full":
+        return validate_answers({}, require_workspace=False)
+    workspace = desired.get("personal_workspace")
+    configuration = desired.get("personal_configuration")
+    if not isinstance(configuration, dict):
+        raise ValueError("full desired state has no personal configuration")
+    return validate_answers(
+        {
+            **configuration,
+            "workspace": workspace,
+        },
+        require_workspace=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2576,7 +3015,7 @@ def build_parser():
     parser = argparse.ArgumentParser(prog="onboard.py", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", nargs="?", default="install",
-                        choices=["install", "update", "init", "kernel", "doctor", "init-workspace", "uninstall"])
+                        choices=["install", "update", "repair", "init", "kernel", "doctor", "init-workspace", "uninstall", "uninstall-doctor"])
     parser.add_argument("--manifest", type=Path, help="org onboarding manifest (.agents/onboarding.yaml)")
     parser.add_argument("--clients",
                         help="comma-separated clients to target (default: manifest or claude,codex)")
@@ -2585,6 +3024,10 @@ def build_parser():
         choices=["stable", "edge"],
         default=os.environ.get("SYNTHESIS_ONBOARD_CHANNEL"),
         help="public plugin channel (default: stable; org version_pin takes precedence)",
+    )
+    parser.add_argument(
+        "--version-pin",
+        help="exact public plugin version pin (X.Y.Z); overrides manifest policy",
     )
     parser.add_argument("--workspace", help="workspace name for init-workspace")
     parser.add_argument("--remote", help="optional git remote URL for init-workspace")
@@ -2608,13 +3051,25 @@ def build_parser():
     parser.add_argument("--dry-run", action="store_true", help="show what would change; touch nothing")
     parser.add_argument("--no-plugin-cli", action="store_true",
                         help="skip client plugin CLIs; use file-copy fallback")
+    parser.add_argument("--policy-transition", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--desired-state", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     return parser
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    no_services = args.no_services or os.environ.get(
+        "SYNTHESIS_ONBOARD_NO_SERVICES"
+    ) == "1"
     report = Report(dry_run=args.dry_run, as_json=args.json)
+    desired_state = None
+    if args.desired_state:
+        try:
+            desired_state = load_desired_state(args.desired_state)
+        except ValueError as exc:
+            report.add("desired", ERROR, str(exc))
+            return finish(report, args, 2)
     manifest = None
     if args.manifest:
         try:
@@ -2624,7 +3079,11 @@ def main(argv=None):
             return finish(report, args, 2)
 
     try:
-        policy = policy_from_manifest(manifest, channel_override=args.channel)
+        manifest_policy = policy_from_manifest(manifest, channel_override=args.channel)
+        policy = normalize_policy(
+            manifest_policy["channel"],
+            args.version_pin if args.version_pin is not None else manifest_policy["version_pin"],
+        )
         clients_wanted = effective_clients(args.clients, manifest)
     except ValueError as exc:
         report.add("manifest", ERROR, str(exc))
@@ -2633,7 +3092,11 @@ def main(argv=None):
 
     if args.command == "doctor":
         code = doctor(
-            report, manifest, clients_wanted if plugin_requested else [], policy
+            report,
+            manifest,
+            clients_wanted if plugin_requested else [],
+            policy,
+            desired_state=desired_state,
         )
         return finish(report, args, code)
 
@@ -2658,8 +3121,12 @@ def main(argv=None):
             receipts.save()
         return finish(report, args, report.exit_code())
 
+    if args.command == "uninstall-doctor":
+        verify_uninstalled(report, clients_wanted)
+        return finish(report, args, report.exit_code())
+
     if args.command == "uninstall":
-        uninstall(report, args.dry_run)
+        uninstall(report, args.dry_run, clients_wanted)
         return finish(report, args, report.exit_code())
 
     # install / update / whole-system init
@@ -2667,17 +3134,34 @@ def main(argv=None):
     profile = None
     answers = None
     choices = None
+    personal_configuration = None
     if args.command == "init":
         try:
             catalog = load_catalog(source_root())
             profile, answers, choices = collect_init_inputs(args, manifest, catalog)
+            if profile == "full":
+                personal_configuration = personal_configuration_from_answers(
+                    answers
+                )
         except (OSError, ValueError) as exc:
             report.add("init", ERROR, str(exc))
             return finish(report, args, 2)
     no_plugin_cli = args.no_plugin_cli or os.environ.get("SYNTHESIS_ONBOARD_NO_PLUGIN_CLI") == "1"
-    clients = phase_preflight(report, clients_wanted if plugin_requested else [])
+    clients = phase_preflight(report, clients_wanted)
     if clients is None:
         return finish(report, args, 2)
+    selected_clients = sorted(name for name, binary in clients.items() if binary)
+    if args.command == "init" and not selected_clients:
+        report.add("preflight", ERROR, "setup requires at least one installed AI client")
+        return finish(report, args, 1)
+    if desired_state is not None and selected_clients != desired_state["clients"]:
+        missing = sorted(set(desired_state["clients"]) - set(selected_clients))
+        report.add(
+            "preflight",
+            ACTION,
+            "desired clients are unavailable: %s" % ", ".join(missing),
+        )
+        return finish(report, args, 1)
     if plugin_requested:
         phase_ecosystem(
             report,
@@ -2685,12 +3169,13 @@ def main(argv=None):
             args.dry_run,
             no_plugin_cli,
             policy,
-            refresh_native_plugins=args.command in ("update", "init"),
+            refresh_native_plugins=args.command in ("update", "repair", "init"),
+            preserve_ahead=args.command in ("update", "repair") and not args.policy_transition,
         )
     else:
         report.add("ecosystem", SKIP, "public plugin disabled by manifest")
     if manifest:
-        phase_org_skills(report, manifest, args.dry_run)
+        phase_org_skills(report, manifest, receipts, args.dry_run)
         phase_kbs(report, manifest, receipts, args.dry_run)
         phase_workspace(report, manifest, receipts, args.dry_run)
         phase_migrations(report, manifest, receipts, args.dry_run)
@@ -2703,9 +3188,25 @@ def main(argv=None):
             profile,
             answers,
             choices,
-            clients_wanted,
+            selected_clients,
             args.dry_run,
-            args.no_services,
+            no_services,
+        )
+    elif args.command == "repair" and desired_state is not None:
+        try:
+            repair_answers = reconcile_answers(desired_state, receipts)
+        except ValueError as exc:
+            report.add("repair", ERROR, str(exc))
+            return finish(report, args, 1)
+        run_whole_system_init(
+            report,
+            receipts,
+            desired_state["profile"],
+            repair_answers,
+            desired_state["layers"],
+            selected_clients,
+            args.dry_run,
+            no_services,
         )
     if not args.dry_run:
         receipts.data["plugin_policy"] = policy
@@ -2715,7 +3216,19 @@ def main(argv=None):
         receipts.data["runs"] = receipts.data["runs"][-20:]
         receipts.save()
     if args.command == "init" and not args.dry_run and report.exit_code() == 0:
-        code = doctor(report, manifest, clients_wanted if plugin_requested else [], policy)
+        code = doctor(
+            report,
+            manifest,
+            selected_clients if plugin_requested else [],
+            policy,
+            desired_state={
+                "profile": profile,
+                "clients": selected_clients,
+                "personal_workspace": answers.get("workspace") or None,
+                "personal_configuration": personal_configuration,
+                "layers": choices,
+            },
+        )
     else:
         code = report.exit_code()
     if not args.json:
@@ -2730,14 +3243,26 @@ def main(argv=None):
             phase_welcome(report, manifest)
         summary = ", ".join("%s %s" % (v, k) for k, v in sorted(counts.items()))
         print("Result: %s" % summary)
-    return finish(report, args, code)
+    effective_selection = None
+    if args.command == "init" and code == 0:
+        effective_selection = {
+            "profile": profile,
+            "clients": selected_clients,
+            "personal_workspace": answers.get("workspace") or None,
+            "personal_configuration": personal_configuration,
+            "layers": dict(sorted(choices.items())),
+        }
+    return finish(report, args, code, effective_selection=effective_selection)
 
 
-def finish(report, args, code):
+def finish(report, args, code, effective_selection=None):
     if args.json:
-        print(json.dumps({"engine": ENGINE_VERSION, "dry_run": args.dry_run,
-                          "steps": report.steps, "counts": report.counts(),
-                          "exit": code}, indent=2))
+        payload = {"engine": ENGINE_VERSION, "dry_run": args.dry_run,
+                   "steps": report.steps, "counts": report.counts(),
+                   "exit": code}
+        if effective_selection is not None:
+            payload["effective_selection"] = effective_selection
+        print(json.dumps(payload, indent=2))
     return code
 
 

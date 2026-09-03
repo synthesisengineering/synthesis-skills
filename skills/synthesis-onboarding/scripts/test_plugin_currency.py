@@ -181,3 +181,41 @@ def test_sessionstart_notice_preserves_unverifiable_state(tmp_path: Path) -> Non
     )
     assert "could not be verified" in notice
     assert "installed 4.74.0" in notice
+
+
+def test_sessionstart_notice_does_not_request_downgrade_for_floating_channel(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "plugin"
+    write_plugin_root(root, "4.90.3")
+    receipts = tmp_path / "receipts.json"
+    receipts.write_text(
+        json.dumps({"plugin_policy": {"channel": "stable", "version_pin": None}}),
+        encoding="utf-8",
+    )
+    notice = plugin_currency.sessionstart_notice(
+        root,
+        receipts,
+        resolver=lambda policy: ("4.90.2", "stale fixture"),
+    )
+    assert "ahead of stale stable channel evidence" in notice
+    assert "update flow" not in notice
+
+
+def test_sessionstart_notice_keeps_exact_pin_mismatch_actionable(tmp_path: Path) -> None:
+    root = tmp_path / "plugin"
+    write_plugin_root(root, "4.90.3")
+    receipts = tmp_path / "receipts.json"
+    receipts.write_text(
+        json.dumps(
+            {"plugin_policy": {"channel": "stable", "version_pin": "4.90.2"}}
+        ),
+        encoding="utf-8",
+    )
+    notice = plugin_currency.sessionstart_notice(
+        root,
+        receipts,
+        resolver=lambda policy: ("4.90.2", "fixture"),
+    )
+    assert "policy mismatch" in notice.lower()
+    assert "update flow" in notice

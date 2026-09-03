@@ -1,60 +1,298 @@
-# AGENT HEURISTIC: authored for the 4.90.3 shell-lane boundary and receipt-shadowing transaction.
+# AGENT HEURISTIC: closed acceptance universe for the 4.91.0 unified onboarding release.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: shell-lane-boundary-stated-and-fresh-receipts-win
+suite: unified-synthesis-onboarding-and-lifecycle
 membership: closed
-production_entry_point: skills/synthesis-project-management/scripts/peer_send_gate.py
-enforcing_boundary: the send gate judges the newest live receipt whose target row is still active, so a session that released and claimed again under a new identity with the same handle is reachable through its fresh receipt; and the shell lane's command-text boundary is stated in the protocol and the gate rather than implied away
+production_entry_point: onboard.sh -> bootstrap.py -> synthesis_cli.py
+enforcing_boundary: release.py consumes this transaction-bound closed manifest before publishing the immutable release, installing both clients, and activating the public CLI
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: a codex queue wrapped in a script file is invisible to the command-text gate by construction; the protocol requires the direct invocation and the send log shows no decision for a wrapped call
+unverified_remainder: live first-time public and organization user observation, live credential/provider behavior, and deployment of the separately built public sites remain external principal gates
 changed_surfaces:
-  - path: skills/synthesis-project-management/scripts/peer_addressing.py
-    cases: [fresh-receipt-wins]
-  - path: skills/synthesis-project-management/scripts/peer_send_gate.py
-    cases: [fresh-receipt-wins, boundary-stated]
-  - path: skills/synthesis-project-management/scripts/test_peer_send_gate.py
-    cases: [fresh-receipt-wins, boundary-stated]
-  - path: skills/synthesis-project-management/references/parallel-agent-protocol.md
-    cases: [boundary-stated]
-  - path: skills/synthesis-project-management/SKILL.md
-    cases: [pm-budget]
-  - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
-    cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
-    cases: [release-manifest-parity]
+    cases: [release-identity]
   - path: .codex-plugin/plugin.json
-    cases: [release-manifest-parity]
+    cases: [release-identity]
+  - path: .github/workflows/validate.yml
+    cases: [release-wiring]
+  - path: AGENTS.md
+    cases: [release-wiring]
   - path: CHANGELOG.md
-    cases: [release-changelog-parity]
+    cases: [release-identity, capability-contract]
   - path: README.md
-    cases: [release-changelog-parity]
+    cases: [capability-contract]
+  - path: install.sh
+    cases: [capability-contract]
+  - path: onboard.sh
+    cases: [immutable-bootstrap, self-update, organization-transport, capability-contract]
+  - path: tests/test_installer.sh
+    cases: [capability-contract]
+  - path: skills/synthesis-agent-conformance/scripts/session_context.py
+    cases: [sessionstart-live, live-evidence-grounding, live-content-binding]
+  - path: skills/synthesis-agent-conformance/scripts/test_session_context.py
+    cases: [sessionstart-live, live-content-binding]
+  - path: skills/synthesis-onboarding/SKILL.md
+    cases: [capability-contract]
+  - path: skills/synthesis-onboarding/references/instruction-sources.schema.json
+    cases: [contract-schema, schema-runtime-parity, tracked-instructions]
+  - path: skills/synthesis-onboarding/references/invite.schema.json
+    cases: [contract-schema, schema-runtime-parity, organization-boundary, invite-replay]
+  - path: skills/synthesis-onboarding/references/layers.json
+    cases: [capability-contract]
+  - path: skills/synthesis-onboarding/references/machine-observation.schema.json
+    cases: [contract-schema, runtime-state-schema, transaction-lifecycle]
+  - path: skills/synthesis-onboarding/references/org-manifest.md
+    cases: [organization-boundary, documented-org-contract, organization-policy-update, capability-contract]
+  - path: skills/synthesis-onboarding/references/release-capabilities.json
+    cases: [capability-contract, manifest-schema-agreement]
+  - path: skills/synthesis-onboarding/references/release-descriptor.schema.json
+    cases: [contract-schema, schema-runtime-parity, immutable-release]
+  - path: skills/synthesis-onboarding/references/system-state.schema.json
+    cases: [contract-schema, schema-runtime-parity, runtime-state-schema, transaction-lifecycle]
+  - path: skills/synthesis-onboarding/scripts/bootstrap.py
+    cases: [immutable-bootstrap, immutable-release, immutable-permissions, floating-no-downgrade, self-update, launcher-activation, launcher-dispatch]
+  - path: skills/synthesis-onboarding/scripts/check_capabilities.py
+    cases: [capability-contract, manifest-schema-agreement, documented-org-contract, invite-replay]
+  - path: skills/synthesis-onboarding/scripts/direct_copy.sh
+    cases: [capability-contract]
+  - path: skills/synthesis-onboarding/scripts/kernel_sync.py
+    cases: [tracked-instructions]
+  - path: skills/synthesis-onboarding/scripts/onboard.py
+    cases: [tracked-instructions, organization-boundary, release-policy-pin, client-combinations, desired-state-selection, repair-policy-stability, auth-failure, historical-cache, floating-no-downgrade, channel-transition, organization-policy-update, idempotent-reconcile, uninstall-truth]
+  - path: skills/synthesis-onboarding/scripts/organization.py
+    cases: [organization-boundary, organization-transport, auth-failure]
+  - path: skills/synthesis-onboarding/scripts/plugin_currency.py
+    cases: [currency-ahead, release-policy-cache]
+  - path: skills/synthesis-onboarding/scripts/synthesis_cli.py
+    cases: [runtime-state-schema, self-update, profile-transition, desired-state-selection, release-policy-pin, channel-transition, pretransfer-purity, organization-policy-update, repair-policy-stability, transaction-lifecycle, idempotent-reconcile, output-parity, resource-rollback, uninstall-truth, outcome-failure]
+  - path: skills/synthesis-onboarding/scripts/system_contract.py
+    cases: [contract-schema, schema-runtime-parity, invite-replay, runtime-state-schema, immutable-release, transaction-lifecycle, interrupted-reentry, concurrency, legacy-migration, launcher-activation, launcher-dispatch, resource-rollback, instruction-drift, live-evidence-grounding, live-content-binding, outcome-provenance, outcome-failure]
+  - path: skills/synthesis-onboarding/scripts/test_bootstrap.py
+    cases: [immutable-bootstrap, immutable-permissions, floating-no-downgrade, self-update]
+  - path: skills/synthesis-onboarding/scripts/test_check_capabilities.py
+    cases: [capability-contract, documented-org-contract]
+  - path: skills/synthesis-onboarding/scripts/test_onboard.py
+    cases: [tracked-instructions, organization-boundary, release-policy-pin, client-combinations, auth-failure, historical-cache, floating-no-downgrade, channel-transition, uninstall-truth]
+  - path: skills/synthesis-onboarding/scripts/test_organization.py
+    cases: [organization-boundary, organization-transport, auth-failure]
+  - path: skills/synthesis-onboarding/scripts/test_plugin_currency.py
+    cases: [currency-ahead, release-policy-cache]
+  - path: skills/synthesis-onboarding/scripts/test_synthesis_cli.py
+    cases: [runtime-state-schema, self-update, profile-transition, desired-state-selection, release-policy-pin, channel-transition, pretransfer-purity, organization-policy-update, repair-policy-stability, transaction-lifecycle, idempotent-reconcile, output-parity, uninstall-truth, outcome-provenance, outcome-failure]
+  - path: skills/synthesis-onboarding/scripts/test_system_contract.py
+    cases: [contract-schema, schema-runtime-parity, invite-replay, runtime-state-schema, immutable-release, transaction-lifecycle, interrupted-reentry, concurrency, legacy-migration, launcher-activation, launcher-dispatch, resource-rollback, instruction-drift, live-evidence-grounding, live-content-binding, outcome-provenance, outcome-failure]
+  - path: skills/synthesis-quick-answers/SKILL.md
+    cases: [quick-answers-contract]
+  - path: skills/synthesis-skills-manager/SKILL.md
+    cases: [release-cli-activation]
+  - path: skills/synthesis-skills-manager/scripts/release.py
+    cases: [release-cli-activation, release-tag-authority, historical-cache, release-boundary]
+  - path: skills/synthesis-skills-manager/scripts/test_release.py
+    cases: [release-cli-activation, release-tag-authority, historical-cache, release-boundary, release-identity, quick-answers-contract, release-wiring]
+  - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
+    cases: [acceptance-self]
 cases:
-  - id: fresh-receipt-wins
+  - id: immutable-release
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_release_descriptor_binds_tag_commit_tree_and_digest
+    motivating_defect: a-channel-name-alone-can-move-between-acquisition-and-execution
+  - id: immutable-bootstrap
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_bootstrap.py::test_materialization_is_content_addressed_and_idempotent
+    motivating_defect: mutable-execution-checkouts-can-change-after-the-user-reviewed-the-bootstrap
+  - id: immutable-permissions
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_bootstrap.py::test_existing_generation_permissions_are_reasserted
+    motivating_defect: a-content-addressed-generation-that-became-writable-remained-writable-on-the-next-reconcile
+  - id: floating-no-downgrade
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_floating_update_never_downgrades_an_ahead_plugin
+    motivating_defect: a-stale-floating-ref-could-replace-a-newer-active-plugin-or-ignore-an-explicit-channel-transition
+  - id: channel-transition
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_setup_rebootstraps_edge_and_pin_back_to_floating_stable
+    motivating_defect: a-policy-blind-ahead guard-could-keep-plugin-and-active-cli-on-different-releases-after-an-explicit-channel-change
+  - id: pretransfer-purity
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_setup_policy_transfer_does_not_run_prior_engine_rollback
+    motivating_defect: a-policy-only-release-transfer-ran-the-prior-engine-through-rollback-before-entering-the-selected-release
+  - id: organization-policy-update
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_org_policy_change_rebootstraps_then_commits_the_new_policy
+    motivating_defect: a-floating-organization-manifest-change-could-update-its-commit-while-the-public-release-policy-remained-stale
+  - id: repair-policy-stability
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_repair_reconciles_recorded_org_policy_without_advancing_it
+    motivating_defect: repair-could-advance-a-floating-organization-policy-and-rebootstrap-instead-of-converging-the-recorded-desired-state
+  - id: self-update
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_bootstrap.py::test_onboard_handoff_consumes_resolution_policy_before_update_cli
+    motivating_defect: the-public-update-command-refreshed-client-plugins-but-left-its-own-active-cli-generation-behind
+  - id: profile-transition
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_profile_transitions_commit_each_selected_policy
+    motivating_defect: changing-between-full-and-skills-only-could-run-without-committing-the-new-selected-profile
+  - id: launcher-activation
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_activation_refuses_launcher_that_spoofs_the_public_marker
+    motivating_defect: a-public-marker-could-forge-launcher-ownership-and-a-failed-two-file-switch-could-split-the-active-release
+  - id: launcher-dispatch
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_managed_launcher_dispatches_through_the_atomic_active_pointer
+    motivating_defect: a-release-independent-launcher-that-failed-to-pass-the-active-descriptor-would-record-development-source-instead-of-published-provenance
+  - id: contract-schema
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_shipped_contract_documents_are_valid
+    motivating_defect: prose-only-state-contracts-drift-between-entry-points
+  - id: schema-runtime-parity
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_json_schemas_and_runtime_share_valid_and_invalid_corpora
+    motivating_defect: shipped-json-schemas-and-runtime-validators-accepted-different-client-source-and-release-shapes
+  - id: desired-state-selection
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_real_full_setup_commits_effective_workspace_layers_and_present_client
+    motivating_defect: setup-committed-pre-engine-placeholders-instead-of-the-workspace-layers-and-present-clients-the-engine-installed
+  - id: runtime-state-schema
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_persisted_state_readers_enforce_closed_runtime_schemas
+    motivating_defect: malformed-persisted-state-passed-the-version-only-reader-and-crashed-later-with-an-uncaught-key-error
+  - id: interrupted-reentry
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_pending_transaction_is_aborted_before_reentry
+    motivating_defect: a-process-interruption-could-leave-a-pending-generation-looking-current-on-the-next-run
+  - id: concurrency
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_concurrent_transactions_preserve_every_generation
+    motivating_defect: concurrent-reconcilers-could-drop-or-reuse-generation-identities
+  - id: transaction-lifecycle
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_uninstall_persists_disabled_state_and_removed_planes
+    motivating_defect: a-removed-system-was-recorded-as-installed-and-had-no-disabled-desired-state
+  - id: resource-rollback
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_failed_transaction_invokes_resource_compensation_before_abort
+    motivating_defect: an-aborted-transaction-left-mutated-resources-behind-while-restoring-only-the-desired-state-file
+  - id: instruction-drift
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_instruction_pair_reports_user_drift_without_clobbering
+    motivating_defect: a-user-edited-client-instruction-output-could-be-overwritten-or-reported-green
+  - id: uninstall-truth
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_uninstall_refuses_to_disable_state_when_removal_is_not_verified
+    motivating_defect: uninstall-and-doctor-reported-removed-while-the-enabled-native-plugin-remained
+  - id: idempotent-reconcile
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_second_reconcile_records_zero_changed_resources
+    motivating_defect: a-second-convergent-run-had-no-public-transaction-evidence-that-it-changed-zero-resources
+  - id: legacy-migration
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_first_generation_records_bounded_legacy_migration_input
+    motivating_defect: the-old-receipt-was-described-as-a-migration-input-but-never-entered-the-authoritative-transaction-history
+  - id: organization-boundary
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_manifest_rejects_repository_selected_commands
+    motivating_defect: organization-data-could-select-local-code-or-escape-a-destination-boundary
+  - id: invite-replay
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_invite_is_bounded_and_cannot_replay
+    motivating_defect: the-public-invite-guide-required-a-nonce-that-the-schema-and-runtime-rejected
+  - id: documented-org-contract
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_check_capabilities.py::test_documented_organization_manifest_is_runtime_valid
+    motivating_defect: the-public-schema-two-example-used-three-shapes-the-runtime-parser-rejected
+  - id: organization-transport
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_organization.py::test_clone_rejects_ambient_https_to_file_transport_rewrite
+    motivating_defect: ambient-git-url-rewriting-converted-a-validated-https-organization-url-into-local-file-execution-input
+  - id: auth-failure
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_auth_failure_is_action_needed_with_help
+    motivating_defect: repository-authentication-failure-could-collapse-into-an-unactionable-generic-install-error
+  - id: tracked-instructions
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_init_workspace_scaffold_and_rerun
+    motivating_defect: workspace-routing-policy-lived-only-in-an-untracked-root-file
+  - id: currency-ahead
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_sessionstart_notice_does_not_request_downgrade_for_floating_channel
+    motivating_defect: stale-floating-evidence-could-instruct-a-newer-installation-to-downgrade
+  - id: release-policy-cache
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_plugin_currency.py::test_live_resolution_is_cached_and_stale_cache_remains_labeled
+    motivating_defect: offline-or-stale-channel-evidence-could-be-presented-as-a-live-authoritative-resolution
+  - id: release-policy-pin
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_setup_rebootstrap_requires_exact_pin_identity_even_at_same_version
+    motivating_defect: an-exact-organization-pin-could-be-overridden-by-a-newer-floating-source-version
+  - id: client-combinations
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_fallback_installs_on_fresh_machine_with_client
+    motivating_defect: the-public-entry-point-could-assume-both-native-clients-or-fail-to-offer-the-declared-direct-copy-adapter
+  - id: historical-cache
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_tag_backed_snapshot_repairs_partial_and_missing_historical_roots
+    motivating_defect: a-client-update-could-delete-the-plugin-root-that-an-already-running-task-still-executes
+  - id: sessionstart-live
+    control_class: acceptance-test
+    fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_live_receipt_records_real_sessionstart_shape
+    motivating_defect: static-cache-parity-was-mistaken-for-proof-that-a-client-loaded-the-release
+  - id: live-evidence-grounding
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_live_load_rejects_nonexistent_root_unbound_transcript_and_stale_time
+    motivating_defect: nonexistent-plugin-roots-arbitrary-session-identifiers-and-stale-times-could-complete-live-loaded-state
+  - id: live-content-binding
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_live_load_binds_client_root_to_the_release_content_digest
+    motivating_defect: a-valid-looking-sessionstart-receipt-could-complete-live-state-for-plugin-bytes-different-from-the-committed-release
+  - id: outcome-provenance
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_outcome_verification_rejects_non_git_and_untracked_evidence
+    motivating_defect: an-untracked-file-in-a-non-git-directory-could-be-recorded-as-a-verified-user-outcome
+  - id: outcome-failure
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_outcome_verify_refuses_generation_without_live_evidence
+    motivating_defect: a-user-task-could-be-recorded-as-verified-before-any-selected-client-loaded-the-release
+  - id: output-parity
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_public_json_has_one_renderer
+    motivating_defect: child-output-noise-could-corrupt-json-or-create-different-human-and-machine-truth
+  - id: capability-contract
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_check_capabilities.py::test_repository_capabilities_are_consistent
+    motivating_defect: installer-documentation-and-downstream-skills-owned-conflicting-capability-lists
+  - id: manifest-schema-agreement
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_check_capabilities.py::test_repository_capabilities_are_consistent
+    motivating_defect: release-capabilities-advertised-organization-schema-one-while-the-parser-required-schema-two
+  - id: quick-answers-contract
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_quick_answers_self_bootstrap_release_contract_is_public_and_coherent
+    motivating_defect: a-downstream-skill-depended-on-a-plugin-cache-path-and-an-untracked-instruction-file
+  - id: release-cli-activation
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_publisher_activates_cli_through_public_release_verifier
+    motivating_defect: source-publication-and-client-installation-did-not-activate-the-public-cli-generation-users-were-told-to-run
+  - id: release-tag-authority
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_cli_activation_refuses_to_manufacture_a_missing_release_tag
+    motivating_defect: install-only-recovery-could-create-local-release-authority-for-a-dirty-or-unpublished-head
+  - id: release-boundary
     control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_a_reclaimed_seat_is_not_shadowed_by_its_old_receipt
-    motivating_defect: the-gate-judged-whichever-receipt-sorted-first-and-refused-a-send-the-fresh-receipt-authorized
-  - id: boundary-stated
-    control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_shell_lane_boundary_is_stated_in_the_protocol_and_the_gate
-    motivating_defect: a-guard-that-implies-coverage-it-does-not-have-is-worse-than-one-that-states-its-boundary
-  - id: pm-budget
-    control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_skill_document_stays_within_repo_budget
-    motivating_defect: a-restructured-document-must-not-regrow-with-its-next-feature
-  - id: shipped-manifest-self-consumption
-    control_class: acceptance-test
-    fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-    motivating_defect: an-acceptance-manifest-that-its-own-runner-cannot-consume-issues-authority-it-never-earned
-  - id: release-manifest-parity
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_main_carries_acceptance_authority_to_publish_boundary
+    motivating_defect: a-green-test-run-unbound-to-the-published-commit-could-authorize-different-bytes
+  - id: release-identity
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
-    motivating_defect: a-version-that-reaches-only-one-client-manifest-cannot-be-reliably-installed-or-audited
-  - id: release-changelog-parity
+    motivating_defect: supported-client-manifests-and-release-notes-could-name-different-releases
+  - id: release-wiring
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
-    motivating_defect: a-release-whose-changelog-disagrees-with-its-manifests-cannot-be-audited-later
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
+    motivating_defect: documented-and-hosted-required-check-universes-could-drift-silently
+  - id: acceptance-self
+    control_class: acceptance-test
+    fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
+    motivating_defect: an-acceptance-manifest-its-own-runner-cannot-consume-issues-authority-it-never-earned
