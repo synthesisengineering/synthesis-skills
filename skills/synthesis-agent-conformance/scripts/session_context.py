@@ -44,6 +44,7 @@ if str(ONBOARDING_SCRIPTS_DIR) not in sys.path:
 
 from project_context import extract, next_actions, record_freshness
 from active_project import load_and_validate
+from project_state import STATE_FILE, resolve_project, semantic_issues
 from coordination_schema import display_id, parse_table_rows, row_identity
 from live_receipt import (
     claude_root_transcript_path,
@@ -365,12 +366,54 @@ def linked_plan(project: Path, context: str) -> Path | None:
     return project / match.group(1) if match else None
 
 
+def reconciled_project(project: Path) -> tuple[Path, list[str]]:
+    """Resolve a project across worktrees and refs before reading its prose."""
+    index = project.parent / "index.yaml"
+    if not index.is_file():
+        return project, []
+    synthesis_home = Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis")))
+    board = synthesis_home / "coordination" / "active-sessions.md"
+    pointer = synthesis_home / "active-project.json"
+    report = resolve_project(
+        project.name,
+        index,
+        repo_guard_root=synthesis_home / "repo-guard",
+        checkpoint_receipt_root=synthesis_home / "project-state" / "receipts",
+        coordination_board=board if board.is_file() else None,
+        pointer=pointer,
+        fetch=True,
+        fast_forward_canonical=True,
+        refresh_coordination=board.is_file(),
+    )
+    if report.status not in {"PASS", "LOCAL_RECOVERABLE"}:
+        raise ValueError(
+            f"project-state reconciliation is {report.status}: "
+            + "; ".join(report.issues)
+        )
+    if report.selected_path is None:
+        raise ValueError(
+            "newer project state is proven but has no safe readable worktree; "
+            f"selected head={report.selected_head} tree={report.selected_tree}"
+        )
+    return Path(report.selected_path), report.issues
+
+
 def append_project_context(lines: list[str], project: Path, *, label: str) -> None:
+    project, recovery_issues = reconciled_project(project)
     context_path = project / "CONTEXT.md"
     context = context_path.read_text(encoding="utf-8")
-    phase = extract(context, "Phase")
-    status = extract(context, "Status")
-    plan = linked_plan(project, context)
+    semantic = semantic_issues(project)
+    if semantic:
+        raise ValueError("semantic current-state failure: " + "; ".join(semantic))
+    state_path = project / STATE_FILE
+    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+    phase = str(state.get("phase") or extract(context, "Phase"))
+    status = str(state.get("status") or extract(context, "Status"))
+    plan = (
+        project / str(state["controlling_plan"])
+        if state.get("controlling_plan")
+        else linked_plan(project, context)
+    )
     if plan is not None and not plan.is_file():
         raise FileNotFoundError(f"active plan is missing: {plan}")
     lines.extend(
@@ -384,7 +427,9 @@ def append_project_context(lines: list[str], project: Path, *, label: str) -> No
     fresh, freshness_detail = record_freshness(project)
     if not fresh:
         lines.append(f"RECORD STALENESS WARNING: {freshness_detail}.")
-    actions = next_actions(context)
+    for issue in recovery_issues:
+        lines.append(f"PROJECT RECOVERY NOTE: {issue}.")
+    actions = list(state.get("next_actions") or next_actions(context))
     if actions:
         lines.append("Recorded next actions:")
         lines.extend(f"- {action}" for action in actions)
@@ -426,7 +471,9 @@ def build(
         else:
             lines.append(
                 "Stopped-task recovery remains available: when the user names a "
-                "synthesis project, resolve it from the git-tracked projects/index.yaml "
+                "synthesis project, run the project-state resolver from the current "
+                "synthesis-project-management skill against the git-tracked "
+                "projects/index.yaml before reading any project prose "
                 "and run the Session Start Protocol automatically; never ask the user "
                 "to run a context-lifecycle command or save state manually. One "
                 "exception to automatic resolution: if the named project contradicts "

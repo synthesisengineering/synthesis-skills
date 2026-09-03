@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.3.0"
+  version: "2.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -186,6 +186,13 @@ optional session-end verification:
 Each client session has its own hashed pending manifest under
 `~/.synthesis/repo-guard/pending/`. Multiple agents can therefore coexist
 without one hook committing, publishing, or overwriting another session's files.
+
+For projects that adopt `CURRENT_STATE.json`, the plugin's provider-neutral
+Stop gate composes this file-level evidence with synthesis project management's
+semantic checkpoint. A clean project handoff receipt is issued only when the
+current coordination seat, project id, Git identity, durable-file hashes, and
+recorded source heads all match. An interrupted task still relies on the
+pending manifest and reports `LOCAL_RECOVERABLE`; it is never mislabeled clean.
 
 ### Cursor (`.cursor/settings.json`)
 

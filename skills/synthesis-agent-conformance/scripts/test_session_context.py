@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -129,7 +130,8 @@ def test_build_without_pointer_explains_automatic_named_project_recovery(
     message = MODULE.build(tmp_path / "missing-pointer.json", tmp_path / "no-board.md")
 
     assert "No active synthesis project pointer is set." in message
-    assert "resolve it from the git-tracked projects/index.yaml" in message
+    assert "project-state resolver" in message
+    assert "projects/index.yaml" in message
     assert "never ask the user to run a context-lifecycle command" in message
 
 
@@ -181,6 +183,52 @@ def test_build_discovers_stopped_project_from_cwd(tmp_path: Path, monkeypatch) -
     assert "Current status: Active." in message
     assert f"Controlling plan: {plan}." in message
     assert "Resume from durable state" in message
+
+
+def test_stopped_project_recovery_reads_newer_isolated_worktree(tmp_path: Path, monkeypatch) -> None:
+    repo = tmp_path / "repo"
+    subprocess.run(["git", "init", "-b", "main", str(repo)], check=True, capture_output=True)
+    for key, value in (("user.email", "fixture@example.invalid"), ("user.name", "Fixture"), ("core.hooksPath", "/dev/null")):
+        subprocess.run(["git", "-C", str(repo), "config", key, value], check=True)
+    project = repo / "projects" / "alpha"
+    plan = project / "resources" / "artifacts" / "plan.md"
+    plan.parent.mkdir(parents=True)
+    plan.write_text("# Plan\n", encoding="utf-8")
+    (project / "sessions").mkdir()
+    (project / "REFERENCE.md").write_text("# Reference\n", encoding="utf-8")
+    (project / "CONTEXT.md").write_text(
+        "# Alpha\n\n**Phase:** Older\n**Status:** Active\n"
+        "**Last session:** 2026-09-02\n\n"
+        "[plan](resources/artifacts/plan.md)\n\n"
+        "## What's Next\n\n- [ ] old action\n",
+        encoding="utf-8",
+    )
+    (repo / "projects" / "index.yaml").write_text(
+        "projects:\n  - id: alpha\n    status: active\n    last_session: '2026-09-02'\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(repo), "add", "projects"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "initial"], check=True, capture_output=True)
+    newer = tmp_path / "newer"
+    subprocess.run(["git", "-C", str(repo), "worktree", "add", "-b", "feature/newer", str(newer)], check=True, capture_output=True)
+    newer_context = newer / "projects" / "alpha" / "CONTEXT.md"
+    newer_context.write_text(
+        newer_context.read_text(encoding="utf-8")
+        .replace("**Phase:** Older", "**Phase:** Newer")
+        .replace("old action", "new action"),
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(newer), "add", "projects/alpha/CONTEXT.md"], check=True)
+    subprocess.run(["git", "-C", str(newer), "commit", "-m", "advance"], check=True, capture_output=True)
+    monkeypatch.setattr(MODULE, "record_freshness", lambda path: (True, "current"))
+
+    lines: list[str] = []
+    MODULE.append_project_context(lines, project, label="Recovered project")
+    message = "\n".join(lines)
+
+    assert f"Recovered project: {newer / 'projects' / 'alpha'}." in message
+    assert "Current phase: Newer." in message
+    assert "new action" in message
 
 
 def test_build_rejects_incomplete_or_unleased_pointer(

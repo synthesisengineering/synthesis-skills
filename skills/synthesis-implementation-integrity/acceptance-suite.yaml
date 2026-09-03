@@ -1,17 +1,15 @@
-# AGENT HEURISTIC: closed acceptance universe for the 4.91.4 guardian-lock repair.
-# Fresh per transaction: changed_surfaces must equal the authoritative
-# base-to-head Git diff before release.py can consume the receipt.
+# Closed acceptance universe for the project-state reliability release.
 schema: 2
-suite: synthesis-cache-guardian-lock-reliability
+suite: synthesis-project-state-reliability
 membership: closed
-production_entry_point: synthesis update -> onboard.synchronize_codex_history -> cache_guardian --doctor -> shared transition lock
-enforcing_boundary: release.py consumes this transaction-bound closed manifest before publishing the immutable release, installing both clients, and activating the public CLI
+production_entry_point: named-project resolution, SessionStart recovery, context doctor, lifecycle Stop, and autopilot Stop gate
+enforcing_boundary: release.py consumes this transaction-bound manifest before publishing, installation, and stable activation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the real installed update is verified after the gated publisher activates this release
+unverified_remainder: a genuinely new external-runtime lifecycle event remains a separate live-plane acceptance condition
 changed_surfaces:
   - path: .claude-plugin/plugin.json
     cases: [release-contract]
@@ -21,30 +19,66 @@ changed_surfaces:
     cases: [release-contract]
   - path: README.md
     cases: [release-contract]
+  - path: hooks/hooks.json
+    cases: [release-contract, lifecycle-stop]
+  - path: skills/synthesis-agent-conformance/SKILL.md
+    cases: [session-recovery, release-contract]
+  - path: skills/synthesis-agent-conformance/scripts/conformance.py
+    cases: [session-recovery]
+  - path: skills/synthesis-agent-conformance/scripts/session_context.py
+    cases: [session-recovery]
+  - path: skills/synthesis-agent-conformance/scripts/test_session_context.py
+    cases: [session-recovery]
+  - path: skills/synthesis-autopilot/SKILL.md
+    cases: [scoped-autopilot, release-contract]
+  - path: skills/synthesis-autopilot/scripts/autopilot_gate.py
+    cases: [scoped-autopilot]
+  - path: skills/synthesis-autopilot/scripts/test_autopilot_gate.py
+    cases: [scoped-autopilot]
+  - path: skills/synthesis-context-lifecycle/SKILL.md
+    cases: [semantic-doctor, release-contract]
+  - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
+    cases: [semantic-doctor]
+  - path: skills/synthesis-context-lifecycle/scripts/test_context_doctor.py
+    cases: [semantic-doctor]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [acceptance-self]
-  - path: skills/synthesis-skills-manager/SKILL.md
-    cases: [release-contract]
-  - path: skills/synthesis-skills-manager/scripts/cache_guardian.py
-    cases: [guardian-lock-policy, guardian-lock-timeout]
-  - path: skills/synthesis-skills-manager/scripts/test_cache_guardian.py
-    cases: [guardian-lock-policy, guardian-lock-timeout]
-  - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [release-contract]
+  - path: skills/synthesis-project-management/SKILL.md
+    cases: [resolver-matrix, release-contract]
+  - path: skills/synthesis-project-management/references/project-state-recovery.md
+    cases: [resolver-matrix]
+  - path: skills/synthesis-project-management/scripts/project_state.py
+    cases: [resolver-matrix, lifecycle-stop]
+  - path: skills/synthesis-project-management/scripts/test_project_state.py
+    cases: [resolver-matrix, lifecycle-stop, release-contract]
+  - path: skills/synthesis-repo-guard/SKILL.md
+    cases: [lifecycle-stop, release-contract]
 cases:
+  - id: resolver-matrix
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_project_state.py::test_canonical_behind_isolated_worktree_selects_newer_without_mutation
+    motivating_defect: a-resumed-project-could-select-whichever-clean-checkout-a-task-remembered
+  - id: lifecycle-stop
+    control_class: enforced-gate
+    fixture: ../synthesis-project-management/scripts/test_project_state.py::test_lifecycle_hook_refuses_semantically_incomplete_stop
+    motivating_defect: a-clean-handoff-receipt-could-outlive-semantic-project-state-or-source-heads
+  - id: semantic-doctor
+    control_class: enforced-gate
+    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests
+    motivating_defect: structurally-valid-prose-could-contradict-later-release-evidence-and-still-report-healthy
+  - id: session-recovery
+    control_class: acceptance-test
+    fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_stopped_project_recovery_reads_newer_isolated_worktree
+    motivating_defect: session-start-could-read-a-behind-canonical-checkout-without-inventorying-isolated-state
+  - id: scoped-autopilot
+    control_class: enforced-gate
+    fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_foreign_live_engagement_never_blocks_this_session
+    motivating_defect: one-projects-engagement-could-globally-block-an-unrelated-session
   - id: release-contract
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_cache_guardian_lock_release_contract_is_public_and_coherent
-    motivating_defect: a-follow-on-release-could-ship-disagreeing-version-or-lock-policy-documentation
-  - id: guardian-lock-policy
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_doctor_waits_for_background_guardian_but_once_remains_nonblocking
-    motivating_defect: a-synchronous-update-could-fail-when-ordinary-background-guardian-work-owned-the-lock
-  - id: guardian-lock-timeout
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_blocking_cache_lock_wait_is_bounded
-    motivating_defect: a-real-release-transition-could-make-a-synchronous-doctor-wait-without-a-bound
+    fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
+    motivating_defect: release-version-documentation-hook-and-skill-contracts-could-disagree
   - id: acceptance-self
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-    motivating_defect: a-release-manifest-could-claim-closed-membership-with-unmapped-or-invalid-cases
+    motivating_defect: a-closed-release-manifest-could-omit-a-changed-surface-or-reference-an-invalid-case

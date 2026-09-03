@@ -4,6 +4,24 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.92.0] - 2026-09-03
+
+**A named project now resolves from the newest provable coherent state instead
+of whichever checkout a task remembered.** The recovery engine inventories
+canonical and isolated worktrees, refs, attributed dirty files, lifecycle
+manifests and receipts, pointers, and active claims. Equality and ancestry can
+select a winner; divergence is `CONFLICT`, failed evidence is `UNKNOWN`, and a
+safe canonical fast-forward requires clean tracked/index state plus an
+untracked-collision proof.
+
+Mature projects can now make mutable operational state structured and compile
+the bounded human-readable block from it. The context doctor detects semantic
+release contradictions and exact one-day staleness. Stop binds a clean handoff
+receipt to the active session, project, claim, Git identity, durable hashes,
+and source heads, while interrupted work remains recoverable from automatic
+manifests. Autonomous engagement records are likewise session- and
+project-bound, so unrelated work can never become a global Stop blocker.
+
 ## [4.91.4] - 2026-09-03
 
 **A synchronous update no longer mistakes ordinary background guardian work

@@ -359,6 +359,35 @@ class ContextDoctorTests(unittest.TestCase):
         self.fx.commit("real work", when="2026-06-01")
         self.assertIn("last-session-freshness", checks_in(self.fx.audit()))
 
+    def test_one_day_known_staleness_is_not_tolerated(self):
+        self.fx.project(
+            "alpha",
+            context="# P\n\n**Status:** Active\n**Last session:** 2026-06-01\n",
+        )
+        self.fx.index(
+            [{"id": "alpha", "status": "active", "last_session": "2026-06-01"}]
+        )
+        self.fx.commit("real work", when="2026-06-02")
+        checks = checks_in(self.fx.audit())
+        self.assertIn("last-session-freshness", checks)
+        self.assertIn("context-header-freshness", checks)
+
+    def test_current_release_older_than_later_recorded_release_is_caught(self):
+        self.fx.project(
+            "alpha",
+            context=(
+                "# P\n\n**Phase:** current release 1.0.0\n**Status:** Active\n"
+                "**Last session:** 2026-06-01\n\n"
+                "Current accepted release: v1.0.0.\n"
+                "Later release shipped: v4.0.0.\n"
+            ),
+        )
+        self.fx.index(
+            [{"id": "alpha", "status": "active", "last_session": "2026-06-01"}]
+        )
+        self.fx.commit("record contradictory state", when="2026-06-01")
+        self.assertIn("semantic-current-state", checks_in(self.fx.audit()))
+
     def test_stale_context_header_is_caught(self):
         self.fx.project(
             "alpha", context="# P\n\n**Status:** Active\n**Last session:** 2020-01-01\n"

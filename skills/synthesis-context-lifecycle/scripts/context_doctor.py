@@ -63,7 +63,16 @@ from pathlib import Path
 # missing the doctor must fail loudly rather than silently skip a check.
 import context_currency
 
-DOCTOR_VERSION = "1.8.1"
+_PROJECT_STATE_SCRIPTS = (
+    Path(__file__).resolve().parents[2]
+    / "synthesis-project-management"
+    / "scripts"
+)
+if str(_PROJECT_STATE_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_STATE_SCRIPTS))
+import project_state  # noqa: E402
+
+DOCTOR_VERSION = "1.9.0"
 
 # Budgets from the tiered context architecture.
 CONTEXT_BUDGET_ACTIVE = 150
@@ -85,9 +94,10 @@ REFERENCE_TOPIC_BUDGET = 300
 # working-memory file.
 REFERENCE_EXPECTED_AFTER_SESSIONS = 2
 
-# How far index.yaml's last_session may lag the project's newest commit before
-# it is stale rather than merely rounded.
-LAST_SESSION_TOLERANCE_DAYS = 1
+# Current-state dates are exact safety evidence. A known one-day discrepancy is
+# stale, not rounding; tolerating it allowed a newer project commit to coexist
+# with a green resumption record.
+LAST_SESSION_TOLERANCE_DAYS = 0
 
 # A commit touching more than this many distinct projects is repo-wide
 # maintenance, not a work session on any one of them.
@@ -806,6 +816,7 @@ CHECKS = [
     "completed-date",
     "last-session-freshness",
     "context-header-freshness",
+    "semantic-current-state",
     "header-currency",
     "body-currency",
     "uncommitted-context",
@@ -950,6 +961,15 @@ def audit_project(
 
     context_text = read_text(context_path)
     context_lines = len(context_text.splitlines())
+
+    for issue in project_state.semantic_issues(project_path):
+        audit.add(
+            "semantic-current-state",
+            "defect",
+            issue,
+            "reconcile current state from Git and lifecycle evidence, then "
+            "regenerate the bounded current-state block",
+        )
 
     if not context_text.strip():
         audit.add(

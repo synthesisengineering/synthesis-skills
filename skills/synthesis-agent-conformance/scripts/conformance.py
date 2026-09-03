@@ -63,6 +63,7 @@ from live_receipt import (
     transcript_binds_session,
 )
 from project_context import next_actions, record_freshness
+from project_state import resolve_project as resolve_durable_project
 from pointer_lock import locked_pointer
 from coordination_schema import SCHEMA_VERSION as COORDINATION_SCHEMA_VERSION
 
@@ -1761,6 +1762,42 @@ def handoff_checks(
     return checks
 
 
+def project_state_recovery_checks(
+    project: Path,
+    coordination_board: Path = DEFAULT_COORDINATION_BOARD,
+) -> list[Check]:
+    """Report causal incoming recovery separately from other continuity gates."""
+    checks: list[Check] = []
+    index = project.parent / "index.yaml"
+    report = resolve_durable_project(
+        project.name,
+        index,
+        repo_guard_root=DEFAULT_REPO_GUARD_STATE,
+        checkpoint_receipt_root=(
+            Path.home() / ".synthesis" / "project-state" / "receipts"
+        ),
+        coordination_board=coordination_board if coordination_board.is_file() else None,
+        pointer=DEFAULT_ACTIVE_PROJECT,
+        fetch=True,
+        refresh_coordination=coordination_board.is_file(),
+    )
+    acceptable = report.status in {"PASS", "LOCAL_RECOVERABLE"}
+    detail = (
+        f"{report.status}: head={report.selected_head or 'none'}; "
+        f"path={report.selected_path or 'ref-only'}"
+    )
+    if report.issues:
+        detail += "; " + "; ".join(report.issues)
+    add(
+        checks,
+        "continuity.project-state-recovery",
+        acceptable,
+        detail,
+        outcome=report.status,
+    )
+    return checks
+
+
 def stopped_payload_parity(
     project: Path,
     summary: dict[str, object],
@@ -2436,6 +2473,12 @@ def main() -> int:
     elif args.command == "all":
         checks.extend(
             coordination_checks(args.coordination_board.expanduser(), required=False)
+        )
+    if args.command in {"pointer", "handoff", "continuity", "all"} and args.project:
+        checks.extend(
+            project_state_recovery_checks(
+                args.project.resolve(), args.coordination_board.expanduser()
+            )
         )
     if args.command == "activate":
         if not args.project:

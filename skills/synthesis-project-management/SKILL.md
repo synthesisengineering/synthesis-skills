@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.11.2"
+  version: "2.12.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -137,9 +137,8 @@ Full rationale:
 
 ### 1. Project Index (`index.yaml`)
 
-Single source of truth for all projects. Status is a field, not a folder:
-`active` (being worked), `paused`, `ongoing` (no defined end state),
-`completed` (+ `completed_date`, `outcome`, `key_result`), `archived`.
+Discovery index for all projects. Status is a field, not a folder: `active`
+(being worked), `paused`, `ongoing`, `completed`, or `archived`.
 
 ```yaml
 projects:
@@ -148,13 +147,13 @@ projects:
     status: active
     description: Brief description of what this project accomplishes
     tags: [tag1, tag2]
-    last_session: YYYY-MM-DD
 ```
 
 Full multi-status example:
 [references/records-and-conventions.md](references/records-and-conventions.md).
-**Update when:** session end (update `last_session`), project status changes,
-new project added.
+**Update when:** project status changes or a project is added. For structured
+projects, derive session currency; a present stale `last_session` is evidence,
+not truth. Details: [references/project-state-recovery.md](references/project-state-recovery.md).
 
 ### 2. Tiered Context Architecture
 
@@ -194,8 +193,6 @@ work. Full rules and the canonical convention:
 [references/records-and-conventions.md](references/records-and-conventions.md)
 and the synthesis-context-lifecycle skill.
 
----
-
 ## The Protocol
 
 ### During Work
@@ -212,19 +209,22 @@ Complete task → Update CONTEXT.md → local receipt → Next task
    `~/.synthesis/coordination/active-sessions.md` exists, read it before any
    write and register or refresh this session's project, worktree, branch,
    context role, and claims
-2. **Read CONTEXT.md** — Understand current state before touching code
-3. **Check line count** — If CONTEXT.md >150 lines, archive before starting work
-4. **Read REFERENCE.md** — If it exists and the task needs reference details
-5. **Search lessons/** — `grep` for relevant past experiences
-6. **Check related projects** — Look at `related:` tags in index.yaml
+2. **Resolve before reading** — Run `scripts/project_state.py resolve` against the Git-tracked index; use only its causally selected state.
+3. **Read the selected state** — Read `CURRENT_STATE.json`, CONTEXT.md, the linked plan, REFERENCE.md, and latest session; validate hashes and semantics.
+4. **Check line count** — If CONTEXT.md >150 lines, archive before starting work
+5. **Read REFERENCE.md** — If it exists and the task needs reference details
+6. **Search lessons/** — `grep` for relevant past experiences
+7. **Check related projects** — Look at `related:` tags in index.yaml
 
 ### Session End
 
 1. **Final CONTEXT.md update** — Ensure all sections current (≤150 lines)
 2. **Archive if needed** — Move old sessions to sessions/, stable facts to REFERENCE.md
 3. **Attribute if warranted** — If multiple agents/models contributed materially, end the session-log entry with Attribution line(s) (see Agent Attribution)
-4. **Update index.yaml** — Set `last_session` date
-5. **Verify local continuity** — Confirm session-attributed state is readable;
+4. **Refresh structured state** — Regenerate `CURRENT_STATE.json` and its
+   compiled block after every meaningful source phase.
+5. **Verify local continuity** — Require the session- and claim-bound Stop
+   receipt; confirm attributed state is readable;
    do not create a commit or network push solely because the user is switching
    clients on this machine
 6. **Release coordination claims** — Mark the session released or narrow its
@@ -361,11 +361,11 @@ or save state by hand:
    recoverably archives an active-project pointer owned by that session; a
    pointer owned by another session is untouched.
 
-Resuming from another agent: resolve the named project through the
-git-tracked `projects/index.yaml`, read `CONTEXT.md` and the linked plan,
-and inspect Git status and diff before acting — working-tree truth
-supersedes cached project prose. Pointer semantics and cross-computer
-recovery preconditions:
+Resuming from another agent: run `scripts/project_state.py resolve` against the
+Git-tracked index before reading prose. Divergence is `CONFLICT`; unreadable or
+unreachable evidence is `UNKNOWN`. Full evidence, ordering, safe-fast-forward,
+and receipt contract: [references/project-state-recovery.md](references/project-state-recovery.md).
+Pointer semantics and cross-computer recovery preconditions:
 [references/parallel-agent-protocol.md](references/parallel-agent-protocol.md)
 ("Resuming and the active-project pointer").
 

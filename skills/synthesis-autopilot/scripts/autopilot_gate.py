@@ -21,9 +21,9 @@ unfinished is refused unless the agent has done one of three legal things:
      reason.
 
 All three outs are satisfiable by the agent alone, so the gate can fail
-closed without deadlocking a session. An abandoned engagement from an
-earlier session blocks later stops BY DESIGN — abandonment must be loud;
-the block message carries the exact command to close it out honestly.
+closed without deadlocking a session. An engagement is bound to its
+coordination seat, project, and client-session identity. A live or abandoned
+engagement owned by another session never blocks an unrelated session.
 
 Runaway control lives in `cycle`: recording a wake that advanced nothing
 requires a named external wait (`--waiting-on`). There is no way to record
@@ -50,12 +50,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-ENGINE_VERSION = "1.0.0"
+ENGINE_VERSION = "1.1.0"
 
 
 def state_dir() -> Path:
@@ -97,19 +98,115 @@ def load_for_plan(plan: str) -> tuple[Path, dict]:
     return path, load(path)
 
 
+def _board_rows(path: Path) -> list[dict[str, str]]:
+    text = path.read_text(encoding="utf-8")
+    header = None
+    rows: list[dict[str, str]] = []
+    for line in text.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if header is None and "session uuid" in {cell.lower() for cell in cells}:
+            header = [cell.lower() for cell in cells]
+            continue
+        if header is None or all(set(cell) <= {"-", ":"} for cell in cells):
+            continue
+        if len(cells) == len(header):
+            rows.append(dict(zip(header, cells)))
+    if header is None:
+        raise ValueError("coordination board has no active-session table")
+    return rows
+
+
+def _project_from_plan(plan: str) -> str:
+    parts = Path(plan).resolve().parts
+    if "projects" in parts:
+        index = len(parts) - 1 - list(reversed(parts)).index("projects")
+        if index + 1 < len(parts):
+            return parts[index + 1]
+    return ""
+
+
+def _registration_identity(plan: str) -> tuple[str, str, str, Path, dict[str, str]]:
+    session_id = (
+        os.environ.get("AUTOPILOT_GATE_SESSION_ID")
+        or os.environ.get("SYNTHESIS_COORDINATION_SESSION")
+        or ""
+    ).strip()
+    project_id = (
+        os.environ.get("AUTOPILOT_GATE_PROJECT_ID") or _project_from_plan(plan)
+    ).strip()
+    client_ref = os.environ.get("SYNTHESIS_CLIENT_SESSION_REF", "").strip()
+    board = Path(os.environ.get(
+        "AUTOPILOT_GATE_COORDINATION_BOARD",
+        os.path.expanduser("~/.synthesis/coordination/active-sessions.md"),
+    )).resolve()
+    if not session_id or not project_id or not client_ref:
+        raise ValueError(
+            "registration requires session, project, and client-session identity"
+        )
+    matches = [
+        row for row in _board_rows(board)
+        if row.get("session uuid") == session_id
+        and row.get("project") == project_id
+        and row.get("client session ref") == client_ref
+        and row.get("status", "").lower() == "active"
+    ]
+    if len(matches) != 1:
+        raise ValueError("registration requires exactly one matching active coordination claim")
+    plan_path = str(Path(plan).resolve())
+    row = matches[0]
+    coverage = row.get("claimed areas (advisory lock)", "") + " " + row.get("workspace(s) / branch", "")
+    project_root = str(Path(plan_path).parent.parent.parent)
+    roots = [
+        str(Path(token.strip().removesuffix("/**").removesuffix("/*")).resolve())
+        for token in re.split(r"(?:<br>|[,;\s]+)", coverage)
+        if token.strip().startswith("/")
+    ]
+    if plan_path not in coverage and project_root not in coverage and not any(
+        plan_path == root or plan_path.startswith(root.rstrip("/") + "/")
+        for root in roots
+    ):
+        raise ValueError("active coordination claim does not cover the autopilot plan")
+    return session_id, project_id, client_ref, board, row
+
+
 def cmd_register(plan: str, mission: str, horizon: str) -> int:
     if not mission.strip():
         print("register: --mission must describe what done means",
               file=sys.stderr)
         return 2
+    try:
+        session_id, project_id, client_ref, board, claim = _registration_identity(plan)
+    except (OSError, ValueError) as exc:
+        print(f"register: coordination claim binding failed: {exc}", file=sys.stderr)
+        return 2
     path = entry_path(plan)
     if path.exists() and load(path).get("status") == "active":
-        print(f"engagement already active for this plan: {path}")
+        data = load(path)
+        data.update({
+            "session_id": session_id,
+            "project_id": project_id,
+            "client_session_ref": client_ref,
+            "coordination_board": str(board),
+            "claim_hash": hashlib.sha256(
+                json.dumps(claim, sort_keys=True).encode()
+            ).hexdigest(),
+        })
+        save(path, data)
+        print(f"engagement binding refreshed for this plan: {path}")
         return 0
     save(path, {
         "plan": os.path.abspath(os.path.expanduser(plan)),
         "mission": mission.strip(),
         "horizon": horizon,
+        "session_id": session_id,
+        "project_id": project_id,
+        "client_session_ref": client_ref,
+        "coordination_board": str(board),
+        "claim_hash": hashlib.sha256(
+            json.dumps(claim, sort_keys=True).encode()
+        ).hexdigest(),
         "engaged_at": now_iso(),
         "status": "active",
         "goals_met": False,
@@ -203,11 +300,60 @@ def cmd_close(plan: str, goals_met: bool, incomplete: str | None) -> int:
     return 0
 
 
+def _caller_identity(payload: dict) -> tuple[set[str], str]:
+    identities = {
+        str(payload.get(key) or "").strip()
+        for key in ("session_id", "root_task_uuid", "task_id")
+    }
+    configured = os.environ.get("SYNTHESIS_CLIENT_SESSION_REF", "").strip()
+    if configured:
+        identities.add(configured)
+        identities.add(configured.rsplit(":", 1)[-1])
+    return {value for value in identities if value}, str(payload.get("cwd") or "")
+
+
+def _owned_by_caller(data: dict, identities: set[str], cwd: str) -> bool:
+    session_id = str(data.get("session_id") or "")
+    client_ref = str(data.get("client_session_ref") or "")
+    if session_id in identities or client_ref in identities:
+        return True
+    if client_ref and client_ref.rsplit(":", 1)[-1] in identities:
+        return True
+    plan = str(data.get("plan") or "")
+    return (
+        not session_id
+        and not client_ref
+        and bool(cwd)
+        and plan.startswith(str(Path(cwd).resolve()) + os.sep)
+    )
+
+
+def _foreign_claim_state(data: dict) -> str:
+    try:
+        board = Path(str(data.get("coordination_board") or ""))
+        session_id = str(data.get("session_id") or "")
+        project_id = str(data.get("project_id") or "")
+        if not board.is_file() or not session_id:
+            return "UNKNOWN"
+        rows = _board_rows(board)
+        return "ACTIVE" if any(
+            row.get("session uuid") == session_id
+            and row.get("project") == project_id
+            and row.get("status", "").lower() == "active"
+            for row in rows
+        ) else "INACTIVE"
+    except Exception:
+        return "UNKNOWN"
+
+
 def gate() -> int:
     try:
-        json.load(sys.stdin)  # payload read; content not needed for the rule
+        payload = json.load(sys.stdin)
+        if not isinstance(payload, dict):
+            payload = {}
     except Exception:
-        pass  # a stop gate must still evaluate registry state
+        payload = {}
+    identities, cwd = _caller_identity(payload)
     root = state_dir()
     if not root.is_dir():
         return 0
@@ -223,6 +369,15 @@ def gate() -> int:
             return 2
         if data.get("status") != "active" or data.get("goals_met"):
             continue
+        if not _owned_by_caller(data, identities, cwd):
+            state = _foreign_claim_state(data)
+            print(
+                "autopilot-gate: foreign engagement does not block this "
+                f"session (project={data.get('project_id') or 'unknown'}, "
+                f"session={data.get('session_id') or 'legacy'}, claim={state})",
+                file=sys.stderr,
+            )
+            continue
         if data.get("continuation") or data.get("blocker"):
             continue
         offenders.append(
@@ -231,7 +386,7 @@ def gate() -> int:
         return 0
     me = os.path.basename(__file__)
     print(
-        "autopilot-gate BLOCKED: this session is stopping while an autopilot "
+        "autopilot-gate BLOCKED: this session owns an autopilot "
         "engagement is active, unfinished, and has NO continuation — the "
         "exact shape of the overnight silent-idle failure. Engagements: "
         + "; ".join(offenders) + ". Before stopping, do exactly one: "
@@ -240,9 +395,8 @@ def gate() -> int:
         f"(2) alert the principal and record the blocker ({me} blocker "
         "--plan P --reason ... --alerted), or "
         f"(3) close the engagement honestly ({me} close --plan P "
-        "--goals-met | --incomplete REASON). An engagement another session "
-        "abandoned blocks here BY DESIGN — close it honestly rather than "
-        "deleting its record.",
+        "--goals-met | --incomplete REASON). Foreign engagements are reported "
+        "separately and never block this session.",
         file=sys.stderr,
     )
     return 2

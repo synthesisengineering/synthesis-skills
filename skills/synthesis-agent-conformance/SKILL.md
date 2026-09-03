@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.8.0"
+  version: "1.9.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -139,6 +139,14 @@ no pending manifest and complete branch-head equality with the fetched upstream,
 not merely equality for commits touching the project subdirectory. Then open
 the project in the other client and confirm its SessionStart or first
 named-project turn recovers the same state.
+
+The continuity plane also runs causal project-state recovery. It enumerates
+every registered worktree and ref plus attributed manifests, receipts, pointer,
+and claims; selects only by equality or ancestry; and reports `CONFLICT` or
+`UNKNOWN` separately from a successful local recovery. Source, installed,
+live, continuity, and capability verdicts remain independent—a matching cache
+cannot compensate for a stale loaded registry, and an unavailable remote
+cannot become a green continuity result.
 
 ### 5. Close the loop
 

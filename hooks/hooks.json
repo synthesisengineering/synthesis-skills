@@ -55,6 +55,12 @@
             "command": "python3 -B ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-autopilot/scripts/autopilot_gate.py --gate",
             "timeout": 15,
             "statusMessage": "Checking autopilot engagements for a continuation"
+          },
+          {
+            "type": "command",
+            "command": "python3 -B ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-project-management/scripts/project_state.py hook",
+            "timeout": 30,
+            "statusMessage": "Binding durable project state to this lifecycle event"
           }
         ]
       }

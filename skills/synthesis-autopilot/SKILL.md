@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -144,9 +144,12 @@ alerted blocker (`autopilot_gate.py blocker ... --alerted`) nor an honest
 close (`autopilot_gate.py close --goals-met | --incomplete <reason>`). The
 cycle ledger is mechanical too: `autopilot_gate.py cycle` refuses to record
 a wake that advanced nothing and names no external wait — there is no way
-to log a bare spin. An engagement abandoned by a dead session blocks the
-next session's stop BY DESIGN: abandonment must be loud, and the block
-message carries the honest close command.
+to log a bare spin. Registration binds the engagement to the active
+coordination-session UUID, project, exact claim, and native client-session
+reference. The Stop gate blocks only the owning session. It probes the board
+before reporting a foreign engagement's claim state, but foreign work—live,
+inactive, or unknown—never globally blocks an unrelated project or forces that
+session to adjudicate somebody else's completion.
 
 ## The Plan File
 
