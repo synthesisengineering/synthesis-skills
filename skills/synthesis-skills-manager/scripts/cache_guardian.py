@@ -39,6 +39,8 @@ LABEL = "org.synthesisengineering.synthesis-skills-cache-guardian"
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 HOOK_PLUGIN_PATH_RE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\s\"']+)")
 IGNORED_ROOTS = frozenset({".git", ".in_use", ".codex-marketplace-install.json"})
+BYTECODE_CACHE_DIRECTORY = "__pycache__"
+BYTECODE_SUFFIXES = frozenset({".pyc", ".pyo"})
 DEFAULT_INTERVAL_SECONDS = 1.0
 ERROR_RETRY_SECONDS = 10.0
 EX_TEMPFAIL = 75
@@ -88,11 +90,41 @@ def _version_roots(parent: Path) -> dict[str, Path]:
     }
 
 
+def _is_ignorable_bytecode(path: Path, relative_path: Path) -> bool:
+    """Ignore only regular Python bytecode in a real ``__pycache__`` directory.
+
+    Hooks execute from immutable historical plugin roots. Python may create a
+    sibling cache directory as a runtime side effect, but arbitrary files,
+    nested directories, links, and special objects inside that directory must
+    still change the integrity result or fail closed.
+    """
+    if (
+        relative_path.name == BYTECODE_CACHE_DIRECTORY
+        and relative_path.parts.count(BYTECODE_CACHE_DIRECTORY) == 1
+    ):
+        if path.is_symlink() or not path.is_dir():
+            raise GuardianError(
+                f"unsafe Python bytecode cache directory: {relative_path}"
+            )
+        return True
+    if (
+        relative_path.parent.name == BYTECODE_CACHE_DIRECTORY
+        and relative_path.parts.count(BYTECODE_CACHE_DIRECTORY) == 1
+        and relative_path.suffix in BYTECODE_SUFFIXES
+    ):
+        if path.is_symlink() or not path.is_file():
+            raise GuardianError(f"unsafe Python bytecode cache entry: {relative_path}")
+        return True
+    return False
+
+
 def _tree_digest(root: Path) -> str:
     digest = hashlib.sha256()
     for path in sorted(root.rglob("*"), key=lambda item: str(item.relative_to(root))):
         relative_path = path.relative_to(root)
         if relative_path.parts and relative_path.parts[0] in IGNORED_ROOTS:
+            continue
+        if _is_ignorable_bytecode(path, relative_path):
             continue
         relative = str(relative_path).encode("utf-8")
         if path.is_symlink():
@@ -101,6 +133,8 @@ def _tree_digest(root: Path) -> str:
             digest.update(b"D\0" + relative)
         elif path.is_file():
             digest.update(b"F\0" + relative + b"\0" + path.read_bytes())
+        else:
+            raise GuardianError(f"unsupported cache entry type: {relative_path}")
     return digest.hexdigest()
 
 

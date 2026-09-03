@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.91.2] - 2026-09-03
+
+**An older running task can no longer invalidate its own preserved plugin
+root.** Python may create `__pycache__` beside a hook script when the task calls
+that hook from a historical version. The cache guardian now excludes only
+regular Python bytecode directly inside that generated directory from the
+archive comparison. Source changes, unknown files, bytecode outside the
+generated directory, symlinks, and special objects still fail closed. All
+shipped Python lifecycle hooks now run with `-B` to prevent new bytecode writes.
+
 ## [4.91.1] - 2026-09-02
 
 **Existing plugin-only installations now enter the unified lifecycle without a

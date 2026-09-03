@@ -5,12 +5,19 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.6.0"
+  version: "2.6.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+
+**Version 2.6.1** (2026-09-03) keeps historical-cache integrity scoped to
+release source even while an older running task executes Python hooks from its
+versioned root. The guardian excludes only regular `.pyc` or `.pyo` files
+directly inside a real `__pycache__` directory; unknown files, loose bytecode,
+links, special objects, and source changes remain integrity failures. Shipped
+Python hooks also use `-B` so current runtimes do not create bytecode there.
 
 **Version 2.6.0** (2026-09-02) makes public CLI activation part of the same
 gated release transaction as source publication and dual-client verification.

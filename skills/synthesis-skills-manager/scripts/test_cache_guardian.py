@@ -120,12 +120,123 @@ def test_differing_existing_history_fails_closed_without_overwrite(
     assert target.read_text(encoding="utf-8") == "do not erase\n"
 
 
+def test_runtime_bytecode_does_not_invalidate_historical_source(
+    tmp_path: Path,
+) -> None:
+    home = seeded_home(tmp_path)
+    guardian.restore_once(home)
+    target = (
+        guardian.cache_parent(home)
+        / "4.73.0"
+        / "skills/synthesis-autopilot/scripts/__pycache__/autopilot_gate.cpython-312.pyc"
+    )
+    target.parent.mkdir()
+    target.write_bytes(b"runtime bytecode\n")
+
+    record = guardian.restore_once(home)
+
+    assert record["verified"] == 1
+    assert target.read_bytes() == b"runtime bytecode\n"
+
+
+@pytest.mark.parametrize(
+    ("relative", "content"),
+    [
+        ("skills/synthesis-autopilot/scripts/autopilot_gate.py", "changed source\n"),
+        ("skills/synthesis-autopilot/scripts/autopilot_gate.pyc", "loose bytecode\n"),
+        ("skills/synthesis-autopilot/scripts/__pycache__/unexpected.txt", "unknown\n"),
+    ],
+)
+def test_bytecode_exception_does_not_hide_source_or_unknown_drift(
+    tmp_path: Path, relative: str, content: str
+) -> None:
+    home = seeded_home(tmp_path)
+    guardian.restore_once(home)
+    target = guardian.cache_parent(home) / "4.73.0" / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+
+    with pytest.raises(guardian.GuardianError, match="differs from archive"):
+        guardian.restore_once(home)
+
+
+def test_bytecode_exception_refuses_symlinked_cache_directory(tmp_path: Path) -> None:
+    home = seeded_home(tmp_path)
+    guardian.restore_once(home)
+    scripts = (
+        guardian.cache_parent(home) / "4.73.0" / "skills/synthesis-autopilot/scripts"
+    )
+    (scripts / "__pycache__").symlink_to(".")
+
+    with pytest.raises(
+        guardian.GuardianError, match="unsafe Python bytecode cache directory"
+    ):
+        guardian.restore_once(home)
+
+
+def test_bytecode_exception_does_not_hide_nested_cache_directory(tmp_path: Path) -> None:
+    home = seeded_home(tmp_path)
+    guardian.restore_once(home)
+    nested = (
+        guardian.cache_parent(home)
+        / "4.73.0"
+        / "skills/synthesis-autopilot/scripts/__pycache__/__pycache__"
+    )
+    nested.mkdir(parents=True)
+
+    with pytest.raises(guardian.GuardianError, match="differs from archive"):
+        guardian.restore_once(home)
+
+
+def test_bytecode_exception_refuses_special_cache_entry(tmp_path: Path) -> None:
+    home = seeded_home(tmp_path)
+    guardian.restore_once(home)
+    target = (
+        guardian.cache_parent(home)
+        / "4.73.0"
+        / "skills/synthesis-autopilot/scripts/__pycache__/unsafe.pyc"
+    )
+    target.parent.mkdir()
+    os.mkfifo(target)
+
+    with pytest.raises(
+        guardian.GuardianError, match="unsafe Python bytecode cache entry"
+    ):
+        guardian.restore_once(home)
+
+
+def test_tree_digest_refuses_unknown_special_object(tmp_path: Path) -> None:
+    home = seeded_home(tmp_path)
+    guardian.restore_once(home)
+    target = guardian.cache_parent(home) / "4.73.0" / "unexpected.pipe"
+    os.mkfifo(target)
+
+    with pytest.raises(guardian.GuardianError, match="unsupported cache entry type"):
+        guardian.restore_once(home)
+
+
 def test_unsafe_archive_symlink_is_refused(tmp_path: Path) -> None:
     home = seeded_home(tmp_path)
     (guardian.archive_root(home) / "4.73.0" / "escape").symlink_to("../../outside")
 
     with pytest.raises(guardian.GuardianError, match="unsafe archive symlink"):
         guardian.restore_once(home)
+
+
+def test_shipped_python_hooks_disable_bytecode_writes() -> None:
+    repository = Path(__file__).resolve().parents[3]
+    payload = json.loads((repository / "hooks/hooks.json").read_text(encoding="utf-8"))
+    commands = [
+        hook["command"]
+        for registrations in payload["hooks"].values()
+        for registration in registrations
+        for hook in registration["hooks"]
+        if hook.get("type") == "command"
+        and hook.get("command", "").startswith("python3 ")
+    ]
+
+    assert commands
+    assert all(command.startswith("python3 -B ") for command in commands)
 
 
 def test_release_lock_defers_guardian_without_writing(tmp_path: Path) -> None:
