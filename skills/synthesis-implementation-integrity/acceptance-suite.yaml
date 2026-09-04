@@ -1,38 +1,43 @@
-# AGENT HEURISTIC: authored for the 4.94.0 personal instruction overlay transaction.
-# Fresh per transaction: changed_surfaces must equal the authoritative
-# base-to-head Git diff before release.py can consume the receipt.
+# AGENT HEURISTIC: authored for the 4.95.0 additive enrollment transaction.
+# Closed membership is checked against the complete committed release diff.
 schema: 2
-suite: personal-instruction-overlay-adoption
+suite: additive-organization-enrollment
 membership: closed
 production_entry_point: skills/synthesis-onboarding/scripts/synthesis_cli.py
-enforcing_boundary: full organization setup accepts only committed provenance-bound instruction sources and may replace existing unreceipted root instructions only through explicit verified archive-first adoption with two-output rollback
+enforcing_boundary: additive enrollment preserves personal selection and journals exact generated resources through commit recovery replay doctor and uninstall
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: live organization review and merge, released-source root adoption, site build-only acceptance, and fresh client lifecycle receipts remain external runtime gates
+unverified_remainder: live organization adoption build-only site refresh terminal updater and genuine client lifecycle receipts remain runtime gates
 changed_surfaces:
   - path: skills/synthesis-onboarding/scripts/system_contract.py
-    cases: [desired-state-schema, source-commit-binding, source-provenance-refresh]
+    cases: [additive-schema, enrollment-regressions]
   - path: skills/synthesis-onboarding/scripts/synthesis_cli.py
-    cases: [personal-source-state-replay, personal-source-preserve-clear]
+    cases: [additive-selection, enrollment-regressions]
+  - path: skills/synthesis-onboarding/scripts/enrollment.py
+    cases: [enrollment-regressions, partial-copy-rollback, copy-recovery-binding, premutation-copy-recovery, journal-publication]
+  - path: skills/synthesis-onboarding/scripts/organization.py
+    cases: [enrollment-regressions]
   - path: skills/synthesis-onboarding/scripts/onboard.py
-    cases: [personal-source-materialization, explicit-adoption-rollback]
-  - path: skills/synthesis-onboarding/scripts/test_system_contract.py
-    cases: [desired-state-schema, source-commit-binding, source-provenance-refresh]
-  - path: skills/synthesis-onboarding/scripts/test_synthesis_cli.py
-    cases: [personal-source-state-replay, personal-source-preserve-clear]
-  - path: skills/synthesis-onboarding/scripts/test_onboard.py
-    cases: [personal-source-materialization, explicit-adoption-rollback]
+    cases: [engine-personal-preservation, enrollment-regressions, replay-after-failure, removed-org-source, legacy-copy-ownership]
+  - path: skills/synthesis-onboarding/scripts/direct_copy.sh
+    cases: [selected-client-preservation, cli-engine-boundary]
+  - path: skills/synthesis-onboarding/scripts/test_additive_enrollment.py
+    cases: [enrollment-regressions]
   - path: skills/synthesis-onboarding/references/system-state.schema.json
-    cases: [desired-state-schema]
+    cases: [additive-schema]
+  - path: skills/synthesis-onboarding/references/machine-observation.schema.json
+    cases: [additive-schema, enrollment-regressions]
   - path: skills/synthesis-onboarding/references/release-capabilities.json
-    cases: [personal-source-materialization]
+    cases: [capability-contract]
+  - path: skills/synthesis-onboarding/scripts/check_capabilities.py
+    cases: [capability-contract]
   - path: skills/synthesis-onboarding/references/org-manifest.md
-    cases: [personal-source-materialization, explicit-adoption-rollback]
+    cases: [capability-contract, engine-personal-preservation]
   - path: skills/synthesis-onboarding/SKILL.md
-    cases: [personal-source-state-replay, personal-source-preserve-clear, explicit-adoption-rollback]
+    cases: [engine-version-contract, additive-selection]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -42,45 +47,105 @@ changed_surfaces:
   - path: CHANGELOG.md
     cases: [release-changelog-parity]
   - path: README.md
-    cases: [release-changelog-parity, personal-source-materialization]
+    cases: [release-changelog-parity, capability-contract]
+  - path: skills/synthesis-onboarding/scripts/test_synthesis_cli.py
+    cases: [recorded-org-repair, engine-version-contract]
+  - path: skills/synthesis-repo-guard/checkpoint_sync.py
+    cases: [deleted-path-handoff, missing-worktree-boundary]
+  - path: skills/synthesis-repo-guard/test_checkpoint_sync.py
+    cases: [checkpoint-ci-binding]
+  - path: skills/synthesis-repo-guard/test_deleted_paths.py
+    cases: [deleted-path-handoff, missing-worktree-boundary, checkpoint-ci-binding]
+  - path: skills/synthesis-repo-guard/SKILL.md
+    cases: [deleted-path-handoff, missing-worktree-boundary]
+  - path: .github/workflows/repo-guard.yml
+    cases: [checkpoint-ci-binding]
 cases:
-  - id: desired-state-schema
+  - id: additive-schema
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_json_schemas_and_runtime_share_valid_and_invalid_corpora
-    motivating_defect: a-local-personal-source-that-is-not-closed-schema-desired-state-cannot-be-replayed-or-distinguished-from-shareable-organization-data
-  - id: personal-source-state-replay
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_skills_only_overlay_matches_runtime_and_schema
+    motivating_defect: an-organization-tied-to-full-profile-forces-unrelated-personal-initialization
+  - id: additive-selection
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_update_replays_persisted_personal_instruction_source
-    motivating_defect: a-setup-only-source-argument-would-disappear-on-update-or-repair-and-silently-remove-private-operating-context
-  - id: personal-source-preserve-clear
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_enroll_preserves_base_and_replays_overlay
+    motivating_defect: setup-reinitializes-personal-state-and-engine-only-install-omits-future-updates
+  - id: engine-personal-preservation
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_setup_preserves_personal_source_until_explicit_clear
-    motivating_defect: rerunning-setup-without-repeating-a-local-private-path-could-silently-drop-the-declared-overlay-while-no-explicit-removal-was-requested
-  - id: personal-source-materialization
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_real_engine_enroll_and_repair_preserve_personal_files_and_receipts
+    motivating_defect: routing-tests-alone-do-not-prove-personal-preservation-through-real-repair-and-uninstall
+  - id: selected-client-preservation
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_personal_instruction_source_is_materialized_and_receipted
-    motivating_defect: a-tracked-private-source-that-never-enters-the-public-organization-personal-graph-leaves-the-root-instructions-unreproducible
-  - id: explicit-adoption-rollback
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_organization_copy_never_retires_unselected_clients
+    motivating_defect: organization-copy-retired-unselected-client-copies-as-public-plugin-fallbacks
+  - id: enrollment-regressions
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_adoption_rollback_restores_both_existing_outputs
-    motivating_defect: replacing-an-existing-unreceipted-root-without-verified-archives-and-two-file-rollback-can-destroy-the-only-copy-of-user-context
-  - id: source-commit-binding
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_nested_copy_recovery_precedes_outer_enrollment_rollback
+    motivating_defect: recovering-outer-enrollment-before-interrupted-inner-copy-restores-the-wrong-generation
+  - id: capability-contract
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_instruction_pair_rejects_uncommitted_untracked_and_symlink_sources
-    motivating_defect: a-receipt-that-hashes-working-tree-bytes-while-naming-an-unrelated-commit-can-certify-content-that-git-never-recorded
-  - id: source-provenance-refresh
+    fixture: ../synthesis-onboarding/scripts/test_check_capabilities.py::test_repository_capabilities_are_consistent
+    motivating_defect: public-install-surfaces-can-advertise-unimplemented-commands-or-profile-layers
+  - id: engine-version-contract
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_instruction_pair_refreshes_source_receipt_when_bytes_are_unchanged
-    motivating_defect: identical-rendered-bytes-from-a-new-source-could-leave-the-receipt-pointing-at-the-previous-repository-and-break-desired-state-auditability
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_engine_versions_and_skill_contract_agree
+    motivating_defect: installed-guidance-and-engine-versions-can-disagree-across-clients
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-    motivating_defect: an-acceptance-manifest-that-its-own-runner-cannot-consume-issues-authority-it-never-earned
+    motivating_defect: an-acceptance-manifest-must-be-consumed-by-its-own-runner
   - id: release-manifest-parity
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
-    motivating_defect: a-version-that-reaches-only-one-client-manifest-cannot-be-reliably-installed-or-audited-later
+    motivating_defect: a-version-reaching-only-one-client-cannot-be-installed-or-audited-reliably
   - id: release-changelog-parity
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
-    motivating_defect: a-release-whose-changelog-disagrees-with-its-manifests-cannot-be-audited-later
+    motivating_defect: release-changelog-and-manifest-disagreement-prevents-reliable-audit
+  - id: cli-engine-boundary
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_real_cli_enroll_reaches_engine_and_preserves_personal_state
+    motivating_defect: organization-copies-mistaken-for-public-plugin-duplicates-abort-real-cli-enrollment
+  - id: replay-after-failure
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_failed_later_phase_keeps_copied_skills_repairable
+    motivating_defect: a-later-phase-failure-strands-copied-skills-with-old-ownership-receipts
+  - id: partial-copy-rollback
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_partial_organization_copy_restores_exact_receipts_and_skill_bytes
+    motivating_defect: partial-copy-failure-corrupts-owned-skills-before-repair
+  - id: recorded-org-repair
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_repair_restores_recorded_org_commit_without_fetch_or_personal_setup
+    motivating_defect: failed-update-leaves-managed-org-cache-at-an-uncommitted-desired-revision
+  - id: removed-org-source
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_removing_entire_org_source_retires_exact_owned_inventory
+    motivating_defect: removed-organization-sources-leave-unowned-runtime-copies
+  - id: legacy-copy-ownership
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_legacy_org_copy_adoption_verifies_recorded_source_bytes
+    motivating_defect: legacy-provenance-alone-can-overwrite-edited-private-bytes
+  - id: copy-recovery-binding
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_copy_journal_diagnostic_is_read_only_and_recovery_is_bound
+    motivating_defect: diagnostic-or-unbound-recovery-can-overwrite-unrelated-receipts
+  - id: deleted-path-handoff
+    control_class: acceptance-test
+    fixture: ../synthesis-repo-guard/test_deleted_paths.py::test_local_receipt_preserves_missing_file_evidence_without_restoring_it
+    motivating_defect: deleted-parent-prevents-durable-handoff-of-an-existing-repository
+  - id: missing-worktree-boundary
+    control_class: acceptance-test
+    fixture: ../synthesis-repo-guard/test_deleted_paths.py::test_missing_registered_nested_worktree_cannot_fall_into_parent_repo
+    motivating_defect: ancestor-resolution-can-misattribute-a-missing-nested-worktree
+  - id: checkpoint-ci-binding
+    control_class: acceptance-test
+    fixture: ../synthesis-repo-guard/test_deleted_paths.py::test_checkpoint_ci_runs_both_regression_modules
+    motivating_defect: retirement-and-deleted-path-regressions-need-hosted-execution
+  - id: premutation-copy-recovery
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_empty_copy_journal_recovers_before_any_target_mutation
+    motivating_defect: interruption-or-backup-failure-before-receipt-capture-strands-all-future-mutations
+  - id: journal-publication
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_journal_creation_publishes_only_complete_identity
+    motivating_defect: partially-written-journal-identity-prevents-recovery-before-any-target-was-mutated

@@ -104,10 +104,28 @@ and destination escapes are refused.
 
 ## Enrollment
 
+First-time full-system installation:
+
 ```bash
 synthesis setup --profile full --org-repo ssh://git@example.test/example/onboarding-config.git
 synthesis setup --profile full --invite invitation.json
 ```
+
+Add the organization to an existing installation without reinitializing its
+personal kernel, policies, or runtimes:
+
+```bash
+synthesis enroll --org-repo ssh://git@example.test/example/onboarding-config.git
+synthesis enroll --invite invitation.json
+```
+
+Additive enrollment supports either saved profile, preserves the selected
+clients and release policy, and records the organization for future update,
+repair, and doctor. Its manifest must agree with that installation's client,
+channel, and exact-pin selection. A conflicting policy, different organization,
+or changed workspace identity is refused rather than taking over personal
+configuration. Existing knowledge repositories are adopted without a pull or
+configuration change; required pre-commit protection must already be configured.
 
 A user may add a private personal instruction layer without putting its path or
 repository in this shareable manifest:
@@ -118,8 +136,9 @@ synthesis setup --profile full \
   --personal-instruction-source /absolute/path/to/private-config/.agents/workspace-instructions.md
 ```
 
-The engine stores that declaration only in local desired state. Update and
-repair replay it. A later setup preserves it unless the user explicitly passes
+The same personal-source and archive-first adoption options are available on
+`synthesis enroll`. The engine stores that declaration only in local desired
+state. Update and repair replay it. A later setup or enrollment preserves it unless the user explicitly passes
 `--clear-personal-instruction-source`.
 
 An invite carries the repository URL, optional exact commit, issuance time,

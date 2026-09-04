@@ -168,6 +168,9 @@ retire_direct_copies() {
 }
 
 retire_plugin_fallbacks() {
+    # Native public plugins do not contain organization skills. Never retire
+    # those copies, especially in a runtime outside the selected target set.
+    [ "$SOURCE_TYPE" = "public" ] || return 0
     if claude_plugin_installed; then
         retire_direct_copies "$USER_HOME/.claude/skills"
     fi
@@ -552,7 +555,7 @@ do_status() {
     TARGETS=$(detect_targets)
     STATUS_FAILURES=0
 
-    if claude_plugin_installed; then
+    if [ "$SOURCE_TYPE" = "public" ] && claude_plugin_installed; then
         for skill_dir in $(list_skills "$STATUS_SKILLS_DIR"); do
             skill_name=$(basename "$skill_dir")
             if [ -d "$USER_HOME/.claude/skills/$skill_name" ]; then
@@ -561,7 +564,7 @@ do_status() {
             fi
         done
     fi
-    if codex_plugin_installed; then
+    if [ "$SOURCE_TYPE" = "public" ] && codex_plugin_installed; then
         for target in "$USER_HOME/.agents/skills" "$USER_HOME/.codex/skills"; do
             for skill_dir in $(list_skills "$STATUS_SKILLS_DIR"); do
                 skill_name=$(basename "$skill_dir")

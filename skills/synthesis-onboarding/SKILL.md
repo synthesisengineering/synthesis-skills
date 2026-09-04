@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.2.0"
+  version: "2.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -40,6 +40,10 @@ synthesis setup [--profile full|skills-only] [--clients claude,codex]
                 [--personal-instruction-source PATH]
                 [--adopt-workspace-instructions]
                 [--clear-personal-instruction-source]
+synthesis enroll --org-repo URL | --invite PATH
+                 [--personal-instruction-source PATH]
+                 [--adopt-workspace-instructions]
+                 [--clear-personal-instruction-source]
 synthesis update
 synthesis repair
 synthesis status [--json]
@@ -79,7 +83,8 @@ the same bootstrap and stable CLI.
 - `full` selects skills, session context, hooks and gates, agent kernel,
   runtime engines, coordination, doctors and conformance, personal policy,
   knowledge bases, and lifecycle. Organization enrollment is conditional.
-- `skills-only` selects skills, session context, and lifecycle.
+- `skills-only` selects skills, session context, and lifecycle. Additive
+  organization enrollment is available without selecting any personal layers.
 
 Each selected layer ends as verified or non-green. A declined layer is not
 silently reported as installed merely because plugin source contains its code.
@@ -185,8 +190,42 @@ execute an installer. Shared skill repositories are copied through the public
 engine's fixed direct-copy capability. Knowledge repositories are cloned or
 updated only when their exact remote and cleanliness checks pass.
 
-Enroll with `synthesis setup --org-repo URL`, or use a credential-free,
-time-bounded invite file. Invites are validated before mutation, expire within
+For a new installation, use `synthesis setup --org-repo URL`. For an existing
+enabled full or skills-only installation, use `synthesis enroll --org-repo URL`.
+Enrollment preserves the base profile, personal workspace, configuration, layer
+choices, selected clients, and release policy. It adds only the organization
+overlay and an explicitly selected personal instruction source; it never calls
+the personal initializer or reinstalls the public plugin.
+
+The organization's client and release requirements must match the saved
+selection. Conflicts, a different organization, or a workspace collision are
+refused. The saved additive mode and workspace identity apply to update, repair,
+and doctor too. Skills-only repair does not rewrite independently managed
+personal layers or their receipt metadata. Full repair continues to reconcile
+its already-selected personal layers.
+
+Enrollment journals exact generated targets before mutation. Engine, doctor,
+or state-commit failure restores instructions, selected skill copies, ownership
+receipts, and invite use. Mutating commands recover interrupted enrollment;
+doctor remains non-green until recovery finishes. Verified archives, organization
+source caches, and new knowledge clones are retained. Existing knowledge clones
+are adopted without pulling or changing their configuration during enrollment;
+required executable pre-commit protection must already be configured.
+
+Organization skill ownership is checked before every replay. Changed private
+copies are preserved; unchanged legacy copies can be adopted only after their
+bytes match their recorded Git revision. Removed skills and removed sources are
+archived using exact ownership receipts. Uninstall consumes that inventory and
+reports edited retained copies as non-green.
+
+Each organization copy commits its ownership receipt before a later phase can
+fail. A partial copy restores both the previous bytes and receipt. Interrupted
+copy recovery precedes outer enrollment rollback; doctor only reports pending
+recovery. Repair returns a clean managed organization cache to its recorded
+commit without fetching, then replays the saved selection.
+
+Either setup or enrollment can use a credential-free, time-bounded invite file.
+Invites are validated before mutation, expire within
 seven days, may pin the organization commit, and are protected against replay.
 See `references/org-manifest.md` and `references/invite.schema.json`. A
 schema-1 manifest is refused before any mutation with a message naming the

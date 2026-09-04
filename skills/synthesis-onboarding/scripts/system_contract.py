@@ -37,7 +37,7 @@ TRUTH_PLANES = (
     "live-loaded",
     "outcome-verified",
 )
-TRANSACTION_COMMANDS = {"setup", "update", "repair", "workspace-ensure", "uninstall"}
+TRANSACTION_COMMANDS = {"setup", "enroll", "update", "repair", "workspace-ensure", "uninstall"}
 SAFE_IDENTIFIER_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -768,15 +768,13 @@ def default_desired_state(
     personal_instruction_source = validate_personal_instruction_source(
         personal_instruction_source
     )
-    if personal_instruction_source is not None and (
-        profile != "full" or not organization_entries
-    ):
+    if personal_instruction_source is not None and not organization_entries:
         raise ContractError(
-            "a personal instruction source requires a full organization setup"
+            "a personal instruction source requires an organization"
         )
     if layers is None:
         selected = set(PROFILE_LAYERS[profile])
-        if profile == "full" and organization_entries:
+        if organization_entries:
             selected.add("organization")
         layers = {
             layer_id: "selected" if layer_id in selected else "declined"
@@ -867,16 +865,12 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
         raise ContractError("desired state organizations must be a list")
     if len(organizations) > 1:
         raise ContractError("desired state supports at most one organization")
-    if profile == "skills-only" and organizations:
-        raise ContractError("skills-only desired state cannot enroll an organization")
-    if instruction_source is not None and (
-        profile != "full" or not organizations
-    ):
+    if instruction_source is not None and not organizations:
         raise ContractError(
-            "a personal instruction source requires a full organization setup"
+            "a personal instruction source requires an organization"
         )
     selected_layers = set(PROFILE_LAYERS[profile])
-    if profile == "full" and organizations:
+    if organizations:
         selected_layers.add("organization")
     expected_layers = {
         layer_id: "selected" if layer_id in selected_layers else "declined"
@@ -887,8 +881,8 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
     for index, entry_value in enumerate(organizations):
         entry = _require_mapping(entry_value, "desired state organizations[%d]" % index)
         fields = {"repository", "manifest_path", "commit_policy", "commit"}
-        _reject_unknown(entry, fields, "desired state organizations[%d]" % index)
-        if set(entry) != fields:
+        _reject_unknown(entry, fields | {"mode", "workspace"}, "desired state organizations[%d]" % index)
+        if not fields <= set(entry):
             raise ContractError("desired state organizations[%d] is incomplete" % index)
         validate_repository_url(entry.get("repository"))
         if entry.get("manifest_path") != ".agents/onboarding.yaml":
@@ -897,7 +891,33 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
             raise ContractError("desired state organization commit policy is invalid")
         if not HEX40_RE.fullmatch(str(entry.get("commit") or "")):
             raise ContractError("desired state organization commit is invalid")
+        if "mode" in entry or "workspace" in entry:
+            if entry.get("mode") != "additive":
+                raise ContractError("desired state organization mode is invalid")
+            safe_identifier(entry.get("workspace"), "desired state organization workspace")
+            if entry["workspace"] == workspace:
+                raise ContractError("organization workspace collides with personal workspace")
+        elif profile == "skills-only":
+            raise ContractError("skills-only organization enrollment must be additive")
     return value
+
+
+def validate_additive_organization(desired, manifest, entry):
+    """An organization overlay cannot take over the installation's policy."""
+    ecosystem = manifest.get("ecosystem") or {}
+    policy = {"channel": ecosystem.get("channel", "stable"),
+              "version_pin": ecosystem.get("version_pin")}
+    if policy != desired["release"]:
+        raise ContractError("organization release policy conflicts with the existing installation")
+    if sorted(ecosystem.get("clients", ["claude", "codex"])) != sorted(desired["clients"]):
+        raise ContractError("organization clients conflict with the existing installation")
+    if ecosystem.get("plugin", True) is not True:
+        raise ContractError("organization cannot disable the existing public plugin")
+    workspace = manifest["org"]["workspace"]
+    if workspace == desired.get("personal_workspace"):
+        raise ContractError("organization workspace collides with personal workspace")
+    if entry.get("workspace") != workspace:
+        raise ContractError("organization workspace changed; refusing replacement")
 
 
 def validate_personal_instruction_source(value: Any) -> dict[str, str] | None:
@@ -1389,6 +1409,7 @@ class SystemState:
                     else:
                         atomic_write_bytes(self.desired_path, old_desired)
                 transaction["state"] = "aborted"
+                observation["generation"] = transaction["previous_active_generation"] or 0
                 transaction["error"] = str(exc)
                 if rollback is not None:
                     details = dict(transaction.get("details") or {})
@@ -1885,6 +1906,7 @@ def materialize_instruction_pair(
     previous_receipt: dict[str, Any] | None = None,
     fail_after_first: bool = False,
     source_identities: dict[str, dict[str, Any]] | None = None,
+    validate_only: bool = False,
 ) -> dict[str, Any]:
     graph = _require_mapping(graph, "instruction graph")
     source_identities = source_identities or {}
@@ -1899,13 +1921,14 @@ def materialize_instruction_pair(
     workspace = Path(workspace)
     if workspace.is_symlink():
         raise ContractError("workspace must not be a symbolic link")
-    workspace.mkdir(parents=True, exist_ok=True)
     targets = [workspace / "AGENTS.md", workspace / "CLAUDE.md"]
     if any(target.is_symlink() for target in targets):
         raise DriftError("instruction output is a symbolic link")
     if previous_receipt:
         expected_outputs = previous_receipt.get("outputs") or {}
         for target in targets:
+            if (expected_outputs.get(target.name) or {}).get("path") != str(target):
+                raise DriftError("instruction receipt belongs to a different workspace")
             expected = (expected_outputs.get(target.name) or {}).get("sha256")
             if expected is None or not target.is_file() or file_digest(target) != expected:
                 raise DriftError("instruction output drift: %s" % target.name)
@@ -1958,6 +1981,8 @@ def materialize_instruction_pair(
         )
     rendered = ("\n".join(parts).rstrip() + "\n").encode("utf-8")
     rendered_digest = hashlib.sha256(rendered).hexdigest()
+    if validate_only:
+        return {"schema_version": 1, "sources": source_receipts, "validated": True}
     if previous_receipt:
         expected_outputs = previous_receipt.get("outputs") or {}
         if all(
@@ -1979,6 +2004,7 @@ def materialize_instruction_pair(
             )
         )
     temporary_paths = []
+    workspace.mkdir(parents=True, exist_ok=True)
     try:
         for target in targets:
             with tempfile.NamedTemporaryFile(

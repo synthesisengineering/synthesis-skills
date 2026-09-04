@@ -479,9 +479,33 @@ def summarize_paths(paths: list[str], limit: int = 3) -> str:
 
 
 def repo_root_for_path(path: Path) -> Path | None:
+    path = lexical_absolute(path)
+    # Keep lexical ancestry until symlinks have been rejected. Resolving first
+    # would silently attribute a pending path to the link target's repository.
+    if any(part.is_symlink() for part in (path, *path.parents)):
+        return None
     probe = path if path.is_dir() else path.parent
+    crossed_missing_parent = False
+    while not probe.is_dir():
+        if probe.exists() or probe == probe.parent:
+            return None
+        crossed_missing_parent = True
+        probe = probe.parent
     rc, output, _ = git(probe, "rev-parse", "--show-toplevel")
-    return Path(output).resolve() if rc == 0 and output else None
+    if rc != 0 or not output:
+        return None
+    root = Path(output).resolve()
+    if not root.is_dir() or not path_is_within(path, root):
+        return None
+    if crossed_missing_parent:
+        roots, error = listed_worktree_roots(root)
+        if error or root not in roots:
+            return None
+        # A missing registered nested worktree needs retirement reconciliation,
+        # not evidence incorrectly attributed to its enclosing repository.
+        if any(other != root and path_is_within(path, other) for other in roots):
+            return None
+    return root
 
 
 def path_is_within(path: Path, root: Path) -> bool:

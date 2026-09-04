@@ -34,6 +34,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from enrollment import (EnrollmentJournal, regular_tree, move_verified, engine_lock,
+                        recover_copy_transactions, organization_copy_transaction)
+
 from plugin_currency import (
     compare_versions,
     normalize_policy,
@@ -45,11 +48,14 @@ from plugin_currency import (
 from system_contract import (
     ContractError,
     DriftError,
+    SystemState,
     describe_personal_instruction_source,
     file_digest,
+    json_digest,
     materialize_instruction_pair,
     personal_instruction_source_path,
     public_source_identity,
+    validate_additive_organization,
     validate_desired_state,
     validate_org_manifest,
     validate_repository_url,
@@ -82,7 +88,7 @@ from whole_system import (
     validate_personal_policy,
 )
 
-ENGINE_VERSION = "2.2.0"
+ENGINE_VERSION = "2.3.0"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -1397,18 +1403,121 @@ def phase_ecosystem(
             report.add("ecosystem", ERROR, "fallback install.sh failed", hint=(err or out).strip()[-400:])
 
 
-def phase_org_skills(report, manifest, receipts, dry_run):
+def organization_skill_targets(clients_wanted=None):
+    return [HOME / (".claude" if client == "claude" else ".agents") / "skills"
+            for client in (clients_wanted if clients_wanted is not None else ["claude", "codex"])]
+
+
+def verify_org_copy(path, metadata, clients_wanted=None, source_repo=None):
+    path = Path(path)
+    if path.parent not in organization_skill_targets(clients_wanted) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", path.name):
+        raise ContractError("organization copy receipt names an unsafe target")
+    regular_tree(path)
+    if path.exists():
+        provenance = json.loads((path / ".source.json").read_text())
+        if provenance.get("source_type") != "organization" or provenance.get("source_repo") != metadata["repository"]:
+            raise ContractError("organization skill conflicts with an existing source: %s" % path.name)
+        if metadata.get("sha256") and paths_digest([path]) != metadata["sha256"]:
+            raise ContractError("organization skill was edited; preserved: %s" % path.name)
+        if not metadata.get("sha256"):
+            commit = provenance.get("source_commit", "")
+            prefix = "skills/%s/" % path.name
+            if source_repo is None or not re.fullmatch(r"[0-9a-f]{40}", commit) or provenance.get("source_path") != prefix + "SKILL.md":
+                raise ContractError("organization skill has no verifiable ownership receipt; preserved: %s" % path.name)
+            listing = subprocess.run(["git", "-C", str(source_repo), "ls-tree", "-rz", commit, "--", prefix], capture_output=True)
+            expected = {}
+            if listing.returncode:
+                raise ContractError("organization skill's recorded source revision is unavailable")
+            for record in listing.stdout.split(b"\0"):
+                if not record:
+                    continue
+                header, name = record.split(b"\t", 1)
+                mode, kind, oid = header.split()
+                name = name.decode("utf-8")
+                if mode not in {b"100644", b"100755"} or kind != b"blob" or not name.startswith(prefix):
+                    raise ContractError("organization skill recorded source contains a non-regular entry")
+                blob = subprocess.run(["git", "-C", str(source_repo), "cat-file", "blob", oid.decode("ascii")], capture_output=True)
+                if blob.returncode:
+                    raise ContractError("organization skill recorded source is unreadable")
+                expected[name[len(prefix):]] = blob.stdout
+            actual = {str(p.relative_to(path)): p.read_bytes() for p in path.rglob("*")
+                      if p.is_file() and p.name not in {".source.json", ".DS_Store"}}
+            expected = {n: v for n, v in expected.items() if Path(n).name not in {".source.json", ".DS_Store"}}
+            if "SKILL.md" not in expected or actual != expected:
+                raise ContractError("unreceipted organization skill differs from its recorded source; preserved: %s" % path.name)
+
+
+def retire_org_copy(report, receipts, path, metadata, dry_run, journal=None):
+    path = Path(path)
+    try:
+        verify_org_copy(path, metadata)
+        if path.exists():
+            if dry_run:
+                report.add("org-skills", CHANGED, "would archive receipt-owned %s" % path.name)
+                return
+            if journal is not None:
+                journal.capture(path)
+            archive = STATE_DIR / "backups" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") / "org-skills" / path.name
+            regular_tree(archive)
+            archive.parent.mkdir(parents=True, exist_ok=False)
+            with organization_copy_transaction(receipts, [path], HOME):
+                move_verified(path, archive)
+                receipts.data.setdefault("org_skill_copies", {}).pop(str(path), None)
+            report.add("org-skills", CHANGED, "archived receipt-owned %s" % path.name)
+        if not dry_run:
+            receipts.data.setdefault("org_skill_copies", {}).pop(str(path), None)
+    except (ContractError, OSError, ValueError) as exc:
+        report.add("org-skills", ACTION, str(exc))
+
+
+def phase_org_skills(report, manifest, receipts, dry_run, clients_wanted=None, journal=None):
+    repos = manifest.get("skills_repos") or []
+    prepared = {}
+    owners = {}
+    targets = organization_skill_targets(clients_wanted)
+    # Resolve the complete source set and detect collisions before any copy or
+    # retirement. A second organization source cannot take over a first one's name.
+    for repo in repos:
+        cache = CACHE_DIR / repo["name"]
+        prepared[repo["name"]] = clone_or_update(report, "org-skills", [repo["repository"]], cache, dry_run)
+        if prepared[repo["name"]] in {ERROR, WOULD}:
+            continue
+        for skill in (cache / "skills").glob("*/SKILL.md"):
+            for parent in targets:
+                target = str(parent / skill.parent.name)
+                if target in owners and owners[target] != repo["repository"]:
+                    report.add("org-skills", ERROR, "organization sources declare the same skill target")
+                    return
+                owners[target] = repo["repository"]
+                old = receipts.data.get("org_skill_copies", {}).get(target)
+                if old and old["repository"] != repo["repository"]:
+                    report.add("org-skills", ERROR, "organization skill target is owned by another source")
+                    return
+                if not dry_run:
+                    try:
+                        verify_org_copy(target, old or {"repository": repo["repository"]}, clients_wanted, cache)
+                    except (ContractError, OSError, ValueError) as exc:
+                        report.add("org-skills", ERROR, str(exc))
+                        return
+    if report.exit_code():
+        return
+    declared_repos = {repo["repository"] for repo in repos}
+    for path, metadata in list(receipts.data.get("org_skill_copies", {}).items()):
+        if Path(path).parent in targets and metadata["repository"] not in declared_repos:
+            retire_org_copy(report, receipts, path, metadata, dry_run, journal)
+    if report.exit_code():
+        return
     for repo in manifest.get("skills_repos") or []:
         cache = CACHE_DIR / repo["name"]
-        urls = [repo["repository"]]
-        status = clone_or_update(report, "org-skills", urls, cache, dry_run)
+        status = prepared[repo["name"]]
         if status in (ERROR,):
             continue
         if repo.get("capability") != "skills-install":
             report.add("org-skills", ERROR, "%s requested an unsupported capability" % repo["name"])
             continue
         installer = source_root() / "skills" / "synthesis-onboarding" / "scripts" / "direct_copy.sh"
-        targets = "%s %s" % (HOME / ".claude" / "skills", HOME / ".agents" / "skills")
+        target_paths = organization_skill_targets(clients_wanted)
+        targets = " ".join(map(str, target_paths))
         env = {
             "SYNTHESIS_SKILLS_SOURCE_DIR": str(cache),
             "SYNTHESIS_SKILLS_HOME": str(HOME),
@@ -1426,23 +1535,59 @@ def phase_org_skills(report, manifest, receipts, dry_run):
         source_names = [
             path.parent.name for path in (cache / "skills").glob("*/SKILL.md")
         ]
+        owned = receipts.data.setdefault("org_skill_copies", {})
+        current_targets = {str(target / name) for target in target_paths for name in source_names}
+        try:
+            regular_tree(cache / "skills")
+            for target in target_paths:
+                for name in source_names:
+                    installed = target / name
+                    verify_org_copy(installed, owned.get(str(installed)) or {"repository": repo["repository"]}, clients_wanted, cache)
+                    if journal is not None:
+                        journal.capture(installed)
+        except (ContractError, OSError, ValueError) as exc:
+            report.add("org-skills", ERROR, str(exc))
+            return
+        for path, metadata in list(owned.items()):
+            if metadata["repository"] == repo["repository"] and Path(path).parent in target_paths and path not in current_targets:
+                retire_org_copy(report, receipts, path, metadata, dry_run, journal)
+        if report.exit_code():
+            return
         copies_present = bool(source_names) and all(
             (target / name / "SKILL.md").is_file()
-            for target in (HOME / ".claude" / "skills", HOME / ".agents" / "skills")
+            for target in target_paths
             for name in source_names
         )
-        if rc == 0 and copies_present:
+        installed_now = not (rc == 0 and copies_present)
+        if not installed_now:
             report.add("org-skills", OK, "%s already installed and clean" % repo["name"])
-            continue
-        rc, out, err = run(["sh", str(installer), "install"], env=env, timeout=600)
+            out, err = "", ""
+        else:
+            try:
+                with organization_copy_transaction(receipts, [Path(p) for p in sorted(current_targets)], HOME):
+                    rc, out, err = run(["sh", str(installer), "install"], env=env, timeout=600)
+                    if rc:
+                        raise ContractError("%s skills-install failed: %s" % (repo["name"], (err or out).strip()[-400:]))
+                    _, installed_commit, _ = git(["rev-parse", "HEAD^{commit}"], cwd=cache)
+                    for target in current_targets:
+                        owned[target] = {"repository": repo["repository"], "commit": installed_commit.strip(),
+                                         "sha256": paths_digest([Path(target)])}
+            except (ContractError, OSError, ValueError) as exc:
+                report.add("org-skills", ERROR, str(exc))
+                return
         if rc == 0:
             _, commit, _ = git(["rev-parse", "HEAD^{commit}"], cwd=cache)
+            for target in current_targets:
+                owned[target] = {"repository": repo["repository"], "commit": commit.strip(),
+                                 "sha256": paths_digest([Path(target)])}
             receipts.data.setdefault("org_skill_sources", {})[repo["name"]] = {
                 "repository": repo["repository"],
                 "commit": commit.strip(),
                 "capability": "skills-install",
             }
-            report.add("org-skills", CHANGED, "%s installed through public skills-install" % repo["name"])
+            receipts.save()
+            if installed_now:
+                report.add("org-skills", CHANGED, "%s installed through public skills-install" % repo["name"])
         else:
             report.add("org-skills", ERROR, "%s skills-install failed" % repo["name"],
                        hint=(err or out).strip()[-400:])
@@ -1461,7 +1606,18 @@ def find_adoptable(name, primary, superseded):
     return None
 
 
-def phase_kbs(report, manifest, receipts, dry_run):
+def knowledge_hooks_present(repo):
+    rc, configured, _ = git(["config", "--get", "core.hooksPath"], cwd=repo)
+    if rc or not configured.strip():
+        return False
+    path = Path(configured.strip()).expanduser()
+    if not path.is_absolute():
+        path = Path(repo) / path
+    hook = path / "pre-commit"
+    return hook.is_file() and os.access(hook, os.X_OK)
+
+
+def phase_kbs(report, manifest, receipts, dry_run, enrolling=False, journal=None):
     workspace = manifest["org"]["workspace"]
     auth_help = (manifest.get("auth_help") or "").strip()
     for kb in manifest.get("knowledge_bases") or []:
@@ -1478,6 +1634,7 @@ def phase_kbs(report, manifest, receipts, dry_run):
                 repo = found
                 receipts.record_adoption(name, found)
                 report.add("knowledge-base", OK, "adopted existing clone of %s at %s" % (name, found))
+        existing_repo = repo is not None
         if repo is None:
             if dry_run:
                 report.add("knowledge-base", CHANGED, "would clone %s -> %s" % (primary, standard))
@@ -1493,6 +1650,8 @@ def phase_kbs(report, manifest, receipts, dry_run):
                 report.add("knowledge-base", ERROR, "clone of %s failed" % name, hint=err.strip()[-400:])
                 continue
             repo = standard
+            if journal is not None:
+                journal.retain(standard)
             report.add("knowledge-base", CHANGED, "cloned %s -> %s" % (name, standard))
         current_origin = origin_url(repo)
         if current_origin in superseded:
@@ -1504,7 +1663,7 @@ def phase_kbs(report, manifest, receipts, dry_run):
         elif current_origin != primary:
             report.add("knowledge-base", ERROR, "%s has the wrong remote; refusing reuse" % name)
             continue
-        if not dry_run:
+        if not dry_run and not (enrolling and existing_repo):
             if is_dirty(repo):
                 report.add("knowledge-base", WARN, "%s has local changes; skipped pull" % name)
             else:
@@ -1515,6 +1674,12 @@ def phase_kbs(report, manifest, receipts, dry_run):
                     report.add("knowledge-base", WARN, "%s could not fast-forward" % name,
                                hint=err.strip()[-300:] if err else None)
         if kb.get("local_hooks") and (Path(repo) / ".githooks").is_dir():
+            if enrolling and existing_repo:
+                if knowledge_hooks_present(repo):
+                    report.add("knowledge-base", OK, "%s existing repository protection verified; configuration preserved" % name)
+                else:
+                    report.add("knowledge-base", ACTION, "%s requires configured executable pre-commit protection; existing configuration preserved" % name)
+                continue
             rc, out, _ = git(["config", "--global", "--get", "core.hooksPath"])
             if rc == 0 and out.strip():
                 report.add("knowledge-base", OK, "global git hooks engine already active; not overriding")
@@ -1632,6 +1797,16 @@ def phase_workspace(
     )
     if previous is None and existing and not adopt_existing:
         report.add("workspace", ERROR, "workspace instructions exist without a source receipt; preserved")
+        return
+    try:
+        materialize_instruction_pair(
+            graph, source_roots, ws_dir,
+            generation=int(receipts.data.get("instruction_generation", 0)) + 1,
+            previous_receipt=previous,
+            source_identities={"public": public_identity}, validate_only=True,
+        )
+    except (ContractError, DriftError, OSError) as exc:
+        report.add("workspace", ERROR, str(exc))
         return
     if dry_run:
         if previous is None and existing and adopt_existing:
@@ -2794,9 +2969,7 @@ def doctor(report, manifest, clients_wanted, policy, desired_state=None):
             env = {
                 "SYNTHESIS_SKILLS_SOURCE_DIR": str(cache),
                 "SYNTHESIS_SKILLS_HOME": str(HOME),
-                "SYNTHESIS_SKILLS_TARGETS": "%s %s" % (
-                    HOME / ".claude" / "skills", HOME / ".agents" / "skills"
-                ),
+                "SYNTHESIS_SKILLS_TARGETS": " ".join(map(str, organization_skill_targets(clients_wanted))),
                 "SYNTHESIS_SKILLS_SOURCE_REPO": repo["repository"],
                 "SYNTHESIS_SKILLS_SOURCE_TYPE": "organization",
             }
@@ -2807,6 +2980,17 @@ def doctor(report, manifest, clients_wanted, policy, desired_state=None):
                 report.add("doctor", ERROR, "%s status reports problems" % repo["name"],
                            hint=(out + err).strip()[-300:])
         receipts = Receipts()
+        for path, metadata in receipts.data.get("org_skill_copies", {}).items():
+            if Path(path).parent not in organization_skill_targets(clients_wanted):
+                continue
+            try:
+                if metadata["repository"] not in {r["repository"] for r in manifest.get("skills_repos") or []}:
+                    raise ContractError("organization skill source was removed; reconciliation required")
+                verify_org_copy(path, metadata, clients_wanted)
+                if not Path(path).is_dir():
+                    raise ContractError("receipt-owned organization skill is missing")
+            except (ContractError, OSError, ValueError) as exc:
+                report.add("doctor", ERROR, str(exc))
         workspace = manifest["org"]["workspace"]
         for kb in manifest.get("knowledge_bases") or []:
             adopted = receipts.adopted(kb["name"])
@@ -2818,6 +3002,8 @@ def doctor(report, manifest, clients_wanted, policy, desired_state=None):
                 report.add("doctor", ERROR, "%s origin differs from manifest repository" % kb["name"])
             else:
                 report.add("doctor", OK, "knowledge base %s present at %s" % (kb["name"], repo_path))
+            if kb.get("local_hooks") and not knowledge_hooks_present(repo_path):
+                report.add("doctor", ERROR, "%s required pre-commit protection is unavailable" % kb["name"])
         receipt = receipts.data.get("instruction_receipt") or {}
         source_errors = []
         source_receipts = receipt.get("sources") or []
@@ -2826,6 +3012,21 @@ def doctor(report, manifest, clients_wanted, policy, desired_state=None):
                 verify_instruction_source_receipt(entry)
             except (ContractError, DriftError, OSError) as exc:
                 source_errors.append(str(exc))
+        declared_roots = {"public": source_root().resolve(),
+                          "organization": Path(manifest["_path"]).resolve().parents[1]}
+        declared_paths = {"public": "skills/synthesis-onboarding/references/kernel.example.md",
+                          "organization": manifest["instruction_sources"][0]["path"]}
+        for role in ("public", "organization"):
+            actual = [s for s in source_receipts if isinstance(s, dict) and s.get("role") == role]
+            if len(actual) != 1 or any(actual[0].get(k) != v for k, v in {
+                "repository": str(declared_roots[role]), "path": declared_paths[role]
+            }.items()):
+                source_errors.append("%s instruction receipt differs from declared source" % role)
+        if desired_state and desired_state.get("organizations"):
+            expected_commit = desired_state["organizations"][0]["commit"]
+            actual_org = next((s for s in source_receipts if s.get("role") == "organization"), {})
+            if actual_org.get("commit") != expected_commit:
+                source_errors.append("organization instruction commit differs from desired state")
         expected_personal = (
             (desired_state or {}).get("personal_instruction_source")
             if desired_state is not None
@@ -3085,6 +3286,10 @@ def verify_uninstalled(report, clients_wanted):
         clean = False
     receipts = Receipts()
     retained = []
+    for path_text in receipts.data.get("org_skill_copies", {}):
+        path = Path(path_text)
+        if path.parent in organization_skill_targets(clients_wanted) and (path.exists() or path.is_symlink()):
+            retained.append(path_text)
     for path_text in receipts.data.get("generated_files", {}):
         path = Path(path_text)
         if path.exists() or path.is_symlink():
@@ -3171,6 +3376,9 @@ def _remove_plugins_and_direct_copies(report, clients_wanted, dry_run):
 def uninstall(report, dry_run, clients_wanted=None):
     clients_wanted = list(clients_wanted or ["claude", "codex"])
     receipts = Receipts()
+    for path, metadata in list(receipts.data.get("org_skill_copies", {}).items()):
+        if Path(path).parent in organization_skill_targets(clients_wanted):
+            retire_org_copy(report, receipts, path, metadata, dry_run)
     hooks_clean = remove_managed_hooks(report, receipts, dry_run)
     files = list(receipts.data.get("generated_files", {}).items())
     if not files and not receipts.data.get("managed_json_entries"):
@@ -3268,7 +3476,7 @@ def build_parser():
     parser = argparse.ArgumentParser(prog="onboard.py", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", nargs="?", default="install",
-                        choices=["install", "update", "repair", "init", "kernel", "doctor", "init-workspace", "uninstall", "uninstall-doctor"])
+                        choices=["install", "enroll", "update", "repair", "init", "kernel", "doctor", "init-workspace", "uninstall", "uninstall-doctor"])
     parser.add_argument("--manifest", type=Path, help="org onboarding manifest (.agents/onboarding.yaml)")
     parser.add_argument("--clients",
                         help="comma-separated clients to target (default: manifest or claude,codex)")
@@ -3316,11 +3524,27 @@ def build_parser():
                         help="skip client plugin CLIs; use file-copy fallback")
     parser.add_argument("--policy-transition", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--desired-state", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--enrollment-journal", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     return parser
 
 
 def main(argv=None):
+    args = build_parser().parse_args(argv)
+    if args.dry_run:
+        return _main_unlocked(argv)
+    with engine_lock(STATE_DIR, read_only=args.command in {"doctor", "uninstall-doctor"}):
+        try:
+            recover_copy_transactions(STATE_DIR, HOME,
+                verify_only=args.command in {"doctor", "uninstall-doctor"})
+        except (ContractError, OSError, ValueError) as exc:
+            report = Report(as_json=args.json)
+            report.add("recovery", ERROR, str(exc))
+            return finish(report, args, 2)
+        return _main_unlocked(argv)
+
+
+def _main_unlocked(argv=None):
     args = build_parser().parse_args(argv)
     no_services = args.no_services or os.environ.get(
         "SYNTHESIS_ONBOARD_NO_SERVICES"
@@ -3378,6 +3602,15 @@ def main(argv=None):
         return finish(report, args, 2)
     plugin_requested = ((manifest or {}).get("ecosystem") or {}).get("plugin", True)
 
+    if desired_state and desired_state.get("organizations") and desired_state["organizations"][0].get("mode") == "additive":
+        try:
+            if not manifest:
+                raise ContractError("additive organization requires its declared manifest")
+            validate_additive_organization(desired_state, manifest, desired_state["organizations"][0])
+        except (ContractError, ValueError) as exc:
+            report.add("enroll", ERROR, str(exc))
+            return finish(report, args, 2)
+
     if args.command == "doctor":
         code = doctor(
             report,
@@ -3417,7 +3650,31 @@ def main(argv=None):
         uninstall(report, args.dry_run, clients_wanted)
         return finish(report, args, report.exit_code())
 
-    # install / update / whole-system init
+    journal = None
+    if args.command == "enroll":
+        if not manifest or not desired_state or not args.enrollment_journal:
+            report.add("enroll", ERROR, "enrollment requires a manifest, saved selection, and transaction journal; use synthesis enroll")
+            return finish(report, args, 2)
+        org_entries = desired_state.get("organizations") or []
+        if len(org_entries) != 1 or org_entries[0].get("mode") != "additive":
+            report.add("enroll", ERROR, "enrollment requires exactly one additive organization selection")
+            return finish(report, args, 2)
+        if args.with_personal_workspace or args.profile or args.answers:
+            report.add("enroll", ERROR, "enrollment cannot initialize personal layers")
+            return finish(report, args, 2)
+        try:
+            journal = EnrollmentJournal(args.enrollment_journal)
+            journal.validate_scope(SystemState(), desired_state)
+            if journal.data["state"] != "pending" or journal.data["proposed_desired_digest"] != json_digest(desired_state):
+                raise ContractError("enrollment journal does not match proposed desired state")
+            journal.capture(RECEIPTS_PATH)
+            for name in ("AGENTS.md", "CLAUDE.md"):
+                journal.capture(WORKSPACES_ROOT / manifest["org"]["workspace"] / name)
+        except (ContractError, OSError, ValueError) as exc:
+            report.add("enroll", ERROR, str(exc))
+            return finish(report, args, 2)
+
+    # install / additive enrollment / update / whole-system init
     receipts = Receipts()
     profile = None
     answers = None
@@ -3442,6 +3699,14 @@ def main(argv=None):
     if args.command == "init" and not selected_clients:
         report.add("preflight", ERROR, "setup requires at least one installed AI client")
         return finish(report, args, 1)
+    if args.command == "enroll":
+        validation = Report(dry_run=True, as_json=True)
+        phase_workspace(validation, manifest, receipts, True,
+                        personal_instruction_source=personal_instruction_source,
+                        adopt_existing=args.adopt_workspace_instructions)
+        if validation.exit_code():
+            report.steps.extend(validation.steps)
+            return finish(report, args, validation.exit_code())
     if desired_state is not None and selected_clients != desired_state["clients"]:
         missing = sorted(set(desired_state["clients"]) - set(selected_clients))
         if selected_clients:
@@ -3459,7 +3724,7 @@ def main(argv=None):
             hint=hint,
         )
         return finish(report, args, 1)
-    if plugin_requested:
+    if plugin_requested and args.command != "enroll":
         phase_ecosystem(
             report,
             clients,
@@ -3470,11 +3735,19 @@ def main(argv=None):
             preserve_ahead=args.command in ("update", "repair") and not args.policy_transition,
             policy_transition=args.policy_transition,
         )
+    elif args.command == "enroll":
+        report.add("ecosystem", SKIP, "enrollment preserves the existing public plugin installation")
     else:
         report.add("ecosystem", SKIP, "public plugin disabled by manifest")
+    if report.exit_code():
+        return finish(report, args, report.exit_code())
     if manifest:
-        phase_org_skills(report, manifest, receipts, args.dry_run)
-        phase_kbs(report, manifest, receipts, args.dry_run)
+        phase_org_skills(report, manifest, receipts, args.dry_run, clients_wanted, journal)
+        if report.exit_code():
+            return finish(report, args, report.exit_code())
+        phase_kbs(report, manifest, receipts, args.dry_run, enrolling=args.command == "enroll", journal=journal)
+        if report.exit_code():
+            return finish(report, args, report.exit_code())
         phase_workspace(
             report,
             manifest,
@@ -3483,6 +3756,8 @@ def main(argv=None):
             personal_instruction_source=personal_instruction_source,
             adopt_existing=args.adopt_workspace_instructions,
         )
+        if report.exit_code():
+            return finish(report, args, report.exit_code())
     if args.with_personal_workspace:
         init_workspace(report, receipts, args.with_personal_workspace, args.dry_run)
     if args.command == "init":
@@ -3496,7 +3771,7 @@ def main(argv=None):
             args.dry_run,
             no_services,
         )
-    elif args.command == "repair" and desired_state is not None:
+    elif args.command == "repair" and desired_state is not None and desired_state["profile"] == "full":
         try:
             repair_answers = reconcile_answers(desired_state, receipts)
         except ValueError as exc:

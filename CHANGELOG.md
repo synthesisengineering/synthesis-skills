@@ -4,6 +4,37 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.95.0] - 2026-09-04
+
+**Additive organization enrollment preserves an existing personal installation.**
+`synthesis enroll --org-repo URL` (or a time-bounded invite) supports saved full
+and skills-only profiles, retaining personal configuration, clients, and release
+policy. The organization and optional tracked personal instruction overlay are
+saved for update, repair, and doctor. Conflicting policies, organization
+replacement, and workspace collisions fail before generation.
+
+Exact-target journals restore generated instructions, selected skill copies,
+ownership receipts, and invite state after an engine, doctor, or commit failure,
+including interrupted and cross-device recovery. Existing knowledge clones are
+adopted without pulls or configuration changes; required pre-commit protection
+must be present. Skills-only repair preserves independent personal receipt
+metadata. Doctor refuses unfinished enrollment. Per-copy journals persist ownership
+before later phases can fail, and repair restores the recorded organization
+revision without fetching or resetting personal configuration.
+
+Organization copy ownership now survives source removal and uninstall.
+Cross-source collisions and edited copies fail closed; unchanged legacy copies
+require byte verification against their recorded Git revision. Organization
+copies never trigger public-plugin fallback retirement in an unselected client.
+Organization copies are not mistaken for duplicate public-plugin skills.
+Onboarding 2.3.0 includes schema, CLI, engine, recovery, ownership, and
+producer/consumer regression coverage.
+
+Repo-guard 2.4.1 resolves deleted child directories inside a verified live
+repository without losing pending attribution. Missing worktrees, symlink
+ancestry, and unavailable worktree inventory still fail closed. Dedicated
+checkpoint CI covers the deleted-path and retirement fixtures.
+
 ## [4.94.0] - 2026-09-04
 
 **A complete organization workspace can now include private personal context
