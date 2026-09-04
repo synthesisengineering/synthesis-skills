@@ -21,9 +21,9 @@ changed_surfaces:
   - path: skills/synthesis-onboarding/scripts/organization.py
     cases: [enrollment-regressions]
   - path: skills/synthesis-onboarding/scripts/onboard.py
-    cases: [engine-personal-preservation, enrollment-regressions, replay-after-failure, removed-org-source, legacy-copy-ownership]
+    cases: [engine-personal-preservation, enrollment-regressions, replay-after-failure, removed-org-source, legacy-copy-ownership, shared-layout-adoption, mixed-layout-refusal]
   - path: skills/synthesis-onboarding/scripts/direct_copy.sh
-    cases: [selected-client-preservation, cli-engine-boundary]
+    cases: [selected-client-preservation, cli-engine-boundary, shared-layout-adoption, mixed-layout-refusal]
   - path: skills/synthesis-onboarding/scripts/test_additive_enrollment.py
     cases: [enrollment-regressions]
   - path: skills/synthesis-onboarding/references/system-state.schema.json
@@ -149,3 +149,11 @@ cases:
     control_class: acceptance-test
     fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_journal_creation_publishes_only_complete_identity
     motivating_defect: partially-written-journal-identity-prevents-recovery-before-any-target-was-mutated
+  - id: shared-layout-adoption
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_flat_shared_repository_adoption_proves_source_bytes
+    motivating_defect: top-level-shared-skill-copies-are-not-inventoried-or-safely-adopted
+  - id: mixed-layout-refusal
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_mixed_organization_skill_layout_refuses_before_copies
+    motivating_defect: mixed-source-layouts-make-engine-inventory-and-copy-capability-disagree

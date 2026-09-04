@@ -533,6 +533,64 @@ def test_legacy_org_copy_adoption_verifies_recorded_source_bytes(box, edited):
         assert str(target.parent) in json.loads(receipts_path.read_text())["org_skill_copies"]
 
 
+@pytest.mark.parametrize("edited", [False, True])
+def test_flat_shared_repository_adoption_proves_source_bytes(box, edited):
+    import shutil
+    source = box.root / "skills-src"
+    subprocess.run(["git", "-C", str(source), "mv", "skills/example-skill", "example-skill"],
+        env=box.git_env, check=True)
+    box._commit_all(source, "fixture layout")
+    subprocess.run(["git", "-C", str(source), "push", str(box.skills_remote), "main"],
+        env=box.git_env, capture_output=True, check=True)
+    commit = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
+    for client in (".claude", ".agents"):
+        target = box.home / client / "skills/example-skill"
+        target.parent.mkdir(parents=True)
+        shutil.copytree(source / "example-skill", target)
+        (target / ".source.json").write_text(json.dumps({"source_type": "shared",
+            "source_repo": "fixture/example-shared-skills", "source_path": "example-skill/SKILL.md",
+            "source_commit": commit, "installed_by": "install.sh"}))
+        if edited:
+            (target / "SKILL.md").write_text("personal modification\n")
+    manifest = box.manifest()
+    result = box.run_engine("install", "--manifest", str(manifest), "--json")
+    assert result.returncode == (1 if edited else 0), result.stdout + result.stderr
+    for client in (".claude", ".agents"):
+        target = box.home / client / "skills/example-skill"
+        if edited:
+            assert (target / "SKILL.md").read_text() == "personal modification\n"
+        else:
+            receipt = json.loads((box.home / ".synthesis/onboarding/receipts.json").read_text())
+            assert receipt["org_skill_copies"][str(target)]["repository"] == box.skills_url
+    if not edited:
+        box.run_engine("repair", "--manifest", str(manifest), expect=0)
+        box.run_engine("uninstall", expect=0)
+        assert not (box.home / ".agents/skills/example-skill").exists()
+
+
+def test_organization_source_identity_keeps_host_path_and_nondefault_port():
+    identity = cli.onboard.organization_source_identity
+    assert identity("git@example.test:team/config.git") == identity("example.test/team/config")
+    assert identity("ssh://git@example.test:22/team/config.git") == identity("https://example.test/team/config.git")
+    assert identity("ssh://git@example.test:222/team/config.git") != identity("example.test/team/config")
+    assert identity("other.test/team/config") != identity("example.test/team/config")
+    assert identity("example.test/other/config") != identity("example.test/team/config")
+
+
+def test_mixed_organization_skill_layout_refuses_before_copies(box):
+    source = box.root / "skills-src"
+    (source / "other-skill").mkdir()
+    (source / "other-skill/SKILL.md").write_text("ambiguous second layout\n")
+    box._commit_all(source, "fixture ambiguity")
+    subprocess.run(["git", "-C", str(source), "push", str(box.skills_remote), "main"],
+        env=box.git_env, capture_output=True, check=True)
+    manifest = box.manifest()
+    result = box.run_engine("install", "--manifest", str(manifest), "--json")
+    assert result.returncode != 0
+    assert not (box.home / ".agents/skills/example-skill").exists()
+    assert not (box.home / ".agents/skills/other-skill").exists()
+
+
 def test_two_org_sources_cannot_own_the_same_skill_target(box):
     import yaml
     manifest = box.manifest()

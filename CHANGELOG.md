@@ -27,6 +27,8 @@ Cross-source collisions and edited copies fail closed; unchanged legacy copies
 require byte verification against their recorded Git revision. Organization
 copies never trigger public-plugin fallback retirement in an unselected client.
 Organization copies are not mistaken for duplicate public-plugin skills.
+Top-level and nested organization skill layouts have one unambiguous inventory;
+existing shared copies are adopted only after source-commit byte verification.
 Onboarding 2.3.0 includes schema, CLI, engine, recovery, ownership, and
 producer/consumer regression coverage.
 

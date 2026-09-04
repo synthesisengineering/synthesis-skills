@@ -190,6 +190,11 @@ execute an installer. Shared skill repositories are copied through the public
 engine's fixed direct-copy capability. Knowledge repositories are cloned or
 updated only when their exact remote and cleanliness checks pass.
 
+The copy capability accepts either `skills/<name>/SKILL.md` or top-level
+`<name>/SKILL.md` organization repositories, never both layouts at once.
+Existing shared copies require matching repository identity and exact source
+bytes at their recorded commit before enrollment can adopt their ownership.
+
 For a new installation, use `synthesis setup --org-repo URL`. For an existing
 enabled full or skills-only installation, use `synthesis enroll --org-repo URL`.
 Enrollment preserves the base profile, personal workspace, configuration, layer

@@ -1408,6 +1408,37 @@ def organization_skill_targets(clients_wanted=None):
             for client in (clients_wanted if clients_wanted is not None else ["claude", "codex"])]
 
 
+def organization_skill_directory(repository):
+    repository = Path(repository)
+    nested = repository / "skills"
+    if nested.is_dir():
+        if any(repository.glob("*/SKILL.md")):
+            raise ContractError("organization skill repository has ambiguous nested and top-level layouts")
+        return nested
+    return repository
+
+
+def organization_source_identity(value):
+    from urllib.parse import urlsplit
+    value = str(value)
+    if "://" in value:
+        parsed = urlsplit(value)
+        host, path = parsed.hostname or "", parsed.path
+        default_port = {"ssh": 22, "https": 443}.get(parsed.scheme)
+        if parsed.port is not None and parsed.port != default_port:
+            host += ":%s" % parsed.port
+    elif re.match(r"^[^@/]+@[^:/]+:", value):
+        host, path = value.split("@", 1)[1].split(":", 1)
+    else:
+        host, _, path = value.partition("/")
+    path = path.strip("/")
+    if path.endswith(".git"):
+        path = path[:-4]
+    if not host or not path or ".." in path.split("/"):
+        raise ContractError("organization source identity is invalid")
+    return host.lower() + "/" + path
+
+
 def verify_org_copy(path, metadata, clients_wanted=None, source_repo=None):
     path = Path(path)
     if path.parent not in organization_skill_targets(clients_wanted) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", path.name):
@@ -1415,15 +1446,17 @@ def verify_org_copy(path, metadata, clients_wanted=None, source_repo=None):
     regular_tree(path)
     if path.exists():
         provenance = json.loads((path / ".source.json").read_text())
-        if provenance.get("source_type") != "organization" or provenance.get("source_repo") != metadata["repository"]:
+        if provenance.get("source_type") not in {"organization", "shared"} or organization_source_identity(provenance.get("source_repo")) != organization_source_identity(metadata["repository"]):
             raise ContractError("organization skill conflicts with an existing source: %s" % path.name)
         if metadata.get("sha256") and paths_digest([path]) != metadata["sha256"]:
             raise ContractError("organization skill was edited; preserved: %s" % path.name)
         if not metadata.get("sha256"):
             commit = provenance.get("source_commit", "")
-            prefix = "skills/%s/" % path.name
-            if source_repo is None or not re.fullmatch(r"[0-9a-f]{40}", commit) or provenance.get("source_path") != prefix + "SKILL.md":
+            source_path = provenance.get("source_path")
+            allowed = {"skills/%s/SKILL.md" % path.name, "%s/SKILL.md" % path.name}
+            if source_repo is None or not re.fullmatch(r"[0-9a-f]{40}", commit) or source_path not in allowed:
                 raise ContractError("organization skill has no verifiable ownership receipt; preserved: %s" % path.name)
+            prefix = source_path[:-len("SKILL.md")]
             listing = subprocess.run(["git", "-C", str(source_repo), "ls-tree", "-rz", commit, "--", prefix], capture_output=True)
             expected = {}
             if listing.returncode:
@@ -1482,7 +1515,12 @@ def phase_org_skills(report, manifest, receipts, dry_run, clients_wanted=None, j
         prepared[repo["name"]] = clone_or_update(report, "org-skills", [repo["repository"]], cache, dry_run)
         if prepared[repo["name"]] in {ERROR, WOULD}:
             continue
-        for skill in (cache / "skills").glob("*/SKILL.md"):
+        try:
+            skill_directory = organization_skill_directory(cache)
+        except ContractError as exc:
+            report.add("org-skills", ERROR, str(exc))
+            return
+        for skill in skill_directory.glob("*/SKILL.md"):
             for parent in targets:
                 target = str(parent / skill.parent.name)
                 if target in owners and owners[target] != repo["repository"]:
@@ -1533,12 +1571,12 @@ def phase_org_skills(report, manifest, receipts, dry_run, clients_wanted=None, j
             continue
         rc, _, _ = run(["sh", str(installer), "status"], env=env, timeout=300)
         source_names = [
-            path.parent.name for path in (cache / "skills").glob("*/SKILL.md")
+            path.parent.name for path in organization_skill_directory(cache).glob("*/SKILL.md")
         ]
         owned = receipts.data.setdefault("org_skill_copies", {})
         current_targets = {str(target / name) for target in target_paths for name in source_names}
         try:
-            regular_tree(cache / "skills")
+            regular_tree(organization_skill_directory(cache))
             for target in target_paths:
                 for name in source_names:
                     installed = target / name
