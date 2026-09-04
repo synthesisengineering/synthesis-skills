@@ -29,6 +29,20 @@ BACKUP_KEEP_RUNS=10
 SOURCE_REPO="${SYNTHESIS_SKILLS_SOURCE_REPO:-github.com/synthesisengineering/synthesis-skills}"
 SOURCE_TYPE="${SYNTHESIS_SKILLS_SOURCE_TYPE:-public}"
 SKILLS_DIR="${CACHE_DIR}/skills"
+SOURCE_PATH_PREFIX="skills/"
+if [ "$SOURCE_TYPE" = "organization" ] && [ "$SOURCE_MODE" = "local" ]; then
+    if [ -d "$SKILLS_DIR" ]; then
+        for TOP_LEVEL_SKILL in "$CACHE_DIR"/*/SKILL.md; do
+            if [ -f "$TOP_LEVEL_SKILL" ]; then
+                echo "ERROR: organization skill source has ambiguous layouts." >&2
+                exit 1
+            fi
+        done
+    else
+        SKILLS_DIR="$CACHE_DIR"
+        SOURCE_PATH_PREFIX=""
+    fi
+fi
 
 # Skill directories to install to (auto-detected)
 detect_targets() {
@@ -168,6 +182,9 @@ retire_direct_copies() {
 }
 
 retire_plugin_fallbacks() {
+    # Native public plugins do not contain organization skills. Never retire
+    # those copies, especially in a runtime outside the selected target set.
+    [ "$SOURCE_TYPE" = "public" ] || return 0
     if claude_plugin_installed; then
         retire_direct_copies "$USER_HOME/.claude/skills"
     fi
@@ -179,7 +196,7 @@ retire_plugin_fallbacks() {
 
 # List skill directories (directories containing SKILL.md)
 list_skills() {
-    find "$1" -maxdepth 2 -name "SKILL.md" -exec dirname {} \; | sort
+    find "$1" -mindepth 2 -maxdepth 2 -name "SKILL.md" -exec dirname {} \; | sort
 }
 
 # Get list of our skill names from the repo
@@ -212,7 +229,7 @@ write_source_json() {
 {
   "source_repo": "${SOURCE_REPO}",
   "source_type": "${SOURCE_TYPE}",
-  "source_path": "skills/${skill_name}/SKILL.md",
+  "source_path": "${SOURCE_PATH_PREFIX}${skill_name}/SKILL.md",
   "source_commit": "${commit_hash}",
   "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "installed_by": "install.sh"
@@ -552,7 +569,7 @@ do_status() {
     TARGETS=$(detect_targets)
     STATUS_FAILURES=0
 
-    if claude_plugin_installed; then
+    if [ "$SOURCE_TYPE" = "public" ] && claude_plugin_installed; then
         for skill_dir in $(list_skills "$STATUS_SKILLS_DIR"); do
             skill_name=$(basename "$skill_dir")
             if [ -d "$USER_HOME/.claude/skills/$skill_name" ]; then
@@ -561,7 +578,7 @@ do_status() {
             fi
         done
     fi
-    if codex_plugin_installed; then
+    if [ "$SOURCE_TYPE" = "public" ] && codex_plugin_installed; then
         for target in "$USER_HOME/.agents/skills" "$USER_HOME/.codex/skills"; do
             for skill_dir in $(list_skills "$STATUS_SKILLS_DIR"); do
                 skill_name=$(basename "$skill_dir")

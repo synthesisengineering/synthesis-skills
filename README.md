@@ -11,6 +11,14 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Add an organization without resetting an existing installation (September
+2026).** Release **4.95.0** adds `synthesis enroll` for saved full or skills-only
+installations. It preserves personal configuration, selected clients, and release
+policy while registering the organization for future updates. Exact-target
+recovery journals protect generated instructions, selected organization skill
+copies, receipts, and invite use. Replay, doctor, and uninstall enforce the same
+ownership boundaries.
+
 **Private instruction context is now a declared, durable organization overlay
 (September 2026).** Release **4.94.0** lets a full organization setup layer one
 user-owned committed source after the public and organization sources without
@@ -748,12 +756,15 @@ synthesis status
 synthesis doctor
 synthesis update
 synthesis repair
+synthesis enroll --org-repo URL
 synthesis workspace ensure --name my-workspace
 synthesis uninstall --purge
 ```
 
 Stable is the default. Use `--channel edge` to follow `main`, or `--pin X.Y.Z`
-for an exact release. Organization enrollment uses `--org-repo URL` or a
+for an exact release. New users can include an organization in full setup;
+existing users use `synthesis enroll` without reinitializing personal layers.
+Organization enrollment uses `--org-repo URL` or a
 credential-free, time-bounded `--invite FILE`; organization repositories carry
 declarative data and one tracked instruction source, never installer code.
 Users who need private context at the organization workspace root can declare a

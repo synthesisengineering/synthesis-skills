@@ -80,6 +80,8 @@ def validate(repo_root: Path) -> None:
             raise CapabilityError("profile %s names an unknown layer" % profile)
     if capabilities["profiles"]["full"]["conditional_layers"] != ["organization"]:
         raise CapabilityError("organization must be the full profile's only conditional layer")
+    if capabilities["profiles"]["skills-only"]["conditional_layers"] != ["organization"]:
+        raise CapabilityError("skills-only must expose the additive organization layer")
 
     component_paths = {entry["path"] for entry in components["installers"]}
     for path in ("install.sh", "onboard.sh"):
@@ -96,6 +98,7 @@ def validate(repo_root: Path) -> None:
         "synthesis update",
         "synthesis doctor",
         "synthesis workspace ensure",
+        "synthesis enroll",
     ):
         _require(readme, fragment, "README.md")
 

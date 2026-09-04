@@ -11,12 +11,15 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 import onboard
 import organization
+from enrollment import (EnrollmentJournal, recover_enrollments, require_settled_enrollments,
+                        engine_lock, engine_state_root, recover_copy_transactions)
 from system_contract import (
     DESCRIPTOR_FIELDS,
     LAUNCHER_MARK,
@@ -24,12 +27,14 @@ from system_contract import (
     ContractError,
     SystemState,
     active_release_descriptor,
+    atomic_write_json,
     consume_invite,
     describe_personal_instruction_source,
     default_desired_state,
     json_digest,
     personal_instruction_source_path,
     validate_invite,
+    validate_additive_organization as _validate_additive_organization,
     validate_desired_state,
     validate_repository_url,
     verify_materialized_release,
@@ -37,10 +42,11 @@ from system_contract import (
 )
 
 
-ENGINE_VERSION = "2.2.0"
+ENGINE_VERSION = "2.3.0"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
     "setup",
+    "enroll",
     "update",
     "repair",
     "status",
@@ -103,6 +109,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="archive and replace an existing unreceipted workspace instruction pair",
     )
     _common_output(setup)
+
+    enroll = commands.add_parser("enroll", help="add an organization without reinitializing personal layers")
+    org_source = enroll.add_mutually_exclusive_group(required=True)
+    org_source.add_argument("--org-repo")
+    org_source.add_argument("--invite", type=Path)
+    overlay = enroll.add_mutually_exclusive_group()
+    overlay.add_argument("--personal-instruction-source", type=Path)
+    overlay.add_argument("--clear-personal-instruction-source", action="store_true")
+    enroll.add_argument("--adopt-workspace-instructions", action="store_true")
+    _common_output(enroll)
 
     for name in ("update", "repair"):
         sub = commands.add_parser(name, help="%s the declared installation" % name)
@@ -754,6 +770,7 @@ def _prepare_organization(
     desired: dict[str, Any],
     *,
     verify_only: bool = False,
+    restore_commit: bool = False,
 ) -> tuple[dict[str, Any], Path | None, dict[str, Any] | None]:
     organizations = desired.get("organizations") or []
     if not organizations:
@@ -767,13 +784,16 @@ def _prepare_organization(
         organization.default_data_root(state.home),
         expected_commit=expected,
         refresh=not verify_only,
+        **({"restore_commit": True} if restore_commit else {}),
     )
     manifest_path = root / organization.MANIFEST_RELATIVE
     manifest = onboard.load_manifest(manifest_path)
+    if entry.get("mode") == "additive":
+        _validate_additive_organization(desired, manifest, entry)
     entry["commit"] = commit
     updated = dict(desired)
     updated["organizations"] = [entry]
-    if not verify_only:
+    if not verify_only and entry.get("mode") != "additive":
         ecosystem = manifest.get("ecosystem") or {}
         updated["clients"] = sorted(
             set(ecosystem.get("clients", ["claude", "codex"]))
@@ -784,6 +804,102 @@ def _prepare_organization(
         }
     validate_desired_state(updated)
     return updated, manifest_path, manifest
+
+
+@contextlib.contextmanager
+def _proposed_state(state, desired):
+    state.state_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="proposed-", dir=state.state_dir) as directory:
+        path = Path(directory) / "desired.json"
+        atomic_write_json(path, desired)
+        yield path
+
+
+def _enroll(args, argv, state, engine_runner):
+    with state.locked(), engine_lock(engine_state_root(state.home)):
+        base = state.read_desired()
+        if not base or not base["enabled"]:
+            raise ContractError("enrollment requires an existing enabled installation; run synthesis setup")
+        invite = validate_invite(json.loads(args.invite.read_text())) if args.invite else None
+        repository = invite["repository"] if invite else args.org_repo
+        validate_repository_url(repository)
+        previous = (base.get("organizations") or [None])[0]
+        if previous and organization.canonical_remote(previous["repository"]) != organization.canonical_remote(repository):
+            raise ContractError("an organization is already enrolled; replacement is not additive")
+        active = _active_release()
+        if active and not _active_matches_policy(active, base):
+            raise RebootstrapRequired(base["release"]["channel"], base["release"]["version_pin"])
+        expected = invite.get("repository_commit") if invite else None
+        if previous and previous.get("commit_policy") == "pinned":
+            if expected and expected != previous["commit"]:
+                raise ContractError("enrollment cannot replace a pinned organization commit")
+            expected = previous["commit"]
+        root, commit = organization.acquire_repository(
+            repository, organization.default_data_root(state.home), expected_commit=expected,
+        )
+        manifest_path = root / organization.MANIFEST_RELATIVE
+        manifest = onboard.load_manifest(manifest_path)
+        entry = {"repository": repository, "manifest_path": organization.MANIFEST_RELATIVE,
+                 "commit_policy": "pinned" if expected else "floating", "commit": commit,
+                 "mode": "additive", "workspace": manifest["org"]["workspace"]}
+        if previous and previous.get("workspace") and previous["workspace"] != entry["workspace"]:
+            raise ContractError("organization workspace changed; refusing replacement")
+        _validate_additive_organization(base, manifest, entry)
+        desired = {**base, "organizations": [entry],
+                   "layers": {**base["layers"], "organization": "selected"}}
+        if args.clear_personal_instruction_source:
+            if args.adopt_workspace_instructions:
+                raise ContractError("workspace instruction adoption cannot clear the personal instruction source")
+            desired["personal_instruction_source"] = None
+        elif args.personal_instruction_source:
+            desired["personal_instruction_source"] = describe_personal_instruction_source(args.personal_instruction_source)
+        validate_desired_state(desired)
+        workspaces = Path(os.environ.get("SYNTHESIS_WORKSPACES_ROOT", str(state.home / "workspaces")))
+        receipts = Path(os.environ.get("SYNTHESIS_ONBOARD_STATE_DIR", str(state.home / ".synthesis/onboarding"))) / "receipts.json"
+        pair = [workspaces / entry["workspace"] / name for name in ("AGENTS.md", "CLAUDE.md")]
+        parents = [state.home / (".claude" if c == "claude" else ".agents") / "skills" for c in base["clients"]]
+        journal = None
+
+        def operation(tx):
+            nonlocal journal
+            journal = EnrollmentJournal.create(
+                state.state_dir / "enrollments", tx["transaction_id"], base,
+                files=[*pair, receipts, state.invites_path, state.desired_path],
+                skill_parents=parents, proposed=desired,
+            )
+            journal.validate_scope(state, desired)
+            for path in (state.desired_path, state.invites_path, receipts, *pair):
+                journal.capture(path)
+            if invite:
+                consume_invite(invite, state, already_locked=True)
+            details = {}
+            with _proposed_state(state, desired) as proposed:
+                for command in ("enroll", "doctor"):
+                    engine_args = _engine_args(desired, command, args, desired_state_path=proposed)
+                    engine_args.extend(["--manifest", str(manifest_path)])
+                    if command == "enroll":
+                        engine_args.extend(["--enrollment-journal", str(journal.root)])
+                    code, result = _execute_engine(engine_runner, engine_args)
+                    if code:
+                        raise EngineFailure(code)
+                    if result is not None:
+                        details[command] = result
+            result = _planes(desired, "enroll")
+            result.update({"_desired": desired, "details": {"engine": details,
+                "enrollment_journal": str(journal.root)}})
+            return result
+
+        def rollback(_error):
+            if journal is not None:
+                # The engine writes additional exact targets to the journal.
+                recovered = EnrollmentJournal(journal.root)
+                recovered.validate_scope(state, base)
+                recovered.rollback()
+
+        transaction = state.run_transaction("enroll", desired, operation,
+                                            rollback=rollback, already_locked=True)
+        EnrollmentJournal(journal.root).commit()
+        return transaction
 
 
 def _active_matches_policy(active: dict[str, Any], desired: dict[str, Any]) -> bool:
@@ -1025,6 +1141,20 @@ def main(
         lambda engine_args: _quiet_engine_runner(engine_args, verbose=args.verbose)
     )
     try:
+        if args.command in {"setup", "enroll", "update", "repair", "workspace", "uninstall"}:
+            with state.locked(), engine_lock(engine_state_root(state.home)):
+                recover_copy_transactions(engine_state_root(state.home), state.home)
+                recover_enrollments(state)
+        if args.command == "enroll":
+            try:
+                transaction = _enroll(args, argv, state, engine_runner)
+            except RebootstrapRequired as exc:
+                active = _active_release()
+                if active is None:
+                    raise ContractError("enrollment cannot transfer to its selected release")
+                return _run_release_bootstrap(argv, active, exc.channel, exc.version_pin)
+            _render(transaction, args.json)
+            return 0
         if args.command == "update":
             transferred = _bootstrap_update(argv, state)
             if transferred is not None:
@@ -1048,6 +1178,8 @@ def main(
                 expected_commit = invite.get("repository_commit")
             if repository:
                 validate_repository_url(repository)
+                if args.profile == "skills-only":
+                    raise ContractError("set up skills-only first, then use synthesis enroll to add an organization")
             else:
                 # Without an organization the release policy is fully known
                 # here, so a needed transfer to the bootstrap happens before
@@ -1248,7 +1380,8 @@ def main(
 
                     def update_operation(_transaction: dict[str, Any]) -> dict[str, Any]:
                         resolved, manifest_path, _manifest = _prepare_organization(
-                            state, desired, verify_only=args.command == "repair"
+                            state, desired, verify_only=args.command == "repair",
+                            restore_commit=args.command == "repair",
                         )
                         active = _active_release()
                         if active and not _active_matches_policy(active, resolved):
@@ -1256,19 +1389,19 @@ def main(
                             raise RebootstrapRequired(
                                 release["channel"], release.get("version_pin")
                             )
-                        engine_args = _engine_args(
-                            resolved,
-                            args.command,
-                            args,
-                            desired_state_path=(
-                                None if migrated_legacy else state.desired_path
-                            ),
+                        # The engine must see the newly resolved commit,
+                        # clients and policy, not the preceding generation.
+                        proposed_context = (
+                            _proposed_state(state, resolved) if resolved != desired
+                            else contextlib.nullcontext(None if migrated_legacy else state.desired_path)
                         )
-                        if resolved["release"] != desired["release"]:
-                            engine_args.append("--policy-transition")
-                        if manifest_path:
-                            engine_args.extend(["--manifest", str(manifest_path)])
-                        code, engine_details = _execute_engine(engine_runner, engine_args)
+                        with proposed_context as desired_path:
+                            engine_args = _engine_args(resolved, args.command, args, desired_state_path=desired_path)
+                            if resolved["release"] != desired["release"]:
+                                engine_args.append("--policy-transition")
+                            if manifest_path:
+                                engine_args.extend(["--manifest", str(manifest_path)])
+                            code, engine_details = _execute_engine(engine_runner, engine_args)
                         if code:
                             raise EngineFailure(code)
                         result = _planes(resolved, args.command)
@@ -1365,6 +1498,7 @@ def main(
 
         if args.command == "doctor":
             with state.locked():
+                require_settled_enrollments(state)
                 desired = state.read_desired()
                 if desired is None:
                     raise ContractError("no desired state exists; run synthesis setup")

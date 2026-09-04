@@ -28,7 +28,9 @@ def command(*args: str, cwd: Path | None = None) -> str:
 def repository(tmp_path: Path) -> tuple[Path, Path, dict]:
     remote = tmp_path / "remote.git"
     repo = tmp_path / "repo"
-    command("git", "init", "--bare", "-q", str(remote))
+    # Retirement fixtures name origin/main; do not inherit a runner-specific
+    # default branch when constructing their synthetic remote.
+    command("git", "init", "--bare", "-q", "-b", "main", str(remote))
     command("git", "clone", "-q", str(remote), str(repo))
     command("git", "config", "user.name", "Test", cwd=repo)
     command("git", "config", "user.email", "test@example.com", cwd=repo)

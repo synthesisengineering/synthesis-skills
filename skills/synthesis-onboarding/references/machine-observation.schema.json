@@ -25,7 +25,7 @@
           "transaction_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
           "generation": {"type": "integer", "minimum": 1},
           "state": {"enum": ["pending", "committed", "aborted"]},
-          "command": {"enum": ["setup", "update", "repair", "workspace-ensure", "uninstall"]},
+          "command": {"enum": ["setup", "enroll", "update", "repair", "workspace-ensure", "uninstall"]},
           "desired_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
           "committed_desired_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
           "release": {"$ref": "release-descriptor.schema.json"},

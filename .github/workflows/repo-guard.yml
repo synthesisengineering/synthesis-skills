@@ -1,0 +1,26 @@
+name: Repo guard
+
+on:
+  pull_request:
+    paths:
+      - 'skills/synthesis-repo-guard/**'
+      - '.github/workflows/repo-guard.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'skills/synthesis-repo-guard/**'
+      - '.github/workflows/repo-guard.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  checkpoint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pytest pyyaml
+      - run: python -m pytest skills/synthesis-repo-guard/test_checkpoint_sync.py skills/synthesis-repo-guard/test_deleted_paths.py -q

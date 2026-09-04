@@ -970,7 +970,7 @@ def test_repair_reconciles_recorded_org_policy_without_advancing_it(
         engine_runner=lambda argv: engine_calls.append(argv) or 0,
     ) == 0
     assert acquisition_calls == [
-        {"expected_commit": recorded_commit, "refresh": False}
+        {"expected_commit": recorded_commit, "refresh": False, "restore_commit": True}
     ]
     assert engine_calls == [
         [

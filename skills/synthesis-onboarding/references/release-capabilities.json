@@ -6,6 +6,7 @@
     "name": "synthesis",
     "commands": [
       "setup",
+      "enroll",
       "update",
       "repair",
       "status",
@@ -38,7 +39,7 @@
       "primary": false,
       "bootstrap_arguments": ["setup", "--profile", "skills-only"],
       "selected_layers": ["skills", "session-context", "lifecycle"],
-      "conditional_layers": []
+      "conditional_layers": ["organization"]
     }
   },
   "release_policy": {

@@ -70,9 +70,14 @@ def acquire_repository(
     data_root: Path,
     expected_commit: str | None = None,
     refresh: bool = True,
+    restore_commit: bool = False,
 ) -> tuple[Path, str]:
     """Clone or fast-forward a data-only org repository and return its commit."""
     validate_repository_url(url)
+    if expected_commit is not None and not re.fullmatch(r"[0-9a-f]{40}", expected_commit):
+        raise ContractError("organization commit must be an exact commit identity")
+    if restore_commit and not expected_commit:
+        raise ContractError("organization repair requires its recorded commit")
     slug = repository_slug(url)
     data_root = Path(data_root)
     data_root.mkdir(parents=True, exist_ok=True)
@@ -104,6 +109,10 @@ def acquire_repository(
             else:
                 branch = _git("symbolic-ref", "--short", "refs/remotes/origin/HEAD", cwd=root)
                 _git("checkout", "--detach", branch, cwd=root)
+        elif restore_commit:
+            if not _git("branch", "-r", "--contains", expected_commit, cwd=root):
+                raise ContractError("recorded organization commit has no fetched source provenance")
+            _git("checkout", "--detach", expected_commit, cwd=root)
     else:
         if not refresh:
             raise ContractError("organization repository is not installed")

@@ -104,8 +104,11 @@
           "repository": {"type": "string", "minLength": 1},
           "manifest_path": {"const": ".agents/onboarding.yaml"},
           "commit_policy": {"enum": ["floating", "pinned"]},
-          "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
-        }
+          "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+          "mode": {"const": "additive"},
+          "workspace": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"}
+        },
+        "dependentRequired": {"mode": ["workspace"], "workspace": ["mode"]}
       }
     }
   },
@@ -139,7 +142,7 @@
       "then": {
         "properties": {
           "personal_configuration": {"type": "null"},
-          "organizations": {"maxItems": 0},
+          "organizations": {"items": {"required": ["mode", "workspace"]}},
           "layers": {
             "properties": {
               "skills": {"const": "selected"},
@@ -150,7 +153,6 @@
               "coordination": {"const": "declined"},
               "doctors-conformance": {"const": "declined"},
               "personal-policy": {"const": "declined"},
-              "organization": {"const": "declined"},
               "knowledge-bases": {"const": "declined"},
               "lifecycle": {"const": "selected"}
             }
@@ -170,7 +172,6 @@
       },
       "then": {
         "properties": {
-          "profile": {"const": "full"},
           "organizations": {"minItems": 1}
         }
       }
