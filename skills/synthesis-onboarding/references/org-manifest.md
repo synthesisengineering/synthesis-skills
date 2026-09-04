@@ -109,6 +109,19 @@ synthesis setup --profile full --org-repo ssh://git@example.test/example/onboard
 synthesis setup --profile full --invite invitation.json
 ```
 
+A user may add a private personal instruction layer without putting its path or
+repository in this shareable manifest:
+
+```bash
+synthesis setup --profile full \
+  --org-repo ssh://git@example.test/example/onboarding-config.git \
+  --personal-instruction-source /absolute/path/to/private-config/.agents/workspace-instructions.md
+```
+
+The engine stores that declaration only in local desired state. Update and
+repair replay it. A later setup preserves it unless the user explicitly passes
+`--clear-personal-instruction-source`.
+
 An invite carries the repository URL, optional exact commit, issuance time,
 expiry no more than seven days later, and a nonce. It carries no credential.
 The engine records successful use and rejects replay. Repository authentication
@@ -133,11 +146,20 @@ an executable manifest field is rejected.
 
 ## Instruction provenance
 
-The declared source must be a regular Git-tracked file in the organization
-configuration repository. The engine records its repository, commit, relative
-path, and digest, then activates identical `AGENTS.md` and `CLAUDE.md` outputs
-as one transaction. If either target collides or activation fails, neither new
-output remains active. Doctor verifies both output digests against the receipt.
+The declared source must be a regular, committed, clean Git-tracked file in the
+organization configuration repository. The engine records its repository,
+commit, relative path, and digest. It renders the public baseline first, then
+the organization source, then the optional user-local personal source, and
+activates identical `AGENTS.md` and `CLAUDE.md` outputs as one transaction. If
+either target collides or activation fails, neither new output remains active.
+Doctor verifies source commits and digests plus both output digests against the
+receipt.
+
+Existing workspace-root instruction files remain untouched unless the user
+passes `--adopt-workspace-instructions`. Adoption accepts regular files only,
+archives and byte-verifies them before activation, and records their archive
+paths and digests in the local receipt. A partial activation restores both
+original files; the archives remain available.
 
 ## Public capability ownership
 

@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.0"
+  version: "2.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -37,6 +37,9 @@ After bootstrap, use the installed public command:
 synthesis setup [--profile full|skills-only] [--clients claude,codex]
                 [--channel stable|edge] [--pin X.Y.Z]
                 [--answers PATH] [--org-repo URL | --invite PATH]
+                [--personal-instruction-source PATH]
+                [--adopt-workspace-instructions]
+                [--clear-personal-instruction-source]
 synthesis update
 synthesis repair
 synthesis status [--json]
@@ -147,9 +150,32 @@ reported with Git's own reason, so a hook refusal is never mislabeled as a
 missing identity. Edit and commit the tracked source, never the workspace
 entry points.
 
-Organization instructions use the same provenance rule: exactly one tracked
-source is materialized as a pair, and both outputs activate or neither does.
-Doctor verifies the source commit, source digest, output digests, and receipt.
+Organization instructions use the same provenance rule. The rendered graph is
+public baseline, exactly one organization source, then an optional user-owned
+personal source. Every repository source must be a committed, clean, regular
+Git-tracked file; untracked, dirty, traversing, and symbolic-link sources are
+refused. Both outputs activate or neither does. Doctor verifies each source
+commit and digest plus both output digests against the receipt.
+
+The optional personal layer is local desired state, never organization data:
+
+```bash
+synthesis setup --profile full --org-repo URL \
+  --personal-instruction-source /absolute/path/to/private-config/.agents/workspace-instructions.md
+```
+
+Setup persists the source repository and relative path, so `synthesis update`
+and `synthesis repair` replay and revalidate it. Omitting the option on a later
+setup preserves the declared source; removing it requires
+`--clear-personal-instruction-source`.
+
+An existing workspace-root `AGENTS.md` or `CLAUDE.md` without an engine receipt
+is preserved by default. After the complete instruction content is represented
+in committed graph sources, `--adopt-workspace-instructions` explicitly archives
+each existing regular file, verifies the archive bytes, and then activates the
+pair. The receipt records archive paths, prior digests, modes, and time. A
+failure after the first activation restores both original outputs while keeping
+the verified archives.
 
 ## Declarative organization enrollment
 
@@ -211,8 +237,9 @@ setting and is never auto-approved.
   transactions, capability IDs, doctor logic, and release descriptors.
 - Organization repository: declarative repositories, welcome text, trusted
   acceptance IDs, and one tracked instruction source.
-- User: credentials, personal policy content, source edits, client restart,
-  and deployment decisions.
+- User: credentials, personal policy content, optional personal instruction
+  source and explicit adoption, source edits, client restart, and deployment
+  decisions.
 
 Unknown fields, unsafe paths, embedded credentials, dirty or wrong-remote
 clones, symlinked release files, and executable organization fields fail closed.

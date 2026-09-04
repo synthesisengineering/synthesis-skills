@@ -176,10 +176,58 @@ def test_json_schemas_and_runtime_share_valid_and_invalid_corpora(
     desired_validator = Draft202012Validator(contracts["desired"])
     desired_validator.validate(valid_full)
     system_contract.validate_desired_state(valid_full)
+    legacy_without_personal_source = {
+        key: value
+        for key, value in valid_full.items()
+        if key != "personal_instruction_source"
+    }
+    desired_validator.validate(legacy_without_personal_source)
+    system_contract.validate_desired_state(legacy_without_personal_source)
+    organization = {
+        "repository": "https://example.test/org/config.git",
+        "manifest_path": ".agents/onboarding.yaml",
+        "commit_policy": "pinned",
+        "commit": "1" * 40,
+    }
+    with_personal_source = system_contract.default_desired_state(
+        "full",
+        ["codex"],
+        "stable",
+        personal_workspace="example-user",
+        personal_configuration=full_configuration,
+        organizations=[organization],
+        personal_instruction_source={
+            "repository": "/workspaces/example/private-config",
+            "path": ".agents/workspace-instructions.md",
+        },
+    )
+    desired_validator.validate(with_personal_source)
+    system_contract.validate_desired_state(with_personal_source)
     invalid_state_shapes = [
         system_contract.default_desired_state("full", ["codex"], "stable"),
         {**desired, "layers": {}},
         {**desired, "layers": {**desired["layers"], "unknown": "declined"}},
+        {
+            **valid_full,
+            "personal_instruction_source": {
+                "repository": "/workspaces/example/private-config",
+                "path": ".agents/workspace-instructions.md",
+            },
+        },
+        {
+            **with_personal_source,
+            "personal_instruction_source": {
+                "repository": "relative/private-config",
+                "path": ".agents/workspace-instructions.md",
+            },
+        },
+        {
+            **with_personal_source,
+            "personal_instruction_source": {
+                "repository": "/workspaces/example/../private-config",
+                "path": ".agents/workspace-instructions.md",
+            },
+        },
         {
             **valid_full,
             "organizations": [
@@ -785,6 +833,120 @@ def test_instruction_pair_reports_user_drift_without_clobbering(tmp_path: Path) 
             previous_receipt=receipt,
         )
     assert (workspace / "AGENTS.md").read_text(encoding="utf-8") == "user edit\n"
+
+
+def test_instruction_pair_refreshes_source_receipt_when_bytes_are_unchanged(
+    tmp_path: Path,
+) -> None:
+    graph = {
+        "schema_version": 1,
+        "sources": [
+            {"role": "personal", "path": "instructions.md", "required": True}
+        ],
+        "output": "AGENTS.md",
+        "claude_adapter": "CLAUDE.md",
+    }
+    sources = []
+    for name in ("source-a", "source-b"):
+        source = tmp_path / name
+        source.mkdir()
+        git(source, "init", "-q", "-b", "main")
+        (source / "instructions.md").write_text("Same bytes.\n", encoding="utf-8")
+        git(source, "add", "instructions.md")
+        git(source, "commit", "-q", "-m", "source")
+        sources.append(source)
+    workspace = tmp_path / "workspace"
+    first = system_contract.materialize_instruction_pair(
+        graph, {"personal": sources[0]}, workspace, generation=1
+    )
+    second = system_contract.materialize_instruction_pair(
+        graph,
+        {"personal": sources[1]},
+        workspace,
+        generation=2,
+        previous_receipt=first,
+    )
+    assert second["unchanged"] is True
+    assert second["generation"] == 1
+    assert second["sources"][0]["repository"] == str(sources[1].resolve())
+    assert second["verified_at"]
+
+
+def test_instruction_pair_rejects_uncommitted_untracked_and_symlink_sources(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    git(source, "init", "-q", "-b", "main")
+    tracked = source / "instructions.md"
+    tracked.write_text("Committed instructions.\n", encoding="utf-8")
+    git(source, "add", "instructions.md")
+    git(source, "commit", "-q", "-m", "source")
+    graph = {
+        "schema_version": 1,
+        "sources": [
+            {"role": "personal", "path": "instructions.md", "required": True}
+        ],
+        "output": "AGENTS.md",
+        "claude_adapter": "CLAUDE.md",
+    }
+
+    tracked.write_text("Dirty instructions.\n", encoding="utf-8")
+    with pytest.raises(system_contract.ContractError, match="uncommitted"):
+        system_contract.materialize_instruction_pair(
+            graph, {"personal": source}, tmp_path / "dirty-workspace", generation=1
+        )
+    tracked.write_text("Committed instructions.\n", encoding="utf-8")
+
+    untracked = source / "untracked.md"
+    untracked.write_text("Untracked.\n", encoding="utf-8")
+    untracked_graph = {
+        **graph,
+        "sources": [
+            {"role": "personal", "path": "untracked.md", "required": True}
+        ],
+    }
+    with pytest.raises(system_contract.ContractError, match="not Git-tracked"):
+        system_contract.materialize_instruction_pair(
+            untracked_graph,
+            {"personal": source},
+            tmp_path / "untracked-workspace",
+            generation=1,
+        )
+
+    link = source / "linked.md"
+    link.symlink_to(tracked.name)
+    link_graph = {
+        **graph,
+        "sources": [
+            {"role": "personal", "path": "linked.md", "required": True}
+        ],
+    }
+    with pytest.raises(system_contract.ContractError, match="symbolic link"):
+        system_contract.materialize_instruction_pair(
+            link_graph,
+            {"personal": source},
+            tmp_path / "link-workspace",
+            generation=1,
+        )
+
+    binary = source / "binary.md"
+    binary.write_bytes(b"\xff\xfe")
+    git(source, "add", "binary.md")
+    git(source, "commit", "-q", "-m", "binary source")
+    binary_graph = {
+        **graph,
+        "sources": [
+            {"role": "personal", "path": "binary.md", "required": True}
+        ],
+    }
+    with pytest.raises(system_contract.ContractError, match="valid UTF-8"):
+        system_contract.materialize_instruction_pair(
+            binary_graph,
+            {"personal": source},
+            tmp_path / "binary-workspace",
+            generation=1,
+        )
 
 
 def test_invite_is_bounded_and_cannot_replay(tmp_path: Path) -> None:

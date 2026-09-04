@@ -25,8 +25,10 @@ from system_contract import (
     SystemState,
     active_release_descriptor,
     consume_invite,
+    describe_personal_instruction_source,
     default_desired_state,
     json_digest,
+    personal_instruction_source_path,
     validate_invite,
     validate_desired_state,
     validate_repository_url,
@@ -35,7 +37,7 @@ from system_contract import (
 )
 
 
-ENGINE_VERSION = "2.1.0"
+ENGINE_VERSION = "2.2.0"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
     "setup",
@@ -84,6 +86,22 @@ def build_parser() -> argparse.ArgumentParser:
     setup.add_argument("--org-repo")
     setup.add_argument("--invite", type=Path)
     setup.add_argument("--no-services", action="store_true")
+    personal_source = setup.add_mutually_exclusive_group()
+    personal_source.add_argument(
+        "--personal-instruction-source",
+        type=Path,
+        help="user-owned Git-tracked instructions to layer after organization instructions",
+    )
+    personal_source.add_argument(
+        "--clear-personal-instruction-source",
+        action="store_true",
+        help="remove a previously declared personal instruction layer",
+    )
+    setup.add_argument(
+        "--adopt-workspace-instructions",
+        action="store_true",
+        help="archive and replace an existing unreceipted workspace instruction pair",
+    )
     _common_output(setup)
 
     for name in ("update", "repair"):
@@ -624,6 +642,13 @@ def _engine_args(
         translated.extend(["--answers", str(args.answers)])
     if getattr(args, "no_services", False):
         translated.append("--no-services")
+    personal_source = personal_instruction_source_path(
+        desired.get("personal_instruction_source")
+    )
+    if personal_source is not None:
+        translated.extend(["--personal-instruction-source", str(personal_source)])
+    if getattr(args, "adopt_workspace_instructions", False):
+        translated.append("--adopt-workspace-instructions")
     if desired_state_path is not None:
         translated.extend(["--desired-state", str(desired_state_path)])
     return translated
@@ -1036,6 +1061,28 @@ def main(
                     return _run_release_bootstrap(
                         argv, active, probe["release"]["channel"], args.pin
                     )
+            if (
+                args.personal_instruction_source
+                or args.clear_personal_instruction_source
+                or args.adopt_workspace_instructions
+            ) and (not repository or args.profile != "full"):
+                raise ContractError(
+                    "personal instruction configuration requires an organization and the full profile"
+                )
+            if args.clear_personal_instruction_source and args.adopt_workspace_instructions:
+                raise ContractError(
+                    "workspace instruction adoption cannot clear the personal instruction source"
+                )
+            personal_instruction_source = None
+            if repository and args.profile == "full":
+                if args.personal_instruction_source:
+                    personal_instruction_source = describe_personal_instruction_source(
+                        args.personal_instruction_source
+                    )
+                elif not args.clear_personal_instruction_source and previous_desired:
+                    personal_instruction_source = previous_desired.get(
+                        "personal_instruction_source"
+                    )
             request = {
                 "schema_version": 1,
                 "profile": args.profile,
@@ -1044,6 +1091,8 @@ def main(
                 "version_pin": args.pin,
                 "organization_repository": repository,
                 "organization_commit": expected_commit,
+                "personal_instruction_source": personal_instruction_source,
+                "adopt_workspace_instructions": args.adopt_workspace_instructions,
             }
 
             def setup_operation(_transaction: dict[str, Any]) -> dict[str, Any]:
@@ -1083,6 +1132,7 @@ def main(
                     channel=channel,
                     version_pin=version_pin,
                     organizations=organizations,
+                    personal_instruction_source=personal_instruction_source,
                 )
                 active = _active_release()
                 if active and not _active_matches_policy(active, desired):
@@ -1117,6 +1167,9 @@ def main(
                         personal_configuration=selection[
                             "personal_configuration"
                         ],
+                        personal_instruction_source=desired.get(
+                            "personal_instruction_source"
+                        ),
                     )
                 if invite:
                     consume_invite(invite, state, already_locked=True)

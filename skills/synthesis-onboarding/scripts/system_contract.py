@@ -750,6 +750,7 @@ def default_desired_state(
     organizations: list[dict[str, str]] | None = None,
     personal_workspace: str | None = None,
     personal_configuration: dict[str, Any] | None = None,
+    personal_instruction_source: dict[str, str] | None = None,
     enabled: bool = True,
 ) -> dict[str, Any]:
     if profile not in ("full", "skills-only"):
@@ -764,6 +765,15 @@ def default_desired_state(
         safe_identifier(personal_workspace, "personal workspace")
     personal_configuration = validate_personal_configuration(personal_configuration)
     organization_entries = organizations or []
+    personal_instruction_source = validate_personal_instruction_source(
+        personal_instruction_source
+    )
+    if personal_instruction_source is not None and (
+        profile != "full" or not organization_entries
+    ):
+        raise ContractError(
+            "a personal instruction source requires a full organization setup"
+        )
     if layers is None:
         selected = set(PROFILE_LAYERS[profile])
         if profile == "full" and organization_entries:
@@ -780,6 +790,7 @@ def default_desired_state(
         "release": {"channel": channel, "version_pin": version_pin},
         "personal_workspace": personal_workspace,
         "personal_configuration": personal_configuration,
+        "personal_instruction_source": personal_instruction_source,
         "layers": dict(sorted(layers.items())),
         "organizations": organization_entries,
     }
@@ -790,7 +801,8 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
     value = _require_mapping(value, "desired state")
     allowed = {
         "schema_version", "enabled", "profile", "clients", "release",
-        "personal_workspace", "personal_configuration", "layers", "organizations",
+        "personal_workspace", "personal_configuration", "personal_instruction_source",
+        "layers", "organizations",
     }
     required = {
         "schema_version", "enabled", "profile", "clients", "release",
@@ -831,6 +843,9 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
     configuration = validate_personal_configuration(
         value.get("personal_configuration")
     )
+    instruction_source = validate_personal_instruction_source(
+        value.get("personal_instruction_source")
+    )
     if profile == "full" and (workspace is None or configuration is None):
         raise ContractError(
             "full desired state requires a personal workspace and configuration"
@@ -854,6 +869,12 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
         raise ContractError("desired state supports at most one organization")
     if profile == "skills-only" and organizations:
         raise ContractError("skills-only desired state cannot enroll an organization")
+    if instruction_source is not None and (
+        profile != "full" or not organizations
+    ):
+        raise ContractError(
+            "a personal instruction source requires a full organization setup"
+        )
     selected_layers = set(PROFILE_LAYERS[profile])
     if profile == "full" and organizations:
         selected_layers.add("organization")
@@ -877,6 +898,65 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
         if not HEX40_RE.fullmatch(str(entry.get("commit") or "")):
             raise ContractError("desired state organization commit is invalid")
     return value
+
+
+def validate_personal_instruction_source(value: Any) -> dict[str, str] | None:
+    if value is None:
+        return None
+    value = _require_mapping(value, "desired state personal instruction source")
+    fields = {"repository", "path"}
+    _reject_unknown(value, fields, "desired state personal instruction source")
+    if set(value) != fields:
+        raise ContractError("desired state personal instruction source is incomplete")
+    repository = value.get("repository")
+    if not isinstance(repository, str) or not repository:
+        raise ContractError(
+            "desired state personal instruction source repository must be an absolute path"
+        )
+    repository_path = Path(repository)
+    if not repository_path.is_absolute() or repository_path != Path(
+        os.path.normpath(repository)
+    ):
+        raise ContractError(
+            "desired state personal instruction source repository must be an absolute normalized path"
+        )
+    relative = safe_relative_path(
+        value.get("path"), "desired state personal instruction source path"
+    )
+    return {"repository": str(repository_path), "path": relative}
+
+
+def personal_instruction_source_path(value: Any) -> Path | None:
+    source = validate_personal_instruction_source(value)
+    if source is None:
+        return None
+    return contained_path(
+        Path(source["repository"]),
+        source["path"],
+        "personal instruction source",
+    )
+
+
+def describe_personal_instruction_source(path: Path) -> dict[str, str]:
+    candidate = Path(path).expanduser()
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    if candidate.is_symlink() or not candidate.is_file():
+        raise ContractError("personal instruction source must be a regular file")
+    candidate = candidate.resolve()
+    root_text = _git(candidate.parent, "rev-parse", "--show-toplevel")
+    root = Path(root_text).resolve()
+    if root.is_symlink() or not root.is_dir():
+        raise ContractError("personal instruction source repository is unavailable")
+    try:
+        relative = candidate.relative_to(root).as_posix()
+    except ValueError as exc:
+        raise ContractError(
+            "personal instruction source is outside its Git repository"
+        ) from exc
+    relative = safe_relative_path(relative, "personal instruction source path")
+    _tracked_source(root, relative)
+    return {"repository": str(root), "path": relative}
 
 
 def validate_personal_configuration(value: Any) -> dict[str, Any] | None:
@@ -1734,8 +1814,56 @@ def _tracked_source(
     )
     if proc.returncode:
         raise ContractError("instruction source is not Git-tracked: %s" % relative)
+    if _git(root, "status", "--porcelain=v1", "--", relative):
+        raise ContractError(
+            "instruction source has uncommitted changes: %s" % relative
+        )
     commit = _git(root, "rev-parse", "HEAD^{commit}")
     return path, commit, file_digest(path)
+
+
+def verify_instruction_source_receipt(value: Any) -> dict[str, str]:
+    value = _require_mapping(value, "instruction source receipt")
+    fields = {"role", "repository", "commit", "path", "sha256"}
+    _reject_unknown(value, fields, "instruction source receipt")
+    if set(value) != fields:
+        raise ContractError("instruction source receipt is incomplete")
+    role = value.get("role")
+    if role not in {"public", "organization", "personal"}:
+        raise ContractError("instruction source receipt role is invalid")
+    repository = value.get("repository")
+    if not isinstance(repository, str) or not Path(repository).is_absolute():
+        raise ContractError("instruction source receipt repository is invalid")
+    commit = str(value.get("commit") or "")
+    digest = str(value.get("sha256") or "")
+    if not HEX40_RE.fullmatch(commit) or not HEX64_RE.fullmatch(digest):
+        raise ContractError("instruction source receipt identity is invalid")
+    relative = safe_relative_path(value.get("path"), "instruction source receipt path")
+    root = Path(repository)
+    path = contained_path(root, relative, "instruction source receipt path")
+    if not path.is_file() or path.is_symlink() or file_digest(path) != digest:
+        raise DriftError("instruction source bytes drifted: %s" % role)
+    if role != "public":
+        git_root = Path(_git(root, "rev-parse", "--show-toplevel")).resolve()
+        if git_root != root.resolve():
+            raise ContractError("instruction source repository root drifted: %s" % role)
+        if _git(root, "status", "--porcelain=v1", "--", relative):
+            raise DriftError("instruction source has uncommitted changes: %s" % role)
+        proc = subprocess.run(
+            ["git", "-C", str(root), "show", "%s:%s" % (commit, relative)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if proc.returncode or hashlib.sha256(proc.stdout).hexdigest() != digest:
+            raise DriftError("instruction source commit no longer binds bytes: %s" % role)
+    return {
+        "role": role,
+        "repository": str(root.resolve()),
+        "commit": commit,
+        "path": relative,
+        "sha256": digest,
+    }
 
 
 def _restore_file(path: Path, previous: tuple[bool, bytes, int]) -> None:
@@ -1812,7 +1940,12 @@ def materialize_instruction_pair(
             if required:
                 raise
             continue
-        text = path.read_text(encoding="utf-8").strip()
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+        except UnicodeError as exc:
+            raise ContractError(
+                "instruction source is not valid UTF-8: %s" % relative
+            ) from exc
         parts.extend(["", "## %s" % role.title(), "", text])
         source_receipts.append(
             {
@@ -1832,6 +1965,8 @@ def materialize_instruction_pair(
             for target in targets
         ):
             unchanged = dict(previous_receipt)
+            unchanged["sources"] = source_receipts
+            unchanged["verified_at"] = utcnow()
             unchanged["unchanged"] = True
             return unchanged
     previous = []

@@ -80,6 +80,11 @@
   "invite_schema_version": 1,
   "instruction_sources_schema_version": 1,
   "instruction_source": "ai-knowledge-{workspace}/.agents/workspace-AGENTS.md",
+  "organization_instruction_graph": {
+    "roles": ["public", "organization", "personal"],
+    "personal_role": "optional-user-local-desired-state",
+    "existing_output_adoption": "explicit-archive-first"
+  },
   "restart_rule": "Update is the initiating task's last action; a fresh client lifecycle receipt establishes live-loaded state.",
   "public_acceptance_tasks": [
     {

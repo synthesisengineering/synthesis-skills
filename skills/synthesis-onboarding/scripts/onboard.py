@@ -45,12 +45,15 @@ from plugin_currency import (
 from system_contract import (
     ContractError,
     DriftError,
+    describe_personal_instruction_source,
     file_digest,
     materialize_instruction_pair,
+    personal_instruction_source_path,
     public_source_identity,
     validate_desired_state,
     validate_org_manifest,
     validate_repository_url,
+    verify_instruction_source_receipt,
 )
 from whole_system import (
     CAPTURE_TEMPLATE_REL,
@@ -79,7 +82,7 @@ from whole_system import (
     validate_personal_policy,
 )
 
-ENGINE_VERSION = "2.1.0"
+ENGINE_VERSION = "2.2.0"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -1526,7 +1529,54 @@ def phase_kbs(report, manifest, receipts, dry_run):
                     report.add("knowledge-base", CHANGED, "wired %s repo-local pre-commit protection" % name)
 
 
-def phase_workspace(report, manifest, receipts, dry_run):
+def archive_existing_workspace_instructions(workspace):
+    workspace = Path(workspace)
+    archive_root = (
+        STATE_DIR
+        / "backups"
+        / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        / "workspace-instructions"
+    )
+    metadata = {}
+    for name in ("AGENTS.md", "CLAUDE.md"):
+        target = workspace / name
+        if not target.exists() and not target.is_symlink():
+            continue
+        if target.is_symlink() or not target.is_file():
+            raise ContractError(
+                "existing workspace instruction output is not a regular file: %s"
+                % name
+            )
+        content = target.read_bytes()
+        digest = hashlib.sha256(content).hexdigest()
+        archive_root.mkdir(parents=True, exist_ok=True)
+        destination = archive_root / name
+        if destination.exists() or destination.is_symlink():
+            raise ContractError("workspace instruction archive collision: %s" % name)
+        shutil.copy2(target, destination)
+        if (
+            not destination.is_file()
+            or destination.is_symlink()
+            or destination.read_bytes() != content
+        ):
+            raise ContractError("workspace instruction archive verification failed: %s" % name)
+        metadata[name] = {
+            "archive_path": str(destination),
+            "sha256": digest,
+            "mode": oct(target.stat().st_mode & 0o777),
+            "archived_at": utcnow(),
+        }
+    return metadata
+
+
+def phase_workspace(
+    report,
+    manifest,
+    receipts,
+    dry_run,
+    personal_instruction_source=None,
+    adopt_existing=False,
+):
     workspace = manifest["org"]["workspace"]
     ws_dir = WORKSPACES_ROOT / workspace
     manifest_path = Path(manifest["_path"])
@@ -1540,34 +1590,66 @@ def phase_workspace(report, manifest, receipts, dry_run):
     except ContractError as exc:
         report.add("workspace", ERROR, "public instruction source is unavailable: %s" % exc)
         return
+    source_roots = {"public": source_root(), "organization": org_root}
+    sources = [
+        {
+            "role": "public",
+            "path": "skills/synthesis-onboarding/references/kernel.example.md",
+            "required": True,
+        },
+        {
+            "role": "organization",
+            "path": manifest["instruction_sources"][0]["path"],
+            "required": manifest["instruction_sources"][0].get("required", True),
+        },
+    ]
+    if personal_instruction_source is not None:
+        try:
+            personal_descriptor = describe_personal_instruction_source(
+                Path(personal_instruction_source)
+            )
+        except ContractError as exc:
+            report.add("workspace", ERROR, str(exc))
+            return
+        source_roots["personal"] = Path(personal_descriptor["repository"])
+        sources.append(
+            {
+                "role": "personal",
+                "path": personal_descriptor["path"],
+                "required": True,
+            }
+        )
     graph = {
         "schema_version": 1,
-        "sources": [
-            {
-                "role": "public",
-                "path": "skills/synthesis-onboarding/references/kernel.example.md",
-                "required": True,
-            },
-            {
-                "role": "organization",
-                "path": manifest["instruction_sources"][0]["path"],
-                "required": manifest["instruction_sources"][0].get("required", True),
-            },
-        ],
+        "sources": sources,
         "output": "AGENTS.md",
         "claude_adapter": "CLAUDE.md",
     }
     previous = receipts.data.get("instruction_receipt")
-    if previous is None and any((ws_dir / name).exists() for name in ("AGENTS.md", "CLAUDE.md")):
+    existing = any(
+        (ws_dir / name).exists() or (ws_dir / name).is_symlink()
+        for name in ("AGENTS.md", "CLAUDE.md")
+    )
+    if previous is None and existing and not adopt_existing:
         report.add("workspace", ERROR, "workspace instructions exist without a source receipt; preserved")
         return
     if dry_run:
-        report.add("workspace", CHANGED, "would materialize tracked AGENTS.md and CLAUDE.md sources")
+        if previous is None and existing and adopt_existing:
+            report.add(
+                "workspace",
+                CHANGED,
+                "would archive existing workspace instructions and materialize tracked AGENTS.md and CLAUDE.md sources",
+            )
+        else:
+            report.add("workspace", CHANGED, "would materialize tracked AGENTS.md and CLAUDE.md sources")
         return
+    adopted_outputs = {}
     try:
+        if previous is None and existing and adopt_existing:
+            adopted_outputs = archive_existing_workspace_instructions(ws_dir)
         receipt = materialize_instruction_pair(
             graph,
-            {"public": source_root(), "organization": org_root},
+            source_roots,
             ws_dir,
             generation=int(receipts.data.get("instruction_generation", 0)) + 1,
             previous_receipt=previous,
@@ -1576,6 +1658,8 @@ def phase_workspace(report, manifest, receipts, dry_run):
     except (ContractError, DriftError, OSError) as exc:
         report.add("workspace", ERROR, str(exc))
         return
+    if adopted_outputs:
+        receipt["adopted_outputs"] = adopted_outputs
     receipts.data["instruction_generation"] = receipt["generation"]
     receipts.data["instruction_receipt"] = receipt
     for target in (ws_dir / "AGENTS.md", ws_dir / "CLAUDE.md"):
@@ -2735,6 +2819,51 @@ def doctor(report, manifest, clients_wanted, policy, desired_state=None):
             else:
                 report.add("doctor", OK, "knowledge base %s present at %s" % (kb["name"], repo_path))
         receipt = receipts.data.get("instruction_receipt") or {}
+        source_errors = []
+        source_receipts = receipt.get("sources") or []
+        for entry in source_receipts:
+            try:
+                verify_instruction_source_receipt(entry)
+            except (ContractError, DriftError, OSError) as exc:
+                source_errors.append(str(exc))
+        expected_personal = (
+            (desired_state or {}).get("personal_instruction_source")
+            if desired_state is not None
+            else None
+        )
+        actual_personal = next(
+            (
+                source
+                for source in source_receipts
+                if isinstance(source, dict) and source.get("role") == "personal"
+            ),
+            None,
+        )
+        if expected_personal is not None:
+            if actual_personal is None or any(
+                actual_personal.get(field) != expected_personal.get(field)
+                for field in ("repository", "path")
+            ):
+                source_errors.append(
+                    "personal instruction receipt differs from desired state"
+                )
+        elif desired_state is not None and actual_personal is not None:
+            source_errors.append(
+                "personal instruction receipt exists outside desired state"
+            )
+        if source_errors:
+            report.add(
+                "doctor",
+                ERROR,
+                "workspace instruction source drift: %s"
+                % "; ".join(source_errors),
+            )
+        else:
+            report.add(
+                "doctor",
+                OK,
+                "tracked workspace instruction sources match their receipts",
+            )
         outputs = receipt.get("outputs") or {}
         output_errors = []
         for name in ("AGENTS.md", "CLAUDE.md"):
@@ -3172,6 +3301,16 @@ def build_parser():
     )
     parser.add_argument("--with-personal-workspace", metavar="NAME",
                         help="also scaffold a personal ai-knowledge-<NAME> workspace during install")
+    parser.add_argument(
+        "--personal-instruction-source",
+        type=Path,
+        help="optional user-owned Git-tracked instruction source layered after organization instructions",
+    )
+    parser.add_argument(
+        "--adopt-workspace-instructions",
+        action="store_true",
+        help="archive and replace an existing unreceipted workspace instruction pair",
+    )
     parser.add_argument("--dry-run", action="store_true", help="show what would change; touch nothing")
     parser.add_argument("--no-plugin-cli", action="store_true",
                         help="skip client plugin CLIs; use file-copy fallback")
@@ -3201,6 +3340,31 @@ def main(argv=None):
         except (ValueError, OSError) as exc:
             report.add("manifest", ERROR, str(exc))
             return finish(report, args, 2)
+    if (args.personal_instruction_source or args.adopt_workspace_instructions) and not manifest:
+        report.add(
+            "workspace",
+            ERROR,
+            "personal instruction sources and workspace adoption require an organization manifest",
+        )
+        return finish(report, args, 2)
+    personal_instruction_source = args.personal_instruction_source
+    if desired_state is not None:
+        desired_source_path = personal_instruction_source_path(
+            desired_state.get("personal_instruction_source")
+        )
+        if desired_source_path is not None:
+            if (
+                personal_instruction_source is not None
+                and personal_instruction_source.expanduser().resolve()
+                != desired_source_path.resolve()
+            ):
+                report.add(
+                    "workspace",
+                    ERROR,
+                    "personal instruction source differs from persisted desired state",
+                )
+                return finish(report, args, 2)
+            personal_instruction_source = desired_source_path
 
     try:
         manifest_policy = policy_from_manifest(manifest, channel_override=args.channel)
@@ -3311,7 +3475,14 @@ def main(argv=None):
     if manifest:
         phase_org_skills(report, manifest, receipts, args.dry_run)
         phase_kbs(report, manifest, receipts, args.dry_run)
-        phase_workspace(report, manifest, receipts, args.dry_run)
+        phase_workspace(
+            report,
+            manifest,
+            receipts,
+            args.dry_run,
+            personal_instruction_source=personal_instruction_source,
+            adopt_existing=args.adopt_workspace_instructions,
+        )
     if args.with_personal_workspace:
         init_workspace(report, receipts, args.with_personal_workspace, args.dry_run)
     if args.command == "init":
