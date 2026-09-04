@@ -162,7 +162,14 @@ def test_a_reclaimed_seat_is_not_shadowed_by_its_old_receipt(world, monkeypatch)
     board identity with the same handle; the gate matched the stale receipt
     first and refused a send the fresh receipt authorized."""
     resolve(world)
-    assert ENGINE.command_release(args(world.board, id=world.target.compact_id)) == 0
+    assert ENGINE.command_release(
+        args(
+            world.board,
+            id=world.target.compact_id,
+            administrative=True,
+            reason="reclaimed-seat fixture",
+        )
+    ) == 0
     reclaimed = claim(world.board, "project-t2", TARGET_ENV, monkeypatch)
     for key, value in SENDER_ENV.items():
         monkeypatch.setenv(key, value)
@@ -174,7 +181,14 @@ def test_a_reclaimed_seat_is_not_shadowed_by_its_old_receipt(world, monkeypatch)
 
 def test_released_target_is_refused_even_with_a_receipt(world) -> None:
     resolve(world)
-    assert ENGINE.command_release(args(world.board, id=world.target.compact_id)) == 0
+    assert ENGINE.command_release(
+        args(
+            world.board,
+            id=world.target.compact_id,
+            administrative=True,
+            reason="released-target fixture",
+        )
+    ) == 0
     decision = evaluate(world, payload("mcp__ccd_session_mgmt__send_message", {"session_id": "local_target", "message": body(world)}))
     assert not decision.allow and "no longer an active board row" in decision.reason
 

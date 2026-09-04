@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.18.0"
+  version: "1.19.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -760,14 +760,14 @@ What it checks:
 | Semantic shard | once `reference/` exists: index ≤150, each topic ≤300, every topic linked from the index, and an index actually present (defect if not) |
 | Cross-tier agreement | index.yaml status agrees with the CONTEXT.md header; completed projects carry `completed_date`; indexed projects have directories and vice versa |
 | Freshness | structured current state and the CONTEXT.md header agree exactly with real project Git/session history. A present index.yaml `last_session` is checked as legacy duplicate metadata; a one-day known discrepancy is stale. For a terminal project the question inverts to whether it is still being worked |
-| Semantic current state | `CURRENT_STATE.json` validates; its bounded compiled block agrees with it; a current phase or accepted baseline older than a later release in the same record is a defect |
+| Semantic current state | `CURRENT_STATE.json` validates; its bounded compiled block agrees with it; a current phase or accepted baseline older than a later release in the same record is a defect; structured projects reject a second current-looking prose authority outside the generated block |
 | Durability | tier files are tracked by git; local mode reports recoverable uncommitted or ahead state as warnings; remote mode requires a clean upstream-current branch |
 | Executable state | artifact citations to missing, non-regular, escaped, or symlink-traversing `resources/scripts/` targets warn; existence does not establish correctness |
 | Disclosure | anything unverifiable is reported rather than skipped — unreadable status headers and freshness that cannot be established both surface as findings |
 
 Exit codes follow the guard contract: `0` healthy, `1` defects found, `2` the doctor could not establish ground truth. The third is the important one — an unreadable source or a source outside git exits 2 rather than reporting health, because a check that cannot run must never look like a check that passed.
 
-**Structured operational state (v1.18.0).** Mature projects may carry
+**Structured operational state (v1.19.0).** Mature projects may carry
 `CURRENT_STATE.json` as the authoritative mutable state: project id, phase,
 status, accepted baseline, controlling plan, next actions, last session,
 owning coordination session, Git identity, durable-file hashes, and source
@@ -775,8 +775,14 @@ heads. `CONTEXT.md` remains the human entry point, but its bounded block between
 `synthesis-current-state` markers is compiled from that object. Narrative and
 historical acceptance stay in Markdown. The doctor reports
 `semantic-current-state` when the object is invalid, its compiled block drifts,
-its plan is missing, or prose claims an older current release than later
-evidence in the same record.
+its plan is missing, or mutable current-looking prose appears outside the
+generated block — including `Current ...`, singular `Accepted baseline`,
+`Next checkpoint`, or `State as of:` labels in context or reference shards.
+Historical snapshots remain valid when their headings label them as history.
+For a structured project, the state object, content hashes, and generated block
+replace the older body-marker currency convention; the doctor records that
+check as an explicit structured-state skip rather than demanding a second
+mutable authority.
 
 **The status vocabulary is enforced, not assumed** (v1.13.0). `status` answers
 one question — does this project claim attention — with four values: `active`,

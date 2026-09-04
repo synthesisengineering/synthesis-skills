@@ -19,6 +19,7 @@ import coordination as ENGINE  # noqa: E402
 
 ME_SID = "11111111-1111-4111-8111-111111111111"
 ME_ENV = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": ME_SID, "CLAUDE_CODE_HOST_SESSION_ID": "local_me"}
+EARLIER_ENV = {"SYNTHESIS_CLIENT_SESSION_REF": "codex:earlier-seat"}
 
 
 @pytest.fixture(autouse=True)
@@ -67,7 +68,7 @@ def test_project_history_before_the_claim_is_not_delivered_to_a_new_seat(tmp_pat
     its claim is delivered."""
     path = tmp_path / "board.md"
     other = claim(path, "project-o", {}, monkeypatch)
-    earlier = claim(path, "project-m", {}, monkeypatch)
+    earlier = claim(path, "project-m", EARLIER_ENV, monkeypatch)
     assert ENGINE.command_message(args(path, sender=other.compact_id, to="project-m", text="Posted before the seat existed.")) == 0
     assert ENGINE.command_release(args(path, id=earlier.compact_id)) == 0
     text = path.read_text(encoding="utf-8")

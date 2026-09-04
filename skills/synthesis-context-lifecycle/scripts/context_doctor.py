@@ -72,7 +72,7 @@ if str(_PROJECT_STATE_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_PROJECT_STATE_SCRIPTS))
 import project_state  # noqa: E402
 
-DOCTOR_VERSION = "1.9.0"
+DOCTOR_VERSION = "1.10.0"
 
 # Budgets from the tiered context architecture.
 CONTEXT_BUDGET_ACTIVE = 150
@@ -1340,6 +1340,7 @@ def audit_project(
     # their '*State as of:*' markers, because header freshness is necessary
     # but not sufficient: a current header above stale operational sections is
     # a stronger false receipt than an obviously stale file.
+    structured_state = (project_path / project_state.STATE_FILE).is_file()
     for finding in context_currency.audit_project(project_path):
         kind = finding["kind"]
         if kind in ("header-behind-log", "header-field-stale"):
@@ -1350,6 +1351,14 @@ def audit_project(
                 "update the stale header field with context_edit.py set-field",
             )
         elif kind == "body-marker-stale":
+            if structured_state:
+                # CURRENT_STATE.json plus its generated block replaces the
+                # older prose-marker convention. semantic_issues() rejects a
+                # mutable current-state label outside that block, so treating
+                # a leftover marker as a second currency authority would
+                # recreate the duplicated-state defect.
+                audit.skip("body-currency", "structured current state")
+                continue
             audit.add(
                 "body-currency",
                 "defect",
@@ -1363,6 +1372,9 @@ def audit_project(
             # supposed to be final, and adding markers to assert a re-check
             # nobody performed would be the same fiction the item-currency
             # suppression already refuses.
+            if structured_state:
+                audit.skip("body-currency", "structured current state")
+                continue
             if dormant:
                 continue
             audit.add(

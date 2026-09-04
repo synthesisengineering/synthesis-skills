@@ -400,7 +400,14 @@ def test_doctor_counts_seats_and_names_orphans(tmp_path, monkeypatch, capsys) ->
     board, sender, target, registry = two_seats(tmp_path, monkeypatch)
     assert ENGINE.command_doctor(args(board)) == 0
     assert "2 seat(s)" in capsys.readouterr().out
-    assert ENGINE.command_release(args(board, id=target.compact_id)) == 0
+    assert ENGINE.command_release(
+        args(
+            board,
+            id=target.compact_id,
+            administrative=True,
+            reason="doctor orphan-seat fixture",
+        )
+    ) == 0
     PA.write_seat(board, session_uuid=target.session_uuid, compact_id=target.compact_id, machine="m1", identity=PA.SelfIdentity(client="claude-code", harness_session_id="orphan"))
     assert ENGINE.command_doctor(args(board)) == 0
     assert "1 without an active row" in capsys.readouterr().out

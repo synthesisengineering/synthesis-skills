@@ -42,11 +42,11 @@ def write_project(repo: Path, project_id: str = "alpha", version: str = "1.0.0")
                 "",
                 "[controlling plan](resources/artifacts/plan.md)",
                 "",
-                "## Accepted baseline",
-                f"Current accepted release: v{version}.",
+                "## Baseline history",
+                f"Accepted release snapshot: v{version}.",
                 "",
-                "## Current handoff",
-                f"*State as of: 2026-09-03 (v{version})*",
+                "## Handoff history",
+                f"Snapshot recorded 2026-09-03 (v{version}).",
                 "",
                 "## What's Next",
                 "- [ ] finish",
@@ -313,6 +313,124 @@ def test_internal_version_contradiction_is_semantic_failure(tmp_path: Path) -> N
     context.write_text(context.read_text(encoding="utf-8").replace("**Phase:** release 1.0.0", "**Phase:** current release 1.0.0") + "\nLater release shipped: v4.0.0.\n", encoding="utf-8")
     issues = state.semantic_issues(project)
     assert any("current" in issue.lower() and "4.0.0" in issue for issue in issues)
+
+
+def test_structured_state_rejects_uncompiled_current_prose(tmp_path: Path) -> None:
+    _repo, project = init_repo(tmp_path)
+    context = project / "CONTEXT.md"
+    context.write_text(
+        context.read_text(encoding="utf-8")
+        + "\n## Current handoff\n\n*State as of: 2026-09-03 (v0.9.0 installed)*\n",
+        encoding="utf-8",
+    )
+    reference = project / "reference"
+    reference.mkdir()
+    (reference / "baselines.md").write_text(
+        "# Baselines\n\n## Current reconciled baseline\n\nRelease v0.9.0.\n",
+        encoding="utf-8",
+    )
+    state.build_operational_state(
+        project,
+        project_id="alpha",
+        phase="release 1.0.0",
+        status="active",
+        controlling_plan="resources/artifacts/plan.md",
+        accepted_baseline="1.0.0",
+        next_actions=["finish"],
+        last_session="2026-09-03",
+        session_id="018f0000-0000-7000-8000-000000000001",
+    )
+
+    issues = state.semantic_issues(project)
+
+    assert any(
+        "uncompiled current-state prose" in issue and "CONTEXT.md" in issue
+        for issue in issues
+    )
+    assert any(
+        "uncompiled current-state prose" in issue
+        and "reference/baselines.md" in issue
+        for issue in issues
+    )
+
+
+def test_structured_state_rejects_setext_and_punctuated_current_labels(
+    tmp_path: Path,
+) -> None:
+    _repo, project = init_repo(tmp_path)
+    context = project / "CONTEXT.md"
+    context.write_text(
+        context.read_text(encoding="utf-8")
+        + "\nAccepted baseline:\n------------------\n\nRelease v0.9.0.\n"
+        + "\n## Current handoff:\n\n**State as of — v0.9.0**\n",
+        encoding="utf-8",
+    )
+    reference = project / "reference"
+    reference.mkdir()
+    (reference / "baselines.md").write_text(
+        "# Baselines\n\nNext checkpoint:\n================\n\nRelease v0.9.0.\n",
+        encoding="utf-8",
+    )
+    state.build_operational_state(
+        project,
+        project_id="alpha",
+        phase="release 1.0.0",
+        status="active",
+        controlling_plan="resources/artifacts/plan.md",
+        accepted_baseline="1.0.0",
+        next_actions=["finish"],
+        last_session="2026-09-03",
+        session_id="018f0000-0000-7000-8000-000000000001",
+    )
+
+    issues = state.semantic_issues(project)
+
+    assert any(
+        "uncompiled current-state prose" in issue
+        and "CONTEXT.md" in issue
+        and "line(s) 24, 29, 31" in issue
+        for issue in issues
+    )
+    assert any(
+        "uncompiled current-state prose" in issue
+        and "reference/baselines.md" in issue
+        and "line(s) 3" in issue
+        for issue in issues
+    )
+
+
+def test_structured_state_allows_explicitly_historical_snapshots(tmp_path: Path) -> None:
+    _repo, project = init_repo(tmp_path)
+    context = project / "CONTEXT.md"
+    context.write_text(
+        "# Context\n\n## Handoff history\n\n"
+        "Release v0.9.0 was accepted previously.\n"
+        "current client-health checks were recorded in that historical snapshot.\n",
+        encoding="utf-8",
+    )
+    reference = project / "reference"
+    reference.mkdir()
+    (reference / "baselines.md").write_text(
+        "# Baselines\n\n## Accepted baselines — through 2026-08-18\n\n"
+        "Release v0.9.0.\n",
+        encoding="utf-8",
+    )
+    state.build_operational_state(
+        project,
+        project_id="alpha",
+        phase="release 1.0.0",
+        status="active",
+        controlling_plan="resources/artifacts/plan.md",
+        accepted_baseline="1.0.0",
+        next_actions=["finish"],
+        last_session="2026-09-03",
+        session_id="018f0000-0000-7000-8000-000000000001",
+    )
+
+    assert not any(
+        "uncompiled current-state prose" in issue
+        for issue in state.semantic_issues(project)
+    )
 
 
 def test_checkpoint_requires_context_refresh_after_source_head_changes(tmp_path: Path) -> None:

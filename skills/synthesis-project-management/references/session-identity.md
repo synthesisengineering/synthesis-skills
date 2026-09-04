@@ -80,6 +80,12 @@ python3 scripts/coordination.py release \
   --session crater-sunset-alone-okay-23906
 ```
 
+Selectors address a row; they do not authorize its mutation. Existing-row
+claim changes, heartbeat, and normal release match the running harness identity
+against the seat recorded when the claim was made. Releasing another session
+is a separate administrative operation that requires
+`--administrative --reason <text>` and records that override on the board.
+
 `coordination.py migrate` upgrades the whole v1/v2 board atomically, assigns
 each historical row a UUIDv7 and both aliases, and preserves its old letter in
 `legacy id`. Messages and history are left intact. Once migrated, canonical
