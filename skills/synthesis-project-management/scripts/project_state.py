@@ -625,6 +625,117 @@ def _content_hashes(project: Path, controlling_plan: str | None = None) -> dict[
     }
 
 
+def _normalized_state_label(value: str) -> str:
+    plain_text = re.sub(r"[*_`]+", "", value)
+    plain_text = re.sub(r"^\s*[-+]\s+", "", plain_text)
+    plain_text = re.sub(r"\s+", " ", plain_text).strip().casefold()
+    return plain_text.strip(" \t:;,.!?—–-")
+
+
+def _is_current_state_label(value: str, *, heading: bool = False) -> bool:
+    normalized = _normalized_state_label(value)
+    prefixes = (
+        "accepted baseline",
+        "next checkpoint",
+        "current accepted",
+        "current baseline",
+        "state as of",
+    )
+    if heading and (
+        normalized == "current" or normalized.startswith("current ")
+    ):
+        return True
+    for prefix in prefixes:
+        if normalized == prefix:
+            return True
+        suffix = normalized[len(prefix) : len(prefix) + 1]
+        if normalized.startswith(prefix) and suffix in {
+            " ",
+            ":",
+            "—",
+            "–",
+            "-",
+        }:
+            return True
+    return False
+
+
+def _uncompiled_current_state_prose(project: Path, context: str) -> list[str]:
+    """Locate mutable current-state labels outside the generated state block.
+
+    A structured project has one operational source and one generated readable
+    projection. Allowing a second heading such as ``Current handoff`` or
+    ``Accepted baseline`` recreates the contradiction that structured state is
+    intended to remove. Historical snapshots remain ordinary Markdown; they
+    are safe when their headings label them as history rather than as current.
+    """
+    marker_start = "<!-- synthesis-current-state:start -->"
+    marker_end = "<!-- synthesis-current-state:end -->"
+    surfaces: list[tuple[str, str]] = [("CONTEXT.md", context)]
+    reference_index = project / "REFERENCE.md"
+    if reference_index.is_file():
+        surfaces.append(
+            (
+                "REFERENCE.md",
+                reference_index.read_text(encoding="utf-8", errors="replace"),
+            )
+        )
+    reference_dir = project / "reference"
+    if reference_dir.is_dir():
+        for path in sorted(reference_dir.rglob("*.md")):
+            if path.is_file():
+                surfaces.append(
+                    (
+                        str(path.relative_to(project)),
+                        path.read_text(encoding="utf-8", errors="replace"),
+                    )
+                )
+
+    findings: list[str] = []
+    for relative, text in surfaces:
+        current_lines: list[int] = []
+        inside_generated = False
+        lines = text.splitlines()
+        for index, line in enumerate(lines):
+            number = index + 1
+            if relative == "CONTEXT.md" and marker_start in line:
+                inside_generated = True
+                continue
+            if relative == "CONTEXT.md" and marker_end in line:
+                inside_generated = False
+                continue
+            if inside_generated:
+                continue
+
+            heading = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
+            heading_title = heading.group(1) if heading else ""
+            if (
+                not heading_title
+                and line.strip()
+                and index + 1 < len(lines)
+                and re.match(r"^\s{0,3}(?:=+|-+)\s*$", lines[index + 1])
+            ):
+                heading_title = line
+            if heading_title and _is_current_state_label(
+                heading_title, heading=True
+            ):
+                current_lines.append(number)
+                continue
+
+            if _is_current_state_label(line):
+                current_lines.append(number)
+
+        if current_lines:
+            locations = ", ".join(str(number) for number in current_lines)
+            findings.append(
+                "uncompiled current-state prose in "
+                f"{relative} at line(s) {locations}; structured projects must "
+                "keep mutable current claims inside the generated block and "
+                "label other snapshots as history"
+            )
+    return findings
+
+
 def semantic_issues(project: Path) -> list[str]:
     """Return contradictions in operational and human-readable current state."""
     project = project.resolve()
@@ -664,6 +775,7 @@ def semantic_issues(project: Path) -> list[str]:
         current = ".".join(str(part) for part in max(current_versions))
         issues.append(f"current release {current} is older than later recorded release {newest}")
     if state:
+        issues.extend(_uncompiled_current_state_prose(project, context))
         if state.get("project_id") != project.name:
             issues.append("current operational state project id disagrees with its directory")
         plan = (project / str(state.get("controlling_plan", ""))).resolve()

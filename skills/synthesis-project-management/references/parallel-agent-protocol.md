@@ -262,13 +262,18 @@ not to another agent's judgment. The user (or a session acting on the user's
 explicit direction, recorded in that session's log) runs:
 
 ```bash
-python3 <root>/scripts/coordination.py release --id <stale-id>
+python3 <root>/scripts/coordination.py release --id <stale-id> \
+  --administrative \
+  --reason "Operator confirmed the abandoned session may be released"
 ```
 
-`release` marks the row released without touching its history; nothing else
-on the board changes. An agent must never administratively release a peer on
-its own initiative — route the request through the board's message log or
-the user, exactly as with any other overlap.
+The administrative path records the target, caller identity, timestamp, and
+reason on the board before it marks the row released. Existing-row `claim`,
+`heartbeat`, and normal `release` mutations are bound to the exact seat
+recorded at claim, so parsing another session's id from a diagnostic cannot
+mutate it. An agent must never administratively release a peer on its own
+initiative — route the request through the board's
+message log or the user, exactly as with any other overlap.
 
 ## Commit authority — check-staged selector precedence
 

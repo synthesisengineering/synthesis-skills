@@ -11,6 +11,14 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Structured state now has one readable current-state authority (September
+2026).** Release **4.93.3** rejects duplicate current-looking prose outside the
+generated state block while preserving explicitly historical snapshots. It
+also binds existing-row claim changes, heartbeat, and normal release to the
+exact claiming seat; a reason-bearing administrative operation is required to
+release another session. See the
+[4.93.3 release notes](CHANGELOG.md).
+
 **A pointer left by another session can no longer silence a client's live
 receipt (September 2026).** Release **4.93.2** records the SessionStart
 receipt before building context, ignores with a notice a pointer it cannot

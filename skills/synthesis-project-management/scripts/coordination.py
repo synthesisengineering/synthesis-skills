@@ -1596,6 +1596,17 @@ def command_claim(args) -> int:
             if same_seat:
                 existing_self = same_seat[0]
                 claimed["reused"] = existing_self.identity.compact_id
+        if existing_self is not None:
+            if not active(existing_self):
+                raise RuntimeError(
+                    "session identity is terminal and cannot be reused; omit "
+                    "--session to allocate a new identity"
+                )
+            if not _caller_owns_session(args.board, existing_self):
+                raise RuntimeError(
+                    "caller identity does not own the target session seat; "
+                    "omit --session to allocate a new identity"
+                )
         identity = (
             existing_self.identity
             if existing_self is not None
@@ -1688,6 +1699,10 @@ def command_heartbeat(args) -> int:
             raise RuntimeError(f"session not found: {args.id}")
         if not active(session):
             raise RuntimeError(f"session is not active: {args.id}")
+        if not _caller_owns_session(args.board, session):
+            raise RuntimeError(
+                "caller identity does not own the target session seat"
+            )
         session.heartbeat = timestamp()
         updated["identity"] = session.identity
         return replace_table(content, current)
@@ -1716,18 +1731,103 @@ def command_heartbeat(args) -> int:
     return 0
 
 
+def _caller_owns_session(board: Path, session: Session) -> bool:
+    """Whether the running client identity owns this board session.
+
+    The compact id is an address, not authority. A refused claim may mention a
+    conflicting id in its diagnostic, and shell text processing can capture
+    that id. Every mutation of an existing row therefore binds to the exact
+    harness identity recorded at claim time whenever a seat exists. The host
+    delivery id is used only for a legacy seat that has no exact harness
+    identity.
+    """
+    caller = detect_self()
+    seat = read_seat(board, session.session_uuid)
+    if seat is not None:
+        if seat.harness_session_id:
+            return bool(
+                caller.harness_session_id
+                and caller.harness_session_id == seat.harness_session_id
+                and (
+                    not seat.client
+                    or not caller.client
+                    or seat.client == caller.client
+                )
+            )
+        if seat.host_session_id:
+            return bool(
+                caller.host_session_id
+                and caller.host_session_id == seat.host_session_id
+            )
+        return False
+
+    # Rows created before seat registration remain mutable by their exact board
+    # client ref. Truly legacy rows have neither identity surface, so a bare
+    # selector cannot establish authority and must fail closed.
+    if session.client_ref:
+        try:
+            return detect_client_ref() == session.client_ref
+        except ValueError:
+            return False
+    return False
+
+
+def _append_administrative_release(
+    content: str, session: Session, reason: str, caller: str
+) -> str:
+    marker = re.search(
+        r"(?m)^---[ \t]*\n\n## Protocol(?:[^\n]*)?$",
+        content,
+    )
+    if marker is None:
+        raise RuntimeError("board lacks Protocol boundary")
+    body = (
+        f"### recorded-administrative-release — {timestamp()}\n\n"
+        f"Target session: {session.session_uuid}\n\n"
+        f"Caller identity: {sanitize(caller)}\n\n"
+        f"Reason: {sanitize(reason)}\n\n"
+    )
+    return content[: marker.start()] + body + content[marker.start() :]
+
+
 def command_release(args) -> int:
     released: dict[str, SessionIdentity] = {}
+    administrative = bool(getattr(args, "administrative", False))
+    reason = str(getattr(args, "reason", "") or "").strip()
+    administrative_caller = detect_self().sender_key if administrative else ""
+    if administrative and not reason:
+        print(
+            "coordination release failed: --administrative requires --reason",
+            file=sys.stderr,
+        )
+        return 10
+    if administrative and not administrative_caller:
+        print(
+            "coordination release failed: --administrative requires an "
+            "attributable caller identity",
+            file=sys.stderr,
+        )
+        return 10
 
     def operation(content: str) -> str:
         current = ensure_identities(rows(content))
         session = find_session(current, args.id)
         if session is None:
             raise RuntimeError(f"session not found: {args.id}")
+        if not administrative and not _caller_owns_session(args.board, session):
+            raise RuntimeError(
+                "caller identity does not own the target session seat; "
+                "cross-session release requires --administrative and --reason"
+            )
         session.status = "released"
         session.heartbeat = timestamp()
         released["identity"] = session.identity
-        return replace_table(content, current)
+        updated = replace_table(content, current)
+        if administrative:
+            updated = _append_administrative_release(
+                updated, session, reason, administrative_caller
+            )
+        return updated
 
     try:
         locked_update(args.board, operation)
@@ -2510,6 +2610,15 @@ def parser() -> argparse.ArgumentParser:
     heartbeat.add_argument("--id", "--session", dest="id", required=True)
     release = commands.add_parser("release")
     release.add_argument("--id", "--session", dest="id", required=True)
+    release.add_argument(
+        "--administrative",
+        action="store_true",
+        help="release a different session after explicit operator direction",
+    )
+    release.add_argument(
+        "--reason",
+        help="reason recorded on the board for an administrative release",
+    )
     release.add_argument(
         "--active-project-file", type=Path, default=DEFAULT_ACTIVE_PROJECT
     )

@@ -388,6 +388,38 @@ class ContextDoctorTests(unittest.TestCase):
         self.fx.commit("record contradictory state", when="2026-06-01")
         self.assertIn("semantic-current-state", checks_in(self.fx.audit()))
 
+    def test_structured_state_replaces_body_currency_markers(self):
+        project = self.fx.project(
+            "alpha",
+            context="# P\n\n## Handoff history\n\nRelease v0.9.0 was accepted previously.\n",
+            reference="# Reference\n",
+            sessions={"2026-06.md": "### 2026-06-01 — Phase 9 current\n"},
+        )
+        artifacts = project / "resources" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "plan.md").write_text("# Plan\n", encoding="utf-8")
+        self.fx.index(
+            [{"id": "alpha", "status": "active", "last_session": "2026-06-01"}]
+        )
+        self.fx.commit("initial project", when="2026-06-01")
+        cd.project_state.build_operational_state(
+            project,
+            project_id="alpha",
+            phase="Phase 9 release 1.0.0",
+            status="active",
+            controlling_plan="resources/artifacts/plan.md",
+            accepted_baseline="1.0.0",
+            next_actions=["finish"],
+            last_session="2026-06-01",
+            session_id="018f0000-0000-7000-8000-000000000001",
+        )
+        self.fx.commit("compile current state", when="2026-06-01")
+
+        checks = checks_in(self.fx.audit())
+
+        self.assertNotIn("body-currency", checks)
+        self.assertNotIn("semantic-current-state", checks)
+
     def test_stale_context_header_is_caught(self):
         self.fx.project(
             "alpha", context="# P\n\n**Status:** Active\n**Last session:** 2020-01-01\n"

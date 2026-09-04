@@ -85,6 +85,7 @@ class Sandbox:
             "SYNTHESIS_CODEX_BIN": "",
             "GIT_AUTHOR_NAME": "Test User", "GIT_AUTHOR_EMAIL": "test@example.com",
             "GIT_COMMITTER_NAME": "Test User", "GIT_COMMITTER_EMAIL": "test@example.com",
+            "GIT_CONFIG_GLOBAL": str(self.root / "gitconfig"),
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_CONFIG_COUNT": "1",
             "GIT_CONFIG_KEY_0": "url.file://%s/.insteadOf" % self.remotes,
@@ -1027,6 +1028,16 @@ class EngineTests(unittest.TestCase):
 
     def statuses(self, data, phase=None):
         return [s["status"] for s in data["steps"] if phase is None or s["phase"] == phase]
+
+    def test_each_sandbox_owns_its_global_git_config(self):
+        other = Sandbox()
+        self.addCleanup(other.cleanup)
+        self.assertEqual(
+            self.box.git_env["GIT_CONFIG_GLOBAL"], str(self.box.root / "gitconfig")
+        )
+        self.assertNotEqual(
+            self.box.git_env["GIT_CONFIG_GLOBAL"], other.git_env["GIT_CONFIG_GLOBAL"]
+        )
 
     def test_install_then_idempotent_rerun(self):
         manifest = self.box.manifest()

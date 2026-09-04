@@ -4,6 +4,27 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.93.3] - 2026-09-03
+
+**Structured current state can no longer coexist with another current-looking
+prose record, and one session cannot accidentally mutate another session's
+claim.** The semantic doctor now rejects mutable `Current ...`, singular
+`Accepted baseline`, `Next checkpoint`, and `State as of:` surfaces outside a
+structured project's generated block, including reference shards and Setext or
+punctuated headings. Explicitly historical snapshots remain valid. Structured
+state replaces the older body
+marker convention, so the doctor records that check as an explicit skip rather
+than demanding a second current-state authority.
+
+synthesis-project-management 2.13.0 also binds every existing-row `claim`,
+`heartbeat`, and normal `release` mutation to the exact harness seat recorded
+at claim time. A selector parsed from a refused command is address data, not
+mutation authority. Unattributed legacy rows fail closed. Cross-session
+release is a distinct
+`--administrative --reason` operation whose target, caller, time, and reason
+are recorded on the board. synthesis-context-lifecycle 1.19.0 carries the
+matching semantic and doctor contract.
+
 ## [4.93.2] - 2026-09-03
 
 **A pointer another session left behind can no longer silence a client's

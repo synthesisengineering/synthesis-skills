@@ -170,7 +170,10 @@ def test_claim_without_human_supplied_id_allocates_all_identities(tmp_path: Path
     assert session.legacy_id == ""
 
 
-def test_every_identity_form_selects_the_same_session(tmp_path: Path) -> None:
+def test_every_identity_form_selects_the_same_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:identity-forms")
     board = tmp_path / "active-sessions.md"
     request = claim_args(
         board,
@@ -219,8 +222,11 @@ def test_unmatched_strong_selector_does_not_create_a_session(tmp_path: Path) -> 
     assert len(MODULE.rows(board.read_text(encoding="utf-8"))) == 1
 
 
-def test_claim_conflict_message_heartbeat_and_release(tmp_path: Path) -> None:
+def test_claim_conflict_message_heartbeat_and_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
     first = claim_args(
         board,
         session_id="A",
@@ -230,6 +236,7 @@ def test_claim_conflict_message_heartbeat_and_release(tmp_path: Path) -> None:
     )
     assert MODULE.command_claim(first) == 0
 
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-b")
     second = claim_args(
         board,
         session_id="B",
@@ -244,19 +251,206 @@ def test_claim_conflict_message_heartbeat_and_release(tmp_path: Path) -> None:
     assert "Please release repo/file.md." in board.read_text(encoding="utf-8")
 
     before = MODULE.rows(board.read_text(encoding="utf-8"))[0].heartbeat
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
     assert MODULE.command_heartbeat(args(board, id="A")) == 0
     after = MODULE.rows(board.read_text(encoding="utf-8"))[0].heartbeat
     assert after >= before
 
     assert MODULE.command_release(args(board, id="A")) == 0
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-b")
     assert MODULE.command_claim(second) == 0
     table = MODULE.rows(board.read_text(encoding="utf-8"))
     assert next(row for row in table if row.legacy_id == "A").status == "released"
     assert next(row for row in table if row.legacy_id == "B").status == "active"
 
 
-def test_release_leaves_pointer_without_matching_board_lease(tmp_path: Path) -> None:
+def test_release_is_bound_to_the_claiming_harness_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-a")
+    monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local-shared")
+    claim = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="repo/**",
+    )
+    assert MODULE.command_claim(claim) == 0
+
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-b")
+    assert MODULE.command_release(args(board, id="A")) == 10
+    assert MODULE.rows(board.read_text(encoding="utf-8"))[0].status == "active"
+
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-a")
+    assert MODULE.command_release(args(board, id="A")) == 0
+
+
+def test_heartbeat_cannot_take_over_another_session_seat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-a")
+    monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local-shared")
+    request = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="repo/**",
+    )
+    assert MODULE.command_claim(request) == 0
+    [before] = MODULE.rows(board.read_text(encoding="utf-8"))
+    seat_before = MODULE.read_seat(board, before.session_uuid)
+    assert seat_before is not None
+
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-b")
+    assert MODULE.command_heartbeat(args(board, id="A")) == 10
+    [after] = MODULE.rows(board.read_text(encoding="utf-8"))
+    seat_after = MODULE.read_seat(board, after.session_uuid)
+    assert after.heartbeat == before.heartbeat
+    assert seat_after is not None
+    assert seat_after.harness_session_id == seat_before.harness_session_id
+    assert MODULE.command_release(args(board, id="A")) == 10
+
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-a")
+    assert MODULE.command_heartbeat(args(board, id="A")) == 0
+    assert MODULE.command_release(args(board, id="A")) == 0
+
+
+def test_claim_with_existing_id_cannot_take_over_another_session_seat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-a")
+    monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local-shared")
+    original = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="repo-a/**",
+    )
+    assert MODULE.command_claim(original) == 0
+    [before] = MODULE.rows(board.read_text(encoding="utf-8"))
+
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-b")
+    takeover = claim_args(
+        board,
+        session_id=before.compact_id,
+        project="project-b",
+        workspace="/tmp/worktree-b @ feature/b",
+        area="repo-b/**",
+    )
+    assert MODULE.command_claim(takeover) == 10
+    [after] = MODULE.rows(board.read_text(encoding="utf-8"))
+    assert after.project == before.project
+    assert after.claims == before.claims
+    seat = MODULE.read_seat(board, after.session_uuid)
+    assert seat is not None and seat.harness_session_id == "harness-a"
+
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-a")
+    assert MODULE.command_claim(original) == 0
+
+
+def test_cross_session_administrative_release_requires_and_records_a_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-a")
+    monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local-shared")
+    claim = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="repo/**",
+    )
+    assert MODULE.command_claim(claim) == 0
+
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-b")
+    assert MODULE.command_release(
+        args(board, id="A", administrative=True, reason="")
+    ) == 10
+    assert MODULE.command_release(
+        args(
+            board,
+            id="A",
+            administrative=True,
+            reason="Principal confirmed the abandoned session may be released",
+        )
+    ) == 0
+    text = board.read_text(encoding="utf-8")
+    assert "recorded-administrative-release" in text
+    [released] = MODULE.rows(text)
+    assert released.status == "released"
+    assert f"Target session: {released.session_uuid}" in text
+    assert "Caller identity: cc:harness-b" in text
+    assert "Principal confirmed the abandoned session may be released" in text
+    assert re.search(
+        r"recorded-administrative-release — "
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}",
+        text,
+    )
+
+
+def test_legacy_selector_only_mutations_fail_closed_without_caller_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    claim = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="repo/**",
+    )
+    assert MODULE.command_claim(claim) == 0
+    [active] = MODULE.rows(board.read_text(encoding="utf-8"))
+    assert MODULE.read_seat(board, active.session_uuid) is None
+    assert active.client_ref == ""
+
+    assert MODULE.command_heartbeat(args(board, id="A")) == 10
+    assert MODULE.command_claim(claim) == 10
+    assert MODULE.command_release(args(board, id="A")) == 10
+    assert MODULE.command_release(
+        args(
+            board,
+            id="A",
+            administrative=True,
+            reason="Authorized recovery of an unattributed legacy row",
+        )
+    ) == 10
+    [still_active] = MODULE.rows(board.read_text(encoding="utf-8"))
+    assert still_active.status == "active"
+
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:admin-thread")
+    assert MODULE.command_release(
+        args(
+            board,
+            id="A",
+            administrative=True,
+            reason="Authorized recovery of an unattributed legacy row",
+        )
+    ) == 0
+    text = board.read_text(encoding="utf-8")
+    [released] = MODULE.rows(text)
+    assert released.status == "released"
+    assert f"Target session: {released.session_uuid}" in text
+    assert "Caller identity: codex:admin-thread" in text
+    assert MODULE.command_claim(claim) == 10
+
+
+def test_release_leaves_pointer_without_matching_board_lease(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:pointer-owner")
     claim = claim_args(
         board,
         session_id="A",
@@ -695,8 +889,11 @@ def lease_machines(tmp_path: Path, count: int = 2) -> list[Path]:
     return boards
 
 
-def test_lease_shares_claims_across_machines(tmp_path: Path) -> None:
+def test_lease_shares_claims_across_machines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     machine1, machine2 = lease_machines(tmp_path)
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
     first = claim_args(
         machine1,
         session_id="A",
@@ -706,6 +903,7 @@ def test_lease_shares_claims_across_machines(tmp_path: Path) -> None:
     )
     assert MODULE.command_claim(first) == 0
 
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-b")
     conflicting = claim_args(
         machine2,
         session_id="B",
@@ -724,7 +922,9 @@ def test_lease_shares_claims_across_machines(tmp_path: Path) -> None:
     )
     assert MODULE.command_claim(disjoint) == 0
 
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
     assert MODULE.command_release(args(machine1, id="A")) == 0
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-c")
     retried = claim_args(
         machine2,
         session_id="C",
@@ -1158,8 +1358,11 @@ def test_r4_recorded_override_binds_reason_and_paths(
 
 
 def test_r4_inactive_session_is_refused(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:staged-owner")
     root = staged_repository(tmp_path)
     (root / "claimed").mkdir()
     (root / "claimed" / "inside.md").write_text("inside\n", encoding="utf-8")
@@ -1181,6 +1384,7 @@ def test_r4_lease_fence_cannot_resurrect_released_session(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:lease-owner")
     root = staged_repository(tmp_path)
     claimed = root / "claimed"
     claimed.mkdir()
@@ -1514,6 +1718,7 @@ def test_generic_ref_env_overrides_client_specific(tmp_path, monkeypatch):
 
 
 def test_claim_reuses_active_row_for_same_client_seat(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local_feed-beef")
     board = tmp_path / "board.md"
     assert (
@@ -1578,6 +1783,7 @@ def _v3_board(tmp_path):
 
 
 def test_v3_board_keeps_schema_until_explicit_migrate(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local_feed-beef")
     board = _v3_board(tmp_path)
     assert (
@@ -1979,4 +2185,3 @@ def test_every_command_notes_a_newer_installed_engine(tmp_path):
         capture_output=True, text=True, check=False,
     )
     assert "note: this coordination engine" not in current.stderr
-

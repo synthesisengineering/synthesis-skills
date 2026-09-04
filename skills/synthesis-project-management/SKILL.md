@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.12.1"
+  version: "2.13.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -227,8 +227,7 @@ Complete task → Update CONTEXT.md → local receipt → Next task
    receipt; confirm attributed state is readable;
    do not create a commit or network push solely because the user is switching
    clients on this machine
-6. **Release coordination claims** — Mark the session released or narrow its
-   claims before pausing or ending
+6. **Release coordination claims** — Mark the session released or narrow its claims before pausing. Existing-row mutations require the claiming seat; cross-session release is administrative and reason-bearing.
 
 ### Cross-Agent Session Coordination
 
@@ -324,7 +323,8 @@ Rules:
    rows remain blocking until explicitly resolved; time alone never transfers
    ownership. Review them on a cadence — `coordination.py stale` surfaces
    quiet claims with physical evidence and prints the release command without
-   ever running it; day-start is the natural place to catch them.
+   running it; day-start is the natural review point. Session ids address rows,
+   not authority: claim changes, heartbeat, and release match the claiming seat; administrative release requires a reason.
 9. **Advisory does not mean optional.** The filesystem cannot stop every tool,
    so the protocol and checkpoint hooks make the shared obligation visible.
 
@@ -357,9 +357,8 @@ or save state by hand:
    `pointer`, and `continuity --readiness local` commands for the project
 8. When changing computers, run `synthesis-mac-sync` remote-handoff mode, then
    verify `continuity --readiness remote`. Day-end performs the same transition.
-9. Release or transfer this session's coordination claims. A normal release
-   recoverably archives an active-project pointer owned by that session; a
-   pointer owned by another session is untouched.
+9. Release or transfer this session's coordination claims. Normal release recoverably archives its session's active-project pointer; another session's pointer is untouched. Normal release is
+   caller-bound; administrative release is distinct and audited.
 
 Resuming from another agent: run `scripts/project_state.py resolve` against the
 Git-tracked index before reading prose. Divergence is `CONFLICT`; unreadable or
