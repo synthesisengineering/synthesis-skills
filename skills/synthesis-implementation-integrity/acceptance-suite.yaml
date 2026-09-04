@@ -1,86 +1,67 @@
-# AGENT HEURISTIC: authored for the 4.94.0 personal instruction overlay transaction.
-# Fresh per transaction: changed_surfaces must equal the authoritative
-# base-to-head Git diff before release.py can consume the receipt.
+# AGENT HEURISTIC: closed acceptance for this local handoff transaction.
+# The release boundary supplies and verifies the authoritative Git change base.
 schema: 2
-suite: personal-instruction-overlay-adoption
+suite: deleted-child-directory-handoff
 membership: closed
-production_entry_point: skills/synthesis-onboarding/scripts/synthesis_cli.py
-enforcing_boundary: full organization setup accepts only committed provenance-bound instruction sources and may replace existing unreceipted root instructions only through explicit verified archive-first adoption with two-output rollback
+production_entry_point: skills/synthesis-repo-guard/checkpoint_sync.py
+enforcing_boundary: local handoff attributes missing children only to a verified live repository and refuses unsafe ancestry or unavailable repository identity
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: live organization review and merge, released-source root adoption, site build-only acceptance, and fresh client lifecycle receipts remain external runtime gates
+unverified_remainder: released installation and the genuine client Stop handoff remain external runtime gates
 changed_surfaces:
-  - path: skills/synthesis-onboarding/scripts/system_contract.py
-    cases: [desired-state-schema, source-commit-binding, source-provenance-refresh]
-  - path: skills/synthesis-onboarding/scripts/synthesis_cli.py
-    cases: [personal-source-state-replay, personal-source-preserve-clear]
-  - path: skills/synthesis-onboarding/scripts/onboard.py
-    cases: [personal-source-materialization, explicit-adoption-rollback]
-  - path: skills/synthesis-onboarding/scripts/test_system_contract.py
-    cases: [desired-state-schema, source-commit-binding, source-provenance-refresh]
-  - path: skills/synthesis-onboarding/scripts/test_synthesis_cli.py
-    cases: [personal-source-state-replay, personal-source-preserve-clear]
-  - path: skills/synthesis-onboarding/scripts/test_onboard.py
-    cases: [personal-source-materialization, explicit-adoption-rollback]
-  - path: skills/synthesis-onboarding/references/system-state.schema.json
-    cases: [desired-state-schema]
-  - path: skills/synthesis-onboarding/references/release-capabilities.json
-    cases: [personal-source-materialization]
-  - path: skills/synthesis-onboarding/references/org-manifest.md
-    cases: [personal-source-materialization, explicit-adoption-rollback]
-  - path: skills/synthesis-onboarding/SKILL.md
-    cases: [personal-source-state-replay, personal-source-preserve-clear, explicit-adoption-rollback]
+  - path: skills/synthesis-repo-guard/checkpoint_sync.py
+    cases: [deleted-child, nested-children, missing-repository, symlink-ancestry, missing-worktree, unavailable-inventory, missing-file-receipt, verified-retirement]
+  - path: skills/synthesis-repo-guard/test_deleted_paths.py
+    cases: [deleted-child, nested-children, missing-repository, symlink-ancestry, missing-worktree, unavailable-inventory, missing-file-receipt, checkpoint-ci]
+  - path: skills/synthesis-repo-guard/test_checkpoint_sync.py
+    cases: [verified-retirement]
+  - path: skills/synthesis-repo-guard/SKILL.md
+    cases: [deleted-child, missing-worktree, missing-file-receipt]
+  - path: .github/workflows/repo-guard.yml
+    cases: [checkpoint-ci]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
-  - path: .claude-plugin/plugin.json
-    cases: [release-manifest-parity]
-  - path: .codex-plugin/plugin.json
-    cases: [release-manifest-parity]
-  - path: CHANGELOG.md
-    cases: [release-changelog-parity]
-  - path: README.md
-    cases: [release-changelog-parity, personal-source-materialization]
 cases:
-  - id: desired-state-schema
+  - id: deleted-child
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_json_schemas_and_runtime_share_valid_and_invalid_corpora
-    motivating_defect: a-local-personal-source-that-is-not-closed-schema-desired-state-cannot-be-replayed-or-distinguished-from-shareable-organization-data
-  - id: personal-source-state-replay
+    fixture: ../synthesis-repo-guard/test_deleted_paths.py::test_removed_cache_parent_still_resolves_its_repository
+    motivating_defect: deleting-a-generated-file-and-its-parent-must-not-prevent-handoff-of-an-available-repository
+  - id: nested-children
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_update_replays_persisted_personal_instruction_source
-    motivating_defect: a-setup-only-source-argument-would-disappear-on-update-or-repair-and-silently-remove-private-operating-context
-  - id: personal-source-preserve-clear
+    fixture: ../synthesis-repo-guard/test_deleted_paths.py::test_missing_multiple_child_directories_resolve_inside_live_repository
+    motivating_defect: cleanup-may-remove-multiple-child-directories
+  - id: missing-repository
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_setup_preserves_personal_source_until_explicit_clear
-    motivating_defect: rerunning-setup-without-repeating-a-local-private-path-could-silently-drop-the-declared-overlay-while-no-explicit-removal-was-requested
-  - id: personal-source-materialization
+    fixture: ../synthesis-repo-guard/test_deleted_paths.py::test_missing_repository_does_not_resolve_from_unrelated_workspace
+    motivating_defect: recovery-must-not-invent-a-repository-for-a-missing-workspace
+  - id: symlink-ancestry
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_personal_instruction_source_is_materialized_and_receipted
-    motivating_defect: a-tracked-private-source-that-never-enters-the-public-organization-personal-graph-leaves-the-root-instructions-unreproducible
-  - id: explicit-adoption-rollback
+    fixture: ../synthesis-repo-guard/test_deleted_paths.py::test_symlink_ancestor_is_not_a_repository_boundary
+    motivating_defect: resolving-symlinks-first-can-borrow-another-repository-identity
+  - id: missing-worktree
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_adoption_rollback_restores_both_existing_outputs
-    motivating_defect: replacing-an-existing-unreceipted-root-without-verified-archives-and-two-file-rollback-can-destroy-the-only-copy-of-user-context
-  - id: source-commit-binding
+    fixture: ../synthesis-repo-guard/test_deleted_paths.py::test_missing_registered_nested_worktree_cannot_fall_into_parent_repo
+    motivating_defect: missing-nested-worktrees-must-not-be-attributed-to-the-enclosing-repository
+  - id: unavailable-inventory
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_instruction_pair_rejects_uncommitted_untracked_and_symlink_sources
-    motivating_defect: a-receipt-that-hashes-working-tree-bytes-while-naming-an-unrelated-commit-can-certify-content-that-git-never-recorded
-  - id: source-provenance-refresh
+    fixture: ../synthesis-repo-guard/test_deleted_paths.py::test_deleted_path_resolution_fails_when_worktree_inventory_is_unavailable
+    motivating_defect: required-worktree-inventory-must-not-fail-open
+  - id: missing-file-receipt
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_instruction_pair_refreshes_source_receipt_when_bytes_are_unchanged
-    motivating_defect: identical-rendered-bytes-from-a-new-source-could-leave-the-receipt-pointing-at-the-previous-repository-and-break-desired-state-auditability
+    fixture: ../synthesis-repo-guard/test_deleted_paths.py::test_local_receipt_preserves_missing_file_evidence_without_restoring_it
+    motivating_defect: receipts-must-preserve-deleted-file-evidence-and-pending-attribution
+  - id: checkpoint-ci
+    control_class: acceptance-test
+    fixture: ../synthesis-repo-guard/test_deleted_paths.py::test_checkpoint_ci_runs_both_regression_modules
+    motivating_defect: repository-local-tests-need-a-declared-ci-path
+  - id: verified-retirement
+    control_class: acceptance-test
+    fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_reconcile_retired_worktree_repairs_prior_removal
+    motivating_defect: repository-lookup-changes-must-preserve-the-evidence-bearing-retirement-transaction
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-    motivating_defect: an-acceptance-manifest-that-its-own-runner-cannot-consume-issues-authority-it-never-earned
-  - id: release-manifest-parity
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
-    motivating_defect: a-version-that-reaches-only-one-client-manifest-cannot-be-reliably-installed-or-audited-later
-  - id: release-changelog-parity
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
-    motivating_defect: a-release-whose-changelog-disagrees-with-its-manifests-cannot-be-audited-later
+    motivating_defect: a-manifest-that-its-own-runner-cannot-consume-cannot-support-release-acceptance

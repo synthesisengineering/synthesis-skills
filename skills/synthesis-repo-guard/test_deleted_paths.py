@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 SPEC = importlib.util.spec_from_file_location(
     "deleted_path_checkpoint", Path(__file__).with_name("checkpoint_sync.py")
@@ -26,6 +27,14 @@ def repo(tmp_path):
     root.mkdir()
     git(root, "init", "-b", "main")
     return root.resolve()
+
+
+def test_checkpoint_ci_runs_both_regression_modules():
+    source = Path(__file__).resolve().parents[2]
+    workflow = yaml.safe_load((source / ".github/workflows/repo-guard.yml").read_text())
+    runs = [step.get("run", "") for step in workflow["jobs"]["checkpoint"]["steps"]]
+    assert "python -m pytest skills/synthesis-repo-guard/test_checkpoint_sync.py skills/synthesis-repo-guard/test_deleted_paths.py -q" in runs
+    assert workflow["permissions"] == {"contents": "read"}
 
 
 def test_removed_cache_parent_still_resolves_its_repository(tmp_path):
