@@ -4,6 +4,27 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.94.0] - 2026-09-04
+
+**A complete organization workspace can now include private personal context
+without leaking it into the shareable organization manifest or leaving it in
+an untracked root file.** `synthesis setup --personal-instruction-source PATH`
+adds one user-owned source after the public and organization layers, records its
+repository and relative path in local desired state, and replays it on update
+and repair. Every repository source must be regular, committed, clean, and
+Git-tracked; traversal, symbolic links, untracked bytes, and working-tree or
+index drift fail closed.
+
+Existing workspace-root instructions remain untouched unless the user selects
+`--adopt-workspace-instructions`. Explicit adoption archives and byte-verifies
+each existing file before activation, records prior digests, modes, paths, and
+time in the receipt, and restores both originals if activation fails after the
+first replacement. The materializer refreshes source provenance even when new
+source identities render identical bytes, and doctor now verifies the source
+commit/digest chain as well as both output digests. synthesis-onboarding 2.2.0
+ships the CLI, desired-state, engine, doctor, schema, documentation, and
+red-first contract coverage as one release.
+
 ## [4.93.4] - 2026-09-04
 
 **Stopped-task conformance now verifies the project selected by causal

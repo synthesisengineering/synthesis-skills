@@ -30,6 +30,27 @@
       }
     },
     "personal_workspace": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"},
+    "personal_instruction_source": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "path"],
+          "properties": {
+            "repository": {
+              "type": "string",
+              "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$)).+"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+            }
+          }
+        }
+      ]
+    },
     "personal_configuration": {
       "oneOf": [
         {"type": "null"},
@@ -141,6 +162,18 @@
       "if": {"properties": {"organizations": {"minItems": 1}}, "required": ["organizations"]},
       "then": {"properties": {"layers": {"properties": {"organization": {"const": "selected"}}}}},
       "else": {"properties": {"layers": {"properties": {"organization": {"const": "declined"}}}}}
+    },
+    {
+      "if": {
+        "required": ["personal_instruction_source"],
+        "properties": {"personal_instruction_source": {"type": "object"}}
+      },
+      "then": {
+        "properties": {
+          "profile": {"const": "full"},
+          "organizations": {"minItems": 1}
+        }
+      }
     }
   ]
 }

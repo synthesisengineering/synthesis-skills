@@ -435,6 +435,156 @@ def test_update_reuses_persisted_policy(tmp_path: Path) -> None:
     ]]
 
 
+def test_update_replays_persisted_personal_instruction_source(tmp_path: Path) -> None:
+    state = system_contract.SystemState(home=tmp_path)
+    desired = system_contract.default_desired_state(
+        profile="full",
+        clients=["codex"],
+        channel="stable",
+        organizations=[
+            {
+                "repository": "https://example.test/org/config.git",
+                "manifest_path": ".agents/onboarding.yaml",
+                "commit_policy": "pinned",
+                "commit": "1" * 40,
+            }
+        ],
+        personal_workspace="example-user",
+        personal_configuration=full_configuration(),
+        personal_instruction_source={
+            "repository": "/workspaces/example/private-config",
+            "path": ".agents/workspace-instructions.md",
+        },
+    )
+    args = synthesis_cli.build_parser().parse_args(["update"])
+    assert synthesis_cli._engine_args(
+        desired, "update", args, desired_state_path=state.desired_path
+    ) == [
+        "update",
+        "--clients",
+        "codex",
+        "--channel",
+        "stable",
+        "--personal-instruction-source",
+        "/workspaces/example/private-config/.agents/workspace-instructions.md",
+        "--desired-state",
+        str(state.desired_path),
+    ]
+
+
+def test_setup_rejects_personal_instruction_adoption_without_organization(
+    tmp_path: Path, capsys
+) -> None:
+    source = tmp_path / "private-config" / ".agents" / "workspace-instructions.md"
+    source.parent.mkdir(parents=True)
+    source.write_text("Personal.\n", encoding="utf-8")
+    commit_fixture_repo(source.parents[1])
+    calls: list[list[str]] = []
+    assert synthesis_cli.main(
+        [
+            "setup",
+            "--profile",
+            "full",
+            "--clients",
+            "codex",
+            "--personal-instruction-source",
+            str(source),
+            "--adopt-workspace-instructions",
+        ],
+        state=system_contract.SystemState(home=tmp_path / "home"),
+        engine_runner=lambda argv: calls.append(argv) or 0,
+    ) == 2
+    assert calls == []
+    assert "requires an organization" in capsys.readouterr().err
+
+
+def test_setup_preserves_personal_source_until_explicit_clear(
+    tmp_path: Path, monkeypatch
+) -> None:
+    state = system_contract.SystemState(home=tmp_path / "home")
+    repository = "https://example.test/org/config.git"
+    organization_entry = {
+        "repository": repository,
+        "manifest_path": ".agents/onboarding.yaml",
+        "commit_policy": "floating",
+        "commit": "1" * 40,
+    }
+    personal_source = {
+        "repository": "/workspaces/example/private-config",
+        "path": ".agents/workspace-instructions.md",
+    }
+    previous = system_contract.default_desired_state(
+        "full",
+        ["codex"],
+        "stable",
+        organizations=[organization_entry],
+        personal_workspace="example-user",
+        personal_configuration=full_configuration(),
+        personal_instruction_source=personal_source,
+    )
+    state.run_transaction("setup", previous, lambda _tx: {})
+    org_root = tmp_path / "org"
+    (org_root / ".agents").mkdir(parents=True)
+    monkeypatch.setattr(
+        synthesis_cli.organization,
+        "acquire_repository",
+        lambda *_args, **_kwargs: (org_root, "1" * 40),
+    )
+    monkeypatch.setattr(
+        synthesis_cli.onboard,
+        "load_manifest",
+        lambda _path: {"ecosystem": {"clients": ["codex"], "channel": "stable"}},
+    )
+    selected = system_contract.default_desired_state(
+        "full",
+        ["codex"],
+        "stable",
+        organizations=[organization_entry],
+        personal_workspace="example-user",
+        personal_configuration=full_configuration(),
+    )
+    calls: list[list[str]] = []
+
+    def engine(argv: list[str]) -> dict:
+        calls.append(argv)
+        return {
+            "engine": "fixture",
+            "counts": {"changed": 0},
+            "effective_selection": {
+                key: selected[key]
+                for key in (
+                    "profile",
+                    "clients",
+                    "personal_workspace",
+                    "personal_configuration",
+                    "layers",
+                )
+            },
+            "exit": 0,
+        }
+
+    base = [
+        "setup",
+        "--profile",
+        "full",
+        "--clients",
+        "codex",
+        "--org-repo",
+        repository,
+    ]
+    assert synthesis_cli.main(base, state=state, engine_runner=engine) == 0
+    assert "--personal-instruction-source" in calls[-1]
+    assert state.read_desired()["personal_instruction_source"] == personal_source
+
+    assert synthesis_cli.main(
+        base + ["--clear-personal-instruction-source"],
+        state=state,
+        engine_runner=engine,
+    ) == 0
+    assert "--personal-instruction-source" not in calls[-1]
+    assert state.read_desired()["personal_instruction_source"] is None
+
+
 def test_update_rejects_malformed_persisted_state_without_running_engine(
     tmp_path: Path, capsys
 ) -> None:

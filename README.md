@@ -11,6 +11,16 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Private instruction context is now a declared, durable organization overlay
+(September 2026).** Release **4.94.0** lets a full organization setup layer one
+user-owned committed source after the public and organization sources without
+placing its repository or path in the shareable organization manifest. The
+source persists in local desired state and is replayed by update and repair.
+Existing unreceipted root instructions remain protected unless the user
+explicitly requests archive-first adoption; partial activation restores both
+client files. Doctor verifies the complete source and output chain. See the
+[4.94.0 release notes](CHANGELOG.md).
+
 **Stopped-task verification now follows the causally selected project copy
 (September 2026).** Release **4.93.4** accepts an equal or newer resolved
 checkout without demanding that recovery preserve the caller's original
@@ -746,6 +756,11 @@ Stable is the default. Use `--channel edge` to follow `main`, or `--pin X.Y.Z`
 for an exact release. Organization enrollment uses `--org-repo URL` or a
 credential-free, time-bounded `--invite FILE`; organization repositories carry
 declarative data and one tracked instruction source, never installer code.
+Users who need private context at the organization workspace root can declare a
+separate committed source with `--personal-instruction-source PATH`. That local
+declaration is not written to the organization repository and update and repair
+continue to enforce it. Existing root instruction files are preserved unless
+the user explicitly selects verified archive-first adoption.
 
 Updates are explicit. Make an update the initiating task's last action, restart
 the selected clients, and verify a fresh lifecycle receipt before treating the

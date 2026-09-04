@@ -6,6 +6,7 @@ HOME with local bare repositories standing in for org remotes — no network,
 no client CLIs, no writes outside the sandbox.
 """
 
+import hashlib
 import json
 import os
 import shutil
@@ -140,6 +141,18 @@ class Sandbox:
         sh(["git", "-C", str(self.org_config), "init", "-q", "-b", "main"], env=self.git_env)
         self._commit_all(self.org_config, "seed org config")
         return self.org_config
+
+    def personal_instruction_source(self):
+        repo = self.root / "personal-config"
+        source = repo / ".agents" / "workspace-instructions.md"
+        source.parent.mkdir(parents=True)
+        source.write_text(
+            "Use the private personal context only for this user's work.\n",
+            encoding="utf-8",
+        )
+        sh(["git", "-C", str(repo), "init", "-q", "-b", "main"], env=self.git_env)
+        self._commit_all(repo, "seed personal config")
+        return source
 
     def manifest(self, kb_primary=None):
         lines = [
@@ -1088,6 +1101,152 @@ class EngineTests(unittest.TestCase):
         data, _ = self.box.run_json("install", "--manifest", str(manifest), expect=1)
         self.assertEqual(self.box.ws_agents.read_text(), edited)
         self.assertIn("error", self.statuses(data, "workspace"))
+
+    def test_personal_instruction_source_is_materialized_and_receipted(self):
+        manifest = self.box.manifest()
+        personal = self.box.personal_instruction_source()
+        self.box.run_json(
+            "install",
+            "--manifest",
+            str(manifest),
+            "--personal-instruction-source",
+            str(personal),
+            expect=0,
+        )
+        rendered = self.box.ws_agents.read_text(encoding="utf-8")
+        self.assertIn("## Public", rendered)
+        self.assertIn("## Organization", rendered)
+        self.assertIn("## Personal", rendered)
+        self.assertIn("private personal context", rendered)
+        receipt = json.loads(
+            (
+                self.box.home / ".synthesis" / "onboarding" / "receipts.json"
+            ).read_text(encoding="utf-8")
+        )["instruction_receipt"]
+        self.assertEqual(
+            [source["role"] for source in receipt["sources"]],
+            ["public", "organization", "personal"],
+        )
+        personal_receipt = receipt["sources"][-1]
+        self.assertEqual(personal_receipt["path"], ".agents/workspace-instructions.md")
+        self.assertEqual(
+            personal_receipt["repository"], str(personal.parents[1].resolve())
+        )
+
+        personal.write_text(
+            "Use newer committed private personal context.\n", encoding="utf-8"
+        )
+        self.box._commit_all(personal.parents[1], "update personal config")
+        data, _ = self.box.run_json(
+            "doctor",
+            "--manifest",
+            str(manifest),
+            "--personal-instruction-source",
+            str(personal),
+            expect=1,
+        )
+        self.assertTrue(
+            any(
+                "workspace instruction source drift" in step["detail"]
+                for step in data["steps"]
+            )
+        )
+
+    def test_existing_unreceipted_workspace_pair_requires_explicit_adoption(self):
+        manifest = self.box.manifest()
+        workspace = self.box.home / "workspaces" / "exampleco"
+        workspace.mkdir(parents=True)
+        agents = workspace / "AGENTS.md"
+        claude = workspace / "CLAUDE.md"
+        agents.write_text("# Existing agents\n", encoding="utf-8")
+        claude.write_text("# Existing claude\n", encoding="utf-8")
+        data, _ = self.box.run_json(
+            "install", "--manifest", str(manifest), expect=1
+        )
+        self.assertEqual(agents.read_text(encoding="utf-8"), "# Existing agents\n")
+        self.assertEqual(claude.read_text(encoding="utf-8"), "# Existing claude\n")
+        self.assertTrue(
+            any("without a source receipt" in step["detail"] for step in data["steps"])
+        )
+
+    def test_explicit_adoption_archives_existing_pair_before_activation(self):
+        manifest = self.box.manifest()
+        personal = self.box.personal_instruction_source()
+        workspace = self.box.home / "workspaces" / "exampleco"
+        workspace.mkdir(parents=True)
+        originals = {
+            "AGENTS.md": b"# Existing agents\n",
+            "CLAUDE.md": b"# Existing claude\n",
+        }
+        for name, content in originals.items():
+            (workspace / name).write_bytes(content)
+        self.box.run_json(
+            "install",
+            "--manifest",
+            str(manifest),
+            "--personal-instruction-source",
+            str(personal),
+            "--adopt-workspace-instructions",
+            expect=0,
+        )
+        receipt = json.loads(
+            (
+                self.box.home / ".synthesis" / "onboarding" / "receipts.json"
+            ).read_text(encoding="utf-8")
+        )["instruction_receipt"]
+        adopted = receipt["adopted_outputs"]
+        self.assertEqual(set(adopted), set(originals))
+        for name, content in originals.items():
+            archive = Path(adopted[name]["archive_path"])
+            self.assertTrue(archive.is_file())
+            self.assertEqual(archive.read_bytes(), content)
+            self.assertEqual(
+                adopted[name]["sha256"], hashlib.sha256(content).hexdigest()
+            )
+        self.assertIn("## Personal", (workspace / "AGENTS.md").read_text())
+
+    def test_adoption_rollback_restores_both_existing_outputs(self):
+        manifest_path = self.box.manifest()
+        manifest = onboard.load_manifest(manifest_path)
+        personal = self.box.personal_instruction_source()
+        workspace = self.box.home / "workspaces" / "exampleco"
+        workspace.mkdir(parents=True)
+        originals = {
+            "AGENTS.md": b"old agents\n",
+            "CLAUDE.md": b"old claude\n",
+        }
+        for name, content in originals.items():
+            (workspace / name).write_bytes(content)
+        report = onboard.Report(as_json=True)
+        state_dir = self.box.home / ".synthesis" / "onboarding"
+        receipts = onboard.Receipts(state_dir / "receipts.json")
+        original_materialize = onboard.materialize_instruction_pair
+
+        def fail_after_first(*args, **kwargs):
+            kwargs["fail_after_first"] = True
+            return original_materialize(*args, **kwargs)
+
+        with (
+            patch.object(onboard, "materialize_instruction_pair", fail_after_first),
+            patch.object(onboard, "WORKSPACES_ROOT", self.box.home / "workspaces"),
+            patch.object(onboard, "STATE_DIR", state_dir),
+        ):
+            onboard.phase_workspace(
+                report,
+                manifest,
+                receipts,
+                False,
+                personal_instruction_source=personal,
+                adopt_existing=True,
+            )
+        self.assertIn("error", self.statuses({"steps": report.steps}, "workspace"))
+        for name, content in originals.items():
+            self.assertEqual((workspace / name).read_bytes(), content)
+        self.assertNotIn("instruction_receipt", receipts.data)
+        archives = list(
+            (self.box.home / ".synthesis" / "onboarding" / "backups").rglob("*")
+        )
+        self.assertTrue(any(path.is_file() for path in archives))
 
     def test_manifest_rejects_repository_selected_migration_actions(self):
         path = self.box.manifest()

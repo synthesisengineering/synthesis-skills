@@ -1,24 +1,38 @@
-# AGENT HEURISTIC: authored for the 4.93.4 causal stopped-task alias transaction.
+# AGENT HEURISTIC: authored for the 4.94.0 personal instruction overlay transaction.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: causal-stopped-task-alias
+suite: personal-instruction-overlay-adoption
 membership: closed
-production_entry_point: skills/synthesis-agent-conformance/scripts/conformance.py
-enforcing_boundary: stopped-task parity requires both native adapters to report one causally selected durable project with the requested project identity, matching phase and status, and an existing controlling plan derived at the selected path
+production_entry_point: skills/synthesis-onboarding/scripts/synthesis_cli.py
+enforcing_boundary: full organization setup accepts only committed provenance-bound instruction sources and may replace existing unreceipted root instructions only through explicit verified archive-first adoption with two-output rollback
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: current-global lifecycle health remains a native runtime observation and cannot be replaced by source or hermetic evidence
+unverified_remainder: live organization review and merge, released-source root adoption, site build-only acceptance, and fresh client lifecycle receipts remain external runtime gates
 changed_surfaces:
-  - path: skills/synthesis-agent-conformance/scripts/conformance.py
-    cases: [causal-stopped-task-alias]
-  - path: skills/synthesis-agent-conformance/scripts/test_conformance.py
-    cases: [causal-stopped-task-alias]
-  - path: skills/synthesis-agent-conformance/SKILL.md
-    cases: [causal-stopped-task-alias]
+  - path: skills/synthesis-onboarding/scripts/system_contract.py
+    cases: [desired-state-schema, source-commit-binding, source-provenance-refresh]
+  - path: skills/synthesis-onboarding/scripts/synthesis_cli.py
+    cases: [personal-source-state-replay, personal-source-preserve-clear]
+  - path: skills/synthesis-onboarding/scripts/onboard.py
+    cases: [personal-source-materialization, explicit-adoption-rollback]
+  - path: skills/synthesis-onboarding/scripts/test_system_contract.py
+    cases: [desired-state-schema, source-commit-binding, source-provenance-refresh]
+  - path: skills/synthesis-onboarding/scripts/test_synthesis_cli.py
+    cases: [personal-source-state-replay, personal-source-preserve-clear]
+  - path: skills/synthesis-onboarding/scripts/test_onboard.py
+    cases: [personal-source-materialization, explicit-adoption-rollback]
+  - path: skills/synthesis-onboarding/references/system-state.schema.json
+    cases: [desired-state-schema]
+  - path: skills/synthesis-onboarding/references/release-capabilities.json
+    cases: [personal-source-materialization]
+  - path: skills/synthesis-onboarding/references/org-manifest.md
+    cases: [personal-source-materialization, explicit-adoption-rollback]
+  - path: skills/synthesis-onboarding/SKILL.md
+    cases: [personal-source-state-replay, personal-source-preserve-clear, explicit-adoption-rollback]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -28,12 +42,36 @@ changed_surfaces:
   - path: CHANGELOG.md
     cases: [release-changelog-parity]
   - path: README.md
-    cases: [release-changelog-parity]
+    cases: [release-changelog-parity, personal-source-materialization]
 cases:
-  - id: causal-stopped-task-alias
+  - id: desired-state-schema
     control_class: acceptance-test
-    fixture: ../synthesis-agent-conformance/scripts/test_conformance.py::test_stopped_handoff_accepts_causally_selected_project_alias
-    motivating_defect: correct-recovery-to-a-causally-newer-checkout-was-rejected-because-its-path-differed-from-the-callers-isolated-worktree
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_json_schemas_and_runtime_share_valid_and_invalid_corpora
+    motivating_defect: a-local-personal-source-that-is-not-closed-schema-desired-state-cannot-be-replayed-or-distinguished-from-shareable-organization-data
+  - id: personal-source-state-replay
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_update_replays_persisted_personal_instruction_source
+    motivating_defect: a-setup-only-source-argument-would-disappear-on-update-or-repair-and-silently-remove-private-operating-context
+  - id: personal-source-preserve-clear
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_setup_preserves_personal_source_until_explicit_clear
+    motivating_defect: rerunning-setup-without-repeating-a-local-private-path-could-silently-drop-the-declared-overlay-while-no-explicit-removal-was-requested
+  - id: personal-source-materialization
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_personal_instruction_source_is_materialized_and_receipted
+    motivating_defect: a-tracked-private-source-that-never-enters-the-public-organization-personal-graph-leaves-the-root-instructions-unreproducible
+  - id: explicit-adoption-rollback
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_adoption_rollback_restores_both_existing_outputs
+    motivating_defect: replacing-an-existing-unreceipted-root-without-verified-archives-and-two-file-rollback-can-destroy-the-only-copy-of-user-context
+  - id: source-commit-binding
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_instruction_pair_rejects_uncommitted_untracked_and_symlink_sources
+    motivating_defect: a-receipt-that-hashes-working-tree-bytes-while-naming-an-unrelated-commit-can-certify-content-that-git-never-recorded
+  - id: source-provenance-refresh
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_instruction_pair_refreshes_source_receipt_when_bytes_are_unchanged
+    motivating_defect: identical-rendered-bytes-from-a-new-source-could-leave-the-receipt-pointing-at-the-previous-repository-and-break-desired-state-auditability
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
