@@ -11,6 +11,13 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Stopped-task verification now follows the causally selected project copy
+(September 2026).** Release **4.93.4** accepts an equal or newer resolved
+checkout without demanding that recovery preserve the caller's original
+worktree pathname. It still requires the same project identity, phase, status,
+and controlling plan, while the separate resolver check proves causal
+selection. See the [4.93.4 release notes](CHANGELOG.md).
+
 **Structured state now has one readable current-state authority (September
 2026).** Release **4.93.3** rejects duplicate current-looking prose outside the
 generated state block while preserving explicitly historical snapshots. It

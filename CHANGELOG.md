@@ -4,6 +4,21 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.93.4] - 2026-09-04
+
+**Stopped-task conformance now verifies the project selected by causal
+recovery instead of requiring the caller's original worktree pathname.** A
+clean isolated checkout and a newer canonical checkout can carry the same
+project tree; recovery correctly chooses the causally newer repository state,
+but the prior parity assertion treated that path change as a missing payload.
+
+synthesis-agent-conformance 1.9.3 extracts the selected durable project from
+the shared adapter payload, requires the requested project identity, derives
+the controlling plan at the selected path, and keeps phase and status equality
+checks. The separate project-state recovery check continues to prove causal
+selection. A red-first two-worktree fixture and a real installed-shape probe
+cover the motivating topology.
+
 ## [4.93.3] - 2026-09-03
 
 **Structured current state can no longer coexist with another current-looking

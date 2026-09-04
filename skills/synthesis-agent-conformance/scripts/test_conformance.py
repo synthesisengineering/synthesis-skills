@@ -666,6 +666,81 @@ def test_stopped_handoff_passes_without_active_pointer(tmp_path: Path) -> None:
     assert named["handoff.pointer-cache"].ok
 
 
+def test_stopped_handoff_accepts_causally_selected_project_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The resolver may select a newer checkout whose project tree is equal.
+
+    Adapter parity must verify that selected durable project, not require the
+    caller's isolated-worktree pathname to survive reconciliation.
+    """
+    synthesis_home = tmp_path / "synthesis-home"
+    synthesis_home.mkdir()
+    monkeypatch.setenv("SYNTHESIS_HOME", str(synthesis_home))
+    project = write_stopped_project(tmp_path)
+    repo = project.parents[1]
+    (repo / "projects" / "index.yaml").write_text(
+        "- id: demo\n  status: paused\n",
+        encoding="utf-8",
+    )
+    (project / "sessions" / "2026-09.md").write_text(
+        "# September 2026\n",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "add",
+            "projects/index.yaml",
+            "projects/demo/sessions/2026-09.md",
+        ],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-qm", "add project registry"],
+        check=True,
+    )
+    isolated = tmp_path / "isolated"
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "feature/isolated",
+            str(isolated),
+            "HEAD",
+        ],
+        check=True,
+    )
+    (repo / "unrelated.txt").write_text("newer repository state\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "unrelated.txt"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-qm", "advance canonical checkout"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "update-ref", "refs/remotes/origin/main", "HEAD"],
+        check=True,
+    )
+
+    isolated_project = isolated / "projects" / "demo"
+    checks = MODULE.handoff_checks(
+        isolated_project,
+        tmp_path / "missing-pointer.json",
+        tmp_path / "missing-board.md",
+    )
+
+    named = {check.name: check for check in checks}
+    assert named["handoff.stopped-task-payload"].ok
+
+
 def test_aggregate_pointer_scope_accepts_documented_cache_absence(
     tmp_path: Path,
 ) -> None:
