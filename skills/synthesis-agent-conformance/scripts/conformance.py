@@ -1843,11 +1843,39 @@ def stopped_payload_parity(
     if normalized["claude"] != normalized["codex"]:
         return False, "Claude and Codex stopped-task payloads diverge"
     message = contexts["codex"]
+    selected_match = re.search(
+        r"^Stopped synthesis project discovered from the task directory: (.+)\.$",
+        message,
+        re.MULTILINE,
+    )
+    if not selected_match:
+        return False, "stopped-task payload does not name the selected project"
+    try:
+        selected_project = Path(selected_match.group(1)).expanduser().resolve(strict=True)
+    except OSError as exc:
+        return False, f"selected stopped-task project is unreadable: {exc}"
+    if selected_project.name != project.resolve().name:
+        return False, (
+            "stopped-task payload selected a different project: "
+            f"expected={project.resolve().name}; selected={selected_project.name}"
+        )
+
+    plan = str(summary.get("plan", "unknown"))
+    if plan != "unknown":
+        try:
+            relative_plan = Path(plan).resolve(strict=True).relative_to(project.resolve())
+        except (OSError, ValueError) as exc:
+            return False, f"input project's controlling plan is invalid: {exc}"
+        selected_plan = selected_project / relative_plan
+        if not selected_plan.is_file():
+            return False, f"selected project's controlling plan is missing: {selected_plan}"
+        plan = str(selected_plan)
+
     expected = [
-        str(project.resolve()),
+        f"Stopped synthesis project discovered from the task directory: {selected_project}.",
         f"Current phase: {summary.get('phase', 'unknown')}.",
         f"Current status: {summary.get('status', 'unknown')}.",
-        f"Controlling plan: {summary.get('plan', 'unknown')}.",
+        f"Controlling plan: {plan}.",
     ]
     missing = [value for value in expected if value not in message]
     if missing:

@@ -1,6 +1,6 @@
 {
   "name": "synthesis-skills",
-  "version": "4.93.3",
+  "version": "4.93.4",
   "description": "Synthesis engineering workflows for durable human-agent work across ChatGPT, Codex, Claude Code, and other Agent Skills runtimes.",
   "author": {
     "name": "Rajiv Pant",

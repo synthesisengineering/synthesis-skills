@@ -1,46 +1,24 @@
-# AGENT HEURISTIC: authored for the 4.93.3 single-current-state-and-owned-release transaction.
+# AGENT HEURISTIC: authored for the 4.93.4 causal stopped-task alias transaction.
 # Fresh per transaction: changed_surfaces must equal the authoritative
 # base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: single-current-state-and-owned-release
+suite: causal-stopped-task-alias
 membership: closed
-production_entry_point: skills/synthesis-project-management/scripts/project_state.py
-enforcing_boundary: structured operational state is the only mutable current-state authority, historical prose is explicitly labeled, every existing-row claim heartbeat and normal release mutation is bound to its claiming seat, and administrative release is reason-bearing and recorded
+production_entry_point: skills/synthesis-agent-conformance/scripts/conformance.py
+enforcing_boundary: stopped-task parity requires both native adapters to report one causally selected durable project with the requested project identity, matching phase and status, and an existing controlling plan derived at the selected path
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: exact-version native lifecycle receipts require genuine client restarts after installation; source and hermetic fixtures do not substitute for those live events
+unverified_remainder: current-global lifecycle health remains a native runtime observation and cannot be replaced by source or hermetic evidence
 changed_surfaces:
-  - path: skills/synthesis-project-management/scripts/project_state.py
-    cases: [uncompiled-current-prose-rejected, current-label-normalization, historical-snapshots-allowed]
-  - path: skills/synthesis-project-management/scripts/test_project_state.py
-    cases: [uncompiled-current-prose-rejected, current-label-normalization, historical-snapshots-allowed]
-  - path: skills/synthesis-project-management/scripts/coordination.py
-    cases: [claim-bound-to-seat, heartbeat-bound-to-seat, release-bound-to-seat, legacy-selector-fails-closed, administrative-release-recorded]
-  - path: skills/synthesis-project-management/scripts/test_coordination.py
-    cases: [claim-bound-to-seat, heartbeat-bound-to-seat, release-bound-to-seat, legacy-selector-fails-closed, administrative-release-recorded]
-  - path: skills/synthesis-project-management/scripts/test_board_inbox.py
-    cases: [release-bound-to-seat]
-  - path: skills/synthesis-project-management/scripts/test_peer_addressing.py
-    cases: [administrative-release-recorded]
-  - path: skills/synthesis-project-management/scripts/test_peer_send_gate.py
-    cases: [administrative-release-recorded]
-  - path: skills/synthesis-onboarding/scripts/test_onboard.py
-    cases: [sandbox-git-config-isolation]
-  - path: skills/synthesis-project-management/SKILL.md
-    cases: [claim-bound-to-seat, heartbeat-bound-to-seat, release-bound-to-seat, pm-budget]
-  - path: skills/synthesis-project-management/references/parallel-agent-protocol.md
-    cases: [administrative-release-recorded]
-  - path: skills/synthesis-project-management/references/session-identity.md
-    cases: [claim-bound-to-seat, heartbeat-bound-to-seat, release-bound-to-seat]
-  - path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
-    cases: [structured-state-replaces-body-markers]
-  - path: skills/synthesis-context-lifecycle/scripts/test_context_doctor.py
-    cases: [structured-state-replaces-body-markers]
-  - path: skills/synthesis-context-lifecycle/SKILL.md
-    cases: [uncompiled-current-prose-rejected]
+  - path: skills/synthesis-agent-conformance/scripts/conformance.py
+    cases: [causal-stopped-task-alias]
+  - path: skills/synthesis-agent-conformance/scripts/test_conformance.py
+    cases: [causal-stopped-task-alias]
+  - path: skills/synthesis-agent-conformance/SKILL.md
+    cases: [causal-stopped-task-alias]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
   - path: .claude-plugin/plugin.json
@@ -52,50 +30,10 @@ changed_surfaces:
   - path: README.md
     cases: [release-changelog-parity]
 cases:
-  - id: uncompiled-current-prose-rejected
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_project_state.py::test_structured_state_rejects_uncompiled_current_prose
-    motivating_defect: a-generated-current-state-block-and-two-stale-current-prose-surfaces-passed-the-doctor-in-one-coherent-tree
-  - id: historical-snapshots-allowed
+  - id: causal-stopped-task-alias
     control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_project_state.py::test_structured_state_allows_explicitly_historical_snapshots
-    motivating_defect: semantic-enforcement-that-rejects-history-would-destroy-the-durable-evidence-it-is-meant-to-protect
-  - id: current-label-normalization
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_project_state.py::test_structured_state_rejects_setext_and_punctuated_current_labels
-    motivating_defect: setext-headings-and-trailing-punctuation-bypassed-the-current-state-detector
-  - id: structured-state-replaces-body-markers
-    control_class: enforced-gate
-    fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::ContextDoctorTests::test_structured_state_replaces_body_currency_markers
-    motivating_defect: the-doctor-demanded-an-older-prose-currency-marker-beside-the-structured-authority
-  - id: release-bound-to-seat
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_release_is_bound_to_the_claiming_harness_session
-    motivating_defect: a-refused-claim-id-parsed-from-human-output-released-a-different-live-session
-  - id: claim-bound-to-seat
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_claim_with_existing_id_cannot_take_over_another_session_seat
-    motivating_defect: claim-with-an-existing-selector-could-transfer-the-row-and-its-claims-to-another-client
-  - id: heartbeat-bound-to-seat
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_heartbeat_cannot_take_over_another_session_seat
-    motivating_defect: a-foreign-heartbeat-could-refresh-the-row-and-rewrite-its-seat
-  - id: legacy-selector-fails-closed
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_legacy_selector_only_mutations_fail_closed_without_caller_identity
-    motivating_defect: an-unattributed-row-treated-possession-of-its-display-selector-as-mutation-authority
-  - id: sandbox-git-config-isolation
-    control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_each_sandbox_owns_its_global_git_config
-    motivating_defect: one-onboarding-sandbox-global-hook-install-polluted-the-next-sandbox-and-created-an-order-dependent-failure
-  - id: administrative-release-recorded
-    control_class: enforced-gate
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_cross_session_administrative_release_requires_and_records_a_reason
-    motivating_defect: cross-session-release-had-no-separate-authority-or-audit-boundary
-  - id: pm-budget
-    control_class: acceptance-test
-    fixture: ../synthesis-project-management/scripts/test_coordination.py::test_skill_document_stays_within_repo_budget
-    motivating_defect: a-restructured-document-must-not-regrow-with-its-next-feature
+    fixture: ../synthesis-agent-conformance/scripts/test_conformance.py::test_stopped_handoff_accepts_causally_selected_project_alias
+    motivating_defect: correct-recovery-to-a-causally-newer-checkout-was-rejected-because-its-path-differed-from-the-callers-isolated-worktree
   - id: shipped-manifest-self-consumption
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
@@ -103,7 +41,7 @@ cases:
   - id: release-manifest-parity
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
-    motivating_defect: a-version-that-reaches-only-one-client-manifest-cannot-be-reliably-installed-or-audited
+    motivating_defect: a-version-that-reaches-only-one-client-manifest-cannot-be-reliably-installed-or-audited-later
   - id: release-changelog-parity
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
