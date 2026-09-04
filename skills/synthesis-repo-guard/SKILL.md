@@ -86,8 +86,12 @@ Config `~/.synthesis/checkpoint-sync.yaml` (copy `checkpoint-sync.example.yaml`)
 - Manifest writers, Stop receipts, remote flushes, and worktree retirement use
   one lifecycle lock. Retirement pins a freshly fetched remote-tracking
   commit, fsyncs a resumable intent before removal, invalidates old receipts,
-  and completes idempotently after interruption. A missing path without this
-  proof remains a fail-closed Stop error.
+  and completes idempotently after interruption. A missing worktree without
+  this proof remains a fail-closed Stop error. Deleted files and child
+  directories within a verified live repository are recorded as missing,
+  without restoring them or discarding their pending attribution. Resolution
+  refuses symlink ancestry, unavailable worktree inventory and a missing
+  registered nested worktree rather than borrowing the enclosing repository.
 - A distinct commit author identifies batched remote-context commits.
 - Divergence leaves the exact commit and manifest local and reports the
   block. Never rebase or force-push.
