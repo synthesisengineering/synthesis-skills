@@ -855,7 +855,7 @@ def _enroll(args, argv, state, engine_runner):
             desired["personal_instruction_source"] = describe_personal_instruction_source(args.personal_instruction_source)
         validate_desired_state(desired)
         workspaces = Path(os.environ.get("SYNTHESIS_WORKSPACES_ROOT", str(state.home / "workspaces")))
-        receipts = Path(os.environ.get("SYNTHESIS_ONBOARD_STATE_DIR", str(state.home / ".synthesis/onboarding"))) / "receipts.json"
+        receipts = engine_state_root(state.home) / "receipts.json"
         pair = [workspaces / entry["workspace"] / name for name in ("AGENTS.md", "CLAUDE.md")]
         parents = [state.home / (".claude" if c == "claude" else ".agents") / "skills" for c in base["clients"]]
         journal = None

@@ -14,7 +14,8 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 **SSH organization enrollment follows verified bootstrap acquisition (September
 2026).** Release **4.95.1** separates the public HTTPS-only download policy from
 the verified CLI's HTTPS/SSH organization operations. Local-file and external
-helper transports remain blocked.
+helper transports remain blocked. Enrollment and rollback share the engine's
+receipt directory under default, XDG, and explicitly selected state roots.
 
 **Add an organization without resetting an existing installation (September
 2026).** Release **4.95.0** adds `synthesis enroll` for saved full or skills-only

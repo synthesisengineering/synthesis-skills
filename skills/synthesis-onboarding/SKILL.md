@@ -195,6 +195,11 @@ The copy capability accepts either `skills/<name>/SKILL.md` or top-level
 Existing shared copies require matching repository identity and exact source
 bytes at their recorded commit before enrollment can adopt their ownership.
 
+Enrollment, engine locking, and rollback use the same receipt directory:
+`SYNTHESIS_ONBOARD_STATE_DIR` when set, otherwise
+`${XDG_STATE_HOME:-$HOME/.local/state}/synthesis`. Legacy receipts are not the
+default destination for new enrollment transactions.
+
 Public bootstrap acquisition remains HTTPS-only. After verifying the immutable
 release, the CLI permits HTTPS and SSH repository transports; local-file and
 external-helper transports remain forbidden.

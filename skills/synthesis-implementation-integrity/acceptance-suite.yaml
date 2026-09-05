@@ -1,9 +1,9 @@
 # AGENT HEURISTIC: authored for the 4.95.1 verified transport handoff.
 schema: 2
-suite: verified-organization-transport
+suite: verified-organization-enrollment-boundaries
 membership: closed
 production_entry_point: skills/synthesis-onboarding/scripts/bootstrap.py
-enforcing_boundary: public acquisition stays HTTPS-only while verified CLI organization operations permit SSH and refuse file and external-helper transports
+enforcing_boundary: verified organization operations permit HTTPS and SSH only while enrollment and rollback share the actual engine receipt directory
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
@@ -16,11 +16,13 @@ changed_surfaces:
   - path: skills/synthesis-onboarding/scripts/test_bootstrap.py
     cases: [verified-cli-transport, bootstrap-handoff]
   - path: skills/synthesis-onboarding/scripts/test_additive_enrollment.py
-    cases: [real-cli-ssh]
+    cases: [real-cli-ssh, engine-receipt-rollback]
+  - path: skills/synthesis-onboarding/scripts/enrollment.py
+    cases: [real-cli-ssh, engine-receipt-rollback]
   - path: skills/synthesis-onboarding/scripts/onboard.py
-    cases: [engine-version-contract, real-cli-ssh]
+    cases: [engine-version-contract, real-cli-ssh, engine-receipt-rollback]
   - path: skills/synthesis-onboarding/scripts/synthesis_cli.py
-    cases: [engine-version-contract, real-cli-ssh]
+    cases: [engine-version-contract, real-cli-ssh, engine-receipt-rollback]
   - path: skills/synthesis-onboarding/SKILL.md
     cases: [engine-version-contract, verified-cli-transport]
   - path: .claude-plugin/plugin.json
@@ -34,6 +36,10 @@ changed_surfaces:
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [shipped-manifest-self-consumption]
 cases:
+  - id: engine-receipt-rollback
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_enrollment_rollback_protects_actual_engine_receipt
+    motivating_defect: enrollment-journal-protects-legacy-receipt-instead-of-default-or-xdg-engine-receipt
   - id: verified-cli-transport
     control_class: acceptance-test
     fixture: ../synthesis-onboarding/scripts/test_bootstrap.py::test_verified_cli_can_use_org_ssh_without_enabling_local_transports

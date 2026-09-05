@@ -34,7 +34,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from enrollment import (EnrollmentJournal, regular_tree, move_verified, engine_lock,
+from enrollment import (EnrollmentJournal, regular_tree, move_verified, engine_lock, engine_state_root,
                         recover_copy_transactions, organization_copy_transaction)
 
 from plugin_currency import (
@@ -103,12 +103,7 @@ def semver_tuple(value):
     return tuple(int(part) for part in value.split("."))
 
 HOME = Path(os.environ.get("SYNTHESIS_ONBOARD_HOME", str(Path.home())))
-STATE_DIR = Path(
-    os.environ.get(
-        "SYNTHESIS_ONBOARD_STATE_DIR",
-        str(Path(os.environ.get("XDG_STATE_HOME", str(HOME / ".local" / "state"))) / "synthesis"),
-    )
-)
+STATE_DIR = engine_state_root(HOME)
 WORKSPACES_ROOT = Path(os.environ.get("SYNTHESIS_WORKSPACES_ROOT", str(HOME / "workspaces")))
 CACHE_DIR = Path(os.environ.get("SYNTHESIS_ONBOARD_CACHE_DIR", os.environ.get("XDG_CACHE_HOME", str(HOME / ".cache")))) / "synthesis-onboarding"
 RECEIPTS_PATH = STATE_DIR / "receipts.json"

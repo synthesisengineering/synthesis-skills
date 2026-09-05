@@ -12,6 +12,10 @@ HTTPS/SSH transport policy. File and external-helper transports remain blocked.
 Onboarding 2.3.1 tests the policy handoff and actual CLI/engine organization
 acquisition through SSH without local transport rewrites.
 
+Enrollment, engine locking, and rollback now resolve the same receipt directory
+for default, XDG, and explicit state roots. Real CLI tests cover all three
+layouts, and injected failures verify restoration of the actual engine receipt.
+
 ## [4.95.0] - 2026-09-04
 
 **Additive organization enrollment preserves an existing personal installation.**

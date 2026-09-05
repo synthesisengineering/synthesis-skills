@@ -608,7 +608,8 @@ def test_two_org_sources_cannot_own_the_same_skill_target(box):
     assert target.read_bytes() == before
 
 
-def test_real_cli_enroll_reaches_engine_and_preserves_personal_state(box):
+@pytest.mark.parametrize("state_layout", ["override", "default", "xdg"])
+def test_real_cli_enroll_reaches_engine_and_preserves_personal_state(box, state_layout):
     manifest, desired, _ = engine_desired(box)
     remote = box.remotes / "config.git"
     subprocess.run(["git", "clone", "--bare", str(manifest.parents[1]), str(remote)],
@@ -621,6 +622,11 @@ def test_real_cli_enroll_reaches_engine_and_preserves_personal_state(box):
     box.seed_currency()
     env = {**os.environ, **box.env_overrides(), "SYNTHESIS_HOME": str(box.home),
         "SYNTHESIS_CODEX_BIN": str(binary)}
+    env.pop("XDG_STATE_HOME", None)
+    if state_layout != "override":
+        env.pop("SYNTHESIS_ONBOARD_STATE_DIR", None)
+    if state_layout == "xdg":
+        env["XDG_STATE_HOME"] = str(box.home / "xdg-state")
     # Keep the production SSH-only transport policy. A fixture SSH process
     # serves the real local bare repository through git-upload-pack.
     ssh = box.root / "fixture_ssh.py"
@@ -650,6 +656,13 @@ def test_real_cli_enroll_reaches_engine_and_preserves_personal_state(box):
     assert sentinel.read_text() == "independent personal kernel\n"
     assert (box.home / ".agents/skills/example-skill/SKILL.md").exists()
     assert not (box.home / ".claude/skills/example-skill").exists()
+    engine_root = Path(env.get("SYNTHESIS_ONBOARD_STATE_DIR",
+        str(Path(env.get("XDG_STATE_HOME", str(box.home / ".local/state"))) / "synthesis")))
+    assert (engine_root / "receipts.json").is_file()
+    journals_root = Path(env.get("XDG_STATE_HOME", str(box.home / ".local/state"))) / "synthesis/enrollments"
+    journal = json.loads(next(journals_root.glob("*/journal.json")).read_text())
+    assert str(engine_root / "receipts.json") in journal["allowed_files"]
+    assert journal["state"] == "committed"
 
 
 def test_read_only_engine_lock_never_creates_state(tmp_path):
@@ -658,6 +671,38 @@ def test_read_only_engine_lock_never_creates_state(tmp_path):
     with engine_lock(root, read_only=True):
         assert not root.exists()
     assert not root.exists()
+
+
+@pytest.mark.parametrize("state_layout", ["override", "default", "xdg"])
+def test_enrollment_rollback_protects_actual_engine_receipt(tmp_path, monkeypatch, state_layout):
+    monkeypatch.delenv("SYNTHESIS_ONBOARD_STATE_DIR", raising=False)
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+    expected_root = tmp_path / ".local/state/synthesis"
+    if state_layout == "override":
+        expected_root = tmp_path / "explicit-engine-state"
+        monkeypatch.setenv("SYNTHESIS_ONBOARD_STATE_DIR", str(expected_root))
+    elif state_layout == "xdg":
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg-state"))
+        expected_root = tmp_path / "xdg-state/synthesis"
+    state, base = base_state(tmp_path)
+    org_fixture(tmp_path, monkeypatch)
+    receipt = expected_root / "receipts.json"
+    legacy = tmp_path / ".synthesis/onboarding/receipts.json"
+    for path in (receipt, legacy):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('{"personal": "unchanged"}\n')
+    before = receipt.read_bytes()
+
+    def engine(argv):
+        if argv[0] == "enroll":
+            receipt.write_text('{"changed": true}\n')
+            return 0
+        return 1
+
+    assert cli.main(["enroll", "--org-repo", REPOSITORY], state=state, engine_runner=engine) == 1
+    assert receipt.read_bytes() == before
+    assert legacy.read_bytes() == before
+    assert state.read_desired() == base
 
 
 def advance_skill_source(box):
@@ -719,6 +764,7 @@ def test_partial_organization_copy_restores_exact_receipts_and_skill_bytes(box, 
 
 def test_nested_copy_recovery_precedes_outer_enrollment_rollback(tmp_path, monkeypatch):
     from enrollment import EnrollmentJournal, recover_copy_transactions
+    monkeypatch.setenv("SYNTHESIS_ONBOARD_STATE_DIR", str(tmp_path / ".synthesis/onboarding"))
     state, base = base_state(tmp_path)
     receipt = tmp_path / ".synthesis/onboarding/receipts.json"
     target = tmp_path / ".agents/skills/example-skill"
