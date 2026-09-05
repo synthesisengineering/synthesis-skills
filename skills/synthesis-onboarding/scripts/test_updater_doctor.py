@@ -1,0 +1,165 @@
+"""Read-only doctor consumers for checkout ownership and instruction migration."""
+
+import hashlib
+from types import SimpleNamespace
+
+import pytest
+
+import onboard
+import system_contract as contract
+from test_kb_update_ownership import kb, snapshot  # noqa: F401
+
+
+@pytest.fixture
+def installed(kb, monkeypatch):
+    report, receipts = kb.run(enrolling=True)
+    assert report.exit_code() == 0, report.steps
+    public = kb.root / "public"
+    organization = kb.root / "organization"
+    public_relative = "skills/synthesis-onboarding/references/kernel.example.md"
+    organization_relative = ".agents/workspace-instructions.md"
+    for root, relative, content in (
+        (public, public_relative, "Public fixture instructions.\n"),
+        (organization, organization_relative, "Organization fixture instructions.\n"),
+    ):
+        path = root / relative
+        path.parent.mkdir(parents=True)
+        path.write_text(content)
+        kb.git("init", "-q", "-b", "main", cwd=root)
+        kb.git("add", ".", cwd=root)
+        kb.git("commit", "-q", "-m", "Seed fixture", cwd=root)
+    manifest = {**kb.manifest, "_path": str(organization / ".agents/onboarding.yaml"),
+                "skills_repos": [],
+                "instruction_sources": [{"path": organization_relative, "required": True}]}
+    workspace = kb.standard.parent
+    graph = {"schema_version": 1, "sources": [
+        {"role": "public", "path": public_relative, "required": True},
+        {"role": "organization", "path": organization_relative, "required": True}],
+        "output": "AGENTS.md", "claude_adapter": "CLAUDE.md"}
+    pair = contract.materialize_instruction_pair(graph,
+        {"public": public, "organization": organization}, workspace, generation=1)
+    receipts.data["instruction_receipt"] = pair
+    receipts.save()
+    real_receipts = onboard.Receipts
+    monkeypatch.setattr(onboard, "Receipts", lambda *a, **k: real_receipts(kb.receipts_path))
+    monkeypatch.setattr(onboard, "source_root", lambda: public)
+    # These cases exercise the actual organization and output doctor blocks;
+    # unrelated public-plugin and personal-layer selection has separate tests.
+    monkeypatch.setattr(onboard, "render_layer_doctor", lambda *a, **k: False)
+
+    def doctor():
+        report = onboard.Report(as_json=True)
+        code = onboard.doctor(report, manifest, [], onboard.normalize_policy("stable", None))
+        return code, report
+
+    def read_receipts():
+        return real_receipts(kb.receipts_path)
+
+    return SimpleNamespace(kb=kb, receipts=read_receipts, workspace=workspace,
+        manifest=manifest, pair=pair, doctor=doctor)
+
+
+def assert_read_only_failure(installed):
+    before = snapshot(installed.kb.root)
+    code, report = installed.doctor()
+    assert code == 1, report.steps
+    assert any(step["status"] == onboard.ERROR for step in report.steps)
+    assert snapshot(installed.kb.root) == before
+    return report
+
+
+def test_current_instruction_and_owned_checkout_doctor_passes_read_only(installed):
+    before = snapshot(installed.kb.root)
+    code, report = installed.doctor()
+    assert code == 0, report.steps
+    assert snapshot(installed.kb.root) == before
+    assert onboard._organization_probe(installed.manifest, installed.receipts())[0] is True
+    assert onboard._knowledge_probe(installed.manifest, installed.receipts())[0] is True
+
+
+@pytest.mark.parametrize("converted", [False, True], ids=["legacy-duplicate", "legacy-adapter"])
+def test_doctor_requires_migration_for_both_legacy_output_forms(installed, converted):
+    receipts = installed.receipts()
+    agents = (installed.workspace / "AGENTS.md").read_bytes()
+    receipts.data["instruction_receipt"]["outputs"]["CLAUDE.md"]["sha256"] = hashlib.sha256(agents).hexdigest()
+    if not converted:
+        (installed.workspace / "CLAUDE.md").write_bytes(agents)
+    receipts.save()
+    report = assert_read_only_failure(installed)
+    assert any(step["detail"].startswith("workspace instruction migration required")
+               for step in report.steps)
+
+
+@pytest.mark.parametrize("corruption", ["missing", "list", "sources-map", "sources-scalar",
+    "sources-null-entry", "sources-bad-role", "outputs-list", "output-null",
+    "different-workspace", "wrong-digest"])
+def test_doctor_handles_malformed_instruction_receipts_without_traceback(installed, corruption):
+    receipts = installed.receipts()
+    pair = receipts.data["instruction_receipt"]
+    if corruption == "missing":
+        del receipts.data["instruction_receipt"]
+    elif corruption == "list":
+        receipts.data["instruction_receipt"] = ["invalid"]
+    elif corruption == "sources-map":
+        pair["sources"] = {"public": {}}
+    elif corruption == "sources-scalar":
+        pair["sources"] = 17
+    elif corruption == "sources-null-entry":
+        pair["sources"] = [None]
+    elif corruption == "sources-bad-role":
+        pair["sources"][0]["role"] = []
+    elif corruption == "outputs-list":
+        pair["outputs"] = []
+    elif corruption == "output-null":
+        pair["outputs"]["CLAUDE.md"] = None
+    elif corruption == "different-workspace":
+        pair["outputs"]["CLAUDE.md"]["path"] = str(installed.kb.root / "other/CLAUDE.md")
+    else:
+        pair["outputs"]["CLAUDE.md"]["sha256"] = "a" * 64
+    receipts.save()
+    assert_read_only_failure(installed)
+
+
+def test_adopted_feature_branch_and_private_work_remain_unchanged_during_doctor(installed):
+    receipts = installed.receipts()
+    kb = installed.kb
+    receipts.data["knowledge_repositories"].pop("knowledge")
+    receipts.record_knowledge_repository("knowledge", kb.standard, kb.url, "adopted")
+    kb.git("checkout", "-q", "-b", "work/topic", cwd=kb.standard)
+    (kb.standard / "untracked.md").write_text("Uncommitted fixture content.\n")
+    before = snapshot(kb.root)
+    code, report = installed.doctor()
+    assert code == 0, report.steps
+    assert snapshot(kb.root) == before
+    assert onboard._organization_probe(installed.manifest, installed.receipts())[0] is True
+
+
+@pytest.mark.parametrize("corruption", ["unknown-ownership", "invalid-inventory", "invalid-adoption",
+    "invalid-entry", "wrong-path", "wrong-remote", "branch-drift", "upstream-drift", "dirty"])
+def test_doctor_and_both_probes_fail_closed_on_knowledge_ownership(installed, corruption):
+    receipts = installed.receipts()
+    kb = installed.kb
+    if corruption == "unknown-ownership":
+        receipts.data.pop("knowledge_repositories")
+    elif corruption == "invalid-inventory":
+        receipts.data["knowledge_repositories"] = []
+    elif corruption == "invalid-adoption":
+        receipts.data["adopted_repos"] = []
+    elif corruption == "invalid-entry":
+        receipts.data["knowledge_repositories"]["knowledge"] = None
+    elif corruption == "wrong-path":
+        receipts.data["knowledge_repositories"]["knowledge"]["path"] = str(kb.root / "elsewhere")
+    elif corruption == "wrong-remote":
+        kb.git("remote", "set-url", "origin", "https://example.test/wrong.git", cwd=kb.standard)
+    elif corruption == "branch-drift":
+        kb.git("checkout", "-q", "-b", "work/topic", "--track", "origin/main", cwd=kb.standard)
+    elif corruption == "upstream-drift":
+        kb.git("config", "branch.main.remote", ".", cwd=kb.standard)
+    else:
+        (kb.standard / "content.md").write_text("Work in progress.\n")
+    receipts.save()
+    assert_read_only_failure(installed)
+    before = snapshot(kb.root)
+    assert onboard._organization_probe(installed.manifest, installed.receipts())[0] is False
+    assert onboard._knowledge_probe(installed.manifest, installed.receipts())[0] is False
+    assert snapshot(kb.root) == before
