@@ -719,7 +719,7 @@ class PluginTests(unittest.TestCase):
             )
         refresh.assert_not_called()
         self.assertEqual(report.steps[0]["status"], onboard.ACTION)
-        self.assertIn("onboard.py update", report.steps[0]["hint"])
+        self.assertIn("synthesis update", report.steps[0]["hint"])
 
     def test_update_refreshes_and_accepts_newer_version_from_old_plugin_cache(self):
         report = onboard.Report(as_json=True)

@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Continue the existing conversation after a verified reload (September 2026).**
+Release **4.95.4** gives consistent recovery advice across installation, update
+and diagnosis. A new conversation is a fallback, not the default. Installed
+currency and client-session evidence are not presented as proof that the
+invoking task reloaded; verified uninstall no longer requests a restart.
+
 **Updates respect existing work (September 2026).** Release **4.95.3** leaves
 adopted knowledge checkouts under their owner's control and binds managed
 updates to the original branch and upstream. Generated organization instructions

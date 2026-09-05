@@ -18,6 +18,7 @@ from typing import Any, Callable
 
 import onboard
 import organization
+from reload_guidance import RECORDED_SESSION_DETAIL, RECORDED_SESSION_SCOPE, recovery_instruction
 from enrollment import (EnrollmentJournal, recover_enrollments, require_settled_enrollments,
                         engine_lock, engine_state_root, recover_copy_transactions)
 from system_contract import (
@@ -42,7 +43,7 @@ from system_contract import (
 )
 
 
-ENGINE_VERSION = "2.3.2"
+ENGINE_VERSION = "2.3.3"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
     "setup",
@@ -324,6 +325,7 @@ def _current_planes(
         live = {"status": "restart-required", "detail": "no SessionStart receipt for this generation yet"}
     live = dict(live)
     live["missing_clients"] = missing
+    live["scope"] = RECORDED_SESSION_SCOPE
     planes["live-loaded"] = live
     return planes
 
@@ -340,15 +342,6 @@ def _non_green(planes: dict[str, Any], disabled: bool) -> bool:
     if disabled and planes["installed"].get("status") != "removed":
         return True
     return False
-
-
-def _restart_instruction(client: str) -> str:
-    if client == "claude":
-        return "restart Claude Code and start a new chat"
-    return (
-        "restart Codex and start a new thread; if Codex shows pending hook review, "
-        "approve the synthesis-skills hooks (Codex runs plugin hooks only after human trust)"
-    )
 
 
 def _next_action(
@@ -375,9 +368,9 @@ def _next_action(
     live = planes["live-loaded"]
     if live.get("status") != "verified":
         clients = live.get("missing_clients") or list(desired.get("clients") or [])
-        steps = "; ".join(_restart_instruction(client) for client in clients)
+        steps = recovery_instruction(clients)
         note = " (%s)" % promotion_note if promotion_note else ""
-        return "%s; then run synthesis doctor again%s" % (steps, note)
+        return "%s Then run synthesis doctor again%s." % (steps, note)
     if planes["outcome-verified"].get("status") in ("not-requested", "missing"):
         return (
             "Optional: synthesis outcome verify --task workspace-grounding-check "
@@ -411,6 +404,8 @@ def _plane_summary(name: str, plane: dict[str, Any]) -> str:
         for client in plane.get("missing_clients") or []:
             parts.append("%s missing" % client)
         detail = "; ".join(parts) or str(plane.get("detail") or "")
+        if plane.get("scope") == RECORDED_SESSION_SCOPE:
+            detail = "%s %s" % (detail, RECORDED_SESSION_DETAIL)
         return "%s%s" % (status, " — " + detail if detail else "")
     detail = plane.get("detail")
     return "%s%s" % (status, " — " + str(detail) if detail else "")
@@ -485,6 +480,8 @@ def _render_status(payload: dict[str, Any]) -> None:
             if not (isinstance(entry, dict) and entry.get("plugin_version") == recorded_version):
                 parts.append("%s missing" % client)
         print("  Live-loaded: %s%s" % (live.get("status"), " — " + "; ".join(parts) if parts else ""))
+        if live.get("status") != "not-applicable":
+            print("  Live scope:  %s" % RECORDED_SESSION_DETAIL)
     else:
         print("  Live-loaded: unknown")
     outcome = latest.get("outcome-verified") if latest else None
@@ -634,7 +631,7 @@ def _planes(
             "detail": (
                 "No client load is expected for a disabled installation."
                 if disabled
-                else "Start a fresh selected-client session to establish live-loaded state."
+                else recovery_instruction(desired.get("clients") or [], initial=command == "setup")
             ),
         },
         "outcome-verified": {"status": "not-applicable" if disabled else "not-requested"},
@@ -921,9 +918,12 @@ def _render(payload: dict[str, Any], as_json: bool) -> None:
         return
     if payload.get("transaction_id"):
         print(
-            "Synthesis generation %s %s. Restart selected clients before live verification."
+            "Synthesis generation %s %s."
             % (payload.get("generation"), payload.get("state"))
         )
+        live = payload.get("live-loaded") or {}
+        if live.get("status") == "restart-required":
+            print("Next action: %s" % live["detail"])
         retained = (payload.get("details") or {}).get("retained") or []
         if retained and not payload.get("purged"):
             print("Retained (not removed by uninstall):")
@@ -1492,6 +1492,12 @@ def main(
             promoted, _promotion_note = _promote_live_receipts(state)
             with state.locked():
                 payload = {"desired": state.read_desired(), "observed": state.read_observation()}
+                # Presentation metadata must not alter hash-bound observations.
+                if payload["desired"] and payload["desired"].get("enabled", True):
+                    payload["live_scope"] = {
+                        "scope": RECORDED_SESSION_SCOPE,
+                        "detail": RECORDED_SESSION_DETAIL,
+                    }
             payload["promoted"] = promoted
             _render(payload, args.json)
             return 0 if payload["desired"] is not None else 1

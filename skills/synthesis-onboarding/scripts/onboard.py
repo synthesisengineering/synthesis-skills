@@ -34,6 +34,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from reload_guidance import recovery_instruction
+
 from enrollment import (EnrollmentJournal, regular_tree, move_verified, engine_lock, engine_state_root,
                         recover_copy_transactions, organization_copy_transaction)
 
@@ -89,7 +91,7 @@ from whole_system import (
     validate_personal_policy,
 )
 
-ENGINE_VERSION = "2.3.2"
+ENGINE_VERSION = "2.3.3"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -1283,7 +1285,7 @@ def phase_ecosystem(
                         (PLUGIN_NAME, name, before_version, expected),
                         hint=(
                             "Close other Claude Code and Codex sessions, then run "
-                            "onboard.py update as the invoking session's last action."
+                            "synthesis update as the invoking session's last action."
                         ),
                     )
                 else:
@@ -1375,17 +1377,18 @@ def phase_ecosystem(
                     hint=expectation_detail,
                 )
             elif after_version != before_version:
-                restart = "restart Claude Code" if name == "claude" else "restart Codex"
                 report.add(
                     "ecosystem", CHANGED,
-                    "%s plugin updated for %s: %s -> %s; %s, then start a new chat there" %
-                    (PLUGIN_NAME, name, before_version, after_version, restart),
+                    "%s plugin updated for %s: %s -> %s" %
+                    (PLUGIN_NAME, name, before_version, after_version),
+                    hint=recovery_instruction([name]),
                 )
             else:
                 report.add(
                     "ecosystem", OK,
-                    "%s plugin current for %s at %s; no new task needed" %
+                    "%s plugin current for %s at %s; installation currency does not verify the active conversation" %
                     (PLUGIN_NAME, name, after_version or "unknown version"),
+                    hint=recovery_instruction([name]),
                 )
             continue
         if no_plugin_cli:
@@ -1414,11 +1417,10 @@ def phase_ecosystem(
                 hint=expectation_detail,
             )
         elif success and after_state is True:
-            restart = "restart Claude Code" if name == "claude" else "restart Codex"
             report.add(
                 "ecosystem", CHANGED,
-                "%s: %s; %s, then start a new chat there" %
-                (name, detail, restart),
+                "%s: %s" % (name, detail),
+                hint=recovery_instruction([name], initial=True),
             )
         else:
             need_fallback = True
@@ -3344,7 +3346,7 @@ def doctor(report, manifest, clients_wanted, policy, desired_state=None):
                          policy_label(policy), target_version),
                         hint=(
                             "Close other Claude Code and Codex sessions, then run "
-                            "onboard.py update as the invoking session's last action."
+                            "synthesis update as the invoking session's last action."
                         ),
                     )
                 else:

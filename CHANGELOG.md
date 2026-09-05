@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.95.4] - 2026-09-05
+
+**Reload guidance keeps existing conversations first.** Onboarding 2.3.3 uses
+one recovery contract across native installation, refresh, doctor and transaction
+output. Restart and reopen the existing conversation when supported, then verify
+genuine same-session startup evidence and loaded metadata. A new conversation
+is a fallback when recovery is unsupported or verification fails.
+
+Same-version installation no longer implies active-task acceptance. Doctor
+distinguishes client-session evidence from the invoking task, verified uninstall
+does not request a restart, and update hints use the stable public command.
+Repair, provenance and lifecycle verification remain fail-closed.
+
 ## [4.95.3] - 2026-09-05
 
 **Updates respect repository ownership and one instruction format.** Onboarding
