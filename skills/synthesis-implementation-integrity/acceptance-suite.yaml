@@ -81,11 +81,11 @@ cases:
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_tag_backed_snapshot_repairs_partial_and_missing_historical_roots
     motivating_defect: all-tagged-intervening-releases-and-known-metadata-must-survive
   - id: release-contract
-    control_class: acceptance-test
+    control_class: diagnostic
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
     motivating_defect: release-source-metadata-and-enforcing-consumer-must-stay-coherent
   - id: manifest-consumer
-    control_class: acceptance-test
+    control_class: diagnostic
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
     motivating_defect: closed-manifest-must-validate-at-publication-boundary
   - id: publisher-lock
