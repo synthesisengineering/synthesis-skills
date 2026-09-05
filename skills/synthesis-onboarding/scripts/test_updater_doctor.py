@@ -1,6 +1,7 @@
 """Read-only doctor consumers for checkout ownership and instruction migration."""
 
 import hashlib
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -194,3 +195,80 @@ def test_malformed_skill_copy_inventory_cannot_escape_doctor(installed, corrupti
     receipts.data["org_skill_copies"] = value
     receipts.save()
     assert_read_only_failure(installed)
+
+
+def git_artifact(installed, name):
+    kb = installed.kb
+    value = Path(kb.git("rev-parse", "--git-path", name, cwd=kb.standard))
+    path = value if value.is_absolute() else kb.standard / value
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("Retained fixture state.\n")
+    return path
+
+
+@pytest.mark.parametrize("consumer", ["doctor", "update"])
+@pytest.mark.parametrize("artifact", [".synthesis-index-fixture", ".synthesis-index-fixture.recovery.json",
+    ".synthesis-index-fixture.lock", "HEAD.lock", "index.lock", "refs/heads/main.lock"])
+def test_created_pending_git_state_remains_non_green_without_mutation(installed, consumer, artifact):
+    git_artifact(installed, artifact)
+    before = snapshot(installed.kb.root)
+    if consumer == "doctor":
+        assert_read_only_failure(installed)
+        assert onboard._organization_probe(installed.manifest, installed.receipts())[0] is False
+    else:
+        report, _ = installed.kb.run()
+        assert report.exit_code() != 0, report.steps
+    assert snapshot(installed.kb.root) == before
+
+
+@pytest.mark.parametrize("consumer", ["doctor", "update"])
+@pytest.mark.parametrize("artifact", [".synthesis-index-fixture.recovery.json", "HEAD.lock", "index.lock", "refs/heads/main.lock"])
+def test_adopted_git_state_is_not_owned_or_changed(installed, consumer, artifact):
+    receipts = installed.receipts()
+    receipts.data["knowledge_repositories"].pop("knowledge")
+    receipts.record_knowledge_repository("knowledge", installed.kb.standard, installed.kb.url, "adopted")
+    git_artifact(installed, artifact)
+    before = snapshot(installed.kb.root)
+    if consumer == "doctor":
+        code, report = installed.doctor()
+        assert code == 0, report.steps
+    else:
+        report, _ = installed.kb.run()
+        assert report.exit_code() == 0, report.steps
+    assert snapshot(installed.kb.root) == before
+
+
+@pytest.mark.parametrize("consumer", ["doctor", "update"])
+def test_git_administrative_symlink_redirection_is_refused(installed, consumer):
+    kb = installed.kb
+    index = Path(kb.git("rev-parse", "--git-path", "index", cwd=kb.standard))
+    index = index if index.is_absolute() else kb.standard / index
+    destination = kb.root / "redirected-index"
+    destination.write_bytes(index.read_bytes())
+    index.unlink()
+    index.symlink_to(destination)
+    before = snapshot(kb.root)
+    if consumer == "doctor":
+        assert_read_only_failure(installed)
+    else:
+        report, _ = kb.run()
+        assert report.exit_code() != 0, report.steps
+    assert index.is_symlink()
+    assert snapshot(kb.root) == before
+
+
+@pytest.mark.parametrize("consumer", ["doctor", "update"])
+def test_git_paths_find_pending_state_after_administrative_directory_move(installed, consumer):
+    kb = installed.kb
+    admin = kb.root / "separate-git"
+    kb.git("init", "-q", "--separate-git-dir", str(admin), cwd=kb.standard)
+    assert (kb.standard / ".git").is_file()
+    artifact = git_artifact(installed, ".synthesis-index-fixture.recovery.json")
+    assert artifact.parent == admin
+    before = snapshot(kb.root)
+    if consumer == "doctor":
+        assert_read_only_failure(installed)
+    else:
+        report, _ = kb.run()
+        assert report.exit_code() != 0, report.steps
+    assert snapshot(kb.root) == before

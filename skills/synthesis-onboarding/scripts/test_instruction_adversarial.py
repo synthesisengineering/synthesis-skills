@@ -560,7 +560,8 @@ def test_instruction_read_access_time_is_not_a_concurrent_content_edit(tmp_path,
 
 
 @pytest.mark.parametrize("source_kind", ["git", "immutable-release"])
-def test_actual_doctor_rejects_forged_public_commit_in_current_receipt(tmp_path, monkeypatch, source_kind):
+@pytest.mark.parametrize("forgery", ["missing-commit", "tree-object"])
+def test_actual_doctor_rejects_forged_public_commit_in_current_receipt(tmp_path, monkeypatch, source_kind, forgery):
     import onboard
 
     public_relative = "skills/synthesis-onboarding/references/kernel.example.md"
@@ -575,6 +576,11 @@ def test_actual_doctor_rejects_forged_public_commit_in_current_receipt(tmp_path,
         graph["sources"][0]["path"] = public_relative
         workspace = tmp_path.resolve() / "workspace"
         receipt = contract.materialize_instruction_pair(graph, roots, workspace, generation=1)
+        # The original commit still binds the same instruction bytes after an
+        # unrelated source-repository commit. Fresh HEAD equality is not proof.
+        (roots["public"] / "unrelated.md").write_text("Unrelated committed content.\n")
+        git(roots["public"], "add", "unrelated.md")
+        git(roots["public"], "commit", "-q", "-m", "Update fixture")
     assert contract.instruction_output_state(workspace, receipt) == "current"
     manifest = {"org": {"workspace": workspace.name},
                 "_path": str(roots["organization"] / ".agents/onboarding.yaml"),
@@ -599,7 +605,11 @@ def test_actual_doctor_rejects_forged_public_commit_in_current_receipt(tmp_path,
 
     code, report = doctor()
     assert code == 0, report.steps  # Positive control through the same consumer.
-    receipts.data["instruction_receipt"]["sources"][0]["commit"] = "e" * 40
+    forged_commit = "e" * 40
+    if forgery == "tree-object":
+        forged_commit = (_descriptor["tree"] if source_kind == "immutable-release"
+                         else git(roots["public"], "rev-parse", "HEAD^{tree}"))
+    receipts.data["instruction_receipt"]["sources"][0]["commit"] = forged_commit
     receipts.save()
     before = {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
     code, report = doctor()
