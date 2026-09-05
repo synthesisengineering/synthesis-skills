@@ -1,102 +1,48 @@
-# AGENT HEURISTIC: closed recovery storage and consumer acceptance.
+# AGENT HEURISTIC: closed acceptance universe for the weekly-review PR-queue
+# transaction. Fresh per transaction: changed_surfaces must equal the
+# authoritative base-to-head Git diff before release.py can consume the receipt.
 schema: 2
-suite: deduplicated-historical-recovery
+suite: weekly-review-pr-queue-source-2026-09
 membership: closed
-production_entry_point: skills/synthesis-skills-manager/scripts/release.py
-enforcing_boundary: verified standalone guardian and budgeted complete archive precede destructive native cache refresh
+production_entry_point: Weekly Loose-Ends Review -> declared sources -> pr_queue_scan.py over the workspace's own .agents/repos.yaml
+enforcing_boundary: release.py consumes this transaction-bound closed manifest before publishing the immutable release, installing both clients, and activating the public CLI
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: production filesystem durability under hardware failure, malicious same-user mutation, live enrollment, deployment and genuine lifecycle acceptance remain separate
+unverified_remainder: the live GitHub queue itself, `gh` authentication on the running machine, per-workspace repos.yaml accuracy, and whether an agent executing the review actually runs the declared source — all verified only against a real workspace after this release installs
 changed_surfaces:
-  - path: skills/synthesis-skills-manager/scripts/cache_guardian.py
-    cases: [archive-preservation, archive-budget, archive-interruptions, archive-corruption, archive-unsafe-manifest, archive-unsafe-database, archive-immutable, guardian-standalone, guardian-mode, guardian-root-mode, archive-inventory]
-  - path: skills/synthesis-skills-manager/scripts/release.py
-    cases: [publisher-cutover, tag-history, publisher-lock, archive-umask, release-contract]
-  - path: skills/synthesis-skills-manager/scripts/test_cache_guardian.py
-    cases: [archive-preservation, archive-budget, archive-interruptions, archive-corruption, archive-unsafe-manifest, archive-unsafe-database, archive-immutable, guardian-standalone, guardian-mode]
-  - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [publisher-cutover, tag-history, release-contract]
-  - path: skills/synthesis-skills-manager/SKILL.md
-    cases: [release-contract]
-  - path: .claude-plugin/plugin.json
-    cases: [release-contract]
-  - path: .codex-plugin/plugin.json
-    cases: [release-contract]
-  - path: CHANGELOG.md
-    cases: [release-contract]
-  - path: README.md
-    cases: [release-contract]
+  - path: skills/synthesis-daily-rituals/SKILL.md
+    cases: [rituals-skill-budget]
+  - path: skills/synthesis-daily-rituals/scripts/pr_queue_scan.py
+    cases: [pr-queue-scope, pr-queue-coverage-honesty, pr-queue-classification, pr-queue-surface-not-gate]
+  - path: skills/synthesis-daily-rituals/scripts/test_pr_queue_scan.py
+    cases: [pr-queue-scope, pr-queue-coverage-honesty, pr-queue-classification, pr-queue-surface-not-gate]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
-    cases: [manifest-consumer]
+    cases: [acceptance-self]
 cases:
-  - id: guardian-root-mode
+  - id: acceptance-self
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_historical_root_mode_is_part_of_verified_identity
-    motivating_defect: root-directory-mode-is-part-of-immutable-history
-  - id: archive-preservation
+    fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
+    motivating_defect: a-release-manifest-could-claim-closed-membership-with-unmapped-or-invalid-cases
+  - id: rituals-skill-budget
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_recovery_archive_deduplicates_and_preserves_all_history
-    motivating_defect: duplicate-payloads-exhaust-archive-budget-despite-sufficient-unique-content
-  - id: archive-budget
+    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_skill_document_stays_within_repo_budget
+    motivating_defect: a-new-declared-source-could-push-the-skill-document-past-its-published-size-ceiling
+  - id: pr-queue-scope
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_recovery_archive_budget_refuses_before_promoting
-    motivating_defect: budget-must-count-stored-database-pages-and-indexes-before-admission
-  - id: archive-interruptions
+    fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_declared_repos_does_not_filter_by_ritual_sync
+    motivating_defect: filtering-a-review-queue-by-a-source-sync-policy-hid-open-pull-requests-authored-under-the-principals-own-account
+  - id: pr-queue-coverage-honesty
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_recovery_archive_real_process_interruptions_resume
-    motivating_defect: partial-migration-must-not-strand-historical-hooks
-  - id: archive-corruption
+    fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_unscannable_repos_are_named_not_silently_dropped
+    motivating_defect: an-unreadable-queue-could-report-as-an-empty-queue-which-is-the-exact-coverage-lie-this-scan-exists-to-correct
+  - id: pr-queue-classification
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_recovery_archive_rejects_structurally_valid_database_corruption
-    motivating_defect: database-structure-integrity-does-not-prove-payload-or-manifest-integrity
-  - id: archive-unsafe-manifest
+    fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_query_repo_splits_review_requested_from_own
+    motivating_defect: a-139-day-old-review-request-naming-the-principal-was-invisible-to-a-review-that-reported-one-waiting-on-item
+  - id: pr-queue-surface-not-gate
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_recovery_archive_refuses_rehashed_unsafe_manifest
-    motivating_defect: untrusted-restoration-paths-and-modes-must-fail-before-cache-writes
-  - id: archive-unsafe-database
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_recovery_archive_refuses_unsafe_database_targets
-    motivating_defect: links-or-special-database-targets-cannot-be-followed-during-migration
-  - id: archive-immutable
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_existing_version_cannot_replace_historical_source
-    motivating_defect: repeated-admission-must-not-replace-historical-source
-  - id: guardian-standalone
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_standalone_guardian_restores_database_history_after_repeated_reconciliation
-    motivating_defect: guardian-must-recover-after-client-cache-reconciliation-without-source-checkout
-  - id: guardian-mode
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_mode_corruption_is_not_accepted_as_historical_integrity
-    motivating_defect: byte-equal-nonexecutable-hook-was-accepted
-  - id: publisher-cutover
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_database_guardian_cutover_gates_destructive_native_refresh
-    motivating_defect: new-storage-consumer-must-be-verified-before-migration-or-native-refresh
-  - id: tag-history
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_tag_backed_snapshot_repairs_partial_and_missing_historical_roots
-    motivating_defect: all-tagged-intervening-releases-and-known-metadata-must-survive
-  - id: release-contract
-    control_class: diagnostic
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
-    motivating_defect: release-source-metadata-and-enforcing-consumer-must-stay-coherent
-  - id: manifest-consumer
-    control_class: diagnostic
-    fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-    motivating_defect: closed-manifest-must-validate-at-publication-boundary
-  - id: publisher-lock
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_contending_publisher_cannot_prepare_or_restart_guardian
-    motivating_defect: publisher-must-hold-shared-lock-before-consumer-cutover
-  - id: archive-umask
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_repeated_archive_admission_preserves_root_identity_across_umask
-    motivating_defect: git-export-root-mode-must-not-redefine-historical-identity
-  - id: archive-inventory
-    control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_unowned_archive_files_refuse_before_migration
-    motivating_defect: unowned-data-must-not-be-silently-excluded-from-archive-budget
+    fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_missing_gh_exits_zero_and_says_not_scanned
+    motivating_defect: a-missing-or-unauthenticated-cli-could-make-a-reporting-surface-into-the-reason-a-daily-ritual-fails
