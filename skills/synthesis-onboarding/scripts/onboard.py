@@ -51,6 +51,7 @@ from system_contract import (
     SystemState,
     describe_personal_instruction_source,
     file_digest,
+    instruction_output_state,
     json_digest,
     materialize_instruction_pair,
     personal_instruction_source_path,
@@ -88,7 +89,7 @@ from whole_system import (
     validate_personal_policy,
 )
 
-ENGINE_VERSION = "2.3.1"
+ENGINE_VERSION = "2.3.2"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -433,10 +434,60 @@ class Receipts:
         self.data["generated_files"].pop(str(path), None)
 
     def adopted(self, name):
-        return self.data["adopted_repos"].get(name)
+        inventory = self.data["adopted_repos"]
+        if not isinstance(inventory, dict):
+            raise ContractError("knowledge repository adoption inventory is invalid")
+        if name not in inventory:
+            return None
+        path = inventory[name]
+        if not isinstance(path, str) or not Path(path).is_absolute() or ".." in Path(path).parts:
+            raise ContractError("knowledge repository adoption path is invalid")
+        return path
 
     def record_adoption(self, name, path):
         self.data["adopted_repos"][name] = str(path)
+
+    def knowledge_repository(self, name):
+        """Read explicit acquisition authority; missing history grants none."""
+        inventory = self.data.get("knowledge_repositories", {})
+        if not isinstance(inventory, dict):
+            raise ContractError("knowledge repository acquisition inventory is invalid")
+        if name not in inventory:
+            return None
+        entry = inventory[name]
+        if not isinstance(entry, dict):
+            raise ContractError("knowledge repository acquisition receipt is invalid")
+        acquisition = entry.get("acquisition")
+        expected = {"path", "repository", "acquisition"}
+        if acquisition == "created":
+            expected |= {"branch", "upstream"}
+        elif acquisition != "adopted":
+            raise ContractError("knowledge repository acquisition must be created or adopted")
+        if set(entry) != expected or any(not isinstance(value, str) or not value for value in entry.values()):
+            raise ContractError("knowledge repository acquisition fields are invalid")
+        path = Path(entry["path"])
+        if not path.is_absolute() or ".." in path.parts:
+            raise ContractError("knowledge repository acquisition path is invalid")
+        validate_repository_url(entry["repository"])
+        if acquisition == "created":
+            rc, _, _ = git(["check-ref-format", "refs/heads/" + entry["branch"]])
+            if rc or entry["upstream"] != "refs/remotes/origin/" + entry["branch"]:
+                raise ContractError("knowledge repository update binding is invalid")
+        return dict(entry)
+
+    def record_knowledge_repository(self, name, path, repository, acquisition,
+                                    branch=None, upstream=None):
+        entry = {"path": str(path), "repository": repository, "acquisition": acquisition}
+        if acquisition == "created":
+            entry.update(branch=branch, upstream=upstream)
+        inventory = self.data.setdefault("knowledge_repositories", {})
+        if not isinstance(inventory, dict):
+            raise ContractError("knowledge repository acquisition inventory is invalid")
+        inventory[name] = entry
+        self.knowledge_repository(name)
+        if acquisition == "adopted":
+            self.record_adoption(name, path)
+        self.save()
 
     def record_layer_choices(self, choices):
         now = utcnow()
@@ -1650,23 +1701,281 @@ def knowledge_hooks_present(repo):
     return hook.is_file() and os.access(hook, os.X_OK)
 
 
+def verify_knowledge_git_update_state(repo, entry):
+    """Refuse unresolved updater state without inspecting adopted Git locks.
+
+    Git administrative files may live outside the checkout (separate Git
+    directories and linked worktrees). Ask Git for each path, then check its
+    lexical components before resolving it so symbolic redirection cannot hide
+    a pending transaction. Nothing here refreshes the index or removes state.
+    """
+    if entry["acquisition"] == "adopted":
+        return
+    if entry["acquisition"] != "created":
+        raise ContractError("knowledge repository acquisition ownership is unknown")
+    repo = Path(repo)
+
+    def administrative_path(arguments):
+        rc, output, _ = git(["rev-parse", *arguments], cwd=repo)
+        if rc or not output.strip():
+            raise ContractError("cannot resolve knowledge repository Git administrative paths")
+        path = Path(output.rstrip("\n"))
+        if not path.is_absolute():
+            path = repo / path
+        if ".." in path.parts or any(part.is_symlink() for part in (path, *path.parents)):
+            raise ContractError("knowledge repository Git administrative path has symbolic or unsafe redirection")
+        return path.resolve()
+
+    git_dir = administrative_path(["--absolute-git-dir"])
+    common_dir = administrative_path(["--git-common-dir"])
+    if not git_dir.is_dir() or not common_dir.is_dir():
+        raise ContractError("knowledge repository Git administrative directory is unavailable")
+    paths = {
+        "HEAD": administrative_path(["--git-path", "HEAD"]),
+        "index": administrative_path(["--git-path", "index"]),
+        "branch": administrative_path(["--git-path", "refs/heads/" + entry["branch"]]),
+    }
+    for name, path in paths.items():
+        if not any(path.is_relative_to(root) for root in (git_dir, common_dir)):
+            raise ContractError("knowledge repository Git administrative path escaped its directory")
+        if (name != "branch" or path.exists()) and not path.is_file():
+            raise ContractError("knowledge repository Git administrative file is unavailable")
+        lock = path.with_name(path.name + ".lock")
+        if lock.exists() or lock.is_symlink():
+            raise ContractError("knowledge repository has a pending Git %s lock; checkout preserved" % name)
+    if any(path.name.startswith(".synthesis-index-") for path in paths["index"].parent.iterdir()):
+        raise ContractError("knowledge repository has retained Git update recovery state; checkout preserved")
+
+
 def phase_kbs(report, manifest, receipts, dry_run, enrolling=False, journal=None):
+    def verify_path(path):
+        path = Path(path)
+        if not path.is_absolute() or ".." in path.parts or any(
+                part.is_symlink() for part in (path, *path.parents)):
+            raise ContractError("knowledge repository path contains an unsafe symbolic component")
+
+    def checked_git(repo, arguments):
+        rc, out, err = git(arguments, cwd=repo)
+        if rc:
+            raise ContractError("cannot verify knowledge repository: %s" % (err.strip()[-300:] or "Git check failed"))
+        return out.strip()
+
+    def update_binding(repo):
+        branch_ref = checked_git(repo, ["symbolic-ref", "HEAD"])
+        if not branch_ref.startswith("refs/heads/"):
+            raise ContractError("knowledge repository is not on a local branch")
+        branch = branch_ref[len("refs/heads/"):]
+        remote = checked_git(repo, ["config", "--get", "branch.%s.remote" % branch])
+        merge = checked_git(repo, ["config", "--get", "branch.%s.merge" % branch])
+        upstream = checked_git(repo, ["rev-parse", "--symbolic-full-name", "@{upstream}"])
+        if remote != "origin" or merge != branch_ref or upstream != "refs/remotes/origin/" + branch:
+            raise ContractError("knowledge repository branch has no exact origin update binding")
+        return branch, upstream
+
+    def verify_managed(repo, entry):
+        verify_path(repo)
+        if origin_url(repo) != entry["repository"]:
+            raise ContractError("knowledge repository origin differs from its acquisition receipt")
+        branch, upstream = update_binding(repo)
+        if branch != entry["branch"] or upstream != entry["upstream"]:
+            raise ContractError("knowledge repository branch or upstream changed; checkout preserved")
+        # Status is a read here: optional index refreshes would alter staged
+        # metadata even when this operation ultimately refuses the update.
+        dirty = checked_git(repo, ["--no-optional-locks", "status", "--porcelain"])
+        if dirty:
+            raise ContractError("knowledge repository has local changes; checkout preserved")
+        return checked_git(repo, ["rev-parse", "HEAD^{commit}"])
+
+    def fast_forward(repo, entry, before, target):
+        """Hold Git's checkout locks and update only the receipt-bound branch.
+
+        A blind merge races HEAD: another checkout can change its destination
+        after the last read. Prepare a compare-and-swap transaction first, then
+        verify its destination while Git holds HEAD and the resolved branch
+        locks. An index lock also excludes concurrent checkout and commit while
+        read-tree performs its non-destructive two-tree update.
+        """
+        import select
+        import tempfile
+
+        verify_path(repo)
+        verify_knowledge_git_update_state(repo, entry)
+        git_paths = {}
+        for name in ("HEAD", "index"):
+            path = Path(checked_git(repo, ["rev-parse", "--git-path", name]))
+            path = path if path.is_absolute() else Path(repo) / path
+            verify_path(path)
+            if not path.is_file():
+                raise ContractError("knowledge repository Git state is not a regular file")
+            git_paths[name] = path
+        locks, temporary_index, transaction = [], None, None
+        tree_attempted = ref_committed = False
+
+        def exchange(command, expected):
+            transaction.stdin.write(command + "\n")
+            transaction.stdin.flush()
+            ready, _, _ = select.select([transaction.stdout], [], [], 30)
+            response = transaction.stdout.readline().strip() if ready else ""
+            if response != expected:
+                detail = transaction.stderr.read().strip()[-300:] if ready and not response else response
+                raise ContractError("knowledge repository reference transaction was refused: %s" % detail)
+
+        def read_tree(old, new):
+            rc, out, err = run(
+                ["git", "read-tree", "--no-recurse-submodules", "-m", "-u", old, new],
+                cwd=repo, env={"GIT_INDEX_FILE": str(temporary_index)})
+            if rc:
+                raise ContractError("knowledge repository checkout update refused: %s" %
+                                    ((err or out).strip()[-300:] or "Git read-tree failed"))
+
+        try:
+            for name in ("index",):
+                path = Path(str(git_paths[name]) + ".lock")
+                # Exclusive creation never steals a lock from a concurrent Git
+                # process. Keep these guards until both index and ref converge.
+                descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                locks.append((path, descriptor))
+            if verify_managed(repo, entry) != before:
+                raise ContractError("knowledge repository changed before its locked update")
+            descriptor, path = tempfile.mkstemp(prefix=".synthesis-index-", dir=git_paths["index"].parent)
+            os.close(descriptor)
+            temporary_index = Path(path)
+            shutil.copy2(git_paths["index"], temporary_index)
+            transaction = subprocess.Popen(
+                ["git", "update-ref", "--stdin"], cwd=repo,
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True)
+            exchange("start", "start: ok")
+            exchange("update HEAD %s %s\nprepare" % (target, before), "prepare: ok")
+            # Git now owns HEAD.lock and the resolved branch lock. Bind the
+            # prepared destination while those locks are held, not before.
+            if verify_managed(repo, entry) != before:
+                raise ContractError("knowledge repository changed before its prepared update")
+            tree_attempted = True
+            read_tree(before, target)
+            exchange("commit", "commit: ok")
+            ref_committed = True
+            os.replace(temporary_index, git_paths["index"])
+            temporary_index = None
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise ContractError("knowledge repository locked update failed: %s" % exc) from exc
+        finally:
+            if transaction is not None:
+                # EOF aborts a still-prepared transaction, releasing its exact
+                # branch lock. No process-name matching or unrelated cleanup.
+                try:
+                    transaction.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    transaction.kill()
+                    try:
+                        transaction.communicate(timeout=5)
+                    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                        report.add("knowledge-base", ERROR, "cannot finish Git reference process: %s" % exc)
+                except (OSError, ValueError) as exc:
+                    report.add("knowledge-base", ERROR, "cannot finish Git reference process: %s" % exc)
+            if tree_attempted and not ref_committed:
+                # A lost commit acknowledgement is not proof of an abort.
+                # Reconcile the exact destination after the child terminates
+                # before considering a reverse checkout.
+                rc, observed_ref, _ = git(["rev-parse", "refs/heads/" + entry["branch"] + "^{commit}"], cwd=repo)
+                if not rc and observed_ref.strip() == target:
+                    ref_committed = True
+                elif rc or observed_ref.strip() != before:
+                    ref_committed = None
+                    report.add("knowledge-base", ERROR, "Git reference outcome is uncertain; staged state retained")
+            retain_index = ref_committed is not False and temporary_index is not None
+            if tree_attempted and ref_committed is False:
+                # read-tree refuses to discard intervening file edits. Retain
+                # the staged index if recovery cannot be proved safe.
+                try:
+                    # A failed checkout can write some files without replacing
+                    # its index. Describe the intended target in our private
+                    # index first; the reverse merge can then recognize and
+                    # undo only those target bytes, refusing unrelated edits.
+                    rc, _, err = run(["git", "read-tree", target], cwd=repo,
+                                     env={"GIT_INDEX_FILE": str(temporary_index)})
+                    if rc:
+                        raise ContractError("cannot prepare Git checkout recovery: %s" % err.strip()[-300:])
+                    # Refill stat data only for bytes that really match target;
+                    # nonzero means a missing/edited path, which the following
+                    # non-destructive merge must classify rather than discard.
+                    run(["git", "update-index", "--refresh"], cwd=repo,
+                        env={"GIT_INDEX_FILE": str(temporary_index)})
+                    read_tree(target, before)
+                except ContractError:
+                    retain_index = True
+                    report.add("knowledge-base", ERROR,
+                               "knowledge repository update requires recovery; staged index retained")
+            if temporary_index is not None and retain_index:
+                try:
+                    recovery = {
+                        "schema": 1, "repository": str(repo), "branch": entry["branch"],
+                        "before": before, "target": target, "ref_committed": ref_committed,
+                        "index": str(temporary_index),
+                        "index_sha256": file_digest(temporary_index),
+                        "original_index_sha256": file_digest(git_paths["index"]),
+                    }
+                    with Path(str(temporary_index) + ".recovery.json").open("x", encoding="utf-8") as stream:
+                        json.dump(recovery, stream, sort_keys=True)
+                        stream.write("\n")
+                except (OSError, ContractError) as exc:
+                    report.add("knowledge-base", ERROR, "cannot record retained Git recovery state: %s" % exc)
+                report.add("knowledge-base", ERROR, "staged Git index retained for recovery", hint=str(temporary_index))
+            elif temporary_index is not None:
+                try:
+                    temporary_index.unlink(missing_ok=True)
+                except OSError as exc:
+                    report.add("knowledge-base", ERROR, "cannot remove staged Git index: %s" % exc)
+            for path, descriptor in reversed(locks):
+                try:
+                    if path.exists() and path.stat().st_ino == os.fstat(descriptor).st_ino:
+                        path.unlink()
+                except OSError as exc:
+                    report.add("knowledge-base", ERROR, "cannot remove owned Git lock: %s" % exc)
+                finally:
+                    try:
+                        os.close(descriptor)
+                    except OSError as exc:
+                        report.add("knowledge-base", ERROR, "cannot close owned Git lock: %s" % exc)
+
     workspace = manifest["org"]["workspace"]
     auth_help = (manifest.get("auth_help") or "").strip()
     for kb in manifest.get("knowledge_bases") or []:
         name, primary = kb["name"], kb["repository"]
-        superseded = []
         standard = WORKSPACES_ROOT / workspace / name
-        adopted = receipts.adopted(name)
-        repo = Path(adopted) if adopted and Path(adopted, ".git").exists() else None
-        if repo is None and (standard / ".git").exists():
-            repo = standard
-        if repo is None:
-            found = find_adoptable(name, primary, superseded)
-            if found is not None:
-                repo = found
-                receipts.record_adoption(name, found)
-                report.add("knowledge-base", OK, "adopted existing clone of %s at %s" % (name, found))
+        try:
+            verify_path(standard)
+            entry = receipts.knowledge_repository(name)
+            adopted = receipts.adopted(name)
+            if entry:
+                if entry["repository"] != primary:
+                    raise ContractError("knowledge repository manifest differs from its acquisition receipt")
+                if entry["acquisition"] == "created" and Path(entry["path"]) != standard:
+                    raise ContractError("created knowledge repository path differs from its declared workspace")
+                if adopted and (entry["acquisition"] != "adopted" or entry["path"] != adopted):
+                    raise ContractError("knowledge repository acquisition and adoption paths disagree")
+            recorded = entry["path"] if entry else adopted
+            repo = Path(recorded) if recorded else None
+            if repo is not None and not (repo / ".git").exists():
+                raise ContractError("recorded knowledge repository is missing; refusing another checkout")
+            if repo is None and (standard.exists() or standard.is_symlink()):
+                repo = standard
+            if repo is None:
+                repo = find_adoptable(name, primary, [])
+            if repo is not None:
+                verify_path(repo)
+                if repo.is_symlink() or not repo.is_dir() or not (repo / ".git").exists() or (repo / ".git").is_symlink():
+                    raise ContractError("knowledge repository path is not a real Git checkout")
+                root = checked_git(repo, ["rev-parse", "--show-toplevel"])
+                if Path(root).resolve() != repo.resolve():
+                    raise ContractError("knowledge repository path is not its Git root")
+                if origin_url(repo) != primary:
+                    raise ContractError("%s has the wrong remote; refusing reuse" % name)
+                if kb.get("local_hooks") and not knowledge_hooks_present(repo):
+                    raise ContractError("%s requires configured executable pre-commit protection; checkout and configuration preserved" % name)
+        except (ContractError, OSError, ValueError) as exc:
+            report.add("knowledge-base", ERROR, str(exc))
+            continue
         existing_repo = repo is not None
         if repo is None:
             if dry_run:
@@ -1678,6 +1987,7 @@ def phase_kbs(report, manifest, receipts, dry_run, enrolling=False, journal=None
                            hint=(auth_help or "Set up your git access for %s, then re-run this installer." % primary))
                 continue
             standard.parent.mkdir(parents=True, exist_ok=True)
+            verify_path(standard)
             rc, _, err = git(["clone", primary, str(standard)], timeout=900)
             if rc != 0:
                 report.add("knowledge-base", ERROR, "clone of %s failed" % name, hint=err.strip()[-400:])
@@ -1686,28 +1996,51 @@ def phase_kbs(report, manifest, receipts, dry_run, enrolling=False, journal=None
             if journal is not None:
                 journal.retain(standard)
             report.add("knowledge-base", CHANGED, "cloned %s -> %s" % (name, standard))
-        current_origin = origin_url(repo)
-        if current_origin in superseded:
-            if dry_run:
-                report.add("knowledge-base", CHANGED, "would repoint %s origin -> %s" % (name, primary))
-            else:
-                git(["remote", "set-url", "origin", primary], cwd=repo)
-                report.add("knowledge-base", CHANGED, "repointed %s origin to the current primary remote" % name)
-        elif current_origin != primary:
-            report.add("knowledge-base", ERROR, "%s has the wrong remote; refusing reuse" % name)
-            continue
-        if not dry_run and not (enrolling and existing_repo):
-            if is_dirty(repo):
-                report.add("knowledge-base", WARN, "%s has local changes; skipped pull" % name)
-            else:
-                rc, _, err = git(["pull", "--ff-only"], cwd=repo, timeout=300)
-                if rc == 0:
-                    report.add("knowledge-base", OK, "%s is up to date" % name)
+        try:
+            if origin_url(repo) != primary:
+                raise ContractError("%s has the wrong remote; refusing reuse" % name)
+            if entry is None:
+                acquisition = "adopted" if existing_repo else "created"
+                branch, upstream = (None, None) if existing_repo else update_binding(repo)
+                if not dry_run:
+                    receipts.record_knowledge_repository(name, repo, primary, acquisition, branch, upstream)
+                    entry = receipts.knowledge_repository(name)
                 else:
-                    report.add("knowledge-base", WARN, "%s could not fast-forward" % name,
-                               hint=err.strip()[-300:] if err else None)
-        if kb.get("local_hooks") and (Path(repo) / ".githooks").is_dir():
-            if enrolling and existing_repo:
+                    entry = {"acquisition": acquisition}
+            if entry["acquisition"] == "adopted":
+                report.add("knowledge-base", OK,
+                           "%s user-managed checkout preserved; content updates remain with its owner" % name)
+            elif existing_repo and not enrolling:
+                verify_knowledge_git_update_state(repo, entry)
+                before_head = verify_managed(repo, entry)
+                if dry_run:
+                    report.add("knowledge-base", CHANGED, "would check the recorded update branch for %s" % name)
+                else:
+                    remote_ref = "refs/heads/" + entry["branch"]
+                    checked_git(repo, ["fetch", "--no-tags", "--refmap=", "origin",
+                                       remote_ref + ":" + entry["upstream"]])
+                    # FETCH_HEAD is shared by every fetch in this checkout;
+                    # resolve only the receipt-bound remote-tracking ref.
+                    target = checked_git(repo, ["rev-parse", entry["upstream"] + "^{commit}"])
+                    if verify_managed(repo, entry) != before_head:
+                        raise ContractError("knowledge repository HEAD changed during update; checkout preserved")
+                    rc, _, _ = git(["merge-base", "--is-ancestor", before_head, target], cwd=repo)
+                    if rc:
+                        raise ContractError("knowledge repository is ahead or diverged; checkout preserved")
+                    if before_head != target:
+                        fast_forward(repo, entry, before_head, target)
+                        if checked_git(repo, ["rev-parse", "HEAD^{commit}"]) != target:
+                            raise ContractError("knowledge repository fast-forward did not reach its verified target")
+                        report.add("knowledge-base", CHANGED, "%s fast-forwarded on its recorded update branch" % name)
+                    else:
+                        report.add("knowledge-base", OK, "%s is up to date on its recorded update branch" % name)
+            elif existing_repo:
+                report.add("knowledge-base", OK, "%s existing checkout preserved during enrollment" % name)
+        except (ContractError, OSError, ValueError) as exc:
+            report.add("knowledge-base", ACTION, str(exc))
+            continue
+        if kb.get("local_hooks"):
+            if existing_repo:
                 if knowledge_hooks_present(repo):
                     report.add("knowledge-base", OK, "%s existing repository protection verified; configuration preserved" % name)
                 else:
@@ -1725,6 +2058,8 @@ def phase_kbs(report, manifest, receipts, dry_run, enrolling=False, journal=None
                 else:
                     git(["config", "--local", "core.hooksPath", ".githooks"], cwd=repo)
                     report.add("knowledge-base", CHANGED, "wired %s repo-local pre-commit protection" % name)
+            if not dry_run and not knowledge_hooks_present(repo):
+                report.add("knowledge-base", ACTION, "%s requires configured executable pre-commit protection" % name)
 
 
 def archive_existing_workspace_instructions(workspace):
@@ -2796,21 +3131,59 @@ def _personal_policy_probe():
 def _organization_probe(manifest, receipts):
     if not manifest:
         return False, "no organization manifest was selected"
-    for repo in manifest.get("skills_repos") or []:
-        if not (CACHE_DIR / repo["name"] / ".git").exists():
-            return False, "organization skills source %s is missing" % repo["name"]
-    workspace = manifest["org"]["workspace"]
-    for kb in manifest.get("knowledge_bases") or []:
-        adopted = receipts.adopted(kb["name"])
-        path = Path(adopted) if adopted else WORKSPACES_ROOT / workspace / kb["name"]
-        if not (path / ".git").exists():
-            return False, "organization knowledge base %s is missing" % kb["name"]
-    return True, "manifest-selected organization sources are present"
+    try:
+        for repo in manifest.get("skills_repos") or []:
+            if not (CACHE_DIR / repo["name"] / ".git").exists():
+                return False, "organization skills source %s is missing" % repo["name"]
+        workspace = manifest["org"]["workspace"]
+        for kb in manifest.get("knowledge_bases") or []:
+            name = kb["name"]
+            entry = receipts.knowledge_repository(name)
+            adopted = receipts.adopted(name)
+            if entry is None:
+                return False, "knowledge base %s acquisition provenance missing; update or repair required" % name
+            if entry["repository"] != kb["repository"]:
+                return False, "knowledge base %s manifest and acquisition identities disagree" % name
+            path = Path(entry["path"])
+            if entry["acquisition"] == "created" and path != WORKSPACES_ROOT / workspace / name:
+                return False, "knowledge base %s acquisition workspace path differs" % name
+            if adopted and (entry["acquisition"] != "adopted" or adopted != str(path)):
+                return False, "knowledge base %s acquisition and adoption paths disagree" % name
+            if any(parent.is_symlink() for parent in (path, *path.parents)) or (path / ".git").is_symlink():
+                return False, "knowledge base %s path contains a symbolic link" % name
+            if not (path / ".git").exists():
+                return False, "knowledge base %s not installed at its recorded path" % name
+            rc, actual_root, _ = git(["rev-parse", "--show-toplevel"], cwd=path)
+            if rc or Path(actual_root.strip()).resolve() != path.resolve():
+                return False, "knowledge base %s acquisition path is not its Git root" % name
+            if origin_url(path) != kb["repository"]:
+                return False, "knowledge base %s origin differs from its acquisition receipt" % name
+            if kb.get("local_hooks") and not knowledge_hooks_present(path):
+                return False, "knowledge base %s required pre-commit protection is unavailable" % name
+            if entry["acquisition"] == "created":
+                verify_knowledge_git_update_state(path, entry)
+                branch = entry["branch"]
+                checks = (
+                    (["symbolic-ref", "HEAD"], "refs/heads/" + branch),
+                    (["config", "--get", "branch.%s.remote" % branch], "origin"),
+                    (["config", "--get", "branch.%s.merge" % branch], "refs/heads/" + branch),
+                    (["rev-parse", "--symbolic-full-name", "@{upstream}"], entry["upstream"]),
+                    (["--no-optional-locks", "status", "--porcelain"], ""),
+                )
+                for arguments, expected in checks:
+                    rc, actual, _ = git(arguments, cwd=path)
+                    if rc or actual.strip() != expected:
+                        return False, "knowledge base %s update binding or working state changed; checkout preserved" % name
+        return True, "organization source identities and knowledge acquisition provenance verified"
+    except (ContractError, OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        return False, "organization provenance could not be verified: %s" % exc
 
 
 def _knowledge_probe(manifest, receipts, workspace=None):
     workspace = workspace or receipts.data.get("personal_workspace")
     if workspace:
+        if not isinstance(workspace, str) or re.fullmatch(r"[a-z0-9][a-z0-9_-]*", workspace) is None:
+            return False, "personal knowledge workspace identity is invalid"
         personal = WORKSPACES_ROOT / workspace / ("ai-knowledge-%s" % workspace)
         if not (personal / ".git").exists():
             return False, "personal knowledge workspace is missing"
@@ -3012,39 +3385,64 @@ def doctor(report, manifest, clients_wanted, policy, desired_state=None):
             else:
                 report.add("doctor", ERROR, "%s status reports problems" % repo["name"],
                            hint=(out + err).strip()[-300:])
-        receipts = Receipts()
-        for path, metadata in receipts.data.get("org_skill_copies", {}).items():
-            if Path(path).parent not in organization_skill_targets(clients_wanted):
-                continue
+        try:
+            receipts = Receipts()
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
+            report.add("doctor", ERROR, "onboarding receipt is malformed: %s" % exc)
+            return 1
+        org_copies = receipts.data.get("org_skill_copies", {})
+        if not isinstance(org_copies, dict):
+            report.add("doctor", ERROR, "organization skill copy inventory is malformed")
+            org_copies = {}
+        for path, metadata in org_copies.items():
             try:
+                if (not isinstance(path, str) or not Path(path).is_absolute()
+                        or Path(path).parent not in organization_skill_targets()
+                        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", Path(path).name) is None):
+                    raise ContractError("organization copy receipt names an unsafe target")
+                if (not isinstance(metadata, dict)
+                        or set(metadata) != {"repository", "commit", "sha256"}
+                        or any(not isinstance(value, str) for value in metadata.values())
+                        or re.fullmatch(r"[0-9a-f]{40}", metadata["commit"]) is None
+                        or re.fullmatch(r"[0-9a-f]{64}", metadata["sha256"]) is None):
+                    raise ContractError("organization skill copy ownership receipt is malformed")
+                validate_repository_url(metadata["repository"])
+                if Path(path).parent not in organization_skill_targets(clients_wanted):
+                    continue
                 if metadata["repository"] not in {r["repository"] for r in manifest.get("skills_repos") or []}:
                     raise ContractError("organization skill source was removed; reconciliation required")
                 verify_org_copy(path, metadata, clients_wanted)
                 if not Path(path).is_dir():
                     raise ContractError("receipt-owned organization skill is missing")
-            except (ContractError, OSError, ValueError) as exc:
+            except (ContractError, OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
                 report.add("doctor", ERROR, str(exc))
         workspace = manifest["org"]["workspace"]
         for kb in manifest.get("knowledge_bases") or []:
-            adopted = receipts.adopted(kb["name"])
-            repo_path = Path(adopted) if adopted else WORKSPACES_ROOT / workspace / kb["name"]
-            if not (repo_path / ".git").exists():
-                report.add("doctor", ERROR, "knowledge base %s not installed" % kb["name"])
-                continue
-            if origin_url(repo_path) != kb["repository"]:
-                report.add("doctor", ERROR, "%s origin differs from manifest repository" % kb["name"])
+            verified, detail = _organization_probe(
+                {**manifest, "skills_repos": [], "knowledge_bases": [kb]}, receipts
+            )
+            if not verified:
+                report.add("doctor", ERROR, detail)
             else:
-                report.add("doctor", OK, "knowledge base %s present at %s" % (kb["name"], repo_path))
-            if kb.get("local_hooks") and not knowledge_hooks_present(repo_path):
-                report.add("doctor", ERROR, "%s required pre-commit protection is unavailable" % kb["name"])
-        receipt = receipts.data.get("instruction_receipt") or {}
+                report.add("doctor", OK, "knowledge base %s identity, protection, and acquisition provenance verified" % kb["name"])
+        receipt = receipts.data.get("instruction_receipt")
         source_errors = []
-        source_receipts = receipt.get("sources") or []
-        for entry in source_receipts:
+        if not isinstance(receipt, dict):
+            source_errors.append("instruction receipt is missing or malformed")
+            receipt = {}
+        raw_sources = receipt.get("sources")
+        if not isinstance(raw_sources, list) or not raw_sources:
+            source_errors.append("instruction source receipts are missing or malformed")
+            raw_sources = []
+        source_receipts = []
+        for entry in raw_sources:
             try:
-                verify_instruction_source_receipt(entry)
-            except (ContractError, DriftError, OSError) as exc:
+                source_receipts.append(verify_instruction_source_receipt(entry))
+            except (ContractError, DriftError, OSError, ValueError, TypeError, AttributeError) as exc:
                 source_errors.append(str(exc))
+        roles = [entry["role"] for entry in source_receipts]
+        if roles not in (["public", "organization"], ["public", "organization", "personal"]):
+            source_errors.append("instruction source roles must be public, organization, and at most one personal source in order")
         declared_roots = {"public": source_root().resolve(),
                           "organization": Path(manifest["_path"]).resolve().parents[1]}
         declared_paths = {"public": "skills/synthesis-onboarding/references/kernel.example.md",
@@ -3098,17 +3496,15 @@ def doctor(report, manifest, clients_wanted, policy, desired_state=None):
                 OK,
                 "tracked workspace instruction sources match their receipts",
             )
-        outputs = receipt.get("outputs") or {}
-        output_errors = []
-        for name in ("AGENTS.md", "CLAUDE.md"):
-            target = WORKSPACES_ROOT / workspace / name
-            expected = (outputs.get(name) or {}).get("sha256")
-            if not expected or not target.is_file() or target.is_symlink() or file_digest(target) != expected:
-                output_errors.append(name)
-        if output_errors:
-            report.add("doctor", ERROR, "workspace instruction provenance or output drift: %s" % ", ".join(output_errors))
-        else:
-            report.add("doctor", OK, "tracked workspace instruction pair matches its receipt")
+        try:
+            output_state = instruction_output_state(WORKSPACES_ROOT / workspace, receipt)
+            if output_state != "current":
+                report.add("doctor", ERROR,
+                           "workspace instruction migration required: %s; update or repair must converge the canonical/import pair" % output_state)
+            else:
+                report.add("doctor", OK, "tracked workspace canonical/import pair matches its receipt")
+        except (ContractError, DriftError, OSError, ValueError, TypeError, AttributeError) as exc:
+            report.add("doctor", ERROR, "workspace instruction provenance or output drift: %s" % exc)
     layer_unverifiable = render_layer_doctor(
         report,
         manifest,

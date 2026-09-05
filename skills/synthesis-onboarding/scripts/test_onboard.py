@@ -60,7 +60,7 @@ esac
 
 class Sandbox:
     def __init__(self):
-        self.root = Path(tempfile.mkdtemp(prefix="onboard-test-"))
+        self.root = Path(tempfile.mkdtemp(prefix="onboard-test-")).resolve()
         self.home = self.root / "home"
         self.remotes = self.root / "remotes"
         self.cache = self.root / "cache"
@@ -1062,7 +1062,7 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(self.box.ws_agents.exists())
         self.assertEqual(
             (self.box.home / "workspaces" / "exampleco" / "CLAUDE.md").read_text(),
-            self.box.ws_agents.read_text(),
+            "@AGENTS.md\n",
         )
         for target in (".claude", ".agents"):
             self.assertTrue((self.box.home / target / "skills" / "example-skill" / "SKILL.md").exists())
