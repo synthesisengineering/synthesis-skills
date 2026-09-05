@@ -1,48 +1,176 @@
-# AGENT HEURISTIC: closed acceptance universe for the weekly-review PR-queue
-# transaction. Fresh per transaction: changed_surfaces must equal the
-# authoritative base-to-head Git diff before release.py can consume the receipt.
+# Transaction-bound acceptance for updater ownership and instruction convergence.
 schema: 2
-suite: weekly-review-pr-queue-source-2026-09
+suite: updater-ownership-2026-09-05
 membership: closed
-production_entry_point: Weekly Loose-Ends Review -> declared sources -> pr_queue_scan.py over the workspace's own .agents/repos.yaml
-enforcing_boundary: release.py consumes this transaction-bound closed manifest before publishing the immutable release, installing both clients, and activating the public CLI
+production_entry_point: synthesis update and repair through the installed onboarding engine
+enforcing_boundary: release.py consumes the exact base-to-head acceptance before publication and dual-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: the live GitHub queue itself, `gh` authentication on the running machine, per-workspace repos.yaml accuracy, and whether an agent executing the review actually runs the declared source — all verified only against a real workspace after this release installs
+unverified_remainder: source tests cover declared interleavings, not universal exclusion of uncooperating writers; installed personal-state preservation, historical archive restoration and genuine client lifecycle acceptance require separate live verification; no production deployment is authorized
 changed_surfaces:
-  - path: skills/synthesis-daily-rituals/SKILL.md
-    cases: [rituals-skill-budget]
-  - path: skills/synthesis-daily-rituals/scripts/pr_queue_scan.py
-    cases: [pr-queue-scope, pr-queue-coverage-honesty, pr-queue-classification, pr-queue-surface-not-gate]
-  - path: skills/synthesis-daily-rituals/scripts/test_pr_queue_scan.py
-    cases: [pr-queue-scope, pr-queue-coverage-honesty, pr-queue-classification, pr-queue-surface-not-gate]
+  - path: .claude-plugin/plugin.json
+    cases: [release-contract]
+  - path: .codex-plugin/plugin.json
+    cases: [release-contract]
+  - path: CHANGELOG.md
+    cases: [release-contract]
+  - path: README.md
+    cases: [release-contract]
+  - path: skills/synthesis-onboarding/SKILL.md
+    cases: [engine-contract, instruction-fresh, kb-adopted]
+  - path: skills/synthesis-onboarding/references/org-manifest.md
+    cases: [instruction-fresh, kb-adopted, doctor-legacy]
+  - path: skills/synthesis-onboarding/scripts/onboard.py
+    cases: [kb-adopted, kb-created, kb-binding, doctor-current, doctor-legacy, doctor-corrupt, doctor-ownership, doctor-public-commit, kb-symlink, kb-branch-race, kb-refmap, kb-native-locks, kb-partial-write, kb-recovery-index, kb-pending-state, kb-adopted-locks, kb-admin-paths]
+  - path: skills/synthesis-onboarding/scripts/synthesis_cli.py
+    cases: [engine-contract]
+  - path: skills/synthesis-onboarding/scripts/system_contract.py
+    cases: [instruction-fresh, instruction-legacy, instruction-proof, instruction-attacks, instruction-source-race, instruction-activation-race, instruction-staging, instruction-rollback, instruction-atime, doctor-public-commit]
+  - path: skills/synthesis-onboarding/scripts/test_additive_enrollment.py
+    cases: [enrollment-preservation]
+  - path: skills/synthesis-onboarding/scripts/test_onboard.py
+    cases: [engine-idempotence]
+  - path: skills/synthesis-onboarding/scripts/test_instruction_convergence.py
+    cases: [instruction-fresh, instruction-legacy]
+  - path: skills/synthesis-onboarding/scripts/test_instruction_adversarial.py
+    cases: [instruction-proof, instruction-attacks, instruction-source-race, instruction-activation-race, instruction-staging, instruction-rollback, instruction-atime, doctor-public-commit]
+  - path: skills/synthesis-onboarding/scripts/test_kb_update_ownership.py
+    cases: [kb-adopted, kb-created, kb-binding, fixture-maintenance]
+  - path: skills/synthesis-onboarding/scripts/test_kb_adversarial.py
+    cases: [kb-symlink, kb-branch-race, kb-refmap, kb-native-locks, kb-partial-write, kb-recovery-index]
+  - path: skills/synthesis-onboarding/scripts/test_updater_doctor.py
+    cases: [doctor-current, doctor-legacy, doctor-corrupt, doctor-ownership, kb-pending-state, kb-adopted-locks, kb-admin-paths]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [acceptance-self]
 cases:
   - id: acceptance-self
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-    motivating_defect: a-release-manifest-could-claim-closed-membership-with-unmapped-or-invalid-cases
-  - id: rituals-skill-budget
+    motivating_defect: closed-manifest-must-cover-the-current-transaction
+  - id: release-contract
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_skill_document_stays_within_repo_budget
-    motivating_defect: a-new-declared-source-could-push-the-skill-document-past-its-published-size-ceiling
-  - id: pr-queue-scope
+    fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
+    motivating_defect: public-version-surfaces-could-disagree
+  - id: engine-contract
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_declared_repos_does_not_filter_by_ritual_sync
-    motivating_defect: filtering-a-review-queue-by-a-source-sync-policy-hid-open-pull-requests-authored-under-the-principals-own-account
-  - id: pr-queue-coverage-honesty
+    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_engine_versions_and_skill_contract_agree
+    motivating_defect: engine-and-skill-versions-could-disagree
+  - id: instruction-fresh
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_unscannable_repos_are_named_not_silently_dropped
-    motivating_defect: an-unreadable-queue-could-report-as-an-empty-queue-which-is-the-exact-coverage-lie-this-scan-exists-to-correct
-  - id: pr-queue-classification
+    fixture: ../synthesis-onboarding/scripts/test_instruction_convergence.py::test_fresh_pair_is_canonical_content_and_literal_import
+    motivating_defect: duplicate-outputs-conflicted-with-the-client-import-contract
+  - id: instruction-legacy
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_query_repo_splits_review_requested_from_own
-    motivating_defect: a-139-day-old-review-request-naming-the-principal-was-invisible-to-a-review-that-reported-one-waiting-on-item
-  - id: pr-queue-surface-not-gate
+    fixture: ../synthesis-onboarding/scripts/test_instruction_convergence.py::test_receipted_predecessor_converges_without_losing_archive
+    motivating_defect: exact-prior-adapter-transition-blocked-update
+  - id: instruction-proof
     control_class: acceptance-test
-    fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_missing_gh_exits_zero_and_says_not_scanned
-    motivating_defect: a-missing-or-unauthenticated-cli-could-make-a-reporting-surface-into-the-reason-a-daily-ritual-fails
+    fixture: ../synthesis-onboarding/scripts/test_instruction_adversarial.py::test_retained_immutable_release_proof_accepts_committed_org_update
+    motivating_defect: immutable-installed-source-needs-retained-release-proof
+  - id: instruction-attacks
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_instruction_adversarial.py::test_retained_immutable_release_proof_attacks
+    motivating_defect: corrupt-release-proof-could-escape-the-handled-error-boundary
+  - id: instruction-source-race
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_instruction_adversarial.py::test_source_resolution_cannot_hide_a_new_concurrent_instruction_edit
+    motivating_defect: source-resolution-window-could-overwrite-a-newer-target-edit
+  - id: instruction-activation-race
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_instruction_adversarial.py::test_activation_or_rollback_never_clobbers_a_newer_output_edit
+    motivating_defect: rollback-could-restore-over-a-concurrent-edit
+  - id: instruction-staging
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_instruction_adversarial.py::test_staged_candidate_must_still_match_the_verified_render
+    motivating_defect: modified-staged-payload-could-disagree-with-returned-receipt
+  - id: instruction-rollback
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_instruction_adversarial.py::test_failure_restoring_one_owned_output_does_not_skip_the_other
+    motivating_defect: one-restore-error-could-prevent-independent-output-recovery
+  - id: instruction-atime
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_instruction_adversarial.py::test_instruction_read_access_time_is_not_a_concurrent_content_edit
+    motivating_defect: normal-read-access-time-was-misclassified-as-drift
+  - id: kb-adopted
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_kb_update_ownership.py::test_adopted_checkout_survives_enrollment_and_two_replays
+    motivating_defect: replayed-update-pulled-user-owned-checkouts
+  - id: kb-created
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_kb_update_ownership.py::test_created_checkout_records_tracking_and_fast_forwards
+    motivating_defect: managed-updates-lacked-durable-acquisition-binding
+  - id: kb-binding
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_kb_update_ownership.py::test_managed_state_change_during_fetch_is_preserved
+    motivating_defect: fetch-window-could-invalidate-update-authority
+  - id: kb-symlink
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_kb_adversarial.py::test_symlinked_parent_replacement_must_not_update_different_checkout
+    motivating_defect: symlinked-parent-could-redirect-an-update-to-a-user-checkout
+  - id: kb-branch-race
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_kb_adversarial.py::test_peer_branch_change_after_final_verification_must_not_be_merged
+    motivating_defect: blind-merge-followed-a-concurrently-changed-head
+  - id: kb-refmap
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_kb_adversarial.py::test_fetch_must_not_apply_unrelated_configured_ref_mappings
+    motivating_defect: fetch-applied-extra-ref-mappings-outside-ownership
+  - id: doctor-current
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_updater_doctor.py::test_current_instruction_and_owned_checkout_doctor_passes_read_only
+    motivating_defect: read-only-acceptance-needs-a-positive-control
+  - id: doctor-legacy
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_updater_doctor.py::test_doctor_requires_migration_for_both_legacy_output_forms
+    motivating_defect: duplicate-output-receipt-was-incorrectly-green
+  - id: doctor-corrupt
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_updater_doctor.py::test_doctor_handles_malformed_instruction_receipts_without_traceback
+    motivating_defect: malformed-receipts-caused-unhandled-diagnostic-failure
+  - id: doctor-ownership
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_updater_doctor.py::test_doctor_and_both_probes_fail_closed_on_knowledge_ownership
+    motivating_defect: ownership-drift-was-not-consumed-by-doctor-or-layer-probes
+  - id: enrollment-preservation
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_real_engine_enroll_and_repair_preserve_personal_files_and_receipts
+    motivating_defect: reconciliation-must-preserve-independent-personal-layers
+  - id: engine-idempotence
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_install_then_idempotent_rerun
+    motivating_defect: current-output-contract-must-survive-full-engine-replay
+  - id: doctor-public-commit
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_instruction_adversarial.py::test_actual_doctor_rejects_forged_public_commit_in_current_receipt
+    motivating_defect: matching-public-source-bytes-did-not-prove-the-recorded-commit
+  - id: kb-native-locks
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_kb_adversarial.py::test_prepared_update_excludes_real_concurrent_git_writers
+    motivating_defect: a-separate-check-then-blind-merge-could-advance-a-peer-branch
+  - id: kb-partial-write
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_kb_adversarial.py::test_real_filesystem_checkout_failure_preserves_original_state
+    motivating_defect: failed-read-tree-could-partially-write-without-replacing-its-index
+  - id: kb-recovery-index
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_kb_adversarial.py::test_failed_index_activation_retains_new_index_and_recovery_identity
+    motivating_defect: index-activation-failure-could-delete-the-only-updated-index
+  - id: kb-pending-state
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_updater_doctor.py::test_created_pending_git_state_remains_non_green_without_mutation
+    motivating_defect: retained-recovery-state-could-be-ignored-by-later-updates-or-doctor
+  - id: kb-adopted-locks
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_updater_doctor.py::test_adopted_git_state_is_not_owned_or_changed
+    motivating_defect: adopted-checkout-locks-are-not-updater-owned-recovery-state
+  - id: kb-admin-paths
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_updater_doctor.py::test_git_paths_find_pending_state_after_administrative_directory_move
+    motivating_defect: separate-git-directories-could-hide-retained-update-state
+  - id: fixture-maintenance
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_kb_update_ownership.py::test_fixture_suppresses_automatic_maintenance_without_hiding_locks
+    motivating_defect: fixture-peer-commit-started-detached-maintenance-during-preservation-snapshots

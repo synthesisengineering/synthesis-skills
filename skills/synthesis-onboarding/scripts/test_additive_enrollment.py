@@ -251,7 +251,9 @@ def test_real_engine_enroll_and_repair_preserve_personal_files_and_receipts(box)
     assert all(s.read_bytes() == b"custom personal bytes\n" for s in sentinels)
     assert all(s.read_text() == "independent client skill\n" for s in untouched)
     assert (box.home / ".agents/skills/example-skill/SKILL.md").is_file()
-    assert pair[0].read_bytes() == pair[1].read_bytes()
+    assert pair[1].read_bytes() == b"@AGENTS.md\n"
+    assert b"## Organization" in pair[0].read_bytes()
+    assert receipt["instruction_receipt"]["outputs"]["AGENTS.md"]["sha256"] != receipt["instruction_receipt"]["outputs"]["CLAUDE.md"]["sha256"]
     result = box.run_with_env(extra, "uninstall", "--clients", "codex", "--json")
     assert result.returncode == 0, result.stdout + result.stderr
     assert not (box.home / ".agents/skills/example-skill").exists()

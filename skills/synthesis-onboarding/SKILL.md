@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.3.1"
+  version: "2.3.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -159,8 +159,13 @@ Organization instructions use the same provenance rule. The rendered graph is
 public baseline, exactly one organization source, then an optional user-owned
 personal source. Every repository source must be a committed, clean, regular
 Git-tracked file; untracked, dirty, traversing, and symbolic-link sources are
-refused. Both outputs activate or neither does. Doctor verifies each source
-commit and digest plus both output digests against the receipt.
+refused. `AGENTS.md` contains the canonical graph; `CLAUDE.md` is the literal
+`@AGENTS.md` import adapter, with its own receipt hash. Activation rechecks
+both targets for concurrent changes and rolls back only its own writes, never
+over a newer user edit. Doctor verifies each source commit and digest plus both
+exact output paths and digests against the receipt. Historical duplicate outputs
+or an already-converted exact adapter require provenance-checked migration;
+doctor reports migration required until update or repair commits the new receipt.
 
 The optional personal layer is local desired state, never organization data:
 
@@ -187,8 +192,13 @@ the verified archives.
 An organization repository contains data only: `.agents/onboarding.yaml`, one
 tracked instruction source, and optional documentation. It cannot select or
 execute an installer. Shared skill repositories are copied through the public
-engine's fixed direct-copy capability. Knowledge repositories are cloned or
-updated only when their exact remote and cleanliness checks pass.
+engine's fixed direct-copy capability. Knowledge repository receipts distinguish
+engine-created clones from adopted user checkouts. Only created clones on their
+recorded path, origin, branch and upstream may fast-forward; uncertain, changed,
+dirty, ahead or diverged state remains non-green and preserves the checkout.
+Pending native Git locks or retained updater recovery artifacts also remain
+non-green until resolved; doctor never deletes them. Adopted checkout locks
+remain the user's responsibility and are not inspected as updater-owned state.
 
 The copy capability accepts either `skills/<name>/SKILL.md` or top-level
 `<name>/SKILL.md` organization repositories, never both layouts at once.
@@ -223,8 +233,11 @@ or state-commit failure restores instructions, selected skill copies, ownership
 receipts, and invite use. Mutating commands recover interrupted enrollment;
 doctor remains non-green until recovery finishes. Verified archives, organization
 source caches, and new knowledge clones are retained. Existing knowledge clones
-are adopted without pulling or changing their configuration during enrollment;
-required executable pre-commit protection must already be configured.
+are adopted without pulling or changing their configuration during enrollment,
+update or repair; required executable pre-commit protection must already be
+configured. This includes clones reused at the conventional workspace path.
+Missing older ownership records never confer permission to update a checkout.
+Organization configuration updates independently in its managed source cache.
 
 Organization skill ownership is checked before every replay. Changed private
 copies are preserved; unchanged legacy copies can be adopted only after their

@@ -125,7 +125,8 @@ repair, and doctor. Its manifest must agree with that installation's client,
 channel, and exact-pin selection. A conflicting policy, different organization,
 or changed workspace identity is refused rather than taking over personal
 configuration. Existing knowledge repositories are adopted without a pull or
-configuration change; required pre-commit protection must already be configured.
+configuration change throughout enrollment, update and repair; required
+pre-commit protection must already be configured.
 
 A user may add a private personal instruction layer without putting its path or
 repository in this shareable manifest:
@@ -155,8 +156,20 @@ doctor inspects the recorded commit without fetching or changing state.
 
 Knowledge bases use the workspace convention. Existing clones are accepted
 only at their declared remote; the engine never silently repoints them.
-Repository-local hooks are enabled only through the public engine's audited
-capability.
+Acquisition receipts record exact path, repository and `created` or `adopted`
+ownership. Adopted repositories remain user-managed, including those found at
+the conventional path or recovered from older receipts without ownership.
+Updates never fetch, pull, change branches or configure those checkouts.
+
+Only engine-created clones may update on their recorded branch and upstream.
+The engine verifies identity, protection, clean state and an ancestor-only
+fast-forward, and rechecks the binding after fetching. Detached, switched,
+dirty, ahead or diverged checkouts require action without discarding work.
+Pending native locks and retained updater indexes or recovery records also
+block further managed updates and doctor acceptance without being removed.
+Repository-local hooks are enabled only for newly created clones through the
+public engine's audited capability; adopted clones must already be protected.
+The separately managed organization-configuration cache still receives updates.
 
 Shared skills repositories are data sources, not execution authorities. The
 engine validates the repository and installs `skills/*` using its fixed
@@ -169,10 +182,18 @@ The declared source must be a regular, committed, clean Git-tracked file in the
 organization configuration repository. The engine records its repository,
 commit, relative path, and digest. It renders the public baseline first, then
 the organization source, then the optional user-local personal source, and
-activates identical `AGENTS.md` and `CLAUDE.md` outputs as one transaction. If
-either target collides or activation fails, neither new output remains active.
-Doctor verifies source commits and digests plus both output digests against the
-receipt.
+activates canonical `AGENTS.md` content and the literal `@AGENTS.md` adapter in
+`CLAUDE.md`. Each output has its own path and digest in the receipt. Targets are
+rechecked before activation; a failure restores only the engine's own writes,
+never overwriting a concurrent edit. Doctor verifies source commits and digests
+plus both exact output paths and digests against the receipt.
+
+Older duplicate-output receipts migrate only when their canonical content can
+be reconstructed from the recorded Git objects or verified immutable public
+release. An already-converted exact adapter follows the same proof requirement.
+Additional text, edited canonical content, malformed receipts and symlinks are
+refused. Doctor reports migration required without changing files or receipts.
+Original adoption archives remain referenced across later instruction generations.
 
 Existing workspace-root instruction files remain untouched unless the user
 passes `--adopt-workspace-instructions`. Adoption accepts regular files only,

@@ -11,6 +11,14 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Updates respect existing work (September 2026).** Release **4.95.3** leaves
+adopted knowledge checkouts under their owner's control and binds managed
+updates to the original branch and upstream. Generated organization instructions
+converge on canonical content plus a Claude import adapter, with verified
+provenance, retained archives and concurrent-edit protection. Doctor exposes
+migration or ownership problems without changing those files. The merged
+weekly-review PR queue source is included too.
+
 **Historical recovery shares storage, not mutable files (September 2026).**
 Release **4.95.2** deduplicates recovery payloads while keeping every historical
 version and the existing 512 MiB limit. Version records preserve file types,

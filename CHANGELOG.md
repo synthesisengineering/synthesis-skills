@@ -4,6 +4,26 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.95.3] - 2026-09-05
+
+**Updates respect repository ownership and one instruction format.** Onboarding
+2.3.2 records whether each knowledge checkout was created or adopted. Adopted
+checkouts stay user-managed across enrollment, update and repair. Created clones
+fast-forward only on their recorded origin, branch and upstream after protection,
+cleanliness and concurrent-change checks.
+
+Generated organization instructions now use canonical `AGENTS.md` content and a
+literal Claude import adapter with separate receipt hashes. Earlier duplicate
+outputs converge only after historical source verification. Concurrent target
+edits remain protected, failed activation restores only engine-owned writes,
+and later generations retain original adoption-archive references. Doctor checks
+ownership and output provenance without repairing them or reporting legacy
+representations as accepted.
+
+The release also includes the merged weekly-review PR queue source. Its bounded
+report distinguishes owned work from requested reviews and names unavailable
+repository coverage instead of treating unreadable queues as empty.
+
 ## [4.95.2] - 2026-09-04
 
 **Historical recovery deduplicates payloads without retiring versions.** Skills

@@ -459,6 +459,7 @@ def _manifest_version(root: Path) -> str:
             payload = json.loads((Path(root) / relative).read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise ContractError("release manifest %s is unreadable: %s" % (relative, exc))
+        payload = _require_mapping(payload, "release manifest %s" % relative)
         version = payload.get("version")
         if not isinstance(version, str) or not VERSION_RE.fullmatch(version):
             raise ContractError("release manifest %s has no exact version" % relative)
@@ -1835,7 +1836,7 @@ def _tracked_source(
     )
     if proc.returncode:
         raise ContractError("instruction source is not Git-tracked: %s" % relative)
-    if _git(root, "status", "--porcelain=v1", "--", relative):
+    if _git(root, "--no-optional-locks", "status", "--porcelain=v1", "--", relative):
         raise ContractError(
             "instruction source has uncommitted changes: %s" % relative
         )
@@ -1843,14 +1844,14 @@ def _tracked_source(
     return path, commit, file_digest(path)
 
 
-def verify_instruction_source_receipt(value: Any) -> dict[str, str]:
+def _instruction_source_record(value: Any) -> dict[str, str]:
     value = _require_mapping(value, "instruction source receipt")
     fields = {"role", "repository", "commit", "path", "sha256"}
     _reject_unknown(value, fields, "instruction source receipt")
     if set(value) != fields:
         raise ContractError("instruction source receipt is incomplete")
     role = value.get("role")
-    if role not in {"public", "organization", "personal"}:
+    if not isinstance(role, str) or role not in {"public", "organization", "personal"}:
         raise ContractError("instruction source receipt role is invalid")
     repository = value.get("repository")
     if not isinstance(repository, str) or not Path(repository).is_absolute():
@@ -1860,6 +1861,15 @@ def verify_instruction_source_receipt(value: Any) -> dict[str, str]:
     if not HEX40_RE.fullmatch(commit) or not HEX64_RE.fullmatch(digest):
         raise ContractError("instruction source receipt identity is invalid")
     relative = safe_relative_path(value.get("path"), "instruction source receipt path")
+    return {"role": role, "repository": repository, "commit": commit,
+            "path": relative, "sha256": digest}
+
+
+def verify_instruction_source_receipt(value: Any) -> dict[str, str]:
+    value = _instruction_source_record(value)
+    role, repository, commit, relative, digest = (
+        value[key] for key in ("role", "repository", "commit", "path", "sha256")
+    )
     root = Path(repository)
     path = contained_path(root, relative, "instruction source receipt path")
     if not path.is_file() or path.is_symlink() or file_digest(path) != digest:
@@ -1868,16 +1878,11 @@ def verify_instruction_source_receipt(value: Any) -> dict[str, str]:
         git_root = Path(_git(root, "rev-parse", "--show-toplevel")).resolve()
         if git_root != root.resolve():
             raise ContractError("instruction source repository root drifted: %s" % role)
-        if _git(root, "status", "--porcelain=v1", "--", relative):
+        if _git(root, "--no-optional-locks", "status", "--porcelain=v1", "--", relative):
             raise DriftError("instruction source has uncommitted changes: %s" % role)
-        proc = subprocess.run(
-            ["git", "-C", str(root), "show", "%s:%s" % (commit, relative)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
-        if proc.returncode or hashlib.sha256(proc.stdout).hexdigest() != digest:
-            raise DriftError("instruction source commit no longer binds bytes: %s" % role)
+    # A matching current file does not prove the recorded commit exists. The
+    # same Git-blob/immutable-release reader authenticates every source role.
+    _historical_instruction_content(value)
     return {
         "role": role,
         "repository": str(root.resolve()),
@@ -1885,6 +1890,111 @@ def verify_instruction_source_receipt(value: Any) -> dict[str, str]:
         "path": relative,
         "sha256": digest,
     }
+
+
+CLAUDE_INSTRUCTION_ADAPTER = b"@AGENTS.md\n"
+
+
+def _historical_instruction_content(value: Any) -> bytes:
+    """Read prior source bytes from their original Git/release identity."""
+    record = _instruction_source_record(value)
+    root = Path(record["repository"])
+    path = contained_path(root, record["path"], "historical instruction source")
+    git_root = _git_optional(root, "rev-parse", "--show-toplevel")
+    if git_root and Path(git_root).resolve() == root.resolve():
+        if _git(root, "cat-file", "-t", record["commit"]) != "commit":
+            raise DriftError("historical instruction source identity is not a Git commit")
+        entry = _git(root, "ls-tree", record["commit"], "--", record["path"])
+        if not entry.startswith(("100644 blob ", "100755 blob ")):
+            raise DriftError("historical instruction source is not a regular Git blob")
+        result = subprocess.run(
+            ["git", "-C", str(root), "show", record["commit"] + ":" + record["path"]],
+            capture_output=True, check=False,
+        )
+        if result.returncode:
+            raise DriftError("historical instruction source commit is unavailable")
+        content = result.stdout
+    elif record["role"] == "public":
+        state = SystemState()
+        version = _manifest_version(root)
+        descriptor_path = state.state_dir / "releases" / (version + ".json")
+        if descriptor_path.is_symlink() or not descriptor_path.is_file():
+            raise DriftError("historical public instruction release proof is unavailable")
+        try:
+            descriptor = validate_release_descriptor(json.loads(descriptor_path.read_text()))
+        except (ValueError, UnicodeError) as exc:
+            raise ContractError("historical public release proof is malformed") from exc
+        if (descriptor["commit"] != record["commit"] or
+                root != state.cache_dir / "releases" / descriptor["content_digest"]):
+            raise DriftError("historical public instruction release identity differs")
+        verify_materialized_release(root, descriptor)
+        content = path.read_bytes()
+    else:
+        raise DriftError("historical instruction source repository is unavailable")
+    if hashlib.sha256(content).hexdigest() != record["sha256"]:
+        raise DriftError("historical instruction source digest differs")
+    return content
+
+
+def instruction_output_state(workspace: Path, receipt: Any) -> str:
+    """Verify exact output ownership; legacy states require explicit convergence.
+
+    A strict import created by another installer is recoverable only when the
+    entire prior canonical document can be reconstructed from recorded sources.
+    This does not allow an edited canonical document or extra adapter content.
+    """
+    workspace = Path(workspace)
+    if not workspace.is_absolute() or any(p.is_symlink() for p in (workspace, *workspace.parents)):
+        raise DriftError("instruction workspace must be an absolute non-symlink path")
+    receipt = _require_mapping(receipt, "instruction receipt")
+    if type(receipt.get("schema_version")) is not int or receipt["schema_version"] != 1:
+        raise ContractError("instruction receipt schema_version is unsupported")
+    outputs = _require_mapping(receipt.get("outputs"), "instruction receipt outputs")
+    if set(outputs) != {"AGENTS.md", "CLAUDE.md"}:
+        raise ContractError("instruction receipt needs both exact outputs")
+    contents = {}
+    for name in ("AGENTS.md", "CLAUDE.md"):
+        target = workspace / name
+        output = _require_mapping(outputs[name], "instruction output receipt")
+        if output.get("path") != str(target):
+            raise DriftError("instruction receipt belongs to a different workspace")
+        if not isinstance(output.get("sha256"), str) or not HEX64_RE.fullmatch(output["sha256"]):
+            raise ContractError("instruction output receipt digest is invalid")
+        if target.is_symlink() or not target.is_file():
+            raise DriftError("instruction output is missing or a symbolic link: %s" % name)
+        contents[name] = target.read_bytes()
+    agents_hash = hashlib.sha256(contents["AGENTS.md"]).hexdigest()
+    if agents_hash != outputs["AGENTS.md"]["sha256"]:
+        raise DriftError("instruction output drift: AGENTS.md")
+    adapter_hash = hashlib.sha256(CLAUDE_INSTRUCTION_ADAPTER).hexdigest()
+    if outputs["CLAUDE.md"]["sha256"] == adapter_hash:
+        if contents["CLAUDE.md"] != CLAUDE_INSTRUCTION_ADAPTER:
+            raise DriftError("instruction output drift: CLAUDE.md")
+        return "current"
+    if outputs["CLAUDE.md"]["sha256"] != agents_hash:
+        raise DriftError("instruction receipt has an unsupported output representation")
+    if contents["CLAUDE.md"] not in (contents["AGENTS.md"], CLAUDE_INSTRUCTION_ADAPTER):
+        raise DriftError("instruction output drift: CLAUDE.md")
+    sources = receipt.get("sources")
+    if not isinstance(sources, list) or not sources:
+        raise ContractError("historical instruction sources are unavailable")
+    parts = ["<!-- synthesis-instructions:generated -->", "# Workspace Instructions"]
+    roles = []
+    for source in sources:
+        record = _instruction_source_record(source)
+        role = record["role"]
+        if role in roles:
+            raise ContractError("historical instruction sources repeat a role")
+        roles.append(role)
+        try:
+            text = _historical_instruction_content(record).decode("utf-8").strip()
+        except UnicodeError as exc:
+            raise ContractError("historical instruction source is not UTF-8") from exc
+        parts.extend(["", "## %s" % role.title(), "", text])
+    reconstructed = ("\n".join(parts).rstrip() + "\n").encode("utf-8")
+    if reconstructed != contents["AGENTS.md"]:
+        raise DriftError("historical instruction sources do not reproduce canonical output")
+    return "legacy-adapter" if contents["CLAUDE.md"] == CLAUDE_INSTRUCTION_ADAPTER else "legacy-duplicate"
 
 
 def _restore_file(path: Path, previous: tuple[bool, bytes, int]) -> None:
@@ -1896,6 +2006,29 @@ def _restore_file(path: Path, previous: tuple[bool, bytes, int]) -> None:
             path.unlink()
         except FileNotFoundError:
             pass
+
+
+def _instruction_snapshot(path: Path) -> tuple[bool, bytes, int, int, int]:
+    if any(parent.is_symlink() for parent in path.parents):
+        raise DriftError("instruction workspace became a symbolic link")
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return False, b"", 0o644, 0, 0
+    if not stat.S_ISREG(metadata.st_mode):
+        raise DriftError("instruction output is not a regular file: %s" % path.name)
+    content = path.read_bytes()
+    after = path.lstat()
+    mutation_fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
+    if any(getattr(metadata, field) != getattr(after, field) for field in mutation_fields):
+        raise DriftError("instruction output changed while being read: %s" % path.name)
+    return True, content, stat.S_IMODE(metadata.st_mode), metadata.st_dev, metadata.st_ino
+
+
+def _verify_instruction_snapshots(targets, expected) -> None:
+    for target, snapshot in zip(targets, expected):
+        if _instruction_snapshot(target) != snapshot:
+            raise DriftError("instruction output changed concurrently: %s" % target.name)
 
 
 def materialize_instruction_pair(
@@ -1911,7 +2044,7 @@ def materialize_instruction_pair(
     graph = _require_mapping(graph, "instruction graph")
     source_identities = source_identities or {}
     _reject_unknown(graph, {"schema_version", "sources", "output", "claude_adapter"}, "instruction graph")
-    if graph.get("schema_version") != 1:
+    if type(graph.get("schema_version")) is not int or graph["schema_version"] != 1:
         raise ContractError("instruction graph schema_version must be 1")
     if graph.get("output") != "AGENTS.md" or graph.get("claude_adapter") != "CLAUDE.md":
         raise ContractError("instruction graph outputs must be AGENTS.md and CLAUDE.md")
@@ -1919,19 +2052,14 @@ def materialize_instruction_pair(
     if not isinstance(sources, list) or not sources:
         raise ContractError("instruction graph needs at least one source")
     workspace = Path(workspace)
-    if workspace.is_symlink():
-        raise ContractError("workspace must not be a symbolic link")
+    if not workspace.is_absolute() or any(p.is_symlink() for p in (workspace, *workspace.parents)):
+        raise ContractError("workspace must be an absolute non-symlink path")
     targets = [workspace / "AGENTS.md", workspace / "CLAUDE.md"]
     if any(target.is_symlink() for target in targets):
         raise DriftError("instruction output is a symbolic link")
-    if previous_receipt:
-        expected_outputs = previous_receipt.get("outputs") or {}
-        for target in targets:
-            if (expected_outputs.get(target.name) or {}).get("path") != str(target):
-                raise DriftError("instruction receipt belongs to a different workspace")
-            expected = (expected_outputs.get(target.name) or {}).get("sha256")
-            if expected is None or not target.is_file() or file_digest(target) != expected:
-                raise DriftError("instruction output drift: %s" % target.name)
+    previous = [_instruction_snapshot(target) for target in targets]
+    prior_state = instruction_output_state(workspace, previous_receipt) if previous_receipt is not None else None
+    _verify_instruction_snapshots(targets, previous)
 
     parts = [
         "<!-- synthesis-instructions:generated -->",
@@ -1964,7 +2092,10 @@ def materialize_instruction_pair(
                 raise
             continue
         try:
-            text = path.read_text(encoding="utf-8").strip()
+            source_bytes = path.read_bytes()
+            if hashlib.sha256(source_bytes).hexdigest() != digest:
+                raise DriftError("instruction source changed during resolution: %s" % role)
+            text = source_bytes.decode("utf-8").strip()
         except UnicodeError as exc:
             raise ContractError(
                 "instruction source is not valid UTF-8: %s" % relative
@@ -1980,13 +2111,18 @@ def materialize_instruction_pair(
             }
         )
     rendered = ("\n".join(parts).rstrip() + "\n").encode("utf-8")
-    rendered_digest = hashlib.sha256(rendered).hexdigest()
+    rendered_outputs = {"AGENTS.md": rendered, "CLAUDE.md": CLAUDE_INSTRUCTION_ADAPTER}
+    output_receipts = {
+        target.name: {"path": str(target), "sha256": hashlib.sha256(rendered_outputs[target.name]).hexdigest()}
+        for target in targets
+    }
+    _verify_instruction_snapshots(targets, previous)
     if validate_only:
         return {"schema_version": 1, "sources": source_receipts, "validated": True}
     if previous_receipt:
         expected_outputs = previous_receipt.get("outputs") or {}
         if all(
-            (expected_outputs.get(target.name) or {}).get("sha256") == rendered_digest
+            (expected_outputs.get(target.name) or {}).get("sha256") == output_receipts[target.name]["sha256"]
             for target in targets
         ):
             unchanged = dict(previous_receipt)
@@ -1994,34 +2130,46 @@ def materialize_instruction_pair(
             unchanged["verified_at"] = utcnow()
             unchanged["unchanged"] = True
             return unchanged
-    previous = []
-    for target in targets:
-        previous.append(
-            (
-                target.exists(),
-                target.read_bytes() if target.exists() else b"",
-                stat.S_IMODE(target.stat().st_mode) if target.exists() else 0o644,
-            )
-        )
     temporary_paths = []
+    activated = {}
     workspace.mkdir(parents=True, exist_ok=True)
     try:
         for target in targets:
             with tempfile.NamedTemporaryFile(
                 mode="wb", dir=workspace, prefix=target.name + ".", suffix=".stage", delete=False
             ) as temporary:
-                temporary.write(rendered)
+                temporary.write(rendered_outputs[target.name])
                 temporary.flush()
                 os.fsync(temporary.fileno())
                 temporary_paths.append(Path(temporary.name))
-        os.replace(temporary_paths[0], targets[0])
-        if fail_after_first:
-            raise ContractError("injected failure after first instruction activation")
-        os.replace(temporary_paths[1], targets[1])
+        expected = list(previous)
+        for index, target in enumerate(targets):
+            _verify_instruction_snapshots(targets, expected)
+            staged = _instruction_snapshot(temporary_paths[index])
+            if staged[1] != rendered_outputs[target.name] or staged[2] != 0o600:
+                raise DriftError("staged instruction output differs from verified render")
+            os.replace(temporary_paths[index], target)
+            activated[index] = staged
+            expected[index] = staged
+            if index == 0 and fail_after_first:
+                raise ContractError("injected failure after first instruction activation")
+        _verify_instruction_snapshots(targets, expected)
         _fsync_directory(workspace)
-    except BaseException:
-        _restore_file(targets[0], previous[0])
-        _restore_file(targets[1], previous[1])
+    except BaseException as activation_error:
+        rollback_errors = []
+        for index, staged in activated.items():
+            # Never restore over a peer edit, nor touch a target we did not activate.
+            try:
+                owned = _instruction_snapshot(targets[index]) == staged
+            except (DriftError, OSError):
+                owned = False
+            if owned:
+                try:
+                    _restore_file(targets[index], previous[index][:3])
+                except OSError:
+                    rollback_errors.append(targets[index].name)
+        if rollback_errors:
+            raise ContractError("instruction rollback incomplete: %s" % ", ".join(rollback_errors)) from activation_error
         raise
     finally:
         for temporary in temporary_paths:
@@ -2029,15 +2177,18 @@ def materialize_instruction_pair(
                 temporary.unlink()
             except FileNotFoundError:
                 pass
-    return {
+    result = {
         "schema_version": 1,
         "generation": generation,
         "sources": source_receipts,
-        "outputs": {
-            target.name: {"path": str(target), "sha256": rendered_digest} for target in targets
-        },
+        "outputs": output_receipts,
         "materialized_at": utcnow(),
     }
+    if previous_receipt and "adopted_outputs" in previous_receipt:
+        result["adopted_outputs"] = previous_receipt["adopted_outputs"]
+    if prior_state and prior_state != "current":
+        result["migrated_from"] = prior_state
+    return result
 
 
 def verify_outcome(task_id: str, evidence: Any, repo_root: Path) -> dict[str, Any]:
