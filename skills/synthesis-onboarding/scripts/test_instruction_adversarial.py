@@ -183,9 +183,9 @@ def test_historical_pair_attacks_preserve_outputs(tmp_path, converted, attack):
         assert (workspace / "CLAUDE.md").is_symlink()
 
 
-def immutable_legacy_pair(tmp_path, monkeypatch):
+def immutable_legacy_pair(tmp_path, monkeypatch, public_relative="instructions.md"):
     root = tmp_path.resolve()
-    public = source(root / "public-source", "Public committed rules.\n")
+    public = source(root / "public-source", "Public committed rules.\n", relative=public_relative)
     for client in (".claude-plugin", ".codex-plugin"):
         (public / client).mkdir()
         (public / client / "plugin.json").write_text(json.dumps({"name": "synthesis-skills", "version": "9.8.7"}) + "\n")
@@ -207,6 +207,7 @@ def immutable_legacy_pair(tmp_path, monkeypatch):
     identity = contract.public_source_identity(installed)
     org = source(root / "organization", "Organization committed rules.\n")
     graph = graph_for(("public", "organization"))
+    graph["sources"][0]["path"] = public_relative
     roots = {"public": installed, "organization": org}
     workspace = root / "workspace"
     # The materialized canonical content is independently checked below.
@@ -556,6 +557,66 @@ def test_instruction_read_access_time_is_not_a_concurrent_content_edit(tmp_path,
     observed = contract._instruction_snapshot(target)
     assert observed[0] is True
     assert observed[1] == b"Stable instruction bytes.\n"
+
+
+@pytest.mark.parametrize("source_kind", ["git", "immutable-release"])
+def test_actual_doctor_rejects_forged_public_commit_in_current_receipt(tmp_path, monkeypatch, source_kind):
+    import onboard
+
+    public_relative = "skills/synthesis-onboarding/references/kernel.example.md"
+    if source_kind == "immutable-release":
+        graph, roots, workspace, old, _descriptor, _retained, identity = immutable_legacy_pair(
+            tmp_path, monkeypatch, public_relative=public_relative)
+        receipt = migrate(graph, roots, workspace, old, source_identities={"public": identity})
+    else:
+        roots = {"public": source(tmp_path.resolve() / "public", "Public committed rules.\n", relative=public_relative),
+                 "organization": source(tmp_path.resolve() / "organization", "Organization committed rules.\n")}
+        graph = graph_for(roots)
+        graph["sources"][0]["path"] = public_relative
+        workspace = tmp_path.resolve() / "workspace"
+        receipt = contract.materialize_instruction_pair(graph, roots, workspace, generation=1)
+    assert contract.instruction_output_state(workspace, receipt) == "current"
+    manifest = {"org": {"workspace": workspace.name},
+                "_path": str(roots["organization"] / ".agents/onboarding.yaml"),
+                "skills_repos": [], "knowledge_bases": [],
+                "instruction_sources": [{"path": "instructions.md", "required": True}]}
+    actual_receipts = onboard.Receipts
+    path = tmp_path / "doctor-receipts.json"
+    receipts = actual_receipts(path)
+    receipts.data["instruction_receipt"] = receipt
+    receipts.save()
+    monkeypatch.setattr(onboard, "Receipts", lambda *args, **kwargs: actual_receipts(path))
+    monkeypatch.setattr(onboard, "WORKSPACES_ROOT", workspace.parent)
+    monkeypatch.setattr(onboard, "source_root", lambda: roots["public"])
+    # Execute the actual source and output doctor blocks. Unselected plugin and
+    # personal layers are outside this source-provenance control.
+    monkeypatch.setattr(onboard, "render_layer_doctor", lambda *args, **kwargs: False)
+
+    def doctor():
+        report = onboard.Report(as_json=True)
+        code = onboard.doctor(report, manifest, [], onboard.normalize_policy("stable", None))
+        return code, report
+
+    code, report = doctor()
+    assert code == 0, report.steps  # Positive control through the same consumer.
+    receipts.data["instruction_receipt"]["sources"][0]["commit"] = "e" * 40
+    receipts.save()
+    before = {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    code, report = doctor()
+    after = {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    assert after == before
+    assert code == 1, report.steps
+    assert any(step["status"] == onboard.ERROR and "source" in step["detail"] for step in report.steps)
+
+
+@pytest.mark.parametrize("manifest_bytes", [b"{incomplete", b"null", b"[]", b'"string"'])
+def test_historical_manifest_corruption_is_a_handled_contract_failure(tmp_path, monkeypatch, manifest_bytes):
+    graph, roots, workspace, receipt, _descriptor, _retained, identity = immutable_legacy_pair(tmp_path, monkeypatch)
+    (roots["public"] / ".claude-plugin/plugin.json").write_bytes(manifest_bytes)
+    before = pair_snapshot(workspace)
+    with pytest.raises(contract.ContractError):
+        migrate(graph, roots, workspace, receipt, source_identities={"public": identity})
+    assert pair_snapshot(workspace) == before
 
 
 def test_actual_private_adapter_and_public_engine_converge_without_mutating_sources(tmp_path, monkeypatch):
