@@ -38,7 +38,7 @@ changed_surfaces:
   - path: skills/synthesis-onboarding/scripts/test_instruction_adversarial.py
     cases: [instruction-proof, instruction-attacks, instruction-source-race, instruction-activation-race, instruction-staging, instruction-rollback, instruction-atime, doctor-public-commit]
   - path: skills/synthesis-onboarding/scripts/test_kb_update_ownership.py
-    cases: [kb-adopted, kb-created, kb-binding]
+    cases: [kb-adopted, kb-created, kb-binding, fixture-maintenance]
   - path: skills/synthesis-onboarding/scripts/test_kb_adversarial.py
     cases: [kb-symlink, kb-branch-race, kb-refmap, kb-native-locks, kb-partial-write, kb-recovery-index]
   - path: skills/synthesis-onboarding/scripts/test_updater_doctor.py
@@ -170,3 +170,7 @@ cases:
     control_class: acceptance-test
     fixture: ../synthesis-onboarding/scripts/test_updater_doctor.py::test_git_paths_find_pending_state_after_administrative_directory_move
     motivating_defect: separate-git-directories-could-hide-retained-update-state
+  - id: fixture-maintenance
+    control_class: acceptance-test
+    fixture: ../synthesis-onboarding/scripts/test_kb_update_ownership.py::test_fixture_suppresses_automatic_maintenance_without_hiding_locks
+    motivating_defect: fixture-peer-commit-started-detached-maintenance-during-preservation-snapshots

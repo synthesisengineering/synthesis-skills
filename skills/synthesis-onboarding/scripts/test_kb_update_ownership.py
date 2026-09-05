@@ -1,5 +1,6 @@
 """Real-Git controls for knowledge-checkout ownership across engine replays."""
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -33,6 +34,13 @@ def kb(tmp_path, monkeypatch):
         result = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
         return result.stdout.strip()
+
+    # Snapshot comparisons isolate engine/peer mutations, not a detached Git
+    # housekeeper retiring its own transient locks after commit returns. These
+    # settings live only in this fixture's temporary global configuration and
+    # reach real Git calls from both the fixture and the engine under test.
+    git("config", "--global", "maintenance.auto", "false")
+    git("config", "--global", "gc.auto", "0")
 
     source = root / "source"
     source.mkdir()
@@ -86,6 +94,24 @@ def snapshot(repo):
     """Include index/config bytes, not only worktree content and HEAD."""
     return {str(path.relative_to(repo)): path.read_bytes()
             for path in repo.rglob("*") if path.is_file()}
+
+
+def test_fixture_suppresses_automatic_maintenance_without_hiding_locks(kb, monkeypatch):
+    repo = kb.clone()
+    assert kb.git("config", "--get", "maintenance.auto", cwd=repo) == "false"
+    assert kb.git("config", "--get", "gc.auto", cwd=repo) == "0"
+    for positive_control in (True, False):
+        trace = kb.root / ("maintenance-positive.json" if positive_control else "maintenance-disabled.json")
+        monkeypatch.setenv("GIT_TRACE2_EVENT", str(trace))
+        overrides = ["-c", "maintenance.auto=true", "-c", "maintenance.autoDetach=false"] if positive_control else []
+        kb.git(*overrides, "commit", "--allow-empty", "-q", "-m", "Check fixture isolation", cwd=repo)
+        events = [json.loads(line) for line in trace.read_text().splitlines()]
+        maintenance = [event for event in events if event.get("event") == "child_start"
+                       and any(value in {"maintenance", "gc"} for value in event.get("argv", []))]
+        assert bool(maintenance) is positive_control, maintenance
+    lock = repo / ".git/objects/maintenance.lock"
+    lock.write_bytes(b"")
+    assert snapshot(repo)[".git/objects/maintenance.lock"] == b""
 
 
 @pytest.mark.parametrize("location", ["standard", "elsewhere"])
