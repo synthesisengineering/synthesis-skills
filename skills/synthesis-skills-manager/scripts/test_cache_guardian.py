@@ -6,6 +6,7 @@ import json
 import os
 import plistlib
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
@@ -72,6 +73,76 @@ def test_restore_protects_history_but_never_installs_current(tmp_path: Path) -> 
     assert record["current_excluded"] == "4.77.1"
     assert record["restored"] == ["4.73.0"]
     assert json.loads(guardian.receipt_path(home).read_text(encoding="utf-8"))["verified"] == 1
+
+
+def test_recovery_archive_deduplicates_and_preserves_all_history(tmp_path: Path) -> None:
+    home = seeded_home(tmp_path)
+    archive = guardian.archive_root(home)
+    for version in ("4.73.0", "4.77.1"):
+        root = archive / version
+        (root / "shared").write_bytes(b"shared payload" * 10000)
+        (root / "shared").chmod(0o755 if version == "4.73.0" else 0o644)
+        (root / "empty").mkdir(mode=0o750)
+        (root / "alias").symlink_to("shared")
+    expected = {v: guardian._tree_digest(archive / v) for v in ("4.73.0", "4.77.1")}
+    guardian.persist_archive(archive, {}, budget=200000)
+    store = guardian.RecoveryStore.read(archive)
+    assert set(store.versions) == set(expected)
+    assert sum(data == b"shared payload" * 10000 for data in store.objects.values()) == 1
+    assert store.stored_bytes <= 200000
+    assert not (archive / "4.73.0").exists()
+    for version, digest in expected.items():
+        target = tmp_path / version
+        store.materialize(version, target)
+        assert guardian._tree_digest(target) == digest
+        assert (target / "shared").stat().st_mode & 0o777 == (0o755 if version == "4.73.0" else 0o644)
+    guardian.restore_once(home)
+    cache = guardian.cache_parent(home)
+    (cache / "4.73.0" / "shared").write_bytes(b"changed cache")
+    assert b"shared payload" * 10000 in guardian.RecoveryStore.read(archive).objects.values()
+    assert (tmp_path / "4.77.1" / "shared").read_bytes() == b"shared payload" * 10000
+
+
+def test_recovery_archive_budget_refuses_before_promoting(tmp_path: Path) -> None:
+    home = seeded_home(tmp_path)
+    archive = guardian.archive_root(home)
+    guardian.persist_archive(archive, {})
+    database = archive / guardian.STORE_NAME
+    before = database.read_bytes()
+    new = tmp_path / "new"
+    seed_root(new, "4.78.0", "new")
+    with pytest.raises(guardian.GuardianError, match="hard budget"):
+        guardian.persist_archive(archive, {"4.78.0": new}, budget=1)
+    assert database.read_bytes() == before
+    assert set(guardian.RecoveryStore.read(archive).versions) == {"4.73.0", "4.77.1"}
+
+
+@pytest.mark.parametrize("damage", ["payload", "missing", "manifest"])
+def test_recovery_archive_rejects_structurally_valid_database_corruption(tmp_path: Path, damage: str) -> None:
+    home = seeded_home(tmp_path)
+    archive = guardian.archive_root(home)
+    guardian.persist_archive(archive, {})
+    with sqlite3.connect(archive / guardian.STORE_NAME) as db:
+        if damage == "payload":
+            db.execute("UPDATE objects SET payload = ? WHERE digest = (SELECT digest FROM objects LIMIT 1)", (b"bad",))
+        elif damage == "missing":
+            db.execute("DELETE FROM objects WHERE digest = (SELECT digest FROM objects LIMIT 1)")
+        else:
+            db.execute("UPDATE versions SET manifest = '{}' WHERE version = '4.73.0'")
+        assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    with pytest.raises(guardian.GuardianError):
+        guardian.restore_once(home)
+    assert not guardian.cache_parent(home).exists()
+
+
+def test_mode_corruption_is_not_accepted_as_historical_integrity(tmp_path: Path) -> None:
+    home = seeded_home(tmp_path)
+    hook = Path("skills/synthesis-autopilot/scripts/autopilot_gate.py")
+    (guardian.archive_root(home) / "4.73.0" / hook).chmod(0o755)
+    guardian.restore_once(home)
+    (guardian.cache_parent(home) / "4.73.0" / hook).chmod(0o644)
+    with pytest.raises(guardian.GuardianError, match="differs from archive"):
+        guardian.restore_once(home)
 
 
 def test_restore_prioritizes_newest_historical_roots(tmp_path: Path) -> None:
