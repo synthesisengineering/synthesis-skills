@@ -12,30 +12,30 @@ issues_authority_receipt: false
 unverified_remainder: production filesystem durability under hardware failure, malicious same-user mutation, live enrollment, deployment and genuine lifecycle acceptance remain separate
 changed_surfaces:
   - path: skills/synthesis-skills-manager/scripts/cache_guardian.py
-    cases: [archive-preservation, archive-budget, archive-interruptions, archive-corruption, archive-unsafe-manifest, archive-unsafe-database, archive-immutable, guardian-standalone, guardian-mode, guardian-suite]
+    cases: [archive-preservation, archive-budget, archive-interruptions, archive-corruption, archive-unsafe-manifest, archive-unsafe-database, archive-immutable, guardian-standalone, guardian-mode, guardian-root-mode, archive-inventory]
   - path: skills/synthesis-skills-manager/scripts/release.py
-    cases: [publisher-cutover, tag-history, manager-suite]
+    cases: [publisher-cutover, tag-history, publisher-lock, archive-umask, release-contract]
   - path: skills/synthesis-skills-manager/scripts/test_cache_guardian.py
     cases: [archive-preservation, archive-budget, archive-interruptions, archive-corruption, archive-unsafe-manifest, archive-unsafe-database, archive-immutable, guardian-standalone, guardian-mode]
   - path: skills/synthesis-skills-manager/scripts/test_release.py
-    cases: [publisher-cutover, tag-history, manager-suite]
+    cases: [publisher-cutover, tag-history, release-contract]
   - path: skills/synthesis-skills-manager/SKILL.md
-    cases: [manager-suite]
+    cases: [release-contract]
   - path: .claude-plugin/plugin.json
-    cases: [manager-suite]
+    cases: [release-contract]
   - path: .codex-plugin/plugin.json
-    cases: [manager-suite]
+    cases: [release-contract]
   - path: CHANGELOG.md
-    cases: [manager-suite]
+    cases: [release-contract]
   - path: README.md
-    cases: [manager-suite]
+    cases: [release-contract]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [manifest-consumer]
 cases:
-  - id: guardian-suite
+  - id: guardian-root-mode
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py
-    motivating_defect: complete-standalone-reader-migration-and-mode-contract-needs-execution
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_historical_root_mode_is_part_of_verified_identity
+    motivating_defect: root-directory-mode-is-part-of-immutable-history
   - id: archive-preservation
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_recovery_archive_deduplicates_and_preserves_all_history
@@ -80,11 +80,23 @@ cases:
     control_class: acceptance-test
     fixture: ../synthesis-skills-manager/scripts/test_release.py::test_tag_backed_snapshot_repairs_partial_and_missing_historical_roots
     motivating_defect: all-tagged-intervening-releases-and-known-metadata-must-survive
-  - id: manager-suite
+  - id: release-contract
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
     motivating_defect: release-source-metadata-and-enforcing-consumer-must-stay-coherent
   - id: manifest-consumer
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
     motivating_defect: closed-manifest-must-validate-at-publication-boundary
+  - id: publisher-lock
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_contending_publisher_cannot_prepare_or_restart_guardian
+    motivating_defect: publisher-must-hold-shared-lock-before-consumer-cutover
+  - id: archive-umask
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_repeated_archive_admission_preserves_root_identity_across_umask
+    motivating_defect: git-export-root-mode-must-not-redefine-historical-identity
+  - id: archive-inventory
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_unowned_archive_files_refuse_before_migration
+    motivating_defect: unowned-data-must-not-be-silently-excluded-from-archive-budget

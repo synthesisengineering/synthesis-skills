@@ -740,6 +740,23 @@ def test_lifecycle_hotfix_is_documented_on_every_public_maintenance_surface() ->
     assert "full TLS and" in readme
 
 
+def test_deduplicated_archive_release_contract_is_public_and_coherent() -> None:
+    repository = Path(__file__).resolve().parents[3]
+    version, detail = release.source_version(repository)
+    assert version is not None, detail
+    assert release.changelog_top_version(repository) == version
+    manager = (repository / "skills/synthesis-skills-manager/SKILL.md").read_text()
+    readme = (repository / "README.md").read_text()
+    changelog = (repository / "CHANGELOG.md").read_text()
+    for document in (manager, changelog):
+        assert "SQLite" in document
+    for document in (manager, readme, changelog):
+        assert "512 MiB" in document
+    assert "independent files" in manager
+    assert "no historical version is evicted" in changelog
+    assert release.CODEX_CACHE_ARCHIVE_BUDGET_BYTES == 512 * 1024 * 1024
+
+
 def test_cache_survival_release_contract_is_public_and_coherent() -> None:
     repository = Path(__file__).resolve().parents[3]
     manager = (repository / "skills/synthesis-skills-manager/SKILL.md").read_text(
