@@ -31,6 +31,8 @@ changed_surfaces:
     cases: [native-preservation]
   - path: skills/synthesis-onboarding/scripts/test_reload_guidance.py
     cases: [doctor, partial, transaction, native, no-refresh, update-hint, uninstall, same-session, scope, recorded-scope, observation-preservation, rejection, repair, provenance]
+  - path: skills/synthesis-skills-manager/scripts/test_release.py
+    cases: [workspace-bootstrap-recovery]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [acceptance-self]
 cases:
@@ -106,3 +108,7 @@ cases:
     control_class: acceptance-test
     fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_install_does_not_replace_an_existing_live_plugin_cache
     motivating_defect: install-must-not-refresh-an-active-cache-implicitly
+  - id: workspace-bootstrap-recovery
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_quick_answers_self_bootstrap_release_contract_is_public_and_coherent
+    motivating_defect: historical-bootstrap-contract-required-unconditional-new-chat

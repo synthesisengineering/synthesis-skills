@@ -900,14 +900,20 @@ def test_quick_answers_self_bootstrap_release_contract_is_public_and_coherent() 
     assert ".agents/workspace-AGENTS.md" in skill
     assert "AGENTS.md" in skill and "CLAUDE.md" in skill
     assert "synthesis-onboarding" in skill
-    # The receipt-verification sentence that reads as internal agent protocol
-    # to a human running the installer directly is gone from onboard.py's
-    # printed messages; the fuller protocol stays documented in this skill's
-    # own SKILL.md (a human never reads that file mid-install, only an agent
-    # consulting it as instructions does), so nothing about agent behavior
-    # regressed — only what a person sees in their own terminal changed.
+    # Native installation shares the existing-conversation recovery contract.
+    # A new chat is conditional, never the unconditional installation result.
+    # Producer/renderer and receipt rejection cases live in test_reload_guidance.
+    from reload_guidance import recovery_instruction
+
     assert "verify its exact current-plugin SessionStart receipt" not in onboard
-    assert "start a new chat there" in onboard
+    assert "start a new chat there" not in onboard
+    assert "hint=recovery_instruction([name]" in onboard
+    for client in ("claude", "codex"):
+        guidance = recovery_instruction([client], initial=True)
+        assert "reopen the existing" in guidance
+        assert "If same-session recovery is unsupported or those checks fail" in guidance
+        assert "start a new conversation" in guidance
+        assert "If there is no existing conversation" in guidance
 
 
 def test_main_carries_acceptance_authority_to_publish_boundary(
