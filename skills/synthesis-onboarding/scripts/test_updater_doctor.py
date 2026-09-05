@@ -163,3 +163,34 @@ def test_doctor_and_both_probes_fail_closed_on_knowledge_ownership(installed, co
     assert onboard._organization_probe(installed.manifest, installed.receipts())[0] is False
     assert onboard._knowledge_probe(installed.manifest, installed.receipts())[0] is False
     assert snapshot(kb.root) == before
+
+
+@pytest.mark.parametrize("corruption", ["null", "list", "scalar", "entry-null",
+    "entry-list", "entry-empty", "repository-type", "digest-type", "path-relative"])
+def test_malformed_skill_copy_inventory_cannot_escape_doctor(installed, corruption):
+    receipts = installed.receipts()
+    path = str(installed.kb.workspaces.parent / ".agents/skills/example-skill")
+    metadata = {"repository": "https://example.test/skills.git", "commit": "a" * 40,
+                "sha256": "b" * 64}
+    value = {path: metadata}
+    if corruption == "null":
+        value = None
+    elif corruption == "list":
+        value = []
+    elif corruption == "scalar":
+        value = 17
+    elif corruption == "entry-null":
+        value[path] = None
+    elif corruption == "entry-list":
+        value[path] = []
+    elif corruption == "entry-empty":
+        value[path] = {}
+    elif corruption == "repository-type":
+        metadata["repository"] = []
+    elif corruption == "digest-type":
+        metadata["sha256"] = []
+    else:
+        value = {"relative-path": metadata}
+    receipts.data["org_skill_copies"] = value
+    receipts.save()
+    assert_read_only_failure(installed)
