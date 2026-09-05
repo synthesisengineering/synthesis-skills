@@ -270,12 +270,92 @@ def test_doctor_global_event_is_labelled_not_exact_invoking_task_acceptance(tmp_
     plane = payload["planes"]["live-loaded"]
     assert plane["status"] == "verified"
     assert plane["receipts"]["codex"]["session_id"] == event["session_id"]
-    assert plane["scope"] == "latest-selected-client-sessions"
+    assert plane["scope"] == "recorded-selected-client-sessions"
     assert synthesis_cli.main(
         ["doctor"], state=state, engine_runner=lambda _argv: _engine_result(),
     ) == 0
     human = capsys.readouterr().out.lower()
-    assert "latest" in human and "not" in human and "task" in human, human
+    assert "recorded" in human and "not" in human and "task" in human, human
+
+
+def _recorded_event_with_newer_candidate(tmp_path):
+    """A remains attached; independently prove that newer B is promotable."""
+    state, receipt = _state(tmp_path, ("codex",))
+    positive_control = system_contract.SystemState(home=tmp_path / "positive-control")
+    desired = state.read_desired()
+    positive_control.run_transaction("setup", desired, lambda _tx: {
+        "release": release_record(Path(receipt["plugin_root"])),
+        "source-provenance": {"status": "verified", "root": receipt["plugin_root"]},
+        "live-loaded": {"status": "restart-required"},
+    })
+    first = _fresh_event(state, receipt)
+    _registry_event(state.live_receipt_registry_root(), first, bound_at_record=True)
+    assert state.promote_live_receipts(binder=live_receipt.transcript_binds_session)
+    state.record_outcome({"status": "verified", "task": "fixture-outcome"})
+
+    newer = _fresh_event(state, receipt, session_id=str(uuid.uuid4()))
+    assert newer["recorded_at"] > first["recorded_at"]
+    for target in (state, positive_control):
+        _registry_event(target.live_receipt_registry_root(), newer, bound_at_record=True)
+    promoted = positive_control.promote_live_receipts(binder=live_receipt.transcript_binds_session)
+    assert [item["session_id"] for item in promoted] == [newer["session_id"]]
+    control = positive_control.read_observation()["transactions"][-1]["live-loaded"]
+    assert control["receipts"]["codex"]["receipt_event_id"] == newer["receipt_event_id"]
+    assert state.promote_live_receipts(binder=live_receipt.transcript_binds_session) == []
+    return state, first, newer
+
+
+@pytest.mark.parametrize("command", ["doctor", "status"])
+@pytest.mark.parametrize("as_json", [False, True], ids=["human", "json"])
+def test_retained_event_is_labelled_recorded_not_latest(tmp_path, capsys, command, as_json):
+    state, first, newer = _recorded_event_with_newer_candidate(tmp_path)
+    assert synthesis_cli.main(
+        [command] + (["--json"] if as_json else []),
+        state=state, engine_runner=lambda _argv: _engine_result(),
+    ) == 0
+    output = capsys.readouterr().out
+    stored = state.read_observation()["transactions"][-1]["live-loaded"]
+    assert stored["receipts"]["codex"]["receipt_event_id"] == first["receipt_event_id"]
+    assert first["receipt_event_id"] != newer["receipt_event_id"]
+    if as_json:
+        payload = json.loads(output)
+        if command == "doctor":
+            scope = payload["planes"]["live-loaded"]
+            assert scope["receipts"]["codex"]["receipt_event_id"] == first["receipt_event_id"]
+        else:
+            scope = payload["live_scope"]
+        assert scope["scope"] == "recorded-selected-client-sessions"
+    else:
+        lower = output.lower()
+        assert "recorded" in lower and "selected" in lower and "not" in lower and "task" in lower
+        assert "latest session" not in lower and "latest qualifying" not in lower
+
+
+@pytest.mark.parametrize("command", ["doctor", "status"])
+@pytest.mark.parametrize("as_json", [False, True], ids=["human", "json"])
+def test_scope_presentation_preserves_observation_and_outcome_bytes(tmp_path, capsys, command, as_json):
+    state, _, _ = _recorded_event_with_newer_candidate(tmp_path)
+    before = state.observation_path.read_bytes()
+    observed = json.loads(before)
+    latest = observed["transactions"][-1]
+    outcome = latest["outcome-verified"]
+    assert outcome["live_loaded_sha256"] == system_contract.json_digest(latest["live-loaded"])
+    assert synthesis_cli.main(
+        [command] + (["--json"] if as_json else []),
+        state=state, engine_runner=lambda _argv: _engine_result(),
+    ) == 0
+    output = capsys.readouterr().out
+    assert state.observation_path.read_bytes() == before
+    after = state.read_observation()["transactions"][-1]
+    assert after["outcome-verified"] == outcome
+    assert outcome["live_loaded_sha256"] == system_contract.json_digest(after["live-loaded"])
+    if as_json:
+        payload = json.loads(output)
+        if command == "status":
+            assert payload["observed"] == observed
+            assert payload["live_scope"]["scope"] == "recorded-selected-client-sessions"
+        else:
+            assert payload["planes"]["outcome-verified"] == outcome
 
 
 @pytest.mark.parametrize("defect", ["wrong-version", "missing-root", "wrong-digest", "unbound", "stale"])

@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.3.2"
+  version: "2.3.3"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -293,9 +293,16 @@ required action, and `2` means ground truth could not be established.
 An update is the initiating task's last action before client restart. On
 machines with the durable historical-cache guardian, the update also verifies
 the exact historical root used by the invoking task before returning. Resume
-the same conversation only after a genuine fresh SessionStart receipt reports
-the installed release and loaded skills. Codex hook trust remains a human
-setting and is never auto-approved.
+the existing conversation when supported, but continue only after a genuine
+transcript-bound SessionStart for the same session UUID reports the installed
+version and enabled immutable plugin root, with matching loaded skill metadata.
+Use a new conversation when same-session recovery is unsupported or those checks
+fail; first-time users without an existing conversation can start one after
+restart. Installed currency alone does not establish active-session currency.
+Doctor and status label recorded selected-client evidence separately from acceptance
+of the initiating task. Verified uninstall requires no live client load.
+Codex hook trust remains a conditional human setting, is never auto-approved,
+and does not itself prove hook execution.
 
 ## Ownership boundaries
 
