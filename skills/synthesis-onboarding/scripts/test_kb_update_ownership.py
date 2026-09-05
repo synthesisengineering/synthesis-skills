@@ -247,3 +247,70 @@ def test_symbolic_checkout_is_not_adopted(kb):
     report, _ = kb.run()
     assert report.exit_code() != 0, report.steps
     assert snapshot(elsewhere) == before
+
+
+def test_managed_missing_protection_is_refused_before_fetch(kb, monkeypatch):
+    report, _ = kb.run(enrolling=True)
+    assert report.exit_code() == 0, report.steps
+    kb.git("config", "--unset", "core.hooksPath", cwd=kb.standard)
+    kb.advance()
+    before = snapshot(kb.standard)
+    original = onboard.git
+    calls = []
+
+    def git(args, **kwargs):
+        calls.append(args)
+        return original(args, **kwargs)
+
+    monkeypatch.setattr(onboard, "git", git)
+    report, _ = kb.run()
+    assert report.exit_code() != 0, report.steps
+    assert not any(args[0] in {"fetch", "pull", "merge"} for args in calls)
+    assert snapshot(kb.standard) == before
+
+
+def test_managed_fetch_failure_is_non_green_and_preserves_checkout(kb, monkeypatch):
+    report, _ = kb.run(enrolling=True)
+    assert report.exit_code() == 0, report.steps
+    before = snapshot(kb.standard)
+    original = onboard.git
+
+    def git(args, **kwargs):
+        if args[0] == "fetch":
+            return 1, "", "Fixture transport unavailable"
+        return original(args, **kwargs)
+
+    monkeypatch.setattr(onboard, "git", git)
+    report, _ = kb.run()
+    assert report.exit_code() != 0, report.steps
+    assert snapshot(kb.standard) == before
+
+
+@pytest.mark.parametrize("change", ["branch", "dirty", "head", "remote"])
+def test_managed_state_change_during_fetch_is_preserved(kb, monkeypatch, change):
+    report, _ = kb.run(enrolling=True)
+    assert report.exit_code() == 0, report.steps
+    kb.advance()
+    original = onboard.git
+    after_peer = []
+
+    def git(args, **kwargs):
+        result = original(args, **kwargs)
+        if args[0] == "fetch":
+            if change == "branch":
+                kb.git("checkout", "-q", "-b", "work/topic", cwd=kb.standard)
+            elif change == "remote":
+                kb.git("remote", "set-url", "origin", "https://example.test/other.git", cwd=kb.standard)
+            else:
+                (kb.standard / "content.md").write_text("Concurrent work.\n")
+                if change == "head":
+                    kb.git("add", "content.md", cwd=kb.standard)
+                    kb.git("commit", "-q", "-m", "Concurrent fixture", cwd=kb.standard)
+            after_peer.append(snapshot(kb.standard))
+        return result
+
+    monkeypatch.setattr(onboard, "git", git)
+    report, _ = kb.run()
+    assert report.exit_code() != 0, report.steps
+    assert len(after_peer) == 1
+    assert snapshot(kb.standard) == after_peer[0]
