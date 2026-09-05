@@ -4,6 +4,23 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.95.2] - 2026-09-04
+
+**Historical recovery deduplicates payloads without retiring versions.** Skills
+manager 2.7.0 stores shared file contents once in a verified SQLite archive.
+Each version retains its paths, types, permissions and installation metadata.
+The unchanged 512 MiB hard limit covers the complete database, including indexes
+and page overhead. Admission refuses before native cache refresh if validation
+or the size check fails; no historical version is evicted.
+
+The standalone archive-aware guardian is installed and its supervisor verified
+before migration retires duplicate trees. Candidate commit, atomic promotion,
+move-before-delete retirement and resumed partial retirement are tested with
+real process interruptions. Blob and manifest hashes detect corruption beyond
+SQLite structure checks. Restored files are independent copies, never links to
+shared stored payloads. Historical integrity now checks executable permissions
+as well as source bytes, while the newest client-owned cache remains excluded.
+
 ## [4.95.1] - 2026-09-04
 
 **Verified enrollment can reach SSH organization repositories.** The bootstrap

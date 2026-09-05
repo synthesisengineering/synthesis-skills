@@ -11,6 +11,13 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Historical recovery shares storage, not mutable files (September 2026).**
+Release **4.95.2** deduplicates recovery payloads while keeping every historical
+version and the existing 512 MiB limit. Version records preserve file types,
+permissions and content hashes. The publisher verifies the archive-aware
+guardian before migrating storage or refreshing the client; interrupted
+migration remains recoverable.
+
 **SSH organization enrollment follows verified bootstrap acquisition (September
 2026).** Release **4.95.1** separates the public HTTPS-only download policy from
 the verified CLI's HTTPS/SSH organization operations. Local-file and external

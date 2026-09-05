@@ -47,6 +47,7 @@ import os
 import re
 import secrets
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -77,6 +78,7 @@ except ImportError:  # pragma: no cover - resolved at runtime in the repo
 from bootstrap import materialize_release
 from cache_guardian import GuardianError as CacheGuardianError
 from cache_guardian import _tree_digest as _guardian_tree_digest
+from cache_guardian import RecoveryStore, persist_archive
 from system_contract import ContractError, activate_cli, atomic_write_json
 
 
@@ -775,15 +777,7 @@ def _tree_bytes(root: Path) -> int:
 def _persist_codex_archive(
     backup: Path, versions: list[str], archive: Path
 ) -> None:
-    archive.mkdir(parents=True, exist_ok=True)
-    for version in versions:
-        source = backup / version
-        destination = archive / version
-        if destination.is_symlink():
-            raise OSError(f"recovery archive root is a symlink: {destination}")
-        shutil.copytree(source, destination, dirs_exist_ok=True, symlinks=True)
-        if _tree_digest(source) != _tree_digest(destination):
-            raise OSError(f"recovery archive differs after write: {destination}")
+    persist_archive(archive, {version: backup / version for version in versions}, budget=CODEX_CACHE_ARCHIVE_BUDGET_BYTES)
 
 
 def snapshot_codex_caches(
@@ -813,6 +807,12 @@ def snapshot_codex_caches(
         cache_roots = _real_version_roots(parent)
         peer_roots = _real_version_roots(peers["Claude cache"])
         archive_roots = _real_version_roots(archive) if archive is not None else {}
+        if archive is not None:
+            stored = RecoveryStore.read(archive)
+            for version in stored.versions:
+                restored_archive = backup / ".archive-input" / version
+                stored.materialize(version, restored_archive)
+                archive_roots[version] = restored_archive
         boundary_versions = set(cache_roots) | set(peer_roots) | set(archive_roots)
         preserved_versions = set(boundary_versions)
         seed_versions = set(boundary_versions)
@@ -875,6 +875,10 @@ def snapshot_codex_caches(
                 destination,
                 current_version=current_version or "",
             )
+            # Git records child modes but no mode for the release root itself.
+            # Keep its prior archive identity; new tagged roots use one declared
+            # mode rather than inheriting the publisher's changing umask.
+            destination.chmod(stat.S_IMODE(archive_roots[version].stat().st_mode) if version in archive_roots else 0o755)
             if version in archive_roots:
                 _copy_cache_extras(archive_roots[version], destination, tracked)
             if version in peer_roots:
@@ -883,12 +887,6 @@ def snapshot_codex_caches(
                 _copy_cache_extras(cache_roots[version], destination, tracked)
 
         if archive is not None:
-            projected_bytes = _tree_bytes(backup)
-            if projected_bytes > CODEX_CACHE_ARCHIVE_BUDGET_BYTES:
-                raise OSError(
-                    "recovery archive would exceed the 512 MiB hard budget; "
-                    "no historical root was deleted automatically"
-                )
             _persist_codex_archive(
                 backup, sorted(seed_versions, key=_version_key), archive
             )
@@ -899,7 +897,7 @@ def snapshot_codex_caches(
                 True,
                 f"verified {len(seed_versions)} complete recovery root(s)",
             )
-    except (OSError, subprocess.SubprocessError, tarfile.TarError) as exc:
+    except (CacheGuardianError, OSError, subprocess.SubprocessError, tarfile.TarError) as exc:
         result.add(
             "install.codex.cache-snapshot",
             False,
@@ -920,9 +918,14 @@ def _remove_transition_backup(backup: Path) -> None:
     resolved = backup.resolve()
     temporary_root = Path(tempfile.gettempdir()).resolve()
     if (
+        backup.is_symlink()
+        or not backup.is_dir()
+        or resolved in (Path.home().resolve(), Path.cwd().resolve())
+        or (resolved / ".git").exists()
+        or Path.cwd().resolve().is_relative_to(resolved)
+        or
         resolved.parent != temporary_root
         or not resolved.name.startswith("synthesis-codex-cache-")
-        or resolved.is_symlink()
     ):
         raise OSError(f"refusing unsafe transition-backup cleanup target: {backup}")
     shutil.rmtree(resolved)
@@ -1169,6 +1172,10 @@ def refresh_client(
     try:
         cache_snapshot = None
         if client == "codex" and not dry_run:
+            # Keep the watcher serialized behind this transition while its new
+            # standalone consumer is installed, before retiring legacy roots.
+            if repo is not None and not install_codex_cache_guardian(repo, result, False, prepare_only=True):
+                return False
             cache_snapshot = snapshot_codex_caches(result, repo=repo)
             if cache_snapshot is None:
                 return False
@@ -1196,7 +1203,7 @@ def refresh_client(
 
 
 def install_codex_cache_guardian(
-    repo: Path, result: Result, dry_run: bool
+    repo: Path, result: Result, dry_run: bool, *, prepare_only: bool = False
 ) -> bool:
     """Install the durable supervisor that repairs later Codex cache generations."""
     source = repo / CACHE_GUARDIAN
@@ -1206,7 +1213,7 @@ def install_codex_cache_guardian(
             False,
             f"guardian source is unavailable or unsafe: {source}",
         )
-    command = [sys.executable, str(source), "--install"]
+    command = [sys.executable, str(source), "--prepare" if prepare_only else "--install"]
     if dry_run:
         return result.add(
             "install.codex.cache-guardian",

@@ -5,12 +5,22 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.6.3"
+  version: "2.7.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+**Version 2.7.0** (2026-09-04) deduplicates historical payloads in a SQLite
+content-addressed archive. Immutable per-version manifests preserve paths,
+types, modes and metadata; restoration creates independent files. SHA-256
+validation covers every payload and manifest, beyond database structure checks.
+The complete database, including page overhead, stays within the unchanged
+512 MiB budget. A verified candidate replaces the store atomically; legacy
+trees move before deletion only after their complete recovery is verified.
+Interrupted retirement resumes against the committed version manifest. The
+archive-aware standalone guardian and supervisor are verified before migration
+or native refresh. Source integrity includes permissions, not just bytes.
 
 **Version 2.6.3** (2026-09-03) makes synchronous historical-cache verification
 wait up to 120 seconds for the shared transition lock. This covers a complete
@@ -30,19 +40,13 @@ as one directory instead of copying through untrusted entries, so a nested
 symlink or hard link cannot redirect repair writes outside the cache. All other
 source and filesystem-type checks remain fail-closed.
 
-**Version 2.6.1** (2026-09-03) keeps historical-cache integrity scoped to
-release source even while an older running task executes Python hooks from its
-versioned root. The guardian excludes only regular `.pyc` or `.pyo` files
-directly inside a real `__pycache__` directory; unknown files, loose bytecode,
-links, special objects, and source changes remain integrity failures. Shipped
-Python hooks also use `-B` so current runtimes do not create bytecode there.
+**Version 2.6.1** (2026-09-03) bounds runtime-bytecode exclusions to real
+Python cache directories; unknown files, links and source changes still fail.
+Shipped Python hooks use `-B` to avoid creating bytecode there.
 
-**Version 2.6.0** (2026-09-02) makes public CLI activation part of the same
-gated release transaction as source publication and dual-client verification.
-The release manager resolves the immutable version tag, materializes its exact
-commit, Git tree, and canonical content digest under the synthesis-owned release
-store, and atomically activates the managed launcher and descriptor only after
-both supported clients verify the release.
+**Version 2.6.0** (2026-09-02) includes immutable public CLI activation in the
+gated publication and dual-client verification transaction. The launcher binds
+the verified version tag, commit, Git tree and content digest.
 
 **Version 2.5.1** (2026-09-02) prioritizes the newest historical Codex roots
 during recovery, so the version most likely to be pinned by a just-updated task
@@ -338,7 +342,8 @@ The sequence, each stage gating the next:
   receipt covers the release transaction; it cannot prove that the client will
   not create another cache generation minutes later. The publisher therefore
   installs `cache_guardian.py` under the durable recovery root and verifies its
-  user-level launchd or systemd supervisor before returning. The guardian shares
+  user-level launchd or systemd supervisor before archive migration, then verifies
+  recovery again before returning. The guardian shares
   the release lock, protects every archived version except the newest
   client-owned version, and rehydrates missing historical roots after any later
   cache replacement. It never deletes a cache path or overwrites differing
@@ -351,10 +356,11 @@ The sequence, each stage gating the next:
   watcher and explicit one-shot mode stay nonblocking. The watcher continues
   protecting those roots against later reconciliation after either command
   exits.
-  The archive has a 512 MiB hard budget and never deletes a historical root
+  The deduplicated archive has a 512 MiB hard budget and never evicts a historical version
   automatically when that budget is reached; unverifiable cleanup fails the
-  release closed. Symlink recovery artifacts and client liveness markers are not
-  preserved.
+  release closed. Transient verified migration copies are retired after the
+  committed store contains their bytes and modes. Symlinked recovery roots and
+  unsafe links are refused; client liveness markers are excluded.
 - **Verify** is the point of the whole script, and it checks each client
   **twice**: what the CLI reports, and the plugin manifest at the path the CLI
   says it loads. Agreement of both with the source version is the only pass.
