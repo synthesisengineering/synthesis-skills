@@ -1,70 +1,90 @@
-# AGENT HEURISTIC: authored for the 4.95.1 verified transport handoff.
+# AGENT HEURISTIC: closed recovery storage and consumer acceptance.
 schema: 2
-suite: verified-organization-enrollment-boundaries
+suite: deduplicated-historical-recovery
 membership: closed
-production_entry_point: skills/synthesis-onboarding/scripts/bootstrap.py
-enforcing_boundary: verified organization operations permit HTTPS and SSH only while enrollment and rollback share the actual engine receipt directory
+production_entry_point: skills/synthesis-skills-manager/scripts/release.py
+enforcing_boundary: verified standalone guardian and budgeted complete archive precede destructive native cache refresh
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: live enrollment personal preservation build-only sites terminal updater and genuine client lifecycle receipts remain separate gates
+unverified_remainder: production filesystem durability under hardware failure, malicious same-user mutation, live enrollment, deployment and genuine lifecycle acceptance remain separate
 changed_surfaces:
-  - path: skills/synthesis-onboarding/scripts/bootstrap.py
-    cases: [verified-cli-transport, bootstrap-handoff, real-cli-ssh]
-  - path: skills/synthesis-onboarding/scripts/test_bootstrap.py
-    cases: [verified-cli-transport, bootstrap-handoff]
-  - path: skills/synthesis-onboarding/scripts/test_additive_enrollment.py
-    cases: [real-cli-ssh, engine-receipt-rollback]
-  - path: skills/synthesis-onboarding/scripts/enrollment.py
-    cases: [real-cli-ssh, engine-receipt-rollback]
-  - path: skills/synthesis-onboarding/scripts/onboard.py
-    cases: [engine-version-contract, real-cli-ssh, engine-receipt-rollback]
-  - path: skills/synthesis-onboarding/scripts/synthesis_cli.py
-    cases: [engine-version-contract, real-cli-ssh, engine-receipt-rollback]
-  - path: skills/synthesis-onboarding/SKILL.md
-    cases: [engine-version-contract, verified-cli-transport]
+  - path: skills/synthesis-skills-manager/scripts/cache_guardian.py
+    cases: [archive-preservation, archive-budget, archive-interruptions, archive-corruption, archive-unsafe-manifest, archive-unsafe-database, archive-immutable, guardian-standalone, guardian-mode, guardian-suite]
+  - path: skills/synthesis-skills-manager/scripts/release.py
+    cases: [publisher-cutover, tag-history, manager-suite]
+  - path: skills/synthesis-skills-manager/scripts/test_cache_guardian.py
+    cases: [archive-preservation, archive-budget, archive-interruptions, archive-corruption, archive-unsafe-manifest, archive-unsafe-database, archive-immutable, guardian-standalone, guardian-mode]
+  - path: skills/synthesis-skills-manager/scripts/test_release.py
+    cases: [publisher-cutover, tag-history, manager-suite]
+  - path: skills/synthesis-skills-manager/SKILL.md
+    cases: [manager-suite]
   - path: .claude-plugin/plugin.json
-    cases: [release-manifest-parity]
+    cases: [manager-suite]
   - path: .codex-plugin/plugin.json
-    cases: [release-manifest-parity]
+    cases: [manager-suite]
   - path: CHANGELOG.md
-    cases: [release-changelog-parity]
+    cases: [manager-suite]
   - path: README.md
-    cases: [release-changelog-parity, verified-cli-transport]
+    cases: [manager-suite]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
-    cases: [shipped-manifest-self-consumption]
+    cases: [manifest-consumer]
 cases:
-  - id: engine-receipt-rollback
+  - id: guardian-suite
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_enrollment_rollback_protects_actual_engine_receipt
-    motivating_defect: enrollment-journal-protects-legacy-receipt-instead-of-default-or-xdg-engine-receipt
-  - id: verified-cli-transport
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py
+    motivating_defect: complete-standalone-reader-migration-and-mode-contract-needs-execution
+  - id: archive-preservation
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_bootstrap.py::test_verified_cli_can_use_org_ssh_without_enabling_local_transports
-    motivating_defect: public-download-policy-leaks-into-verified-organization-git-operations
-  - id: real-cli-ssh
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_recovery_archive_deduplicates_and_preserves_all_history
+    motivating_defect: duplicate-payloads-exhaust-archive-budget-despite-sufficient-unique-content
+  - id: archive-budget
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_additive_enrollment.py::test_real_cli_enroll_reaches_engine_and_preserves_personal_state
-    motivating_defect: transport-rewrites-in-fixtures-can-hide-real-ssh-enrollment-failure
-  - id: bootstrap-handoff
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_recovery_archive_budget_refuses_before_promoting
+    motivating_defect: budget-must-count-stored-database-pages-and-indexes-before-admission
+  - id: archive-interruptions
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_bootstrap.py::test_onboard_handoff_consumes_resolution_policy_before_update_cli
-    motivating_defect: bootstrap-must-forward-the-original-command-after-verified-resolution
-  - id: engine-version-contract
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_recovery_archive_real_process_interruptions_resume
+    motivating_defect: partial-migration-must-not-strand-historical-hooks
+  - id: archive-corruption
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_engine_versions_and_skill_contract_agree
-    motivating_defect: installed-guidance-and-engine-versions-must-match
-  - id: release-manifest-parity
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_recovery_archive_rejects_structurally_valid_database_corruption
+    motivating_defect: database-structure-integrity-does-not-prove-payload-or-manifest-integrity
+  - id: archive-unsafe-manifest
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
-    motivating_defect: both-native-clients-must-install-the-same-version
-  - id: release-changelog-parity
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_recovery_archive_refuses_rehashed_unsafe_manifest
+    motivating_defect: untrusted-restoration-paths-and-modes-must-fail-before-cache-writes
+  - id: archive-unsafe-database
     control_class: acceptance-test
-    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
-    motivating_defect: release-changelog-and-manifest-identity-must-agree
-  - id: shipped-manifest-self-consumption
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_recovery_archive_refuses_unsafe_database_targets
+    motivating_defect: links-or-special-database-targets-cannot-be-followed-during-migration
+  - id: archive-immutable
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_existing_version_cannot_replace_historical_source
+    motivating_defect: repeated-admission-must-not-replace-historical-source
+  - id: guardian-standalone
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_standalone_guardian_restores_database_history_after_repeated_reconciliation
+    motivating_defect: guardian-must-recover-after-client-cache-reconciliation-without-source-checkout
+  - id: guardian-mode
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_mode_corruption_is_not_accepted_as_historical_integrity
+    motivating_defect: byte-equal-nonexecutable-hook-was-accepted
+  - id: publisher-cutover
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_database_guardian_cutover_gates_destructive_native_refresh
+    motivating_defect: new-storage-consumer-must-be-verified-before-migration-or-native-refresh
+  - id: tag-history
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py::test_tag_backed_snapshot_repairs_partial_and_missing_historical_roots
+    motivating_defect: all-tagged-intervening-releases-and-known-metadata-must-survive
+  - id: manager-suite
+    control_class: acceptance-test
+    fixture: ../synthesis-skills-manager/scripts/test_release.py
+    motivating_defect: release-source-metadata-and-enforcing-consumer-must-stay-coherent
+  - id: manifest-consumer
     control_class: acceptance-test
     fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-    motivating_defect: release-authority-must-consume-its-exact-closed-manifest
+    motivating_defect: closed-manifest-must-validate-at-publication-boundary

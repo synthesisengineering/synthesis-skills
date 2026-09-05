@@ -1210,12 +1210,39 @@ def test_tag_backed_snapshot_repairs_partial_and_missing_historical_roots(
     assert (
         snapshot.backup / "4.74.1" / "skills/example/SKILL.md"
     ).read_text(encoding="utf-8") == "version: 4.74.1\nmiddle\n"
-    assert release._tree_digest(snapshot.backup / "4.74.1") == release._tree_digest(
-        recovery / "4.74.1"
-    )
+    materialized = tmp_path / "materialized"
+    release.RecoveryStore.read(recovery).materialize("4.74.1", materialized)
+    assert release._tree_digest(snapshot.backup / "4.74.1") == release._tree_digest(materialized)
     assert next(
         step for step in result.steps if step.name == "install.codex.cache-archive"
     ).ok
+
+
+def test_repeated_archive_admission_preserves_root_identity_across_umask(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    commit_release(source, "4.74.0", "old")
+    commit_release(source, "4.75.0", "current")
+    archive, cache = tmp_path / "archive", tmp_path / "cache"
+    (cache / "4.74.0").mkdir(parents=True)
+    monkeypatch.setattr(release, "codex_cache_archive", lambda: archive)
+    monkeypatch.setattr(release, "plugin_cache_parent", lambda client: cache)
+    previous_umask = os.umask(0o022)
+    snapshots = []
+    try:
+        first = release.snapshot_codex_caches(release.Result(), repo=source)
+        assert first is not None
+        snapshots.append(first)
+        expected = release.RecoveryStore.read(archive).versions
+        os.umask(0o077)
+        second = release.snapshot_codex_caches(release.Result(), repo=source)
+        assert second is not None
+        snapshots.append(second)
+        assert release.RecoveryStore.read(archive).versions == expected
+    finally:
+        os.umask(previous_umask)
+        for snapshot in snapshots:
+            release._remove_transition_backup(snapshot.backup)
 
 
 def test_snapshot_imports_complete_untagged_peer_root_missing_from_codex(
@@ -1404,6 +1431,58 @@ def test_codex_cache_transition_lock_refuses_a_second_writer(
     try:
         with pytest.raises(OSError, match="another release process"):
             release._acquire_codex_cache_lock()
+    finally:
+        release._release_codex_cache_lock(first)
+
+
+@pytest.mark.parametrize("failure", [None, "prepare", "budget"])
+def test_database_guardian_cutover_gates_destructive_native_refresh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str | None) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    commit_release(source, "4.74.0", "old")
+    commit_release(source, "4.75.0", "current")
+    guardian_source = source / release.CACHE_GUARDIAN
+    guardian_source.parent.mkdir(parents=True)
+    guardian_source.write_text("fixture supervisor")
+    archive = tmp_path / "recovery"
+    cache = tmp_path / "cache"
+    (cache / "4.74.0").mkdir(parents=True)
+    monkeypatch.setattr(release, "resolve_client_binary", lambda name: "/fixture/codex")
+    monkeypatch.setattr(release, "codex_cache_archive", lambda: archive)
+    monkeypatch.setattr(release, "plugin_cache_parent", lambda client: cache)
+    monkeypatch.setattr(release, "CODEX_CACHE_QUIET_SECONDS", 0)
+    if failure == "budget":
+        monkeypatch.setattr(release, "CODEX_CACHE_ARCHIVE_BUDGET_BYTES", 1)
+    calls = []
+    original_run = release.run
+    def runner(command, cwd=None, timeout=900):
+        if command[0] == "/fixture/codex" or "--prepare" in command:
+            calls.append(command)
+            if "--prepare" not in command:
+                assert calls[0][-1] == "--prepare"
+                assert set(release.RecoveryStore.read(archive).versions) == {"4.74.0", "4.75.0"}
+            return subprocess.CompletedProcess(command, 1 if failure == "prepare" else 0, "ready", "")
+        return original_run(command, cwd=cwd, timeout=timeout)
+    monkeypatch.setattr(release, "run", runner)
+    result = release.Result()
+    assert release.refresh_client("codex", result, False, repo=source) == (failure is None)
+    assert calls[0][-1] == "--prepare"
+    assert len(calls) == (3 if failure is None else 1)
+    if failure is not None:
+        assert not (archive / "recovery.sqlite3").exists()
+
+
+def test_contending_publisher_cannot_prepare_or_restart_guardian(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(release, "codex_cache_archive", lambda: tmp_path / "archive")
+    monkeypatch.setattr(release, "resolve_client_binary", lambda name: "/fixture/codex")
+    calls = []
+    monkeypatch.setattr(release, "install_codex_cache_guardian", lambda *args, **kwargs: calls.append("prepare"))
+    first = release._acquire_codex_cache_lock()
+    try:
+        result = release.Result()
+        assert not release.refresh_client("codex", result, False, repo=tmp_path)
+        assert calls == []
+        assert result.steps[-1].name == "install.codex.cache-lock"
     finally:
         release._release_codex_cache_lock(first)
 
