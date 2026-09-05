@@ -244,6 +244,11 @@ def main(argv: list[str] | None = None) -> int:
     environment = dict(os.environ)
     environment["SYNTHESIS_ACTIVE_DESCRIPTOR"] = str(args.active_descriptor)
     environment["SYNTHESIS_BOOTSTRAP_RESOLVED"] = "1"
+    # The public acquisition stage is HTTPS-only. The now-verified CLI also
+    # acquires validated organization repositories over SSH; keep file/ext
+    # transports forbidden without leaking the narrower download policy.
+    environment["GIT_ALLOW_PROTOCOL"] = "https:ssh"
+    environment["GIT_PROTOCOL_FROM_USER"] = "0"
     return subprocess.call(command, env=environment)
 
 

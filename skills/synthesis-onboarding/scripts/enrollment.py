@@ -26,7 +26,8 @@ _engine_depth = {}
 
 
 def engine_state_root(home):
-    return Path(os.environ.get("SYNTHESIS_ONBOARD_STATE_DIR", str(Path(home) / ".synthesis/onboarding")))
+    default = Path(os.environ.get("XDG_STATE_HOME", str(Path(home) / ".local/state"))) / "synthesis"
+    return Path(os.environ.get("SYNTHESIS_ONBOARD_STATE_DIR", str(default)))
 
 
 @contextlib.contextmanager
@@ -132,7 +133,7 @@ class EnrollmentJournal:
         if json_digest(proposed) != self.data["proposed_desired_digest"]:
             raise ContractError("enrollment journal proposed state digest changed")
         workspaces = Path(os.environ.get("SYNTHESIS_WORKSPACES_ROOT", str(state.home / "workspaces")))
-        receipts = Path(os.environ.get("SYNTHESIS_ONBOARD_STATE_DIR", str(state.home / ".synthesis/onboarding"))) / "receipts.json"
+        receipts = engine_state_root(state.home) / "receipts.json"
         files = {str(p) for p in (state.desired_path, state.invites_path, receipts)}
         files.update(str(workspaces / entries[0]["workspace"] / name) for name in ("AGENTS.md", "CLAUDE.md"))
         parents = {str(state.home / (".claude" if c == "claude" else ".agents") / "skills") for c in desired["clients"]}
