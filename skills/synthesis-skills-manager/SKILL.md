@@ -359,8 +359,8 @@ The sequence, each stage gating the next:
   The deduplicated archive has a 512 MiB hard budget and never evicts a historical version
   automatically when that budget is reached; unverifiable cleanup fails the
   release closed. Transient verified migration copies are retired after the
-  committed store contains their bytes and modes. Symlink recovery artifacts and client liveness markers are not
-  preserved.
+  committed store contains their bytes and modes. Symlinked recovery roots and
+  unsafe links are refused; client liveness markers are excluded.
 - **Verify** is the point of the whole script, and it checks each client
   **twice**: what the CLI reports, and the plugin manifest at the path the CLI
   says it loads. Agreement of both with the source version is the only pass.
