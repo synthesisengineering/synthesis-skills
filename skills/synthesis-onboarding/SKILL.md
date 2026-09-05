@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.3.0"
+  version: "2.3.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -194,6 +194,10 @@ The copy capability accepts either `skills/<name>/SKILL.md` or top-level
 `<name>/SKILL.md` organization repositories, never both layouts at once.
 Existing shared copies require matching repository identity and exact source
 bytes at their recorded commit before enrollment can adopt their ownership.
+
+Public bootstrap acquisition remains HTTPS-only. After verifying the immutable
+release, the CLI permits HTTPS and SSH repository transports; local-file and
+external-helper transports remain forbidden.
 
 For a new installation, use `synthesis setup --org-repo URL`. For an existing
 enabled full or skills-only installation, use `synthesis enroll --org-repo URL`.

@@ -22,6 +22,29 @@ import system_contract  # noqa: E402
 from test_system_contract import git, release_repo  # noqa: E402
 
 
+def test_verified_cli_can_use_org_ssh_without_enabling_local_transports(tmp_path, monkeypatch):
+    checkout = release_repo(tmp_path)
+    calls = []
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "https")
+    monkeypatch.setenv("GIT_PROTOCOL_FROM_USER", "0")
+    monkeypatch.setattr(bootstrap.subprocess, "call", lambda command, env=None: calls.append((command, env)) or 0)
+    assert bootstrap.main([
+        "--checkout", str(checkout), "--releases-dir", str(tmp_path / "releases"),
+        "--launcher", str(tmp_path / "bin/synthesis"),
+        "--active-descriptor", str(tmp_path / "state/active.json"),
+        "--channel", "stable", "--ref", "stable",
+        "--source-url", "https://example.test/synthesis-skills.git", "--", "update",
+    ]) == 0
+    environment = calls[0][1]
+    assert environment["GIT_ALLOW_PROTOCOL"] == "https:ssh"
+    assert environment["GIT_PROTOCOL_FROM_USER"] == "0"
+    assert os.environ["GIT_ALLOW_PROTOCOL"] == "https"
+    for forbidden in (checkout.as_uri(), "ext::git --version"):
+        blocked = subprocess.run(["git", "ls-remote", forbidden], env=environment,
+            capture_output=True, text=True)
+        assert blocked.returncode != 0 and "not allowed" in blocked.stderr
+
+
 def test_materialization_is_content_addressed_and_idempotent(tmp_path: Path) -> None:
     checkout = release_repo(tmp_path)
     releases = tmp_path / "cache" / "releases"

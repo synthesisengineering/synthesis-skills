@@ -42,7 +42,7 @@ from system_contract import (
 )
 
 
-ENGINE_VERSION = "2.3.0"
+ENGINE_VERSION = "2.3.1"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
     "setup",

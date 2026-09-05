@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.95.1] - 2026-09-04
+
+**Verified enrollment can reach SSH organization repositories.** The bootstrap
+keeps public acquisition HTTPS-only, then gives the verified CLI a separate
+HTTPS/SSH transport policy. File and external-helper transports remain blocked.
+Onboarding 2.3.1 tests the policy handoff and actual CLI/engine organization
+acquisition through SSH without local transport rewrites.
+
 ## [4.95.0] - 2026-09-04
 
 **Additive organization enrollment preserves an existing personal installation.**

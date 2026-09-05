@@ -631,6 +631,13 @@ def test_real_cli_enroll_reaches_engine_and_preserves_personal_state(box):
         "assert repository.is_dir()\n"
         "os.execvp('git-upload-pack', ['git-upload-pack', str(repository)])\n" % str(box.remotes))
     env.update({"GIT_SSH_COMMAND": "%s %s" % (sys.executable, ssh), "GIT_SSH_VARIANT": "ssh"})
+    env["GIT_ALLOW_PROTOCOL"] = "https:ssh"
+    env["GIT_PROTOCOL_FROM_USER"] = "0"
+    # All three real organization repositories use the SSH fixture process;
+    # no local-transport rewrite bypasses the verified CLI's allowlist.
+    for name in list(env):
+        if name == "GIT_CONFIG_COUNT" or name.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_")):
+            env.pop(name)
     for name in ("SYNTHESIS_ACTIVE_DESCRIPTOR", "SYNTHESIS_RELEASE_ROOT"):
         env.pop(name, None)
     result = subprocess.run([sys.executable, str(Path(cli.__file__)), "enroll", "--org-repo",
