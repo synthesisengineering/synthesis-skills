@@ -346,6 +346,9 @@ def test_unreleased_or_reference_versions_do_not_claim_release_currency(
         "Candidate v4.95.8 is not released; later release shipped: v4.95.7.",
         "Released v4.95.7; planned candidate v4.95.8.",
         "v4.95.7 shipped; v4.95.8 is not released.",
+        "Released v4.95.7 and candidate v4.95.8.",
+        "Candidate v4.95.8, released v4.95.7.",
+        "Released v4.95.7, with v4.95.8 planned.",
     ],
 )
 def test_mixed_candidate_and_shipped_assertions_keep_actual_release_evidence(
