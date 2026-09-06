@@ -718,9 +718,13 @@ def test_cross_project_plan_change_invalidates_clean_checkpoint(tmp_path: Path, 
     assert any("plan" in issue or "durable project files" in issue for issue in issues)
 
 
-def test_lifecycle_hook_issues_session_bound_clean_receipt(tmp_path: Path) -> None:
+@pytest.mark.parametrize("client", ["cc", "codex"])
+def test_lifecycle_hook_issues_session_bound_clean_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client: str
+) -> None:
     repo, project = init_repo(tmp_path)
     session = "018f0000-0000-7000-8000-000000000001"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", f"{client}:{session}")
     claims = board(tmp_path / "board.md", [(session, "s-abcd-efgh-jkmn", "alpha", str(repo))])
     receipts = tmp_path / "receipts"
     state.build_operational_state(
@@ -746,9 +750,13 @@ def test_lifecycle_hook_issues_session_bound_clean_receipt(tmp_path: Path) -> No
     assert receipt["project_id"] == "alpha"
 
 
-def test_lifecycle_hook_refuses_semantically_incomplete_stop(tmp_path: Path) -> None:
+@pytest.mark.parametrize("client", ["cc", "codex"])
+def test_lifecycle_hook_refuses_semantically_incomplete_stop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client: str
+) -> None:
     repo, project = init_repo(tmp_path)
     session = "018f0000-0000-7000-8000-000000000001"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", f"{client}:{session}")
     claims = board(tmp_path / "board.md", [(session, "s-abcd-efgh-jkmn", "alpha", str(repo))])
     state.build_operational_state(
         project,
