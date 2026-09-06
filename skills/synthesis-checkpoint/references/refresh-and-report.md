@@ -80,7 +80,9 @@ the hook terminates continued processing with a visible failure reason. This
 client-specific termination carries the failure verdict and grants no accepted
 checkpoint; it never converts failure into acceptance. Missing identity evidence
 remains blocking. Codex retains its own
-failure transport. Do not claim lifecycle success from a CLI exit code alone.
+failure transport. Native Stop stdout contains only documented control fields;
+the diagnostic verdict and receipt distinction are carried in `systemMessage`.
+Do not claim lifecycle success from a CLI exit code alone.
 
 ## Optional reusable campaign
 

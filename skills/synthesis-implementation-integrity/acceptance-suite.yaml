@@ -1,6 +1,6 @@
-# Release-specific fixture follow-up. Exact change base: c8a83de2c7afef1c1ba3823dff69d26151702bd6.
+# Release-specific native Stop wire contract. Base f6066def92f651b8c862483a655b6f94f448b0b0.
 schema: 2
-suite: native-owner-fixture-identity-2026-09-06
+suite: native-stop-json-contract-2026-09-06
 membership: closed
 production_entry_point: project_state.py hook through registered native Stop hooks
 enforcing_boundary: release.py derives exact Git base-to-head membership and consumes transaction-bound acceptance
@@ -19,16 +19,31 @@ unverified_remainder: Fixtures use isolated native-shaped transcripts, temporary
   control requires verified native Claude identity; Codex retains failure transport. Source publication, both-client
   installation, retained-cache integrity, actual new native Stop behavior and exact/current-global startup evidence
   require separate verification. This manifest grants no publication, deployment, policy, automation or administrative-release
-  authority. This follow-up changes only owner-fixture isolation and its closed acceptance manifest; it retains
-  execution of the complete observer acceptance suite and does not relax production identity checks.
+  authority. The embedded Codex 0.153.4 consumer schema is a deterministic format control; actual installed native
+  completion must be verified separately.
 changed_surfaces:
-- path: skills/synthesis-project-management/scripts/test_project_state.py
+- path: .claude-plugin/plugin.json
   cases:
-  - lifecycle-hook-issues-session-bound-clean-receipt
-  - lifecycle-hook-refuses-semantically-incomplete-stop
   - release-contract
-- path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
+  - native-stop-output-contract
+- path: .codex-plugin/plugin.json
   cases:
+  - release-contract
+  - native-stop-output-contract
+- path: CHANGELOG.md
+  cases:
+  - release-contract
+  - native-stop-output-contract
+- path: README.md
+  cases:
+  - release-contract
+  - native-stop-output-contract
+- path: skills/synthesis-checkpoint/references/refresh-and-report.md
+  cases:
+  - release-contract
+  - native-stop-output-contract
+- path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
+  cases: &id001
   - clean-native-observer-has-no-checkpoint-authority
   - observer-dirty-project-remains-blocked
   - exact-native-pending-attribution-blocks
@@ -55,6 +70,16 @@ changed_surfaces:
   - acceptance-git-transaction-binding
   - lifecycle-hook-issues-session-bound-clean-receipt
   - lifecycle-hook-refuses-semantically-incomplete-stop
+  - native-stop-output-contract
+  - native-consumer-rejects-old-output
+- path: skills/synthesis-project-management/SKILL.md
+  cases:
+  - release-contract
+  - native-stop-output-contract
+- path: skills/synthesis-project-management/scripts/project_state.py
+  cases: *id001
+- path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
+  cases: *id001
 cases:
 - id: clean-native-observer-has-no-checkpoint-authority
   control_class: acceptance-test
@@ -192,3 +217,13 @@ cases:
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_lifecycle_hook_refuses_semantically_incomplete_stop
   motivating_defect: An inherited foreign reference stopped the negative fixture at identity validation instead
     of exercising its required stale-state refusal.
+- id: native-stop-output-contract
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_stop_output_conforms_to_native_codex_consumer_schema
+  motivating_defect: Diagnostic top-level fields were rejected by the strict native Codex Stop output schema.
+- id: native-consumer-rejects-old-output
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_old_diagnostic_stdout_is_rejected_by_native_codex_schema
+  motivating_defect: A schema positive control must reproduce rejection of the released diagnostic shape.
