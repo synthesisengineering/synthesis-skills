@@ -1,6 +1,6 @@
-# Release-specific acceptance. Exact change base: f1fcabac50cf70ee254d97128a4e74118dad879e.
+# Release-specific fixture follow-up. Exact change base: c8a83de2c7afef1c1ba3823dff69d26151702bd6.
 schema: 2
-suite: native-observer-stop-completion-2026-09-06
+suite: native-owner-fixture-identity-2026-09-06
 membership: closed
 production_entry_point: project_state.py hook through registered native Stop hooks
 enforcing_boundary: release.py derives exact Git base-to-head membership and consumes transaction-bound acceptance
@@ -19,22 +19,16 @@ unverified_remainder: Fixtures use isolated native-shaped transcripts, temporary
   control requires verified native Claude identity; Codex retains failure transport. Source publication, both-client
   installation, retained-cache integrity, actual new native Stop behavior and exact/current-global startup evidence
   require separate verification. This manifest grants no publication, deployment, policy, automation or administrative-release
-  authority.
+  authority. This follow-up changes only owner-fixture isolation and its closed acceptance manifest; it retains
+  execution of the complete observer acceptance suite and does not relax production identity checks.
 changed_surfaces:
-- path: .claude-plugin/plugin.json
+- path: skills/synthesis-project-management/scripts/test_project_state.py
   cases:
+  - lifecycle-hook-issues-session-bound-clean-receipt
+  - lifecycle-hook-refuses-semantically-incomplete-stop
   - release-contract
-- path: .codex-plugin/plugin.json
+- path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
-  - release-contract
-- path: CHANGELOG.md
-  cases:
-  - release-contract
-- path: README.md
-  cases:
-  - release-contract
-- path: skills/synthesis-checkpoint/references/refresh-and-report.md
-  cases: &id001
   - clean-native-observer-has-no-checkpoint-authority
   - observer-dirty-project-remains-blocked
   - exact-native-pending-attribution-blocks
@@ -53,20 +47,14 @@ changed_surfaces:
   - claude-reentrant-stop-terminates-with-blocked-verdict
   - codex-never-consumes-claude-terminal-control
   - real-hook-cli-uses-local-lease-and-actionable-failure
-- path: skills/synthesis-project-management/SKILL.md
-  cases: *id001
-- path: skills/synthesis-project-management/scripts/project_state.py
-  cases: *id001
-- path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
-  cases: *id001
-- path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
-  cases:
   - release-contract
   - release-bound-receipt-consumed
   - release-receipt-binding-mismatch-refused
   - acceptance-self
   - acceptance-omitted-path-refused
   - acceptance-git-transaction-binding
+  - lifecycle-hook-issues-session-bound-clean-receipt
+  - lifecycle-hook-refuses-semantically-incomplete-stop
 cases:
 - id: clean-native-observer-has-no-checkpoint-authority
   control_class: acceptance-test
@@ -192,3 +180,15 @@ cases:
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_schema2_receipt_binds_transaction_and_git_state
   motivating_defect: Executed evidence could lack the boundary-selected Git and transaction binding.
+- id: lifecycle-hook-issues-session-bound-clean-receipt
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_lifecycle_hook_issues_session_bound_clean_receipt
+  motivating_defect: A live release caller reference leaked into a synthetic owner fixture, hiding the real positive
+    owner-checkpoint control.
+- id: lifecycle-hook-refuses-semantically-incomplete-stop
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_lifecycle_hook_refuses_semantically_incomplete_stop
+  motivating_defect: An inherited foreign reference stopped the negative fixture at identity validation instead
+    of exercising its required stale-state refusal.
