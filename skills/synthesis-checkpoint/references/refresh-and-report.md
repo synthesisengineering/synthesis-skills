@@ -63,6 +63,25 @@ does not prove a current native startup failed. If native evidence requires a
 real restart/resume, preserve the reason and stop dependent work; never fabricate
 an event or relabel an installed tree as a live reload.
 
+## Finishing inspection
+
+For a structured project discovered from the working directory, the Stop gate
+can return `NOT_APPLICABLE` for an unclaimed session only after validating its
+native identity, checking exact-session pending edit
+attribution and verifying a clean project Git subtree. It issues no checkpoint
+receipt and does not establish successful recovery, past read-only behavior or
+permission to execute project work. A clean project whose semantic state is
+stale can still be reported as stale. Pending edits or unverifiable evidence
+remain `UNKNOWN` or `FAIL`; a claimed record owner still follows normal closure.
+
+Checkpoint failures explain the unmet requirement on stderr. If verified Claude calls
+Stop again with `stop_hook_active=true` and the requirement is still unresolved,
+the hook terminates continued processing with a visible failure reason. This
+client-specific termination carries the failure verdict and grants no accepted
+checkpoint; it never converts failure into acceptance. Missing identity evidence
+remains blocking. Codex retains its own
+failure transport. Do not claim lifecycle success from a CLI exit code alone.
+
 ## Optional reusable campaign
 
 Default local configuration is `~/.synthesis/checkpoint/active-campaign.json`.

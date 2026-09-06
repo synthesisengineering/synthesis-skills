@@ -1,404 +1,194 @@
-# Release-specific acceptance. Exact Git change base: 2175b605e6f16c1da912a87bc0e1bbf575d90273.
-# The unchanged runner verifies closed membership against committed Git truth.
+# Release-specific acceptance. Exact change base: f1fcabac50cf70ee254d97128a4e74118dad879e.
 schema: 2
-suite: "single-mac-session-refresh-and-coordination-2026-09-06"
-membership: "closed"
-production_entry_point: "synthesis-checkpoint refresh.py inspect and explicit feedback; coordination.py lease_refresh used by status, resolve, inbox and native lifecycle consumers; release.py required-check dispatch"
-enforcing_boundary: "release.py derives exact Git base-to-head membership and consumes transaction-bound acceptance before publication and dual-client installation"
-receipt_consumer: "synthesis-skills-manager.release.consume-acceptance.v1"
-change_base_policy: "boundary-supplied-git-diff"
-expected_status: "pass"
-metadata_class: "acceptance-test"
+suite: native-observer-stop-completion-2026-09-06
+membership: closed
+production_entry_point: project_state.py hook through registered native Stop hooks
+enforcing_boundary: release.py derives exact Git base-to-head membership and consumes transaction-bound acceptance
+  before publication and dual-client installation
+receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
+change_base_policy: boundary-supplied-git-diff
+expected_status: pass
+metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: "Refresh fixtures use isolated homes and real local Git repositories, including an alternate selected worktree. Native receipt and transcript fixtures establish parsing and binding behavior; they do not prove genuine post-release execution in either installed client, enabled live registry state, full installed-tree parity, or that an agent read the indicated prose. Coordination race fixtures use real temporary local Git lease remotes and deterministic interleavings with a pre-fix positive control; they establish cooperating same-Mac serialization, not multi-computer readiness or safety against every uncoordinated writer. Explicit feedback may perform normal lease CAS writes even when duplicate content is not appended. Inspect does not repair projects or release claims; these fixtures do not make arbitrary project writes claim-gated or authenticate a principal authorization beyond the existing caller/reason rules. Release, installation, historical-cache preservation, current-global and exact-session dual-client acceptance require separate evidence. This manifest grants no publication, deployment, disclosure, policy, automation or administrative-release authority."
+unverified_remainder: Fixtures use isolated native-shaped transcripts, temporary homes and real local Git/lease
+  repositories. They verify native identity parsing, exact pending attribution, clean-project applicability, owned
+  checkpoint controls and actual CLI failure transport. They do not establish genuine installed native execution,
+  full skill/tier reading, multi-computer safety, or arbitrary write admission. NOT_APPLICABLE issues no checkpoint
+  receipt and is not recovery PASS or historical proof of read-only behavior. Generic events without a structured-project
+  context or known own pending evidence retain their existing non-project applicability. Claude terminal failure
+  control requires verified native Claude identity; Codex retains failure transport. Source publication, both-client
+  installation, retained-cache integrity, actual new native Stop behavior and exact/current-global startup evidence
+  require separate verification. This manifest grants no publication, deployment, policy, automation or administrative-release
+  authority.
 changed_surfaces:
-  - path: ".claude-plugin/plugin.json"
-    cases:
-      - "release-contract"
-  - path: ".codex-plugin/plugin.json"
-    cases:
-      - "release-contract"
-  - path: ".github/workflows/validate.yml"
-    cases:
-      - "release-ci-instruction-parity"
-      - "release-ci-required-groups"
-  - path: "AGENTS.md"
-    cases:
-      - "release-ci-instruction-parity"
-      - "release-ci-required-groups"
-  - path: "CHANGELOG.md"
-    cases:
-      - "release-contract"
-  - path: "README.md"
-    cases:
-      - "release-contract"
-  - path: "skills/synthesis-checkpoint/SKILL.md"
-    cases:
-      - "refresh-inspection-is-local-and-reports-exact-scope"
-      - "refresh-conflict-reads-no-project-prose"
-      - "refresh-optional-and-required-inputs-stay-separate"
-      - "refresh-archived-project-remains-blocked"
-      - "refresh-unverified-identity-cannot-send"
-      - "refresh-current-installed-and-stale-native-are-distinct"
-      - "refresh-campaign-is-declarative-and-strict"
-      - "refresh-concurrent-feedback-deduplicates-and-allocates-revision"
-      - "refresh-malformed-matching-report-prevents-append"
-      - "refresh-arbitrary-payload-is-omitted"
-      - "refresh-untracked-registry-is-refused"
-      - "refresh-malformed-state-reports-failure-without-repair"
-      - "refresh-feedback-refuses-receipt-changed-after-inspection"
-      - "refresh-recovery-only-campaign-still-checks-native-identity"
-      - "refresh-duplicate-json-keys-are-not-accepted"
-      - "refresh-failed-feedback-retains-complete-local-inspection"
-      - "refresh-no-campaign-does-not-send"
-      - "refresh-cli-no-campaign-ignores-invalid-optional-descriptor"
-      - "refresh-campaign-descriptor-change-delivers-next-revision"
-      - "refresh-unrelated-malformed-reports-are-counted-without-copying"
-      - "refresh-identifiable-malformed-matching-json-still-blocks"
-      - "refresh-claude-delivery-aliases-share-one-logical-report"
-      - "refresh-selected-descendant-archive-outweighs-canonical-active-registry"
-      - "refresh-selected-structured-archive-cannot-be-reported-active"
-      - "refresh-historical-archive-prose-does-not-override-active-current-status"
-  - path: "skills/synthesis-checkpoint/references/refresh-and-report.md"
-    cases:
-      - "refresh-inspection-is-local-and-reports-exact-scope"
-      - "refresh-conflict-reads-no-project-prose"
-      - "refresh-optional-and-required-inputs-stay-separate"
-      - "refresh-archived-project-remains-blocked"
-      - "refresh-unverified-identity-cannot-send"
-      - "refresh-current-installed-and-stale-native-are-distinct"
-      - "refresh-campaign-is-declarative-and-strict"
-      - "refresh-concurrent-feedback-deduplicates-and-allocates-revision"
-      - "refresh-malformed-matching-report-prevents-append"
-      - "refresh-arbitrary-payload-is-omitted"
-      - "refresh-untracked-registry-is-refused"
-      - "refresh-malformed-state-reports-failure-without-repair"
-      - "refresh-feedback-refuses-receipt-changed-after-inspection"
-      - "refresh-recovery-only-campaign-still-checks-native-identity"
-      - "refresh-duplicate-json-keys-are-not-accepted"
-      - "refresh-failed-feedback-retains-complete-local-inspection"
-      - "refresh-no-campaign-does-not-send"
-      - "refresh-cli-no-campaign-ignores-invalid-optional-descriptor"
-      - "refresh-campaign-descriptor-change-delivers-next-revision"
-      - "refresh-unrelated-malformed-reports-are-counted-without-copying"
-      - "refresh-identifiable-malformed-matching-json-still-blocks"
-      - "refresh-claude-delivery-aliases-share-one-logical-report"
-      - "refresh-selected-descendant-archive-outweighs-canonical-active-registry"
-      - "refresh-selected-structured-archive-cannot-be-reported-active"
-      - "refresh-historical-archive-prose-does-not-override-active-current-status"
-  - path: "skills/synthesis-checkpoint/scripts/refresh.py"
-    cases:
-      - "refresh-inspection-is-local-and-reports-exact-scope"
-      - "refresh-conflict-reads-no-project-prose"
-      - "refresh-optional-and-required-inputs-stay-separate"
-      - "refresh-archived-project-remains-blocked"
-      - "refresh-unverified-identity-cannot-send"
-      - "refresh-current-installed-and-stale-native-are-distinct"
-      - "refresh-campaign-is-declarative-and-strict"
-      - "refresh-concurrent-feedback-deduplicates-and-allocates-revision"
-      - "refresh-malformed-matching-report-prevents-append"
-      - "refresh-arbitrary-payload-is-omitted"
-      - "refresh-untracked-registry-is-refused"
-      - "refresh-malformed-state-reports-failure-without-repair"
-      - "refresh-feedback-refuses-receipt-changed-after-inspection"
-      - "refresh-recovery-only-campaign-still-checks-native-identity"
-      - "refresh-duplicate-json-keys-are-not-accepted"
-      - "refresh-failed-feedback-retains-complete-local-inspection"
-      - "refresh-no-campaign-does-not-send"
-      - "refresh-cli-no-campaign-ignores-invalid-optional-descriptor"
-      - "refresh-campaign-descriptor-change-delivers-next-revision"
-      - "refresh-unrelated-malformed-reports-are-counted-without-copying"
-      - "refresh-identifiable-malformed-matching-json-still-blocks"
-      - "refresh-claude-delivery-aliases-share-one-logical-report"
-      - "refresh-selected-descendant-archive-outweighs-canonical-active-registry"
-      - "refresh-selected-structured-archive-cannot-be-reported-active"
-      - "refresh-historical-archive-prose-does-not-override-active-current-status"
-  - path: "skills/synthesis-checkpoint/scripts/test_refresh.py"
-    cases:
-      - "refresh-inspection-is-local-and-reports-exact-scope"
-      - "refresh-conflict-reads-no-project-prose"
-      - "refresh-optional-and-required-inputs-stay-separate"
-      - "refresh-archived-project-remains-blocked"
-      - "refresh-unverified-identity-cannot-send"
-      - "refresh-current-installed-and-stale-native-are-distinct"
-      - "refresh-campaign-is-declarative-and-strict"
-      - "refresh-concurrent-feedback-deduplicates-and-allocates-revision"
-      - "refresh-malformed-matching-report-prevents-append"
-      - "refresh-arbitrary-payload-is-omitted"
-      - "refresh-untracked-registry-is-refused"
-      - "refresh-malformed-state-reports-failure-without-repair"
-      - "refresh-feedback-refuses-receipt-changed-after-inspection"
-      - "refresh-recovery-only-campaign-still-checks-native-identity"
-      - "refresh-duplicate-json-keys-are-not-accepted"
-      - "refresh-failed-feedback-retains-complete-local-inspection"
-      - "refresh-no-campaign-does-not-send"
-      - "refresh-cli-no-campaign-ignores-invalid-optional-descriptor"
-      - "refresh-campaign-descriptor-change-delivers-next-revision"
-      - "refresh-unrelated-malformed-reports-are-counted-without-copying"
-      - "refresh-identifiable-malformed-matching-json-still-blocks"
-      - "refresh-claude-delivery-aliases-share-one-logical-report"
-      - "refresh-selected-descendant-archive-outweighs-canonical-active-registry"
-      - "refresh-selected-structured-archive-cannot-be-reported-active"
-      - "refresh-historical-archive-prose-does-not-override-active-current-status"
-  - path: "skills/synthesis-context-lifecycle/SKILL.md"
-    cases:
-      - "refresh-conflict-reads-no-project-prose"
-      - "refresh-selected-descendant-archive-outweighs-canonical-active-registry"
-      - "refresh-inspection-is-local-and-reports-exact-scope"
-      - "coord-release-is-bound-to-the-claiming-harness-session"
-  - path: "skills/synthesis-implementation-integrity/acceptance-suite.yaml"
-    cases:
-      - "acceptance-self"
-      - "acceptance-omitted-path-refused"
-      - "acceptance-git-transaction-binding"
-  - path: "skills/synthesis-project-management/SKILL.md"
-    cases:
-      - "refresh-conflict-reads-no-project-prose"
-      - "refresh-selected-descendant-archive-outweighs-canonical-active-registry"
-      - "refresh-inspection-is-local-and-reports-exact-scope"
-      - "coord-release-is-bound-to-the-claiming-harness-session"
-  - path: "skills/synthesis-project-management/scripts/coordination.py"
-    cases:
-      - "coord-lease-refresh-cannot-restore-claims-after-same-machine-mutation"
-      - "coord-lease-refresh-without-configuration-preserves-local-board"
-      - "coord-lease-refresh-reads-configuration-under-mutation-lock"
-      - "coord-lease-refresh-reports-failure-preserves-board-and-releases-lock"
-      - "coord-lease-compare-and-swap-retries-after-concurrent-advance"
-      - "coord-lease-unreachable-remote-fails-closed"
-      - "coord-claim-conflict-message-heartbeat-and-release"
-      - "coord-release-is-bound-to-the-claiming-harness-session"
-      - "coord-cross-session-administrative-release-requires-and-records-a-reason"
-      - "coord-r4-lease-fence-cannot-resurrect-released-session"
-  - path: "skills/synthesis-project-management/scripts/test_coordination.py"
-    cases:
-      - "coord-lease-refresh-cannot-restore-claims-after-same-machine-mutation"
-      - "coord-lease-refresh-without-configuration-preserves-local-board"
-      - "coord-lease-refresh-reads-configuration-under-mutation-lock"
-      - "coord-lease-refresh-reports-failure-preserves-board-and-releases-lock"
-      - "coord-lease-compare-and-swap-retries-after-concurrent-advance"
-      - "coord-lease-unreachable-remote-fails-closed"
-      - "coord-claim-conflict-message-heartbeat-and-release"
-      - "coord-release-is-bound-to-the-claiming-harness-session"
-      - "coord-cross-session-administrative-release-requires-and-records-a-reason"
-      - "coord-r4-lease-fence-cannot-resurrect-released-session"
-  - path: "skills/synthesis-skills-manager/scripts/release.py"
-    cases:
-      - "release-ci-required-groups"
-      - "release-bound-receipt-consumed"
-      - "release-receipt-binding-mismatch-refused"
+- path: .claude-plugin/plugin.json
+  cases:
+  - release-contract
+- path: .codex-plugin/plugin.json
+  cases:
+  - release-contract
+- path: CHANGELOG.md
+  cases:
+  - release-contract
+- path: README.md
+  cases:
+  - release-contract
+- path: skills/synthesis-checkpoint/references/refresh-and-report.md
+  cases: &id001
+  - clean-native-observer-has-no-checkpoint-authority
+  - observer-dirty-project-remains-blocked
+  - exact-native-pending-attribution-blocks
+  - foreign-pending-and-unrelated-dirty-work-are-preserved
+  - known-native-pending-work-blocks-from-workspace-root
+  - nonproject-session-without-pending-work-retains-applicability
+  - observer-identity-is-native-and-fail-closed
+  - missing-native-validator-fails-closed
+  - foreign-ambient-identity-cannot-grant-checkpoint-authority
+  - empty-board-identity-does-not-bind-foreign-seat
+  - matching-native-reference-and-empty-optional-reference-are-safe
+  - owner-checkpoint-authority-is-preserved
+  - clean-stale-semantics-are-not-reported-as-recovery-pass
+  - clean-causal-conflict-can-finish-reporting-without-checkpoint
+  - unverifiable-project-git-state-cannot-exonerate-observer
+  - claude-reentrant-stop-terminates-with-blocked-verdict
+  - codex-never-consumes-claude-terminal-control
+  - real-hook-cli-uses-local-lease-and-actionable-failure
+- path: skills/synthesis-project-management/SKILL.md
+  cases: *id001
+- path: skills/synthesis-project-management/scripts/project_state.py
+  cases: *id001
+- path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
+  cases: *id001
+- path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
+  cases:
+  - release-contract
+  - release-bound-receipt-consumed
+  - release-receipt-binding-mismatch-refused
+  - acceptance-self
+  - acceptance-omitted-path-refused
+  - acceptance-git-transaction-binding
 cases:
-  - id: "refresh-inspection-is-local-and-reports-exact-scope"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_inspection_is_local_and_reports_exact_scope"
-    motivating_defect: "A diagnostic refresh could fetch, change refs or publish lifecycle state while claiming no mutation; file inspection could be overstated as agent reading or runtime acceptance."
-  - id: "refresh-conflict-reads-no-project-prose"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_conflict_reads_no_project_prose"
-    motivating_defect: "Agents read or changed project prose after causal recovery returned conflict, failure or unknown."
-  - id: "refresh-optional-and-required-inputs-stay-separate"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_optional_and_required_inputs_stay_separate"
-    motivating_defect: "A missing declared plan could be hidden among optional inputs or promoted to a blanket successful refresh."
-  - id: "refresh-archived-project-remains-blocked"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_archived_project_remains_blocked"
-    motivating_defect: "A refresh could reactivate an archived predecessor instead of reporting its successor."
-  - id: "refresh-unverified-identity-cannot-send"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_unverified_identity_cannot_send"
-    motivating_defect: "Legacy seats, unknown identities or an unjoined desktop handle could be accepted as native feedback senders."
-  - id: "refresh-current-installed-and-stale-native-are-distinct"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_current_installed_and_stale_native_are_distinct"
-    motivating_defect: "Current installed files could conceal stale native startup, or stale currency could prevent an attributable blocked report."
-  - id: "refresh-campaign-is-declarative-and-strict"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_campaign_is_declarative_and_strict"
-    motivating_defect: "Campaign configuration could contain executable commands, duplicate checks, malformed versions or unsafe recipients."
-  - id: "refresh-concurrent-feedback-deduplicates-and-allocates-revision"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_concurrent_feedback_deduplicates_and_allocates_revision"
-    motivating_defect: "Parallel feedback could duplicate reports or allocate the same revision outside the board lock."
-  - id: "refresh-malformed-matching-report-prevents-append"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_malformed_matching_report_prevents_append"
-    motivating_defect: "Corrupt matching report metadata could permit duplicate revision allocation or silent history replacement."
-  - id: "refresh-arbitrary-payload-is-omitted"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_arbitrary_payload_is_omitted"
-    motivating_defect: "Private project prose, previous replies or arbitrary fields could be copied into the shared bus."
-  - id: "refresh-untracked-registry-is-refused"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_untracked_registry_is_refused"
-    motivating_defect: "An untracked registry could select project state without version-controlled discovery authority."
-  - id: "refresh-malformed-state-reports-failure-without-repair"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_malformed_state_reports_failure_without_repair"
-    motivating_defect: "Malformed state could be silently repaired by diagnostics or reported as recovered."
-  - id: "refresh-feedback-refuses-receipt-changed-after-inspection"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_feedback_refuses_receipt_changed_after_inspection"
-    motivating_defect: "A changed or foreign native receipt could replace sender evidence between inspection and reporting."
-  - id: "refresh-recovery-only-campaign-still-checks-native-identity"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_recovery_only_campaign_still_checks_native_identity"
-    motivating_defect: "Omitting native runtime from campaign checks could prevent feedback or permit an unverified sender."
-  - id: "refresh-duplicate-json-keys-are-not-accepted"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_duplicate_json_keys_are_not_accepted"
-    motivating_defect: "Duplicate JSON keys could overwrite contradictory campaign, state or native evidence."
-  - id: "refresh-failed-feedback-retains-complete-local-inspection"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_failed_feedback_retains_complete_local_inspection"
-    motivating_defect: "Transport refusal could erase completed inspection and lose the transcript fallback."
-  - id: "refresh-no-campaign-does-not-send"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_no_campaign_does_not_send"
-    motivating_defect: "An ordinary checkpoint without an opted-in campaign could send unsolicited feedback."
-  - id: "refresh-cli-no-campaign-ignores-invalid-optional-descriptor"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_cli_no_campaign_ignores_invalid_optional_descriptor"
-    motivating_defect: "Explicit no-campaign inspection could still load an unwanted malformed descriptor."
-  - id: "refresh-campaign-descriptor-change-delivers-next-revision"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_campaign_descriptor_change_delivers_next_revision"
-    motivating_defect: "Recipient, check selection or minimum-version changes under one campaign ID could be suppressed as already recorded."
-  - id: "refresh-unrelated-malformed-reports-are-counted-without-copying"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_unrelated_malformed_reports_are_counted_without_copying"
-    motivating_defect: "Unrelated malformed records could block every campaign or leak malformed private prose into reports."
-  - id: "refresh-identifiable-malformed-matching-json-still-blocks"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_identifiable_malformed_matching_json_still_blocks"
-    motivating_defect: "Quarantining unrelated malformed records could permit append through matching-key corruption."
-  - id: "refresh-claude-delivery-aliases-share-one-logical-report"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_claude_delivery_aliases_share_one_logical_report"
-    motivating_defect: "One native Claude session could produce duplicate logical reports through harness and desktop aliases."
-  - id: "refresh-selected-descendant-archive-outweighs-canonical-active-registry"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_selected_descendant_archive_outweighs_canonical_active_registry"
-    motivating_defect: "Selected descendant archive state could be ignored in favor of the stale input checkout registry."
-  - id: "refresh-selected-structured-archive-cannot-be-reported-active"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_selected_structured_archive_cannot_be_reported_active"
-    motivating_defect: "Archived selected structured state could be ignored while its registry still says active."
-  - id: "refresh-historical-archive-prose-does-not-override-active-current-status"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-checkpoint/scripts/test_refresh.py::test_historical_archive_prose_does_not_override_active_current_status"
-    motivating_defect: "Historical archive prose or status fields could override explicitly active current lifecycle."
-  - id: "coord-lease-refresh-cannot-restore-claims-after-same-machine-mutation"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-project-management/scripts/test_coordination.py::test_lease_refresh_cannot_restore_claims_after_same_machine_mutation"
-    motivating_defect: "An unlocked stale reader restored an old local claim after release and a new claim; the old-algorithm positive control must reproduce this race while serialized refresh preserves remote authority."
-  - id: "coord-lease-refresh-without-configuration-preserves-local-board"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-project-management/scripts/test_coordination.py::test_lease_refresh_without_configuration_preserves_local_board"
-    motivating_defect: "A board without lease configuration could fetch or change its contents."
-  - id: "coord-lease-refresh-reads-configuration-under-mutation-lock"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-project-management/scripts/test_coordination.py::test_lease_refresh_reads_configuration_under_mutation_lock"
-    motivating_defect: "Reading configuration outside the mutation lock could race reconfiguration before mirror publication."
-  - id: "coord-lease-refresh-reports-failure-preserves-board-and-releases-lock"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-project-management/scripts/test_coordination.py::test_lease_refresh_reports_failure_preserves_board_and_releases_lock"
-    motivating_defect: "Configuration, fetch or mirror failure could corrupt the board or leave its shared lock held."
-  - id: "coord-lease-compare-and-swap-retries-after-concurrent-advance"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-project-management/scripts/test_coordination.py::test_lease_compare_and_swap_retries_after_concurrent_advance"
-    motivating_defect: "Local serialization could weaken remote compare-and-swap authority protection."
-  - id: "coord-lease-unreachable-remote-fails-closed"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-project-management/scripts/test_coordination.py::test_lease_unreachable_remote_fails_closed"
-    motivating_defect: "An unreachable lease remote could permit local-only changes that later refresh discards."
-  - id: "coord-claim-conflict-message-heartbeat-and-release"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-project-management/scripts/test_coordination.py::test_claim_conflict_message_heartbeat_and_release"
-    motivating_defect: "Serialization changes could regress overlap refusal or the normal message, heartbeat and owner-release lifecycle."
-  - id: "coord-release-is-bound-to-the-claiming-harness-session"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-project-management/scripts/test_coordination.py::test_release_is_bound_to_the_claiming_harness_session"
-    motivating_defect: "A foreign harness could release a seat without owning it."
-  - id: "coord-cross-session-administrative-release-requires-and-records-a-reason"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-project-management/scripts/test_coordination.py::test_cross_session_administrative_release_requires_and_records_a_reason"
-    motivating_defect: "Administrative release could lose attributable caller and recorded reason boundaries."
-  - id: "coord-r4-lease-fence-cannot-resurrect-released-session"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-project-management/scripts/test_coordination.py::test_r4_lease_fence_cannot_resurrect_released_session"
-    motivating_defect: "The staged-write authority fence could regress while diagnostic mirror serialization is repaired."
-  - id: "release-contract"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent"
-    motivating_defect: "Plugin manifests, newest changelog, README and skill version floors could disagree."
-  - id: "release-ci-instruction-parity"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow"
-    motivating_defect: "The documented verification sequence could diverge from required CI checks."
-  - id: "release-ci-required-groups"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-skills-manager/scripts/test_release.py::test_required_checks_cover_ci_pytest_groups"
-    motivating_defect: "CI could run checkpoint tests while the local publication gate omits them."
-  - id: "release-bound-receipt-consumed"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-skills-manager/scripts/test_release.py::test_release_boundary_consumes_fresh_bound_acceptance_receipt"
-    motivating_defect: "Required checks could finish without consuming fresh transaction-bound acceptance."
-  - id: "release-receipt-binding-mismatch-refused"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "../synthesis-skills-manager/scripts/test_release.py::test_release_receipt_validator_rejects_every_binding_mismatch"
-    motivating_defect: "A receipt from another transaction, commit, tree, manifest or change universe could authorize publication."
-  - id: "acceptance-self"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "scripts/test_acceptance_suite.py::test_shipped_manifest_validates"
-    motivating_defect: "The release manifest could contain invalid fields, unresolved fixtures or unmapped cases."
-  - id: "acceptance-omitted-path-refused"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "scripts/test_acceptance_suite.py::test_schema2_rejects_undeclared_git_changed_surface"
-    motivating_defect: "Schema validation could pass while actual Git changes include undeclared paths."
-  - id: "acceptance-git-transaction-binding"
-    control_class: "acceptance-test"
-    expected_status: "pass"
-    fixture: "scripts/test_acceptance_suite.py::test_schema2_receipt_binds_transaction_and_git_state"
-    motivating_defect: "Executed evidence could lack the boundary-selected Git and transaction binding."
+- id: clean-native-observer-has-no-checkpoint-authority
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_clean_native_observer_has_no_checkpoint_authority
+  motivating_defect: A clean native observer was forced to acquire write authority or repeatedly fail Stop.
+- id: observer-dirty-project-remains-blocked
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_observer_dirty_project_remains_blocked
+  motivating_defect: Absence of a claim or attribution could exonerate staged, unstaged, untracked or deleted project
+    work.
+- id: exact-native-pending-attribution-blocks
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_exact_native_pending_attribution_blocks
+  motivating_defect: Exact native pending work, including malformed evidence, could be ignored when no seat matches.
+- id: foreign-pending-and-unrelated-dirty-work-are-preserved
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_foreign_pending_and_unrelated_dirty_work_are_preserved
+  motivating_defect: Foreign evidence could be modified or misattributed to a clean observer.
+- id: known-native-pending-work-blocks-from-workspace-root
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_known_native_pending_work_blocks_from_workspace_root
+  motivating_defect: Known exact-session pending evidence could be skipped outside a structured project working
+    directory; ordinary unrelated events must retain their applicability.
+- id: nonproject-session-without-pending-work-retains-applicability
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_nonproject_session_without_pending_work_retains_applicability
+  motivating_defect: Known exact-session pending evidence could be skipped outside a structured project working
+    directory; ordinary unrelated events must retain their applicability.
+- id: observer-identity-is-native-and-fail-closed
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_observer_identity_is_native_and_fail_closed
+  motivating_defect: An invalid, foreign, missing or unsafe transcript could claim native observer status.
+- id: missing-native-validator-fails-closed
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_missing_native_validator_fails_closed
+  motivating_defect: Missing native evidence validation could skip the observer guard or suppress a failure.
+- id: foreign-ambient-identity-cannot-grant-checkpoint-authority
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_foreign_ambient_identity_cannot_grant_checkpoint_authority
+  motivating_defect: An inherited parent reference could select and checkpoint a foreign seat.
+- id: empty-board-identity-does-not-bind-foreign-seat
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_empty_board_identity_does_not_bind_foreign_seat
+  motivating_defect: Empty event fields could match an unbound foreign coordination row.
+- id: matching-native-reference-and-empty-optional-reference-are-safe
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_matching_native_reference_and_empty_optional_reference_are_safe
+  motivating_defect: Optional reference parsing could reject the actual native identity or manufacture another one.
+- id: owner-checkpoint-authority-is-preserved
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_owner_checkpoint_authority_is_preserved
+  motivating_defect: The observer exception could weaken the claimed owner's checkpoint obligations.
+- id: clean-stale-semantics-are-not-reported-as-recovery-pass
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_clean_stale_semantics_are_not_reported_as_recovery_pass
+  motivating_defect: Ending a stale-state report could falsely issue a healthy recovery or continuity receipt.
+- id: clean-causal-conflict-can-finish-reporting-without-checkpoint
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_clean_causal_conflict_can_finish_reporting_without_checkpoint
+  motivating_defect: A clean observer reporting a causal conflict could be forced to repeat without checkpoint authority.
+- id: unverifiable-project-git-state-cannot-exonerate-observer
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_unverifiable_project_git_state_cannot_exonerate_observer
+  motivating_defect: Unreadable Git state could be mistaken for a clean project.
+- id: claude-reentrant-stop-terminates-with-blocked-verdict
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_claude_reentrant_stop_terminates_with_blocked_verdict
+  motivating_defect: A failed Claude Stop with empty feedback caused repeated paid turns without repairing its obligation.
+- id: codex-never-consumes-claude-terminal-control
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_codex_never_consumes_claude_terminal_control
+  motivating_defect: Claude-only terminal JSON could be applied to another client, event, or an unverified invocation.
+- id: real-hook-cli-uses-local-lease-and-actionable-failure
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_real_hook_cli_uses_local_lease_and_actionable_failure
+  motivating_defect: Unit verdicts alone could pass while real CLI lease reads, exit statuses or stderr remain defective.
+- id: release-contract
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
+  motivating_defect: Plugin manifests, newest changelog, README and skill version floors could disagree.
+- id: release-bound-receipt-consumed
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_boundary_consumes_fresh_bound_acceptance_receipt
+  motivating_defect: Required checks could finish without consuming fresh transaction-bound acceptance.
+- id: release-receipt-binding-mismatch-refused
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_receipt_validator_rejects_every_binding_mismatch
+  motivating_defect: A receipt from another transaction, commit, tree, manifest or change universe could authorize
+    publication.
+- id: acceptance-self
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
+  motivating_defect: The release manifest could contain invalid fields, unresolved fixtures or unmapped cases.
+- id: acceptance-omitted-path-refused
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_suite.py::test_schema2_rejects_undeclared_git_changed_surface
+  motivating_defect: Schema validation could pass while actual Git changes include undeclared paths.
+- id: acceptance-git-transaction-binding
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_suite.py::test_schema2_receipt_binds_transaction_and_git_state
+  motivating_defect: Executed evidence could lack the boundary-selected Git and transaction binding.
