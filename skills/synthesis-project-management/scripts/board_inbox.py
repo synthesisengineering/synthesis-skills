@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -35,6 +36,7 @@ from peer_addressing import (  # noqa: E402
     SelfIdentity,
     identity_from_hook,
     mark_seen,
+    parse_iso,
     render_inbox,
     seat_for_identity,
     unread_messages,
@@ -43,20 +45,69 @@ from peer_addressing import (  # noqa: E402
 DEFAULT_BOARD = Path.home() / ".synthesis" / "coordination" / "active-sessions.md"
 
 
-def identity_forms_for(board: Path, identity: SelfIdentity) -> tuple[set[str], str, str, str]:
+def _board_rows(text: str, *, strict: bool = False):
+    """Use the engine's parser, checking diagnostic input cannot disappear."""
+    from coordination import board_schema, parse_cells, rows
+    from coordination_schema import SCHEMA_VERSION, V1_COLUMNS, V2_COLUMNS, V3_COLUMNS, V4_COLUMNS, validate_identity
+
+    if strict:
+        declared = board_schema(text)
+        if (
+            declared is None or not 1 <= declared <= SCHEMA_VERSION
+            or sum(line.startswith("Schema:") for line in text.splitlines()) != 1
+        ):
+            raise ValueError("coordination board has an invalid or unsupported schema")
+        lines = text.splitlines()
+        if sum(line.strip() == "## Active sessions" for line in lines) != 1:
+            raise ValueError("coordination board must have one Active sessions section")
+        if sum(line.strip() == "## Messages" for line in lines) != 1:
+            raise ValueError("coordination board must have one Messages section")
+        start = next(i for i, line in enumerate(lines) if line.strip() == "## Active sessions")
+        end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+        table = [line for line in lines[start + 1:end] if line.strip()]
+        columns = {1: V1_COLUMNS, 2: V2_COLUMNS, 3: V3_COLUMNS, 4: V4_COLUMNS}[declared]
+        header_cells = [cell.strip() for cell in table[0].split("|")[1:-1]] if table else []
+        separator_cells = [cell.strip() for cell in table[1].split("|")[1:-1]] if len(table) > 1 else []
+        if (
+            len(table) < 2 or any(not line.startswith("|") or not line.rstrip().endswith("|") for line in table[:2])
+            or header_cells != list(columns) or len(separator_cells) != len(columns)
+            or any(re.fullmatch(r"-{3,}", cell) is None for cell in separator_cells)
+        ):
+            raise ValueError("coordination board has an invalid active-session table header")
+        for line in table[2:]:
+            cells = parse_cells(line)
+            if not line.rstrip().endswith("|") or cells is None or len(cells) != len(columns):
+                raise ValueError("coordination board has an invalid active-session row")
+    board_rows = rows(text)
+    if strict:
+        for row in board_rows:
+            if (declared >= 3 and not row.session_uuid) or (row.session_uuid and validate_identity(row.identity)):
+                raise ValueError("coordination board has an invalid session identity")
+    return board_rows
+
+
+def identity_forms_for(
+    board: Path, identity: SelfIdentity, *, board_text: str | None = None, strict: bool = False
+) -> tuple[set[str], str, str, str]:
     """(identity forms, project, compact id, started) for this session's seat, if any."""
-    seat = seat_for_identity(board, identity)
+    try:
+        text = board.read_text(encoding="utf-8") if board_text is None else board_text
+        board_rows = _board_rows(text, strict=strict)
+    except (OSError, ValueError):
+        if strict:
+            raise
+        return set(), "", "", ""
+    seat = seat_for_identity(board, identity, strict=strict)
     if seat is None:
         return set(), "", "", ""
-    from coordination import rows  # local import: the engine parses the board
-
-    try:
-        board_rows = rows(board.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return set(), "", "", ""
-    row = next((r for r in board_rows if r.session_uuid == seat.session_uuid), None)
+    matches = [row for row in board_rows if row.session_uuid == seat.session_uuid]
+    if strict and len(matches) > 1:
+        raise ValueError("multiple coordination rows match this session's seat")
+    row = matches[0] if matches else None
     if row is None:
         return set(), "", "", ""
+    if strict and (row.compact_id != seat.compact_id or not row.project or parse_iso(row.started) is None):
+        raise ValueError("coordination inbox cannot verify its seat's addressing or start time")
     forms = {row.session_uuid, row.compact_id, row.speakable_id}
     if row.legacy_id:
         forms.add(row.legacy_id)
@@ -81,6 +132,7 @@ def inbox_text(
     board: Path = DEFAULT_BOARD,
     environ: dict[str, str] | None = None,
     mark: bool = True,
+    strict: bool = False,
 ) -> str:
     """Messages for this session's claimed seat, or nothing.
 
@@ -90,17 +142,23 @@ def inbox_text(
     seatless session working on a different project."""
     identity = identity_from_hook(payload, environ)
     key = identity.sender_key
-    if not key:
+    if not key and not strict:
         return ""
     try:
         text = board.read_text(encoding="utf-8")
-    except OSError:
+    except FileNotFoundError:
+        if strict and board.is_symlink():
+            raise
         return ""
-    forms, project, _compact, started = identity_forms_for(board, identity)
+    except OSError:
+        if strict:
+            raise
+        return ""
+    forms, project, _compact, started = identity_forms_for(board, identity, board_text=text, strict=strict)
     if not forms:
         return identity_notice(identity)
     messages = unread_messages(
-        text, board=board, sender_key=key, identity_forms=forms, project=project, since=started
+        text, board=board, sender_key=key, identity_forms=forms, project=project, since=started, strict=strict
     )
     rendered = render_inbox(messages)
     if messages and mark:

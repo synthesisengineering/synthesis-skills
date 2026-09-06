@@ -983,7 +983,11 @@ def _drive_main(monkeypatch, capsys, tmp_path, *, pointer_text=None, build_error
         MODULE, "record_live_receipt", lambda payload, destination: calls.append("receipt") or True
     )
     monkeypatch.setattr(MODULE, "append_currency_notice", lambda message, payload: message)
-    monkeypatch.setattr(MODULE, "append_inbox", lambda message, payload, board: message)
+    def unchanged_inbox(message, payload, board, *, diagnostic=False):
+        assert not diagnostic
+        return message
+
+    monkeypatch.setattr(MODULE, "append_inbox", unchanged_inbox)
     payload = {
         "hook_event_name": "SessionStart",
         "session_id": "019fff79-5858-7993-a329-b301bccf5d31",

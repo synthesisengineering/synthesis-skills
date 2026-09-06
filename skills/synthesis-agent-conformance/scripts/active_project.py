@@ -498,6 +498,7 @@ def load_and_validate(
     *,
     stale_after_minutes: int = 240,
     state_root: Path | None = None,
+    refresh_lease: bool = True,
 ) -> tuple[dict[str, object], list[str]]:
     if pointer.is_symlink():
         return {}, [f"active-project pointer must not be a symlink: {pointer}"]
@@ -510,4 +511,5 @@ def load_and_validate(
         board,
         stale_after_minutes=stale_after_minutes,
         state_root=state_root,
+        refresh_lease=refresh_lease,
     )

@@ -4,6 +4,23 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.95.6] - 2026-09-06
+
+Active and stopped project parity now render both client contexts in an explicit
+diagnostic mode. Unread inbox messages remain visible to both comparisons and
+available for normal lifecycle delivery. Probes do not write receipts, check
+release currency, fetch Git, fast-forward checkouts or refresh coordination
+leases; child bytecode and optional Git index writes are disabled.
+
+Strict diagnostic inbox reads validate the selected seat/project's inbox and
+reject malformed or unreadable board, seat and watermark evidence, including
+ambiguous own addresses. Unrelated historical blocks may be excluded only when
+their scope is clear and doing so cannot change a relevant native message or
+delivery key. The normal hook keeps its
+existing delivery policy and receipt-before-context ordering. Comparison covers
+the complete local context and is not evidence of a fresh remote lease or a real
+client startup. Other conformance checks retain their documented refresh work.
+
 ## [4.95.5] - 2026-09-05
 
 **Long conversations retain verifiable startup evidence.** Onboarding 2.3.4
