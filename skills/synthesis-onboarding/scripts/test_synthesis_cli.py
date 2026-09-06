@@ -249,6 +249,9 @@ def test_real_full_setup_commits_effective_workspace_layers_and_present_client()
                 "SYNTHESIS_CLAUDE_BIN": str(client),
                 "SYNTHESIS_CODEX_BIN": "",
                 "SYNTHESIS_ONBOARD_NO_SERVICES": "1",
+                # This fixture models a machine with only the selected fake
+                # client. Do not let host-installed clients enter its doctor.
+                "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
             }
         )
         completed = subprocess.run(

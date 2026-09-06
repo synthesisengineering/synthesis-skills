@@ -589,12 +589,12 @@ def fixture_git(root, *args):
 
 
 @pytest.fixture
-def day_end_history(tmp_path):
+def day_end_history(tmp_path, request):
     from types import SimpleNamespace
     root = tmp_path / "history"
     source = Path(runtime.__file__).resolve().parents[3]
     launcher_relative = "skills/synthesis-daily-rituals/scripts/day-end"
-    descriptor = release(root, "4.83.0", omit=(DAY_END_DEPENDENCY,), replacements={
+    release(root, "4.83.0", omit=(DAY_END_DEPENDENCY,), replacements={
         DAY_END_NUDGE: LEGACY_NUDGE, launcher_relative: (source / launcher_relative).read_text(),
     })
     home = tmp_path / "home"
@@ -604,8 +604,20 @@ def day_end_history(tmp_path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes((root / relative).read_bytes())
         path.chmod(0o755)
-    old = descriptor["commit"]
+    corruption = getattr(request, "param", None)
+    if corruption == "manifest-disagreement":
+        (root / ".codex-plugin/plugin.json").write_text(json.dumps({"name": "synthesis-skills", "version": "4.82.0"}))
+    elif corruption == "symlink-blob":
+        (root / DAY_END_NUDGE).unlink()
+        (root / DAY_END_NUDGE).symlink_to("not-a-regular-script")
+    if corruption:
+        fixture_git(root, "add", ".")
+        fixture_git(root, "commit", "-qm", "Fixture")
+        fixture_git(root, "tag", "-f", "v4.83.0", "HEAD")
+    old = fixture_git(root, "rev-parse", "HEAD")
     for relative in (DAY_END_NUDGE, DAY_END_DEPENDENCY):
+        if (root / relative).is_symlink():
+            (root / relative).unlink()
         (root / relative).write_bytes((source / relative).read_bytes())
     for client in ("claude", "codex"):
         (root / ("." + client + "-plugin/plugin.json")).write_text(json.dumps({
@@ -703,3 +715,51 @@ def test_old_immutable_descriptor_can_prove_anchors_without_new_helper(day_end_h
     runtime.apply(runtime.plan(machine.root, machine.home, machine.state, {"day-end"}, machine.receipts.data,
                                legacy_releases=[(old, descriptor)]), machine.receipts)
     assert machine.helper.exists()
+
+
+@pytest.mark.parametrize("day_end_history", ["manifest-disagreement", "symlink-blob"], indirect=True)
+def test_historical_tag_requires_matching_manifests_and_regular_blob(day_end_history):
+    machine = day_end_history
+    before = snapshot(machine.home)
+    with pytest.raises(ContractError, match="manifests disagree|tracked regular blob"):
+        history_plan(machine)
+    assert snapshot(machine.home) == before
+
+
+def test_nonancestor_historical_tag_cannot_prove_runtime(day_end_history):
+    machine = day_end_history
+    tree = fixture_git(machine.root, "rev-parse", machine.old + "^{tree}")
+    unrelated = fixture_git(machine.root, "commit-tree", tree, "-m", "Independent fixture history")
+    fixture_git(machine.root, "tag", "-f", "v4.83.0", unrelated)
+    with pytest.raises(ContractError, match="provenance"):
+        history_plan(machine)
+    assert not machine.helper.exists()
+
+
+def test_explicit_bare_history_proves_bytes_without_mutating_repository(day_end_history, tmp_path):
+    machine = day_end_history
+    mirror = tmp_path / "acquisition.git"
+    subprocess.run(["git", "clone", "--bare", str(machine.root), str(mirror)], check=True, capture_output=True)
+    before = snapshot(mirror)
+    runtime.apply(runtime.plan(machine.root, machine.home, machine.state, {"day-end"}, machine.receipts.data,
+                               legacy_git_root=mirror), machine.receipts)
+    assert machine.helper.exists()
+    assert snapshot(mirror) == before
+
+
+def test_untagged_development_head_can_use_bound_ancestor_history(day_end_history):
+    machine = day_end_history
+    fixture_git(machine.root, "tag", "-d", "v4.95.7")
+    runtime.apply(history_plan(machine), machine.receipts)
+    assert machine.helper.exists()
+
+
+def test_failed_dependency_introduction_restores_anchors_and_absence(day_end_history):
+    machine = day_end_history
+    before = snapshot(machine.home)
+    with pytest.raises(ContractError, match="doctor failed"):
+        runtime.apply(history_plan(machine), machine.receipts, verify_after=lambda: False)
+    assert not machine.helper.exists()
+    after = snapshot(machine.home)
+    assert {path: after[path] for path in before} == before
+    machine.receipts.assert_current()

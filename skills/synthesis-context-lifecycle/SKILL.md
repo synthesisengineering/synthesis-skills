@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.19.0"
+  version: "1.19.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -469,6 +469,14 @@ the target is a symlink. It writes atomically and then re-reads the file to
 confirm the change is actually on disk. There is no flag that makes a missing
 anchor succeed. `--dry-run` previews without writing and still refuses a bad
 anchor. Import `replace_once` or `set_field` to use it from Python.
+
+Line boundaries are protected too. `insert-before` requires an anchor at the
+start of a line and text ending with a real newline. `replace` refuses an edit
+whose outer boundary would fuse surviving lines, including repeated adjacent
+matches. Whole-line deletions and deliberate restructuring inside the anchor
+remain valid. To change a boundary intentionally, include the neighboring line
+in both anchor and replacement. The helper preserves LF and CRLF bytes; it
+does not insert or normalize separators to make an unsafe edit pass.
 
 The helper also refuses to *create* a stale header: an edit that leaves
 `**Phase:**` ahead of `**Last session:**` in the same ordinal family (round,

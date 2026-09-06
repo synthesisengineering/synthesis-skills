@@ -20,6 +20,7 @@ import subprocess
 import sys
 from typing import Any, Iterable
 
+from plan_reference import PlanReference, resolve_plan_target
 
 STATE_FILE = "CURRENT_STATE.json"
 STATE_SCHEMA = 1
@@ -607,22 +608,95 @@ def resolve_project(
     )
 
 
-def _version(value: str) -> tuple[int, int, int] | None:
-    match = _VERSION_RE.search(value)
-    return tuple(int(part) for part in match.groups()) if match else None
+def _released_versions(
+    value: str, *, accepted_baseline: bool = False,
+) -> list[tuple[int, int, int]]:
+    """Read affirmative release assertions, not an arbitrary version maximum.
+
+    Context also records prospective candidates, examples and dependencies.
+    Those mentions are not evidence that the accepted release is stale. Scope
+    qualifications to a statement so an unreleased candidate does not suppress
+    a separately shipped release on the same line. This is a bounded prose
+    consistency check, not an independent verification of publication.
+    """
+    versions: list[tuple[int, int, int]] = []
+    for statement in re.split(r"[;\n]|(?<=[.!?])\s+", value):
+        mentions = list(_VERSION_RE.finditer(statement))
+        boundaries = [0]
+        for previous, following in zip(mentions, mentions[1:]):
+            # Split only between distinct versions. An internal conjunction in
+            # "v2 runtime and preserved-change candidate" qualifies that one
+            # version and must remain attached to it.
+            connector = re.search(
+                r",|\s+(?:and|but|whereas|while|with)\s+",
+                statement[previous.end():following.start()], re.I,
+            )
+            if connector:
+                boundaries.append(previous.end() + connector.end())
+        boundaries.append(len(statement))
+        assertions: list[tuple[str, int]] = []
+        for start, end in zip(boundaries, boundaries[1:]):
+            part = statement[start:end]
+            lowered = part.lower()
+            prospective = re.search(
+                r"\b(?:unreleased|planned|proposed|target|pending|awaiting)\b"
+                r"|\bunder\s+(?:verification|review|development)\b"
+                r"|\b(?:not|never)(?:\s+(?:yet|been|being|be))*\s+"
+                r"(?:released|shipped|published|deployed|accepted)\b"
+                r"|\bno\s+release\b"
+                r"|\b(?:will|would|should|must|may|might|could|can|to)\s+(?:be\s+)?"
+                r"(?:release(?:d)?|ship(?:ped)?|publish(?:ed)?|deploy(?:ed)?|accept(?:ed)?)\b",
+                lowered,
+            )
+            completed = re.search(r"\b(?:released|shipped|published|deployed)\b", lowered)
+            candidate = re.search(r"\bcandidate(?:\b|(?=v?\d+\.))", lowered)
+            reference = re.search(r"\b(?:example|documentation)\b", lowered)
+            affirmative = re.search(
+                r"\b(?:release|released|shipped|published|deployed|accepted)\b", lowered,
+            )
+            status = (
+                -1 if prospective or reference or (candidate and not completed)
+                else 1 if affirmative else 0
+            )
+            assertions.append((part, status))
+        # An unqualified version list can share its explicit release predicate:
+        # "Released v1 and v2" or "v1 and v2 shipped". Do not inherit a predicate
+        # across mixed released/candidate assertions or across unrelated prose.
+        shared_release = {status for _, status in assertions if status} == {1}
+        for part, status in assertions:
+            if status < 0:
+                continue
+            remainder = re.sub(
+                r"\b(?:and|but|whereas|while|with)\b", "",
+                _VERSION_RE.sub("", part), flags=re.I,
+            )
+            bare_version = not remainder.strip(" \t,.*_`")
+            if not (status or accepted_baseline or (shared_release and bare_version)):
+                continue
+            versions.extend(
+                tuple(int(piece) for piece in match.groups())
+                for match in _VERSION_RE.finditer(part)
+            )
+    return versions
 
 
 def _content_hashes(project: Path, controlling_plan: str | None = None) -> dict[str, str]:
     paths = [path for path in project.rglob("*.md") if path.is_file()]
-    if controlling_plan:
-        plan = (project / controlling_plan).resolve()
-        if project.resolve() not in plan.parents or not plan.is_file():
-            raise ProjectStateError("controlling plan must be a readable file inside the project")
-        paths.append(plan)
-    return {
+    hashes = {
         str(path.resolve().relative_to(project.resolve())): _sha_file(path)
         for path in sorted(set(paths))
     }
+    if controlling_plan:
+        plan_ref = _required_plan(project, controlling_plan)
+        hashes[plan_ref.relative_path] = _sha_file(plan_ref.resolved)
+    return dict(sorted(hashes.items()))
+
+
+def _required_plan(project: Path, controlling_plan: object) -> PlanReference:
+    plan_ref = resolve_plan_target(project, controlling_plan)
+    if plan_ref.resolved is None:
+        raise ProjectStateError(plan_ref.detail)
+    return plan_ref
 
 
 def _normalized_state_label(value: str) -> str:
@@ -761,26 +835,41 @@ def semantic_issues(project: Path) -> list[str]:
                     issues.append(f"current operational state lacks {key}")
         except ProjectStateError as exc:
             issues.append(str(exc))
-    current_text: list[str] = []
+    baseline_text: list[str] = []
+    phase_text: list[str] = []
     for line in context.splitlines():
-        lowered = line.lower()
-        if lowered.startswith("**phase:") or "current accepted" in lowered or "current baseline" in lowered:
-            current_text.append(line)
+        lowered = line.lower().strip()
+        if lowered.startswith("**phase:"):
+            phase_text.append(line)
+        if re.match(
+            r"^(?:\*\*)?(?:(?:current\s+)?accepted\s+baseline|current\s+(?:accepted|baseline))\b",
+            lowered,
+        ):
+            baseline_text.append(line)
     if state:
-        current_text.extend([str(state.get("phase", "")), str(state.get("accepted_baseline", ""))])
-    current_versions = [item for value in current_text if (item := _version(value))]
-    all_versions = [tuple(int(part) for part in match.groups()) for match in _VERSION_RE.finditer(context)]
-    if current_versions and all_versions and max(current_versions) < max(all_versions):
-        newest = ".".join(str(part) for part in max(all_versions))
+        baseline_text = [str(state.get("accepted_baseline", ""))]
+        phase_text = [str(state.get("phase", ""))]
+    current_versions = [
+        version for value in baseline_text
+        for version in _released_versions(value, accepted_baseline=True)
+    ]
+    if not current_versions:
+        current_versions = [
+            version for value in phase_text for version in _released_versions(value)
+        ]
+    recorded_versions = _released_versions(context)
+    if current_versions and recorded_versions and max(current_versions) < max(recorded_versions):
+        newest = ".".join(str(part) for part in max(recorded_versions))
         current = ".".join(str(part) for part in max(current_versions))
         issues.append(f"current release {current} is older than later recorded release {newest}")
     if state:
         issues.extend(_uncompiled_current_state_prose(project, context))
         if state.get("project_id") != project.name:
             issues.append("current operational state project id disagrees with its directory")
-        plan = (project / str(state.get("controlling_plan", ""))).resolve()
-        if project not in plan.parents or not plan.is_file():
-            issues.append("current controlling plan is missing or escapes the project")
+        try:
+            _required_plan(project, state.get("controlling_plan"))
+        except ProjectStateError as exc:
+            issues.append(str(exc))
         hashes = state.get("content_hashes")
         if isinstance(hashes, dict):
             try:
@@ -836,9 +925,9 @@ def build_operational_state(
     if project.name != project_id:
         raise ProjectStateError("project id does not match the project directory")
     repo, relative, head, tree = _git_identity(project)
-    plan = (project / controlling_plan).resolve()
-    if project not in plan.parents or not plan.is_file():
-        raise ProjectStateError("controlling plan must be a readable file inside the project")
+    plan_ref = _required_plan(project, controlling_plan)
+    assert plan_ref.relative_path is not None
+    controlling_plan = plan_ref.relative_path
     if not next_actions or not all(isinstance(item, str) and item.strip() for item in next_actions):
         raise ProjectStateError("next_actions must contain at least one substantive action")
     payload: dict[str, Any] = {
@@ -868,6 +957,8 @@ def build_operational_state(
 def render_context_current_state(project: Path, state: dict[str, Any]) -> str:
     """Compile the bounded current-state block used by human readers."""
     actions = "\n".join(f"- {item}" for item in state.get("next_actions", []))
+    plan = str(state.get("controlling_plan", ""))
+    plan_target = f"<{plan}>" if re.search(r"\s|[()]", plan) else plan
     return "\n".join(
         [
             "<!-- synthesis-current-state:start -->",
@@ -875,7 +966,7 @@ def render_context_current_state(project: Path, state: dict[str, Any]) -> str:
             f"**Status:** {state.get('status', '')}",
             f"**Last session:** {state.get('last_session', '')}",
             f"**Accepted baseline:** {state.get('accepted_baseline', '')}",
-            f"**Controlling plan:** [{state.get('controlling_plan', '')}]({state.get('controlling_plan', '')})",
+            f"**Controlling plan:** [{plan}]({plan_target})",
             "**Next actions:**",
             actions,
             "<!-- synthesis-current-state:end -->",
@@ -1027,8 +1118,13 @@ def validate_checkpoint(
         return "FAIL", ["source heads differ from the clean checkpoint"]
     if _sha_file(project / STATE_FILE) != receipt.get("state_hash"):
         problems.append("current operational state differs from the clean checkpoint")
-    if _content_hashes(project, str(state.get("controlling_plan") or "")) != receipt.get("content_hashes"):
-        problems.append("durable project files differ from the clean checkpoint")
+    try:
+        current_hashes = _content_hashes(project, str(state.get("controlling_plan") or ""))
+    except (ProjectStateError, OSError, ValueError) as exc:
+        problems.append(f"durable project files cannot be verified: {exc}")
+    else:
+        if current_hashes != receipt.get("content_hashes"):
+            problems.append("durable project files differ from the clean checkpoint")
     if _working_digest(project) != receipt.get("working_digest"):
         problems.append("project working state differs from the clean checkpoint")
     if _sha_bytes(json.dumps(claim, sort_keys=True).encode()) != receipt.get("claim_hash"):

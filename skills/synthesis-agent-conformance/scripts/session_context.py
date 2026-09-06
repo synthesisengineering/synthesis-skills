@@ -48,6 +48,7 @@ if str(ONBOARDING_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(ONBOARDING_SCRIPTS_DIR))
 
 from project_context import extract, next_actions, record_freshness  # noqa: E402
+from plan_reference import locate_plan  # noqa: E402
 from active_project import load_and_validate  # noqa: E402
 from project_state import STATE_FILE, resolve_project, semantic_issues  # noqa: E402
 from coordination_schema import display_id, parse_table_rows, row_identity  # noqa: E402
@@ -412,15 +413,6 @@ def workspace_registry_notices(cwd: Path | None) -> list[str]:
     return notices
 
 
-def linked_plan(project: Path, context: str) -> Path | None:
-    match = re.search(
-        r"\((resources/artifacts/[^)\n]*plan[^)\n]*\.md)\)",
-        context,
-        re.IGNORECASE,
-    )
-    return project / match.group(1) if match else None
-
-
 def reconciled_project(project: Path, *, diagnostic: bool = False) -> tuple[Path, list[str]]:
     """Resolve a project across worktrees and refs before reading its prose."""
     index = project.parent / "index.yaml"
@@ -466,19 +458,19 @@ def append_project_context(
     state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
     phase = str(state.get("phase") or extract(context, "Phase"))
     status = str(state.get("status") or extract(context, "Status"))
-    plan = (
-        project / str(state["controlling_plan"])
-        if state.get("controlling_plan")
-        else linked_plan(project, context)
+    plan_ref = (
+        locate_plan(project, context, controlling_plan=state.get("controlling_plan"))
+        if state_path.is_file()
+        else locate_plan(project, context)
     )
-    if plan is not None and not plan.is_file():
-        raise FileNotFoundError(f"active plan is missing: {plan}")
+    if plan_ref.declared is not None and plan_ref.resolved is None:
+        raise ValueError(plan_ref.detail)
     lines.extend(
         [
             f"{label}: {project}.",
             f"Current phase: {phase}.",
             f"Current status: {status}.",
-            f"Controlling plan: {plan or 'unknown'}.",
+            f"Controlling plan: {plan_ref.value}.",
         ]
     )
     fresh, freshness_detail = record_freshness(project)

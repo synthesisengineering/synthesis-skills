@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -548,3 +550,35 @@ def test_cli_insert_refusal_exits_nonzero_without_success_output(
     assert "corrupt line structure" in captured.err
     assert "changed" not in captured.out
     assert path.read_bytes() == before
+
+
+def test_cli_process_preserves_crlf_and_refuses_line_fusion(tmp_path: Path) -> None:
+    """Exercise argv, exit status, diagnostics, and physical file bytes."""
+    path = tmp_path / "REFERENCE.md"
+    path.write_bytes(b"intro\r\nParent seat: [x](y)\r\n")
+    command = [
+        sys.executable, "-B", str(Path(__file__).with_name("context_edit.py")),
+    ]
+    inserted = subprocess.run(
+        command + [
+            "insert-before", "--file", str(path), "--anchor", "Parent seat:",
+            "--text", "new line\r\n",
+        ],
+        cwd=tmp_path, text=True, capture_output=True, check=False,
+    )
+    assert inserted.returncode == 0, inserted.stderr
+    expected = b"intro\r\nnew line\r\nParent seat: [x](y)\r\n"
+    assert path.read_bytes() == expected
+
+    refused = subprocess.run(
+        command + [
+            "replace", "--file", str(path), "--anchor", "new line\r\n",
+            "--replacement", "new line",
+        ],
+        cwd=tmp_path, text=True, capture_output=True, check=False,
+    )
+    assert refused.returncode == 1
+    assert refused.stdout == ""
+    assert "merge previously separate lines" in refused.stderr
+    assert path.read_bytes() == expected
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["REFERENCE.md"]

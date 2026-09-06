@@ -63,7 +63,8 @@ from live_receipt import (
     transcript_binds_session,
 )
 from project_context import next_actions, record_freshness
-from project_state import resolve_project as resolve_durable_project
+from plan_reference import locate_plan
+from project_state import STATE_FILE, semantic_issues, resolve_project as resolve_durable_project
 from pointer_lock import locked_pointer
 from coordination_schema import SCHEMA_VERSION as COORDINATION_SCHEMA_VERSION
 
@@ -1576,19 +1577,30 @@ def project_summary(project: Path) -> tuple[dict[str, object], list[Check]]:
     summary: dict[str, object] = {"project": str(project.resolve())}
     if context.is_file():
         text = context.read_text(encoding="utf-8")
+        state_path = project / STATE_FILE
+        state: dict[str, object] = {}
+        if state_path.exists():
+            try:
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+                if not isinstance(state, dict):
+                    raise ValueError("current operational state is not an object")
+                issues = semantic_issues(project)
+                add(checks, "handoff.semantic-current-state", not issues, "; ".join(issues) or str(state_path))
+            except (OSError, ValueError) as exc:
+                state = {}
+                add(checks, "handoff.semantic-current-state", False, str(exc))
         for key in ("Phase", "Status", "Last session"):
             match = re.search(rf"^\*\*{re.escape(key)}:\*\*\s*(.+)$", text, re.MULTILINE)
-            summary[key.lower().replace(" ", "_")] = match.group(1).strip() if match else "unknown"
-        plan_match = re.search(r"\((resources/artifacts/[^)]+plan[^)]*\.md)\)", text)
-        if plan_match:
-            plan = project / plan_match.group(1)
-            summary["plan"] = str(plan)
-            add(checks, "handoff.plan", plan.is_file(), str(plan))
-        else:
-            summary["plan"] = "unknown"
-            add(checks, "handoff.plan", False, "CONTEXT.md has no linked plan", required=False)
+            field = key.lower().replace(" ", "_")
+            summary[field] = state.get(field) or (match.group(1).strip() if match else "unknown")
+        plan_ref = (
+            locate_plan(project, text, controlling_plan=state.get("controlling_plan"))
+            if state_path.exists() else locate_plan(project, text)
+        )
+        summary["plan"] = plan_ref.value
+        add(checks, "handoff.plan", plan_ref.resolved is not None, plan_ref.detail, required=plan_ref.declared is not None)
 
-        summary["next"] = next_actions(text)
+        summary["next"] = state.get("next_actions") or next_actions(text)
 
     git = run(["git", "-C", str(project), "rev-parse", "--show-toplevel"])
     add(checks, "handoff.git", git.returncode == 0, git.stdout.strip() or git.stderr.strip())
@@ -1867,14 +1879,13 @@ def stopped_payload_parity(
 
     plan = str(summary.get("plan", "unknown"))
     if plan != "unknown":
-        try:
-            relative_plan = Path(plan).resolve(strict=True).relative_to(project.resolve())
-        except (OSError, ValueError) as exc:
-            return False, f"input project's controlling plan is invalid: {exc}"
-        selected_plan = selected_project / relative_plan
-        if not selected_plan.is_file():
-            return False, f"selected project's controlling plan is missing: {selected_plan}"
-        plan = str(selected_plan)
+        input_plan = locate_plan(project, "", controlling_plan=plan)
+        if input_plan.resolved is None:
+            return False, f"input project's controlling plan is invalid: {input_plan.detail}"
+        selected_plan = locate_plan(selected_project, "", controlling_plan=input_plan.relative_path)
+        if selected_plan.resolved is None:
+            return False, f"selected project's controlling plan is invalid: {selected_plan.detail}"
+        plan = selected_plan.value
 
     expected = [
         f"Stopped synthesis project discovered from the task directory: {selected_project}.",

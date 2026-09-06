@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.13.1"
+  version: "2.13.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -153,7 +153,8 @@ Full multi-status example:
 [references/records-and-conventions.md](references/records-and-conventions.md).
 **Update when:** project status changes or a project is added. For structured
 projects, derive session currency; a present stale `last_session` is evidence,
-not truth. Details: [references/project-state-recovery.md](references/project-state-recovery.md).
+not truth. One confined resolver also binds parent plans into state hashes.
+Details: [references/project-state-recovery.md](references/project-state-recovery.md).
 
 ### 2. Tiered Context Architecture
 

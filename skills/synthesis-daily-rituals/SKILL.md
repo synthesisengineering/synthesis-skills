@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.34.0"
+  version: "2.34.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -38,6 +38,8 @@ These values are user-specific. Update them for your environment.
 | `slack_auth_command` | tool-specific Slack auth flow | Command or UI flow to re-authenticate Slack for the current agent |
 
 A project supplement (for example `daily-plans/daily-checklists.md`) lists the repos to sync, the channels and DMs with their ids, PR review targets, stakeholder communications, and any project-specific end-of-day steps; the global checklist invokes it at "Run any project-specific sync steps."
+
+The [day-end installer](scripts/install_day_end.py) copies the launcher, nudge, and its sibling [ritual-state query helper](scripts/ritual_state.py) from the same release as executable files. Reinstallation refreshes all three without changing the selected agent unless requested; the LaunchAgent retains its template schedule. The nudge queries ritual state without writing it and stays quiet when all expected workspaces have closed.
 
 ---
 

@@ -100,10 +100,15 @@ def test_unconfigured_stray_runtime_file_does_not_enroll(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("spelling", [
     "plain-tilde", "quoted-tilde", "escaped-tilde", "python-B", "python-double-dash",
+    "python-B-double-dash", "quoted-space", "escaped-space", "quoted-literal-metacharacters",
 ])
 def test_hook_selection_matches_actual_shell_execution(tmp_path, monkeypatch, spelling):
     home = tmp_path / "home"
     target = home / ".synthesis/message-guard/message_guard.py"
+    if spelling in ("quoted-space", "escaped-space"):
+        target = home / ".synthesis/message guard/message_guard.py"
+    elif spelling == "quoted-literal-metacharacters":
+        target = home / ".synthesis/message;$ guard/message_guard.py"
     target.parent.mkdir(parents=True)
     marker = home / "executed"
     target.write_text("from pathlib import Path\nPath(" + repr(str(marker)) + ").write_text('executed')\n")
@@ -115,6 +120,10 @@ def test_hook_selection_matches_actual_shell_execution(tmp_path, monkeypatch, sp
         "escaped-tilde": python + r" \~/.synthesis/message-guard/message_guard.py --gate",
         "python-B": python + " -B " + shlex.quote(str(target)) + " --gate",
         "python-double-dash": python + " -- " + shlex.quote(str(target)) + " --gate",
+        "python-B-double-dash": python + " -B -- " + shlex.quote(str(target)) + " --gate",
+        "quoted-space": python + " " + shlex.quote(str(target)) + " --gate",
+        "escaped-space": python + " " + str(target).replace(" ", r"\ ") + " --gate",
+        "quoted-literal-metacharacters": python + " " + shlex.quote(str(target)) + " --gate",
     }
     command = commands[spelling]
     hook = home / "hooks.json"
@@ -137,3 +146,23 @@ def test_native_stable_wrapper_is_not_selected_as_direct_runtime(tmp_path, monke
     command = "python3 ~/.synthesis/agent-control/scripts/run_public_skill.py synthesis-message-guard/scripts/message_guard.py -- --gate"
     hook.write_text(json.dumps({"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": command}]}]}}))
     assert not onboard._stable_runtime_hook(hook, "PreToolUse", home / ".synthesis/message-guard/message_guard.py")
+
+
+@pytest.mark.parametrize("command", [
+    "python3 -c 'print(1)' {target}",
+    "python3 -m example {target}",
+    "python3 -B -c 'print(1)' {target}",
+    "python3 {target} --gate;true",
+    "python3 {target} --gate&&true",
+    "python3 {target} --gate | true",
+    "python3 {target} --gate $(printf x)",
+    "env python3 {target} --gate",
+    "bash -c 'python3 {target} --gate'",
+])
+def test_hook_parser_excludes_non_direct_commands(tmp_path, command):
+    target = tmp_path / "message_guard.py"
+    hook = tmp_path / "hooks.json"
+    hook.write_text(json.dumps({"hooks": {"PreToolUse": [{"hooks": [{
+        "type": "command", "command": command.format(target=target),
+    }]}]}}))
+    assert not onboard._stable_runtime_hook(hook, "PreToolUse", target)
