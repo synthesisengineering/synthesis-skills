@@ -11,6 +11,11 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Checkpoint output follows both native contracts (September 2026).**
+Release **4.96.2** carries diagnostic verdicts in the supported systemMessage field.
+Codex strict Stop validation and Claude completion use the same output format;
+checkpoint authority and failure checks retain their existing meaning.
+
 **Project inspections finish without a write claim (September 2026).**
 Release **4.96.1** checks native identity, pending attribution and a clean project subtree
 before marking an unclaimed inspection's checkpoint not applicable. It grants no

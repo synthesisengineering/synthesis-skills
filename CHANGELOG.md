@@ -4,6 +4,13 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.96.2] - 2026-09-06
+
+Checkpoint Stop output now uses the documented control fields accepted by both
+clients. The diagnostic verdict travels inside systemMessage, preserving the
+distinction between an accepted checkpoint, a checkpoint that does not apply,
+and blocked work. Strict Codex JSON validation no longer rejects that output.
+
 ## [4.96.1] - 2026-09-06
 
 Unclaimed sessions can finish inspection of a clean project without claiming

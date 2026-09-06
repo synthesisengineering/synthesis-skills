@@ -11,6 +11,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+from jsonschema import Draft7Validator, ValidationError
 
 import coordination
 import project_state as state
@@ -19,6 +20,39 @@ from test_project_state import board, commit_version, init_repo, run
 
 NATIVE = "018f0000-0000-7000-8000-000000000002"
 FOREIGN = "018f0000-0000-7000-8000-000000000001"
+
+
+# Exact embedded stop.command.output schema from codex-cli 0.153.4.
+# Binary SHA-256: 4ca47945439f9251fe35f4cbe071369192cd9a6c5a3a17b75c7a11ad548a9c7f.
+# Source contract: https://learn.chatgpt.com/docs/hooks
+CODEX_STOP_SCHEMA = {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": False,
+    "definitions": {"BlockDecisionWire": {"enum": ["block"], "type": "string"}},
+    "properties": {
+        "continue": {"default": True, "type": "boolean"},
+        "decision": {"allOf": [{"$ref": "#/definitions/BlockDecisionWire"}], "default": None},
+        "reason": {
+            "default": None,
+            "description": "Claude requires `reason` when `decision` is `block`; we enforce that semantic rule during output parsing rather than in the JSON schema.",
+            "type": "string",
+        },
+        "stopReason": {"default": None, "type": "string"},
+        "suppressOutput": {"default": False, "type": "boolean"},
+        "systemMessage": {"default": None, "type": "string"},
+    },
+    "title": "stop.command.output",
+    "type": "object",
+}
+
+
+def native_output(text: str) -> tuple[dict, dict]:
+    """Validate the consumer wire format before inspecting Synthesis evidence."""
+    output = json.loads(text)
+    Draft7Validator(CODEX_STOP_SCHEMA).validate(output)
+    message = output["systemMessage"]
+    assert message.startswith("PROJECT_CHECKPOINT_JSON: ")
+    return output, json.loads(message.removeprefix("PROJECT_CHECKPOINT_JSON: "))
 
 
 @pytest.fixture
@@ -301,13 +335,14 @@ def test_claude_reentrant_stop_terminates_with_blocked_verdict(observer: SimpleN
     assert state._emit_checkpoint_hook(verdict, issues, payload) == 2
     first = capsys.readouterr()
     assert "remains UNKNOWN" in first.err and "Preserve retained work" in first.err
-    assert "continue" not in json.loads(first.out)
+    first_output, first_report = native_output(first.out)
+    assert "continue" not in first_output and first_report["status"] == "UNKNOWN"
     payload["stop_hook_active"] = True
     assert state._emit_checkpoint_hook(verdict, issues, payload) == 0
     repeated = capsys.readouterr()
-    terminal = json.loads(repeated.out)
-    assert terminal["status"] == "UNKNOWN" and terminal["continue"] is False
-    assert terminal["checkpoint_accepted"] is False
+    terminal, report = native_output(repeated.out)
+    assert report["status"] == "UNKNOWN" and terminal["continue"] is False
+    assert report["checkpoint_accepted"] is False
     assert "remains UNKNOWN" in terminal["stopReason"] and repeated.err
     assert_no_receipt(observer)
 
@@ -317,8 +352,9 @@ def test_codex_never_consumes_claude_terminal_control(observer: SimpleNamespace,
     payload = event(observer, client, stop_hook_active=active, hook_event_name=event_name)
     assert state._emit_checkpoint_hook("FAIL", ["retained owner obligation"], payload) == 2
     output = capsys.readouterr()
-    assert json.loads(output.out)["checkpoint_accepted"] is False
-    assert "continue" not in json.loads(output.out) and output.err
+    wire, report = native_output(output.out)
+    assert report["checkpoint_accepted"] is False
+    assert "continue" not in wire and output.err
     assert_no_receipt(observer)
 
 
@@ -339,16 +375,48 @@ def test_real_hook_cli_uses_local_lease_and_actionable_failure(observer: SimpleN
 
     clean = cli(event(observer))
     assert clean.returncode == 0, clean.stderr
-    assert json.loads(clean.stdout) == {"status": "NOT_APPLICABLE", "issues": inspect(observer)[1], "checkpoint_accepted": False, "no_receipt_issued": True}
+    _wire, report = native_output(clean.stdout)
+    assert report == {"status": "NOT_APPLICABLE", "issues": inspect(observer)[1], "checkpoint_accepted": False, "no_receipt_issued": True}
+    clean_codex = cli(event(observer, "codex"))
+    assert clean_codex.returncode == 0, clean_codex.stderr
+    assert native_output(clean_codex.stdout)[1] == report
     (observer.project / "REFERENCE.md").write_text("retained edit\n", encoding="utf-8")
     first = cli(event(observer))
     assert first.returncode == 2 and "remains UNKNOWN" in first.stderr
+    assert native_output(first.stdout)[1]["status"] == "UNKNOWN"
     repeated = cli(event(observer, stop_hook_active=True))
-    assert repeated.returncode == 0 and json.loads(repeated.stdout)["continue"] is False
-    assert json.loads(repeated.stdout)["status"] == "UNKNOWN"
+    wire, report = native_output(repeated.stdout)
+    assert repeated.returncode == 0 and wire["continue"] is False
+    assert report["status"] == "UNKNOWN"
     codex = cli(event(observer, "codex", stop_hook_active=True))
-    assert codex.returncode == 2 and "continue" not in json.loads(codex.stdout)
+    wire, report = native_output(codex.stdout)
+    assert codex.returncode == 2 and "continue" not in wire
+    assert report["status"] == "UNKNOWN" and not report["checkpoint_accepted"]
     malformed = cli([])
     assert malformed.returncode == 2 and "not an object" in malformed.stderr
+    assert native_output(malformed.stdout)[1]["status"] == "UNKNOWN"
     assert observer.board.read_bytes() == before
     assert_no_receipt(observer)
+
+
+@pytest.mark.parametrize("verdict", ["PASS", "NOT_APPLICABLE", "UNKNOWN", "FAIL", "LOCAL_RECOVERABLE"])
+def test_stop_output_conforms_to_native_codex_consumer_schema(observer: SimpleNamespace, capsys: pytest.CaptureFixture, verdict: str) -> None:
+    result = state._emit_checkpoint_hook(verdict, ["bounded fixture evidence"], event(observer, "codex"))
+    captured = capsys.readouterr()
+    wire, report = native_output(captured.out)
+    assert set(wire) == {"systemMessage"}
+    assert report["status"] == verdict
+    assert report["issues"] == ["bounded fixture evidence"]
+    assert report["checkpoint_accepted"] is (verdict == "PASS")
+    assert report.get("no_receipt_issued") is (True if verdict == "NOT_APPLICABLE" else None)
+    assert result == (0 if verdict in {"PASS", "NOT_APPLICABLE"} else 2)
+    assert bool(captured.err) is (result == 2)
+
+
+def test_old_diagnostic_stdout_is_rejected_by_native_codex_schema() -> None:
+    serialized = json.dumps(CODEX_STOP_SCHEMA, indent=2, sort_keys=True) + "\n"
+    assert hashlib.sha256(serialized.encode()).hexdigest() == "37679d1a933fdc3dc8cea5ff12d7d0e2dacfc036208d134aefc09247e1222d88"
+    Draft7Validator.check_schema(CODEX_STOP_SCHEMA)
+    old_output = {"status": "NOT_APPLICABLE", "issues": [], "checkpoint_accepted": False, "no_receipt_issued": True}
+    with pytest.raises(ValidationError, match="Additional properties are not allowed"):
+        Draft7Validator(CODEX_STOP_SCHEMA).validate(old_output)

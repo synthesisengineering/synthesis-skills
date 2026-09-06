@@ -1346,9 +1346,13 @@ def checkpoint_hook(
 
 
 def _emit_checkpoint_hook(verdict: str, issues: list[str], payload: dict[str, Any]) -> int:
-    output = {"status": verdict, "issues": issues, "checkpoint_accepted": verdict == "PASS"}
+    report = {"status": verdict, "issues": issues, "checkpoint_accepted": verdict == "PASS"}
     if verdict == "NOT_APPLICABLE":
-        output["no_receipt_issued"] = True
+        report["no_receipt_issued"] = True
+    # Codex validates Stop stdout against an additionalProperties:false schema.
+    # Keep diagnostic fields inside the supported string, separate from native
+    # lifecycle control. Both clients can retain the exact verdict for review.
+    output = {"systemMessage": "PROJECT_CHECKPOINT_JSON: " + json.dumps(report, sort_keys=True)}
     if verdict in {"PASS", "NOT_APPLICABLE"}:
         print(json.dumps(output))
         return 0
@@ -1364,7 +1368,7 @@ def _emit_checkpoint_hook(verdict: str, issues: list[str], payload: dict[str, An
         except (OSError, ProjectStateError):
             client = None
         if client == "claude":
-            output.update({"continue": False, "stopReason": reason, "systemMessage": "Checkpoint blocked; no clean checkpoint was accepted."})
+            output.update({"continue": False, "stopReason": reason})
             print(json.dumps(output))
             print(reason, file=sys.stderr)
             return 0
