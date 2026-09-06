@@ -489,6 +489,29 @@ def test_replace_preserves_crlf_and_mixed_line_endings(tmp_path: Path) -> None:
     assert path.read_bytes() == b"intro\r\nnew\r\nneighbor\nlast\r\n"
 
 
+@pytest.mark.parametrize("replacement", ["", "\r"])
+def test_replace_cannot_turn_crlf_into_a_bare_carriage_return(
+    tmp_path: Path, replacement: str,
+) -> None:
+    path = tmp_path / "REFERENCE.md"
+    before = b"left\r\nright"
+    path.write_bytes(before)
+
+    with pytest.raises(ContextEditError, match="merge previously separate lines"):
+        replace_once(path, anchor="\r\n", replacement=replacement)
+
+    assert path.read_bytes() == before
+
+
+def test_replace_allows_a_complete_leading_crlf_separator(tmp_path: Path) -> None:
+    path = tmp_path / "REFERENCE.md"
+    path.write_bytes(b"left\r\nold\r\nright")
+
+    replace_once(path, anchor="\r\nold", replacement="\r\nnew")
+
+    assert path.read_bytes() == b"left\r\nnew\r\nright"
+
+
 def test_refused_crlf_insert_does_not_normalize_the_file(tmp_path: Path) -> None:
     path = tmp_path / "REFERENCE.md"
     before = b"intro\r\nParent seat: [x](y)\r\n"
