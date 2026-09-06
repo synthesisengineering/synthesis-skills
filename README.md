@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Refresh existing sessions with one skill (September 2026).** Release **4.96.0**
+adds refresh-and-report mode to synthesis-checkpoint, with local deterministic
+inspection, configurable campaigns and transactionally deduplicated feedback.
+Recovery instructions agree on resolving before prose, and coordination mirror
+refresh is serialized with same-machine claim mutations.
+
 **Updates verify shared runtimes too (September 2026).** Release **4.95.7**
 refreshes provenance-verified runtime code without resetting personal setup,
 executes installed protective doctors, and preserves concurrent receipt edits.

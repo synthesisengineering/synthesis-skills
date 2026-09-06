@@ -976,6 +976,174 @@ def test_lease_compare_and_swap_retries_after_concurrent_advance(
     assert identifiers == {"A", "X"}
 
 
+@pytest.mark.parametrize("serialized", [True, False], ids=["fixed", "old-positive-control"])
+def test_lease_refresh_cannot_restore_claims_after_same_machine_mutation(
+    tmp_path: Path, monkeypatch, serialized: bool
+) -> None:
+    """Force the former stale-reader race; the old algorithm must reproduce it.
+
+    Only temporary local Git repositories are used. Events and a nonblocking
+    lock probe establish the ordering, without timing-based sleeps.
+    """
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:refresh-writer")
+    [board] = lease_machines(tmp_path, count=1)
+    assert MODULE.command_claim(claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/worktree-a @ feature/a", area="/repos/shared/**",
+    )) == 0
+    fetched = threading.Event()
+    continue_refresh = threading.Event()
+    writer_probed = threading.Event()
+    writer_done = threading.Event()
+    blocked: list[bool] = []
+    failures: list[BaseException] = []
+    refresh_results: list[dict] = []
+    original_fetch = MODULE.lease_fetch
+    original_flock = MODULE.fcntl.flock
+
+    def paused_fetch(config):
+        snapshot = original_fetch(config)
+        if threading.current_thread().name == "refresh-reader":
+            fetched.set()
+            assert continue_refresh.wait(10), "test did not resume the reader"
+        return snapshot
+
+    def observed_flock(fd, operation):
+        if threading.current_thread().name == "board-writer" and not blocked:
+            try:
+                original_flock(fd, operation | MODULE.fcntl.LOCK_NB)
+            except BlockingIOError:
+                blocked.append(True)
+            else:
+                blocked.append(False)
+                writer_probed.set()
+                return
+            writer_probed.set()
+        return original_flock(fd, operation)
+
+    def old_unlocked_refresh():
+        # Positive control: the exact pre-fix successful fetch/write ordering.
+        sha, content = MODULE.lease_fetch(MODULE.lease_configuration(board))
+        if content is not None and board.read_text(encoding="utf-8") != content:
+            MODULE.write_board(board, content)
+        return {"configured": True, "refreshed": True, "sha": sha}
+
+    def reader():
+        try:
+            refresh_results.append(
+                MODULE.lease_refresh(board) if serialized else old_unlocked_refresh()
+            )
+        except BaseException as exc:
+            failures.append(exc)
+
+    def writer():
+        try:
+            assert MODULE.command_release(args(board, id="A")) == 0
+            assert MODULE.command_claim(claim_args(
+                board, session_id="B", project="project-b",
+                workspace="/tmp/worktree-b @ feature/b", area="/repos/shared/**",
+            )) == 0
+        except BaseException as exc:
+            failures.append(exc)
+        finally:
+            writer_done.set()
+
+    monkeypatch.setattr(MODULE, "lease_fetch", paused_fetch)
+    monkeypatch.setattr(MODULE.fcntl, "flock", observed_flock)
+    reader_thread = threading.Thread(target=reader, name="refresh-reader", daemon=True)
+    writer_thread = threading.Thread(target=writer, name="board-writer", daemon=True)
+    reader_thread.start()
+    try:
+        assert fetched.wait(10), "reader did not fetch its snapshot"
+        writer_thread.start()
+        assert writer_probed.wait(10), "writer did not attempt the shared lock"
+        assert blocked == [serialized]
+        if not serialized:
+            assert writer_done.wait(10), "positive-control writer did not finish"
+    finally:
+        continue_refresh.set()
+        reader_thread.join(10)
+        if writer_thread.ident is not None:
+            writer_thread.join(10)
+    assert not reader_thread.is_alive() and not writer_thread.is_alive()
+    assert not failures
+    assert refresh_results[0]["refreshed"] is True
+
+    local = {row.legacy_id: row.status for row in MODULE.rows(board.read_text())}
+    _, remote_content = original_fetch(MODULE.lease_configuration(board))
+    assert remote_content is not None
+    remote = {row.legacy_id: row.status for row in MODULE.rows(remote_content)}
+    assert remote == {"A": "released", "B": "active"}
+    if serialized:
+        assert local == remote
+    else:
+        assert local == {"A": "active"}, "instrument failed to reproduce the old bug"
+
+
+def test_lease_refresh_without_configuration_preserves_local_board(tmp_path, monkeypatch):
+    board = tmp_path / "active-sessions.md"
+    board.write_text(MODULE.template(), encoding="utf-8")
+    before = board.read_bytes()
+
+    def unexpected_fetch(_config):
+        pytest.fail("a board without lease configuration must not fetch")
+
+    monkeypatch.setattr(MODULE, "lease_fetch", unexpected_fetch)
+    assert MODULE.lease_refresh(board) == {"configured": False}
+    assert board.read_bytes() == before
+
+
+def test_lease_refresh_reads_configuration_under_mutation_lock(tmp_path, monkeypatch):
+    board = tmp_path / "active-sessions.md"
+
+    def configuration(_board):
+        with (tmp_path / ".active-sessions.lock").open("a+") as contender:
+            with pytest.raises(BlockingIOError):
+                MODULE.fcntl.flock(
+                    contender.fileno(), MODULE.fcntl.LOCK_EX | MODULE.fcntl.LOCK_NB
+                )
+        return None
+
+    monkeypatch.setattr(MODULE, "lease_configuration", configuration)
+    assert MODULE.lease_refresh(board) == {"configured": False}
+
+
+@pytest.mark.parametrize("failure", ["configuration", "fetch", "mirror"])
+def test_lease_refresh_reports_failure_preserves_board_and_releases_lock(
+    tmp_path, monkeypatch, failure
+):
+    board = tmp_path / "active-sessions.md"
+    board.write_text(MODULE.template(), encoding="utf-8")
+    before = board.read_bytes()
+    config = tmp_path / "lease.json"
+    config.write_text(
+        "{" if failure == "configuration" else json.dumps({"remote": "unused"}),
+        encoding="utf-8",
+    )
+
+    def fetch(_config):
+        if failure == "fetch":
+            raise RuntimeError("remote unavailable in fixture")
+        return "fixture-sha", MODULE.template() + "\nnew remote data\n"
+
+    def write(_board, _content):
+        raise OSError("mirror unavailable in fixture")
+
+    monkeypatch.setattr(MODULE, "lease_fetch", fetch)
+    monkeypatch.setattr(MODULE, "write_board", write)
+    result = MODULE.lease_refresh(board)
+    assert result["configured"] is True
+    assert result["refreshed"] is False
+    assert {
+        "configuration": "config unreadable",
+        "fetch": "remote unavailable",
+        "mirror": "mirror unavailable",
+    }[failure] in result["error"]
+    assert board.read_bytes() == before
+    with (tmp_path / ".active-sessions.lock").open("a+") as lock:
+        MODULE.fcntl.flock(lock.fileno(), MODULE.fcntl.LOCK_EX | MODULE.fcntl.LOCK_NB)
+
+
 def test_lease_unreachable_remote_fails_closed(tmp_path: Path) -> None:
     directory = tmp_path / "machine1"
     directory.mkdir()

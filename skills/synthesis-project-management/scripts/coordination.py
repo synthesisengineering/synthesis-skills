@@ -1106,22 +1106,31 @@ def lease_update(
 
 
 def lease_refresh(board: Path) -> dict:
-    """Best-effort mirror refresh for read paths; reports instead of raising."""
+    """Refresh the mirror under the same local lock as board mutations.
+
+    Fetching before taking the lock can restore stale active rows after a
+    same-machine release or claim. Keep configuration, fetch and mirror write
+    together. This is local serialization, not a remote CAS authority fence;
+    commit authorization still uses ``_check_staged_board_snapshot``.
+    """
     try:
-        config = lease_configuration(board)
-    except RuntimeError as exc:
+        board.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = board.parent / ".active-sessions.lock"
+        with lock_path.open("a+", encoding="utf-8") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            config = lease_configuration(board)
+            if config is None:
+                return {"configured": False}
+            sha, content = lease_fetch(config)
+            if content is not None and (
+                not board.exists() or board.read_text(encoding="utf-8") != content
+            ):
+                write_board(board, content)
+            return {"configured": True, "refreshed": True, "sha": sha}
+    except (RuntimeError, OSError) as exc:
+        # An unreadable lock/configuration is not evidence of an unleased
+        # board. Preserve the read-path error result so strict status fails.
         return {"configured": True, "refreshed": False, "error": str(exc)}
-    if config is None:
-        return {"configured": False}
-    try:
-        sha, content = lease_fetch(config)
-    except RuntimeError as exc:
-        return {"configured": True, "refreshed": False, "error": str(exc)}
-    if content is not None and (
-        not board.exists() or board.read_text(encoding="utf-8") != content
-    ):
-        write_board(board, content)
-    return {"configured": True, "refreshed": True, "sha": sha}
 
 
 def locked_update(board: Path, operation) -> None:

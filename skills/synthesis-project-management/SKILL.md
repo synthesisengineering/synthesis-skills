@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.13.2"
+  version: "2.13.3"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -13,12 +13,6 @@ metadata:
 # Synthesis Project Management System
 
 A lightweight project management system designed for human-agent collaboration. Optimized for context preservation across conversation sessions and context compaction events.
-
-## v2.11.0 — One document, load-bearing; depth in references
-
-Every operating rule stays here, inside the 500-line budget; examples and
-rationale live in `references/`. Peer addressing (resolve, receipts, gated
-lanes, delivered bus) is in full in [references/parallel-agent-protocol.md](references/parallel-agent-protocol.md).
 
 ## Configuration
 
@@ -210,12 +204,11 @@ Complete task → Update CONTEXT.md → local receipt → Next task
    `~/.synthesis/coordination/active-sessions.md` exists, read it before any
    write and register or refresh this session's project, worktree, branch,
    context role, and claims
-2. **Resolve before reading** — Run `scripts/project_state.py resolve` against the Git-tracked index; use only its causally selected state.
+2. **Resolve before reading** — Run `scripts/project_state.py resolve` against the Git-tracked index with `--no-fetch --no-coordination-refresh` and `GIT_OPTIONAL_LOCKS=0`; use only its causally selected state. A failed or conflicting selection stops dependent project reads/writes, including build and migration.
 3. **Read the selected state** — Read `CURRENT_STATE.json`, CONTEXT.md, the linked plan, REFERENCE.md, and latest session; validate hashes and semantics.
 4. **Check line count** — If CONTEXT.md >150 lines, archive before starting work
-5. **Read REFERENCE.md** — If it exists and the task needs reference details
-6. **Search lessons/** — `grep` for relevant past experiences
-7. **Check related projects** — Look at `related:` tags in index.yaml
+5. **Search lessons/** — Search for relevant past experiences.
+6. **Check related projects** — Look at `related:` tags in index.yaml.
 
 ### Session End
 
@@ -228,7 +221,12 @@ Complete task → Update CONTEXT.md → local receipt → Next task
    receipt; confirm attributed state is readable;
    do not create a commit or network push solely because the user is switching
    clients on this machine
-6. **Release coordination claims** — Mark the session released or narrow its claims before pausing. Existing-row mutations require the claiming seat; cross-session release is administrative and reason-bearing.
+6. **Release coordination claims** — Mark the session released or narrow its claims before pausing. Existing-row mutations require the actual claiming seat. A typed administrative reason, failed caller-ownership check, app closure or age is not operator authorization to release another or an unbound active seat.
+
+For an explicitly requested refresh-and-report pass, use the current installed
+`synthesis-checkpoint` mode. It inspects and reports without project edits,
+state generation, activation or claim acquisition; normal record-owner closure
+above applies only to work actually written under accepted authority.
 
 ### Cross-Agent Session Coordination
 
@@ -463,8 +461,13 @@ When a user mentions a project:
    (this happened on 2026-08-20). Resolve without asking only when name and
    session evidence agree, or when the session carries no project evidence
    at all.
-4. If match found (and confirmed where step 3 required it), read the
-   project's `CONTEXT.md`
+4. If matched (and confirmed where step 3 required it), resolve through the
+   Git-tracked registry with `scripts/project_state.py resolve --no-fetch
+   --no-coordination-refresh` and `GIT_OPTIONAL_LOCKS=0` before reading project
+   prose. Do not request automatic fast-forward for a local checkpoint.
+   CONFLICT/FAIL/UNKNOWN stops dependent reads and writes; preserve the candidate
+   evidence instead of running build or migration to silence the result.
+   For a selected project, run the context-lifecycle Session Start Protocol.
 5. Summarize current state and next steps
 6. **Re-verify scope before dispatching work, especially for a paused project.** CONTEXT.md's "N items remaining" (or any count a plan document asserts is current) is a claim made at write time, not a live query — it goes stale the moment anything else touches the same corpus, even a workstream that has nothing to do with this project and doesn't know it exists. Before batch-dispatching agents against a stated scope, re-derive it from live state with a cheap direct check (`find`, `grep`, `wc -l` against the actual files or repos) rather than trusting the document's count. This is cheapest immediately before dispatch — the highest-leverage moment to catch drift, before agent-hours are spent at the wrong scope — and it applies even within a single session, since a count computed early in a long run can go stale by the time a later phase acts on it. If the recount disagrees with the document, update the document in the same pass rather than silently working around the discrepancy. (Distinct from context-lifecycle's Session Start Protocol, which verifies CONTEXT.md's own freshness against this project's git log — that catches a stale *file*; this catches a stale *scope claim* that can drift even when the file itself looks current.)
 7. Begin work from where it left off
@@ -487,13 +490,3 @@ When a user mentions a project:
 | Resolving a named project over the session's own contradicting context | A full session's work lands in the wrong project's records while the intended project's ask goes unfulfilled | When the name and the session's evidence disagree, ask a one-line clarifying question before switching (Project Discovery step 3) |
 
 ---
-
-## Why This Works
-
-1. **Filesystem is persistent** — Survives context compaction
-2. **Convention-based** — Same structure everywhere, easy to navigate
-3. **Tiered by lifecycle** — Hot data in CONTEXT.md, warm in REFERENCE.md, cold in sessions/
-4. **Budgeted** — 150-line cap prevents degradation over time
-5. **Self-maintaining** — Archival protocol is garbage collection for context
-6. **Searchable** — Agents grep, humans `ls -t`
-7. **Scales** — Tested across 60+ projects over months of continuous use

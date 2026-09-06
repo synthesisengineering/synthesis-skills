@@ -1,16 +1,29 @@
 ---
 name: synthesis-checkpoint
-description: "Mid-session refresh and drift-recovery protocol. Re-syncs the agent's awareness of current date, project state, recent commit history, and concurrent root-session claims. Use when asked to: checkpoint, re-sync, refresh context, mid-session refresh, recover from compaction, re-read project state, verify dates, drift check, coordination check, where are we, what was last done, am I caught up. Invoke on any suspicion of context drift, after long conversation pauses, before generating time-interval claims, or before writes when another agent session is active."
+description: "Refresh project context and verify recovery, current skills and session ownership. Use for checkpoints, drift or compaction recovery, and refresh-and-report after ecosystem upgrades. Supports existing and fresh sessions without repeating completed project work."
 license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.6.0"
+  version: "1.7.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Checkpoint — Mid-Session Refresh & Drift Recovery
+
+## Refresh-and-report mode
+
+When asked to refresh after an ecosystem upgrade or report session readiness,
+load this skill from the current verified installed root, then follow
+[references/refresh-and-report.md](references/refresh-and-report.md). This mode
+uses a deterministic local inspector and optional campaign feedback. It ends
+after reporting and grants no project implementation or repair authority.
+Ordinary checkpoints use the protocol below and do not send campaign feedback.
+
+Current skill text and a native runtime reload are distinct evidence. Never
+equate an old in-context skill body with a failed current startup, or copying
+new files with proof a running harness reloaded them.
 
 ## The Problem
 
@@ -82,12 +95,24 @@ Read the output. Set this as your authoritative "current time" anchor. Compare t
 
 ### Step 2 — Verify project state from disk
 
-Identify the active project. Typically the one whose `CONTEXT.md` is in the current working directory or was most recently mentioned.
+Use this conversation's established project and its workspace's Git-tracked
+`projects/index.yaml`. A global active pointer is only a cache and must not
+silently switch an established conversation to another project.
 
-Read its files in this order:
-1. `CONTEXT.md` — current state, what's next, recent sessions
-2. The latest entry in `sessions/YYYY-MM.md` (whichever monthly file is most recent)
-3. `REFERENCE.md` (full file or section-skim, depending on size)
+Before project prose, use the installed project-management resolver with
+`--no-fetch --no-coordination-refresh` and `GIT_OPTIONAL_LOCKS=0`. Do not request
+automatic fast-forward. A CONFLICT, FAIL or UNKNOWN result stops dependent reads
+and all project writes; report actual candidate locators and missing evidence.
+Do not choose a preferred checkout or run build/activation/migration to make
+the result appear successful.
+
+For the selected project, read:
+1. `CURRENT_STATE.json`, when present, and `CONTEXT.md`.
+2. The controlling plan and latest entry in `sessions/YYYY-MM.md`.
+3. `REFERENCE.md` (full read on first recovery, section-skim on a repeated checkpoint).
+
+Missing required inputs stay explicit. File hashes, doctor checks and native
+receipts do not prove that the agent read or understood these project tiers.
 
 Note the "Last session" header in CONTEXT.md. Do not trust it as authoritative — it is a cache. Treat it as a starting hypothesis to verify in Step 3.
 
@@ -157,7 +182,18 @@ Show this verification step in the response. It is the L4 visible-verification m
 
 ### Step 6 — Update CONTEXT.md if it was stale
 
-If Step 3 revealed CONTEXT.md was out of date (later commits exist that aren't reflected in its "Last session" or "Recent Sessions" sections), update CONTEXT.md in place to reflect verified facts. Leave the correction session-attributed and locally receipted; publish it in the next explicit remote handoff or day-end batch. This prevents the next local client from inheriting the stale cache without creating a network round trip at every checkpoint.
+If Step 3 reveals stale context, obtain an accepted exact-path claim using this
+conversation's verified native identity before editing or generating state.
+Use an isolated worktree and index when a concurrent root owns the same checkout.
+An ownership error does not make an active legacy seat terminal. Never infer
+administrative release authority from app closure, age or a typed reason.
+Without admitted authority, report the exact blocking seat and preserve the work.
+
+Under an accepted claim, make the verified correction, attribute it to this
+session and retain local continuity. Publish at the next authorized remote
+handoff or day-end. A missing structured-state file alone does not authorize a
+migration. Release claims acquired solely for the checkpoint before pausing;
+narrow or release genuinely owned completed/paused work under the normal protocol.
 
 Before the checkpoint closes, ask: **What executable state or required input
 data still exists only in this session's scratchpad?** If a durable record

@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.19.1"
+  version: "1.19.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -339,7 +339,12 @@ The tiered architecture (CONTEXT.md / REFERENCE.md / sessions/) is only useful i
 
 When you begin substantive work on any project — at client session start, when
 the user first mentions it, or after switching from another project — run these
-steps in order before substantive action:
+steps in order before substantive action. First resolve this conversation's
+established project through its Git-tracked registry with the installed
+project-management resolver, `--no-fetch --no-coordination-refresh` and
+`GIT_OPTIONAL_LOCKS=0`; no automatic fast-forward. A global pointer cannot
+override the conversation's project. CONFLICT/FAIL/UNKNOWN stops dependent
+project reads and writes, including generated-state build and migration.
 
 1. **Verify current time.** Run `date "+%Y-%m-%d %H:%M:%S %Z (%A)"`. The model has no clock; the OS does. Use the output as your authoritative "today" anchor for the rest of the session. The harness may have injected a date earlier, but that injection drifts; `date` does not.
 2. **Verify project history from git.** Run `git log -10 --pretty=format:"%h %ai %s" -- <project-path>`. The output is the source of truth for "what happened when in this project." Note the most recent commit's timestamp and subject.
@@ -348,8 +353,9 @@ steps in order before substantive action:
 5. **Skim REFERENCE.md if you have not recently.** This is the project's stable facts and design spec. Full read on the first session resumption of the day; quick skim of section headers otherwise.
 6. **Only then begin substantive work.**
 
-When `synthesis-agent-conformance` is available, record the local
-active-project pointer after verification:
+When `synthesis-agent-conformance` is available and this session has an accepted
+owner claim, record the local active-project pointer after verification.
+Report-only refreshes and contributors do not activate the canonical pointer:
 
 ```bash
 python3 <skill-root>/scripts/conformance.py activate \
