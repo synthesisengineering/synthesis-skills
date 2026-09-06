@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Continuity comparisons leave messages unread (September 2026).**
+Release **4.95.6** compares both client contexts without acknowledging inbox delivery or
+refreshing project state. Corrupt or unreadable inbox evidence fails diagnosis
+instead of appearing as an empty inbox. Normal lifecycle hooks still deliver
+and acknowledge messages.
+
 **Long conversations keep their startup evidence (September 2026).**
 Release **4.95.5** validates structured session identity with bounded memory, including
 large individual messages, and streams the full transcript digest. Doctor and

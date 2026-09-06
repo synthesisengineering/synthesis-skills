@@ -1,16 +1,16 @@
-# Transaction-bound acceptance for structured long-transcript validation.
-# Red fixture commits: bc532be (generation/CLI), 9bdf6cd (shared scanner).
+# Transaction-bound acceptance for non-mutating continuity diagnostics.
+# Red fixture commits: 8093689 (parity), 49450f6 (mutation policy), 48b1af2 (inbox).
 schema: 2
-suite: long-transcript-2026-09-05
+suite: continuity-diagnostics-2026-09-06
 membership: closed
-production_entry_point: native SessionStart identity binding and synthesis doctor/status generation receipt attachment
-enforcing_boundary: release.py consumes the exact base-to-head acceptance before publication and dual-client installation
+production_entry_point: conformance active and stopped payload parity through session_context diagnostic mode
+enforcing_boundary: release.py consumes exact base-to-head acceptance before publication and dual-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: structured identity scans the first 1000 physical JSONL lines, not later transcript semantics; fixture tests do not establish actual client restart or current-task loaded metadata; installed preservation and genuine exact-session acceptance require separate live checks; no site deployment is part of this release
+unverified_remainder: parity compares locally read evidence, not remote freshness or actual client delivery; independent concurrent writes may cause divergence; other conformance checks may refresh state; installed preservation and genuine new-version startup require separate acceptance
 changed_surfaces:
   - path: .claude-plugin/plugin.json
     cases: [release-contract]
@@ -21,75 +21,191 @@ changed_surfaces:
   - path: README.md
     cases: [release-contract]
   - path: skills/synthesis-agent-conformance/SKILL.md
-    cases: [streaming]
-  - path: skills/synthesis-agent-conformance/scripts/live_receipt.py
-    cases: [streaming, malformed, long-transcript]
-  - path: skills/synthesis-agent-conformance/scripts/test_streaming_transcript.py
-    cases: [streaming, malformed]
-  - path: skills/synthesis-onboarding/SKILL.md
-    cases: [engine-contract, long-transcript]
-  - path: skills/synthesis-onboarding/scripts/onboard.py
-    cases: [engine-contract]
-  - path: skills/synthesis-onboarding/scripts/synthesis_cli.py
-    cases: [engine-contract, long-transcript, diagnostics, recovery-guidance]
-  - path: skills/synthesis-onboarding/scripts/system_contract.py
-    cases: [long-transcript, identity-rejection, root-rejection, diagnostics, generation-contract]
-  - path: skills/synthesis-onboarding/scripts/test_long_transcript.py
-    cases: [long-transcript, identity-rejection, root-rejection, diagnostics]
-  - path: skills/synthesis-onboarding/scripts/test_system_contract.py
-    cases: [generation-contract]
-  - path: skills/synthesis-onboarding/scripts/test_reload_guidance.py
-    cases: [recovery-guidance]
-  - path: skills/synthesis-onboarding/scripts/test_independent_review.py
-    cases: [promotion-contract]
+    cases: [parity-unread, diagnostic-lifecycle]
+  - path: skills/synthesis-agent-conformance/scripts/active_project.py
+    cases: [pointer-policy]
+  - path: skills/synthesis-agent-conformance/scripts/conformance.py
+    cases: [parity-unread, parity-negative, parity-error, active-integration, cold-cli, malformed-cli]
+  - path: skills/synthesis-agent-conformance/scripts/session_context.py
+    cases: [parity-unread, parity-error, diagnostic-lifecycle, resolver-policy, active-policy, normal-lifecycle, receipt-order]
+  - path: skills/synthesis-agent-conformance/scripts/test_diagnostic_parity.py
+    cases: [parity-unread, parity-negative, parity-error, normal-lifecycle, active-integration, cold-cli, malformed-cli]
+  - path: skills/synthesis-agent-conformance/scripts/test_diagnostic_mode.py
+    cases: [diagnostic-lifecycle, resolver-policy, pointer-policy, active-policy]
+  - path: skills/synthesis-agent-conformance/scripts/test_session_context.py
+    cases: [receipt-order]
+  - path: skills/synthesis-project-management/SKILL.md
+    cases: [inbox-unread]
+  - path: skills/synthesis-project-management/scripts/board_inbox.py
+    cases: [inbox-unread, inbox-board, inbox-absent, inbox-snapshot, inbox-permission, table-spacing, table-structure]
+  - path: skills/synthesis-project-management/scripts/peer_addressing.py
+    cases: [inbox-seat, inbox-ambiguous, inbox-watermark, inbox-permission, message-header, message-boundary, body-heading, empty-inbox, duplicate-json, seat-filename, protocol-annotation, unrelated-history, addressed-history, normal-grammar, normal-seat, legacy-boundary, legacy-scope, legacy-structure, native-key, native-message, unscoped-strict]
+  - path: skills/synthesis-project-management/scripts/test_diagnostic_inbox.py
+    cases: [inbox-unread, inbox-board, inbox-absent, inbox-snapshot, inbox-permission, inbox-seat, inbox-ambiguous, inbox-watermark, message-header, message-boundary, body-heading, empty-inbox, duplicate-json, seat-filename, protocol-annotation, unrelated-history, addressed-history, normal-grammar, normal-seat, legacy-boundary, legacy-scope, legacy-structure, native-key, native-message, unscoped-strict, table-spacing, table-structure]
   - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
     cases: [acceptance-self]
 cases:
   - id: acceptance-self
     control_class: acceptance-test
     fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-    motivating_defect: release-manifest-must-cover-the-exact-change-universe
+    motivating_defect: manifest-coverage-must-match-the-boundary-derived-change-universe
   - id: release-contract
     control_class: acceptance-test
     fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
-    motivating_defect: public-version-surfaces-could-disagree
-  - id: engine-contract
+    motivating_defect: public-version-surfaces-must-agree
+  - id: parity-unread
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_engine_versions_and_skill_contract_agree
-    motivating_defect: engine-and-skill-versions-could-disagree
-  - id: streaming
+    fixture: ../synthesis-agent-conformance/scripts/test_diagnostic_parity.py::test_parity_repeats_without_consuming_unread_messages
+    motivating_defect: first-probe-consumed-messages-and-changed-the-second-context
+  - id: parity-negative
     control_class: acceptance-test
-    fixture: ../synthesis-agent-conformance/scripts/test_streaming_transcript.py::test_large_single_record_binds_with_bounded_memory
-    motivating_defect: line-count-bounds-did-not-bound-memory-or-reject-ambiguous-identity
-  - id: long-transcript
+    fixture: ../synthesis-agent-conformance/scripts/test_diagnostic_parity.py::test_parity_still_rejects_client_specific_context_differences
+    motivating_defect: ignoring-inbox-text-would-hide-real-divergence
+  - id: parity-error
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_long_transcript.py::test_long_native_transcript_is_accepted_with_bounded_memory
-    motivating_defect: long-native-history-was-rejected-and-promotion-failures-were-hidden
-  - id: generation-contract
+    fixture: ../synthesis-agent-conformance/scripts/test_diagnostic_parity.py::test_inbox_dependency_error_cannot_become_equal_successful_payloads
+    motivating_defect: identical-error-prose-produced-false-PASS
+  - id: normal-lifecycle
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_sessionstart_receipts_complete_live_loaded_plane
-    motivating_defect: generation-validator-used-quoted-UUIDs-instead-of-native-identity
-  - id: recovery-guidance
+    fixture: ../synthesis-agent-conformance/scripts/test_diagnostic_parity.py::test_normal_lifecycle_delivers_and_marks_once
+    motivating_defect: diagnostic-repair-must-not-disable-normal-delivery
+  - id: diagnostic-lifecycle
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_reload_guidance.py::test_scope_presentation_preserves_observation_and_outcome_bytes
-    motivating_defect: stronger-validation-must-preserve-truthful-reload-and-outcome-contracts
-  - id: promotion-contract
+    fixture: ../synthesis-agent-conformance/scripts/test_diagnostic_mode.py::test_diagnostic_main_suppresses_lifecycle_writes
+    motivating_defect: diagnostics-could-write-receipts-or-currency-state
+  - id: resolver-policy
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_pending_claude_receipt_is_promoted_once_its_transcript_binds
-    motivating_defect: pending-Claude-startup-must-attach-only-after-genuine-binding
-  - id: malformed
+    fixture: ../synthesis-agent-conformance/scripts/test_diagnostic_mode.py::test_project_resolver_policy_is_explicit
+    motivating_defect: diagnostics-could-fetch-fast-forward-and-refresh-coordination
+  - id: pointer-policy
     control_class: acceptance-test
-    fixture: ../synthesis-agent-conformance/scripts/test_streaming_transcript.py::test_malformed_or_ambiguous_record_cannot_supply_binding
-    motivating_defect: malformed-or-duplicate-identity-could-hide-a-contradiction
-  - id: identity-rejection
+    fixture: ../synthesis-agent-conformance/scripts/test_diagnostic_mode.py::test_pointer_loader_preserves_refresh_policy
+    motivating_defect: pointer-loader-could-not-disable-lease-refresh
+  - id: active-policy
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_long_transcript.py::test_structured_identity_is_required_without_mutating_state
-    motivating_defect: quoted-or-contradictory-UUIDs-could-enter-generation-state
-  - id: root-rejection
+    fixture: ../synthesis-agent-conformance/scripts/test_diagnostic_mode.py::test_build_threads_policy_through_active_pointer
+    motivating_defect: active-path-could-lose-read-only-policy
+  - id: receipt-order
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_long_transcript.py::test_live_load_preserves_path_time_and_payload_rejection
-    motivating_defect: transcript-path-provenance-and-payload-digest-must-be-rechecked
-  - id: diagnostics
+    fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_main_records_the_receipt_before_building_context
+    motivating_defect: context-failure-must-not-erase-genuine-startup-proof
+  - id: inbox-unread
     control_class: acceptance-test
-    fixture: ../synthesis-onboarding/scripts/test_long_transcript.py::test_rejected_candidate_surfaces_reason_without_restart_loop
-    motivating_defect: eligible-receipt-rejection-was-hidden-behind-another-restart
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_repeated_diagnostic_inbox_keeps_messages_and_files
+    motivating_defect: read-probe-must-not-mark-delivery
+  - id: inbox-board
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_invalid_board_refuses_diagnostic
+    motivating_defect: invalid-board-could-appear-empty
+  - id: inbox-absent
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_absent_optional_state_is_healthy
+    motivating_defect: absent-optional-state-must-differ-from-corruption
+  - id: inbox-snapshot
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_diagnostic_reads_board_only_once
+    motivating_defect: addressing-and-message-content-could-use-different-reads
+  - id: inbox-permission
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_unreadable_existing_dependency_refuses_diagnostic
+    motivating_defect: read-errors-could-appear-empty
+  - id: inbox-seat
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_existing_malformed_seat_refuses_diagnostic
+    motivating_defect: malformed-seat-could-appear-unclaimed
+  - id: inbox-ambiguous
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_duplicate_matching_seats_refuse_diagnostic
+    motivating_defect: first-seat-selection-could-hide-ambiguous-address
+  - id: inbox-watermark
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_existing_malformed_own_watermark_refuses_diagnostic
+    motivating_defect: malformed-watermark-could-appear-unread
+  - id: active-integration
+    control_class: acceptance-test
+    fixture: ../synthesis-agent-conformance/scripts/test_diagnostic_parity.py::test_valid_active_pointer_reconciles_without_mutation
+    motivating_defect: invalid-pointer-fixtures-did-not-exercise-active-reconciliation
+  - id: cold-cli
+    control_class: acceptance-test
+    fixture: ../synthesis-agent-conformance/scripts/test_diagnostic_parity.py::test_diagnostic_cli_ignores_write_permitting_environment_and_lifecycle_shape
+    motivating_defect: cold-imports-and-optional-index-refresh-could-write-during-diagnosis
+  - id: malformed-cli
+    control_class: acceptance-test
+    fixture: ../synthesis-agent-conformance/scripts/test_diagnostic_parity.py::test_actual_parity_rejects_malformed_message_records
+    motivating_defect: malformed-addressed-message-could-disappear-behind-identical-envelopes
+  - id: message-header
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_malformed_addressed_message_headers_refuse_diagnostic
+    motivating_defect: malformed-header-could-be-dropped-or-absorbed
+  - id: message-boundary
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_invalid_messages_boundary_refuses_diagnostic
+    motivating_defect: unexpected-heading-could-truncate-the-inbox
+  - id: body-heading
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_markdown_headings_in_message_body_are_not_message_boundaries
+    motivating_defect: valid-body-markdown-must-not-become-a-diagnostic-error
+  - id: empty-inbox
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_empty_canonical_message_section_is_healthy
+    motivating_defect: a-genuinely-empty-inbox-is-valid
+  - id: duplicate-json
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_duplicate_json_keys_refuse_diagnostic
+    motivating_defect: last-key-wins-could-hide-ambiguous-state
+  - id: seat-filename
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_noncanonical_seat_filename_does_not_hide_malformed_state
+    motivating_defect: sanitized-seat-alias-could-hide-corruption
+  - id: protocol-annotation
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_protocol_parenthetical_annotation_is_a_valid_boundary
+    motivating_defect: retained-annotated-protocol-heading-was-falsely-rejected
+  - id: unrelated-history
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_unrelated_historical_timestamp_is_not_an_addressed_inbox_failure
+    motivating_defect: unrelated-retained-history-must-not-invalidate-selected-inbox
+  - id: addressed-history
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_addressed_historical_timestamp_requires_verification
+    motivating_defect: relevant-unverifiable-time-must-not-waive-claim-floor
+  - id: normal-grammar
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_normal_parser_and_delivery_keep_existing_timestamp_grammar
+    motivating_defect: strict-support-must-not-change-normal-delivery
+  - id: normal-seat
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_normal_seat_discovery_retains_permissive_filename_behavior
+    motivating_defect: diagnostic-seat-validation-must-not-change-normal-discovery
+  - id: legacy-boundary
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_unrelated_untimed_legacy_block_is_a_separate_boundary
+    motivating_defect: demonstrably-unrelated-legacy-history-must-not-become-addressed-content
+  - id: legacy-scope
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_relevant_or_ambiguous_untimed_legacy_header_refuses
+    motivating_defect: uncertain-legacy-addressee-cannot-be-waived
+  - id: legacy-structure
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_unrelated_legacy_exception_does_not_accept_broken_structure
+    motivating_defect: scoped-exclusion-cannot-hide-a-malformed-boundary
+  - id: native-key
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_diagnostic_only_boundary_cannot_change_own_native_body_or_key
+    motivating_defect: diagnostic-only-boundary-could-redefine-an-already-delivered-native-message
+  - id: native-message
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_diagnostic_cannot_create_relevant_message_outside_native_grammar
+    motivating_defect: diagnostic-must-not-invent-a-message-normal-delivery-never-parsed
+  - id: unscoped-strict
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_unscoped_strict_parser_cannot_waive_timestamp_or_native_grammar
+    motivating_defect: unscoped-parser-has-no-authority-to-exclude-history
+  - id: table-spacing
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_equivalent_table_header_spacing_is_healthy
+    motivating_defect: equivalent-Markdown-spacing-is-not-corruption
+  - id: table-structure
+    control_class: acceptance-test
+    fixture: ../synthesis-project-management/scripts/test_diagnostic_inbox.py::test_invalid_table_header_structure_refuses
+    motivating_defect: malformed-table-columns-or-unparsed-data-cannot-produce-a-healthy-inbox

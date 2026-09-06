@@ -112,8 +112,8 @@ def test_absent_optional_state_is_healthy(inbox, missing):
 
 
 @pytest.mark.parametrize("corruption", [
-    "missing-messages", "missing-active", "invalid-schema", "newer-schema", "missing-schema",
-    "bad-row-width", "garbage-row", "bad-row-identity", "bad-row-started", "duplicate-own-row",
+    "missing-messages", "missing-active", "invalid-schema", "newer-schema", "missing-schema", "duplicate-schema",
+    "bad-row-width", "garbage-row", "bad-row-identity", "missing-row-identity", "bad-row-started", "duplicate-own-row",
 ])
 def test_invalid_board_refuses_diagnostic(inbox, corruption):
     board, row = inbox
@@ -125,9 +125,11 @@ def test_invalid_board_refuses_diagnostic(inbox, corruption):
         "invalid-schema": ("Schema: v4", "Schema: broken"),
         "newer-schema": ("Schema: v4", "Schema: v999"),
         "missing-schema": ("Schema: v4", ""),
+        "duplicate-schema": ("Schema: v4", "Schema: v4\nSchema: v4"),
         "bad-row-width": (own_line, "| broken | row |"),
         "garbage-row": (own_line, "unparseable active row"),
         "bad-row-identity": (row.compact_id, "s-invalid"),
+        "missing-row-identity": (row.session_uuid, ""),
         "bad-row-started": (row.started, "not-a-time"),
         "duplicate-own-row": (own_line, own_line + "\n" + own_line),
     }
@@ -223,3 +225,248 @@ def test_invalid_board_not_hidden_by_missing_identity_or_seat(inbox, missing):
     with pytest.raises(ValueError):
         INBOX.inbox_text({} if missing == "identity" else PAYLOAD, board=board,
                          environ={} if missing == "identity" else ENV, mark=False, strict=True)
+
+
+@pytest.mark.parametrize("target", ["first", "second", "timestamp", "ascii-arrow", "wrong-arrow", "missing-arrow"])
+def test_malformed_addressed_message_headers_refuse_diagnostic(inbox, target):
+    board, _ = inbox
+    text = board.read_text(encoding="utf-8")
+    if target == "first":
+        text = text.replace(" — 2026-01-02T00:00:00+00:00", " - 2026-01-02T00:00:00+00:00")
+    elif target == "second":
+        text = text.replace(" — 2026-01-02T00:00:01+00:00", " - 2026-01-02T00:00:01+00:00")
+    elif target == "timestamp":
+        text = text.replace("2026-01-02T00:00:01+00:00", "not-a-time")
+    elif target == "ascii-arrow":
+        text = text.replace("### →", "### ->", 1)
+    elif target == "wrong-arrow":
+        text = text.replace("### →", "### ⇒", 1)
+    else:
+        text = text.replace("### → ", "### ", 1)
+    board.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError):
+        diagnostic(board)
+
+
+def test_markdown_headings_in_message_body_are_not_message_boundaries(inbox):
+    board, _ = inbox
+    text = board.read_text(encoding="utf-8")
+    body = "Project message.\n\n### Design details\n\nA normal heading.\n\n### → Next step\n\nAn arrow heading."
+    board.write_text(text.replace("Project message.", body), encoding="utf-8")
+    result = diagnostic(board)
+    assert "2 unread message(s)" in result
+    assert "### Design details" in result and "### → Next step" in result
+
+
+@pytest.mark.parametrize("dependency", ["seat", "watermark"])
+def test_duplicate_json_keys_refuse_diagnostic(inbox, dependency):
+    board, row = inbox
+    if dependency == "seat":
+        path = PEER.seat_path(board, row.session_uuid)
+        text = path.read_text(encoding="utf-8").replace('"schema": 1', '"schema": 999, "schema": 1')
+    else:
+        path = PEER.watermark_path(board, ENV["SYNTHESIS_CLIENT_SESSION_REF"])
+        path.parent.mkdir()
+        text = '{"seen": ["hidden"], "seen": []}'
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError):
+        diagnostic(board)
+
+
+@pytest.mark.parametrize("corruption", ["unexpected-h2", "missing-protocol", "missing-separator"])
+def test_invalid_messages_boundary_refuses_diagnostic(inbox, corruption):
+    board, _ = inbox
+    text = board.read_text(encoding="utf-8")
+    if corruption == "unexpected-h2":
+        text = text.replace("## Messages\n\n", "## Messages\n\n## Unexpected heading\n\n")
+    elif corruption == "missing-protocol":
+        text = text.split("## Protocol", 1)[0]
+    else:
+        text = text.replace("---\n\n## Protocol", "## Protocol")
+    board.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError):
+        diagnostic(board)
+
+
+def test_empty_canonical_message_section_is_healthy(inbox):
+    board, _ = inbox
+    text = board.read_text(encoding="utf-8")
+    before_messages = text.split("## Messages", 1)[0]
+    after_messages = text.split("## Protocol", 1)[1]
+    board.write_text(before_messages + "## Messages\n\n---\n\n## Protocol" + after_messages, encoding="utf-8")
+    assert "unread message(s)" not in diagnostic(board)
+
+
+def test_noncanonical_seat_filename_does_not_hide_malformed_state(inbox):
+    board, _ = inbox
+    (PEER.seats_dir(board) / "invalid seat.json").write_text("{", encoding="utf-8")
+    with pytest.raises(ValueError):
+        diagnostic(board)
+
+
+@pytest.mark.parametrize("heading", ["## Protocol", "## Protocol (formalized in project management)"])
+def test_protocol_parenthetical_annotation_is_a_valid_boundary(inbox, heading):
+    board, _ = inbox
+    board.write_text(board.read_text(encoding="utf-8").replace("## Protocol", heading), encoding="utf-8")
+    assert "2 unread message(s)" in diagnostic(board)
+
+
+@pytest.mark.parametrize("recipient", ["all historical participants", "another-project sessions"])
+def test_unrelated_historical_timestamp_is_not_an_addressed_inbox_failure(inbox, recipient):
+    board, _ = inbox
+    historical = f"### → {recipient}, from sender-b — 2026-01-01 ~17:30 UTC\n\nHistorical note.\n\n"
+    text = board.read_text(encoding="utf-8").replace("## Messages\n\n", "## Messages\n\n" + historical)
+    board.write_text(text, encoding="utf-8")
+    result = diagnostic(board)
+    assert "2 unread message(s)" in result
+    assert "Historical note." not in result
+    assert "Direct message." in result and "Project message." in result
+
+
+@pytest.mark.parametrize("target", ["direct", "project"])
+def test_addressed_historical_timestamp_requires_verification(inbox, target):
+    board, _ = inbox
+    timestamp = "2026-01-02T00:00:00+00:00" if target == "direct" else "2026-01-02T00:00:01+00:00"
+    text = board.read_text(encoding="utf-8").replace(timestamp, "2026-01-01 ~17:30 UTC")
+    board.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError):
+        diagnostic(board)
+
+
+def test_normal_parser_and_delivery_keep_existing_timestamp_grammar(inbox):
+    board, _ = inbox
+    text = board.read_text(encoding="utf-8")
+    assert len(PEER.parse_messages(text)) == 2
+    historical = "### → project-a sessions, from sender-b — 2026-01-01 ~17:30 UTC\n\nHistorical note.\n\n"
+    text = text.replace("## Messages\n\n", "## Messages\n\n" + historical)
+    board.write_text(text, encoding="utf-8")
+    assert len(PEER.parse_messages(text)) == 2
+    normal = INBOX.inbox_text(PAYLOAD, board=board, environ=ENV)
+    assert "2 unread message(s)" in normal and "Historical note." not in normal
+
+
+def test_normal_seat_discovery_retains_permissive_filename_behavior(inbox):
+    board, row = inbox
+    PEER.seat_path(board, row.session_uuid).rename(PEER.seats_dir(board) / "legacy-seat.json")
+    normal = INBOX.inbox_text(PAYLOAD, board=board, environ=ENV)
+    assert "2 unread message(s)" in normal
+    with pytest.raises(ValueError):
+        diagnostic(board)
+
+
+@pytest.mark.parametrize("recipient", ["Client A (session A)", "other-project sessions"])
+@pytest.mark.parametrize("prior_unrelated", [False, True])
+def test_unrelated_untimed_legacy_block_is_a_separate_boundary(inbox, recipient, prior_unrelated):
+    board, row = inbox
+    legacy = f"### → {recipient}, from Client B (session B)\n\nHistorical body stays separate.\n\n"
+    if prior_unrelated:
+        legacy = "### → other-project sessions, from sender-c — 2026-01-01T00:00:00Z\n\nPrior unrelated body.\n\n" + legacy
+    text = board.read_text(encoding="utf-8").replace("## Messages\n\n", "## Messages\n\n" + legacy)
+    board.write_text(text, encoding="utf-8")
+    before = snapshot(board.parent)
+    result = diagnostic(board)
+    assert "2 unread message(s)" in result
+    assert "Direct message." in result and "Project message." in result
+    assert "Historical body stays separate." not in result
+    scoped = PEER.parse_messages(text, strict=True, identity_forms={row.compact_id}, project=row.project)
+    assert all("Historical body stays separate." not in message.body for message in scoped)
+    if prior_unrelated:
+        assert scoped[0].body == "Prior unrelated body."
+    assert snapshot(board.parent) == before
+    with pytest.raises(ValueError):
+        PEER.parse_messages(text, strict=True)
+
+
+@pytest.mark.parametrize("recipient_kind", ["direct", "project", "embedded-id", "embedded-project", "all", "this", "unknown", "ambiguous"])
+def test_relevant_or_ambiguous_untimed_legacy_header_refuses(inbox, recipient_kind):
+    board, row = inbox
+    recipient = {
+        "direct": row.compact_id, "project": "project-a sessions",
+        "embedded-id": f"Client A (session {row.compact_id})", "embedded-project": "project-a review sessions",
+        "all": "all sessions", "this": "this session", "unknown": "unknown", "ambiguous": "session awaiting routing",
+    }[recipient_kind]
+    legacy = f"### → {recipient}, from Client B (session B)\n\nHistorical body.\n\n"
+    text = board.read_text(encoding="utf-8").replace("## Messages\n\n", "## Messages\n\n" + legacy)
+    board.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError):
+        diagnostic(board)
+
+
+@pytest.mark.parametrize("heading", [
+    "### -> Client A (session A), from Client B (session B)",
+    "### → Client A (session A), from Client B (session B) - 2026-01-02T00:00:00Z",
+])
+def test_unrelated_legacy_exception_does_not_accept_broken_structure(inbox, heading):
+    board, _ = inbox
+    text = board.read_text(encoding="utf-8").replace("## Messages\n\n", "## Messages\n\n" + heading + "\n\nHistorical body.\n\n")
+    board.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError):
+        diagnostic(board)
+
+
+def test_equivalent_table_header_spacing_is_healthy(inbox):
+    board, _ = inbox
+    header, separator = ENGINE.TABLE_HEADER.splitlines()
+    spaced_header = "|  " + "  |  ".join(ENGINE.TABLE_COLUMNS) + "  |"
+    spaced_separator = "| " + " | ".join("---" for _ in ENGINE.TABLE_COLUMNS) + " |"
+    text = board.read_text(encoding="utf-8").replace(header, spaced_header).replace(separator, spaced_separator)
+    text = "\n".join(line + "  " if line.startswith("| ") and "active |" in line else line for line in text.splitlines()) + "\n"
+    board.write_text(text, encoding="utf-8")
+    assert "2 unread message(s)" in diagnostic(board)
+
+
+@pytest.mark.parametrize("corruption", ["wrong-column", "missing-column", "reordered-column", "separator-width", "separator-grammar", "indented-row"])
+def test_invalid_table_header_structure_refuses(inbox, corruption):
+    board, row = inbox
+    text = board.read_text(encoding="utf-8")
+    header, separator = ENGINE.TABLE_HEADER.splitlines()
+    columns = list(ENGINE.TABLE_COLUMNS)
+    if corruption == "wrong-column":
+        columns[0] = "unknown"
+    elif corruption == "missing-column":
+        columns.pop()
+    elif corruption == "reordered-column":
+        columns[0], columns[1] = columns[1], columns[0]
+    elif corruption == "separator-width":
+        text = text.replace(separator, "|---|---|")
+    elif corruption == "separator-grammar":
+        text = text.replace(separator, separator.replace("---", "???", 1))
+    else:
+        text = text.replace(f"| {row.session_uuid} |", f"  | {row.session_uuid} |")
+    text = text.replace(header, "| " + " | ".join(columns) + " |")
+    board.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError):
+        diagnostic(board)
+
+
+@pytest.mark.parametrize("timestamp", ["", " — 2026-01-01 ~17:30 UTC"])
+def test_diagnostic_only_boundary_cannot_change_own_native_body_or_key(inbox, timestamp):
+    board, _ = inbox
+    legacy = f"### → Client A (session A), from Client B (session B){timestamp}\n\nHistorical body.\n\n"
+    text = board.read_text(encoding="utf-8").replace("### → project-a sessions", legacy + "### → project-a sessions")
+    board.write_text(text, encoding="utf-8")
+    native_messages = PEER.parse_messages(text)
+    assert len(native_messages) == 2 and "Historical body." in native_messages[0].body
+    PEER.mark_seen(board, ENV["SYNTHESIS_CLIENT_SESSION_REF"], {message.key for message in native_messages})
+    before = snapshot(board.parent)
+    with pytest.raises(ValueError):
+        diagnostic(board)
+    assert snapshot(board.parent) == before
+
+
+@pytest.mark.parametrize("target", ["direct", "project"])
+def test_diagnostic_cannot_create_relevant_message_outside_native_grammar(inbox, target):
+    board, _ = inbox
+    timestamp = "2026-01-02T00:00:00+00:00" if target == "direct" else "2026-01-02T00:00:01+00:00"
+    text = board.read_text(encoding="utf-8").replace(timestamp, "2026-01-02 00:00:00+00:00")
+    board.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError):
+        diagnostic(board)
+
+
+@pytest.mark.parametrize("timestamp", ["not-a-time", "2026-01-02 00:00:00+00:00"])
+def test_unscoped_strict_parser_cannot_waive_timestamp_or_native_grammar(inbox, timestamp):
+    board, _ = inbox
+    text = board.read_text(encoding="utf-8").replace("2026-01-02T00:00:00+00:00", timestamp)
+    with pytest.raises(ValueError):
+        PEER.parse_messages(text, strict=True)

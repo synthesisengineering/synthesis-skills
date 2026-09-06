@@ -4,6 +4,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -87,11 +89,13 @@ def inbox_project(tmp_path: Path, monkeypatch):
 
     def claim(project_name: str, native_ref: str):
         monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", native_ref)
+        workspace = repo if project_name == project.name else tmp_path / project_name
+        area = project if project_name == project.name else workspace
+        branch = "main" if project_name == project.name else f"feature/{project_name}"
         request = SimpleNamespace(
             board=board, id=None, agent="agent", machine="fixture-machine",
             project=project_name, mode="interactive", goal="Verify the fixture",
-            workspace=[f"{tmp_path / project_name} @ feature/{project_name}"],
-            area=[str(tmp_path / project_name)],
+            workspace=[f"{workspace} @ {branch}"], area=[str(area)],
             context_role="owner",
         )
         assert coordination.command_claim(request) == 0
@@ -107,15 +111,74 @@ def inbox_project(tmp_path: Path, monkeypatch):
             board=board, sender=sender.compact_id, to=target, text=message
         )) == 0
 
-    pointer = home / "active-project.json"
+    pointer = home / ".synthesis" / "active-project.json"
     # Exercise the existing pointer-fallback path as well as stopped recovery:
     # no remote lease is fabricated to make a fixture pointer authoritative.
     pointer.write_text(json.dumps({"project": str(project)}), encoding="utf-8")
     return SimpleNamespace(
         root=tmp_path, home=home, repo=repo, project=project, plan=plan,
         board=board, pointer=pointer, cursor=watermark_path(board, SESSION_REF),
+        owner=recipient.session_uuid,
         summary={"phase": "Ready", "status": "Paused", "plan": str(plan)},
     )
+
+
+def valid_pointer(fixture) -> None:
+    """Provide verifiable local lease evidence without contacting a remote."""
+    (fixture.project.parent / "index.yaml").write_text(
+        f"projects:\n  - id: {fixture.project.name}\n    status: paused\n", encoding="utf-8"
+    )
+    git(fixture.repo, "add", "projects/index.yaml")
+    git(fixture.repo, "commit", "-qm", "Register fixture project")
+    git(fixture.repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    lease = (fixture.root / "local-lease.git").as_uri()
+    text = fixture.board.read_text(encoding="utf-8")
+    fixture.board.write_text(text.replace("\n", f"\nLease: {lease}\n", 1), encoding="utf-8")
+    fixture.pointer.write_text(json.dumps({
+        "project": str(fixture.project), "plan": str(fixture.plan),
+        "worktree": str(fixture.repo), "branch": "main",
+        "source_commit": git(fixture.repo, "rev-parse", "HEAD").stdout.strip(),
+        "owner_session": fixture.owner, "owner_lease": lease,
+    }), encoding="utf-8")
+
+
+def tree_state(root: Path) -> dict[str, tuple]:
+    """Track creation and modification of both data and metadata directories."""
+    state = {}
+    for path in [root, *sorted(root.rglob("*"))]:
+        relative = str(path.relative_to(root))
+        if path.is_symlink():
+            state[relative] = ("symlink", os.readlink(path), path.lstat().st_mtime_ns)
+        elif path.is_dir():
+            state[relative] = ("directory", path.stat().st_mtime_ns)
+        else:
+            state[relative] = ("file", *file_state(path))
+    return state
+
+
+@pytest.mark.parametrize("existing_cursor", [False, True])
+def test_valid_active_pointer_reconciles_without_mutation(
+    inbox_project, monkeypatch, existing_cursor
+) -> None:
+    fixture = inbox_project
+    valid_pointer(fixture)
+    if existing_cursor:
+        fixture.cursor.parent.mkdir(parents=True)
+        fixture.cursor.write_text('{"seen": ["historical-message"]}\n', encoding="utf-8")
+    before = tree_state(fixture.root)
+    observed = capture_real_children(monkeypatch)
+    outcomes = [compare("active", fixture), compare("active", fixture)]
+    assert all(ok for ok, _ in outcomes), outcomes
+    assert len(observed) == 4
+    for result in observed:
+        message = context(result)
+        assert f"Active synthesis project: {fixture.project}." in message
+        assert "Active-project pointer ignored" not in message
+        assert "Current phase: Ready." in message
+        assert DIRECT_MESSAGE in message and PROJECT_MESSAGE in message
+    after = tree_state(fixture.root)
+    assert after == before, [key for key in before.keys() | after.keys()
+                             if before.get(key) != after.get(key)]
 
 
 def compare(kind: str, fixture) -> tuple[bool, str]:
@@ -261,3 +324,83 @@ def test_inbox_dependency_error_cannot_become_equal_successful_payloads(
     assert not ok, detail
     assert observed and observed[0].returncode != 0
     assert "fixture inbox dependency unavailable" in detail
+
+
+@pytest.mark.parametrize("kind", ["active", "stopped"])
+@pytest.mark.parametrize("fault", ["heading", "timestamp"])
+def test_actual_parity_rejects_malformed_message_records(
+    inbox_project, monkeypatch, kind, fault
+) -> None:
+    fixture = inbox_project
+    original = fixture.board.read_text(encoding="utf-8")
+    if fault == "heading":
+        malformed = original.replace("### → ", "### -> ", 1)
+    else:
+        malformed = re.sub(r"(### → [^\n]+ — )\S+", r"\1invalid-timestamp", original, count=1)
+    assert malformed != original
+    fixture.board.write_text(malformed, encoding="utf-8")
+    before = tree_state(fixture.home)
+    observed = capture_real_children(monkeypatch)
+    ok, detail = compare(kind, fixture)
+    assert not ok, detail
+    assert observed and observed[0].returncode != 0
+    assert "failed" in detail
+    assert tree_state(fixture.home) == before
+
+
+@pytest.mark.parametrize("client_format", ["claude", "codex"])
+def test_diagnostic_cli_ignores_write_permitting_environment_and_lifecycle_shape(
+    inbox_project, monkeypatch, client_format
+) -> None:
+    fixture = inbox_project
+    valid_pointer(fixture)
+    # Copy the three dependency trees without bytecode, so missing cache files
+    # positively expose import writes instead of relying on a pre-warmed tree.
+    runtime = fixture.root / "runtime"
+    for skill in ("synthesis-agent-conformance", "synthesis-project-management", "synthesis-onboarding"):
+        shutil.copytree(
+            SCRIPTS.parents[1] / skill, runtime / "skills" / skill,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
+    manifest = runtime / ".codex-plugin" / "plugin.json"
+    manifest.parent.mkdir()
+    manifest.write_text('{"name": "synthesis-skills", "version": "1.0.0"}\n', encoding="utf-8")
+    transcript = fixture.home / ".codex" / "sessions" / "fixture.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(json.dumps({"type": "session_meta", "payload": {"id": SESSION_ID}}) + "\n",
+                          encoding="utf-8")
+    receipt = fixture.home / ".synthesis" / "agent-conformance" / "live" / "public-sessionstart.json"
+    monkeypatch.setenv("GIT_OPTIONAL_LOCKS", "1")
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "")
+    monkeypatch.delenv("PYTHONPYCACHEPREFIX", raising=False)
+    monkeypatch.setenv("SYNTHESIS_PUBLIC_SESSIONSTART_RECEIPT", str(receipt))
+    # A same-content mtime change gives Git an actual optional-index refresh
+    # to perform. Without this, an already-fresh index could hide an enabled
+    # write policy even though the before/after hashes happened to agree.
+    tracked = fixture.project / "CONTEXT.md"
+    stat = tracked.stat()
+    os.utime(tracked, ns=(stat.st_atime_ns, stat.st_mtime_ns + 2_000_000_000))
+    payload = json.dumps({"session_id": SESSION_ID, "hook_event_name": "SessionStart",
+                          "source": "resume", "cwd": str(fixture.project),
+                          "transcript_path": str(transcript)})
+    script = runtime / "skills" / "synthesis-agent-conformance" / "scripts" / "session_context.py"
+    before = tree_state(fixture.root)
+    # Deliberately no Python -B flag: the public diagnostic CLI owns its policy.
+    result = CONFORMANCE.run(
+        [sys.executable, str(script), "--diagnostic", "--format", client_format,
+         "--active-project-file", str(fixture.pointer), "--coordination-board", str(fixture.board)],
+        input_text=payload,
+    )
+    message = context(result)
+    assert f"Active synthesis project: {fixture.project}." in message
+    assert DIRECT_MESSAGE in message and PROJECT_MESSAGE in message
+    assert not receipt.exists()
+    after = tree_state(fixture.root)
+    assert after == before, [key for key in before.keys() | after.keys()
+                             if before.get(key) != after.get(key)]
+    # Positive control: the same Git operation can update this index when
+    # explicitly allowed, so the preserved-index assertion is not vacuous.
+    index = fixture.repo / ".git" / "index"
+    before_index = file_state(index)
+    git(fixture.repo, "status", "--porcelain=v1", "--", "projects")
+    assert file_state(index) != before_index

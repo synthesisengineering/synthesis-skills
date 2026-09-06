@@ -14,6 +14,11 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Diagnostic CLI invocations must not create caches while importing providers.
+# The conformance caller also uses -B, which applies before this script loads.
+if "--diagnostic" in sys.argv[1:]:
+    sys.dont_write_bytecode = True
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - Windows only
@@ -416,7 +421,7 @@ def linked_plan(project: Path, context: str) -> Path | None:
     return project / match.group(1) if match else None
 
 
-def reconciled_project(project: Path) -> tuple[Path, list[str]]:
+def reconciled_project(project: Path, *, diagnostic: bool = False) -> tuple[Path, list[str]]:
     """Resolve a project across worktrees and refs before reading its prose."""
     index = project.parent / "index.yaml"
     if not index.is_file():
@@ -431,9 +436,9 @@ def reconciled_project(project: Path) -> tuple[Path, list[str]]:
         checkpoint_receipt_root=synthesis_home / "project-state" / "receipts",
         coordination_board=board if board.is_file() else None,
         pointer=pointer,
-        fetch=True,
-        fast_forward_canonical=True,
-        refresh_coordination=board.is_file(),
+        fetch=not diagnostic,
+        fast_forward_canonical=not diagnostic,
+        refresh_coordination=not diagnostic and board.is_file(),
     )
     if report.status not in {"PASS", "LOCAL_RECOVERABLE"}:
         raise ValueError(
@@ -448,8 +453,10 @@ def reconciled_project(project: Path) -> tuple[Path, list[str]]:
     return Path(report.selected_path), report.issues
 
 
-def append_project_context(lines: list[str], project: Path, *, label: str) -> None:
-    project, recovery_issues = reconciled_project(project)
+def append_project_context(
+    lines: list[str], project: Path, *, label: str, diagnostic: bool = False
+) -> None:
+    project, recovery_issues = reconciled_project(project, diagnostic=diagnostic)
     context_path = project / "CONTEXT.md"
     context = context_path.read_text(encoding="utf-8")
     semantic = semantic_issues(project)
@@ -491,6 +498,8 @@ def build(
     coordination_board: Path = DEFAULT_COORDINATION_BOARD,
     cwd: Path | None = None,
     pending_handoffs: Path = DEFAULT_PENDING_HANDOFFS,
+    *,
+    diagnostic: bool = False,
 ) -> str:
     now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z (%A)")
     lines = [f"Verified local time: {now}."]
@@ -517,6 +526,7 @@ def build(
                 lines,
                 discovered,
                 label="Stopped synthesis project discovered from the task directory",
+                diagnostic=diagnostic,
             )
         else:
             lines.extend(workspace_registry_notices(cwd))
@@ -535,7 +545,9 @@ def build(
             )
         return "\n".join(lines)
 
-    data, pointer_issues = load_and_validate(pointer, coordination_board)
+    data, pointer_issues = load_and_validate(
+        pointer, coordination_board, refresh_lease=not diagnostic
+    )
     if pointer_issues:
         raise ValueError("; ".join(pointer_issues))
     project = Path(data["project"]).expanduser().resolve()
@@ -546,11 +558,15 @@ def build(
     plan = data.get("plan", "unknown")
     if plan != "unknown" and not Path(plan).is_file():
         raise FileNotFoundError(f"active plan is missing: {plan}")
-    append_project_context(lines, project, label="Active synthesis project")
+    append_project_context(
+        lines, project, label="Active synthesis project", diagnostic=diagnostic
+    )
     return "\n".join(lines)
 
 
-def append_inbox(message: str, payload: dict, board: Path) -> str:
+def append_inbox(
+    message: str, payload: dict, board: Path, *, diagnostic: bool = False
+) -> str:
     """Attach unread board messages for this seat, and for a non-Claude
     client its coordination identity, so the bus is delivered at session
     start and a Codex session learns the id its receipts are filed under.
@@ -559,8 +575,10 @@ def append_inbox(message: str, payload: dict, board: Path) -> str:
     try:
         from board_inbox import inbox_text
 
-        extra = inbox_text(payload, board=board)
+        extra = inbox_text(payload, board=board, mark=not diagnostic, strict=diagnostic)
     except Exception as exc:  # the inbox never blocks a session start
+        if diagnostic:
+            raise
         extra = f"Coordination inbox unavailable: {exc}"
     return message + ("\n" + extra if extra else "")
 
@@ -568,6 +586,10 @@ def append_inbox(message: str, payload: dict, board: Path) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--active-project-file", type=Path, default=DEFAULT_POINTER)
+    parser.add_argument(
+        "--diagnostic", action="store_true",
+        help="Compare local context without deliveries, receipts, currency writes or state refreshes.",
+    )
     parser.add_argument(
         "--coordination-board",
         type=Path,
@@ -590,6 +612,9 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
+    if args.diagnostic:
+        # Read-only Git commands such as status may otherwise refresh the index.
+        os.environ["GIT_OPTIONAL_LOCKS"] = "0"
     try:
         payload = json.load(sys.stdin)
     except Exception:
@@ -601,16 +626,17 @@ def main() -> int:
     # pointer to a worktree eleven commits behind failed this hook closed
     # before it recorded, and no Claude session on the machine could show a
     # current receipt.
-    try:
-        record_live_receipt(payload, args.live_receipt.expanduser())
-    except Exception as exc:
-        print(f"synthesis live receipt failed closed: {exc}", file=sys.stderr)
-        return 2
+    if not args.diagnostic:
+        try:
+            record_live_receipt(payload, args.live_receipt.expanduser())
+        except Exception as exc:
+            print(f"synthesis live receipt failed closed: {exc}", file=sys.stderr)
+            return 2
     pointer = args.active_project_file.expanduser()
     board = args.coordination_board.expanduser()
     cwd = Path(str(payload["cwd"])) if payload.get("cwd") else None
     try:
-        message = build(pointer, board, cwd)
+        message = build(pointer, board, cwd, diagnostic=args.diagnostic)
     except Exception as exc:
         if not pointer.is_file():
             print(f"synthesis project context failed closed: {exc}", file=sys.stderr)
@@ -622,7 +648,7 @@ def main() -> int:
         # task's checkout.
         ignored = pointer.with_name(pointer.name + ".ignored-by-this-session")
         try:
-            message = build(ignored, board, cwd)
+            message = build(ignored, board, cwd, diagnostic=args.diagnostic)
         except Exception as inner:
             print(f"synthesis project context failed closed: {inner}", file=sys.stderr)
             return 2
@@ -632,8 +658,13 @@ def main() -> int:
             "from the tracked projects/index.yaml through the causal resolver.\n"
             + message
         )
-    message = append_currency_notice(message, payload)
-    message = append_inbox(message, payload, board)
+    if not args.diagnostic:
+        message = append_currency_notice(message, payload)
+    try:
+        message = append_inbox(message, payload, board, diagnostic=args.diagnostic)
+    except Exception as exc:
+        print(f"synthesis diagnostic inbox failed closed: {exc}", file=sys.stderr)
+        return 2
 
     if args.format == "codex":
         event = payload.get("hook_event_name", "SessionStart")

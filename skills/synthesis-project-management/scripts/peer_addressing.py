@@ -50,9 +50,15 @@ CLIENT_CODEX = "codex"
 UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 )
-MESSAGE_HEADING = re.compile(
-    r"^### → (?P<recipient>.+?), from (?P<sender>.+?) — (?P<timestamp>\S+)\s*$"
-)
+MESSAGE_ADDRESS_PREFIX = r"^### → (?P<recipient>.+?), from "
+MESSAGE_HEADING_PREFIX = MESSAGE_ADDRESS_PREFIX + r"(?P<sender>.+?) — "
+MESSAGE_HEADING = re.compile(MESSAGE_HEADING_PREFIX + r"(?P<timestamp>\S+)\s*$")
+# Diagnostics must inspect retained human-written dates to decide whether
+# they affect this inbox. Normal delivery retains its single-token grammar.
+DIAGNOSTIC_MESSAGE_HEADING = re.compile(MESSAGE_HEADING_PREFIX + r"(?P<timestamp>\S.*?)\s*$")
+LEGACY_UNTIMED_HEADING = re.compile(MESSAGE_ADDRESS_PREFIX + r"(?P<sender>[^—\r\n]+?)\s*$")
+MESSAGE_HEADING_CANDIDATE = re.compile(r"^###\s+.*?,\s*from\b")
+PROTOCOL_HEADING = re.compile(r"^## Protocol(?: \([^()\r\n]+\))?$")
 
 
 def utcnow() -> datetime:
@@ -95,6 +101,16 @@ def send_log_path(board: Path) -> Path:
 
 def safe_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("._") or "unknown"
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict:
+    """Reject ambiguous diagnostic state instead of accepting the last key."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate coordination JSON field: {key}")
+        result[key] = value
+    return result
 
 
 # --------------------------------------------------------------------------
@@ -248,14 +264,46 @@ def write_seat(
     return path
 
 
-def read_seat(board: Path, session_uuid: str) -> Seat | None:
-    path = seat_path(board, session_uuid)
+def read_seat(board: Path, session_uuid: str, *, strict: bool = False) -> Seat | None:
+    return _read_seat_path(seat_path(board, session_uuid), expected_uuid=session_uuid, strict=strict)
+
+
+def _read_seat_path(path: Path, *, expected_uuid: str | None = None, strict: bool = False) -> Seat | None:
+    """Shared reader; ordinary directory discovery retains its filename tolerance."""
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(
+            path.read_text(encoding="utf-8"), object_pairs_hook=_unique_json_object if strict else None
+        )
+    except FileNotFoundError:
+        if strict and path.is_symlink():
+            raise
+        return None
     except (OSError, ValueError):
+        if strict:
+            raise
         return None
-    if not isinstance(data, dict) or data.get("session_uuid") != session_uuid:
+    if (
+        not isinstance(data, dict) or not data.get("session_uuid")
+        or (expected_uuid is not None and data.get("session_uuid") != expected_uuid)
+    ):
+        if strict:
+            raise ValueError(f"invalid coordination seat: {path}")
         return None
+    if strict:
+        required = ("session_uuid", "compact_id", "client", "machine")
+        string_fields = (*required, "harness_session_id", "host_session_id", "cwd", "updated_at")
+        if (
+            type(data.get("schema")) is not int or data["schema"] != SEAT_SCHEMA
+            or any(not isinstance(data.get(key), str) or not data[key] for key in required)
+            or any(key in data and not isinstance(data[key], str) for key in string_fields)
+            or not UUID_RE.fullmatch(data["session_uuid"])
+            or (data.get("pid") is not None and (type(data["pid"]) is not int or data["pid"] <= 0))
+        ):
+            raise ValueError(f"invalid coordination seat fields: {path}")
+        from coordination_schema import identity_from_uuid
+
+        if data["compact_id"] != identity_from_uuid(data["session_uuid"]).compact_id:
+            raise ValueError(f"coordination seat identity mismatch: {path}")
     known = {field for field in Seat.__dataclass_fields__}
     return Seat(**{key: value for key, value in data.items() if key in known})
 
@@ -269,31 +317,47 @@ def remove_seat(board: Path, session_uuid: str) -> bool:
     return True
 
 
-def all_seats(board: Path) -> list[Seat]:
+def all_seats(board: Path, *, strict: bool = False) -> list[Seat]:
     directory = seats_dir(board)
-    if not directory.is_dir():
-        return []
-    seats = []
-    for path in sorted(directory.glob("*.json")):
+    if strict:
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(data, dict) and data.get("session_uuid"):
-            known = {field for field in Seat.__dataclass_fields__}
-            seats.append(Seat(**{k: v for k, v in data.items() if k in known}))
+            # glob/is_dir may suppress filesystem errors; diagnostics must
+            # distinguish an absent optional directory from an unreadable one.
+            paths = sorted(path for path in directory.iterdir() if path.suffix == ".json")
+        except FileNotFoundError:
+            if directory.is_symlink():
+                raise
+            return []
+    else:
+        if not directory.is_dir():
+            return []
+        paths = sorted(directory.glob("*.json"))
+    seats = []
+    for path in paths:
+        if strict and not UUID_RE.fullmatch(path.stem):
+            raise ValueError(f"invalid coordination seat filename: {path}")
+        seat = _read_seat_path(path, expected_uuid=path.stem if strict else None, strict=strict)
+        if seat is not None:
+            seats.append(seat)
     return seats
 
 
-def seat_for_identity(board: Path, identity: SelfIdentity) -> Seat | None:
+def seat_for_identity(board: Path, identity: SelfIdentity, *, strict: bool = False) -> Seat | None:
     """This session's own seat, found by the handle a hook or shell knows."""
-    for seat in all_seats(board):
-        if identity.harness_session_id and seat.harness_session_id == identity.harness_session_id:
-            if seat.client == identity.client or not identity.client:
+    matches = []
+    for seat in all_seats(board, strict=strict):
+        harness_match = (
+            identity.harness_session_id and seat.harness_session_id == identity.harness_session_id
+            and (seat.client == identity.client or not identity.client)
+        )
+        host_match = identity.host_session_id and seat.host_session_id == identity.host_session_id
+        if harness_match or host_match:
+            if not strict:
                 return seat
-        if identity.host_session_id and seat.host_session_id == identity.host_session_id:
-            return seat
-    return None
+            matches.append(seat)
+    if len(matches) > 1:
+        raise ValueError("multiple coordination seats match this session's identity")
+    return matches[0] if matches else None
 
 
 # --------------------------------------------------------------------------
@@ -615,18 +679,50 @@ class BoardMessage:
         ).hexdigest()[:16]
 
 
-def parse_messages(board_text: str) -> list[BoardMessage]:
+def _mentions_inbox_scope(recipient: str, identity_forms: set[str] | None, project: str) -> bool:
+    folded = recipient.casefold()
+    return any(value and value.casefold() in folded for value in [*(identity_forms or ()), project])
+
+
+def _unrelated_legacy_recipient(recipient: str, identity_forms: set[str] | None, project: str) -> bool:
+    """A narrow structural exclusion, never a guess about an unknown addressee."""
+    if not (identity_forms or project) or _mentions_inbox_scope(recipient, identity_forms, project):
+        return False
+    if re.search(r"\b(?:all|any|every|both|current|this|everyone|anyone|whoever|you|your|our)\b", recipient, re.I):
+        return False
+    return bool(
+        UUID_RE.fullmatch(recipient)
+        or re.fullmatch(r"s-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}", recipient)
+        or re.fullmatch(r"(?:[a-z]+-){4}\d{5}", recipient)
+        or re.fullmatch(r"[a-z0-9][a-z0-9-]* sessions", recipient)
+        or re.fullmatch(r"[A-Za-z][A-Za-z0-9 .-]* \(session [A-Za-z0-9_.:-]+\)", recipient)
+    )
+
+
+def parse_messages(
+    board_text: str, *, strict: bool = False, identity_forms: set[str] | None = None, project: str = ""
+) -> list[BoardMessage]:
     """Every addressed message under ``## Messages``, in board order."""
     lines = board_text.splitlines()
     try:
         start = next(i for i, line in enumerate(lines) if line.strip() == "## Messages")
     except StopIteration:
+        if strict:
+            raise ValueError("coordination board is missing its Messages section")
         return []
+    if strict and sum(line.strip() == "## Messages" for line in lines) != 1:
+        raise ValueError("coordination board has multiple Messages sections")
     end = len(lines)
     for i in range(start + 1, len(lines)):
         if lines[i].startswith("## "):
             end = i
             break
+    if strict:
+        section_lines = [line.strip() for line in lines[start + 1:end] if line.strip()]
+        if end == len(lines) or PROTOCOL_HEADING.fullmatch(lines[end].strip()) is None:
+            raise ValueError("coordination Messages section must end at Protocol, not an unexpected heading")
+        if not section_lines or section_lines[-1] != "---":
+            raise ValueError("coordination Messages section is missing its Protocol separator")
     messages: list[BoardMessage] = []
     current: BoardMessage | None = None
     body: list[str] = []
@@ -638,8 +734,46 @@ def parse_messages(board_text: str) -> list[BoardMessage]:
             text_lines.pop()
         return "\n".join(text_lines).strip()
 
+    heading = DIAGNOSTIC_MESSAGE_HEADING if strict else MESSAGE_HEADING
     for line in lines[start + 1:end]:
-        match = MESSAGE_HEADING.match(line)
+        match = heading.match(line)
+        candidate = bool(MESSAGE_HEADING_CANDIDATE.match(line))
+        if (
+            strict and match and identity_forms is None
+            and (MESSAGE_HEADING.match(line) is None or parse_iso(match.group("timestamp")) is None)
+        ):
+            raise ValueError("unscoped diagnostic cannot waive message timestamp or native header grammar")
+        if (
+            strict and match and MESSAGE_HEADING.match(line) is None
+            and _mentions_inbox_scope(match.group("recipient"), identity_forms, project)
+        ):
+            raise ValueError("diagnostic cannot create an addressed message outside native header grammar")
+        if strict and candidate and MESSAGE_HEADING.match(line) is None and current is not None:
+            # A boundary the native parser did not recognize is part of its
+            # previous body/key. Never silently redefine relevant delivered
+            # evidence, even when its native key already has a watermark.
+            if identity_forms is None or _mentions_inbox_scope(current.recipient, identity_forms, project):
+                raise ValueError("diagnostic message boundary would change an addressed native body or key")
+        # Only the addressed-header grammar is reserved. Ordinary Markdown
+        # headings, including arrow headings without an addressee/sender,
+        # remain message body content.
+        if strict and candidate and match is None:
+            legacy = LEGACY_UNTIMED_HEADING.fullmatch(line)
+            if (
+                legacy is None or identity_forms is None
+                or not legacy.group("sender").strip()
+                or re.search(r"\s[-–—]\s", legacy.group("sender"))
+                or not _unrelated_legacy_recipient(legacy.group("recipient").strip(), identity_forms, project)
+            ):
+                raise ValueError("coordination board has a malformed addressed message heading")
+            if current is not None:
+                current.body = finish(body)
+                messages.append(current)
+            # Exclude this independently addressed legacy block without
+            # inventing a timestamp, message key, or delivery watermark.
+            current = None
+            body = []
+            continue
         if match:
             if current is not None:
                 current.body = finish(body)
@@ -692,12 +826,23 @@ def watermark_path(board: Path, sender_key: str) -> Path:
     return inbox_dir(board) / f"{safe_name(sender_key)}.json"
 
 
-def seen_keys(board: Path, sender_key: str) -> set[str]:
+def seen_keys(board: Path, sender_key: str, *, strict: bool = False) -> set[str]:
+    path = watermark_path(board, sender_key)
     try:
-        data = json.loads(watermark_path(board, sender_key).read_text(encoding="utf-8"))
+        data = json.loads(
+            path.read_text(encoding="utf-8"), object_pairs_hook=_unique_json_object if strict else None
+        )
+    except FileNotFoundError:
+        if strict and path.is_symlink():
+            raise
+        return set()
     except (OSError, ValueError):
+        if strict:
+            raise
         return set()
     seen = data.get("seen") if isinstance(data, dict) else None
+    if strict and (not isinstance(seen, list) or any(not isinstance(key, str) for key in seen)):
+        raise ValueError(f"invalid coordination inbox watermark: {path}")
     return set(seen) if isinstance(seen, list) else set()
 
 
@@ -720,13 +865,19 @@ def unread_messages(
     identity_forms: set[str],
     project: str = "",
     since: object = None,
+    strict: bool = False,
 ) -> list[BoardMessage]:
-    seen = seen_keys(board, sender_key) if sender_key else set()
-    return [
-        message
-        for message in parse_messages(board_text)
-        if addressed_to(message, identity_forms, project, since) and message.key not in seen
-    ]
+    seen = seen_keys(board, sender_key, strict=strict) if sender_key else set()
+    messages = []
+    for message in parse_messages(board_text, strict=strict, identity_forms=identity_forms, project=project):
+        # Historical free-text addressees can have human-written timestamps.
+        # They do not participate in this inbox. An addressed message needs
+        # a verifiable timestamp before a diagnostic can apply the claim floor.
+        if strict and addressed_to(message, identity_forms, project) and parse_iso(message.timestamp) is None:
+            raise ValueError("coordination inbox has an invalid addressed message timestamp")
+        if addressed_to(message, identity_forms, project, since) and message.key not in seen:
+            messages.append(message)
+    return messages
 
 
 def render_inbox(messages: list[BoardMessage], *, limit: int = 5, body_lines: int = 25) -> str:

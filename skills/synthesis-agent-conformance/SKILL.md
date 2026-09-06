@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.9.4"
+  version: "1.9.5"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -35,6 +35,16 @@ Verify five planes:
 Name the plane whenever two facts appear to conflict. Runtime state determines
 current behavior; canonical state determines what the next deployment should
 produce.
+
+Active and stopped payload parity use diagnostic context rendering: compare
+the complete local context, including unread messages, without acknowledging
+delivery, writing lifecycle receipts, checking release currency, fetching Git,
+fast-forwarding a checkout or refreshing a lease. Unreadable diagnostic inbox
+state fails closed. Validation targets the selected seat/project's inbox;
+demonstrably unrelated historical blocks cannot redefine its native messages
+or delivery keys. These probes establish agreement over local evidence, not
+remote freshness or actual client delivery. Other conformance checks may refresh
+state; do not describe the entire command as read-only.
 
 ## Workflow
 

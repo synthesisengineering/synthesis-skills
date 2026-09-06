@@ -1673,8 +1673,9 @@ def payload_parity(
     The claude and codex wrappers are native envelopes around the same
     message; this runs the shared script in both formats against the live
     pointer and compares the enveloped context after normalizing the
-    timestamp line. No client binary is required — the script itself is the
-    shared implementation both clients invoke.
+    timestamp line. Diagnostic rendering reads local evidence without delivering
+    messages or refreshing state. It is not a remote freshness or live-hook check.
+    No client binary is required — the script itself is the shared implementation.
     """
     script = SCRIPTS_DIR / "session_context.py"
     contexts: dict[str, str] = {}
@@ -1682,7 +1683,9 @@ def payload_parity(
         result = run(
             [
                 sys.executable,
+                "-B",
                 str(script),
+                "--diagnostic",
                 "--format",
                 client_format,
                 "--active-project-file",
@@ -1803,7 +1806,7 @@ def stopped_payload_parity(
     summary: dict[str, object],
     coordination_board: Path = DEFAULT_COORDINATION_BOARD,
 ) -> tuple[bool, str]:
-    """Prove both adapters reconstruct a stopped project without a pointer."""
+    """Compare local stopped-project evidence without deliveries or refreshes."""
     script = SCRIPTS_DIR / "session_context.py"
     missing_pointer = project / ".synthesis-stopped-pointer-must-not-exist.json"
     if missing_pointer.exists():
@@ -1814,7 +1817,9 @@ def stopped_payload_parity(
         result = run(
             [
                 sys.executable,
+                "-B",
                 str(script),
+                "--diagnostic",
                 "--format",
                 client_format,
                 "--active-project-file",
