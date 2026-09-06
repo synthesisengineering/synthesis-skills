@@ -218,3 +218,52 @@ def test_claude_root_helper_rejects_subagent_and_wrong_filename(tmp_path: Path) 
         root / "projects" / "encoded" / SESSION / "subagents" / "agent.jsonl",
         "claude", SESSION, root,
     )
+
+
+@pytest.mark.parametrize("read_chars", [1, 2, 3, 7])
+@pytest.mark.parametrize("client", ["claude", "codex"])
+def test_chunk_boundaries_preserve_json_grammar_and_identity(
+    tmp_path: Path, monkeypatch, read_chars: int, client: str
+) -> None:
+    monkeypatch.setattr(live_receipt, "TRANSCRIPT_READ_CHARS", read_chars)
+    escaped_session = "".join("\\u%04x" % ord(character) for character in SESSION)
+    identity = (
+        '"t\\u0079pe":"session_meta","payload":{"i\\u0064":"%s"}'
+        if client == "codex" else '"session\\u0049d":"%s"'
+    ) % escaped_session
+    discarded = (
+        '"discarded":{"numbers":[-12.5e+2,0,1E-3],'
+        '"nested":[true,false,null,{"text":"snowman ☃ \\u2603 \\\\ \\""}]}'
+    )
+    path = tmp_path / "chunks.jsonl"
+    path.write_text("{" + discarded + "," + identity + "}\r\n", encoding="utf-8")
+    assert live_receipt.transcript_binding_state(path, client, SESSION) == "bound"
+    path.write_text(
+        "{" + identity + ',"discarded":"invalid\\u12z4"}\r\n', encoding="utf-8"
+    )
+    assert live_receipt.transcript_binding_state(path, client, SESSION) == "invalid"
+
+
+@pytest.mark.parametrize("ending", [b"\n", b"\r\n", b"\r"])
+def test_native_text_reader_preserves_universal_newline_boundaries(
+    tmp_path: Path, ending: bytes
+) -> None:
+    path = tmp_path / "newlines.jsonl"
+    path.write_bytes(json.dumps(_binding("claude")).encode("utf-8") + ending)
+    assert live_receipt.transcript_binding_state(path, "claude", SESSION) == "bound"
+    with path.open("ab") as handle:
+        handle.write(json.dumps(_binding("claude", OTHER)).encode("utf-8") + ending)
+    assert live_receipt.transcript_binding_state(path, "claude", SESSION) == "conflicting"
+
+
+@pytest.mark.parametrize("read_chars", [1, 7, 64 * 1024])
+def test_invalid_utf8_in_scanned_records_fails_closed(
+    tmp_path: Path, monkeypatch, read_chars: int
+) -> None:
+    monkeypatch.setattr(live_receipt, "TRANSCRIPT_READ_CHARS", read_chars)
+    path = tmp_path / "invalid-encoding.jsonl"
+    path.write_bytes(
+        json.dumps(_binding("codex")).encode("utf-8")
+        + b'\n{"discarded":"\xff"}\n'
+    )
+    assert live_receipt.transcript_binding_state(path, "codex", SESSION) == "invalid"

@@ -17,6 +17,7 @@ import re
 import shlex
 import stat
 import subprocess
+import sys
 import tempfile
 import uuid
 from datetime import datetime, timezone
@@ -97,6 +98,18 @@ def file_digest(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _live_receipt_validator():
+    """Load the shared identity contract from this release's skill tree."""
+    scripts = Path(__file__).resolve().parents[2] / "synthesis-agent-conformance" / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    try:
+        import live_receipt
+    except ImportError as exc:
+        raise ContractError("live-load transcript validator is unavailable") from exc
+    return live_receipt
 
 
 def _fsync_directory(path: Path) -> None:
@@ -1457,6 +1470,7 @@ class SystemState:
         *,
         binder: Callable[[Path, str, str], bool],
         registry_root: Path | None = None,
+        rejections: list[dict[str, str]] | None = None,
     ) -> list[dict[str, Any]]:
         """Attach registry SessionStart events whose transcripts bind now.
 
@@ -1537,27 +1551,56 @@ class SystemState:
                             continue
                         candidates.append((recorded, client, event))
         promoted: list[dict[str, Any]] = []
+        rejected: dict[str, dict[str, str]] = {}
+
+        def reject(client: str, event: dict[str, Any], reason: str) -> None:
+            # Retain the newest eligible failure per client, not every event
+            # in a long-lived registry. A valid alternative clears the failure.
+            rejected.setdefault(client, {
+                "client": client, "session_id": str(event["session_id"]), "reason": reason,
+            })
+
         for recorded, client, event in sorted(candidates, key=lambda item: item[0], reverse=True):
             if any(item["client"] == client for item in promoted):
                 continue
             transcript_value = event.get("transcript_path")
             if not isinstance(transcript_value, str) or not transcript_value:
+                reject(client, event, "live-load receipt has no transcript path")
                 continue
             try:
                 bound = bool(
                     binder(Path(transcript_value).expanduser(), client, str(event["session_id"]))
                 )
             except Exception:  # a binder failure is never promotion evidence
-                bound = False
+                reject(client, event, "live-load transcript validator could not run")
+                continue
             if not bound:
+                try:
+                    binding = _live_receipt_validator().transcript_binding_state(
+                        Path(transcript_value).expanduser(), client, str(event["session_id"]),
+                    )
+                    reason = "live-load transcript binding is %s" % binding
+                    if binding == "pending":
+                        reason += "; wait for the client to finish writing its transcript and recheck"
+                    elif binding == "bound":
+                        reason = "live-load transcript validators disagree; evidence was not accepted"
+                except ContractError as exc:
+                    reason = str(exc)
+                reject(client, event, reason)
                 continue
             receipt = dict(event)
             receipt["transcript_bound_at_promotion"] = True
             try:
                 if self.record_live_load(receipt=receipt, promotion=True):
                     promoted.append({"client": client, "session_id": str(event["session_id"])})
-            except ContractError:
+                    rejected.pop(client, None)
+                else:
+                    reject(client, event, "live-load receipt no longer matches an enabled selected-client generation")
+            except ContractError as exc:
+                reject(client, event, str(exc))
                 continue
+        if rejections is not None:
+            rejections.extend(rejected.values())
         return promoted
 
     def record_live_load(
@@ -1634,14 +1677,19 @@ class SystemState:
             raise ContractError("live-load transcript is unavailable: %s" % exc)
         if stat.S_ISLNK(transcript_meta.st_mode) or not stat.S_ISREG(transcript_meta.st_mode):
             raise ContractError("live-load transcript must be a regular file")
-        if transcript_meta.st_size > 64 * 1024 * 1024:
-            raise ContractError("live-load transcript exceeds the verification size limit")
-        try:
-            transcript_text = transcript.read_text(encoding="utf-8", errors="replace")
-        except OSError as exc:
-            raise ContractError("live-load transcript is unreadable: %s" % exc)
-        if str(session_id) not in transcript_text:
-            raise ContractError("live-load transcript does not bind the session identifier")
+        # Use the same structured, bounded-memory identity proof as the hook
+        # and conformance. History length is not a provenance failure, and a
+        # UUID quoted in ordinary message text is not session metadata.
+        validator = _live_receipt_validator()
+        transcript_root = Path(os.environ.get(
+            "CODEX_HOME" if client == "codex" else "CLAUDE_CONFIG_DIR",
+            str(self.home / (".codex" if client == "codex" else ".claude")),
+        )).expanduser()
+        if not validator.client_root_transcript_path(transcript, client, str(session_id), transcript_root):
+            raise ContractError("live-load transcript is not a canonical client root-session path")
+        binding = validator.transcript_binding_state(transcript, client, str(session_id))
+        if binding != "bound":
+            raise ContractError("live-load transcript binding is %s, not bound" % binding)
         if not self.desired_path.is_file() or not self.observation_path.is_file():
             return False
         with self.locked():
@@ -1654,6 +1702,8 @@ class SystemState:
             if desired is None or not committed:
                 return False
             if not desired.get("enabled", True):
+                return False
+            if client not in (desired.get("clients") or []):
                 return False
             transaction = committed[-1]
             release = transaction.get("release")

@@ -24,6 +24,12 @@ sys.path.insert(0, str(SCRIPTS))
 import system_contract  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def isolated_native_roots(monkeypatch):
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+
+
 def git(path: Path, *args: str) -> str:
     env = dict(os.environ)
     env.update(
@@ -76,7 +82,27 @@ def release_repo(tmp_path: Path, version: str = "9.8.7") -> Path:
     return root
 
 
-def live_receipt(tmp_path: Path, client: str, version: str = "9.8.7") -> dict:
+def native_transcript(home: Path, client: str, session_id: str) -> Path:
+    """Create client-owned structured evidence outside the immutable plugin."""
+    if client == "codex":
+        transcript = (
+            home / ".codex" / "sessions" / "2030" / "01" / "02"
+            / ("rollout-" + session_id + ".jsonl")
+        )
+        binding = {"type": "session_meta", "payload": {"id": session_id}}
+    else:
+        transcript = (
+            home / ".claude" / "projects" / "-workspace-example" / (session_id + ".jsonl")
+        )
+        binding = {"sessionId": session_id}
+    transcript.parent.mkdir(parents=True, exist_ok=True)
+    transcript.write_text(json.dumps(binding) + "\n", encoding="utf-8")
+    return transcript
+
+
+def live_receipt(
+    tmp_path: Path, client: str, version: str = "9.8.7", *, home: Path | None = None,
+) -> dict:
     root = tmp_path / ("%s-%s-plugin" % (client, version))
     (root / ".claude-plugin").mkdir(parents=True, exist_ok=True)
     (root / ".codex-plugin").mkdir(exist_ok=True)
@@ -89,8 +115,7 @@ def live_receipt(tmp_path: Path, client: str, version: str = "9.8.7") -> dict:
         encoding="utf-8",
     )
     session_id = str(uuid.uuid4())
-    transcript = root / (client + ".jsonl")
-    transcript.write_text(json.dumps({"session_id": session_id}) + "\n", encoding="utf-8")
+    transcript = native_transcript(home if home is not None else tmp_path, client, session_id)
     return {
         "receipt_schema": 2,
         "receipt_event_id": str(uuid.uuid4()),
@@ -391,8 +416,7 @@ def test_sessionstart_receipts_complete_live_loaded_plane(tmp_path: Path) -> Non
     claude["provenance_env"] = "claude-transcript"
     claude["receipt_event_id"] = str(uuid.uuid4())
     claude["session_id"] = str(uuid.uuid4())
-    claude_transcript = tmp_path / "claude.jsonl"
-    claude_transcript.write_text(claude["session_id"] + "\n", encoding="utf-8")
+    claude_transcript = native_transcript(state.home, "claude", claude["session_id"])
     claude["transcript_path"] = str(claude_transcript)
     assert state.record_live_load(receipt=claude)
     current = state.read_observation()["transactions"][-1]

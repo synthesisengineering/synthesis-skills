@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.9.3"
+  version: "1.9.4"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -75,6 +75,14 @@ Preserved events are local runtime evidence and have no automatic age-based
 deletion. Exact-session checks waive only the 24-hour freshness limit; they
 still require the original client-owned transcript, matching session UUID,
 plugin version, and exact plugin root to validate.
+
+Transcript identity validation scans the first 1,000 physical JSONL lines,
+validates complete records within that window, and retains only bounded
+identity fields. Long histories and large message strings do not require
+whole-file or whole-record allocation. Malformed records, conflicting identity,
+duplicate identity keys and excessive nesting fail closed. This is a bounded
+startup-identity check, not a claim that every later transcript record was
+semantically validated. Onboarding separately streams the full-file digest.
 
 Use `--json` for a machine-readable report. Each check carries a plane and one
 of PASS, FAIL, WARN, UNKNOWN, or UNSUPPORTED. A required UNKNOWN fails the

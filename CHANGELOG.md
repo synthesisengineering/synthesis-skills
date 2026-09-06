@@ -4,6 +4,21 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.95.5] - 2026-09-05
+
+**Long conversations retain verifiable startup evidence.** Onboarding 2.3.4
+uses the shared structured transcript validator instead of a 64 MiB file-size
+limit and a UUID substring check. The validator bounds memory for both long
+histories and large individual message records, while the transcript digest
+is streamed. Canonical client-root paths and release-content checks remain
+required; malformed, ambiguous or conflicting identity fails closed.
+
+Doctor and status report eligible receipt-validation failures instead of
+silently discarding them and requesting another restart. Diagnostics stay
+outside immutable events and hash-bound observations. Existing conversation
+history, personal installation choices and organization enrollment are not
+rewritten by this correction.
+
 ## [4.95.4] - 2026-09-05
 
 **Reload guidance keeps existing conversations first.** Onboarding 2.3.3 uses

@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.3.3"
+  version: "2.3.4"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -279,6 +279,16 @@ reports six planes independently:
 4. source provenance
 5. live loaded
 6. outcome verified
+
+Transcript length is not a reason to discard or replace a conversation. Hook,
+conformance and generation attachment share structured identity validation of
+the first 1,000 JSONL lines with bounded memory, including large message records.
+The full transcript digest is streamed. Only canonical client-owned root-session
+paths qualify; quoted UUIDs, conflicting identity, malformed evidence and
+payload drift cannot establish a live-loaded generation. Doctor and status
+expose rejected eligible receipts without changing the original event or
+hash-bound observations. Resolve the reported validation failure before
+rechecking; another restart is not a repair for invalid evidence.
 
 A plugin version, directory, or generated instruction file proves only its own
 plane. `live-loaded` requires a fresh client lifecycle receipt after restart.

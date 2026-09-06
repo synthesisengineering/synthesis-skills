@@ -43,7 +43,7 @@ from system_contract import (
 )
 
 
-ENGINE_VERSION = "2.3.3"
+ENGINE_VERSION = "2.3.4"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
     "setup",
@@ -187,7 +187,10 @@ def _transcript_binder() -> Callable[[Path, str, str], bool]:
 def _promote_live_receipts(state: SystemState) -> tuple[list[dict[str, Any]], str | None]:
     """Attach fresh client SessionStart receipts that bind their transcript now."""
     try:
-        return state.promote_live_receipts(binder=_transcript_binder()), None
+        rejections: list[dict[str, str]] = []
+        promoted = state.promote_live_receipts(binder=_transcript_binder(), rejections=rejections)
+        note = "; ".join("%s: %s" % (item["client"], item["reason"]) for item in rejections)
+        return promoted, note or None
     except ContractError as exc:
         return [], str(exc)
 
@@ -367,10 +370,16 @@ def _next_action(
         return "Run synthesis repair; the engine reported: %s" % planes["installed"].get("detail")
     live = planes["live-loaded"]
     if live.get("status") != "verified":
+        if promotion_note:
+            return (
+                "SessionStart evidence could not be attached: %s. "
+                "Inspect the rejected receipt and its client-owned transcript; "
+                "preserve both and resolve the reported validation failure before "
+                "running synthesis doctor again."
+            ) % promotion_note
         clients = live.get("missing_clients") or list(desired.get("clients") or [])
         steps = recovery_instruction(clients)
-        note = " (%s)" % promotion_note if promotion_note else ""
-        return "%s Then run synthesis doctor again%s." % (steps, note)
+        return "%s Then run synthesis doctor again." % steps
     if planes["outcome-verified"].get("status") in ("not-requested", "missing"):
         return (
             "Optional: synthesis outcome verify --task workspace-grounding-check "
@@ -486,6 +495,8 @@ def _render_status(payload: dict[str, Any]) -> None:
         print("  Live-loaded: unknown")
     outcome = latest.get("outcome-verified") if latest else None
     print("  Outcome:     %s" % (outcome.get("status") if isinstance(outcome, dict) else "unknown"))
+    if payload.get("promotion_note"):
+        print("  Receipt validation: %s" % payload["promotion_note"])
     if payload.get("promoted"):
         print("  Attached fresh SessionStart evidence for: %s" % ", ".join(
             item["client"] for item in payload["promoted"]
@@ -1489,7 +1500,7 @@ def main(
             return 0
 
         if args.command == "status":
-            promoted, _promotion_note = _promote_live_receipts(state)
+            promoted, promotion_note = _promote_live_receipts(state)
             with state.locked():
                 payload = {"desired": state.read_desired(), "observed": state.read_observation()}
                 # Presentation metadata must not alter hash-bound observations.
@@ -1499,6 +1510,8 @@ def main(
                         "detail": RECORDED_SESSION_DETAIL,
                     }
             payload["promoted"] = promoted
+            if promotion_note:
+                payload["promotion_note"] = promotion_note
             _render(payload, args.json)
             return 0 if payload["desired"] is not None else 1
 
