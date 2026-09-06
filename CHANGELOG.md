@@ -4,6 +4,20 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.96.0] - 2026-09-06
+
+Checkpoint refresh-and-report mode uses a deterministic local inspector and
+optional declarative upgrade campaign. It resolves the established project before
+inspecting its inputs, separates native and file evidence from agent reading,
+and reports through the existing coordination bus without modifying project work.
+Duplicate detection and revision allocation share the append transaction.
+
+Project-management, context-lifecycle and checkpoint instructions now agree on
+local recovery before prose and claim admission before record corrections.
+Coordination mirror refresh shares the mutation lock, preventing the reproduced
+same-machine stale-reader race. This does not establish multi-computer freshness
+or make aggregate conformance commands read-only.
+
 ## [4.95.7] - 2026-09-06
 
 Ordinary updates reconcile selected or independently configured shared Git,
