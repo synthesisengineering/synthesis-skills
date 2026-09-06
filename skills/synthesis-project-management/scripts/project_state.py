@@ -18,6 +18,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import uuid
 from typing import Any, Iterable
 
 from plan_reference import PlanReference, resolve_plan_target
@@ -1136,8 +1137,14 @@ def _row_for_event(rows: list[dict[str, str]], payload: dict[str, Any]) -> dict[
     event_ids = {
         str(payload.get(key) or "").strip()
         for key in ("session_id", "root_task_uuid", "task_id")
-    }
+    } - {""}
     configured = os.environ.get("SYNTHESIS_CLIENT_SESSION_REF", "").strip()
+    native = payload.get("session_id")
+    if (
+        configured.startswith(("cc:", "codex:"))
+        and (not isinstance(native, str) or not native or configured.split(":", 1)[1] != native)
+    ):
+        raise ProjectStateError("native lifecycle identity conflicts with the configured client reference; refusing a foreign checkpoint")
     if configured:
         event_ids.update({configured, configured.rsplit(":", 1)[-1]})
     matches = []
@@ -1146,9 +1153,9 @@ def _row_for_event(rows: list[dict[str, str]], payload: dict[str, Any]) -> dict[
             continue
         client_ref = row.get("client session ref", "")
         if (
-            client_ref in event_ids
-            or client_ref.rsplit(":", 1)[-1] in event_ids
-            or row.get("session uuid", "") in event_ids
+            (client_ref and client_ref in event_ids)
+            or (client_ref and client_ref.rsplit(":", 1)[-1] in event_ids)
+            or (row.get("session uuid") and row["session uuid"] in event_ids)
         ):
             matches.append(row)
     if len(matches) > 1:
@@ -1203,12 +1210,99 @@ def _live_source_heads(state: dict[str, Any]) -> dict[str, str]:
     return live
 
 
+def _observer_native_identity(payload: dict[str, Any]) -> tuple[str, str]:
+    """Verify an observer from native transcript evidence, not a read-only flag."""
+    native = payload.get("session_id")
+    try:
+        uuid.UUID(native)
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ProjectStateError("observer Stop requires a valid native session UUID") from exc
+    raw = payload.get("transcript_path")
+    if not isinstance(raw, str) or not Path(raw).is_absolute():
+        raise ProjectStateError("observer Stop requires this native session's transcript path")
+    transcript = Path(raw)
+    if transcript.is_symlink() or not transcript.is_file():
+        raise ProjectStateError("observer native transcript is missing or unsafe")
+    scripts = Path(__file__).resolve().parents[2] / "synthesis-agent-conformance" / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    try:
+        from live_receipt import client_root_transcript_path, transcript_binds_session
+    except (ImportError, SyntaxError) as exc:
+        raise ProjectStateError("observer native transcript validator is unavailable") from exc
+    matches = []
+    for client, variable in (("claude", "CLAUDE_CONFIG_DIR"), ("codex", "CODEX_HOME")):
+        raw_home = os.environ.get(variable, str(Path.home() / f".{client}"))
+        if not raw_home.strip() or not Path(raw_home).expanduser().is_absolute():
+            continue
+        home = Path(raw_home).expanduser()
+        if not client_root_transcript_path(transcript, client, native, home):
+            continue
+        if transcript_binds_session(transcript, client, native):
+            matches.append(client)
+    if len(matches) != 1:
+        raise ProjectStateError("observer transcript does not unambiguously bind this native session")
+    return matches[0], native
+
+
+def _observer_git(project: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(project), *arguments], capture_output=True, text=True,
+        env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"}, timeout=15,
+    )
+
+
+def _observer_project(cwd: Path) -> Path | None:
+    for candidate in (cwd, *cwd.parents):
+        if (candidate / STATE_FILE).exists() or (candidate / STATE_FILE).is_symlink():
+            return candidate
+        # A deleted tracked state file must remain an observable obligation.
+        tracked = _observer_git(candidate, "ls-files", "--error-unmatch", "--", f":(literal){STATE_FILE}")
+        if tracked.returncode == 0:
+            return candidate
+    return None
+
+
+def _observer_pending_scope(payload: dict[str, Any], repo_guard_root: Path) -> tuple[str, list[str]] | None:
+    """Known exact-session work remains an obligation regardless of cwd."""
+    native = payload.get("session_id")
+    if not isinstance(native, str) or not native:
+        return None
+    pending = repo_guard_root / "pending"
+    own = pending / (_sha_bytes(native.encode()) + ".json")
+    if repo_guard_root.is_symlink() or pending.is_symlink() or own.is_symlink():
+        raise ProjectStateError("observer attribution evidence crosses an unsafe symlink")
+    if pending.exists() and not pending.is_dir():
+        raise ProjectStateError("observer attribution directory is unreadable")
+    if own.exists():
+        _observer_native_identity(payload)
+        attribution = _load_json(own)
+        if attribution.get("session_id") != native or type(attribution.get("schema_version")) is not int or attribution.get("schema_version") not in {1, 2}:
+            raise ProjectStateError("exact native-session pending attribution is invalid; preserve its evidence")
+        paths = attribution.get("paths")
+        if not isinstance(paths, list) or not paths or any(not isinstance(path, str) or not Path(path).is_absolute() for path in paths):
+            raise ProjectStateError("exact native-session pending attribution has invalid paths")
+        return "UNKNOWN", [f"native session has attributed edits but no matching active claim; preserve {own} and recover its own claim/checkpoint authority"]
+    return None
+
+
+def _observer_checkpoint_scope(payload: dict[str, Any], project: Path) -> tuple[str, list[str]]:
+    _observer_native_identity(payload)
+    dirty = _observer_git(project, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".")
+    if dirty.returncode:
+        raise ProjectStateError("observer project Git state could not be verified")
+    if dirty.stdout:
+        return "UNKNOWN", ["unowned structured project has staged, unstaged or untracked changes; absence of native attribution does not prove read-only work"]
+    return "NOT_APPLICABLE", ["no active checkpoint ownership or native pending attribution; observed Git project subtree is clean; no checkpoint receipt issued and no recovery/state-health PASS implied"]
+
+
 def checkpoint_hook(
     payload: dict[str, Any],
     *,
     coordination_board: Path,
     receipt_root: Path,
     refresh_coordination: bool = True,
+    repo_guard_root: Path | None = None,
 ) -> tuple[str, list[str]]:
     """Bind a lifecycle event to its seat and issue an exact clean receipt."""
     try:
@@ -1218,10 +1312,14 @@ def checkpoint_hook(
                 return "FAIL", [refresh_issue]
         row = _row_for_event(_parse_board_rows(coordination_board.resolve()), payload)
         if row is None:
+            root = repo_guard_root or Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis"))) / "repo-guard"
+            pending_scope = _observer_pending_scope(payload, root)
+            if pending_scope is not None:
+                return pending_scope
             cwd = Path(str(payload.get("cwd") or ".")).resolve()
-            for candidate in (cwd, *cwd.parents):
-                if (candidate / STATE_FILE).is_file():
-                    return "UNKNOWN", ["structured project has no matching active coordination seat"]
+            project = _observer_project(cwd)
+            if project is not None:
+                return _observer_checkpoint_scope(payload, project)
             return "NOT_APPLICABLE", []
         project = _project_from_claim(row)
         if project is None:
@@ -1243,8 +1341,36 @@ def checkpoint_hook(
             receipt_root=receipt_root,
             source_heads=source_heads,
         )
-    except (OSError, ProjectStateError) as exc:
+    except (OSError, subprocess.SubprocessError, ProjectStateError) as exc:
         return "FAIL", [str(exc)]
+
+
+def _emit_checkpoint_hook(verdict: str, issues: list[str], payload: dict[str, Any]) -> int:
+    output = {"status": verdict, "issues": issues, "checkpoint_accepted": verdict == "PASS"}
+    if verdict == "NOT_APPLICABLE":
+        output["no_receipt_issued"] = True
+    if verdict in {"PASS", "NOT_APPLICABLE"}:
+        print(json.dumps(output))
+        return 0
+    reason = "Project checkpoint remains " + verdict + ": " + "; ".join(issues)
+    reason += ". Preserve retained work; resolve only this session's authorized checkpoint obligations. Do not create or release a foreign claim to silence this error."
+    # Claude ignores stdout on exit 2 and feeds stderr back to the model.
+    # A repeated Stop must end with an explicit blocked result rather than
+    # repeatedly spending model turns. continue:false is Claude's documented
+    # terminal control, not a PASS or a receipt; Codex retains nonzero failure.
+    if payload.get("hook_event_name") == "Stop" and payload.get("stop_hook_active") is True:
+        try:
+            client, _native = _observer_native_identity(payload)
+        except (OSError, ProjectStateError):
+            client = None
+        if client == "claude":
+            output.update({"continue": False, "stopReason": reason, "systemMessage": "Checkpoint blocked; no clean checkpoint was accepted."})
+            print(json.dumps(output))
+            print(reason, file=sys.stderr)
+            return 0
+    print(json.dumps(output))
+    print(reason, file=sys.stderr)
+    return 2
 
 
 def _source_head_args(values: list[str]) -> dict[str, str]:
@@ -1322,6 +1448,7 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path.home() / ".synthesis" / "project-state" / "receipts",
     )
+    hook.add_argument("--repo-guard-root", type=Path)
     return parser
 
 
@@ -1386,15 +1513,14 @@ def main(argv: list[str] | None = None) -> int:
             if not isinstance(payload, dict):
                 raise ValueError("hook payload is not an object")
         except (json.JSONDecodeError, ValueError) as exc:
-            print(json.dumps({"status": "UNKNOWN", "issues": [str(exc)]}))
-            return 2
+            return _emit_checkpoint_hook("UNKNOWN", [str(exc)], {})
         verdict, issues = checkpoint_hook(
             payload,
             coordination_board=args.coordination_board,
             receipt_root=args.receipt_root,
+            repo_guard_root=args.repo_guard_root,
         )
-        print(json.dumps({"status": verdict, "issues": issues}))
-        return 0 if verdict in {"PASS", "NOT_APPLICABLE"} else 2
+        return _emit_checkpoint_hook(verdict, issues, payload)
     verdict, issues = validate_checkpoint(
         args.project,
         session_id=args.session_id,

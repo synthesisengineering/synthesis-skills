@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.96.1] - 2026-09-06
+
+Unclaimed sessions can finish inspection of a clean project without claiming
+write ownership or issuing a checkpoint receipt. Native identity, exact-session
+pending attribution and Git subtree checks keep unresolved work explicit.
+Claimed sessions still require their normal checkpoint evidence.
+
+Checkpoint failures now explain the unresolved requirement on stderr. A repeated
+Claude Stop failure terminates the continuation with a visible failure reason
+instead of spending additional model turns on an unresolvable checkpoint.
+
 ## [4.96.0] - 2026-09-06
 
 Checkpoint refresh-and-report mode uses a deterministic local inspector and

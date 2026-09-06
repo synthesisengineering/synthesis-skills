@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Project inspections finish without a write claim (September 2026).**
+Release **4.96.1** checks native identity, pending attribution and a clean project subtree
+before marking an unclaimed inspection's checkpoint not applicable. It grants no
+write authority or continuity receipt. Real checkpoint failures remain explicit;
+repeated Claude Stop failures end with a visible reason instead of a retry loop.
+
 **Refresh existing sessions with one skill (September 2026).** Release **4.96.0**
 adds refresh-and-report mode to synthesis-checkpoint, with local deterministic
 inspection, configurable campaigns and transactionally deduplicated feedback.

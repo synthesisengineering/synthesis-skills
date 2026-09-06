@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.13.3"
+  version: "2.13.4"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -227,6 +227,11 @@ For an explicitly requested refresh-and-report pass, use the current installed
 `synthesis-checkpoint` mode. It inspects and reports without project edits,
 state generation, activation or claim acquisition; normal record-owner closure
 above applies only to work actually written under accepted authority.
+An unclaimed session inspecting a discovered structured project, with valid
+native identity, no exact-session pending edits and a clean Git subtree, can finish with `NOT_APPLICABLE`; this
+issues no receipt and proves neither successful recovery nor execution authority.
+Unresolved evidence remains explicit; see the checkpoint refresh reference for
+failure termination and client-specific behavior.
 
 ### Cross-Agent Session Coordination
 
