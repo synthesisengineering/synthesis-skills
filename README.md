@@ -11,6 +11,13 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Long conversations keep their startup evidence (September 2026).**
+Release **4.95.5** validates structured session identity with bounded memory, including
+large individual messages, and streams the full transcript digest. Doctor and
+status expose receipt-validation failures instead of sending an already
+reloaded conversation through another restart. Native history is retained;
+identity, client-root and release-content checks remain required.
+
 **Continue the existing conversation after a verified reload (September 2026).**
 Release **4.95.4** gives consistent recovery advice across installation, update
 and diagnosis. A new conversation is a fallback, not the default. Installed

@@ -41,6 +41,12 @@ from test_onboard import Sandbox  # noqa: E402
 from test_system_contract import git, live_receipt as receipt_fixture, release_record, release_repo  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def isolated_native_roots(monkeypatch):
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+
+
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -251,7 +257,8 @@ def test_pending_claude_receipt_is_promoted_once_its_transcript_binds(tmp_path: 
         },
     )
     registry = tmp_path / "registry"
-    transcript = tmp_path / "pending.jsonl"
+    transcript = Path(fixture["transcript_path"])
+    transcript.unlink()  # The isolated pending-at-hook fixture has not been created yet.
     pending = dict(fixture, transcript_path=str(transcript))
     pending["recorded_at"] = datetime.now(timezone.utc).isoformat()
     _registry_event(registry, pending, bound_at_record=False)
@@ -286,8 +293,7 @@ def test_promotion_ignores_receipts_that_predate_the_generation(tmp_path: Path) 
     fixture = receipt_fixture(tmp_path, "claude")
     root = Path(fixture["plugin_root"])
     registry = tmp_path / "registry"
-    transcript = tmp_path / "old.jsonl"
-    transcript.write_text(json.dumps({"sessionId": fixture["session_id"]}) + "\n", encoding="utf-8")
+    transcript = Path(fixture["transcript_path"])
     old = dict(fixture, transcript_path=str(transcript))
     old["recorded_at"] = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     _registry_event(registry, old, bound_at_record=False)
@@ -310,7 +316,7 @@ def test_promotion_ignores_receipts_that_predate_the_generation(tmp_path: Path) 
 def test_doctor_promotes_a_fresh_claude_receipt_from_the_registry(tmp_path: Path, capsys) -> None:
     home = tmp_path / "home"
     state = system_contract.SystemState(home=home)
-    fixture = receipt_fixture(tmp_path, "claude")
+    fixture = receipt_fixture(tmp_path, "claude", home=home)
     root = Path(fixture["plugin_root"])
     desired = system_contract.default_desired_state("skills-only", ["claude"], "stable")
     state.run_transaction(
@@ -321,9 +327,7 @@ def test_doctor_promotes_a_fresh_claude_receipt_from_the_registry(tmp_path: Path
             "source-provenance": {"status": "verified", "root": str(root)},
         },
     )
-    transcript = home / ".claude" / "projects" / "encoded" / (fixture["session_id"] + ".jsonl")
-    transcript.parent.mkdir(parents=True)
-    transcript.write_text(json.dumps({"sessionId": fixture["session_id"]}) + "\n", encoding="utf-8")
+    transcript = Path(fixture["transcript_path"])
     pending = dict(fixture, transcript_path=str(transcript))
     pending["recorded_at"] = datetime.now(timezone.utc).isoformat()
     _registry_event(state.live_receipt_registry_root(), pending, bound_at_record=False)
@@ -483,7 +487,7 @@ def test_currency_cache_lives_under_the_engine_state_root(tmp_path: Path, monkey
 
 def test_status_and_doctor_render_human_summaries_with_a_next_action(tmp_path: Path, capsys) -> None:
     state = system_contract.SystemState(home=tmp_path / "home")
-    fixture = receipt_fixture(tmp_path, "claude")
+    fixture = receipt_fixture(tmp_path, "claude", home=state.home)
     root = Path(fixture["plugin_root"])
     desired = system_contract.default_desired_state("skills-only", ["claude", "codex"], "stable")
     state.run_transaction(

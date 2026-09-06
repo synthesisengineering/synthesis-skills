@@ -36,6 +36,7 @@ from test_independent_review import (  # noqa: E402
 from test_synthesis_cli import verified_uninstall_engine  # noqa: E402
 from test_system_contract import (  # noqa: E402
     live_receipt as receipt_fixture,
+    native_transcript,
     release_record,
     release_repo,
 )
@@ -46,6 +47,8 @@ def isolated_environment(monkeypatch, tmp_path):
     """Neither an installed launcher nor the real receipt registry is an input."""
     monkeypatch.delenv("SYNTHESIS_ACTIVE_DESCRIPTOR", raising=False)
     monkeypatch.delenv("SYNTHESIS_RESOLVED_BOOTSTRAP", raising=False)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
 
 
@@ -69,7 +72,7 @@ def _recovery_contract(text: str, clients: tuple[str, ...]) -> None:
 
 def _state(tmp_path: Path, clients: tuple[str, ...]):
     state = system_contract.SystemState(home=tmp_path / "home")
-    receipt = receipt_fixture(tmp_path, clients[0])
+    receipt = receipt_fixture(tmp_path, clients[0], home=state.home)
     root = Path(receipt["plugin_root"])
     desired = system_contract.default_desired_state("skills-only", list(clients), "stable")
     planes = synthesis_cli._planes(desired, "setup")
@@ -90,13 +93,7 @@ def _fresh_event(state, receipt, *, client=None, session_id=None):
         "recorded_at": datetime.now(timezone.utc).isoformat(),
     })
     event["provenance_env"] = event["client"] + "-transcript"
-    transcript = state.home / "transcripts" / (event["session_id"] + ".jsonl")
-    transcript.parent.mkdir(parents=True, exist_ok=True)
-    binding = (
-        {"type": "session_meta", "payload": {"id": event["session_id"]}}
-        if event["client"] == "codex" else {"sessionId": event["session_id"]}
-    )
-    transcript.write_text(json.dumps(binding) + "\n", encoding="utf-8")
+    transcript = native_transcript(state.home, event["client"], event["session_id"])
     event["transcript_path"] = str(transcript)
     return event
 
@@ -296,7 +293,11 @@ def _recorded_event_with_newer_candidate(tmp_path):
     newer = _fresh_event(state, receipt, session_id=str(uuid.uuid4()))
     assert newer["recorded_at"] > first["recorded_at"]
     for target in (state, positive_control):
-        _registry_event(target.live_receipt_registry_root(), newer, bound_at_record=True)
+        target_event = dict(newer)
+        target_event["transcript_path"] = str(native_transcript(
+            target.home, newer["client"], newer["session_id"],
+        ))
+        _registry_event(target.live_receipt_registry_root(), target_event, bound_at_record=True)
     promoted = positive_control.promote_live_receipts(binder=live_receipt.transcript_binds_session)
     assert [item["session_id"] for item in promoted] == [newer["session_id"]]
     control = positive_control.read_observation()["transactions"][-1]["live-loaded"]
@@ -363,7 +364,7 @@ def test_receipt_rejection_positive_control_remains_fail_closed(tmp_path, defect
     state, receipt = _state(tmp_path, ("codex",))
     event = _fresh_event(state, receipt)
     if defect == "wrong-version":
-        event = receipt_fixture(tmp_path, "codex", "9.8.6")
+        event = receipt_fixture(tmp_path, "codex", "9.8.6", home=state.home)
         assert state.record_live_load(receipt=event) is False
     else:
         match = {
