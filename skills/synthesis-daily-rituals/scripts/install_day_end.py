@@ -106,6 +106,11 @@ def install(agent: str | None, no_launchctl: bool) -> None:
     nudge = runtime_root / "bin" / "day-end-nudge.sh"
     atomic_write(launcher, (SCRIPT_DIR / "day-end").read_bytes(), 0o755)
     atomic_write(nudge, (SCRIPT_DIR / "day-end-nudge.sh").read_bytes(), 0o755)
+    atomic_write(
+        runtime_root / "bin" / "ritual_state.py",
+        (SCRIPT_DIR / "ritual_state.py").read_bytes(),
+        0o755,
+    )
 
     selection_file = runtime_root / "agent-cli"
     if agent is not None or not selection_file.exists():

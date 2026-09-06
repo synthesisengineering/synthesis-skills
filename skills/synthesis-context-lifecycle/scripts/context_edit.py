@@ -14,6 +14,12 @@ matched the expected number of times, that content actually changed, and that
 the change is present in the file after writing. Anything else exits non-zero
 without writing. There is no flag to make a missing anchor succeed.
 
+Line-oriented insertion requires a line-start anchor and newline-terminated
+text. Replacement protects the region's outer separators against accidental
+line fusion, including the combined effect of repeated adjacent matches.
+Interior restructuring remains explicit editing. LF and CRLF bytes are not
+normalized during reading, writing, or verification.
+
 Use it from any session or script that edits a durable context file, rather
 than reimplementing replacement logic per project.
 
@@ -263,7 +269,8 @@ def _read(path: Path) -> str:
         raise ContextEditError(f"refusing to edit a symlink: {path}")
     if not path.is_file():
         raise ContextEditError(f"not a file: {path}")
-    return path.read_text(encoding="utf-8")
+    with path.open(encoding="utf-8", newline="") as stream:
+        return stream.read()
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -273,7 +280,7 @@ def _atomic_write(path: Path, text: str) -> None:
     """
     directory = path.parent
     handle = tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", dir=directory, delete=False
+        "w", encoding="utf-8", newline="", dir=directory, delete=False
     )
     try:
         with handle as stream:
@@ -284,6 +291,58 @@ def _atomic_write(path: Path, text: str) -> None:
     except BaseException:
         Path(handle.name).unlink(missing_ok=True)
         raise
+
+
+def _line_merge_refusal(
+    original: str, anchor: str, replacement: str, edited: str,
+) -> str | None:
+    """Find an outer separator whose removal joins surviving line content.
+
+    Read neighbors from the complete result, not from the original matches:
+    adjacent deletions can remove the neighbor a preceding check relied on.
+    An absent neighbor or a surviving separator allows whole-line deletion,
+    blank-line removal, and edits at the first and last physical boundaries.
+    """
+    offset = original.find(anchor)
+    displacement = 0
+    while offset != -1:
+        end = offset + len(anchor)
+        start_after = offset + displacement
+        end_after = start_after + len(replacement)
+        boundaries = []
+        if anchor.startswith(("\n", "\r\n")) and offset > 0:
+            boundaries.append((start_after, offset))
+        if anchor.endswith("\n") and end < len(original):
+            boundaries.append((end_after, end))
+        for position, original_position in boundaries:
+            if (
+                0 < position < len(edited)
+                and edited[position - 1] != "\n"
+                and edited[position] != "\n"
+                and edited[position : position + 2] != "\r\n"
+            ):
+                line = original.count("\n", 0, original_position) + 1
+                return f"the edit removes the separator at line {line}"
+        displacement += len(replacement) - len(anchor)
+        offset = original.find(anchor, end)
+    return None
+
+
+def _check_line_insert(original: str, anchor: str, inserted: str) -> None:
+    """Validate insertion against the same snapshot the edit will replace."""
+    if not inserted.endswith("\n"):
+        raise ContextEditError(
+            "insert-before would corrupt line structure: --text does not "
+            "end with a newline; end the text with a newline"
+        )
+    offset = original.find(anchor)
+    if offset > 0 and original[offset - 1] != "\n":
+        line = original.count("\n", 0, offset) + 1
+        raise ContextEditError(
+            "insert-before would corrupt line structure: "
+            f"the anchor begins mid-line (line {line}); anchor on the start "
+            "of a line instead"
+        )
 
 
 def apply_replacement(
@@ -314,6 +373,13 @@ def apply_replacement(
         )
 
     edited = text.replace(anchor, replacement, count)
+    refusal = _line_merge_refusal(text, anchor, replacement, edited)
+    if refusal:
+        raise ContextEditError(
+            f"edit would merge previously separate lines: {refusal}.\n"
+            "Keep a boundary newline, or include the neighboring line "
+            "explicitly in both anchor and replacement."
+        )
     if edited == text:
         raise ContextEditError(
             "replacement leaves the file byte-identical; nothing to change"
@@ -342,11 +408,14 @@ def replace_once(
     allow_header_lag: bool = False,
     allow_stale_body: bool = False,
     state_reviewed: bool = False,
+    _inserted_text: str | None = None,
 ) -> dict:
     """Apply one verified replacement to a durable context file."""
     path = Path(path)
     original = _read(path)
     edited = apply_replacement(original, anchor, replacement, count=count)
+    if _inserted_text is not None:
+        _check_line_insert(original, anchor, _inserted_text)
     lines = _check_budget(edited, max_lines, path)
     note = _coherence_gate(
         path,
@@ -392,7 +461,7 @@ def replace_once(
     }
 
 
-FIELD = "^\\*\\*{name}:\\*\\*[^\\n]*"
+FIELD = "^\\*\\*{name}:\\*\\*[^\\r\\n]*"
 
 
 def set_field(
@@ -451,6 +520,9 @@ def insert_before(
     forgetting to do so deletes the very heading you anchored on. The edit
     still "succeeds", because content did change. This operation removes that
     footgun by construction: the anchor is never consumed.
+
+    The anchor must begin a line and the inserted text must end with a real
+    newline. Refuse unsafe boundaries rather than adding separators silently.
     """
     return replace_once(
         path,
@@ -461,6 +533,7 @@ def insert_before(
         allow_header_lag=allow_header_lag,
         allow_stale_body=allow_stale_body,
         state_reviewed=state_reviewed,
+        _inserted_text=text,
     )
 
 

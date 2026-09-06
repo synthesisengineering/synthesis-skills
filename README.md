@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Updates verify shared runtimes too (September 2026).** Release **4.95.7**
+refreshes provenance-verified runtime code without resetting personal setup,
+executes installed protective doctors, and preserves concurrent receipt edits.
+Cross-project controlling plans use one confined resolver, and context edits
+reject accidental line fusion while preserving line endings.
+
 **Continuity comparisons leave messages unread (September 2026).**
 Release **4.95.6** compares both client contexts without acknowledging inbox delivery or
 refreshing project state. Corrupt or unreadable inbox evidence fails diagnosis

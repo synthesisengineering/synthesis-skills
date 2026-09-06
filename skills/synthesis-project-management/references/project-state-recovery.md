@@ -27,6 +27,26 @@ hashes, and source-repository heads. The bounded current-state block in
 CONTEXT.md is compiled from it; narrative and historical acceptance remain
 Markdown.
 
+`scripts/plan_reference.py` is the shared controlling-plan resolver for state
+and client context. A structured `controlling_plan` field takes precedence;
+otherwise an explicit context field takes precedence over legacy artifact links.
+Malformed, missing or ambiguous references refuse resolution. Parent-project
+plans are allowed only inside the same repository, without traversing internal
+symlinks. Outside Git, plans remain project-local. Stored paths are portable
+project-relative references, not worktree-specific absolute names.
+
+Parent-plan bytes enter semantic state and checkpoint hashes. Editing or deleting
+that plan invalidates the prior receipt; deletion reports recoverable rather
+than throwing an unhandled exception. Historical prose is retained, not rewritten
+to match a newer structured field. If structured state is absent, competing
+explicit legacy fields remain ambiguous and require reconciliation.
+
+Release-currency prose checks prioritize the structured accepted baseline over
+a candidate phase. Candidate, planned and example versions are not shipped
+evidence; separately affirmed releases still expose a stale baseline. This is
+a bounded consistency check, not proof of publication. Verify Git, release
+receipts and installed payloads before making an external-state claim.
+
 Use the same executable to create and verify that state; do not hand-edit the
 compiled block:
 

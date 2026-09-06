@@ -30,7 +30,11 @@ ADAPTER = b"@AGENTS.md\n"
 
 @pytest.fixture(autouse=True)
 def isolated_configuration(tmp_path, monkeypatch):
+    import onboard
+
     root = tmp_path.resolve()
+    monkeypatch.setattr(onboard, "HOME", root / "home")
+    monkeypatch.setattr(onboard, "STATE_DIR", root / "state/synthesis")
     config = root / "gitconfig"
     config.write_text("[user]\n\tname = Example\n\temail = fixture@example.test\n")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))

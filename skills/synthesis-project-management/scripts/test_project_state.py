@@ -315,6 +315,114 @@ def test_internal_version_contradiction_is_semantic_failure(tmp_path: Path) -> N
     assert any("current" in issue.lower() and "4.0.0" in issue for issue in issues)
 
 
+@pytest.mark.parametrize(
+    "recorded",
+    [
+        "Candidate 4.95.7 is under verification, not released.",
+        "Release candidate v4.95.7 remains under verification.",
+        "Planned release: v4.95.7.",
+        "v4.95.7 is not released.",
+        "Target release v4.95.7, pending publication.",
+        "Documentation example: v9.0.0.",
+        "CI verified candidate v4.95.7; publication pending.",
+    ],
+)
+def test_unreleased_or_reference_versions_do_not_claim_release_currency(
+    tmp_path: Path, recorded: str,
+) -> None:
+    _repo, project = init_repo(tmp_path, version="4.95.6")
+    context = project / "CONTEXT.md"
+    context.write_text(context.read_text(encoding="utf-8") + "\n" + recorded + "\n")
+
+    issues = state.semantic_issues(project)
+
+    assert not any("older than later recorded release" in issue for issue in issues)
+    assert recorded in context.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    [
+        "Candidate v4.95.8 is not released; later release shipped: v4.95.7.",
+        "Released v4.95.7; planned candidate v4.95.8.",
+        "v4.95.7 shipped; v4.95.8 is not released.",
+        "Released v4.95.7 and candidate v4.95.8.",
+        "Candidate v4.95.8, released v4.95.7.",
+        "Released v4.95.7, with v4.95.8 planned.",
+    ],
+)
+def test_mixed_candidate_and_shipped_assertions_keep_actual_release_evidence(
+    tmp_path: Path, recorded: str,
+) -> None:
+    _repo, project = init_repo(tmp_path, version="4.95.6")
+    context = project / "CONTEXT.md"
+    context.write_text(context.read_text(encoding="utf-8") + "\n" + recorded + "\n")
+
+    issues = state.semantic_issues(project)
+
+    assert [issue for issue in issues if "older than later recorded release" in issue] == [
+        "current release 4.95.6 is older than later recorded release 4.95.7"
+    ]
+
+
+def test_structured_candidate_description_preserves_accepted_release_baseline(
+    tmp_path: Path,
+) -> None:
+    _repo, project = init_repo(tmp_path, version="4.95.6")
+    context = project / "CONTEXT.md"
+    context.write_text(
+        "# Context\n\nCandidate 4.95.7 is authored; public release remains pending.\n",
+        encoding="utf-8",
+    )
+    baseline = (
+        "4.95.6 dual-client reload accepted; 4.95.7 runtime and preserved-change "
+        "candidate under verification, not released"
+    )
+    state.build_operational_state(
+        project,
+        project_id="alpha",
+        phase="Runtime currency and held-change integration in progress",
+        status="active",
+        controlling_plan="resources/artifacts/plan.md",
+        accepted_baseline=baseline,
+        next_actions=["Complete candidate verification and public release"],
+        last_session="2026-09-03",
+        session_id="018f0000-0000-7000-8000-000000000001",
+    )
+
+    issues = state.semantic_issues(project)
+
+    assert not issues
+    assert baseline in context.read_text(encoding="utf-8")
+
+
+def test_future_phase_candidate_cannot_mask_stale_structured_accepted_baseline(
+    tmp_path: Path,
+) -> None:
+    _repo, project = init_repo(tmp_path, version="4.95.6")
+    context = project / "CONTEXT.md"
+    context.write_text(
+        "# Context\n\nLater release shipped: v4.95.7.\n", encoding="utf-8",
+    )
+    state.build_operational_state(
+        project,
+        project_id="alpha",
+        phase="Verify release candidate v4.95.8, not released",
+        status="active",
+        controlling_plan="resources/artifacts/plan.md",
+        accepted_baseline="4.95.6 accepted release",
+        next_actions=["Complete candidate verification"],
+        last_session="2026-09-03",
+        session_id="018f0000-0000-7000-8000-000000000001",
+    )
+
+    issues = state.semantic_issues(project)
+
+    assert [issue for issue in issues if "older than later recorded release" in issue] == [
+        "current release 4.95.6 is older than later recorded release 4.95.7"
+    ]
+
+
 def test_structured_state_rejects_uncompiled_current_prose(tmp_path: Path) -> None:
     _repo, project = init_repo(tmp_path)
     context = project / "CONTEXT.md"
@@ -583,6 +691,31 @@ def test_installed_newer_than_loaded_registry_is_a_live_plane_failure(tmp_path: 
     report.planes.update({"source": "PASS", "installed": "PASS", "live": "FAIL"})
     assert report.selected_path is not None
     assert report.planes == {"source": "PASS", "installed": "PASS", "live": "FAIL", "continuity": "PASS"}
+
+
+@pytest.mark.parametrize("change", ["edit", "delete"])
+def test_cross_project_plan_change_invalidates_clean_checkpoint(tmp_path: Path, change: str) -> None:
+    repo, project = init_repo(tmp_path)
+    plan = repo / "projects" / "program" / "resources" / "artifacts" / "work-plan.md"
+    plan.parent.mkdir(parents=True)
+    plan.write_text("# Parent plan\n", encoding="utf-8")
+    session = "018f0000-0000-7000-8000-000000000001"
+    claims = board(tmp_path / "board.md", [(session, "s-abcd-efgh-jkmn", "alpha", str(repo))])
+    receipts = tmp_path / "receipts"
+    state.build_operational_state(
+        project, project_id="alpha", phase="release 1.0.0", status="active",
+        controlling_plan="../program/resources/artifacts/work-plan.md", accepted_baseline="1.0.0",
+        next_actions=["finish"], last_session="2026-09-03", session_id=session,
+    )
+    state.checkpoint_project(project, session_id=session, coordination_board=claims, receipt_root=receipts)
+    assert state.validate_checkpoint(project, session_id=session, coordination_board=claims, receipt_root=receipts) == ("PASS", [])
+    if change == "edit":
+        plan.write_text("# Changed parent plan\n", encoding="utf-8")
+    else:
+        plan.unlink()
+    verdict, issues = state.validate_checkpoint(project, session_id=session, coordination_board=claims, receipt_root=receipts)
+    assert verdict == "LOCAL_RECOVERABLE"
+    assert any("plan" in issue or "durable project files" in issue for issue in issues)
 
 
 def test_lifecycle_hook_issues_session_bound_clean_receipt(tmp_path: Path) -> None:

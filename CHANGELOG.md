@@ -4,6 +4,39 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.95.7] - 2026-09-06
+
+Ordinary updates reconcile selected or independently configured shared Git,
+message-guard, kernel-propagation and day-end runtime code against verified
+release payloads. Exact ownership or immutable historical provenance is required
+before replacement. Personal instructions, policies, selections, authentication
+and service configuration are not reinitialized. Refresh ownership does not
+grant uninstall ownership for independently installed components.
+
+Day-end installation includes its executable state helper. Upgrading an older
+installation may introduce that exact dependency only after both existing
+launcher anchors are proven released content. Local historical Git evidence is
+bound to the current source, ancestor tags and both plugin manifests; diagnostics
+do not fetch or check out historical code.
+
+Protective doctors execute the installed Git and message-guard boundaries with
+timeouts and explicit health results. Pending recovery, unknown modifications,
+symlink traversal, receipt races and source drift fail closed. Exact-file
+journals restore interrupted changes without overwriting independent edits.
+Receipt saves are bound to the generation originally loaded or verified written.
+
+Project state and both client context renderers share controlling-plan resolution:
+structured state wins, explicit references are validated, and parent plans stay
+inside the repository. Their hashes participate in checkpoint invalidation.
+Historical prose remains historical; ambiguous legacy references are refused.
+Context insert/replace checks use one input snapshot and reject line fusion,
+including adjacent replacements, while retaining LF and CRLF bytes.
+
+Project diagnostics distinguish prospective candidate notes from affirmative
+release evidence and prioritize the accepted baseline over a candidate phase.
+They retain stale-release detection without treating a version mention as proof
+of publication.
+
 ## [4.95.6] - 2026-09-06
 
 Active and stopped project parity now render both client contexts in an explicit

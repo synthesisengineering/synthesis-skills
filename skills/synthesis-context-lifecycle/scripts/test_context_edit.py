@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -352,3 +354,231 @@ def test_cli_success_reports_line_count(tmp_path: Path, capsys) -> None:
     assert code == 0
     assert "changed" in captured.out and "1 replacement(s)" in captured.out
     assert "**Status:** Complete" in path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_insert_before_refuses_text_without_trailing_newline(
+    tmp_path: Path, dry_run: bool,
+) -> None:
+    """A prose insertion must not fuse with the following record field."""
+    path = record(tmp_path, "intro line\nParent seat: [x](y)\n")
+    before = path.read_bytes()
+
+    with pytest.raises(ContextEditError, match="end the text with a newline"):
+        insert_before(
+            path, anchor="Parent seat:", text="(reader briefing sits alongside)",
+            dry_run=dry_run,
+        )
+
+    assert path.read_bytes() == before
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["CONTEXT.md"]
+
+
+def test_insert_before_refuses_a_mid_line_anchor(tmp_path: Path) -> None:
+    path = record(tmp_path, "prefix text Parent seat: [x](y)\n")
+    before = path.read_bytes()
+
+    with pytest.raises(ContextEditError, match="begins mid-line \\(line 1\\)"):
+        insert_before(path, anchor="Parent seat:", text="new line\n")
+
+    assert path.read_bytes() == before
+
+
+def test_insert_before_rejects_literal_backslash_n(tmp_path: Path) -> None:
+    path = record(tmp_path, "Parent seat: [x](y)\n")
+    before = path.read_bytes()
+
+    with pytest.raises(ContextEditError, match="end the text with a newline"):
+        insert_before(path, anchor="Parent seat:", text=r"new line\n")
+
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("original", ["Parent seat: [x](y)", "intro\nParent seat: [x](y)\n"])
+def test_insert_before_multi_line_text_succeeds_at_a_line_boundary(
+    tmp_path: Path, original: str,
+) -> None:
+    path = record(tmp_path, original)
+    inserted = "Plan link:\n[p](q)\n(note)\n"
+
+    insert_before(path, anchor="Parent seat:", text=inserted)
+
+    assert path.read_text(encoding="utf-8") == original.replace("Parent seat:", inserted + "Parent seat:")
+
+
+@pytest.mark.parametrize(
+    ("original", "anchor", "replacement", "count"),
+    [
+        ("keep\nfoo\nnext\n", "foo\n", "foo", 1),
+        ("prev\nfoo more\n", "\nfoo", "", 1),
+        ("prev\nnext\n", "\n", "", 2),
+        ("prev\n\nnext", "\n", "", 2),
+        ("prev\n\nnext", "\n\n", "", 1),
+        ("prev\nfoo", "\nfoo", "replacement", 1),
+        ("foo\nnext", "foo\n", "replacement", 1),
+    ],
+)
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_replace_refuses_boundary_line_fusion_without_writing(
+    tmp_path: Path, original: str, anchor: str, replacement: str,
+    count: int, dry_run: bool,
+) -> None:
+    path = record(tmp_path, original)
+    before = path.read_bytes()
+
+    with pytest.raises(ContextEditError, match="merge previously separate lines"):
+        replace_once(
+            path, anchor=anchor, replacement=replacement, count=count,
+            dry_run=dry_run,
+        )
+
+    assert path.read_bytes() == before
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["CONTEXT.md"]
+
+
+@pytest.mark.parametrize(
+    ("original", "anchor", "replacement", "count", "expected"),
+    [
+        ("keep\nfoo\nnext\n", "foo\n", "", 1, "keep\nnext\n"),
+        ("foo\nnext\n", "foo\n", "", 1, "next\n"),
+        ("keep\nfoo\n", "foo\n", "", 1, "keep\n"),
+        ("foo\n", "foo\n", "", 1, ""),
+        ("foo\nfoo\nnext", "foo\n", "", 2, "next"),
+        ("keep\nfoo\nfoo\nnext", "foo\n", "", 2, "keep\nnext"),
+        ("foo\n", "foo\n", "foo", 1, "foo"),
+        ("\nfoo", "\nfoo", "foo", 1, "foo"),
+        ("start\none\ntwo\nend\n", "one\ntwo", "one two", 1, "start\none two\nend\n"),
+        ("prev\n\nnext", "prev\n", "prev", 1, "prev\nnext"),
+        ("prev\n\nnext", "\nnext", "next", 1, "prev\nnext"),
+        ("prev\nnext", "prev\nnext", "prev next", 1, "prev next"),
+        ("\n\n", "\n", "", 2, ""),
+        ("alpha beta", "beta", "gamma", 1, "alpha gamma"),
+    ],
+)
+def test_replace_allows_explicit_region_edits_and_surviving_separators(
+    tmp_path: Path, original: str, anchor: str, replacement: str,
+    count: int, expected: str,
+) -> None:
+    path = record(tmp_path, original)
+
+    replace_once(path, anchor=anchor, replacement=replacement, count=count)
+
+    assert path.read_text(encoding="utf-8") == expected
+
+
+def test_pure_replacement_checks_the_result_of_all_adjacent_matches() -> None:
+    with pytest.raises(ContextEditError, match="merge previously separate lines"):
+        apply_replacement("left\n\nright", "\n", "", count=2)
+
+
+@pytest.mark.parametrize("newline", ["\r\n", "\n"])
+def test_insert_preserves_physical_line_endings(tmp_path: Path, newline: str) -> None:
+    path = tmp_path / "REFERENCE.md"
+    before = (f"intro{newline}Parent seat: [x](y){newline}").encode()
+    path.write_bytes(before)
+
+    insert_before(path, anchor="Parent seat:", text=f"new line{newline}")
+
+    assert path.read_bytes() == before.replace(b"Parent seat:", f"new line{newline}Parent seat:".encode())
+
+
+def test_replace_preserves_crlf_and_mixed_line_endings(tmp_path: Path) -> None:
+    path = tmp_path / "REFERENCE.md"
+    path.write_bytes(b"intro\r\nold\r\nneighbor\nlast\r\n")
+
+    replace_once(path, anchor="old\r\n", replacement="new\r\n")
+
+    assert path.read_bytes() == b"intro\r\nnew\r\nneighbor\nlast\r\n"
+
+
+@pytest.mark.parametrize("replacement", ["", "\r"])
+def test_replace_cannot_turn_crlf_into_a_bare_carriage_return(
+    tmp_path: Path, replacement: str,
+) -> None:
+    path = tmp_path / "REFERENCE.md"
+    before = b"left\r\nright"
+    path.write_bytes(before)
+
+    with pytest.raises(ContextEditError, match="merge previously separate lines"):
+        replace_once(path, anchor="\r\n", replacement=replacement)
+
+    assert path.read_bytes() == before
+
+
+def test_replace_allows_a_complete_leading_crlf_separator(tmp_path: Path) -> None:
+    path = tmp_path / "REFERENCE.md"
+    path.write_bytes(b"left\r\nold\r\nright")
+
+    replace_once(path, anchor="\r\nold", replacement="\r\nnew")
+
+    assert path.read_bytes() == b"left\r\nnew\r\nright"
+
+
+def test_refused_crlf_insert_does_not_normalize_the_file(tmp_path: Path) -> None:
+    path = tmp_path / "REFERENCE.md"
+    before = b"intro\r\nParent seat: [x](y)\r\n"
+    path.write_bytes(before)
+
+    with pytest.raises(ContextEditError, match="end the text with a newline"):
+        insert_before(path, anchor="Parent seat:", text="new line")
+
+    assert path.read_bytes() == before
+
+
+def test_set_field_preserves_crlf_separator(tmp_path: Path) -> None:
+    path = tmp_path / "REFERENCE.md"
+    path.write_bytes(b"**Status:** Active\r\nneighbor\r\n")
+
+    set_field(path, field="Status", value="Complete")
+
+    assert path.read_bytes() == b"**Status:** Complete\r\nneighbor\r\n"
+
+
+def test_cli_insert_refusal_exits_nonzero_without_success_output(
+    tmp_path: Path, capsys,
+) -> None:
+    path = record(tmp_path, "intro line\nParent seat: [x](y)\n")
+    before = path.read_bytes()
+
+    code = main([
+        "insert-before", "--file", str(path), "--anchor", "Parent seat:",
+        "--text", "no trailing newline",
+    ])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "corrupt line structure" in captured.err
+    assert "changed" not in captured.out
+    assert path.read_bytes() == before
+
+
+def test_cli_process_preserves_crlf_and_refuses_line_fusion(tmp_path: Path) -> None:
+    """Exercise argv, exit status, diagnostics, and physical file bytes."""
+    path = tmp_path / "REFERENCE.md"
+    path.write_bytes(b"intro\r\nParent seat: [x](y)\r\n")
+    command = [
+        sys.executable, "-B", str(Path(__file__).with_name("context_edit.py")),
+    ]
+    inserted = subprocess.run(
+        command + [
+            "insert-before", "--file", str(path), "--anchor", "Parent seat:",
+            "--text", "new line\r\n",
+        ],
+        cwd=tmp_path, text=True, capture_output=True, check=False,
+    )
+    assert inserted.returncode == 0, inserted.stderr
+    expected = b"intro\r\nnew line\r\nParent seat: [x](y)\r\n"
+    assert path.read_bytes() == expected
+
+    refused = subprocess.run(
+        command + [
+            "replace", "--file", str(path), "--anchor", "new line\r\n",
+            "--replacement", "new line",
+        ],
+        cwd=tmp_path, text=True, capture_output=True, check=False,
+    )
+    assert refused.returncode == 1
+    assert refused.stdout == ""
+    assert "merge previously separate lines" in refused.stderr
+    assert path.read_bytes() == expected
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["REFERENCE.md"]

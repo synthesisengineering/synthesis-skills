@@ -13,6 +13,7 @@ from test_kb_update_ownership import kb, snapshot  # noqa: F401
 
 @pytest.fixture
 def installed(kb, monkeypatch):
+    monkeypatch.setattr(onboard, "STATE_DIR", kb.root / "state")
     report, receipts = kb.run(enrolling=True)
     assert report.exit_code() == 0, report.steps
     public = kb.root / "public"

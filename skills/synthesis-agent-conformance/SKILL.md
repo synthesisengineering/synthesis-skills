@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.9.5"
+  version: "1.9.6"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -45,6 +45,12 @@ demonstrably unrelated historical blocks cannot redefine its native messages
 or delivery keys. These probes establish agreement over local evidence, not
 remote freshness or actual client delivery. Other conformance checks may refresh
 state; do not describe the entire command as read-only.
+
+Both client renderers and project state use the shared confined controlling-plan
+resolver. Structured authority precedes historical prose, parent-plan hashes
+invalidate stale checkpoints, and stopped comparisons remap the plan into the
+causally selected worktree. Missing, malformed and ambiguous legacy references
+remain non-green; diagnostic rendering does not rewrite history to resolve them.
 
 ## Workflow
 

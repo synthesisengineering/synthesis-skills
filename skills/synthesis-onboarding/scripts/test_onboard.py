@@ -948,7 +948,9 @@ class PluginTests(unittest.TestCase):
         self.assertIn("/stable/onboard.sh", skill)
         self.assertIn("/stable/onboard.sh", readme)
 
-    def test_doctor_reports_current_behind_and_unverifiable_currency(self):
+    @patch.object(onboard, "phase_shared_runtime")
+    def test_doctor_reports_current_behind_and_unverifiable_currency(self, _runtime_phase):
+        # Plugin policy unit test; real runtime execution is covered separately.
         with patch.object(onboard, "run", return_value=(0, "", "")), \
              patch.object(onboard, "resolve_client", return_value="codex"), \
              patch.object(onboard, "plugin_record", return_value=(True, "4.74.0")), \

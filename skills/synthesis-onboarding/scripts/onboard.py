@@ -27,7 +27,9 @@ import argparse
 import hashlib
 import json
 import os
+import plistlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -62,6 +64,7 @@ from system_contract import (
     validate_desired_state,
     validate_org_manifest,
     validate_repository_url,
+    validate_release_descriptor,
     verify_instruction_source_receipt,
 )
 from whole_system import (
@@ -91,7 +94,7 @@ from whole_system import (
     validate_personal_policy,
 )
 
-ENGINE_VERSION = "2.3.4"
+ENGINE_VERSION = "2.4.0"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -405,10 +408,13 @@ def effective_clients(cli_value, manifest):
 class Receipts:
     def __init__(self, path=RECEIPTS_PATH):
         self.path = Path(path)
-        if self.path.exists():
-            self.data = json.loads(self.path.read_text(encoding="utf-8"))
+        raw, self._disk_snapshot = self._read_disk()
+        if raw is not None:
+            self.data = json.loads(raw.decode("utf-8"))
         else:
             self.data = {"version": 2, "generated_files": {}, "adopted_repos": {}, "runs": []}
+        if not isinstance(self.data, dict):
+            raise ContractError("receipt must contain an object")
         self.data.setdefault("generated_files", {})
         self.data.setdefault("adopted_repos", {})
         self.data.setdefault("runs", [])
@@ -418,11 +424,70 @@ class Receipts:
         self.data.setdefault("managed_text_entries", {})
         self.data["version"] = max(2, int(self.data.get("version", 1)))
 
+    def _read_disk(self):
+        """Read one regular, stable generation and fingerprint those exact bytes."""
+        import stat
+
+        if not self.path.is_absolute() or ".." in self.path.parts:
+            raise ContractError("receipt path must be absolute without traversal")
+        regular_tree(self.path)
+        try:
+            descriptor = os.open(self.path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        except FileNotFoundError:
+            return None, None
+        with os.fdopen(descriptor, "rb") as stream:
+            before = os.fstat(stream.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise ContractError("receipt is not a regular file")
+            content = stream.read()
+            after = os.fstat(stream.fileno())
+        observed = self.path.lstat()
+        def identity(value):
+            return (value.st_dev, value.st_ino, value.st_size,
+                    value.st_mtime_ns, value.st_ctime_ns, value.st_mode)
+        if identity(before) != identity(after) or identity(after) != identity(observed):
+            raise ContractError("receipt changed while being read")
+        return content, (hashlib.sha256(content).hexdigest(), after.st_mode & 0o777)
+
+    def assert_current(self):
+        """Refuse stale disk authority without discarding local phase edits."""
+        observed = self._read_disk()[1]
+        if observed != self._disk_snapshot:
+            raise ContractError("receipt changed since load or last verified write")
+        return observed
+
+    def accept_runtime_write(self, previous_fingerprint, written_fingerprint):
+        """Acknowledge only the exact generation a verified runtime commit wrote."""
+        if not isinstance(written_fingerprint, tuple) or len(written_fingerprint) != 2:
+            raise ContractError("runtime receipt write fingerprint is invalid")
+        if previous_fingerprint != self._disk_snapshot:
+            raise ContractError("runtime receipt ownership snapshot changed")
+        if self._read_disk()[1] != written_fingerprint:
+            raise ContractError("runtime receipt changed before ownership acknowledgement")
+        self._disk_snapshot = written_fingerprint
+
     def save(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(tmp, self.path)
+        import tempfile
+
+        content = (json.dumps(self.data, indent=2, sort_keys=True) + "\n").encode("utf-8")
+        with engine_lock(self.path.parent):
+            previous = self.assert_current()
+            mode = previous[1] if previous is not None else 0o600
+            descriptor, temporary = tempfile.mkstemp(prefix=".receipts-", suffix=".tmp", dir=self.path.parent)
+            staged = Path(temporary)
+            try:
+                with os.fdopen(descriptor, "wb") as stream:
+                    os.fchmod(stream.fileno(), mode)
+                    stream.write(content)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                # Staging can take time; never let it hide a peer's new receipt.
+                self.assert_current()
+                os.replace(staged, self.path)
+                self.accept_runtime_write(previous, (hashlib.sha256(content).hexdigest(), mode))
+            finally:
+                if staged.exists():
+                    staged.unlink()
 
     def file_sha(self, path):
         return (self.data["generated_files"].get(str(path)) or {}).get("sha256")
@@ -2960,6 +3025,102 @@ def _hook_file_has_kernel_sync(path):
     return _kernel_sync_entry(data) is not None
 
 
+def _direct_runtime_hook_script(command):
+    """Read a direct command without executing expansions or losing tilde quoting.
+
+    Support literal shell words and the Python -B/-- invocation forms. Shell
+    operators, expansions, wrappers and other interpreter modes are not direct
+    runtime wiring. Quoted or escaped tildes remain literal, as in the shell.
+    """
+    if not isinstance(command, str):
+        raise ValueError("hook command is not text")
+    if any(char in command for char in "\r\n\0"):
+        return None
+    raw_words, current = [], []
+    quote, escaped = None, False
+    for char in command:
+        if escaped:
+            current.append(char)
+            escaped = False
+        elif char == "\\" and quote != "'":
+            current.append(char)
+            escaped = True
+        elif quote:
+            current.append(char)
+            if char == quote:
+                quote = None
+            elif quote == '"' and char in "$`":
+                return None
+        elif char in ";&|<>()$`*?[]" or (char == "#" and not current):
+            return None
+        elif char in " \t":
+            if current:
+                raw_words.append("".join(current))
+                current = []
+        else:
+            current.append(char)
+            if char in "'\"":
+                quote = char
+    if quote or escaped:
+        raise ValueError("hook command has an unfinished quote or escape")
+    if current:
+        raw_words.append("".join(current))
+    words = []
+    for raw in raw_words:
+        word = shlex.split(raw)[0]
+        if raw.startswith("~/"):
+            word = str(HOME / word[2:])
+        words.append(word)
+    if not words:
+        return None
+    index = 0
+    if re.fullmatch(r"python(?:3(?:\.\d+)?)?", Path(words[0]).name):
+        index = 1
+        while index < len(words) and words[index] == "-B":
+            index += 1
+        if index < len(words) and words[index] == "--":
+            index += 1
+        if index >= len(words) or words[index].startswith("-"):
+            return None
+    return words[index]
+
+
+def _stable_runtime_hook(path, event, target):
+    """Recognize executable wiring, never a script-name substring."""
+    if not path.exists():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        entries = data.get("hooks", {}).get(event, [])
+        if not isinstance(entries, list):
+            raise ValueError("hook event is not a list")
+        for entry in entries:
+            for hook in entry.get("hooks", []):
+                if hook.get("type") != "command":
+                    continue
+                script = _direct_runtime_hook_script(hook.get("command", ""))
+                if script == str(target):
+                    return True
+    except (OSError, ValueError, AttributeError, TypeError) as exc:
+        raise ContractError("runtime hook wiring cannot be inspected: %s" % path) from exc
+    return False
+
+
+def _day_end_service_wired():
+    path = HOME / "Library/LaunchAgents/com.synthesis.day-end-nudge.plist"
+    if not path.exists():
+        return False
+    try:
+        data = plistlib.loads(path.read_bytes())
+        target = str(HOME / ".synthesis/day-end/bin/day-end-nudge.sh")
+        return (data.get("Label") == "com.synthesis.day-end-nudge"
+                and data.get("Disabled") is not True
+                and data.get("Program", target) == target
+                and data.get("ProgramArguments") == [target])
+    except (OSError, ValueError, AttributeError, TypeError) as exc:
+        raise ContractError("day-end service wiring cannot be inspected") from exc
+
+
 def _hooks_probe(clients_wanted):
     engine = HOME / ".synthesis" / "git-hooks"
     required = [engine / "pre-commit", engine / "commit-msg", engine / "_load_config.py"]
@@ -3069,6 +3230,146 @@ def _runtime_probe(receipts, personal_configuration=None):
     return True, detail
 
 
+def runtime_components(receipts, desired_state=None):
+    """Select owned/declared runtimes without changing setup layer choices.
+
+    A separately installed protective runtime remains active even when setup
+    declined that layer. Wiring selects it for verification; only verified
+    released bytes or a matching ownership receipt authorize reconciliation.
+    """
+    layers = ((desired_state or {}).get("layers") or {})
+    selected = lambda name: layers.get(name, receipts.layer_choice(name)) == "selected"
+    components = set()
+    if selected("runtime-engines") or selected("hooks-gates") or selected("coordination"):
+        components.add("git-hooks")
+    if selected("hooks-gates") or selected("personal-policy"):
+        components.add("message-guard")
+    if selected("agent-kernel"):
+        components.add("kernel")
+    if selected("runtime-engines"):
+        components.add("day-end")
+    owned = receipts.data.get("runtime_payloads", {})
+    if not isinstance(owned, dict) or not isinstance(owned.get("files", {}), dict):
+        raise ContractError("runtime ownership receipt is malformed")
+    for entry in owned.get("files", {}).values():
+        if not isinstance(entry, dict) or not isinstance(entry.get("component"), str):
+            raise ContractError("runtime ownership entry is malformed")
+        components.add(entry["component"])
+    rc, value, _ = run(["git", "config", "--global", "--get", "core.hooksPath"], timeout=15)
+    hook_root = value.strip()
+    if hook_root.startswith("~/"):
+        hook_root = str(HOME / hook_root[2:])
+    if rc == 0 and hook_root == str(HOME / ".synthesis" / "git-hooks"):
+        components.add("git-hooks")
+    hook_paths = (
+        HOME / ".claude" / "settings.json", HOME / ".codex" / "hooks.json",
+    )
+    if any(_stable_runtime_hook(path, "PreToolUse", HOME / ".synthesis/message-guard/message_guard.py")
+           for path in hook_paths):
+        components.add("message-guard")
+    if any(_stable_runtime_hook(path, "PostToolUse", STATE_DIR / "bin/kernel_sync.py")
+           for path in hook_paths):
+        components.add("kernel")
+    launcher = HOME / ".local" / "bin" / "day-end"
+    if launcher.is_symlink() and launcher.resolve() == HOME / ".synthesis" / "day-end" / "bin" / "day-end":
+        components.add("day-end")
+    if _day_end_service_wired():
+        components.add("day-end")
+    return components
+
+
+def _protective_doctors(components):
+    """Execute installed protective boundaries with bounded, explicit outcomes."""
+    commands = {
+        "git-hooks": HOME / ".synthesis" / "git-hooks" / "_load_config.py",
+        "message-guard": HOME / ".synthesis" / "message-guard" / "message_guard.py",
+    }
+    checked = []
+    for component, path in commands.items():
+        if component not in components:
+            continue
+        try:
+            regular_tree(path)
+            if not path.is_file():
+                return False, "%s doctor is missing" % component
+            environment = {"HOME": str(HOME), "PYTHONDONTWRITEBYTECODE": "1"}
+            if component == "git-hooks":
+                environment["SYNTHESIS_GIT_HOOKS_SOURCE"] = str(
+                    source_root() / "skills" / "synthesis-git-hooks" / "scripts"
+                )
+            rc, out, err = run([sys.executable, "-B", str(path), "--doctor"],
+                               env=environment, timeout=90)
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            return False, "%s doctor could not execute: %s" % (component, exc)
+        if rc or not any(line.startswith("HEALTHY:") for line in out.splitlines()):
+            return False, "%s doctor failed (exit %d): %s" % (
+                component, rc, (err or out or "no health result").strip()[-600:]
+            )
+        checked.append(component)
+    return True, ("protective doctors passed: " + ", ".join(checked)
+                  if checked else "no protective runtimes are selected or independently wired")
+
+
+def phase_shared_runtime(report, receipts, desired_state=None, *, dry_run=False, verify_only=False):
+    """Reconcile release payload only; never rerun personal initialization."""
+    from runtime_payload import plan, verify, apply, pending
+
+    try:
+        if pending(STATE_DIR):
+            raise ContractError("runtime recovery is pending; run repair before claiming currency")
+        receipts.assert_current()
+        components = runtime_components(receipts, desired_state)
+        if not components:
+            report.add("shared-runtime", SKIP, "no selected or independently wired runtime payload")
+            return
+        system = SystemState()
+        history = system.state_dir / "releases"
+        release_source = source_root()
+        acquisition_cache = Path(os.environ.get("SYNTHESIS_ONBOARD_CACHE_DIR", str(system.cache_dir)))
+        legacy_git_root = (release_source if (release_source / ".git").exists()
+                           else acquisition_cache / "acquisition" / "synthesis-skills.git")
+        if not legacy_git_root.exists() and not legacy_git_root.is_symlink():
+            legacy_git_root = None
+        def legacy_releases():
+            regular_tree(history)
+            if not history.is_dir():
+                return
+            for descriptor_path in sorted(history.glob("*.json")):
+                regular_tree(descriptor_path)
+                descriptor = validate_release_descriptor(json.loads(descriptor_path.read_text(encoding="utf-8")))
+                if descriptor_path.name != descriptor["version"] + ".json":
+                    raise ContractError("runtime historical release identity does not match its filename")
+                root = acquisition_cache / "releases" / descriptor["content_digest"]
+                if root.exists() or root.is_symlink():
+                    yield root, descriptor
+        runtime_plan = plan(release_source, HOME, STATE_DIR, components, receipts.data,
+                            legacy_releases=legacy_releases(), legacy_git_root=legacy_git_root)
+        differences = [item for item in verify(runtime_plan) if item["status"] != "current"]
+        if verify_only:
+            if differences:
+                raise ContractError("runtime payload is not current: " + "; ".join(
+                    "%s: %s" % (item["target"], item["status"]) for item in differences
+                ))
+            healthy, detail = _protective_doctors(components)
+            if not healthy:
+                raise ContractError(detail)
+            report.add("shared-runtime", OK, "release-derived runtime bytes verified; " + detail)
+            return
+        if dry_run:
+            report.add("shared-runtime", CHANGED if differences else OK,
+                       "would reconcile verified runtime payload; personal layers remain unchanged")
+            return
+        def verify_after():
+            healthy, detail = _protective_doctors(components)
+            if not healthy:
+                raise ContractError(detail)
+        apply(runtime_plan, receipts, verify_after=verify_after)
+        report.add("shared-runtime", CHANGED if differences else OK,
+                   "runtime payload is current and protective doctors passed; personal layers unchanged")
+    except (ContractError, OSError, ValueError, TypeError) as exc:
+        report.add("shared-runtime", ERROR, "runtime reconciliation refused: %s" % exc)
+
+
 def _coordination_probe():
     root = HOME / ".synthesis" / "git-hooks"
     required = [
@@ -3091,7 +3392,7 @@ def _coordination_probe():
     return True, "coordination runtime and board are present"
 
 
-def _doctors_probe():
+def _doctors_probe(components=None):
     root = source_root() / "skills"
     required = [
         root / "synthesis-context-lifecycle" / "scripts" / "context_doctor.py",
@@ -3102,7 +3403,12 @@ def _doctors_probe():
     missing = [path.name for path in required if not path.is_file()]
     if missing:
         return False, "doctor entry points missing: %s" % ", ".join(missing)
-    return True, "context, conformance, commit, and message doctors are available"
+    try:
+        if components is None:
+            components = runtime_components(Receipts())
+        return _protective_doctors(components)
+    except (ContractError, OSError, ValueError, TypeError) as exc:
+        return False, "protective doctor selection is unverifiable: %s" % exc
 
 
 def _personal_policy_probe():
@@ -3515,6 +3821,7 @@ def doctor(report, manifest, clients_wanted, policy, desired_state=None):
         currency_unverifiable=currency_unverifiable,
         desired_state=desired_state,
     )
+    phase_shared_runtime(report, Receipts(), desired_state, verify_only=True)
     counts = report.counts()
     if counts.get(ERROR):
         return 1
@@ -4106,6 +4413,13 @@ def _main_unlocked(argv=None):
             return finish(report, args, 2)
 
     # install / additive enrollment / update / whole-system init
+    if args.command in ("init", "install", "update", "repair") and not args.dry_run:
+        from runtime_payload import recover
+        try:
+            recover(HOME, STATE_DIR)
+        except (ContractError, OSError, ValueError) as exc:
+            report.add("shared-runtime", ERROR, "interrupted runtime recovery refused: %s" % exc)
+            return finish(report, args, 1)
     receipts = Receipts()
     profile = None
     answers = None
@@ -4218,13 +4532,24 @@ def _main_unlocked(argv=None):
             args.dry_run,
             no_services,
         )
+    if args.command in ("init", "install", "update", "repair") and not report.exit_code():
+        runtime_selection = desired_state
+        if args.command == "init":
+            runtime_selection = {"layers": choices}
+        phase_shared_runtime(report, receipts, runtime_selection, dry_run=args.dry_run)
+        if report.exit_code():
+            return finish(report, args, report.exit_code())
     if not args.dry_run:
         receipts.data["plugin_policy"] = policy
         receipts.data.setdefault("runs", []).append(
             {"at": utcnow(), "command": args.command, "manifest": str(args.manifest) if args.manifest else None,
              "engine": ENGINE_VERSION})
         receipts.data["runs"] = receipts.data["runs"][-20:]
-        receipts.save()
+        try:
+            receipts.save()
+        except (ContractError, OSError, ValueError) as exc:
+            report.add("receipts", ERROR, "receipt save refused: %s" % exc)
+            return finish(report, args, 1)
     if args.command == "init" and not args.dry_run and report.exit_code() == 0:
         code = doctor(
             report,
