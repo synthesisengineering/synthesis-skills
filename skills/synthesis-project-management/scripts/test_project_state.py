@@ -726,7 +726,9 @@ def test_lifecycle_hook_issues_session_bound_clean_receipt(
     session = "018f0000-0000-7000-8000-000000000001"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", f"{client}:{session}")
     claims = board(tmp_path / "board.md", [(session, "s-abcd-efgh-jkmn", "alpha", str(repo))])
+    claims.write_text(claims.read_text().replace(f"tool:{session}", f"{client}:{session}"))
     receipts = tmp_path / "receipts"
+    payload = native_hook_fixture(tmp_path, monkeypatch, client, session, repo)
     state.build_operational_state(
         project,
         project_id="alpha",
@@ -739,7 +741,7 @@ def test_lifecycle_hook_issues_session_bound_clean_receipt(
         session_id=session,
     )
     verdict, issues = state.checkpoint_hook(
-        {"session_id": session, "cwd": str(repo)},
+        payload,
         coordination_board=claims,
         receipt_root=receipts,
         refresh_coordination=False,
@@ -758,6 +760,8 @@ def test_lifecycle_hook_refuses_semantically_incomplete_stop(
     session = "018f0000-0000-7000-8000-000000000001"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", f"{client}:{session}")
     claims = board(tmp_path / "board.md", [(session, "s-abcd-efgh-jkmn", "alpha", str(repo))])
+    claims.write_text(claims.read_text().replace(f"tool:{session}", f"{client}:{session}"))
+    payload = native_hook_fixture(tmp_path, monkeypatch, client, session, repo)
     state.build_operational_state(
         project,
         project_id="alpha",
@@ -771,13 +775,29 @@ def test_lifecycle_hook_refuses_semantically_incomplete_stop(
     )
     (project / "CONTEXT.md").write_text("# stale after work\n", encoding="utf-8")
     verdict, issues = state.checkpoint_hook(
-        {"session_id": session, "cwd": str(repo)},
+        payload,
         coordination_board=claims,
         receipt_root=tmp_path / "receipts",
         refresh_coordination=False,
     )
     assert verdict == "FAIL"
     assert any("changed" in issue for issue in issues)
+
+
+def native_hook_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client: str, native: str, cwd: Path) -> dict:
+    if client == "cc":
+        root = tmp_path / ".claude"
+        transcript = root / "projects" / "fixture" / f"{native}.jsonl"
+        record = {"type": "user", "sessionId": native}
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(root))
+    else:
+        root = tmp_path / ".codex"
+        transcript = root / "sessions" / "fixture.jsonl"
+        record = {"type": "session_meta", "payload": {"id": native}}
+        monkeypatch.setenv("CODEX_HOME", str(root))
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(json.dumps(record) + "\n")
+    return {"session_id": native, "cwd": str(cwd), "transcript_path": str(transcript)}
 
 
 def test_lifecycle_hook_fails_closed_when_lease_cannot_refresh(
