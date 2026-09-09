@@ -72,13 +72,17 @@ def campaign(path: Path, *, required: bool = False) -> dict | None:
             raise RefreshError("explicit campaign file is missing")
         return None
     keys = {"schema_version", "id", "recipient", "checks", "minimum_plugin_version"}
-    if set(value) != keys or type(value["schema_version"]) is not int or value["schema_version"] != 1:
+    if not keys <= set(value) or set(value) - keys - {"recipient_index"} or type(value["schema_version"]) is not int or value["schema_version"] != 1:
         raise RefreshError("campaign schema or fields are invalid")
     if not isinstance(value["id"], str) or not ID.fullmatch(value["id"]):
         raise RefreshError("campaign id is invalid")
     recipient = value["recipient"]
     if not isinstance(recipient, str) or not recipient.strip() or len(recipient) > 200 or any(ord(c) < 32 for c in recipient):
         raise RefreshError("campaign recipient is invalid")
+    if "recipient_index" in value:
+        index = value["recipient_index"]
+        if not isinstance(index, str) or not index or any(ord(c) < 32 for c in index) or not Path(index).is_absolute():
+            raise RefreshError("campaign recipient_index must be an absolute registry path")
     checks = value["checks"]
     if not isinstance(checks, list) or not checks or any(not isinstance(c, str) or c not in CHECKS for c in checks) or len(set(checks)) != len(checks):
         raise RefreshError("campaign checks are invalid")
@@ -260,7 +264,8 @@ def inspect(args, *, ignore_campaign: bool = False) -> tuple[dict, dict | None]:
     requested = set(selected_campaign["checks"] if selected_campaign else CHECKS) | {"recovery", "native_runtime"}
     checks = {}
     report = {"schema_version": 1, "client_ref": args.client_ref, "delivery_client_ref": args.client_ref, "native_session_id": args.native_session_id,
-              "project_locator": str(args.index.parent / args.project_id), "campaign": selected_campaign["id"] if selected_campaign else None,
+              "project_locator": str(args.index.parent / args.project_id), "project_registry": str(args.index),
+              "campaign": selected_campaign["id"] if selected_campaign else None,
               "campaign_descriptor_digest": digest(selected_campaign) if selected_campaign else None,
               "observed_at": datetime.now(timezone.utc).isoformat(), "checks": checks, "read_targets": [],
               "scope": "local machine inspection; no execution authority, agent reading, runtime reload, or complete ecosystem acceptance",
@@ -387,10 +392,22 @@ def feedback(report: dict, selected_campaign: dict | None, board: Path) -> dict:
     # inspected project bytes and campaign id remain unchanged.
     payload["campaign_descriptor_digest"] = digest(selected_campaign)
     key = hashlib.sha256((selected_campaign["id"] + "\n" + canonical_ref + "\n" + report["project_locator"]).encode()).hexdigest()
-    result_digest = digest(payload)
     result = {}
 
     def operation(content: str) -> str:
+        # Resolve again inside the delivery transaction, before duplicate
+        # checking: the same campaign may now name a transferred recipient.
+        # This changes only the destination, never the inspected source project.
+        index = selected_campaign.get("recipient_index") or report["checks"].get("project_status", {}).get("registry") or report["project_registry"]
+        try:
+            recipient, route = coordination.report_recipient(coordination.rows(content), selected_campaign["recipient"], Path(index))
+        except ValueError as exc:
+            raise RefreshError(str(exc)) from exc
+        payload.pop("recipient_route", None)
+        if route is not None:
+            payload["recipient_route"] = route
+        result_digest = digest(payload)
+        result.update(recipient=recipient, recipient_route=route)
         previous = []
         malformed_unrelated = 0
         for line in content.splitlines():
@@ -431,16 +448,6 @@ def feedback(report: dict, selected_campaign: dict | None, board: Path) -> dict:
         revision = max(revisions, default=0) + 1
         message = {**payload, "report_key": key, "revision": revision, "result_digest": result_digest, "observed_at": report["observed_at"],
                    "delivery_client_ref": report.get("delivery_client_ref", report["client_ref"])}
-        current = coordination.rows(content)
-        kind, matches = coordination.resolve_targets(current, selected_campaign["recipient"])
-        if kind in {"identity", "client-ref"}:
-            if len(matches) != 1:
-                raise RefreshError("feedback recipient is ambiguous")
-            recipient = matches[0].label
-        elif kind == "project":
-            recipient = f"{matches[0].project} sessions"
-        else:
-            recipient = coordination.sanitize(selected_campaign["recipient"])
         boundary = re.search(r"(?m)^---[ \t]*\n\n## Protocol(?:[^\n]*)?$", content)
         if not boundary:
             raise RefreshError("board lacks Protocol boundary")

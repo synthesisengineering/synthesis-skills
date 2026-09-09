@@ -17,7 +17,9 @@ metadata:
 When asked to refresh after an ecosystem upgrade or report session readiness,
 load this skill from the current verified installed root, then follow
 [references/refresh-and-report.md](references/refresh-and-report.md). This mode
-uses a deterministic local inspector and optional campaign feedback. It ends
+uses a deterministic local inspector and optional campaign feedback. Project
+feedback destinations follow explicit registry successor links; the reporting
+session keeps its project identity and execution restrictions. It ends
 after reporting and grants no project implementation or repair authority.
 Ordinary checkpoints use the protocol below and do not send campaign feedback.
 
