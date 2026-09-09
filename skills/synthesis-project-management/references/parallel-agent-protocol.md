@@ -19,16 +19,43 @@ machine:
    and speakable aliases while registering your exact machine, project,
    worktree/branch, resource claims, and context role — owner for the project's
    canonical context, contributor for a bounded slice. A migrated letter is a
-   legacy alias, not a claim.
+   legacy alias, not a claim. Claim the smallest coherent area needed for the
+   current task, following the scope rules below.
 3. **Isolate.** Create worktrees only after the claim, always naming the
    repository explicitly (a `cd`-dependent worktree command in the wrong
    directory creates a worktree of the wrong repository).
-4. **Work.** Heartbeat at checkpoints; keep the plan file current at phase
-   boundaries — it is the artifact that survives a crash (see "Digests").
+4. **Work.** Heartbeat and review claim scope at checkpoints and task/phase
+   changes. Expand before additional writes; narrow completed areas promptly.
+   Keep the plan current at phase boundaries — it survives a crash (see "Digests").
 5. **Close.** Update durable project tiers, create the local handoff receipt,
    message affected sessions, release the claim, and retire merged worktrees
    with `retire_worktree.py`, never by hand. Publish the attributed batch
    only for explicit remote handoff or day-end.
+
+## Claim scope over the task lifecycle
+
+Claims reserve the smallest coherent area needed for the current authorized
+task. Use exact files for independent edits. A directory claim is appropriate
+when the task requires coordinated changes across that directory, such as a
+multi-file implementation and its tests; directories are not categorically
+forbidden. Naming a project does not by itself require claiming its whole repo.
+
+Before writing outside the accepted area, expand the claim and verify that the
+expansion was accepted without overlap. Do not reserve speculative future work,
+adjacent projects, or whole repositories merely because they might become
+useful later. An intended expansion is not write authority.
+
+At each task or phase change and each normal execution checkpoint, compare the
+held areas with what remains to do. Narrow the claim as areas finish, and
+release completed areas promptly after their required closure is complete;
+keep only the paths still needed for actual work or its unfinished checkpoint.
+At a pause or task completion, release or narrow the remaining claim explicitly.
+A read-only refresh reports any recommended scope change without mutating claims.
+
+Only change the claims this session owns. Broad scope, age, app closure or a
+quiet heartbeat never authorizes narrowing or releasing a foreign claim.
+Coordinate an overlap through the owning session or the user's explicit
+administrative direction; do not apply automatic release or preemptive claims.
 
 ## Addressing a peer session — resolve, receipt, gate
 

@@ -42,6 +42,12 @@ that means collection succeeded, not that communications are approved or the
 day may close. Fenced/inline code examples and blockquotes are not operative
 plan items. Unterminated fences or frontmatter are coverage gaps.
 
+A gap blocks a clean sweep conclusion, not the rest of the ritual. Continue
+reviewing recovered candidates and performing other required ritual steps;
+record the incomplete coverage instead of claiming a clean close. Historical
+malformed input does not authorize broad plan repair or silently remove an
+obligation. Reconcile it at its source under the existing authority rules.
+
 ## Item identity and outcomes
 
 Keep the existing `**Decays:** YYYY-MM-DD (reason)` grammar. For new items add

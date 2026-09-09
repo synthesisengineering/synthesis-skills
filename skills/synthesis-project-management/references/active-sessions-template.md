@@ -25,7 +25,9 @@ Append addressed messages here. Use a heading:
 ## Protocol
 
 1. Read this file at SessionStart and every synthesis checkpoint.
-2. Claim source-area globs before writing.
+2. Claim the smallest coherent area currently needed before writing: exact
+   files for independent edits, directories for coordinated multi-file work.
+   Expand and verify acceptance before extra writes; do not preclaim future work.
 3. Do not write through an overlapping active claim.
 4. Every root session that writes git state uses an isolated worktree and branch.
 5. One session owns canonical project context; contributors use separate artifacts.
@@ -34,7 +36,10 @@ Append addressed messages here. Use a heading:
    `<project> sessions`; the addressed seat receives them at its next prompt.
    Direct sends go through `resolve` (which issues the delivery receipt the
    send gate requires); display names and chat titles are never addresses.
-8. Heartbeat at checkpoints; release or narrow claims at pause and session end.
+8. Heartbeat and review scope at checkpoints and task/phase changes. Narrow or
+   release completed areas promptly after required closure; retain only current
+   needs. Release or narrow at pause and session end. Never automatically release
+   or narrow another session's claim.
 
 ## Identity
 
