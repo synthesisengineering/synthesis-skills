@@ -466,6 +466,9 @@ python3 scripts/context_edit.py replace --file CONTEXT.md \
 
 python3 scripts/context_edit.py insert-before --file sessions/2026-08.md \
   --anchor "## 2026-08-20" --text "$NEW_ENTRY"
+
+python3 scripts/context_edit.py delete-line --file REFERENCE.md \
+  --anchor "| Completed item | Done |"
 ```
 
 It refuses, without writing, when the anchor is absent, when it matches a
@@ -474,7 +477,7 @@ file byte-identical, when the result would exceed a stated line budget, or when
 the target is a symlink. It writes atomically and then re-reads the file to
 confirm the change is actually on disk. There is no flag that makes a missing
 anchor succeed. `--dry-run` previews without writing and still refuses a bad
-anchor. Import `replace_once` or `set_field` to use it from Python.
+anchor. Import `replace_once`, `set_field` or `delete_line` to use it from Python.
 
 Line boundaries are protected too. `insert-before` requires an anchor at the
 start of a line and text ending with a real newline. `replace` refuses an edit
@@ -483,6 +486,15 @@ matches. Whole-line deletions and deliberate restructuring inside the anchor
 remain valid. To change a boundary intentionally, include the neighboring line
 in both anchor and replacement. The helper preserves LF and CRLF bytes; it
 does not insert or normalize separators to make an unsafe edit pass.
+
+Use `delete-line` to remove one exact, unique physical line, including its
+existing LF or CRLF ending; the anchor is the full line text without that ending.
+Partial and ambiguous matches refuse. Markdown pipe tables remain a unit:
+ordinary replacements cannot leave a blank or non-row line inside a table,
+remove its header or delimiter while retaining its rows, or cross a table
+boundary. Valid cell edits and complete data-row deletions pass. To replace
+or remove an entire table deliberately, name the complete table in the anchor.
+Fenced examples are not live tables. Archive durable facts before deleting them.
 
 The helper also refuses to *create* a stale header: an edit that leaves
 `**Phase:**` ahead of `**Last session:**` in the same ordinal family (round,

@@ -1,229 +1,418 @@
-# Release-specific native Stop wire contract. Base f6066def92f651b8c862483a655b6f94f448b0b0.
 schema: 2
-suite: native-stop-json-contract-2026-09-06
+suite: ecosystem-reliability-2026-09-09
 membership: closed
-production_entry_point: project_state.py hook through registered native Stop hooks
-enforcing_boundary: release.py derives exact Git base-to-head membership and consumes transaction-bound acceptance
-  before publication and dual-client installation
+production_entry_point: Declared-source deadline collector, shared plan and record helpers, native checkpoint
+  hooks and exact-session retirement CLI
+enforcing_boundary: release.py derives exact Git changed paths and consumes fresh transaction-bound acceptance
+  before source publication and both-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures use isolated native-shaped transcripts, temporary homes and real local Git/lease
-  repositories. They verify native identity parsing, exact pending attribution, clean-project applicability, owned
-  checkpoint controls and actual CLI failure transport. They do not establish genuine installed native execution,
-  full skill/tier reading, multi-computer safety, or arbitrary write admission. NOT_APPLICABLE issues no checkpoint
-  receipt and is not recovery PASS or historical proof of read-only behavior. Generic events without a structured-project
-  context or known own pending evidence retain their existing non-project applicability. Claude terminal failure
-  control requires verified native Claude identity; Codex retains failure transport. Source publication, both-client
-  installation, retained-cache integrity, actual new native Stop behavior and exact/current-global startup evidence
-  require separate verification. This manifest grants no publication, deployment, policy, automation or administrative-release
-  authority. The embedded Codex 0.153.4 consumer schema is a deterministic format control; actual installed native
-  completion must be verified separately.
+unverified_remainder: Fixtures use isolated transcripts, homes, Git repositories and local leases. They
+  establish source behavior and refusal controls, not genuine native-client completion, arbitrary shell
+  safety, real foreign-session recovery, multi-computer support or automatic adherence to prose claim
+  guidance. Documentation is manually reviewed; associated behavior fixtures do not prove an agent followed
+  instructions. Private publication-parser and currency-adapter changes have a separate private release
+  receipt. Installed bytes and fresh native evidence require separate verification. This acceptance grants
+  no website deployment, communication, automation, memory-setting change or foreign claim retirement
+  authority.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
   - release-contract
-  - native-stop-output-contract
 - path: .codex-plugin/plugin.json
   cases:
   - release-contract
-  - native-stop-output-contract
 - path: CHANGELOG.md
   cases:
   - release-contract
-  - native-stop-output-contract
 - path: README.md
   cases:
   - release-contract
-  - native-stop-output-contract
-- path: skills/synthesis-checkpoint/references/refresh-and-report.md
+- path: skills/synthesis-agent-conformance/scripts/test_plan_reference.py
+  cases:
+  - no-plan
+  - incidental-links
+  - ambiguous-plan
+  - plan-conflict
+  - structured-plan
+  - plan-positive
+- path: skills/synthesis-checkpoint/SKILL.md
   cases:
   - release-contract
-  - native-stop-output-contract
+- path: skills/synthesis-context-lifecycle/SKILL.md
+  cases:
+  - table-refusal
+  - line-delete
+  - partial-delete
+  - table-positive
+  - unique-line
+- path: skills/synthesis-context-lifecycle/scripts/context_edit.py
+  cases:
+  - table-refusal
+  - line-delete
+  - partial-delete
+  - table-positive
+  - unique-line
+- path: skills/synthesis-context-lifecycle/scripts/test_context_edit.py
+  cases:
+  - table-refusal
+  - line-delete
+  - partial-delete
+  - table-positive
+  - unique-line
+- path: skills/synthesis-daily-rituals/SKILL.md
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
+- path: skills/synthesis-daily-rituals/references/decay-sweep.md
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
+- path: skills/synthesis-daily-rituals/scripts/decay_sweep.py
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
+- path: skills/synthesis-daily-rituals/scripts/fixtures/decay-sweep/plans/2026-08-01.md
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
+- path: skills/synthesis-daily-rituals/scripts/fixtures/decay-sweep/plans/2026-09-04.md
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
+- path: skills/synthesis-daily-rituals/scripts/fixtures/decay-sweep/plans/2026-09-08.md
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
+- path: skills/synthesis-daily-rituals/scripts/fixtures/decay-sweep/plans/notes.md
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
+- path: skills/synthesis-daily-rituals/scripts/test_decay_sweep.py
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
-  cases: &id001
-  - clean-native-observer-has-no-checkpoint-authority
-  - observer-dirty-project-remains-blocked
-  - exact-native-pending-attribution-blocks
-  - foreign-pending-and-unrelated-dirty-work-are-preserved
-  - known-native-pending-work-blocks-from-workspace-root
-  - nonproject-session-without-pending-work-retains-applicability
-  - observer-identity-is-native-and-fail-closed
-  - missing-native-validator-fails-closed
-  - foreign-ambient-identity-cannot-grant-checkpoint-authority
-  - empty-board-identity-does-not-bind-foreign-seat
-  - matching-native-reference-and-empty-optional-reference-are-safe
-  - owner-checkpoint-authority-is-preserved
-  - clean-stale-semantics-are-not-reported-as-recovery-pass
-  - clean-causal-conflict-can-finish-reporting-without-checkpoint
-  - unverifiable-project-git-state-cannot-exonerate-observer
-  - claude-reentrant-stop-terminates-with-blocked-verdict
-  - codex-never-consumes-claude-terminal-control
-  - real-hook-cli-uses-local-lease-and-actionable-failure
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
+  - no-plan
+  - incidental-links
+  - ambiguous-plan
+  - plan-conflict
+  - structured-plan
+  - plan-positive
+  - table-refusal
+  - line-delete
+  - partial-delete
+  - table-positive
+  - unique-line
+  - desktop-seat
+  - unbound-authority
+  - payload-spoof
+  - native-stop
+  - foreign-preservation
+  - retained-proof
+  - proof-refusal
+  - native-recovery
+  - multiple-worktrees
+  - interruption
   - release-contract
-  - release-bound-receipt-consumed
-  - release-receipt-binding-mismatch-refused
-  - acceptance-self
-  - acceptance-omitted-path-refused
-  - acceptance-git-transaction-binding
-  - lifecycle-hook-issues-session-bound-clean-receipt
-  - lifecycle-hook-refuses-semantically-incomplete-stop
-  - native-stop-output-contract
-  - native-consumer-rejects-old-output
+  - manifest
+  - unlisted-path
+  - transaction-binding
+  - retirement-cwd-diagnostic
+  - retirement-base-diagnostic
 - path: skills/synthesis-project-management/SKILL.md
   cases:
   - release-contract
-  - native-stop-output-contract
+- path: skills/synthesis-project-management/references/active-sessions-template.md
+  cases:
+  - release-contract
+- path: skills/synthesis-project-management/references/checkpoint-closure-recovery.md
+  cases:
+  - desktop-seat
+  - unbound-authority
+  - payload-spoof
+  - native-stop
+  - foreign-preservation
+  - retained-proof
+  - proof-refusal
+  - native-recovery
+  - multiple-worktrees
+  - interruption
+- path: skills/synthesis-project-management/references/parallel-agent-protocol.md
+  cases:
+  - release-contract
+- path: skills/synthesis-project-management/references/project-state-recovery.md
+  cases:
+  - no-plan
+  - incidental-links
+  - ambiguous-plan
+  - plan-conflict
+  - structured-plan
+  - plan-positive
+- path: skills/synthesis-project-management/scripts/plan_reference.py
+  cases:
+  - no-plan
+  - incidental-links
+  - ambiguous-plan
+  - plan-conflict
+  - structured-plan
+  - plan-positive
 - path: skills/synthesis-project-management/scripts/project_state.py
-  cases: *id001
+  cases:
+  - desktop-seat
+  - unbound-authority
+  - payload-spoof
+  - native-stop
+  - foreign-preservation
 - path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
-  cases: *id001
+  cases:
+  - desktop-seat
+  - unbound-authority
+  - payload-spoof
+  - native-stop
+  - foreign-preservation
+- path: skills/synthesis-project-management/scripts/test_project_state.py
+  cases:
+  - release-contract
+  - desktop-seat
+  - unbound-authority
+  - payload-spoof
+  - native-stop
+  - foreign-preservation
+- path: skills/synthesis-repo-guard/SKILL.md
+  cases:
+  - retained-proof
+  - proof-refusal
+  - native-recovery
+  - multiple-worktrees
+  - interruption
+  - retirement-cwd-diagnostic
+  - retirement-base-diagnostic
+- path: skills/synthesis-repo-guard/checkpoint_sync.py
+  cases:
+  - retained-proof
+  - proof-refusal
+  - native-recovery
+  - multiple-worktrees
+  - interruption
+  - retirement-cwd-diagnostic
+  - retirement-base-diagnostic
+- path: skills/synthesis-repo-guard/test_checkpoint_sync.py
+  cases:
+  - retained-proof
+  - proof-refusal
+  - native-recovery
+  - multiple-worktrees
+  - interruption
+  - retirement-cwd-diagnostic
+  - retirement-base-diagnostic
 cases:
-- id: clean-native-observer-has-no-checkpoint-authority
+- id: older-due
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_clean_native_observer_has_no_checkpoint_authority
-  motivating_defect: A clean native observer was forced to acquire write authority or repeatedly fail Stop.
-- id: observer-dirty-project-remains-blocked
+  fixture: ../synthesis-daily-rituals/scripts/test_decay_sweep.py::test_older_target_dates_survive_today_without_retagging
+  motivating_defect: A deadline in an older plan disappeared from the current sweep.
+- id: explicit-id
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_observer_dirty_project_remains_blocked
-  motivating_defect: Absence of a claim or attribution could exonerate staged, unstaged, untracked or deleted project
-    work.
-- id: exact-native-pending-attribution-blocks
+  fixture: ../synthesis-daily-rituals/scripts/test_decay_sweep.py::test_explicit_identity_deduplicates_and_reasoned_redate_replaces
+  motivating_defect: Carried items need explicit identity without conflating similar titles.
+- id: resolution
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_exact_native_pending_attribution_blocks
-  motivating_defect: Exact native pending work, including malformed evidence, could be ignored when no seat matches.
-- id: foreign-pending-and-unrelated-dirty-work-are-preserved
+  fixture: ../synthesis-daily-rituals/scripts/test_decay_sweep.py::test_invalid_later_resolution_preserves_earlier_due_candidate
+  motivating_defect: Malformed later resolution could hide an older due item.
+- id: partial-coverage
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_decay_sweep.py::test_due_candidates_survive_partial_coverage_and_bad_files
+  motivating_defect: Unreadable inputs could erase collected due items or imply clean coverage.
+- id: future-resolution
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_decay_sweep.py::test_future_resolution_cannot_close_due_item
+  motivating_defect: Future evidence could incorrectly close a currently due item.
+- id: conflicting-copies
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_decay_sweep.py::test_same_day_conflicting_copies_require_review
+  motivating_defect: Peer-file ordering could silently select one conflicting item state.
+- id: no-plan
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_plan_reference.py::test_explicit_no_plan_precedes_historical_links_in_all_consumers
+  motivating_defect: Explicit absence must prevent incidental links from becoming controlling authority.
+- id: incidental-links
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_plan_reference.py::test_incidental_plan_references_are_not_declarations
+  motivating_defect: Dependency and historical links could be treated as active plans.
+- id: ambiguous-plan
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_plan_reference.py::test_two_standalone_plan_declarations_are_ambiguous
+  motivating_defect: Ambiguous declarations must refuse rather than select by path ordering.
+- id: plan-conflict
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_plan_reference.py::test_no_plan_and_explicit_path_conflict_instead_of_guessing
+  motivating_defect: Conflicting absence and path declarations require a visible diagnosis.
+- id: structured-plan
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_plan_reference.py::test_structured_path_outranks_a_historical_no_plan_declaration
+  motivating_defect: Structured current authority must survive historical prose.
+- id: plan-positive
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_plan_reference.py::test_cross_project_plan_summary_and_payload_agree
+  motivating_defect: Valid explicit cross-project plans must retain consistent consumer behavior.
+- id: table-refusal
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_context_edit.py::test_table_row_replacement_cannot_break_the_table
+  motivating_defect: Deleting row text while retaining its newline could split the table.
+- id: line-delete
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_context_edit.py::test_delete_line_cli_removes_exact_row_and_its_line_ending
+  motivating_defect: Exact deletion must consume the LF or CRLF physical line through the CLI.
+- id: partial-delete
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_context_edit.py::test_delete_line_cli_refuses_partial_row_or_table_header
+  motivating_defect: A partial or structural-header deletion must not corrupt surviving rows.
+- id: table-positive
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_context_edit.py::test_table_cell_edit_and_complete_row_deletion_remain_valid
+  motivating_defect: Ordinary cell edits and explicit data-row deletion must remain usable.
+- id: unique-line
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_context_edit.py::test_delete_line_refuses_duplicate_whole_lines_and_supports_dry_run
+  motivating_defect: Ambiguous line matches must refuse and dry-run must preserve input bytes.
+- id: desktop-seat
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_desktop_native_hook_matches_its_existing_seat_without_shell_override
+  motivating_defect: Desktop host and native UUID differ, causing the actual owner to be missed.
+- id: unbound-authority
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_desktop_claim_mapping_never_accepts_unbound_authority
+  motivating_defect: An unverified desktop selector must not grant a foreign claim.
+- id: payload-spoof
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_payload_task_ids_do_not_select_foreign_claim
+  motivating_defect: Incidental payload task fields could select another native seat.
+- id: native-stop
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_registered_stop_entrypoint_uses_native_identity
+  motivating_defect: Both registered hook paths must transport native identity to the shared check.
+- id: foreign-preservation
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_foreign_pending_and_unrelated_dirty_work_are_preserved
-  motivating_defect: Foreign evidence could be modified or misattributed to a clean observer.
-- id: known-native-pending-work-blocks-from-workspace-root
+  motivating_defect: Observer diagnosis must preserve foreign attribution and work.
+- id: retained-proof
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_known_native_pending_work_blocks_from_workspace_root
-  motivating_defect: Known exact-session pending evidence could be skipped outside a structured project working
-    directory; ordinary unrelated events must retain their applicability.
-- id: nonproject-session-without-pending-work-retains-applicability
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_exact_session_recovery_uses_retained_bytes_and_ancestry
+  motivating_defect: Removed-checkout recovery needs retained exact bytes and published ancestry.
+- id: proof-refusal
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_nonproject_session_without_pending_work_retains_applicability
-  motivating_defect: Known exact-session pending evidence could be skipped outside a structured project working
-    directory; ordinary unrelated events must retain their applicability.
-- id: observer-identity-is-native-and-fail-closed
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_recovery_never_substitutes_canonical_file_existence_for_proof
+  motivating_defect: Missing or stale proof must not silently retire later unpreserved edits.
+- id: native-recovery
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_observer_identity_is_native_and_fail_closed
-  motivating_defect: An invalid, foreign, missing or unsafe transcript could claim native observer status.
-- id: missing-native-validator-fails-closed
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_recovery_cli_uses_the_actual_parser_and_transaction
+  motivating_defect: Both native identities need real CLI recovery, not only helper tests.
+- id: multiple-worktrees
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_missing_native_validator_fails_closed
-  motivating_defect: Missing native evidence validation could skip the observer guard or suppress a failure.
-- id: foreign-ambient-identity-cannot-grant-checkpoint-authority
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_recovery_preserves_evidence_for_a_second_removed_worktree
+  motivating_defect: The first repair must not destroy retained proof required by the second.
+- id: interruption
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_foreign_ambient_identity_cannot_grant_checkpoint_authority
-  motivating_defect: An inherited parent reference could select and checkpoint a foreign seat.
-- id: empty-board-identity-does-not-bind-foreign-seat
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_empty_board_identity_does_not_bind_foreign_seat
-  motivating_defect: Empty event fields could match an unbound foreign coordination row.
-- id: matching-native-reference-and-empty-optional-reference-are-safe
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_matching_native_reference_and_empty_optional_reference_are_safe
-  motivating_defect: Optional reference parsing could reject the actual native identity or manufacture another one.
-- id: owner-checkpoint-authority-is-preserved
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_owner_checkpoint_authority_is_preserved
-  motivating_defect: The observer exception could weaken the claimed owner's checkpoint obligations.
-- id: clean-stale-semantics-are-not-reported-as-recovery-pass
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_clean_stale_semantics_are_not_reported_as_recovery_pass
-  motivating_defect: Ending a stale-state report could falsely issue a healthy recovery or continuity receipt.
-- id: clean-causal-conflict-can-finish-reporting-without-checkpoint
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_clean_causal_conflict_can_finish_reporting_without_checkpoint
-  motivating_defect: A clean observer reporting a causal conflict could be forced to repeat without checkpoint authority.
-- id: unverifiable-project-git-state-cannot-exonerate-observer
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_unverifiable_project_git_state_cannot_exonerate_observer
-  motivating_defect: Unreadable Git state could be mistaken for a clean project.
-- id: claude-reentrant-stop-terminates-with-blocked-verdict
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_claude_reentrant_stop_terminates_with_blocked_verdict
-  motivating_defect: A failed Claude Stop with empty feedback caused repeated paid turns without repairing its obligation.
-- id: codex-never-consumes-claude-terminal-control
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_codex_never_consumes_claude_terminal_control
-  motivating_defect: Claude-only terminal JSON could be applied to another client, event, or an unverified invocation.
-- id: real-hook-cli-uses-local-lease-and-actionable-failure
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_real_hook_cli_uses_local_lease_and_actionable_failure
-  motivating_defect: Unit verdicts alone could pass while real CLI lease reads, exit statuses or stderr remain defective.
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_recovery_replays_every_destructive_boundary
+  motivating_defect: Interrupted manifest and receipt replacement must resume safely.
 - id: release-contract
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
-  motivating_defect: Plugin manifests, newest changelog, README and skill version floors could disagree.
-- id: release-bound-receipt-consumed
+  motivating_defect: Release manifests, docs and skill versions must describe one release.
+- id: manifest
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_boundary_consumes_fresh_bound_acceptance_receipt
-  motivating_defect: Required checks could finish without consuming fresh transaction-bound acceptance.
-- id: release-receipt-binding-mismatch-refused
+  fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
+  motivating_defect: Closed source membership and fixtures must validate.
+- id: unlisted-path
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_receipt_validator_rejects_every_binding_mismatch
-  motivating_defect: A receipt from another transaction, commit, tree, manifest or change universe could authorize
-    publication.
-- id: acceptance-self
+  fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_schema2_rejects_undeclared_git_changed_surface
+  motivating_defect: Changed files must not escape the release acceptance universe.
+- id: transaction-binding
   control_class: acceptance-test
   expected_status: pass
-  fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-  motivating_defect: The release manifest could contain invalid fields, unresolved fixtures or unmapped cases.
-- id: acceptance-omitted-path-refused
+  fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_schema2_receipt_binds_transaction_and_git_state
+  motivating_defect: Evidence from another commit or transaction must not authorize release.
+- id: retirement-cwd-diagnostic
   control_class: acceptance-test
   expected_status: pass
-  fixture: scripts/test_acceptance_suite.py::test_schema2_rejects_undeclared_git_changed_surface
-  motivating_defect: Schema validation could pass while actual Git changes include undeclared paths.
-- id: acceptance-git-transaction-binding
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_retirement_cwd_refusal_names_the_condition_and_next_location
+  motivating_defect: A valid checkout was called unsafe when the actual condition was the caller working
+    inside it.
+- id: retirement-base-diagnostic
   control_class: acceptance-test
   expected_status: pass
-  fixture: scripts/test_acceptance_suite.py::test_schema2_receipt_binds_transaction_and_git_state
-  motivating_defect: Executed evidence could lack the boundary-selected Git and transaction binding.
-- id: lifecycle-hook-issues-session-bound-clean-receipt
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_lifecycle_hook_issues_session_bound_clean_receipt
-  motivating_defect: A live release caller reference leaked into a synthetic owner fixture, hiding the real positive
-    owner-checkpoint control.
-- id: lifecycle-hook-refuses-semantically-incomplete-stop
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_lifecycle_hook_refuses_semantically_incomplete_stop
-  motivating_defect: An inherited foreign reference stopped the negative fixture at identity validation instead
-    of exercising its required stale-state refusal.
-- id: native-stop-output-contract
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_stop_output_conforms_to_native_codex_consumer_schema
-  motivating_defect: Diagnostic top-level fields were rejected by the strict native Codex Stop output schema.
-- id: native-consumer-rejects-old-output
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_old_diagnostic_stdout_is_rejected_by_native_codex_schema
-  motivating_defect: A schema positive control must reproduce rejection of the released diagnostic shape.
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_retirement_recovery_rejects_local_base_ref
+  motivating_defect: A rejected local branch needed an actionable fetched remote-tracking example and
+    the actual received ref.

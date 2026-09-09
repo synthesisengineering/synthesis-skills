@@ -4,6 +4,24 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.96.3] - 2026-09-09
+
+Deadline sweeps collect unresolved tags from all declared dated plans and
+archives, preserving older due items and reporting incomplete coverage.
+Explicit no-plan declarations prevent incidental links from selecting authority.
+Record editing supports exact physical-line deletion and rejects changes that
+split a Markdown table or leave its rows without headers.
+
+Checkpoint identity follows verified native evidence and the existing desktop
+seat mapping. Recovery of attributed work after checkout removal requires
+matching preservation proof and uses the retirement transaction's interruption
+checks. Missing evidence remains an explicit unresolved obligation.
+
+Shared coordination guidance keeps claims limited to current coherent work,
+requires expansion before additional writes, and calls for narrowing or release
+when phases complete. Coverage gaps in a deadline sweep prevent a clean sweep
+conclusion while other ritual steps can continue.
+
 ## [4.96.2] - 2026-09-06
 
 Checkpoint Stop output now uses the documented control fields accepted by both

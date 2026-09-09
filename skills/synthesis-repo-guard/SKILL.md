@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.4.1"
+  version: "2.4.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -239,7 +239,8 @@ checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
                     --retirement-remote REMOTE --retirement-base REMOTE_REF]
                    [--complete-worktree-retirement INTENT]
                    [--reconcile-retired-worktree PATH
-                    --retirement-repository REPO --retirement-head SHA
+                    --retirement-repository REPO
+                    (--retirement-head SHA | --retirement-session SESSION_ID)
                     --retirement-remote REMOTE --retirement-base REMOTE_REF]
                    [--quiet] [--json]
                    [--speak] [--notify]
@@ -255,6 +256,14 @@ checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
   delete any other session manifest. Use it when unrelated pending work must
   remain recoverable while one fully published session transitions to
   `REMOTE_READY`.
+- `--retirement-session` derives a removed worktree's historical head from
+  this native session's retained local receipt. It verifies the manifest
+  digest, attributed bytes/deletions and file modes, and remote ancestry;
+  it never substitutes current file existence for preservation evidence.
+  Only that session's manifest is changed. The retirement transaction retains
+  exact post-images for crash recovery and preserves evidence for remaining
+  worktrees. Missing older evidence is an explicit recovery gap. See
+  [checkpoint closure recovery](../synthesis-project-management/references/checkpoint-closure-recovery.md).
 
 ---
 
