@@ -11,6 +11,14 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Recovery and daily record corrections (September 2026).** Release **4.96.3**
+collects older unresolved deadlines, honors explicit no-plan declarations, and
+protects Markdown tables during record edits. Checkpoint identity uses verified
+native evidence; removed-checkout recovery requires exact preservation proof.
+Shared protocols keep claims aligned with current work and release completed
+areas promptly. Incomplete deadline coverage remains visible while other ritual
+steps continue.
+
 **Checkpoint output follows both native contracts (September 2026).**
 Release **4.96.2** carries diagnostic verdicts in the supported systemMessage field.
 Codex strict Stop validation and Claude completion use the same output format;
