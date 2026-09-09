@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.7.0"
+  version: "1.7.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -17,7 +17,9 @@ metadata:
 When asked to refresh after an ecosystem upgrade or report session readiness,
 load this skill from the current verified installed root, then follow
 [references/refresh-and-report.md](references/refresh-and-report.md). This mode
-uses a deterministic local inspector and optional campaign feedback. It ends
+uses a deterministic local inspector and optional campaign feedback. Project
+feedback destinations follow explicit registry successor links; the reporting
+session keeps its project identity and execution restrictions. It ends
 after reporting and grants no project implementation or repair authority.
 Ordinary checkpoints use the protocol below and do not send campaign feedback.
 
@@ -124,18 +126,31 @@ receipts do not prove that the agent read or understood these project tiers.
 
 Note the "Last session" header in CONTEXT.md. Do not trust it as authoritative — it is a cache. Treat it as a starting hypothesis to verify in Step 3.
 
-### Step 3 — Verify project history from git
+### Step 3 — Verify session evidence and Git publication separately
+
+Read the latest dated session entries under `sessions/`, including entries
+newer than the cached header. Compare their recorded workdays and outcomes
+with CONTEXT.md, structured state where present, and `index.yaml`.
 
 ```bash
-git log -10 --pretty=format:"%h %ai %s" -- <project-path>
+git log -10 --pretty=format:"%h %ai %ci %s" -- <project-path>
+git status --short -- <project-path>
 ```
 
-Read the most recent ~10 commit timestamps and subjects. This is the source of truth for "what happened when in this project."
+Git author/committer timestamps describe commits. They do not establish when
+the recorded session happened: overnight work, delayed publication, timezone
+boundaries, backdated authorship and bulk maintenance can all separate them.
+Never rewrite a recorded workday merely to match a commit date, and never
+infer uncommitted work from a date difference; inspect Git status for that.
 
-Cross-check against CONTEXT.md's "Last session" claim:
-- If CONTEXT.md's "Last session" date matches the most recent project-touching commit's date — proceed; the cache is fresh.
-- If CONTEXT.md's "Last session" date is OLDER than the most recent commit — CONTEXT.md is stale; the most recent commit's date is the real "last session." Note the discrepancy.
-- If CONTEXT.md's "Last session" date is NEWER than the most recent commit — uncommitted work exists OR the date in CONTEXT.md was written incorrectly. Run `git status` to disambiguate.
+- Matching dated session records establish date agreement, not full semantic
+  currency. Verify outcomes, current fields and source state as well.
+- A header or index date behind **or ahead of** the dated narrative is a record
+  mismatch. Cite both records and reconcile against actual work evidence.
+- Missing, unreadable or invalid dated entries make session-date verification
+  unavailable. State that limit; a commit timestamp cannot fill the gap.
+- Keep commit publication and upstream ancestry checks separate. A clean tree
+  can still contain stale claims, and a valid session date can precede its commit.
 
 ### Step 4 — Cross-reference tasks and recent decisions
 
@@ -181,7 +196,7 @@ comes from the subsequent client lifecycle event, not from the installer.
 
 In one short paragraph in the next response to the user, state:
 - Today's verified date and time
-- The project's verified "last session" date (from git log)
+- The latest recorded session date and its dated evidence source; say when verification is unavailable
 - Where the agent's mental state diverged from disk/git, if anywhere
 - What the agent will do next, grounded in the verified facts
 - Current coordination claim and any conflict or new inter-session message
@@ -214,9 +229,10 @@ The agent's response after invoking this skill should include something like:
 
 > **Checkpoint complete.** Verified facts:
 > - Today: 2026-05-27 10:49 EDT (Wednesday)
-> - Last project commit: 2026-05-26 12:47 EDT (commit `51b8e6d`, "Maintain context: refresh inbox-cleanup CONTEXT.md")
-> - Interval since last session: ~22 hours
-> - CONTEXT.md "Last session" matched git log — cache was fresh
+> - Latest recorded session: 2026-05-25, from `sessions/2026-05.md`
+> - Latest project commit: 2026-05-26 12:47 EDT; this is publication evidence
+> - CONTEXT.md and the index agree with the dated entry; current claims were also checked
+> - No precise elapsed-session interval claimed: the entry supplies a workday, not an end timestamp
 > - In-progress task: [task summary from the client task/plan surface]
 >
 > Proceeding with [next action].
@@ -226,9 +242,9 @@ If discrepancies were found:
 > **Checkpoint complete — drift detected.** Verified facts:
 > - Today: 2026-05-27 10:49 EDT
 > - CONTEXT.md said: "Last session: 2026-05-18 (PM)"
-> - Git log said: most recent project commit is 2026-05-26 ("re-verification sweep")
-> - Interpretation: CONTEXT.md was mis-labeled; the May 26 sweep was the real last session.
-> - Action: updating CONTEXT.md with corrected dates before continuing.
+> - `sessions/2026-05.md` records a later session on 2026-05-25
+> - Git records publication on May 26; that does not change the recorded workday
+> - Action: under an accepted claim, reconcile the stale header and current claims against the May 25 entry and source evidence.
 
 ## What Counts as "Substantive Work"
 

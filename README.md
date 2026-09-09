@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Successor feedback and session freshness (September 2026).** Release **4.96.4**
+routes reports through explicit registry successor links while preserving their
+source project and execution boundaries. Freshness checks use dated session
+records, so delayed commits do not change the recorded workday; contradictions
+and missing evidence remain visible.
+
 **Recovery and daily record corrections (September 2026).** Release **4.96.3**
 collects older unresolved deadlines, honors explicit no-plan declarations, and
 protects Markdown tables during record edits. Checkpoint identity uses verified

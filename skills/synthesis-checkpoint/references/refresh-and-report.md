@@ -91,7 +91,7 @@ Default local configuration is `~/.synthesis/checkpoint/active-campaign.json`.
 campaign loading. No configured campaign means local reporting only. A malformed
 descriptor is a failure, not permission to ignore its requirements.
 
-The descriptor is an operator-managed JSON object with exactly these fields:
+The descriptor is an operator-managed JSON object with these required fields:
 
 ```json
 {
@@ -102,6 +102,14 @@ The descriptor is an operator-managed JSON object with exactly these fields:
   "minimum_plugin_version": "4.96.0"
 }
 ```
+
+It may also contain `recipient_index`, an absolute path to the Git-tracked
+registry that owns the recipient project. Set it explicitly when the report
+recipient belongs to another workspace. Without it, project-addressed feedback
+uses the selected source checkout's registry (or the supplied registry if
+source recovery could not select a checkout). This selects only the registry
+in which to look up the descriptor's recipient; it never chooses a recipient
+from the source project's own successor or an active-project pointer.
 
 Project recovery and exact native identity evidence are always checked. The descriptor requests checks,
 not arbitrary commands or natural-language execution. Configure the real project
@@ -125,10 +133,34 @@ Keep any earlier narrative findings in their original private transcript/report;
 the deterministic message contains technical statuses and pointers, not copied
 private prose or caller-supplied instructions.
 
+For a project recipient, delivery follows explicit scalar `superseded_by`
+relationships in that registry until it reaches an active or paused project
+(`ongoing` is also recognized in existing registries). Archived, superseded or
+completed predecessors can forward reports only through an unambiguous chain.
+Missing projects or links, duplicate routing fields or IDs, multiple successors,
+cycles, contradictory live-project links, and unsupported routing syntax refuse
+delivery. The registry must use block project mappings with literal scalar
+`id`, `status` and `superseded_by` fields; narrative and related-project lists
+never establish a route. An explicit unavailable registry never falls back to
+another registry or an unregistered address.
+
+Exact session IDs and native client references remain exact addresses, even
+when their session's project is archived. A project recipient needs no live
+seat at send time: its canonical `<project> sessions` heading is preserved in
+the bus. Routing does not change the reporting session's project locator,
+read targets, archived verdict, or claim disposition, and grants neither
+source nor recipient execution authority. Generic board report sends can use
+`coordination.py message --project-index ABSOLUTE_INDEX` for this same routing;
+thread resolution and claim operations do not use successor routing.
+
 Feedback uses `REFRESH_FEEDBACK_JSON:` with campaign/native/project identity,
 stable result digest and revision. Verified delivery aliases for the same native
 session share one logical key. The validated descriptor is part of the result
 digest, so changing a recipient or requested checks produces a new revision.
+Delivery also records `recipient_route` with the original recipient project,
+resolved project, chain, registry path and observed registry SHA-256. The route
+is re-read inside the board transaction and included in the result digest;
+changed registry evidence produces a new revision for the same source report.
 Duplicate checking, next revision and append
 occur inside the same board transaction; repeated identical results are
 ALREADY_RECORDED. Actual changes append a new revision. Unrelated malformed

@@ -44,7 +44,8 @@ def fixture(tmp_path, monkeypatch):
     hooks.mkdir()
     git(repo, "config", "core.hooksPath", str(hooks))
     project = repo / "projects" / "alpha"
-    write(repo / "projects" / "index.yaml", "projects:\n  - id: alpha\n    status: active\n")
+    write(repo / "projects" / "index.yaml", "projects:\n  - id: alpha\n    status: active\n"
+        "  - id: example-maintenance\n    status: active\n  - id: different-maintenance\n    status: active\n")
     write(project / "CONTEXT.md", "# Context\n\n**Controlling plan:** [plan](resources/artifacts/plan.md)\n")
     write(project / "resources" / "artifacts" / "plan.md", "# Plan\nprivate project prose must remain local\n")
     write(project / "REFERENCE.md", "# Reference\nprivate unrelated facts\n")
@@ -448,3 +449,148 @@ def test_historical_archive_prose_does_not_override_active_current_status(fixtur
     report, _ = refresh.inspect(args)
     assert report["overall"] == "READY"
     assert report["checks"]["project_status"]["code"] == "PROJECT_NOT_ARCHIVED"
+
+
+def routing_registry(args, project, entries, *, explicit=False):
+    index = args.index
+    if explicit:
+        root = project.parents[1] / "recipient-workspace"
+        root.mkdir()
+        git(root, "init", "-b", "main")
+        git(root, "config", "user.name", "Fixture")
+        git(root, "config", "user.email", "fixture@example.invalid")
+        git(root, "config", "core.hooksPath", str(project.parents[1] / "empty-hooks"))
+        index = root / "projects" / "index.yaml"
+    source = "  - id: alpha\n    status: archived\n    superseded_by: source-successor\n" if not explicit else ""
+    write(index, "projects:\n" + source + entries)
+    git(index.parent, "add", "index.yaml")
+    git(index.parent, "commit", "-m", "Fixture routing")
+    return index
+
+
+def routed_campaign(args, *, index=None, recipient="old-maintenance sessions"):
+    selected = enable_campaign(args)
+    selected["recipient"] = recipient
+    if index is not None:
+        selected["recipient_index"] = str(index)
+    write(args.campaign, json.dumps(selected))
+    return selected
+
+
+def feedback_messages(board):
+    return [json.loads(line[len(refresh.MARKER):]) for line in board.read_text().splitlines() if line.startswith(refresh.MARKER)]
+
+
+@pytest.mark.parametrize("client", ["codex", "claude"])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_successor_feedback_delivers_without_reactivating_source(fixture, monkeypatch, tmp_path, client, explicit):
+    args, project, live = fixture
+    if client == "claude":
+        transcript = tmp_path / ".claude" / "projects" / "fixture" / (NATIVE + ".jsonl")
+        write(transcript, json.dumps({"type": "user", "sessionId": NATIVE}) + "\n")
+        receipt = json.loads(live.read_text())
+        receipt.update(client="claude", provenance_env="claude-transcript", transcript_path=str(transcript))
+        write(live.with_name("public-sessionstart-claude.json"), json.dumps(receipt))
+        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", NATIVE)
+        args.client_ref = "cc:" + NATIVE
+    index = routing_registry(args, project, "  - id: old-maintenance\n    status: archived\n    superseded_by: bridge\n"
+        "  - id: bridge\n    status: archived\n    superseded_by: current-maintenance\n"
+        "  - id: current-maintenance\n    status: paused\n", explicit=explicit)
+    if explicit:
+        write(args.index, "projects:\n  - id: alpha\n    status: archived\n    superseded_by: source-successor\n")
+        git(project, "add", "../index.yaml")
+        git(project, "commit", "-m", "Fixture source")
+    routed_campaign(args, index=index if explicit else None)
+    report, selected = refresh.inspect(args)
+    before = tree(project.parents[1])
+    result = refresh.feedback(report, selected, args.board)
+    assert result["outcome"] == "APPENDED"
+    assert "### → current-maintenance sessions," in args.board.read_text()
+    assert report["overall"] == "BLOCKED"
+    assert report["project_locator"] == str(project)
+    assert report["claim_disposition"] == "UNCHANGED"
+    assert tree(project.parents[1]) == before
+    assert refresh.coordination.rows(args.board.read_text()) == []  # no seat needed, none acquired
+    payload = feedback_messages(args.board)[0]
+    assert payload["project_locator"] == str(project) and payload["overall"] == "BLOCKED"
+    assert payload["recipient_route"]["chain"] == ["old-maintenance", "bridge", "current-maintenance"]
+    assert payload["recipient_route"]["registry"] == str(index)
+    assert payload["recipient_route"]["registry_sha256"] == hashlib.sha256(index.read_bytes()).hexdigest()
+    from peer_addressing import addressed_to, parse_messages
+    messages = parse_messages(args.board.read_text())
+    delivered = [m for m in messages if addressed_to(m, set(), "current-maintenance", since="2000-01-01T00:00:00Z")]
+    assert len(delivered) == 1 and refresh.MARKER in delivered[0].body
+    assert not any(addressed_to(m, set(), "old-maintenance") for m in messages)
+    assert refresh.feedback(report, selected, args.board)["outcome"] == "ALREADY_RECORDED"
+
+
+@pytest.mark.parametrize("entries", [
+    "  - id: old-maintenance\n    status: archived\n",
+    "  - id: old-maintenance\n    status: archived\n    superseded_by: missing\n",
+    "  - id: old-maintenance\n    status: archived\n    superseded_by: old-maintenance\n",
+    "  - id: old-maintenance\n    status: archived\n    superseded_by: bridge\n  - id: bridge\n    status: archived\n    superseded_by: old-maintenance\n",
+    "  - id: old-maintenance\n    status: archived\n    superseded_by: [first, second]\n",
+    "  - id: old-maintenance\n    status: archived\n    superseded_by: first\n    superseded_by: second\n",
+    "  - id: old-maintenance\n    status: active\n  - id: old-maintenance\n    status: paused\n",
+    "  - id: old-maintenance\n    status: archived\n    superseded_by: terminal\n  - id: terminal\n    status: completed\n",
+    "  - id: old-maintenance\n    status: archived\n    superseded_by: target\n  - id: target\n    status: unknown\n",
+    "  - id: old-maintenance\n    status: active\n    superseded_by: target\n  - id: target\n    status: active\n",
+])
+def test_invalid_successor_route_preserves_board_and_local_report(fixture, entries):
+    args, project, _ = fixture
+    index = routing_registry(args, project, entries)
+    routed_campaign(args, index=index)
+    report, selected = refresh.inspect(args)
+    before = args.board.read_bytes()
+    with pytest.raises(refresh.RefreshError, match="recipient"):
+        refresh.feedback(report, selected, args.board)
+    assert args.board.read_bytes() == before
+    assert report["project_locator"] == str(project) and report["read_targets"]
+
+
+def test_successor_route_change_is_a_new_revision(fixture):
+    args, project, _ = fixture
+    index = routing_registry(args, project, "  - id: old-maintenance\n    status: active\n")
+    routed_campaign(args, index=index)
+    report, selected = refresh.inspect(args)
+    first = refresh.feedback(report, selected, args.board)
+    # Reuse the inspected report: delivery must read the current registry again.
+    write(index, "projects:\n  - id: alpha\n    status: archived\n    superseded_by: source-successor\n"
+        "  - id: old-maintenance\n    status: archived\n    superseded_by: current-maintenance\n"
+        "  - id: current-maintenance\n    status: active\n")
+    second = refresh.feedback(report, selected, args.board)
+    assert second["report_key"] == first["report_key"]
+    assert second["revision"] == 2 and second["result_digest"] != first["result_digest"]
+    assert feedback_messages(args.board)[1]["recipient_route"]["chain"] == ["old-maintenance", "current-maintenance"]
+    assert refresh.feedback(report, selected, args.board)["outcome"] == "ALREADY_RECORDED"
+
+
+@pytest.mark.parametrize("kind", ["missing", "untracked", "symlink", "malformed"])
+def test_explicit_recipient_registry_never_falls_back(fixture, kind):
+    args, project, _ = fixture
+    index = routing_registry(args, project, "  - id: old-maintenance\n    status: active\n", explicit=True)
+    if kind == "missing":
+        index.unlink()
+    elif kind == "untracked":
+        git(index.parent, "rm", "--cached", "index.yaml")
+    elif kind == "symlink":
+        index.unlink()
+        index.symlink_to(args.index)
+    else:
+        index.write_text("projects: [broken\n")
+    routed_campaign(args, index=index)
+    report, selected = refresh.inspect(args)
+    before = args.board.read_bytes()
+    with pytest.raises(refresh.RefreshError, match="recipient"):
+        refresh.feedback(report, selected, args.board)
+    assert args.board.read_bytes() == before
+
+
+@pytest.mark.parametrize("value", ["relative/index.yaml", "", None, [], "../outside"])
+def test_recipient_registry_descriptor_requires_absolute_path(fixture, value):
+    args, _, _ = fixture
+    selected = enable_campaign(args)
+    selected["recipient_index"] = value
+    write(args.campaign, json.dumps(selected))
+    with pytest.raises(refresh.RefreshError, match="recipient"):
+        refresh.inspect(args)
