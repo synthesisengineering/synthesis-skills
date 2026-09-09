@@ -20,16 +20,19 @@ unverified_remainder: Fixtures use isolated transcripts, homes, Git repositories
   authority.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
-  cases: &id001
+  cases:
   - release-contract
 - path: .codex-plugin/plugin.json
-  cases: *id001
+  cases:
+  - release-contract
 - path: CHANGELOG.md
-  cases: *id001
+  cases:
+  - release-contract
 - path: README.md
-  cases: *id001
+  cases:
+  - release-contract
 - path: skills/synthesis-agent-conformance/scripts/test_plan_reference.py
-  cases: &id004
+  cases:
   - no-plan
   - incidental-links
   - ambiguous-plan
@@ -37,20 +40,31 @@ changed_surfaces:
   - structured-plan
   - plan-positive
 - path: skills/synthesis-checkpoint/SKILL.md
-  cases: *id001
+  cases:
+  - release-contract
 - path: skills/synthesis-context-lifecycle/SKILL.md
-  cases: &id002
+  cases:
   - table-refusal
   - line-delete
   - partial-delete
   - table-positive
   - unique-line
 - path: skills/synthesis-context-lifecycle/scripts/context_edit.py
-  cases: *id002
+  cases:
+  - table-refusal
+  - line-delete
+  - partial-delete
+  - table-positive
+  - unique-line
 - path: skills/synthesis-context-lifecycle/scripts/test_context_edit.py
-  cases: *id002
+  cases:
+  - table-refusal
+  - line-delete
+  - partial-delete
+  - table-positive
+  - unique-line
 - path: skills/synthesis-daily-rituals/SKILL.md
-  cases: &id003
+  cases:
   - older-due
   - explicit-id
   - resolution
@@ -58,19 +72,61 @@ changed_surfaces:
   - future-resolution
   - conflicting-copies
 - path: skills/synthesis-daily-rituals/references/decay-sweep.md
-  cases: *id003
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
 - path: skills/synthesis-daily-rituals/scripts/decay_sweep.py
-  cases: *id003
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
 - path: skills/synthesis-daily-rituals/scripts/fixtures/decay-sweep/plans/2026-08-01.md
-  cases: *id003
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
 - path: skills/synthesis-daily-rituals/scripts/fixtures/decay-sweep/plans/2026-09-04.md
-  cases: *id003
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
 - path: skills/synthesis-daily-rituals/scripts/fixtures/decay-sweep/plans/2026-09-08.md
-  cases: *id003
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
 - path: skills/synthesis-daily-rituals/scripts/fixtures/decay-sweep/plans/notes.md
-  cases: *id003
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
 - path: skills/synthesis-daily-rituals/scripts/test_decay_sweep.py
-  cases: *id003
+  cases:
+  - older-due
+  - explicit-id
+  - resolution
+  - partial-coverage
+  - future-resolution
+  - conflicting-copies
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - older-due
@@ -107,9 +163,11 @@ changed_surfaces:
   - retirement-cwd-diagnostic
   - retirement-base-diagnostic
 - path: skills/synthesis-project-management/SKILL.md
-  cases: *id001
+  cases:
+  - release-contract
 - path: skills/synthesis-project-management/references/active-sessions-template.md
-  cases: *id001
+  cases:
+  - release-contract
 - path: skills/synthesis-project-management/references/checkpoint-closure-recovery.md
   cases:
   - desktop-seat
@@ -123,20 +181,38 @@ changed_surfaces:
   - multiple-worktrees
   - interruption
 - path: skills/synthesis-project-management/references/parallel-agent-protocol.md
-  cases: *id001
+  cases:
+  - release-contract
 - path: skills/synthesis-project-management/references/project-state-recovery.md
-  cases: *id004
+  cases:
+  - no-plan
+  - incidental-links
+  - ambiguous-plan
+  - plan-conflict
+  - structured-plan
+  - plan-positive
 - path: skills/synthesis-project-management/scripts/plan_reference.py
-  cases: *id004
+  cases:
+  - no-plan
+  - incidental-links
+  - ambiguous-plan
+  - plan-conflict
+  - structured-plan
+  - plan-positive
 - path: skills/synthesis-project-management/scripts/project_state.py
-  cases: &id005
+  cases:
   - desktop-seat
   - unbound-authority
   - payload-spoof
   - native-stop
   - foreign-preservation
 - path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
-  cases: *id005
+  cases:
+  - desktop-seat
+  - unbound-authority
+  - payload-spoof
+  - native-stop
+  - foreign-preservation
 - path: skills/synthesis-project-management/scripts/test_project_state.py
   cases:
   - release-contract
@@ -146,22 +222,32 @@ changed_surfaces:
   - native-stop
   - foreign-preservation
 - path: skills/synthesis-repo-guard/SKILL.md
-  cases: &id006
+  cases:
   - retained-proof
   - proof-refusal
   - native-recovery
   - multiple-worktrees
   - interruption
   - retirement-cwd-diagnostic
-  - retirement-cwd-diagnostic
-  - retirement-cwd-diagnostic
-  - retirement-base-diagnostic
-  - retirement-base-diagnostic
   - retirement-base-diagnostic
 - path: skills/synthesis-repo-guard/checkpoint_sync.py
-  cases: *id006
+  cases:
+  - retained-proof
+  - proof-refusal
+  - native-recovery
+  - multiple-worktrees
+  - interruption
+  - retirement-cwd-diagnostic
+  - retirement-base-diagnostic
 - path: skills/synthesis-repo-guard/test_checkpoint_sync.py
-  cases: *id006
+  cases:
+  - retained-proof
+  - proof-refusal
+  - native-recovery
+  - multiple-worktrees
+  - interruption
+  - retirement-cwd-diagnostic
+  - retirement-base-diagnostic
 cases:
 - id: older-due
   control_class: acceptance-test
