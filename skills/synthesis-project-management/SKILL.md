@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.13.5"
+  version: "2.13.6"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -205,7 +205,7 @@ Complete task → Update CONTEXT.md → local receipt → Next task
    write and register or refresh this session's project, worktree, branch,
    context role, and claims
 2. **Resolve before reading** — Run `scripts/project_state.py resolve` against the Git-tracked index with `--no-fetch --no-coordination-refresh` and `GIT_OPTIONAL_LOCKS=0`; use only its causally selected state. A failed or conflicting selection stops dependent project reads/writes, including build and migration.
-3. **Read the selected state** — Read `CURRENT_STATE.json`, CONTEXT.md, the linked plan, REFERENCE.md, and latest session; validate hashes and semantics.
+3. **Read the selected state** — Read `CURRENT_STATE.json` when present, CONTEXT.md, the linked plan, REFERENCE.md, and latest session; validate the available hashes and semantics. Absence of structured state does not authorize a migration.
 4. **Check line count** — If CONTEXT.md >150 lines, archive before starting work
 5. **Search lessons/** — Search for relevant past experiences.
 6. **Check related projects** — Look at `related:` tags in index.yaml.
@@ -215,12 +215,11 @@ Complete task → Update CONTEXT.md → local receipt → Next task
 1. **Final CONTEXT.md update** — Ensure all sections current (≤150 lines)
 2. **Archive if needed** — Move old sessions to sessions/, stable facts to REFERENCE.md
 3. **Attribute if warranted** — If multiple agents/models contributed materially, end the session-log entry with Attribution line(s) (see Agent Attribution)
-4. **Refresh structured state** — Regenerate `CURRENT_STATE.json` and its
-   compiled block after every meaningful source phase.
-5. **Verify local continuity** — Require the session- and claim-bound Stop
-   receipt; confirm attributed state is readable;
-   do not create a commit or network push solely because the user is switching
-   clients on this machine
+4. **Refresh adopted structured state** — For a project already using `CURRENT_STATE.json`, regenerate it and its compiled block after each meaningful source phase.
+   Prose-only projects retain their context protocol; do not invoke the structured checkpoint CLI on an absent file.
+5. **Verify local continuity** — Confirm this native session's attributed state is readable and its local handoff is ready.
+   Structured projects additionally require their session- and claim-bound Stop receipt. `NOT_APPLICABLE` does not certify pending edits.
+   Do not create a commit or network push solely because the user is switching clients on this machine.
 6. **Release coordination claims** — Mark the session released or narrow its claims before pausing. Existing-row mutations require the actual claiming seat. A typed administrative reason, failed caller-ownership check, app closure or age is not operator authorization to release another or an unbound active seat.
 
 For an explicitly requested refresh-and-report pass, use the current installed
@@ -232,6 +231,8 @@ native identity, no exact-session pending edits and a clean Git subtree, can fin
 issues no receipt and proves neither successful recovery nor execution authority.
 Unresolved evidence remains explicit; see the checkpoint refresh reference for
 failure termination and client-specific behavior.
+For identity mismatches and stranded attribution, follow [checkpoint closure recovery](references/checkpoint-closure-recovery.md). A Stop
+diagnostic identifies an obligation; it does not authorize unrelated repair.
 
 ### Cross-Agent Session Coordination
 
@@ -300,9 +301,11 @@ Check-staged selector precedence and override recording:
 Rules:
 
 1. **Read at SessionStart and every synthesis checkpoint.**
-2. **Claim before write.** Area globs describe source ownership, not merely the
-   current file. Claim before creating a branch or editing. Name the synthesis
-   project even when the session's claims span several repositories.
+2. **Claim before write.** Claim the smallest coherent area currently needed before
+   creating a branch or editing; exact files suit independent edits, directories
+   suit coordinated multi-file work. Expand an accepted claim before extra writes;
+   do not reserve speculative future work. Name the synthesis project across repos.
+   See [claim scope over the task lifecycle](references/parallel-agent-protocol.md#claim-scope-over-the-task-lifecycle).
 3. **Do not write through overlap.** If a claim conflicts, stop writes in that
    area and use the message log or the user to sequence work.
 4. **Isolate git state.** Independent root sessions never write through the
@@ -322,13 +325,12 @@ Rules:
    titles, and `[ref]` labels are never addresses; the message carries your
    board id; the same text to a second peer is a refused broadcast. The bus
    reaches the addressed seat at its next prompt: unresolvable means bus.
-8. **Heartbeat and release explicitly.** Refresh the heartbeat at checkpoints.
-   A paused or completed session releases or narrows its claims. Stale `active`
-   rows remain blocking until explicitly resolved; time alone never transfers
-   ownership. Review them on a cadence — `coordination.py stale` surfaces
-   quiet claims with physical evidence and prints the release command without
-   running it; day-start is the natural review point. Session ids address rows,
-   not authority: claim changes, heartbeat, and release match the claiming seat; administrative release requires a reason.
+8. **Heartbeat, narrow and release explicitly.** At checkpoints and task/phase
+   changes, refresh the heartbeat, review scope and promptly release completed areas.
+   Paused sessions narrow or release their claims. Stale active rows still block;
+   elapsed time never transfers ownership. `coordination.py stale` reports quiet claims.
+   Session IDs are addresses: own-seat mutations require that seat; administrative
+   release requires explicit operator authorization and its recorded reason.
 9. **Advisory does not mean optional.** The filesystem cannot stop every tool,
    so the protocol and checkpoint hooks make the shared obligation visible.
 

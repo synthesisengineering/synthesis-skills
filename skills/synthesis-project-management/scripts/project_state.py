@@ -1133,11 +1133,13 @@ def validate_checkpoint(
     return ("LOCAL_RECOVERABLE", problems) if problems else ("PASS", [])
 
 
-def _row_for_event(rows: list[dict[str, str]], payload: dict[str, Any]) -> dict[str, str] | None:
-    event_ids = {
-        str(payload.get(key) or "").strip()
-        for key in ("session_id", "root_task_uuid", "task_id")
-    } - {""}
+def _row_for_event(
+    rows: list[dict[str, str]], payload: dict[str, Any], board: Path | None = None,
+) -> dict[str, str] | None:
+    # Delivery selectors and coordination UUIDs are not native identity.
+    # Desktop claims store a host id; their existing sidecar binds that host
+    # to the transcript UUID that Stop receives. Never infer that association
+    # from a caller-supplied ccd: override or a payload task_id.
     configured = os.environ.get("SYNTHESIS_CLIENT_SESSION_REF", "").strip()
     native = payload.get("session_id")
     if (
@@ -1145,18 +1147,45 @@ def _row_for_event(rows: list[dict[str, str]], payload: dict[str, Any]) -> dict[
         and (not isinstance(native, str) or not native or configured.split(":", 1)[1] != native)
     ):
         raise ProjectStateError("native lifecycle identity conflicts with the configured client reference; refusing a foreign checkpoint")
-    if configured:
-        event_ids.update({configured, configured.rsplit(":", 1)[-1]})
+    if not isinstance(native, str) or not native:
+        return None
+    native_refs = {f"cc:{native}", f"codex:{native}"}
     matches = []
     for row in rows:
         if row.get("status", "").lower() != "active":
             continue
         client_ref = row.get("client session ref", "")
-        if (
-            (client_ref and client_ref in event_ids)
-            or (client_ref and client_ref.rsplit(":", 1)[-1] in event_ids)
-            or (row.get("session uuid") and row["session uuid"] in event_ids)
-        ):
+        matched = client_ref in native_refs
+        if matched:
+            client, verified_native = _observer_native_identity(payload)
+            matched = client_ref == f"{'cc' if client == 'claude' else 'codex'}:{verified_native}"
+        if client_ref.startswith("ccd:") and board is not None:
+            from peer_addressing import CLIENT_CLAUDE, read_seat, seat_path
+
+            row_uuid = row.get("session uuid", "")
+            try:
+                uuid.UUID(row_uuid)
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise ProjectStateError("Desktop checkpoint claim has no valid coordination UUID") from exc
+            path = seat_path(board, row_uuid)
+            if path.is_symlink() or path.parent.is_symlink():
+                raise ProjectStateError("Desktop checkpoint identity evidence crosses an unsafe symlink")
+            try:
+                seat = read_seat(board, row.get("session uuid", ""), strict=True)
+            except (OSError, ValueError) as exc:
+                raise ProjectStateError("Desktop checkpoint identity evidence is invalid") from exc
+            if seat is not None and seat.harness_session_id == native:
+                client, verified_native = _observer_native_identity(payload)
+                matched = (
+                    client == "claude" and verified_native == native
+                    and seat.client == CLIENT_CLAUDE
+                    and seat.compact_id == row.get("compact id")
+                    and f"ccd:{seat.host_session_id}" == client_ref
+                    and (not row.get("machine") or row["machine"] == seat.machine)
+                )
+                if not matched:
+                    raise ProjectStateError("Desktop checkpoint identity does not bind the active claim")
+        if matched:
             matches.append(row)
     if len(matches) > 1:
         raise ProjectStateError("lifecycle event matches multiple active coordination seats")
@@ -1282,7 +1311,15 @@ def _observer_pending_scope(payload: dict[str, Any], repo_guard_root: Path) -> t
         paths = attribution.get("paths")
         if not isinstance(paths, list) or not paths or any(not isinstance(path, str) or not Path(path).is_absolute() for path in paths):
             raise ProjectStateError("exact native-session pending attribution has invalid paths")
-        return "UNKNOWN", [f"native session has attributed edits but no matching active claim; preserve {own} and recover its own claim/checkpoint authority"]
+        return "UNKNOWN", [
+            f"native session has an outstanding attributed-edit manifest: {own}; "
+            "no active coordination seat matched this native event. Preserve the manifest. "
+            "For ongoing authorized edits, verify the native-to-seat identity binding before "
+            "recovering ownership; widening path claims does not fix an identity mismatch. "
+            "For completed edits, use the authorized exact-session checkpoint_sync.py "
+            "publication or verified worktree-retirement recovery. A manifest alone does "
+            "not authorize claiming, migration, publication or foreign-manifest repair."
+        ]
     return None
 
 
@@ -1310,7 +1347,7 @@ def checkpoint_hook(
             refresh_issue = _refresh_coordination_board(coordination_board.resolve())
             if refresh_issue:
                 return "FAIL", [refresh_issue]
-        row = _row_for_event(_parse_board_rows(coordination_board.resolve()), payload)
+        row = _row_for_event(_parse_board_rows(coordination_board.resolve()), payload, coordination_board.resolve())
         if row is None:
             root = repo_guard_root or Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis"))) / "repo-guard"
             pending_scope = _observer_pending_scope(payload, root)
