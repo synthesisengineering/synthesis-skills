@@ -128,7 +128,7 @@ class Fixture:
 
         env = dict(os.environ)
         if when:
-            stamp = f"{when}T12:00:00"
+            stamp = when if "T" in when else f"{when}T12:00:00"
             env["GIT_AUTHOR_DATE"] = stamp
             env["GIT_COMMITTER_DATE"] = stamp
         return env
@@ -352,7 +352,7 @@ class ContextDoctorTests(unittest.TestCase):
     # --- freshness ---------------------------------------------------------
 
     def test_stale_last_session_is_caught(self):
-        self.fx.project("alpha")
+        self.fx.project("alpha", sessions={"2026-06.md": "## 2026-06-01 — work\n"})
         self.fx.index(
             [{"id": "alpha", "status": "active", "last_session": "2020-01-01"}]
         )
@@ -363,6 +363,7 @@ class ContextDoctorTests(unittest.TestCase):
         self.fx.project(
             "alpha",
             context="# P\n\n**Status:** Active\n**Last session:** 2026-06-01\n",
+            sessions={"2026-06.md": "## 2026-06-02 — work\n"},
         )
         self.fx.index(
             [{"id": "alpha", "status": "active", "last_session": "2026-06-01"}]
@@ -422,7 +423,8 @@ class ContextDoctorTests(unittest.TestCase):
 
     def test_stale_context_header_is_caught(self):
         self.fx.project(
-            "alpha", context="# P\n\n**Status:** Active\n**Last session:** 2020-01-01\n"
+            "alpha", context="# P\n\n**Status:** Active\n**Last session:** 2020-01-01\n",
+            sessions={"2026-06.md": "## 2026-06-01 — work\n"},
         )
         self.fx.index([{"id": "alpha", "status": "active"}])
         self.fx.commit("real work", when="2026-06-01")
@@ -472,6 +474,8 @@ class ContextDoctorTests(unittest.TestCase):
         (self.fx.projects / "alpha" / "CONTEXT.md").write_text(
             "# alpha\n\n**Status:** Active\n\nnew work\n", encoding="utf-8"
         )
+        self.fx.project("alpha", context=None,
+                        sessions={"2026-06.md": "## 2026-06-01 — work\n"})
         self.fx.commit("alpha session", when="2026-06-01")
         findings = self.fx.audit()["data"]["findings"]
         stale = [f for f in findings if f["check"] == "last-session-freshness"]
@@ -828,6 +832,120 @@ class ContextDoctorTests(unittest.TestCase):
         self.assertNotIn("status-agreement", checks)
 
 
+class SessionEvidenceTests(unittest.TestCase):
+    """Real Git commits vary independently from the dated records they carry."""
+
+    def setUp(self):
+        self._tmp = TemporaryDirectory()
+        self.fx = Fixture(Path(self._tmp.name) / "src")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def record(self, *, header="2026-06-01", index="2026-06-01",
+               log="2026-06-01", status="active", **fields):
+        return self.fx.project(
+            "alpha", context=f"# P\n**Status:** {status.title()}\n"
+                             f"**Last session:** {header}\n",
+            reference="# Reference\n",
+            sessions={"2026-06.md": f"## {log} — recorded work\n"} if log else None,
+        ), self.fx.index([{"id": "alpha", "status": status,
+                           "last_session": index, **fields}])
+
+    def findings(self):
+        return [f for f in self.fx.audit()["data"]["findings"] if f["project"] == "alpha"]
+
+    def test_delayed_publication_preserves_recorded_workday(self):
+        # Includes the original next-day day-close shape, an arbitrarily delayed
+        # commit, opposite timezone boundaries, and clean backdated Git history.
+        for n, stamp in enumerate(("2026-06-02T00:15:00-0400",
+                                   "2026-09-01T12:00:00+0000",
+                                   "2026-06-02T00:15:00+1400",
+                                   "2026-06-01T23:45:00-1200",
+                                   "2026-05-31T12:00:00+0000")):
+            with self.subTest(stamp=stamp):
+                self.fx = Fixture(Path(self._tmp.name) / f"case{n}")
+                self.record()
+                self.fx.commit(when=stamp)
+                self.assertEqual("", subprocess.check_output(
+                    ["git", "-C", str(self.fx.root), "status", "--porcelain"], text=True))
+                checks = {f["check"] for f in self.findings()}
+                self.assertFalse(checks & {"last-session-freshness", "context-header-freshness",
+                                           "freshness-unverifiable", "terminal-project-active"}, checks)
+
+    def test_session_mismatch_is_detected_without_a_newer_commit_date(self):
+        self.record(log="2026-06-02")
+        self.fx.commit(when="2026-06-01")
+        findings = self.findings()
+        for check in ("last-session-freshness", "context-header-freshness"):
+            finding = next((f for f in findings if f["check"] == check), None)
+            self.assertIsNotNone(finding, check)
+            self.assertIn("2026-06-02", finding["message"])
+            self.assertIn("sessions/2026-06.md", finding["message"])
+
+    def test_cache_ahead_of_archive_is_a_mismatch_not_uncommitted_work(self):
+        self.record(header="2026-06-02", index="2026-06-02")
+        self.fx.commit(when="2026-06-02")
+        checks = {f["check"] for f in self.findings()}
+        self.assertIn("last-session-freshness", checks)
+        self.assertIn("context-header-freshness", checks)
+        self.assertNotIn("uncommitted-context", checks)
+
+    def test_missing_log_is_explicit_and_cannot_make_commit_day_authoritative(self):
+        self.record(log=None)
+        self.fx.commit(when="2026-06-02")
+        findings = self.findings()
+        checks = {f["check"] for f in findings}
+        self.assertIn("freshness-unverifiable", checks)
+        self.assertNotIn("last-session-freshness", checks)
+        self.assertNotIn("context-header-freshness", checks)
+
+    def test_missing_log_does_not_hide_disagreeing_cache_dates(self):
+        self.record(log=None, header="2026-06-02")
+        self.fx.commit(when="2026-06-01")
+        checks = {f["check"] for f in self.findings()}
+        self.assertIn("freshness-unverifiable", checks)
+        self.assertIn("last-session-freshness", checks)
+
+    def test_invalid_log_date_is_unverifiable(self):
+        self.record(log="2026-02-30")
+        self.fx.commit(when="2026-06-01")
+        self.assertIn("freshness-unverifiable", {f["check"] for f in self.findings()})
+
+    def test_delayed_completion_commit_does_not_reopen_project(self):
+        self.record(status="completed", completed_date="2026-06-01")
+        self.fx.commit(when="2026-09-01")
+        self.assertNotIn("terminal-project-active", {f["check"] for f in self.findings()})
+
+    def test_post_completion_session_rearms_review_even_in_bulk_commit(self):
+        self.record(status="completed", completed_date="2026-06-01")
+        self.fx.commit(when="2026-06-01")
+        reviewed = subprocess.check_output(
+            ["git", "-C", str(self.fx.root), "rev-parse", "HEAD"], text=True).strip()
+        self.fx.index([{"id": "alpha", "status": "completed", "completed_date": "2026-06-01",
+                        "last_session": "2026-06-01", "post_close_reviewed_through": reviewed}])
+        self.fx.commit(when="2026-06-01")
+        for pid in ("beta", "gamma", "delta", "epsilon"):
+            self.fx.project(pid)
+        self.fx.project("alpha", context=None,
+                        sessions={"2026-06.md": "## 2026-06-02 — resumed work\n"})
+        # Old commit timestamp must not defeat new recorded evidence either.
+        self.fx.commit(when="2026-06-01")
+        self.assertIn("terminal-project-active", {f["check"] for f in self.findings()})
+
+    def test_uncommitted_post_completion_session_is_not_covered_by_review(self):
+        self.record(status="completed", completed_date="2026-06-01")
+        self.fx.commit(when="2026-06-01")
+        reviewed = subprocess.check_output(
+            ["git", "-C", str(self.fx.root), "rev-parse", "HEAD"], text=True).strip()
+        self.fx.index([{"id": "alpha", "status": "completed", "completed_date": "2026-06-01",
+                        "last_session": "2026-06-01", "post_close_reviewed_through": reviewed}])
+        self.fx.commit(when="2026-06-01")
+        self.fx.project("alpha", context=None,
+                        sessions={"2026-06.md": "## 2026-06-02 — resumed work\n"})
+        self.assertIn("terminal-project-active", {f["check"] for f in self.findings()})
+
+
 class LifecycleApplicabilityTests(unittest.TestCase):
     """Checks that only have meaning about work in progress must not fire on
     projects nobody is working.
@@ -851,11 +969,11 @@ class LifecycleApplicabilityTests(unittest.TestCase):
         be classified as a repo-wide sweep — the shape that makes freshness
         genuinely unverifiable."""
         self.fx.project(pid, context=f"# P\n\n**Status:** {status.title()}\n")
-        for filler in range(cd.BULK_COMMIT_PROJECT_THRESHOLD + 2):
+        for filler in range(5):
             self.fx.project(f"{pid}-filler{filler}")
         self.fx.index([{"id": pid, "status": status, **entry}] +
                       [{"id": f"{pid}-filler{i}", "status": "active"}
-                       for i in range(cd.BULK_COMMIT_PROJECT_THRESHOLD + 2)])
+                       for i in range(5)])
         self.fx.commit("repo-wide sweep")
 
     def _checks_for(self, result: dict, pid: str) -> set[str]:
@@ -906,7 +1024,8 @@ class LifecycleApplicabilityTests(unittest.TestCase):
         """The inversion that makes the suppression safe: a project declared
         finished but still receiving session commits is a live record error,
         and it was invisible before this check existed."""
-        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n")
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n",
+                        sessions={"2026-06.md": "## 2026-06-01 — work\n"})
         self.fx.index([{"id": "alpha", "status": "completed",
                         "completed_date": "2026-01-01",
                         "last_session": "2026-01-01"}])
@@ -939,7 +1058,8 @@ class LifecycleApplicabilityTests(unittest.TestCase):
 
     def test_work_after_the_declared_completion_still_fires(self):
         """The tightened anchor must not buy quiet by dropping the question."""
-        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n")
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n",
+                        sessions={"2026-08.md": "## 2026-08-20 — work\n"})
         self.fx.index([{"id": "alpha", "status": "completed",
                         "completed_date": "2026-06-01",
                         "last_session": "2026-06-01"}])
@@ -950,7 +1070,8 @@ class LifecycleApplicabilityTests(unittest.TestCase):
     def test_missing_completed_date_falls_back_rather_than_falling_silent(self):
         """A record too incomplete to anchor on is the one most likely to be
         wrong, so the check keeps asking against last_session."""
-        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n")
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n",
+                        sessions={"2026-06.md": "## 2026-06-01 — work\n"})
         self.fx.index([{"id": "alpha", "status": "completed",
                         "last_session": "2026-01-01"}])
         self.fx.commit("real work long after completion", when="2026-06-01")
@@ -1109,7 +1230,8 @@ class PostCloseAcknowledgmentTests(unittest.TestCase):
                         "completed_date": "2026-06-01",
                         "last_session": "2026-06-01", **entry}])
         self.fx.commit("closing commit", when="2026-06-01")
-        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n\ntidy\n")
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n\ntidy\n",
+                        sessions={"2026-08.md": "## 2026-08-20 — archive review\n"})
         self.fx.commit("archive pass long after the close", when="2026-08-20")
         return subprocess.run(
             ["git", "-C", str(self.fx.root), "rev-parse", "HEAD"],
@@ -1137,7 +1259,8 @@ class PostCloseAcknowledgmentTests(unittest.TestCase):
                         "last_session": "2026-06-01",
                         "post_close_reviewed_through": head}])
         self.fx.commit("record the review", when="2026-08-20")
-        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n\nnew work\n")
+        self.fx.project("alpha", context="# P\n\n**Status:** Completed\n\nnew work\n",
+                        sessions={"2026-08.md": "## 2026-08-25 — resumed work\n"})
         self.fx.commit("work that resumed after the review", when="2026-08-25")
         self.assertIn("terminal-project-active", checks_in(self.fx.audit()))
 
