@@ -53,6 +53,7 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -637,18 +638,20 @@ def canonical_retirement_commits(
     return canonical_head, canonical_base
 
 
-def retirement_intent_path(worktree: Path, head: str, base_oid: str) -> Path:
+def retirement_intent_path(worktree: Path, head: str, base_oid: str, session_id: str | None = None) -> Path:
+    scope = f"\0{session_id}" if session_id else ""
     identity = hashlib.sha256(
-        f"{worktree}\0{head}\0{base_oid}".encode("utf-8")
+        f"{worktree}\0{head}\0{base_oid}{scope}".encode("utf-8")
     ).hexdigest()
     return RETIREMENT_DIR / f"{identity}.json"
 
 
 def manifest_reconciliation_plans(
-    worktree: Path,
+    worktree: Path, session_id: str | None = None,
 ) -> tuple[list[tuple[Path, dict, list[str], list[str], list[str]]], list[object]]:
     validate_state_paths(PENDING_DIR, LOCAL_HANDOFF_DIR, RETIREMENT_DIR)
-    manifests = sorted(PENDING_DIR.glob("*.json")) if PENDING_DIR.is_dir() else []
+    manifests = ([pending_manifest_path(session_id)] if session_id else
+                 sorted(PENDING_DIR.glob("*.json")) if PENDING_DIR.is_dir() else [])
     plans: list[tuple[Path, dict, list[str], list[str], list[str]]] = []
     locks: list[object] = []
     try:
@@ -726,6 +729,8 @@ def prepare_retirement_intent(
     branch: str | None = None,
     expect_active: bool,
     dry_run: bool,
+    session_id: str | None = None,
+    recovery_evidence: dict | None = None,
 ) -> tuple[dict, Path | None, list[Path]]:
     worktree, repository = validate_retirement_target(
         worktree, repository, expect_active=expect_active
@@ -734,10 +739,10 @@ def prepare_retirement_intent(
     canonical_head, canonical_base = canonical_retirement_commits(
         repository, verified_head, fetched_base_oid
     )
-    plans, locks = manifest_reconciliation_plans(worktree)
+    plans, locks = manifest_reconciliation_plans(worktree, session_id)
     try:
         touched = [plan[0] for plan in plans]
-        intent = retirement_intent_path(worktree, canonical_head, canonical_base)
+        intent = retirement_intent_path(worktree, canonical_head, canonical_base, session_id)
         result = retirement_result(repository)
         result.update(
             action="retirement-prepared" if not dry_run else "retirement-prepare-ready",
@@ -766,6 +771,8 @@ def prepare_retirement_intent(
                 "reconciler_sha256": reconciler_hash,
                 "manifests_preflight": [str(path) for path in touched],
                 "paths_preflight": sum(len(plan[2]) for plan in plans),
+                "session_id": session_id,
+                "recovery_evidence": recovery_evidence,
             },
         )
         return result, intent, touched
@@ -784,7 +791,7 @@ def load_retirement_intent(intent: Path) -> dict:
     if intent.is_symlink() or not intent.is_file():
         raise ValueError(f"retirement intent is unavailable or unsafe: {intent}")
     data = json.loads(intent.read_text(encoding="utf-8"))
-    if data.get("schema_version") != 2 or data.get("state") not in {
+    if not isinstance(data, dict) or data.get("schema_version") != 2 or data.get("state") not in {
         "prepared",
         "completed",
     }:
@@ -792,9 +799,12 @@ def load_retirement_intent(intent: Path) -> dict:
     return data
 
 
-def complete_retirement_intent(intent: Path) -> tuple[dict, list[Path]]:
+def complete_retirement_intent(intent: Path, *, dry_run: bool = False) -> tuple[dict, list[Path]]:
     intent = lexical_absolute(intent)
     data = load_retirement_intent(intent)
+    session_id = data.get("session_id")
+    if session_id is not None:
+        require_retirement_session_authority(session_id)
     repository = Path(str(data.get("repository") or ""))
     result = retirement_result(repository)
     worktree, repository = validate_retirement_target(
@@ -813,7 +823,7 @@ def complete_retirement_intent(intent: Path) -> tuple[dict, list[Path]]:
         str(data.get("head") or ""),
         str(data.get("base_oid") or ""),
     )
-    if intent != retirement_intent_path(worktree, canonical_head, canonical_base):
+    if intent != retirement_intent_path(worktree, canonical_head, canonical_base, session_id):
         raise ValueError("retirement intent filename does not match its identity")
     reconciler_hash = data.get("reconciler_sha256")
     current_hash = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
@@ -832,8 +842,13 @@ def complete_retirement_intent(intent: Path) -> tuple[dict, list[Path]]:
             detail=str(intent),
         )
         return result, [Path(value) for value in data.get("manifests", [])]
-    plans, locks = manifest_reconciliation_plans(worktree)
+    if session_id:
+        return complete_session_retirement(intent, data, repository, worktree, canonical_head, canonical_base, dry_run=dry_run)
+    plans, locks = manifest_reconciliation_plans(worktree, session_id)
     try:
+        if dry_run:
+            return {**result, "action": "retirement-prepare-ready", "alert": None,
+                    "files": sum(len(plan[2]) for plan in plans), "detail": str(intent)}, [plan[0] for plan in plans]
         reconciled_at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         touched: list[Path] = []
         removed_count = 0
@@ -887,6 +902,82 @@ def complete_retirement_intent(intent: Path) -> tuple[dict, list[Path]]:
         release_manifest_locks(locks)
 
 
+def json_digest(payload: dict) -> str:
+    return hashlib.sha256((json.dumps(payload, indent=2) + "\n").encode()).hexdigest()
+
+
+def complete_session_retirement(intent: Path, data: dict, repository: Path, worktree: Path,
+                                head: str, base_oid: str, *, dry_run: bool = False) -> tuple[dict, list[Path]]:
+    """Replay a prepared exact-manifest replacement across every crash gap."""
+    session_id = data["session_id"]
+    evidence = data.get("recovery_evidence")
+    if not isinstance(evidence, dict):
+        raise ValueError("exact-session retirement has no preserved recovery evidence")
+    plans, locks = manifest_reconciliation_plans(worktree, session_id)
+    try:
+        manifest = pending_manifest_path(session_id)
+        receipt = LOCAL_HANDOFF_DIR / manifest.name
+        replacement = data.get("session_replacement")
+        if replacement is None:
+            if len(plans) != 1:
+                raise ValueError("exact-session retirement lost its prepared attribution")
+            _path, current, removed, remaining, remaining_remote = plans[0]
+            if hashlib.sha256(manifest.read_bytes()).hexdigest() != evidence.get("pending_manifest_sha256"):
+                raise ValueError("attribution changed after retirement preparation; preserve the pending manifest")
+            verify_retained_path_evidence(repository, worktree, head, removed, evidence)
+            stamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+            after = dict(current) if remaining else None
+            receipt_after = None
+            if after is not None:
+                after.update(updated_at=stamp, paths=remaining, remote_paths=remaining_remote,
+                             retired_worktrees=[*current.get("retired_worktrees", []), {
+                                 "intent": str(intent), "worktree": str(worktree), "repository": str(repository),
+                                 "head": head, "base_ref": data["base_ref"], "base_oid": base_oid,
+                                 "reconciled_at": stamp, "paths_removed": len(removed)}])
+                receipt_after = dict(evidence["retained_receipt"])
+                receipt_after.update(pending_manifest_sha256=json_digest(after), derived_from_retirement=str(intent))
+            replacement = {
+                "manifest_before_sha256": evidence["pending_manifest_sha256"], "manifest_after": after,
+                "receipt_before_sha256": evidence["receipt_sha256"], "receipt_after": receipt_after,
+                "paths_removed": len(removed),
+            }
+            data["session_replacement"] = replacement
+            # Exact post-images are durable before either destructive step.
+            if not dry_run:
+                atomic_json(intent, data)
+        if (not isinstance(replacement, dict)
+                or not {"manifest_before_sha256", "manifest_after", "receipt_before_sha256", "receipt_after", "paths_removed"}.issubset(replacement)
+                or any(replacement[key] is not None and not isinstance(replacement[key], dict) for key in ("manifest_after", "receipt_after"))):
+            raise ValueError("retirement replacement evidence is invalid")
+        for path, before_key, after_key in ((manifest, "manifest_before_sha256", "manifest_after"),
+                                            (receipt, "receipt_before_sha256", "receipt_after")):
+            validate_state_paths(path)
+            after = replacement[after_key]
+            current_digest = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+            after_digest = json_digest(after) if after is not None else None
+            if current_digest == after_digest:
+                continue
+            if current_digest != replacement[before_key]:
+                raise ValueError("retirement replay found changed attribution or receipt; preserve it for verification")
+            if dry_run:
+                continue
+            if after is None:
+                path.unlink()
+                fsync_directory(path.parent)
+            else:
+                atomic_json(path, after)
+        if dry_run:
+            return {**retirement_result(repository), "action": "retirement-prepare-ready", "alert": None,
+                    "manifests": 1, "files": replacement["paths_removed"], "detail": str(intent)}, [manifest]
+        data.update(state="completed", completed_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                    manifests=[str(manifest)], paths_removed=replacement["paths_removed"])
+        atomic_json(intent, data)
+        return {**retirement_result(repository), "action": "retired-worktree-reconciled", "alert": None,
+                "manifests": 1, "files": replacement["paths_removed"], "detail": str(intent)}, [manifest]
+    finally:
+        release_manifest_locks(locks)
+
+
 def reconcile_retired_worktree(
     worktree: Path,
     repository: Path,
@@ -916,6 +1007,124 @@ def reconcile_retired_worktree(
             completed, reconciled = complete_retirement_intent(intent)
             return [completed], reconciled
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        result["alert"] = str(exc)
+        return [result], []
+
+
+def require_retirement_session_authority(session_id: str) -> None:
+    """An explicit repair can consume only the invoking native session's work."""
+    try:
+        uuid.UUID(session_id)
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ValueError("retirement authority requires a native session UUID") from exc
+    configured = os.environ.get("SYNTHESIS_CLIENT_SESSION_REF", "").strip()
+    native = os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
+    identities = {native} if native else set()
+    if configured.startswith(("cc:", "codex:")):
+        identities.add(configured.split(":", 1)[1])
+    if identities != {session_id}:
+        raise ValueError("retirement authority does not match this exact native session")
+
+
+def verify_retained_path_evidence(repository: Path, worktree: Path, head: str,
+                                  paths: list[str], evidence: dict) -> None:
+    """Prove the attributed bytes/deletions, not just canonical path existence."""
+    items = evidence.get("file_evidence")
+    if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+        raise ValueError("retained receipt has no valid file evidence")
+    indexed = {item.get("path"): item for item in items if isinstance(item.get("path"), str)}
+    if len(indexed) != len(items):
+        raise ValueError("retained receipt has duplicate or invalid evidence paths")
+    for raw in paths:
+        item = indexed.get(raw)
+        if item is None:
+            raise ValueError(f"retained receipt does not cover attributed path: {raw}")
+        relative = lexical_absolute(Path(raw)).relative_to(worktree).as_posix()
+        listing = subprocess.run(["git", "-C", str(repository), "ls-tree", "-z", head,
+                                  "--", f":(literal){relative}"], capture_output=True, timeout=30)
+        if listing.returncode:
+            raise ValueError("historical tree evidence is unavailable")
+        if item.get("state") == "deleted-or-missing":
+            if listing.stdout:
+                raise ValueError(f"attributed deletion is not present in the retained head: {raw}")
+            continue
+        if item.get("state") != "present" or not listing.stdout:
+            raise ValueError(f"attributed file is not proved by the retained head: {raw}")
+        metadata = listing.stdout.split(b"\t", 1)[0].split()
+        if len(metadata) != 3 or metadata[0] not in {b"100644", b"100755"} or metadata[1] != b"blob":
+            raise ValueError("retirement file evidence is a symlink or non-file")
+        if item.get("git_mode") != metadata[0].decode("ascii"):
+            raise ValueError(f"attributed file mode is not proved by the retained head: {raw}")
+        blob = subprocess.run(["git", "-C", str(repository), "cat-file", "blob", metadata[2].decode("ascii")],
+                              capture_output=True, timeout=30)
+        if (blob.returncode or type(item.get("size")) is not int or len(blob.stdout) != item["size"]
+                or hashlib.sha256(blob.stdout).hexdigest() != item.get("sha256")):
+            raise ValueError(f"attributed bytes differ from the retained head: {raw}")
+
+
+def recover_retired_session(worktree: Path, repository: Path, session_id: str, base: str,
+                            *, remote: str = "origin", dry_run: bool) -> tuple[list[dict], list[Path]]:
+    """Recover an old removal using an exact native session's retained receipt.
+
+    Missing evidence stays a recoverable, named gap. Nothing guesses a retired
+    HEAD from the current branch or retires a foreign session's manifest.
+    """
+    result = retirement_result(repository)
+    try:
+        require_retirement_session_authority(session_id)
+        with lifecycle_lock():
+            worktree, repository = validate_retirement_target(worktree, repository, expect_active=False)
+            validate_state_paths(RETIREMENT_DIR, LOCAL_HANDOFF_DIR, PENDING_DIR)
+            # A prepared transaction contains its evidence before any receipt
+            # removal, so retries survive interruption and completed no-ops.
+            for path in sorted(RETIREMENT_DIR.glob("*.json")):
+                previous = load_retirement_intent(path)
+                if (previous.get("session_id") == session_id and previous.get("worktree") == str(worktree)
+                        and previous.get("repository") == str(repository)):
+                    manifest, pending_paths = load_pending_manifest(session_id)
+                    if previous.get("state") == "completed" and any(path_is_within(item, worktree) for item in pending_paths):
+                        raise ValueError("new attribution exists after completed retirement; preserve it for separate verification")
+                    completed, touched = complete_retirement_intent(path, dry_run=dry_run)
+                    return [completed], touched
+            manifest, pending_paths = load_pending_manifest(session_id)
+            affected = [str(path) for path in pending_paths if path_is_within(path, worktree)]
+            if not affected:
+                raise ValueError("no exact-session attribution beneath this removed worktree")
+            receipt = LOCAL_HANDOFF_DIR / manifest.name
+            validate_state_paths(receipt)
+            if receipt.is_symlink() or not receipt.is_file():
+                raise ValueError("retained local-handoff receipt is missing; historical HEAD and attributed-byte evidence are required")
+            raw = receipt.read_bytes()
+            retained = json.loads(raw)
+            if (not isinstance(retained, dict) or retained.get("schema_version") != 1 or retained.get("session_id") != session_id
+                    or retained.get("readiness") != "LOCAL_READY" or retained.get("pending_manifest") != str(manifest)):
+                raise ValueError("retained local-handoff receipt does not bind this session and manifest")
+            manifest_digest = hashlib.sha256(manifest.read_bytes()).hexdigest()
+            if retained.get("pending_manifest_sha256") != manifest_digest:
+                raise ValueError("retained receipt lacks current attribution-digest evidence; reconstruct a verified retirement head independently, never assume older bytes cover later edits")
+            results = retained.get("results")
+            if not isinstance(results, list):
+                raise ValueError("retained local-handoff receipt has no result evidence")
+            matches = [item for item in results if isinstance(item, dict) and item.get("repo") == str(worktree)]
+            if len(matches) != 1 or matches[0].get("action") != "local-ready" or matches[0].get("alert"):
+                raise ValueError("retained receipt does not identify exactly one verified historical worktree")
+            evidence = matches[0]
+            head = evidence.get("head")
+            if not isinstance(head, str) or len(head) not in {40, 64} or any(c not in "0123456789abcdef" for c in head):
+                raise ValueError("retained receipt has no exact historical HEAD")
+            verify_retained_path_evidence(repository, worktree, head, affected, evidence)
+            snapshot = {**evidence, "receipt_path": str(receipt), "receipt_sha256": hashlib.sha256(raw).hexdigest(),
+                        "pending_manifest_sha256": manifest_digest, "retained_receipt": retained}
+            prepared, intent, touched = prepare_retirement_intent(
+                worktree, repository, head, remote, base, expect_active=False, dry_run=dry_run,
+                session_id=session_id, recovery_evidence=snapshot,
+            )
+            if dry_run:
+                return [prepared], touched
+            assert intent is not None
+            completed, touched = complete_retirement_intent(intent)
+            return [completed], touched
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
         result["alert"] = str(exc)
         return [result], []
 
@@ -1012,6 +1221,8 @@ def load_pending_manifest(session_id: str) -> tuple[Path, list[Path]]:
 
 
 def file_evidence(path: Path) -> dict[str, object]:
+    if path.is_symlink():
+        return {"path": str(path), "state": "unsafe-non-file"}
     if not path.exists():
         return {"path": str(path), "state": "deleted-or-missing"}
     if path.is_symlink() or not path.is_file():
@@ -1025,6 +1236,7 @@ def file_evidence(path: Path) -> dict[str, object]:
         "state": "present",
         "size": path.stat().st_size,
         "sha256": digest.hexdigest(),
+        "git_mode": "100755" if path.stat().st_mode & 0o111 else "100644",
     }
 
 
@@ -1041,6 +1253,7 @@ def _local_handoff_checkpoint_unlocked(
         return [{"repo": "unknown", "name": "pending-session", "action": "failed", "alert": f"invalid pending manifest: {exc}"}], None
     if not paths:
         return [], manifest
+    manifest_digest = hashlib.sha256(manifest.read_bytes()).hexdigest()
 
     grouped: dict[Path, list[Path]] = {}
     for path in paths:
@@ -1075,6 +1288,8 @@ def _local_handoff_checkpoint_unlocked(
         )
 
     receipt = LOCAL_HANDOFF_DIR / f"{hashlib.sha256(session_id.encode('utf-8')).hexdigest()}.json"
+    if hashlib.sha256(manifest.read_bytes()).hexdigest() != manifest_digest:
+        return [{"repo": str(manifest), "name": "pending-session", "action": "failed", "alert": "attribution changed while recording local evidence; retry this exact session"}], manifest
     atomic_json(
         receipt,
         {
@@ -1085,6 +1300,7 @@ def _local_handoff_checkpoint_unlocked(
             "cwd": payload.get("cwd"),
             "results": results,
             "pending_manifest": str(manifest),
+            "pending_manifest_sha256": manifest_digest,
         },
     )
     return results, manifest
@@ -1489,6 +1705,11 @@ def main() -> int:
         help="Main repository that owned the retired worktree",
     )
     ap.add_argument(
+        "--retirement-session",
+        default=None,
+        help="Recover only this native session from its retained local-handoff receipt; derives the historical head",
+    )
+    ap.add_argument(
         "--retirement-head",
         default=None,
         help="Exact commit that the retirement helper verified on the remote base",
@@ -1538,6 +1759,10 @@ def main() -> int:
         if not args.quiet:
             print("checkpoint_sync: choose exactly one retirement mode", file=sys.stderr)
         return 2
+    if args.retirement_session is not None and (args.reconcile_retired_worktree is None or args.retirement_head is not None
+            or args.hook or args.repo is not None or args.flush_pending or args.no_throttle):
+        print("checkpoint_sync: --retirement-session requires --reconcile-retired-worktree and derives --retirement-head from evidence", file=sys.stderr)
+        return 2
 
     if args.flush_session is not None and (
         args.hook
@@ -1557,7 +1782,7 @@ def main() -> int:
         try:
             with lifecycle_lock():
                 result, _manifests = complete_retirement_intent(
-                    args.complete_worktree_retirement
+                    args.complete_worktree_retirement, dry_run=args.dry_run
                 )
             results = [result]
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
@@ -1597,20 +1822,22 @@ def main() -> int:
     elif args.reconcile_retired_worktree is not None:
         if not (
             args.retirement_repository
-            and args.retirement_head
+            and (args.retirement_head or args.retirement_session)
             and args.retirement_base
         ):
             if not args.quiet:
                 print(
                     "checkpoint_sync: retired-worktree recovery requires "
-                    "--retirement-repository, --retirement-head, and --retirement-base",
+                    "--retirement-repository, --retirement-base, and either a verified "
+                    "--retirement-head or --retirement-session with retained local-handoff evidence",
                     file=sys.stderr,
                 )
             return 2
-        results, _manifests = reconcile_retired_worktree(
+        recovery = recover_retired_session if args.retirement_session else reconcile_retired_worktree
+        results, _manifests = recovery(
             args.reconcile_retired_worktree,
             args.retirement_repository,
-            args.retirement_head,
+            args.retirement_session or args.retirement_head,
             args.retirement_base,
             remote=args.retirement_remote,
             dry_run=args.dry_run,
