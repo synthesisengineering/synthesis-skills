@@ -233,6 +233,56 @@ def test_no_plan_is_optional_but_declared_local_missing_plan_is_not(plan_project
     assert not check.ok and check.required
 
 
+@pytest.mark.parametrize("declaration", [
+    "Controlling plan: none",
+    "**Controlling plan:** None.",
+    "**No active plan — both are COMPLETE:**",
+    "No active plan.",
+])
+def test_explicit_no_plan_precedes_historical_links_in_all_consumers(plan_project, declaration):
+    _repo, project, _plan = plan_project
+    write_context(project, declaration + "\n[old plan](../program/resources/artifacts/work-plan.md)")
+    summary, checks = conformance.project_summary(project)
+    check = next(item for item in checks if item.name == "handoff.plan")
+    assert summary["plan"] == "unknown" and not check.required
+    assert "no active plan" in check.detail
+    lines = []
+    session_context.append_project_context(lines, project, label="Recovered", diagnostic=True)
+    assert "Controlling plan: unknown." in lines
+    ok, detail = conformance.stopped_payload_parity(project, summary, project / "no-board.md")
+    assert ok, detail
+
+
+@pytest.mark.parametrize("reference", [
+    "See [the retirement plan](../program/resources/artifacts/work-plan.md) for a dependency.",
+    "- [ ] Check [plan](../program/resources/artifacts/work-plan.md).",
+    "[Historical plan](../program/resources/artifacts/work-plan.md)",
+    "```markdown\nControlling plan: ../program/resources/artifacts/work-plan.md\n```",
+])
+def test_incidental_plan_references_are_not_declarations(plan_project, reference):
+    from plan_reference import locate_plan
+
+    _repo, project, _plan = plan_project
+    ref = locate_plan(project, write_context(project, reference))
+    assert ref.declared is None and ref.resolved is None and ref.value == "unknown"
+
+
+def test_two_standalone_plan_declarations_are_ambiguous(plan_project):
+    from plan_reference import locate_plan
+
+    _repo, project, _plan = plan_project
+    ref = locate_plan(project, "[plan](../program/resources/artifacts/work-plan.md)\n[plan](missing-plan.md)")
+    assert ref.declared is not None and ref.resolved is None and "multiple" in ref.detail
+
+
+def test_no_plan_and_explicit_path_conflict_instead_of_guessing(plan_project):
+    from plan_reference import locate_plan
+
+    _repo, project, _plan = plan_project
+    ref = locate_plan(project, "No active plan.\nControlling plan: ../program/resources/artifacts/work-plan.md")
+    assert ref.declared is not None and ref.resolved is None and "multiple" in ref.detail
+
+
 def test_structured_plan_rejects_external_file_before_writing(plan_project, tmp_path):
     import project_state
 
