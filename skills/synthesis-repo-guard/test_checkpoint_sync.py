@@ -755,7 +755,20 @@ def test_retirement_recovery_rejects_local_base_ref(tmp_path: Path, monkeypatch)
 
     assert results[0]["action"] == "retirement-reconcile-failed"
     assert "remote-tracking ref" in results[0]["alert"]
+    assert "origin/main" in results[0]["alert"]
+    assert "HEAD" in results[0]["alert"]
     assert touched == []
+
+
+def test_retirement_cwd_refusal_names_the_condition_and_next_location(tmp_path: Path, monkeypatch) -> None:
+    repo, _remote, _cfg = repository(tmp_path)
+    worktree = tmp_path / "current-worktree"
+    command("git", "worktree", "add", "-qb", "feature/current", str(worktree), cwd=repo)
+    monkeypatch.chdir(worktree)
+    with pytest.raises(ValueError, match="current working directory") as exc:
+        MODULE.validate_retirement_target(worktree, repo, expect_active=True)
+    assert str(repo) in str(exc.value)
+    assert worktree.is_dir()
 
 
 def test_lifecycle_lock_serializes_threads(tmp_path: Path, monkeypatch) -> None:
