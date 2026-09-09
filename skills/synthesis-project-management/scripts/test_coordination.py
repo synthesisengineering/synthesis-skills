@@ -2353,3 +2353,81 @@ def test_every_command_notes_a_newer_installed_engine(tmp_path):
         capture_output=True, text=True, check=False,
     )
     assert "note: this coordination engine" not in current.stderr
+
+
+def report_index(tmp_path, text):
+    repo = staged_repository(tmp_path)
+    index = repo / "projects" / "index.yaml"
+    index.parent.mkdir()
+    index.write_text(text)
+    assert git(repo, "add", "projects/index.yaml").returncode == 0
+    return index
+
+
+def test_project_report_message_reaches_successor_inbox_without_claim_mutation(tmp_path, capsys):
+    index = report_index(tmp_path, "projects:\n- id: old-project\n  status: archived\n  superseded_by: new-project\n- id: new-project\n  status: active\n")
+    board = tmp_path / "board.md"
+    assert MODULE.command_claim(seatless_claim(board, "new-project", "/tmp/report-fixture @ topic", "repo/**")) == 0
+    row = MODULE.rows(board.read_text())[0]
+    claims = row.cells()
+    done = subprocess.run([sys.executable, str(MODULE_PATH), "--board", str(board), "message", "--from", "fixture-sender",
+        "--to", "old-project sessions", "--project-index", str(index), "--text", "Fixture diagnostic"], text=True, capture_output=True)
+    assert done.returncode == 0, done.stderr
+    assert MODULE.rows(board.read_text())[0].cells() == claims
+    capsys.readouterr()
+    assert MODULE.command_inbox(args(board, id=row.compact_id, json=True, mark_read=False)) == 0
+    inbox = json.loads(capsys.readouterr().out)
+    assert len(inbox["unread"]) == 1
+    assert inbox["unread"][0]["to"] == "new-project sessions"
+    assert inbox["unread"][0]["body"] == "Fixture diagnostic"
+
+
+@pytest.mark.parametrize("selector_kind", ["compact", "native"])
+def test_report_exact_session_recipient_is_never_redirected(tmp_path, selector_kind):
+    board = tmp_path / "board.md"
+    claim = seatless_claim(board, "old-project", "/tmp/report-fixture @ topic", "repo/**")
+    claim.client_ref = "codex:01990000-0000-7000-8000-000000000002"
+    assert MODULE.command_claim(claim) == 0
+    row = MODULE.rows(board.read_text())[0]
+    selector = row.compact_id if selector_kind == "compact" else row.client_ref
+    label, route = MODULE.report_recipient([row], selector, tmp_path / "missing.yaml")
+    assert label == row.label
+    assert route is None
+
+
+@pytest.mark.parametrize("text", [
+    "projects:\n- id: old-project\n  status: archived\n  related: [new-project]\n- id: new-project\n  status: active\n",
+    "projects:\n- id: old-project\n  status: archived\n  description: |\n    superseded_by: new-project\n- id: new-project\n  status: active\n",
+    "projects:\n- id: old-project\n  status: archived\n  description: 'historical text\n    superseded_by: new-project\n    continued'\n- id: new-project\n  status: active\n",
+    "projects:\n- id: old-project\n  status: archived\n  superseded_by:\n  - new-project\n- id: new-project\n  status: active\n",
+    "projects:\n- id: old-project\n  status: active\n  status: archived\n",
+    "projects:\n- id: old-project\n  <<: {status: active}\n",
+    "projects:\n- id: old-project\n  status: archived\n  superseded_by: new-project\nprojects:\n- id: new-project\n  status: active\n",
+])
+def test_report_route_needs_unambiguous_structural_relationship(tmp_path, text):
+    index = report_index(tmp_path, text)
+    with pytest.raises(ValueError, match="recipient"):
+        MODULE.report_recipient([], "old-project sessions", index)
+
+
+@pytest.mark.parametrize("layout", ["bare", "wrapped", "indented"])
+def test_report_registry_supports_project_block_layouts_without_prose_inference(tmp_path, layout):
+    text = "- id: 'old.project' # archive\n  status: archived\n  name: 'Earlier\n    display name'\n  tags:\n  - irrelevant\n  superseded_by: \"new.project\"\n- id: new.project\n  status: paused\n"
+    if layout == "wrapped":
+        text = "initiatives:\n- id: old.project\n  status: active\nprojects:\n" + text
+    elif layout == "indented":
+        text = "projects:\n" + "\n".join("  " + line for line in text.splitlines()) + "\n"
+    index = report_index(tmp_path, text)
+    label, route = MODULE.report_recipient([], "old.project sessions", index)
+    assert label == "new.project sessions"
+    assert route["chain"] == ["old.project", "new.project"]
+
+
+def test_invalid_explicit_report_registry_cannot_use_free_address(tmp_path, capsys):
+    board = tmp_path / "board.md"
+    board.write_text(MODULE.template())
+    before = board.read_bytes()
+    message = args(board, sender="fixture", to="old-project", text="Fixture report", free_address=True, project_index=tmp_path / "missing.yaml")
+    assert MODULE.command_message(message) == 10
+    assert board.read_bytes() == before
+    assert "recipient" in capsys.readouterr().err
