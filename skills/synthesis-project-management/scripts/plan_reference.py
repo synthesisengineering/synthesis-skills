@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Resolve controlling plans once for state, handoff checks and hook payloads.
 
-Structured state takes precedence over an explicit CONTEXT declaration, then
-cross-project links, then project-local artifact links. A declaration that
-cannot be verified is an error, never permission to use a different plan.
+Structured state takes precedence over an explicit CONTEXT declaration.
+An explicit no-plan declaration stops selection. Standalone links labeled
+"plan", "active plan", "current plan" or "controlling plan" are shorthand
+declarations; incidental and historical links are not declarations. A
+declaration that cannot be verified never permits a different plan.
 Cross-project references must stay inside the same Git worktree. Resolution
 only reads local files and Git identity; it never fetches or updates state.
 """
@@ -23,6 +25,9 @@ _LINE = re.compile(
 )
 _LINK = re.compile(r"\[[^\]\n]*\]\((?:<([^>\n]+)>|([^()\n]+))\)")
 _ANNOTATED_PATH = re.compile(r"^(.+\.md)(?:[ \t]+\([^()\n]*\))?\.?$", re.IGNORECASE)
+_NO_PLAN = re.compile(r"^[ \t]*(?:\*\*)?No active plan(?:[ \t]*(?:\*\*)?[.:—–-]|[ \t]*$)", re.IGNORECASE)
+_PLAN_LABEL = re.compile(r"^\[(?:(?:active|current|controlling) )?plan\]", re.IGNORECASE)
+_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 
 
 @dataclass(frozen=True)
@@ -143,20 +148,45 @@ def locate_plan(
     """Derive a plan, preserving absent versus declared-but-invalid states."""
     if controlling_plan is not _UNSET:
         return resolve_plan_target(project, controlling_plan)
-    lines = _LINE.findall(context_text)
-    if len(lines) > 1:
-        return _invalid(lines[0], "has multiple explicit declarations")
-    if lines:
-        target = _target(lines[0])
+    # Examples inside fenced code are data, not active declarations.
+    visible: list[str] = []
+    fence: str | None = None
+    for line in context_text.splitlines():
+        marker = _FENCE.match(line)
+        if fence is not None:
+            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip():
+                fence = None
+        elif marker:
+            fence = marker[1]
+        else:
+            visible.append(line)
+    text = "\n".join(visible)
+    declarations = _LINE.findall(text)
+    absent = [line for line in visible if _NO_PLAN.match(line)]
+    if len(declarations) + len(absent) > 1:
+        return _invalid((declarations + absent)[0], "has multiple explicit declarations")
+    if absent or (declarations and declarations[0].strip().lower().rstrip(".") == "none"):
+        return PlanReference(None, None, "unknown", "CONTEXT.md explicitly declares no active plan")
+    if declarations:
+        target = _target(declarations[0])
         if target is None:
-            return _invalid(lines[0], "declaration is empty or malformed")
+            return _invalid(declarations[0], "declaration is empty or malformed")
         return resolve_plan_target(project, target)
-    links = [
-        (match.group(1) or match.group(2)).strip()
-        for match in _LINK.finditer(context_text)
-    ]
-    for prefix in ("../", "resources/artifacts/"):
-        for target in links:
-            if target.startswith(prefix) and "plan" in target.lower() and target.lower().endswith(".md"):
-                return resolve_plan_target(project, target)
+    # A link embedded in a checklist or paragraph describes a dependency,
+    # not project authority. Never rank targets by their path prefix.
+    shorthand: list[str] = []
+    declaration_section = True
+    for line in visible:
+        heading = re.match(r"^ {0,3}#{2,6}[ \t]+(.+?)[ \t]*#*[ \t]*$", line)
+        if heading:
+            declaration_section = bool(re.fullmatch(r"(?:(?:active|current|controlling) )?plan", heading[1], re.IGNORECASE))
+        elif declaration_section and _PLAN_LABEL.match(line.strip()):
+            shorthand.append(line.strip())
+    if len(shorthand) > 1:
+        return _invalid(shorthand[0], "has multiple standalone declarations")
+    if shorthand:
+        target = _target(shorthand[0])
+        if target is None:
+            return _invalid(shorthand[0], "standalone declaration is malformed")
+        return resolve_plan_target(project, target)
     return PlanReference(None, None, "unknown", "CONTEXT.md has no linked plan")

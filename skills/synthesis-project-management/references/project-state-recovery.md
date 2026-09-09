@@ -29,7 +29,16 @@ Markdown.
 
 `scripts/plan_reference.py` is the shared controlling-plan resolver for state
 and client context. A structured `controlling_plan` field takes precedence;
-otherwise an explicit context field takes precedence over legacy artifact links.
+otherwise an explicit context field takes precedence. `Controlling plan: none`
+and an explicit `No active plan` line stop selection: historical links cannot
+become a controlling plan. The existing absent-plan payload value is `unknown`,
+with an explicit no-active-plan diagnostic; structured state still requires a
+verified plan file and does not acquire a new null schema value.
+Without an explicit field, one standalone link labeled `plan`, `active plan`,
+`current plan` or `controlling plan`, in the document header or a section with
+one of those names, is a shorthand declaration. Checklist,
+paragraph, historical and fenced-example links do not establish authority.
+Multiple declarations refuse rather than selecting by link order or path prefix.
 Malformed, missing or ambiguous references refuse resolution. Parent-project
 plans are allowed only inside the same repository, without traversing internal
 symlinks. Outside Git, plans remain project-local. Stored paths are portable
