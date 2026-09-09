@@ -39,7 +39,8 @@ or conflicting same-day states produce `BLOCKED` and exit 2. Existing candidates
 remain in the result alongside gaps. A scan with due candidates is `REVIEW`;
 only a complete scan without due candidates is `CLEAR`. Successful scans exit 0;
 that means collection succeeded, not that communications are approved or the
-day may close. Fenced examples and blockquotes are not operative plan items.
+day may close. Fenced/inline code examples and blockquotes are not operative
+plan items. Unterminated fences or frontmatter are coverage gaps.
 
 ## Item identity and outcomes
 
@@ -62,7 +63,10 @@ later dated plan with that ID can re-date the obligation with a stated reason,
 or record `**Sent:** <ISO timestamp>`, `**Released:** YYYY-MM-DD (reason)` or
 `**Resolved:** YYYY-MM-DD (reason)`. Record only user-authorized actions or
 directly verified outcomes. A checked task (`[x]`) or struck-through item title
-also closes its own item; preserve the accompanying reason/evidence. Copied
+also closes its own item; preserve the accompanying reason/evidence. A struck
+deadline (`**Decays:** ~~YYYY-MM-DD~~ (release reason)`) follows the existing
+release convention; without a reason it remains a blocked review candidate.
+An optional check mark before a Sent timestamp does not alter that timestamp. Copied
 plain prose without identity does not extinguish the original tagged item.
 
 Identical copies with the same ID coalesce. The latest plan date determines the

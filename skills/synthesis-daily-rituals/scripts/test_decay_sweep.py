@@ -1,7 +1,6 @@
 """Behavioral regression for due-date collection, committed before its helper."""
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
 import shutil
@@ -113,6 +112,56 @@ def test_future_plan_cannot_close_due_item(tmp_path):
 
 def test_future_resolution_cannot_close_due_item(tmp_path):
     plan(tmp_path, "2026-09-01", item() + "**Sent:** 2026-09-09\n")
+    code, report = run(tmp_path)
+    assert code == 2 and len(report["due"]) == 1
+
+
+def test_invalid_later_resolution_preserves_earlier_due_candidate(tmp_path):
+    plan(tmp_path, "2026-09-01", item())
+    plan(tmp_path, "2026-09-08", "### Item\n**Decay ID:** obligation-1\n**Sent:** someday\n")
+    code, report = run(tmp_path)
+    assert code == 2 and len(report["due"]) == 1
+
+
+@pytest.mark.parametrize("body", ["```\n**Decays:** 2026-09-08\n", "---\n**Decays:** 2026-09-08\n"])
+def test_unterminated_markdown_cannot_claim_clear_coverage(tmp_path, body):
+    plan(tmp_path, "2026-09-08", body)
+    code, report = run(tmp_path)
+    assert code == 2 and report["gaps"]
+
+
+def test_invalid_source_filename_and_as_of_are_reported(tmp_path):
+    plan(tmp_path, "2026-02-30", item())
+    code, report = run(tmp_path)
+    assert code == 2 and report["gaps"]
+    code, report = run(tmp_path, as_of="2026-02-30")
+    assert code == 2 and report["gaps"]
+
+
+def test_repeated_root_does_not_duplicate_candidates(tmp_path):
+    plan(tmp_path, "2026-09-01", item())
+    code, report = run(tmp_path, tmp_path)
+    assert code == 0 and len(report["due"]) == 1 and len(report["scanned"]) == 1
+
+
+def test_inline_example_tag_is_not_an_operative_item(tmp_path):
+    plan(tmp_path, "2026-09-08", "### Lesson\nThe `**Decays:**` tag has a target date.\n")
+    code, report = run(tmp_path)
+    assert code == 0 and report["status"] == "CLEAR"
+
+
+@pytest.mark.parametrize("body", [
+    item() + "**Sent:** ✅ 2026-09-08 (verified send)\n",
+    "### Item\n**Decays:** ~~2026-09-08~~ (released by user)\n",
+])
+def test_existing_explicit_resolution_formats_are_recognized(tmp_path, body):
+    plan(tmp_path, "2026-09-08", body)
+    code, report = run(tmp_path)
+    assert code == 0 and report["status"] == "CLEAR"
+
+
+def test_struck_deadline_without_release_reason_is_not_clear(tmp_path):
+    plan(tmp_path, "2026-09-08", "### Item\n**Decays:** ~~2026-09-08~~\n")
     code, report = run(tmp_path)
     assert code == 2 and len(report["due"]) == 1
 
