@@ -912,6 +912,31 @@ class SessionEvidenceTests(unittest.TestCase):
         self.fx.commit(when="2026-06-01")
         self.assertIn("freshness-unverifiable", {f["check"] for f in self.findings()})
 
+    def test_unreadable_log_fails_closed_without_a_clean_report(self):
+        self.record(log="2026-06-02")
+        (self.fx.projects / "alpha" / "sessions" / "2026-07.md").write_bytes(b"\xff")
+        self.fx.commit(when="2026-06-01")
+        result = self.fx.audit()
+        self.assertEqual(2, result["code"])
+        self.assertFalse(result["data"]["ok"])
+        self.assertIn("sessions/2026-07.md", result["data"]["error"])
+
+    def test_author_and_committer_dates_do_not_override_session_evidence(self):
+        import os
+
+        self.record()
+        run_git(self.fx.root, "add", "-A")
+        subprocess.run(
+            ["git", "-C", str(self.fx.root), "commit", "-q", "-m", "record"],
+            check=True, capture_output=True, text=True,
+            env={**os.environ, "GIT_AUTHOR_DATE": "2026-05-31T23:59:00-1200",
+                 "GIT_COMMITTER_DATE": "2026-09-01T00:01:00+1400"},
+        )
+        run_git(self.fx.root, "push", "-q", "-u", "origin", "HEAD")
+        checks = {f["check"] for f in self.findings()}
+        self.assertFalse(checks & {"last-session-freshness", "context-header-freshness",
+                                   "freshness-unverifiable", "uncommitted-context"}, checks)
+
     def test_delayed_completion_commit_does_not_reopen_project(self):
         self.record(status="completed", completed_date="2026-06-01")
         self.fx.commit(when="2026-09-01")
@@ -943,6 +968,26 @@ class SessionEvidenceTests(unittest.TestCase):
         self.fx.commit(when="2026-06-01")
         self.fx.project("alpha", context=None,
                         sessions={"2026-06.md": "## 2026-06-02 — resumed work\n"})
+        self.assertIn("terminal-project-active", {f["check"] for f in self.findings()})
+
+    def test_index_only_session_change_cannot_inherit_project_review(self):
+        self.record(status="completed", completed_date="2026-06-01")
+        self.fx.commit(when="2026-06-01")
+        reviewed = subprocess.check_output(
+            ["git", "-C", str(self.fx.root), "rev-parse", "HEAD"], text=True).strip()
+        self.fx.index([{"id": "alpha", "status": "completed", "completed_date": "2026-06-01",
+                        "last_session": "2026-06-02", "post_close_reviewed_through": reviewed}])
+        self.fx.commit(when="2026-06-01")
+        self.assertIn("terminal-project-active", {f["check"] for f in self.findings()})
+
+    def test_changed_completion_anchor_cannot_inherit_project_review(self):
+        self.record(status="completed", completed_date="2026-06-01")
+        self.fx.commit(when="2026-06-01")
+        reviewed = subprocess.check_output(
+            ["git", "-C", str(self.fx.root), "rev-parse", "HEAD"], text=True).strip()
+        self.fx.index([{"id": "alpha", "status": "completed", "completed_date": "2026-05-31",
+                        "last_session": "2026-06-01", "post_close_reviewed_through": reviewed}])
+        self.fx.commit(when="2026-06-01")
         self.assertIn("terminal-project-active", {f["check"] for f in self.findings()})
 
 
