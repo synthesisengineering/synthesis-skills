@@ -44,7 +44,8 @@ def fixture(tmp_path, monkeypatch):
     hooks.mkdir()
     git(repo, "config", "core.hooksPath", str(hooks))
     project = repo / "projects" / "alpha"
-    write(repo / "projects" / "index.yaml", "projects:\n  - id: alpha\n    status: active\n")
+    write(repo / "projects" / "index.yaml", "projects:\n  - id: alpha\n    status: active\n"
+        "  - id: example-maintenance\n    status: active\n  - id: different-maintenance\n    status: active\n")
     write(project / "CONTEXT.md", "# Context\n\n**Controlling plan:** [plan](resources/artifacts/plan.md)\n")
     write(project / "resources" / "artifacts" / "plan.md", "# Plan\nprivate project prose must remain local\n")
     write(project / "REFERENCE.md", "# Reference\nprivate unrelated facts\n")

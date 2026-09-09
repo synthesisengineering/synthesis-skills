@@ -1964,35 +1964,49 @@ def delivery_lane(session: Session) -> str:
     return "board message bus (session has no registered client ref)"
 
 
+def report_recipient(sessions: list[Session], selector: str, project_index: Path | None) -> tuple[str, dict | None]:
+    """Resolve a report address; exact handles never inherit project successors.
+
+    This opt-in destination resolver is separate from thread/claim resolution.
+    A registered live project needs no current seat to receive a bus report.
+    """
+    kind, matches = resolve_targets(sessions, selector)
+    if kind in {"identity", "client-ref"}:
+        if len(matches) != 1:
+            raise ValueError("report recipient is ambiguous")
+        return matches[0].label, None
+    if project_index is not None:
+        from project_recipient import project_route
+        candidate = selector.strip()
+        project = candidate[:-len(" sessions")] if candidate.endswith(" sessions") else candidate
+        route = project_route(project_index, project)
+        return f"{route['resolved_project']} sessions", route
+    if kind == "project":
+        return f"{matches[0].project} sessions", None
+    raise ValueError("report recipient matches no registered session or project")
+
+
 def command_message(args) -> int:
     body = args.text if args.text is not None else sys.stdin.read().strip()
     if not body:
         print("coordination message is empty", file=sys.stderr)
         return 2
 
+    delivered = {}
+
     def operation(content: str) -> str:
         current = rows(content)
         sender = find_session(current, args.sender)
         sender_label = sender.label if sender is not None else sanitize(args.sender)
-        kind, matches = resolve_targets(current, args.to)
-        if kind in {"identity", "client-ref"}:
-            if len(matches) > 1:
-                raise RuntimeError(
-                    f"recipient selector {args.to!r} is ambiguous: "
-                    + ", ".join(session.label for session in matches)
-                )
-            recipient_label = matches[0].label
-        elif kind == "project":
-            recipient_label = f"{matches[0].project} sessions"
-        elif getattr(args, "free_address", False):
+        project_index = getattr(args, "project_index", None)
+        kind, _ = resolve_targets(current, args.to)
+        if project_index is None and kind == "none" and getattr(args, "free_address", False):
             recipient_label = sanitize(args.to)
         else:
-            raise RuntimeError(
-                f"recipient {args.to!r} matches no session identity, client "
-                "ref, or registered project on this board; use 'resolve' to "
-                "find the target, or pass --free-address to record a "
-                "deliberately unregistered addressee"
-            )
+            recipient_label, route = report_recipient(current, args.to, project_index)
+            if route is not None:
+                delivered["route"] = route
+        delivered["recipient"] = recipient_label
         heading = (
             f"### → {recipient_label}, from {sender_label} — {timestamp()}"
         )
@@ -2007,10 +2021,12 @@ def command_message(args) -> int:
 
     try:
         locked_update(args.board, operation)
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError) as exc:
         print(f"coordination message failed: {exc}", file=sys.stderr)
         return 10
-    print(f"Message appended for {args.to}.")
+    print(f"Message appended for {delivered['recipient']}.")
+    if "route" in delivered:
+        print(json.dumps({"recipient_route": delivered["route"]}, sort_keys=True))
     return 0
 
 
@@ -2635,6 +2651,10 @@ def parser() -> argparse.ArgumentParser:
     message.add_argument("--from", dest="sender", required=True)
     message.add_argument("--to", required=True)
     message.add_argument("--text")
+    message.add_argument(
+        "--project-index", type=Path,
+        help="Explicit Git-tracked registry for report-only project successor routing; exact session handles stay exact.",
+    )
     message.add_argument(
         "--free-address",
         action="store_true",
