@@ -104,6 +104,8 @@ changed_surfaces:
   - manifest
   - unlisted-path
   - transaction-binding
+  - retirement-cwd-diagnostic
+  - retirement-base-diagnostic
 - path: skills/synthesis-project-management/SKILL.md
   cases: *id001
 - path: skills/synthesis-project-management/references/active-sessions-template.md
@@ -150,6 +152,12 @@ changed_surfaces:
   - native-recovery
   - multiple-worktrees
   - interruption
+  - retirement-cwd-diagnostic
+  - retirement-cwd-diagnostic
+  - retirement-cwd-diagnostic
+  - retirement-base-diagnostic
+  - retirement-base-diagnostic
+  - retirement-base-diagnostic
 - path: skills/synthesis-repo-guard/checkpoint_sync.py
   cases: *id006
 - path: skills/synthesis-repo-guard/test_checkpoint_sync.py
@@ -310,3 +318,15 @@ cases:
   expected_status: pass
   fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_schema2_receipt_binds_transaction_and_git_state
   motivating_defect: Evidence from another commit or transaction must not authorize release.
+- id: retirement-cwd-diagnostic
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_retirement_cwd_refusal_names_the_condition_and_next_location
+  motivating_defect: A valid checkout was called unsafe when the actual condition was the caller working
+    inside it.
+- id: retirement-base-diagnostic
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_retirement_recovery_rejects_local_base_ref
+  motivating_defect: A rejected local branch needed an actionable fetched remote-tracking example and
+    the actual received ref.

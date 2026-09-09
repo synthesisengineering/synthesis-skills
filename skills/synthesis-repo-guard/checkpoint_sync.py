@@ -564,15 +564,20 @@ def validate_retirement_target(
         raise ValueError(f"repository is unavailable: {exc}") from exc
     worktree = worktree_input.resolve(strict=False)
 
-    unsafe_roots = {Path("/").resolve(), Path.home().resolve(), Path.cwd().resolve()}
+    unsafe_roots = {Path("/").resolve(), Path.home().resolve()}
     if worktree in unsafe_roots:
-        raise ValueError(f"unsafe retired-worktree root: {worktree}")
+        raise ValueError(f"retirement target is a protected filesystem or home root: {worktree}")
     if (
         worktree == repository
         or worktree in repository.parents
         or repository in worktree.parents
     ):
         raise ValueError("retired worktree overlaps the repository root")
+    if worktree == Path.cwd().resolve():
+        raise ValueError(
+            f"retirement target is the current working directory: {worktree}; "
+            f"run the retirement command from the owning repository {repository}"
+        )
 
     top_rc, top, top_error = git(repository, "rev-parse", "--show-toplevel")
     if top_rc != 0 or not top or Path(top).resolve() != repository:
@@ -604,8 +609,9 @@ def fetched_remote_base(
     prefix = f"refs/remotes/{remote}/"
     if full_rc != 0 or not full_ref.startswith(prefix):
         raise ValueError(
-            full_error
-            or f"retirement base must be a fetched {remote} remote-tracking ref"
+            f"retirement base must be a fetched {remote} remote-tracking ref "
+            f"such as {remote}/main; received {base!r}"
+            + (f": {full_error}" if full_error else "")
         )
     base_rc, base_oid, base_error = git(
         repository, "rev-parse", "--verify", f"{full_ref}^{{commit}}"
