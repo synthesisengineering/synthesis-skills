@@ -4,6 +4,18 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.96.4] - 2026-09-09
+
+Refresh feedback follows explicit registry successor links to the current
+project recipient, including delivery across workspaces without an active seat.
+Missing, ambiguous and cyclic routes refuse delivery. The report retains its
+original source project, and routing grants no claim or execution authority.
+
+Freshness diagnostics compare recorded workdays with dated session evidence.
+Overnight, delayed and bulk commits no longer redefine session dates. Missing
+evidence stays visible, while conflicting records and new activity beyond a
+reviewed completion remain actionable.
+
 ## [4.96.3] - 2026-09-09
 
 Deadline sweeps collect unresolved tags from all declared dated plans and
