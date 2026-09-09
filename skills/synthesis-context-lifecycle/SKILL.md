@@ -347,9 +347,9 @@ override the conversation's project. CONFLICT/FAIL/UNKNOWN stops dependent
 project reads and writes, including generated-state build and migration.
 
 1. **Verify current time.** Run `date "+%Y-%m-%d %H:%M:%S %Z (%A)"`. The model has no clock; the OS does. Use the output as your authoritative "today" anchor for the rest of the session. The harness may have injected a date earlier, but that injection drifts; `date` does not.
-2. **Verify project history from git.** Run `git log -10 --pretty=format:"%h %ai %s" -- <project-path>`. The output is the source of truth for "what happened when in this project." Note the most recent commit's timestamp and subject.
-3. **Read CONTEXT.md.** This is the project's working memory. Read the full file. Note the "Last session" header but treat it as a cache — compare it to step 2's git output. If CONTEXT.md is older than the most recent commit, the file is stale and needs an update before the session ends.
-4. **Read the latest entry in sessions/YYYY-MM.md.** This is the most recent narrative of what was done. Read at minimum the last session entry (the bottom of the file). If your session-start verification revealed CONTEXT.md was stale, also read any entries between CONTEXT.md's claimed "last session" and the current most-recent commit.
+2. **Inspect Git publication and working state.** Run `git log -10 --pretty=format:"%h %ai %ci %s" -- <project-path>` and `git status --short -- <project-path>`. These establish commit author/committer times and pending changes. Commit times do not define session workdays; delayed publication, overnight work and timezone boundaries may put them on different dates.
+3. **Read CONTEXT.md.** Read the full working-memory file. Treat its "Last session" header as a claim to compare with dated session records and current source evidence. A commit-date difference alone does not make it stale, and matching dates alone do not establish semantic currency.
+4. **Read the latest dated entries in sessions/YYYY-MM.md.** Locate the newest recorded workday across the archive, not just the file's final heading. Compare the narrative with CONTEXT.md, structured state where present, and index metadata. Report older or newer cache dates with both sources; recover missing, invalid or unreadable evidence without inventing a session date from Git. When archiving older work, retain its verified workday and label the current recording time separately. A repair done today may have its own entry; it must not rewrite the earlier workday to match its commit.
 5. **Skim REFERENCE.md if you have not recently.** This is the project's stable facts and design spec. Full read on the first session resumption of the day; quick skim of section headers otherwise.
 6. **Only then begin substantive work.**
 
@@ -410,7 +410,7 @@ Long conversations cause context drift. The mid-session refresh protocol re-sync
 
 **Mandatory triggers.** Re-run the Session Start Protocol (or invoke the `synthesis-checkpoint` skill, which is the codified version of these steps) under ANY of these conditions:
 
-- **Before any time-interval claim in output.** "Yesterday", "N days ago", "last session", "this week", "earlier today" — verify with `date` and `git log` BEFORE generating the claim. After-the-fact correction is more expensive than upfront verification.
+- **Before any time-interval claim in output.** "Yesterday", "N days ago", "last session", "this week", "earlier today" — verify the clock and the dated evidence for the event BEFORE generating the claim. Use `git log` for commit intervals; use session records for session dates, and do not infer an exact elapsed interval from a date-only entry. After-the-fact correction is more expensive than upfront verification.
 - **After a long real-time pause.** If `date` reveals more than 1 hour has passed since you last checked, re-read CONTEXT.md and re-run `git log`. Long pauses correlate with the user resuming after a break — the world may have changed.
 - **After ~25 substantive tool calls** since the last refresh. This is the unconditional cadence: even with no drift signal, re-read CONTEXT.md and `git log` to verify your accumulated context still matches disk.
 - **On any drift signal:**
@@ -785,7 +785,7 @@ What it checks:
 | Budgets | CONTEXT.md ≤150 active / ≤80 completed; REFERENCE.md ≤300 (warning). A standing project (`bounded: false`) over budget is told to shard, not to narrow its scope |
 | Semantic shard | once `reference/` exists: index ≤150, each topic ≤300, every topic linked from the index, and an index actually present (defect if not) |
 | Cross-tier agreement | index.yaml status agrees with the CONTEXT.md header; completed projects carry `completed_date`; indexed projects have directories and vice versa |
-| Freshness | structured current state and the CONTEXT.md header agree exactly with real project Git/session history. A present index.yaml `last_session` is checked as legacy duplicate metadata; a one-day known discrepancy is stale. For a terminal project the question inverts to whether it is still being worked |
+| Freshness | CONTEXT.md and any index `last_session` agree with valid dated session entries; even a one-day record mismatch names both sources. Commit dates are separate publication evidence. Terminal projects are checked for dated activity after completion |
 | Semantic current state | `CURRENT_STATE.json` validates; its bounded compiled block agrees with it; a current phase or accepted baseline older than a later release in the same record is a defect; structured projects reject a second current-looking prose authority outside the generated block |
 | Durability | tier files are tracked by git; local mode reports recoverable uncommitted or ahead state as warnings; remote mode requires a clean upstream-current branch |
 | Executable state | artifact citations to missing, non-regular, escaped, or symlink-traversing `resources/scripts/` targets warn; existence does not establish correctness |
@@ -827,7 +827,7 @@ permanently as `record-unreadable` and never received their cross-tier check. A
 status the doctor does not recognise silently disables every check keyed off it,
 which is the most expensive kind of quiet failure a health check can have.
 
-**Nothing is skipped silently.** A check that cannot run reports that it could not run. When every recent commit touching a project is a repo-wide sweep, freshness is unverifiable and says so; when a CONTEXT.md has no parseable status header, the cross-check is reported as unavailable rather than passed. Silent skips are indistinguishable from clean results, and that is the property this tool exists to remove.
+**Nothing is skipped silently.** A check that cannot run reports that it could not run. Missing, invalid or unreadable dated session entries make freshness unverifiable and say so; when a CONTEXT.md has no parseable status header, the cross-check is reported as unavailable rather than passed. Silent skips are indistinguishable from clean results, and that is the property this tool exists to remove.
 
 **A check must know when it does not apply** (v1.7.0). Several checks ask questions that only have meaning about work in progress: how fresh is this record, are its open items still current, is its status header parseable for a cross-check. Asked of a project that shipped in May, each is unanswerable *and* unactionable.
 
@@ -836,9 +836,9 @@ Measured on a 175-project corpus before this rule existed: **98%** of `freshness
 Two properties keep the suppression honest:
 
 - **It errs toward live.** An unset or unrecognised status counts as active, because the records whose state cannot be read are the ones most likely to be wrong. Only an explicit dormant status suppresses.
-- **It is paired with an inversion.** A project declared *completed* that is still receiving real session commits is a live record error, and `terminal-project-active` reports it. That question was invisible before — the old code asked only whether a terminal project's freshness could be verified, never whether its terminal claim was still true. On the same corpus it surfaced thirteen genuine stale records, the worst 194 days past its own completion date.
+- **It is paired with an inversion.** `terminal-project-active` reports a dated session entry or explicit session-field claim after the project's `completed_date`. It names the dated source and asks whether that activity changes the completion claim. A later commit alone cannot establish resumed work.
 
-  The inversion anchors on `completed_date`. Closing a project is itself work — the archive pass, the trim to budget — and those commits land after its final *working* session by design; measured against `last_session` they read as "still being worked," which is the opposite of what they are. Two of this check's first nine findings were exactly that. It falls back to `last_session` only when `completed_date` is missing or unreadable, because a record too incomplete to anchor on is the one most likely to be wrong.
+  The inversion anchors on `completed_date`, falling back to `last_session` only when the completion date is missing or unreadable. Publishing a completion record later does not move its workday or reopen the project.
 
 The general form, worth more than the fix: **suppressing an inapplicable check is only safe when you add the check that becomes applicable in its place.** Silence alone is indistinguishable from a guard that stopped working.
 
@@ -851,7 +851,7 @@ post_close_reviewed_through: 3e79b38...   # carries the comparison
 post_close_reviewed_on: '2026-08-31'          # human readability only
 ```
 
-It names a commit, not a date. A date over-covers by up to a day, and two disposition commits minutes apart either side of a recorded date would see the second silently swallowed. A sha that no longer resolves raises `post-close-review-unresolvable` as a **defect** — an acknowledgment whose evidence has vanished fails loudly rather than continuing to assert a review of history that was rewritten. One new project commit re-arms the question, which is what keeps this an acknowledgment rather than a mute button.
+It names a commit, not a date. A date over-covers by up to a day, and two disposition commits minutes apart either side of a recorded date would see the second silently swallowed. A sha that no longer resolves raises `post-close-review-unresolvable` as a **defect** — an acknowledgment whose evidence has vanished fails loudly rather than continuing to assert a review of history that was rewritten. One new project commit, including a bulk commit, re-arms the question. Dirty or untracked project evidence, changed index session/completion dates and archive coverage gaps cannot inherit an earlier review. Writing the acknowledgment fields alone does not invalidate it. Git ancestry bounds the reviewed snapshot; dated records determine whether there is post-completion activity to review.
 
 **Every gated check reports its denominator** (v1.8.0). A check that finds nothing and a check that examined nothing are indistinguishable in a findings list, and so is a deliberate skip. The report now states both:
 
@@ -863,7 +863,7 @@ This is the general form of the pairing rule, and the cheaper half of it. v1.7.0
 
 The general form, which covers both this and the case where a check simply reaches less than it appears to: **a guard's coverage is a claim that needs its own verification, separate from whether it passes.**
 
-**Bulk commits are not sessions.** The freshness checks ignore any commit touching more than a few projects at once. A path migration or a repo-wide restructure touches every project and says nothing about when any one of them was worked; counting those as sessions makes every dormant project look stale. False alarms are not a cosmetic problem — a doctor that cries wolf gets ignored, and an ignored doctor is the fail-open state it was built to end.
+**Publication time and workday are different evidence.** Freshness uses dated session records, regardless of whether Git publishes them in a single-project commit, a bulk commit or a delayed archive pass. Git author/committer dates never replace the recorded workday. Missing narrative evidence remains explicit; a clean tree or matching commit date cannot certify current session state.
 
 **The report cache.** Every full-corpus run writes its JSON report to `$SYNTHESIS_HOME/context-doctor/last-report.json` (v1.2.0+), so fast surfaces — SessionStart hooks, console pages — can show the latest corpus state without paying for a fresh audit. Single-project runs never touch the cache: a one-project result must not masquerade as corpus state. Suppress with `--no-report-cache`.
 

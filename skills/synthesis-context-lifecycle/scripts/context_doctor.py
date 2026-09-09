@@ -27,7 +27,7 @@ Checks (see CHECKS for the registry):
   cross-tier       index.yaml status agrees with the CONTEXT.md status header;
                    completed projects carry completed_date
   freshness        index.yaml last_session and the CONTEXT.md "Last session"
-                   header agree with the project's real git history
+                   header agree with dated session records; commit times are separate
   durability       tier files are TRACKED by git; remote mode requires a clean,
                    upstream-current branch; local mode reports recoverable
                    uncommitted or ahead state as warnings
@@ -93,28 +93,6 @@ REFERENCE_TOPIC_BUDGET = 300
 # enough history that stable facts belong in REFERENCE.md rather than in the
 # working-memory file.
 REFERENCE_EXPECTED_AFTER_SESSIONS = 2
-
-# Current-state dates are exact safety evidence. A known one-day discrepancy is
-# stale, not rounding; tolerating it allowed a newer project commit to coexist
-# with a green resumption record.
-LAST_SESSION_TOLERANCE_DAYS = 0
-
-# A commit touching more than this many distinct projects is repo-wide
-# maintenance, not a work session on any one of them.
-BULK_COMMIT_PROJECT_THRESHOLD = 3
-
-# How far back to look for a genuine session commit before giving up.
-MAX_COMMITS_EXAMINED = 12
-
-# A commit changing more than this many files outside projects/ is a codebase
-# or infrastructure change, not a context session, even if it touches one
-# project's files in passing.
-BULK_COMMIT_OUTSIDE_FILES = 10
-
-# Sentinel for "the freshness dimension could not be established". Distinct
-# from None (no commits at all) so a skipped check can be reported rather than
-# silently passing.
-UNVERIFIABLE = "unverifiable"
 
 SEVERITY_ORDER = {"defect": 0, "warning": 1}
 
@@ -423,88 +401,37 @@ def git(repo: Path, *args: str) -> tuple[int, str]:
     return completed.returncode, completed.stdout.strip()
 
 
-def last_session_commit(
-    repo: Path, projects_root: Path, project_path: Path
-) -> tuple[object, str | None]:
-    """Date of the newest commit that represents WORK on this project.
+def session_date_evidence(project: Path) -> tuple[list[tuple[date, str]], list[str]]:
+    """Read dated archive evidence without assigning Git timestamps to workdays.
 
-    Not simply the newest commit touching it. Repo-wide maintenance — a path
-    migration, a bulk restructure, a formatting sweep — touches every project
-    at once and says nothing about when any of them was last worked. Treating
-    those as sessions makes every dormant project look like its record is
-    stale, which is a false alarm, and false alarms are how a guard teaches
-    its owner to ignore it.
-
-    A commit counts as session work when it touches at most
-    BULK_COMMIT_PROJECT_THRESHOLD distinct projects. If every recent commit is
-    a bulk sweep, return None and skip the freshness checks rather than
-    guessing.
+    Use the currency checker's entry grammar, but retain file attribution and
+    coverage gaps. A readable older entry cannot certify an unreadable newer
+    file. Valid evidence remains usable for contradictions alongside a gap.
     """
-    code, out = git(
-        repo,
-        "log",
-        f"-{MAX_COMMITS_EXAMINED}",
-        "--format=%H %ad",
-        "--date=short",
-        "--",
-        str(project_path),
-    )
-    if code != 0 or not out:
-        return None, None
-
+    evidence: list[tuple[date, str]] = []
+    gaps: list[str] = []
+    sessions = project / "sessions"
     try:
-        prefix = projects_root.resolve().relative_to(repo.resolve()).as_posix()
-    except ValueError as exc:
-        # Without the prefix the bulk-commit classifier silently disables
-        # itself and every dormant project looks stale. A classifier that
-        # cannot locate the projects root is not entitled to a verdict.
-        raise DoctorError(
-            f"{projects_root} is not inside {repo}; cannot classify commits"
-        ) from exc
-
-    for line in out.splitlines():
-        sha, _, datestr = line.partition(" ")
-        if not sha or not datestr:
-            continue
-        code, files = git(repo, "show", "--name-only", "--format=", sha)
-        if code != 0:
-            continue
-        touched: set[str] = set()
-        for name in files.splitlines():
-            name = name.strip()
-            if not name:
+        logs = sorted(sessions.glob("*.md")) if sessions.is_dir() else []
+        for log in logs:
+            source = f"sessions/{log.name}"
+            try:
+                text = log.read_text(encoding="utf-8")
+            except (OSError, UnicodeError) as exc:
+                gaps.append(f"{source} could not be read: {exc}")
                 continue
-            if prefix:
-                if not name.startswith(prefix + "/"):
+            for raw, _descriptor in context_currency.LOG_ENTRY.findall(text):
+                try:
+                    recorded = date.fromisoformat(raw)
+                except ValueError:
+                    gaps.append(f"{source} has invalid session date {raw}")
                     continue
-                rest = name[len(prefix) + 1 :]
-            else:
-                rest = name
-            segment = rest.split("/", 1)[0]
-            if segment and not segment.endswith(".yaml"):
-                touched.add(segment)
-        outside = sum(
-            1
-            for name in files.splitlines()
-            if name.strip() and prefix and not name.startswith(prefix + "/")
-        )
-        # Blast radius counts BOTH dimensions: a sweep that rewrites one
-        # project plus a hundred files elsewhere is still maintenance.
-        if len(touched) > BULK_COMMIT_PROJECT_THRESHOLD or outside > BULK_COMMIT_OUTSIDE_FILES:
-            continue
-        try:
-            return datetime.strptime(datestr.strip(), "%Y-%m-%d").date(), sha
-        except ValueError:
-            continue
-    return UNVERIFIABLE, None
-
-
-def last_session_commit_date(
-    repo: Path, projects_root: Path, project_path: Path
-) -> date | None:
-    """Date only. Kept because most callers do not need the commit identity."""
-    when, _sha = last_session_commit(repo, projects_root, project_path)
-    return when
+                evidence.append((recorded, source))
+    except OSError as exc:
+        gaps.append(f"sessions/ could not be enumerated: {exc}")
+    if not evidence:
+        gaps.append("no valid dated session entries under sessions/")
+    return evidence, gaps
 
 
 def coverage_report(audits: list[ProjectAudit]) -> dict:
@@ -1217,118 +1144,125 @@ def audit_project(
                 "add completed_date: 'YYYY-MM-DD'",
             )
 
-    # --- freshness against git ---------------------------------------------
-    newest, newest_sha = last_session_commit(repo_root, projects_root, project_path)
+    # --- freshness from dated session evidence -----------------------------
+    # A commit records bytes at an author/committer timestamp. It may publish an
+    # overnight workday, a much older archive or several projects together; none
+    # of those timestamps defines the session date recorded in those bytes.
+    session_dates, evidence_gaps = session_date_evidence(project_path)
+    latest_log = max(session_dates, default=None)
+    idx_last = parse_date_field((index_entry or {}).get("last_session"))
+    ctx_last = context_last_session(context_text)
 
-    if newest is UNVERIFIABLE:
-        # Only meaningful for a project someone is working. "We cannot tell when
-        # this shipped-in-May post was last touched" is true and useless.
-        if not dormant:
-            audit.add(
-                "freshness-unverifiable",
-                "warning",
-                f"every one of the last {MAX_COMMITS_EXAMINED} commits touching "
-                "this project is a repo-wide sweep, so its record cannot be "
-                "checked against real session history",
-                "commit session work in project-scoped commits so freshness is "
-                "verifiable",
-            )
-    elif newest and dormant and index_says_completed:
-        # The inversion, and the reason suppressing the above is safe: a project
-        # declared finished that is still receiving real session commits is a
-        # live record error, and it is the one freshness question worth asking
-        # about a terminal project.
-        #
-        # Anchor on completed_date, not last_session. Closing a project is
-        # itself work — the archive pass, the trim to budget — and those commits
-        # land after its final *working* session by design. Against last_session
-        # they read as "still being worked," which is the opposite of what they
-        # are. Reading the nine findings this check first raised, two were
-        # exactly that: every commit fell on the completion date itself. The
-        # question worth asking is whether work continued *after* the project
-        # said it was finished.
+    if evidence_gaps and not dormant:
+        audit.add(
+            "freshness-unverifiable", "warning",
+            "; ".join(evidence_gaps) + "; Git commit dates cannot establish a workday",
+            "recover the dated session evidence and resolve coverage gaps; do not "
+            "replace workday fields with a commit date",
+        )
+
+    if dormant and index_says_completed:
         entry = index_entry or {}
         anchor_field = "completed_date"
-        anchor = parse_date_field(entry.get("completed_date"))
+        anchor = parse_date_field(entry.get(anchor_field))
         if anchor is None:
-            # Missing or unparseable — already its own warning above. Fall back
-            # rather than fall silent: an unreadable record is the one most
-            # likely to be wrong.
             anchor_field = "last_session"
-            anchor = parse_date_field(entry.get("last_session"))
-        # The acknowledgment. Without it this finding is self-sustaining: the
-        # commits that carry out a disposition — the archive pass, the trim to
-        # budget, the routing note — are themselves post-completed_date commits,
-        # so resolving the finding re-creates it and no amount of correct work
-        # ever clears it. Two live instances produced this field on the day the
-        # check shipped.
-        #
-        # It lives in index.yaml and NOT in the project directory, and that is a
-        # correctness requirement rather than a preference: the freshness walk is
-        # `git log -- <project_path>`, so a marker written inside the project
-        # would re-extend newest-commit by the act of writing it and re-trigger
-        # the very check it answers. index.yaml is outside that path.
-        #
-        # A sha, not a date. A date over-covers by up to a day — two disposition
-        # commits thirteen minutes apart, one either side of a recorded review
-        # date, and the second is silently swallowed. And a sha that no longer
-        # resolves fails LOUDLY below, where a stale date would just keep
-        # quietly asserting a review of history that has since been rewritten.
+            anchor = idx_last
+        # Dated header/index claims can themselves contradict completion, even
+        # when the narrative archive is missing. Report the source, not an
+        # inference that a later commit must have been a new work session.
+        dated_records = list(session_dates)
+        if ctx_last:
+            dated_records.append((ctx_last, "CONTEXT.md Last session"))
+        if idx_last:
+            dated_records.append((idx_last, "index.yaml last_session"))
+        latest_record = max(dated_records, default=None)
+
         acknowledged = False
         reviewed = str(entry.get("post_close_reviewed_through") or "").strip()
+        newest_sha = None
         if reviewed:
             code, _ = git(repo_root, "cat-file", "-e", f"{reviewed}^{{commit}}")
             if code != 0:
                 audit.add(
-                    "post-close-review-unresolvable",
-                    "defect",
+                    "post-close-review-unresolvable", "defect",
                     f"post_close_reviewed_through is {reviewed}, which is not a "
-                    "commit in this repository — the acknowledgment cannot be "
-                    "checked, so it is not honoured",
-                    "re-review the commits after completed_date and record the "
-                    "sha of the newest one, or remove the field",
+                    "commit in this repository — the acknowledgment cannot be checked",
+                    "re-review the post-completion evidence and record its commit, "
+                    "or remove the field",
                 )
-            elif newest_sha:
-                covered, _ = git(
-                    repo_root, "merge-base", "--is-ancestor", newest_sha, reviewed
+            else:
+                # Review coverage is a Git ancestry question, not a date
+                # question. Include bulk commits and dirty/untracked evidence;
+                # neither may inherit a review of an older project snapshot.
+                code, newest_sha = git(
+                    repo_root, "log", "-1", "--format=%H", "--", str(project_path)
                 )
-                # Honoured only while every project commit is an ancestor of the
-                # reviewed sha. One new commit and the question re-arms itself,
-                # which is the property that keeps this an acknowledgment rather
-                # than a mute button.
-                if covered == 0:
-                    acknowledged = True
-                    audit.skip("terminal-project-active", "post-close review")
+                dirty_code, dirty = git(
+                    repo_root, "status", "--porcelain", "--untracked-files=all",
+                    "--", str(project_path)
+                )
+                if code == 0 and newest_sha and dirty_code == 0 and not dirty:
+                    covered, _ = git(
+                        repo_root, "merge-base", "--is-ancestor", newest_sha, reviewed
+                    )
+                    # The acknowledgment itself lives in index.yaml. Compare
+                    # only its dated claims, so recording that acknowledgment
+                    # cannot invalidate itself but new index-only evidence can.
+                    index_rel = (projects_root / "index.yaml").resolve().relative_to(repo_root.resolve())
+                    index_code, index_text = git(
+                        repo_root, "show", f"{reviewed}:{index_rel.as_posix()}"
+                    )
+                    reviewed_entries = []
+                    if index_code == 0:
+                        try:
+                            reviewed_entries = parse_mapping_list(index_text, "projects")
+                            if not reviewed_entries:
+                                reviewed_entries = _root_list_entries(index_text)
+                        except DoctorError:
+                            pass  # Unreadable review evidence grants no exemption.
+                    matches = [e for e in reviewed_entries if str(e.get("id")) == project_id]
+                    dates_covered = len(matches) == 1 and all(
+                        parse_date_field(matches[0].get(field)) == parse_date_field(entry.get(field))
+                        for field in ("last_session", "completed_date")
+                    )
+                    if covered == 0 and dates_covered and not evidence_gaps:
+                        acknowledged = True
+                        audit.skip("terminal-project-active", "post-close review")
 
-        if not acknowledged and anchor and (newest - anchor).days > LAST_SESSION_TOLERANCE_DAYS:
+        if not acknowledged and anchor and latest_record and latest_record[0] > anchor:
+            recorded, source = latest_record
             audit.add(
-                "terminal-project-active",
-                "warning",
-                f"index.yaml marks this project completed, but it has session "
-                f"commits through {newest} ({anchor_field} says {anchor}) — "
-                "either the work resumed or the status is wrong",
-                "reopen the project (status: active), or record that you read "
-                "the commits after completed_date and they were maintenance, "
-                f"with post_close_reviewed_through: '{newest_sha or '<sha>'}'",
+                "terminal-project-active", "warning",
+                f"index.yaml marks this project completed ({anchor_field}: {anchor}), "
+                f"but {source} records a session dated {recorded}; review whether "
+                "the recorded activity changes the completion claim",
+                "review the dated record; reopen the project if work resumed, or "
+                "record the reviewed maintenance with post_close_reviewed_through "
+                "set to the actual reviewed project commit",
             )
-    elif newest and not treat_completed:
-        idx_last = parse_date_field((index_entry or {}).get("last_session"))
-        if idx_last and (newest - idx_last).days > LAST_SESSION_TOLERANCE_DAYS:
+    elif not treat_completed:
+        if latest_log:
+            recorded, source = latest_log
+            for check, field, value in (
+                ("last-session-freshness", "index.yaml last_session", idx_last),
+                ("context-header-freshness", "CONTEXT.md Last session", ctx_last),
+            ):
+                if value and value != recorded:
+                    relation = "behind" if value < recorded else "ahead of"
+                    audit.add(
+                        check, "defect",
+                        f"{field} is {value}, {relation} the latest dated entry "
+                        f"in {source} ({recorded}); the session records disagree",
+                        "reconcile the field and dated session narrative from actual "
+                        "work evidence; a Git commit timestamp is not a workday",
+                    )
+        elif idx_last and ctx_last and idx_last != ctx_last:
             audit.add(
-                "last-session-freshness",
-                "defect",
-                f"index.yaml last_session is {idx_last} but the project's newest "
-                f"commit is {newest} — the record is stale",
-                "update last_session to match the real history",
-            )
-        ctx_last = context_last_session(context_text)
-        if ctx_last and (newest - ctx_last).days > LAST_SESSION_TOLERANCE_DAYS:
-            audit.add(
-                "context-header-freshness",
-                "defect",
-                f"CONTEXT.md header says {ctx_last} but the project's newest "
-                f"commit is {newest} — working memory is behind the work",
-                "refresh CONTEXT.md and its Last session header",
+                "last-session-freshness", "defect",
+                f"index.yaml last_session is {idx_last}, but CONTEXT.md Last session "
+                f"is {ctx_last}; no dated archive establishes which claim is current",
+                "recover the session evidence and reconcile the conflicting dates",
             )
 
     # --- header and body currency -------------------------------------------
