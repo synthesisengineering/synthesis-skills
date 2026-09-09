@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import builtins
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,8 @@ import pytest
 from jsonschema import Draft7Validator, ValidationError
 
 import coordination
+import peer_addressing
+from coordination_schema import identity_from_uuid
 import project_state as state
 from test_project_state import board, commit_version, init_repo, run
 
@@ -286,7 +289,10 @@ def test_matching_native_reference_and_empty_optional_reference_are_safe(observe
 
 def test_owner_checkpoint_authority_is_preserved(observer: SimpleNamespace) -> None:
     board(observer.board, [(FOREIGN, "s-abcd-efgh-jkmn", "alpha", str(observer.repo))])
-    payload = {"session_id": FOREIGN, "cwd": str(observer.project)}
+    observer.board.write_text(observer.board.read_text().replace(f"tool:{FOREIGN}", f"cc:{FOREIGN}"))
+    transcript = observer.transcripts["claude"].with_name(f"{FOREIGN}.jsonl")
+    transcript.write_text(json.dumps({"type": "user", "sessionId": FOREIGN}) + "\n")
+    payload = {"session_id": FOREIGN, "cwd": str(observer.project), "transcript_path": str(transcript)}
     assert inspect(observer, payload) == ("PASS", [])
     receipt_path = next(observer.receipts.glob("*.json"))
     receipt = json.loads(receipt_path.read_text())
@@ -296,6 +302,75 @@ def test_owner_checkpoint_authority_is_preserved(observer: SimpleNamespace) -> N
     verdict, issues = inspect(observer, payload)
     assert verdict == "FAIL" and any("changed" in issue for issue in issues)
     assert receipt_path.read_bytes() == accepted
+
+
+def desktop_owner(observer: SimpleNamespace) -> None:
+    identity = identity_from_uuid(FOREIGN)
+    board(observer.board, [(FOREIGN, identity.compact_id, "alpha", str(observer.repo))])
+    observer.board.write_text(observer.board.read_text().replace(f"tool:{FOREIGN}", "ccd:local_fixture"))
+    peer_addressing.write_seat(
+        observer.board, session_uuid=FOREIGN, compact_id=identity.compact_id, machine="fixture",
+        identity=peer_addressing.SelfIdentity(client="claude-code", harness_session_id=NATIVE,
+                                             host_session_id="local_fixture"),
+    )
+
+
+def test_desktop_native_hook_matches_its_existing_seat_without_shell_override(observer: SimpleNamespace) -> None:
+    desktop_owner(observer)
+    # The native UUID differs from the coordination UUID and Desktop host id.
+    pending = observer.guard / "pending"
+    pending.mkdir(parents=True)
+    manifest = pending / (hashlib.sha256(NATIVE.encode()).hexdigest() + ".json")
+    manifest.write_text(json.dumps({"schema_version": 2, "session_id": NATIVE,
+                                    "paths": [str(observer.project / "CONTEXT.md")]}))
+    retained = manifest.read_bytes()
+    assert inspect(observer) == ("PASS", [])
+    assert manifest.read_bytes() == retained
+    assert json.loads(next(observer.receipts.glob("*.json")).read_text())["session_id"] == FOREIGN
+
+
+@pytest.mark.parametrize("defect", ["missing", "foreign_native", "wrong_host", "symlink", "fake_override"])
+def test_desktop_claim_mapping_never_accepts_unbound_authority(observer: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, defect: str) -> None:
+    desktop_owner(observer)
+    path = peer_addressing.seat_path(observer.board, FOREIGN)
+    if defect in {"missing", "fake_override"}:
+        path.unlink()
+    elif defect == "symlink":
+        saved = path.with_suffix(".retained")
+        path.rename(saved)
+        path.symlink_to(saved)
+    else:
+        data = json.loads(path.read_text())
+        data["harness_session_id" if defect == "foreign_native" else "host_session_id"] = FOREIGN
+        path.write_text(json.dumps(data))
+    if defect == "fake_override":
+        monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "ccd:local_fixture")
+    verdict, _issues = inspect(observer)
+    assert verdict in {"NOT_APPLICABLE", "FAIL"}
+    assert_no_receipt(observer)
+
+
+def test_payload_task_ids_do_not_select_foreign_claim(observer: SimpleNamespace) -> None:
+    board(observer.board, [(FOREIGN, "s-abcd-efgh-jkmn", "alpha", str(observer.repo))])
+    observer.board.write_text(observer.board.read_text().replace(f"tool:{FOREIGN}", f"cc:{FOREIGN}"))
+    assert inspect(observer, event(observer, root_task_uuid=FOREIGN, task_id=FOREIGN))[0] == "NOT_APPLICABLE"
+
+
+@pytest.mark.parametrize("client", ["claude", "codex"])
+def test_registered_stop_entrypoint_uses_native_identity(observer: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, client: str) -> None:
+    if client == "claude":
+        desktop_owner(observer)
+    else:
+        board(observer.board, [(FOREIGN, "s-abcd-efgh-jkmn", "alpha", str(observer.repo))])
+        observer.board.write_text(observer.board.read_text().replace(f"tool:{FOREIGN}", f"codex:{NATIVE}"))
+    # Only the remote lease transport is replaced; the registered hook's CLI,
+    # native transcript reader, claim matcher, state verifier and wire emitter run.
+    monkeypatch.setattr(state, "_refresh_coordination_board", lambda _board: None)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(event(observer, client))))
+    assert state.main(["hook", "--coordination-board", str(observer.board),
+                       "--receipt-root", str(observer.receipts), "--repo-guard-root", str(observer.guard)]) == 0
+    _wire, report = native_output(capsys.readouterr().out)
+    assert report["status"] == "PASS" and report["checkpoint_accepted"] is True
 
 
 def test_clean_stale_semantics_are_not_reported_as_recovery_pass(observer: SimpleNamespace) -> None:

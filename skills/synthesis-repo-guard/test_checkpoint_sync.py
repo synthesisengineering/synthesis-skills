@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -18,6 +19,21 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
+@pytest.fixture(autouse=True)
+def isolated_runtime(tmp_path: Path, monkeypatch):
+    # Synthetic repositories and lifecycle events must never consult or update
+    # the invoking developer's Git hooks, claims, receipts or state directory.
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    state = tmp_path / "isolated-synthesis" / "repo-guard"
+    for name, path in {
+        "STATE_DIR": state, "STATE_FILE": state / "checkpoint-state.json",
+        "PENDING_DIR": state / "pending", "LOCAL_HANDOFF_DIR": state / "local-handoff",
+        "REMOTE_HANDOFF_STATE": state / "remote-handoff-last.json", "RETIREMENT_DIR": state / "retired-worktrees",
+    }.items():
+        monkeypatch.setattr(MODULE, name, path)
+
+
 def command(*args: str, cwd: Path | None = None) -> str:
     result = subprocess.run(
         list(args), cwd=cwd, capture_output=True, text=True, check=True
@@ -32,6 +48,9 @@ def repository(tmp_path: Path) -> tuple[Path, Path, dict]:
     # default branch when constructing their synthetic remote.
     command("git", "init", "--bare", "-q", "-b", "main", str(remote))
     command("git", "clone", "-q", str(remote), str(repo))
+    hooks = tmp_path / "fixture-hooks"
+    hooks.mkdir()
+    command("git", "config", "core.hooksPath", str(hooks), cwd=repo)
     command("git", "config", "user.name", "Test", cwd=repo)
     command("git", "config", "user.email", "test@example.com", cwd=repo)
     context = repo / "projects" / "alpha" / "CONTEXT.md"
@@ -358,6 +377,163 @@ def test_reconcile_retired_worktree_repairs_prior_removal(
     assert payload["paths"] == [str(survivor)]
     assert not receipt.exists()
     assert len(list(retirements.glob("*.json"))) == 1
+
+
+@pytest.fixture
+def orphaned_attribution(tmp_path: Path, monkeypatch):
+    repo, remote, cfg = repository(tmp_path)
+    worktree = tmp_path / "removed-worktree"
+    command("git", "worktree", "add", "-qb", "feature/removed", str(worktree), cwd=repo)
+    edited = worktree / "projects" / "alpha" / "CONTEXT.md"
+    edited.write_text("retained bytes\n", encoding="utf-8")
+    command("git", "add", "projects", cwd=worktree)
+    command("git", "commit", "-qm", "Update records", cwd=worktree)
+    command("git", "merge", "-q", "--no-edit", "feature/removed", cwd=repo)
+    command("git", "push", "-q", "origin", "main", cwd=repo)
+    state = tmp_path / "fixture-state"
+    for name, suffix in (("STATE_DIR", ""), ("PENDING_DIR", "pending"),
+                         ("LOCAL_HANDOFF_DIR", "local-handoff"), ("RETIREMENT_DIR", "retired-worktrees")):
+        monkeypatch.setattr(MODULE, name, state / suffix)
+    MODULE.PENDING_DIR.mkdir(parents=True)
+    native = "018f0000-0000-7000-8000-000000000002"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:" + native)
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    own = MODULE.pending_manifest_path(native)
+    own.write_text(json.dumps({"schema_version": 2, "session_id": native,
+                              "paths": [str(edited)], "remote_paths": [str(edited)]}))
+    MODULE.local_handoff_checkpoint({"session_id": native, "cwd": str(worktree)}, cfg)
+    receipt = MODULE.LOCAL_HANDOFF_DIR / own.name
+    assert json.loads(receipt.read_text())["readiness"] == "LOCAL_READY"
+    foreign = MODULE.pending_manifest_path("foreign-session")
+    foreign.write_bytes(b"foreign retained evidence, intentionally not parsed")
+    command("git", "worktree", "remove", str(worktree), cwd=repo)
+    command("git", "branch", "-d", "feature/removed", cwd=repo)
+    return repo, worktree, native, own, receipt, foreign
+
+
+def test_exact_session_recovery_uses_retained_bytes_and_ancestry(orphaned_attribution) -> None:
+    repo, worktree, native, own, receipt, foreign = orphaned_attribution
+    before = foreign.read_bytes()
+    results, touched = MODULE.recover_retired_session(worktree, repo, native, "origin/main", dry_run=False)
+    assert results[0]["action"] == "retired-worktree-reconciled"
+    assert touched == [own]
+    assert not own.exists() and not receipt.exists()
+    assert foreign.read_bytes() == before
+    # Re-entry uses the completed durable transaction after receipt removal.
+    assert MODULE.recover_retired_session(worktree, repo, native, "origin/main", dry_run=False)[0][0]["action"] == "retired-worktree-reconciled"
+
+
+@pytest.mark.parametrize("damage", ["missing_receipt", "wrong_session", "wrong_hash", "missing_head", "missing_path", "new_attribution", "legacy_unbound", "later_same_paths", "wrong_mode"])
+def test_recovery_never_substitutes_canonical_file_existence_for_proof(orphaned_attribution, damage: str) -> None:
+    repo, worktree, native, own, receipt, foreign = orphaned_attribution
+    data = json.loads(receipt.read_text())
+    if damage == "missing_receipt":
+        receipt.unlink()
+    elif damage == "wrong_session":
+        data["session_id"] = "foreign-session"
+    elif damage == "wrong_hash":
+        data["results"][0]["file_evidence"][0]["sha256"] = "0" * 64
+    elif damage == "missing_head":
+        data["results"][0].pop("head")
+    elif damage == "wrong_mode":
+        data["results"][0]["file_evidence"][0]["git_mode"] = "100755"
+    elif damage == "missing_path":
+        data["results"][0]["file_evidence"] = []
+    elif damage == "legacy_unbound":
+        data.pop("pending_manifest_sha256")
+    elif damage == "later_same_paths":
+        manifest = json.loads(own.read_text())
+        manifest["updated_at"] = "2026-09-09T23:59:59Z"
+        own.write_text(json.dumps(manifest))
+    else:
+        manifest = json.loads(own.read_text())
+        manifest["paths"].append(str(worktree / "unrelated.md"))
+        own.write_text(json.dumps(manifest))
+    if receipt.exists():
+        receipt.write_text(json.dumps(data))
+    retained = own.read_bytes(), foreign.read_bytes()
+    results, _touched = MODULE.recover_retired_session(worktree, repo, native, "origin/main", dry_run=False)
+    assert results[0]["alert"]
+    assert (own.read_bytes(), foreign.read_bytes()) == retained
+
+
+def test_retired_recovery_requires_exact_native_authority(orphaned_attribution, monkeypatch) -> None:
+    repo, worktree, native, own, receipt, foreign = orphaned_attribution
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:018f0000-0000-7000-8000-000000000099")
+    before = own.read_bytes(), receipt.read_bytes(), foreign.read_bytes()
+    results, _ = MODULE.recover_retired_session(worktree, repo, native, "origin/main", dry_run=False)
+    assert "authority" in results[0]["alert"]
+    assert (own.read_bytes(), receipt.read_bytes(), foreign.read_bytes()) == before
+
+
+@pytest.mark.parametrize("client", ["cc", "codex"])
+def test_recovery_cli_uses_the_actual_parser_and_transaction(orphaned_attribution, monkeypatch, tmp_path: Path, client: str) -> None:
+    repo, worktree, native, own, receipt, foreign = orphaned_attribution
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", f"{client}:{native}")
+    if client == "cc":
+        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", native)
+    config = tmp_path / "config.yaml"
+    config.write_text("repos: []\n")
+    arguments = [str(MODULE_PATH), "--config", str(config), "--reconcile-retired-worktree", str(worktree),
+                 "--retirement-repository", str(repo), "--retirement-base", "origin/main",
+                 "--retirement-session", native, "--json"]
+    monkeypatch.setattr(sys, "argv", [*arguments, "--dry-run"])
+    before = own.read_bytes(), receipt.read_bytes(), foreign.read_bytes()
+    assert MODULE.main() == 0
+    assert (own.read_bytes(), receipt.read_bytes(), foreign.read_bytes()) == before
+    monkeypatch.setattr(sys, "argv", arguments)
+    assert MODULE.main() == 0
+    assert not own.exists() and not receipt.exists()
+    assert foreign.read_bytes() == before[2]
+
+
+def test_recovery_preserves_evidence_for_a_second_removed_worktree(orphaned_attribution, tmp_path: Path) -> None:
+    repo, worktree, native, own, receipt, foreign = orphaned_attribution
+    second = tmp_path / "second-removed-worktree"
+    command("git", "worktree", "add", "-qb", "feature/first-again", str(worktree), cwd=repo)
+    command("git", "worktree", "add", "-qb", "feature/second", str(second), cwd=repo)
+    paths = [str(root / "projects" / "alpha" / "CONTEXT.md") for root in (worktree, second)]
+    own.write_text(json.dumps({"schema_version": 2, "session_id": native, "paths": paths, "remote_paths": paths}))
+    MODULE.local_handoff_checkpoint({"session_id": native, "cwd": str(worktree)}, MODULE.DEFAULTS)
+    command("git", "worktree", "remove", str(worktree), cwd=repo)
+    command("git", "worktree", "remove", str(second), cwd=repo)
+    assert MODULE.recover_retired_session(worktree, repo, native, "origin/main", dry_run=False)[0][0]["alert"] is None
+    assert own.exists() and receipt.exists()
+    assert json.loads(own.read_text())["paths"] == [paths[1]]
+    assert MODULE.recover_retired_session(second, repo, native, "origin/main", dry_run=False)[0][0]["alert"] is None
+    assert not own.exists() and not receipt.exists()
+
+
+@pytest.mark.parametrize("gap", ["prepared", "replacement", "manifest_removed", "receipt_removed", "completed"])
+def test_recovery_replays_every_destructive_boundary(orphaned_attribution, monkeypatch, gap: str) -> None:
+    repo, worktree, native, own, receipt, foreign = orphaned_attribution
+    atomic, unlink = MODULE.atomic_json, Path.unlink
+    interrupted = False
+
+    def write(path, payload):
+        nonlocal interrupted
+        atomic(path, payload)
+        if path.parent == MODULE.RETIREMENT_DIR:
+            stage = "completed" if payload["state"] == "completed" else "replacement" if "session_replacement" in payload else "prepared"
+            if not interrupted and stage == gap:
+                interrupted = True
+                raise OSError("fixture interruption")
+
+    def remove(path, *args, **kwargs):
+        nonlocal interrupted
+        unlink(path, *args, **kwargs)
+        stage = "manifest_removed" if path == own else "receipt_removed" if path == receipt else "other"
+        if not interrupted and stage == gap:
+            interrupted = True
+            raise OSError("fixture interruption")
+
+    monkeypatch.setattr(MODULE, "atomic_json", write)
+    monkeypatch.setattr(Path, "unlink", remove)
+    results, _ = MODULE.recover_retired_session(worktree, repo, native, "origin/main", dry_run=False)
+    assert interrupted and results[0]["alert"]
+    assert MODULE.recover_retired_session(worktree, repo, native, "origin/main", dry_run=False)[0][0]["alert"] is None
+    assert not own.exists() and not receipt.exists()
+    assert foreign.read_bytes() == b"foreign retained evidence, intentionally not parsed"
 
 
 def test_reconcile_retired_worktree_removes_retired_only_manifest(
