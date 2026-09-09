@@ -32,6 +32,8 @@ Command line
                             [--max-lines N] [--dry-run]
     context_edit.py insert-before --file F --anchor TEXT --text TEXT
                             [--max-lines N] [--dry-run]
+    context_edit.py delete-line --file F --anchor TEXT
+                            [--max-lines N] [--dry-run]
 
 Use `insert-before` to prepend a section — a changelog release, a session-log
 entry — rather than a `replace` that restates the anchor inside its own
@@ -294,7 +296,7 @@ def _atomic_write(path: Path, text: str) -> None:
 
 
 def _line_merge_refusal(
-    original: str, anchor: str, replacement: str, edited: str,
+    original: str, anchor: str, replacement: str, edited: str, offsets: list[int],
 ) -> str | None:
     """Find an outer separator whose removal joins surviving line content.
 
@@ -303,9 +305,8 @@ def _line_merge_refusal(
     An absent neighbor or a surviving separator allows whole-line deletion,
     blank-line removal, and edits at the first and last physical boundaries.
     """
-    offset = original.find(anchor)
     displacement = 0
-    while offset != -1:
+    for offset in offsets:
         end = offset + len(anchor)
         start_after = offset + displacement
         end_after = start_after + len(replacement)
@@ -324,7 +325,6 @@ def _line_merge_refusal(
                 line = original.count("\n", 0, original_position) + 1
                 return f"the edit removes the separator at line {line}"
         displacement += len(replacement) - len(anchor)
-        offset = original.find(anchor, end)
     return None
 
 
@@ -345,12 +345,99 @@ def _check_line_insert(original: str, anchor: str, inserted: str) -> None:
         )
 
 
+def _table_cells(line: str) -> list[str] | None:
+    """Pipe-table cells, distinguishing escaped pipes from separators."""
+    text = line.strip()
+    cells: list[str] = []
+    start = 0
+    cursor = 0
+    while cursor < len(text):
+        if text[cursor] == "\\":
+            cursor += 2
+            continue
+        if text[cursor] == "|":
+            cells.append(text[start:cursor].strip())
+            start = cursor + 1
+        cursor += 1
+    if not cells:
+        return None
+    cells.append(text[start:].strip())
+    if not cells[0]:
+        cells.pop(0)
+    if cells and not cells[-1]:
+        cells.pop()
+    return cells or None
+
+
+def _table_regions(text: str) -> list[tuple[int, int]]:
+    """Recognize Markdown pipe tables outside fenced code, by text offsets."""
+    lines = text.splitlines(keepends=True)
+    starts = [0]
+    for line in lines:
+        starts.append(starts[-1] + len(line))
+    regions: list[tuple[int, int]] = []
+    fence: str | None = None
+    i = 0
+    while i < len(lines):
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)", lines[i])
+        if fence is not None:
+            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip():
+                fence = None
+        elif marker:
+            fence = marker[1]
+        elif i + 1 < len(lines):
+            header = _table_cells(lines[i])
+            rule = _table_cells(lines[i + 1])
+            if header and rule and len(header) == len(rule) and all(re.fullmatch(r":?-+:?", cell) for cell in rule):
+                end = i + 2
+                while end < len(lines) and _table_cells(lines[end]):
+                    end += 1
+                regions.append((starts[i], starts[end]))
+                i = end
+                continue
+        i += 1
+    return regions
+
+
+def _splice(text: str, anchor: str, replacement: str, offsets: list[int]) -> str:
+    parts: list[str] = []
+    cursor = 0
+    for offset in offsets:
+        parts.extend((text[cursor:offset], replacement))
+        cursor = offset + len(anchor)
+    parts.append(text[cursor:])
+    return "".join(parts)
+
+
+def _check_table_edit(original: str, anchor: str, replacement: str, offsets: list[int]) -> None:
+    """Partial edits must leave an existing table as one complete table.
+
+    An anchor naming the entire table permits deliberate replacement of that
+    structure. Otherwise its header, delimiter and surviving rows remain a
+    unit; a blank replacement must not silently terminate the table.
+    """
+    edits = [(offset, offset + len(anchor)) for offset in offsets]
+    for start, end in _table_regions(original):
+        affected = [(a, b) for a, b in edits if a < end and b > start]
+        if not affected or any(a <= start and b >= end for a, b in affected):
+            continue
+        if any(a < start or b > end for a, b in affected):
+            raise ContextEditError("edit crosses a Markdown table boundary; include the complete table in the anchor")
+        edited = _splice(original[start:end], anchor, replacement, [a - start for a, _b in affected])
+        if _table_regions(edited) != [(0, len(edited))]:
+            raise ContextEditError(
+                "edit would break a Markdown table; use delete-line for an exact data row, "
+                "preserve the header and delimiter, or include the complete table explicitly"
+            )
+
+
 def apply_replacement(
     text: str,
     anchor: str,
     replacement: str,
     *,
     count: int = 1,
+    _line_offset: int | None = None,
 ) -> str:
     """Return edited text, or raise ContextEditError explaining the refusal."""
     if not anchor:
@@ -358,7 +445,18 @@ def apply_replacement(
     if count < 1:
         raise ContextEditError(f"count must be at least 1, got {count}")
 
-    found = text.count(anchor)
+    offsets: list[int] = []
+    offset = text.find(anchor)
+    while offset != -1:
+        offsets.append(offset)
+        offset = text.find(anchor, offset + len(anchor))
+    if _line_offset is not None:
+        # delete-line selected one complete physical line from this same
+        # snapshot; suffix matches in other lines are not deletion targets.
+        if _line_offset not in offsets or (_line_offset and text[_line_offset - 1] != "\n"):
+            raise ContextEditError("delete-line target no longer matches a line boundary")
+        offsets = [_line_offset]
+    found = len(offsets)
     if found == 0:
         raise ContextEditError(
             f"anchor not found: {anchor[:80]!r}\n"
@@ -372,14 +470,15 @@ def apply_replacement(
             "Narrow the anchor, or pass --count to confirm the intended number."
         )
 
-    edited = text.replace(anchor, replacement, count)
-    refusal = _line_merge_refusal(text, anchor, replacement, edited)
+    edited = _splice(text, anchor, replacement, offsets)
+    refusal = _line_merge_refusal(text, anchor, replacement, edited, offsets)
     if refusal:
         raise ContextEditError(
             f"edit would merge previously separate lines: {refusal}.\n"
             "Keep a boundary newline, or include the neighboring line "
             "explicitly in both anchor and replacement."
         )
+    _check_table_edit(text, anchor, replacement, offsets)
     if edited == text:
         raise ContextEditError(
             "replacement leaves the file byte-identical; nothing to change"
@@ -409,11 +508,25 @@ def replace_once(
     allow_stale_body: bool = False,
     state_reviewed: bool = False,
     _inserted_text: str | None = None,
+    _delete_line: bool = False,
 ) -> dict:
     """Apply one verified replacement to a durable context file."""
     path = Path(path)
     original = _read(path)
-    edited = apply_replacement(original, anchor, replacement, count=count)
+    line_offset = None
+    if _delete_line:
+        if not anchor or "\n" in anchor or "\r" in anchor:
+            raise ContextEditError("delete-line requires the complete text of one nonempty line without its line ending")
+        matches: list[tuple[int, str]] = []
+        cursor = 0
+        for line in original.splitlines(keepends=True):
+            if line.removesuffix("\r\n").removesuffix("\n") == anchor:
+                matches.append((cursor, line))
+            cursor += len(line)
+        if len(matches) != 1:
+            raise ContextEditError(f"delete-line requires one exact whole-line match; found {len(matches)}")
+        line_offset, anchor = matches[0]
+    edited = apply_replacement(original, anchor, replacement, count=count, _line_offset=line_offset)
     if _inserted_text is not None:
         _check_line_insert(original, anchor, _inserted_text)
     lines = _check_budget(edited, max_lines, path)
@@ -541,6 +654,20 @@ def _value(raw: str) -> str:
     return sys.stdin.read() if raw == "-" else raw
 
 
+def delete_line(
+    path: Path, anchor: str, *, max_lines: int | None = None,
+    dry_run: bool = False, allow_header_lag: bool = False,
+    allow_stale_body: bool = False, state_reviewed: bool = False,
+) -> dict:
+    """Delete one uniquely matched physical line, including its LF or CRLF."""
+    return replace_once(
+        path, anchor=anchor, replacement="", max_lines=max_lines,
+        dry_run=dry_run, allow_header_lag=allow_header_lag,
+        allow_stale_body=allow_stale_body, state_reviewed=state_reviewed,
+        _delete_line=True,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -581,6 +708,9 @@ def main(argv: list[str] | None = None) -> int:
     insert.add_argument("--anchor", required=True)
     insert.add_argument("--text", required=True)
 
+    delete = sub.add_parser("delete-line", parents=[common])
+    delete.add_argument("--anchor", required=True)
+
     args = parser.parse_args(argv)
 
     try:
@@ -594,6 +724,12 @@ def main(argv: list[str] | None = None) -> int:
                 allow_header_lag=args.allow_header_lag,
                 allow_stale_body=args.allow_stale_body,
                 state_reviewed=args.state_reviewed,
+            )
+        elif args.command == "delete-line":
+            result = delete_line(
+                args.file, anchor=_value(args.anchor), max_lines=args.max_lines,
+                dry_run=args.dry_run, allow_header_lag=args.allow_header_lag,
+                allow_stale_body=args.allow_stale_body, state_reviewed=args.state_reviewed,
             )
         elif args.command == "replace":
             result = replace_once(

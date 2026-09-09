@@ -508,6 +508,42 @@ def test_table_cell_edit_and_complete_row_deletion_remain_valid(tmp_path):
     assert path.read_text() == TABLE.replace("| B | two |\n", "")
 
 
+@pytest.mark.parametrize("original", ["remove\nprefix remove\n", "prefix remove\nremove\n", "prefix remove\nremove"])
+def test_delete_line_ignores_partial_matches_in_other_lines(tmp_path, original):
+    path = record(tmp_path, original)
+    assert main(["delete-line", "--file", str(path), "--anchor", "remove"]) == 0
+    assert path.read_text() == "prefix remove\n"
+
+
+def test_delete_line_refuses_duplicate_whole_lines_and_supports_dry_run(tmp_path):
+    path = record(tmp_path, "repeat\nrepeat\n")
+    before = path.read_bytes()
+    assert main(["delete-line", "--file", str(path), "--anchor", "repeat"]) == 1
+    assert path.read_bytes() == before
+    path.write_text(TABLE)
+    assert main(["delete-line", "--file", str(path), "--anchor", "| B | two |", "--dry-run"]) == 0
+    assert path.read_text() == TABLE
+
+
+@pytest.mark.parametrize("original", [TABLE, TABLE.replace("| B | two |", r"| B | two \| values |"), TABLE.replace(" |\n", "\n").replace("| ", "", 1)])
+def test_table_gate_refuses_blank_rows_across_pipe_shapes(tmp_path, original):
+    path = record(tmp_path, original)
+    anchor = original.splitlines()[3]
+    with pytest.raises(ContextEditError, match="table"):
+        replace_once(path, anchor=anchor, replacement="")
+    assert path.read_text() == original
+
+
+def test_entire_table_replacement_and_fenced_example_edits_are_explicit(tmp_path):
+    path = record(tmp_path, TABLE)
+    replace_once(path, anchor=TABLE, replacement="Completed entries are archived.\n")
+    assert path.read_text() == "Completed entries are archived.\n"
+    example = "```markdown\n" + TABLE + "```\n"
+    path.write_text(example)
+    replace_once(path, anchor="| B | two |", replacement="")
+    assert path.read_text() == example.replace("| B | two |", "")
+
+
 @pytest.mark.parametrize("newline", ["\r\n", "\n"])
 def test_insert_preserves_physical_line_endings(tmp_path: Path, newline: str) -> None:
     path = tmp_path / "REFERENCE.md"

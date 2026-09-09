@@ -257,6 +257,7 @@ def test_explicit_no_plan_precedes_historical_links_in_all_consumers(plan_projec
     "See [the retirement plan](../program/resources/artifacts/work-plan.md) for a dependency.",
     "- [ ] Check [plan](../program/resources/artifacts/work-plan.md).",
     "[Historical plan](../program/resources/artifacts/work-plan.md)",
+    "## Completed work\n[plan](../program/resources/artifacts/work-plan.md)",
     "```markdown\nControlling plan: ../program/resources/artifacts/work-plan.md\n```",
 ])
 def test_incidental_plan_references_are_not_declarations(plan_project, reference):
@@ -281,6 +282,21 @@ def test_no_plan_and_explicit_path_conflict_instead_of_guessing(plan_project):
     _repo, project, _plan = plan_project
     ref = locate_plan(project, "No active plan.\nControlling plan: ../program/resources/artifacts/work-plan.md")
     assert ref.declared is not None and ref.resolved is None and "multiple" in ref.detail
+
+
+def test_current_plan_section_can_declare_one_plan(plan_project):
+    from plan_reference import locate_plan
+
+    _repo, project, plan = plan_project
+    text = "## History\n[plan](missing-plan.md)\n## Current plan\n[plan](../program/resources/artifacts/work-plan.md)"
+    assert locate_plan(project, text).resolved == plan.resolve()
+
+
+def test_structured_path_outranks_a_historical_no_plan_declaration(plan_project):
+    from plan_reference import locate_plan
+
+    _repo, project, plan = plan_project
+    assert locate_plan(project, "No active plan.", controlling_plan=str(plan)).resolved == plan.resolve()
 
 
 def test_structured_plan_rejects_external_file_before_writing(plan_project, tmp_path):
