@@ -82,8 +82,16 @@ Steps run in order. Each step is one shell or file operation; total cost is ~6 t
 If `~/.synthesis/coordination/active-sessions.md` exists, read it before any
 write. Confirm that this session's claimed area still covers the intended
 files, read new messages addressed to this session, and stop writes on any
-overlap. Add or refresh claims with the
-`synthesis-project-management/scripts/coordination.py` helper.
+overlap. At normal execution checkpoints and task/phase changes, compare held
+areas with current needs: exact files for independent edits, directories when
+coordinated multi-file work requires them. Keep the smallest coherent area;
+expand and verify acceptance before additional writes, and narrow or release
+completed areas promptly after their required closure. Do not preclaim future
+work or automatically alter another session's claims. Use the
+`synthesis-project-management/scripts/coordination.py` helper and its
+[claim-scope protocol](../synthesis-project-management/references/parallel-agent-protocol.md#claim-scope-over-the-task-lifecycle).
+In read-only refresh-and-report mode, report needed scope changes without
+mutating claims.
 
 ### Step 1 — Verify current time
 
