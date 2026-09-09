@@ -471,6 +471,43 @@ def test_pure_replacement_checks_the_result_of_all_adjacent_matches() -> None:
         apply_replacement("left\n\nright", "\n", "", count=2)
 
 
+TABLE = "| Name | Value |\n| --- | --- |\n| A | one |\n| B | two |\n| C | three |\n"
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+@pytest.mark.parametrize("replacement", ["", " ", "\n", "plain prose"])
+def test_table_row_replacement_cannot_break_the_table(tmp_path, dry_run, replacement):
+    path = record(tmp_path, TABLE)
+    before = path.read_bytes()
+    with pytest.raises(ContextEditError, match="table"):
+        replace_once(path, anchor="| B | two |", replacement=replacement, dry_run=dry_run)
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_delete_line_cli_removes_exact_row_and_its_line_ending(tmp_path, newline):
+    path = tmp_path / "REFERENCE.md"
+    original = TABLE.replace("\n", newline).encode()
+    path.write_bytes(original)
+    assert main(["delete-line", "--file", str(path), "--anchor", "| B | two |"]) == 0
+    assert path.read_bytes() == original.replace(("| B | two |" + newline).encode(), b"")
+
+
+@pytest.mark.parametrize("anchor", ["B | two", "| --- | --- |", "| Name | Value |"])
+def test_delete_line_cli_refuses_partial_row_or_table_header(tmp_path, anchor):
+    path = record(tmp_path, TABLE)
+    before = path.read_bytes()
+    assert main(["delete-line", "--file", str(path), "--anchor", anchor]) == 1
+    assert path.read_bytes() == before
+
+
+def test_table_cell_edit_and_complete_row_deletion_remain_valid(tmp_path):
+    path = record(tmp_path, TABLE)
+    replace_once(path, anchor="two", replacement="updated")
+    replace_once(path, anchor="| B | updated |\n", replacement="")
+    assert path.read_text() == TABLE.replace("| B | two |\n", "")
+
+
 @pytest.mark.parametrize("newline", ["\r\n", "\n"])
 def test_insert_preserves_physical_line_endings(tmp_path: Path, newline: str) -> None:
     path = tmp_path / "REFERENCE.md"
