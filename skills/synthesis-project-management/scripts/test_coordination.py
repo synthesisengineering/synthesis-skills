@@ -2431,3 +2431,124 @@ def test_invalid_explicit_report_registry_cannot_use_free_address(tmp_path, caps
     assert MODULE.command_message(message) == 10
     assert board.read_bytes() == before
     assert "recipient" in capsys.readouterr().err
+
+
+@pytest.fixture
+def metadata_worktrees(tmp_path):
+    root = staged_repository(tmp_path)
+    for name in ("projects/index.yaml", "projects/item/CONTEXT.md", "projects/item/REFERENCE.md",
+                 "projects/item/CURRENT_STATE.json", "projects/item/resources/a.md", "src/main.py"):
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("Fixture\n")
+    assert git(root, "add", ".").returncode == 0
+    assert git(root, "commit", "-m", "Fixture").returncode == 0
+    sibling = tmp_path / "sibling"
+    assert git(root, "worktree", "add", "-b", "sibling", str(sibling)).returncode == 0
+    return root, sibling
+
+
+def scope_module():
+    import claim_scope
+    return claim_scope
+
+
+def test_logical_metadata_claim_is_refused_before_board_admission(metadata_worktrees, tmp_path):
+    root, sibling = metadata_worktrees
+    board = tmp_path / "board.md"
+    first = claim_args(board, session_id="A", project="first", workspace=f"{root} @ main", area=f"{root}/projects/index.yaml")
+    second = claim_args(board, session_id="B", project="second", workspace=f"{sibling} @ sibling", area=f"{sibling}/projects/index.yaml")
+    assert MODULE.command_claim(first) == 0
+    before = board.read_bytes()
+    assert MODULE.command_claim(second) == 10
+    assert board.read_bytes() == before
+
+
+@pytest.mark.parametrize("left,right,expected", [
+    ("projects/index.yaml", "projects/index.yaml", True),
+    ("projects/item/CONTEXT.md", "projects/item/CONTEXT.md", True),
+    ("projects/item/CURRENT_STATE.json", "projects/item/CURRENT_STATE.json", True),
+    ("projects/item/CONTEXT.md", "projects/item/REFERENCE.md", False),
+    ("projects/item/resources/a.md", "projects/item/resources/b.md", False),
+    ("projects/item/**", "projects/item/REFERENCE.md", True),
+    ("projects/**", "projects/index.yaml", True),
+    ("**", "projects/index.yaml", True),
+    ("projects/*/CONTEXT.md", "projects/item/REFERENCE.md", False),
+    ("projects/*/CONTEXT.md", "projects/item/CONTEXT.md", True),
+    ("projects/item/resources/*.md", "projects/item/resources/*.py", False),
+    ("projects/item/resources/[ab].md", "projects/item/resources/[bc].md", True),
+    ("projects/item/resources/[ab].md", "projects/item/resources/[cd].md", False),
+    ("projects/item/resources/*.md", "projects/item/resources/nested/a.md", False),
+    ("projects/item/resources/**/*.md", "projects/item/resources/nested/a.md", True),
+    ("projects/item", "projects/item-other/CONTEXT.md", False),
+    ("src/main.py", "src/main.py", False),
+    ("src/**", "src/**", False),
+])
+def test_shared_claim_scope_is_symmetric_and_preserves_disjoint_work(metadata_worktrees, left, right, expected):
+    root, sibling = metadata_worktrees
+    scope = scope_module()
+    left, right = str(root / left), str(sibling / right)
+    assert scope.claim_conflicts(left, right) is expected
+    assert scope.claim_conflicts(right, left) is expected
+
+
+def test_metadata_relative_and_symlink_spellings_use_verified_checkout(metadata_worktrees, tmp_path):
+    root, sibling = metadata_worktrees
+    scope = scope_module()
+    alias = tmp_path / "alias"
+    alias.symlink_to(sibling, target_is_directory=True)
+    assert scope.claim_conflicts("projects/index.yaml", str(alias / "projects/index.yaml"), left_workspaces=[f"{root} @ main"])
+    assert scope.claim_conflicts(f"{root.name}/projects/index.yaml", "projects/index.yaml",
+        left_workspaces=[f"{root} @ main"], right_workspaces=[f"{alias} @ sibling"])
+
+
+@pytest.mark.parametrize("kind", ["missing", "ambiguous", "forged"])
+def test_metadata_identity_failure_cannot_be_treated_as_disjoint(metadata_worktrees, tmp_path, kind):
+    root, sibling = metadata_worktrees
+    scope = scope_module()
+    claim = str(tmp_path / "missing/projects/index.yaml")
+    workspaces = []
+    if kind == "ambiguous":
+        claim = "projects/index.yaml"
+        workspaces = [f"{root} @ main", f"{sibling} @ sibling"]
+    elif kind == "forged":
+        fake = tmp_path / "forged"
+        fake.mkdir()
+        (fake / ".git").write_text(f"gitdir: {root / '.git'}\n")
+        claim = str(fake / "projects/index.yaml")
+    with pytest.raises(scope.ClaimIdentityError):
+        scope.claim_conflicts(str(root / "projects/index.yaml"), claim, right_workspaces=workspaces)
+
+
+def test_possible_repair_scope_is_explicitly_broader_than_exact_resource_claims(metadata_worktrees):
+    root, sibling = metadata_worktrees
+    scope = scope_module()
+    assert not scope.claim_conflicts(str(root / "projects/item/resources/a.md"), str(sibling / "projects/item/resources/b.md"))
+    assert scope.project_claim_overlap(root / "projects/item", str(sibling / "projects/item/resources/b.md"))
+    assert scope.project_claim_overlap(root / "projects/item", str(sibling / "projects/index.yaml"))
+    assert not scope.project_claim_overlap(root / "projects/item", str(sibling / "projects/another/CONTEXT.md"))
+
+
+def test_shared_scope_preserves_physical_synthetic_paths_and_row_delimiters(tmp_path):
+    scope = scope_module()
+    assert scope.claim_conflicts(str(tmp_path / "projects/item/**"), str(tmp_path / "projects/item/CONTEXT.md"))
+    assert not scope.claim_conflicts(str(tmp_path / "projects/first/CONTEXT.md"), str(tmp_path / "projects/second/CONTEXT.md"))
+    assert not scope.claim_conflicts("/missing/branch-a/src/**", "/missing/branch-b/src/**")
+    assert scope.split_values("`one`; **two**<br>three, four") == ["one", "two", "three", "four"]
+
+
+@pytest.mark.parametrize("register_sibling", [False, True])
+def test_logical_metadata_conflict_never_authorizes_sibling_checkout(metadata_worktrees, tmp_path, capsys, register_sibling):
+    root, sibling = metadata_worktrees
+    board = tmp_path / "board.md"
+    request = claim_args(board, session_id="A", project="item", workspace=f"{root} @ main", area=f"{root}/projects/item/CONTEXT.md")
+    if register_sibling:
+        request.workspace.append(f"{sibling} @ sibling")
+    assert MODULE.command_claim(request) == 0
+    (sibling / "projects/item/CONTEXT.md").write_text("Changed fixture\n")
+    assert git(sibling, "add", "projects/item/CONTEXT.md").returncode == 0
+    capsys.readouterr()
+    assert MODULE.command_check_staged(check_staged_args(board, sibling)) == 10
+    result = json.loads(capsys.readouterr().out)
+    assert result["enforcement_outcome"] == ("refused-outside-claim" if register_sibling else "refused-unregistered-worktree")
+    assert not result["issues_authority_receipt"]
