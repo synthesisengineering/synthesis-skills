@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Checkpoint applicability (September 2026).** Release **4.96.6** distinguishes
+ordinary projects from projects that adopted structured state. Ordinary projects
+can finish checkpoint inspection without migration or a receipt; missing or
+invalid adopted state remains blocking. Native discovery and refresh use the
+same distinction, without treating non-applicability as project health.
+
 **Metadata ownership across linked worktrees (September 2026).** Release **4.96.5**
 uses one conflict policy for board admission and record-repair consumers. Claims
 on the same project metadata conflict across verified linked checkouts, while

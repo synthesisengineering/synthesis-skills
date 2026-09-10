@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.13.8"
+  version: "2.13.9"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -216,7 +216,7 @@ Complete task → Update CONTEXT.md → local receipt → Next task
 2. **Archive if needed** — Move old sessions to sessions/, stable facts to REFERENCE.md
 3. **Attribute if warranted** — If multiple agents/models contributed materially, end the session-log entry with Attribution line(s) (see Agent Attribution)
 4. **Refresh adopted structured state** — For a project already using `CURRENT_STATE.json`, regenerate it and its compiled block after each meaningful source phase.
-   Prose-only projects retain their context protocol; do not invoke the structured checkpoint CLI on an absent file.
+   Prose-only projects retain their context protocol; checkpoint commands report non-applicability only after verifying state was never adopted.
 5. **Verify local continuity** — Confirm this native session's attributed state is readable and its local handoff is ready.
    Structured projects additionally require their session- and claim-bound Stop receipt. `NOT_APPLICABLE` does not certify pending edits.
    Do not create a commit or network push solely because the user is switching clients on this machine.

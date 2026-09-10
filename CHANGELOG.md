@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.96.6] - 2026-09-09
+
+Checkpoint commands and native discovery share an applicability rule. Registered
+ordinary projects that never adopted structured state report NOT_APPLICABLE,
+without creating state, issuing receipts or implying project health. Projects
+that adopted structured state retain their checkpoint obligations when that file
+is deleted, malformed or unsafe. Refresh inspection reports the same requirement.
+No project migration is performed by a checkpoint or refresh.
+
 ## [4.96.5] - 2026-09-09
 
 Board admission and record-repair consumers share one metadata conflict policy.
