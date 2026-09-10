@@ -1356,8 +1356,58 @@ def _observer_native_identity(payload: dict[str, Any]) -> tuple[str, str]:
 def _observer_git(project: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-C", str(project), *arguments], capture_output=True, text=True,
-        env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"}, timeout=15,
+        env={**os.environ, "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C"}, timeout=15,
     )
+
+
+def _observer_synthesis_evidence(project: Path) -> bool:
+    """A directory named projects is not itself evidence of Synthesis adoption.
+
+    Anonymous discovery needs a real registry entry or retained adoption
+    evidence. Explicit CLI and claim paths still use strict applicability.
+    """
+    try:
+        from project_recipient import registry_entries
+    except (ImportError, SyntaxError) as exc:
+        raise ProjectStateError("observer project registry reader is unavailable") from exc
+
+    def registered(text: str) -> bool:
+        try:
+            return project.name in registry_entries(text)
+        except ValueError:
+            return False
+
+    index = project.parent / "index.yaml"
+    if index.is_file() and not index.is_symlink():
+        if registered(index.read_text(encoding="utf-8")):
+            return True
+    context = project / "CONTEXT.md"
+    if context.is_file() and not context.is_symlink():
+        if "<!-- synthesis-current-state:" in context.read_text(encoding="utf-8"):
+            return True
+    identity = _observer_git(project, "rev-parse", "--show-toplevel")
+    if identity.returncode:
+        administrative = any((parent / ".git").exists() or (parent / ".git").is_symlink()
+            for parent in (project, *project.parents))
+        if identity.returncode == 128 and "not a git repository" in identity.stderr.lower() and not administrative:
+            return False
+        raise ProjectStateError("observer project Git identity could not be verified")
+    repo = Path(identity.stdout.strip()).resolve()
+    if project.parent != repo / "projects":
+        return False
+    relative = str((project / STATE_FILE).relative_to(repo))
+    if _run(repo, "ls-files", "--stage", "--", f":(literal){relative}").stdout.strip():
+        return True
+    if _run(repo, "log", "--all", "--reflog", "-1", "--format=%H", "--", f":(literal){relative}").stdout.strip():
+        return True
+    # A deleted registry still identifies an ordinary Synthesis project. Read
+    # the last retained registry blob, never infer registration from its name.
+    revision = _run(repo, "log", "--all", "--reflog", "-1", "--diff-filter=AM", "--format=%H",
+        "--", ":(literal)projects/index.yaml").stdout.strip()
+    if revision:
+        previous = _run(repo, "show", f"{revision}:projects/index.yaml")
+        return registered(previous.stdout)
+    return False
 
 
 def _observer_project(cwd: Path) -> Path | None:
@@ -1368,7 +1418,7 @@ def _observer_project(cwd: Path) -> Path | None:
             except (OSError, ProjectStateError) as exc:
                 raise ProjectStateError(f"observer project Git state or applicability could not be verified: {exc}") from exc
             return candidate
-        if candidate.parent.name == "projects":
+        if candidate.parent.name == "projects" and _observer_synthesis_evidence(candidate):
             applicability, _issues = checkpoint_applicability(candidate)
             if applicability == "REQUIRED":
                 return candidate
