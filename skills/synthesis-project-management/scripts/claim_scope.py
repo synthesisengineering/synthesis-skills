@@ -12,11 +12,16 @@ import fnmatch
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 
 
 class ClaimIdentityError(ValueError):
     """A possible logical metadata conflict lacks unambiguous Git identity."""
+
+
+class _NoVerifiedCheckout(ClaimIdentityError):
+    """Git ran but could not identify a checkout at this path."""
 
 
 def plain(value: str) -> str:
@@ -141,10 +146,43 @@ def _mixed_paths_intersect(absolute: tuple[str, ...], relative: tuple[str, ...])
     return False
 
 
+def _ordinary_nonrepo_scope(pattern: str) -> bool:
+    """Prove a literal existing ordinary scope has no Git administrative ancestor.
+
+    Its descendants are checked separately against the other claim's verified
+    registered worktrees; absence of a local .git does not prove containment safe.
+    """
+    if pattern.endswith("/**"):
+        pattern = pattern[:-3]  # the same subtree reserved by a literal directory
+    if _hint(pattern) is not None or any(token in pattern for token in "*?["):
+        return False
+    path = Path(pattern)
+    try:
+        mode = path.stat().st_mode
+        if not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)):
+            return False
+        directory = path if stat.S_ISDIR(mode) else path.parent
+        for parent in (directory, *directory.parents):
+            try:
+                (parent / ".git").lstat()
+            except FileNotFoundError:
+                pass
+            else:
+                return False
+            if (parent / "HEAD").is_file() and (parent / "objects").is_dir():
+                return False  # a bare repository is not an ordinary directory
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise ClaimIdentityError("ordinary claim filesystem identity is unavailable") from exc
+    return True
+
+
 class ClaimScopeResolver:
     """One-operation identity cache; never retained across board transactions."""
     def __init__(self):
         self.identities = {}
+        self.registered = {}
 
     def _physical(self, claim: str, workspaces) -> str:
         raw = os.path.expanduser(plain(claim))
@@ -183,7 +221,7 @@ class ClaimScopeResolver:
             except (OSError, subprocess.SubprocessError) as exc:
                 raise ClaimIdentityError("metadata claim Git identity is unavailable") from exc
             if done.returncode:
-                raise ClaimIdentityError("metadata claim has no verified Git checkout")
+                raise _NoVerifiedCheckout("metadata claim has no verified Git checkout")
             return done.stdout
         lines = git("rev-parse", "--path-format=absolute", "--git-common-dir", "--show-toplevel").splitlines()
         if len(lines) != 2 or not all(Path(line).is_absolute() and Path(line).is_dir() for line in lines):
@@ -192,9 +230,18 @@ class ClaimScopeResolver:
         registered = [str(Path(item[len("worktree "):]).resolve()) for item in git("worktree", "list", "--porcelain", "-z").split("\0") if item.startswith("worktree ")]
         if registered.count(root) != 1:
             raise ClaimIdentityError("metadata claim checkout is not uniquely registered")
+        self.registered[common] = tuple(registered)
         result = (common, root)
         self.identities[key] = result
         return result
+
+    def _scope_identity(self, pattern: str):
+        try:
+            return self._identity(pattern)
+        except _NoVerifiedCheckout:
+            if _ordinary_nonrepo_scope(pattern):
+                return None
+            raise
 
     def conflicts(self, left: str, right: str, *, left_workspaces=(), right_workspaces=()) -> bool:
         raw_left, raw_right = plain(left), plain(right)
@@ -214,8 +261,8 @@ class ClaimScopeResolver:
             return _mixed_paths_intersect(absolute, relative)
         left_hint, right_hint = _hint(a), _hint(b)
         try:
-            left_common, left_root = self._identity(a)
-            right_common, right_root = self._identity(b)
+            left_identity = self._scope_identity(a)
+            right_identity = self._scope_identity(b)
         except ClaimIdentityError:
             # Synthetic, non-Git paths in one physical projects directory can
             # still prove disjointness. Never use an ancestor's directory name
@@ -233,6 +280,17 @@ class ClaimScopeResolver:
                 return _patterns_intersect(raw_a, raw_b)
             absolute, relative = (raw_a, raw_b) if Path(plain(left)).is_absolute() else (raw_b, raw_a)
             return _mixed_paths_intersect(absolute, relative)
+        if left_identity is None or right_identity is None:
+            if left_identity is None and right_identity is None:
+                return False
+            ordinary, metadata, identity = (a, b, right_identity) if left_identity is None else (b, a, left_identity)
+            common, root = identity
+            relative = Path(metadata).relative_to(root).as_posix()
+            if not _metadata_suffixes(_parts(relative)):
+                return False
+            return any(Path(checkout).is_relative_to(_prefix(ordinary)) for checkout in self.registered[common])
+        left_common, left_root = left_identity
+        right_common, right_root = right_identity
         if left_common != right_common:
             return False
         try:

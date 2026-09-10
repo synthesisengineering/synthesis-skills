@@ -2633,6 +2633,17 @@ def test_nonrepo_ancestor_containing_linked_checkout_still_conflicts(metadata_wo
     assert scope.claim_conflicts(str(ancestor), metadata)
 
 
+@pytest.mark.parametrize("relative", [".gitconfig", ".codex/config.toml", ".synthesis/references/session-words.txt"])
+def test_existing_nonrepo_runtime_files_are_disjoint_from_metadata(metadata_worktrees, tmp_path, relative):
+    root, _ = metadata_worktrees
+    runtime = tmp_path / "home" / relative
+    runtime.parent.mkdir(parents=True, exist_ok=True)
+    runtime.write_text("test-owned runtime configuration\n")
+    metadata = str(root / "projects/index.yaml")
+    assert not scope_module().claim_conflicts(metadata, str(runtime))
+    assert not scope_module().claim_conflicts(str(runtime), metadata)
+
+
 @pytest.mark.parametrize("form", ["missing", "metadata", "glob", "broken-git"])
 def test_nonrepo_scope_exception_never_hides_unresolved_metadata_identity(metadata_worktrees, tmp_path, form):
     root, _ = metadata_worktrees
