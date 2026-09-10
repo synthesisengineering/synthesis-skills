@@ -26,6 +26,9 @@ changed_surfaces:
 - path: README.md
   cases:
   - release-contract
+- path: skills/synthesis-agent-conformance/scripts/test_diagnostic_parity.py
+  cases:
+  - diagnostic-claim-fixture
 - path: skills/synthesis-git-hooks/SKILL.md
   cases:
   - standalone-bundle
@@ -74,6 +77,8 @@ changed_surfaces:
   - manifest
   - unlisted-path
   - transaction-binding
+  - engine-versions
+  - diagnostic-claim-fixture
 - path: skills/synthesis-onboarding/SKILL.md
   cases:
   - introduce-helper
@@ -81,12 +86,19 @@ changed_surfaces:
   - restore-failed-update
   - phase-update
   - release-contract
+  - engine-versions
+- path: skills/synthesis-onboarding/scripts/onboard.py
+  cases:
+  - engine-versions
 - path: skills/synthesis-onboarding/scripts/runtime_payload.py
   cases:
   - introduce-helper
   - reject-unproven-bundle
   - restore-failed-update
   - phase-update
+- path: skills/synthesis-onboarding/scripts/synthesis_cli.py
+  cases:
+  - engine-versions
 - path: skills/synthesis-onboarding/scripts/test_runtime_integration.py
   cases:
   - introduce-helper
@@ -332,3 +344,14 @@ cases:
   fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_schema2_receipt_binds_transaction_and_git_state
   motivating_defect: The release boundary must consume fresh acceptance covering the exact changed file
     universe.
+- id: engine-versions
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_engine_versions_and_skill_contract_agree
+  motivating_defect: Both executable version surfaces and their skill contract must agree.
+- id: diagnostic-claim-fixture
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_diagnostic_parity.py::test_valid_active_pointer_reconciles_without_mutation
+  motivating_defect: The diagnostic fixture must supply an actual sender workspace before ownership can
+    be verified.
