@@ -148,6 +148,25 @@ def test_observer_retains_adoption_when_registry_and_state_are_deleted(observer,
     assert_no_receipt(observer)
 
 
+@pytest.mark.parametrize("dependency", ["git-config", "registry-reader"])
+def test_observer_discovery_does_not_exonerate_unverifiable_dependencies(observer, monkeypatch, dependency):
+    (observer.project / state.STATE_FILE).unlink()
+    (observer.project.parent / "index.yaml").unlink()
+    (observer.project / "CONTEXT.md").write_text("# Context\n")
+    if dependency == "git-config":
+        (observer.repo / ".git/config").write_text("[broken configuration\n")
+    else:
+        original = builtins.__import__
+        def unavailable(name, *args, **kwargs):
+            if name == "project_recipient":
+                raise ImportError("fixture registry reader unavailable")
+            return original(name, *args, **kwargs)
+        monkeypatch.setattr(builtins, "__import__", unavailable)
+    verdict, _issues = inspect(observer)
+    assert verdict == "FAIL"
+    assert_no_receipt(observer)
+
+
 @pytest.mark.parametrize("client", ["claude", "codex"])
 def test_clean_native_observer_has_no_checkpoint_authority(observer: SimpleNamespace, client: str, monkeypatch: pytest.MonkeyPatch) -> None:
     before = {path: path.read_bytes() for path in observer.project.rglob("*") if path.is_file()}
