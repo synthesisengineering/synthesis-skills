@@ -18,12 +18,19 @@ check workspace-scoped by construction, so a personal seat scans personal repos
 and a client seat scans that client's repos, with no second list to maintain and
 no way for one workspace's queue to leak into another's review.
 
+Each repo is scanned through the CLI for its origin host: `gh` for github.com,
+`bkt` for bitbucket.org (through the sibling synthesis-bitbucket skill's
+`scripts/pr_queue.py`, loaded by path). A host's CLI is consulted only when the
+manifest declares a repo on that host, and one host's missing or unauthenticated
+CLI marks only that host's repos unscanned — a client seat with both hosts sees
+its Bitbucket queue even on a machine without `gh`.
+
 Design rules, each learned from the condition it fixes:
 
   - **Never report a clean queue you did not actually read.** A repo whose host
-    is unsupported, whose remote is missing, or whose query failed is reported in
-    `unscanned` with the reason. Silence about coverage is the very failure this
-    script exists to correct.
+    is unsupported, whose remote is missing, whose CLI is absent, or whose query
+    failed is reported in `unscanned` with the reason. Silence about coverage is
+    the very failure this script exists to correct.
   - **Oldest first.** Age is the signal; a request that has waited longest is the
     one most likely to have been forgotten by everyone.
   - **Exit 0 always.** This is a surface, not a gate. It must never be the reason
@@ -40,6 +47,8 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import functools
+import importlib.util
 import json
 import os
 import re
@@ -56,7 +65,16 @@ except ImportError:  # pragma: no cover - environment-dependent
 
 DEFAULT_THRESHOLD_DAYS = 0
 PER_REPO_TIMEOUT_S = 20
-GITHUB_HOST_RE = re.compile(r"github\.com[:/]([^/\s]+)/([^/\s.]+)")
+# owner and name for a git remote on a supported host, in https, ssh:// and
+# scp-like forms. The name keeps its dots (`my.site`); only a trailing `.git`
+# and `/` are shed.
+HOST_RES = {
+    host: re.compile(r"%s[:/]([^/\s]+)/([^/\s]+?)(?:\.git)?/?$" % re.escape(host))
+    for host in ("github.com", "bitbucket.org")
+}
+BITBUCKET_HELPER = (
+    Path(__file__).resolve().parents[2] / "synthesis-bitbucket" / "scripts" / "pr_queue.py"
+)
 
 
 def workspace_repos_yaml(workspace: str) -> Path:
@@ -102,38 +120,52 @@ def repo_path(entry: dict, workspace: str) -> Path:
     return root / workspace / str(entry.get("name", ""))
 
 
-def slug_from_url(url: str) -> str | None:
-    """owner/name for a GitHub URL, or None for anything else.
+def remote_target(url: str) -> tuple[str, str, str] | None:
+    """(host, owner, name) for a github.com or bitbucket.org URL, or None for anything else.
 
-    Anything that is not GitHub is not guessed at. Bitbucket, GitLab and
-    self-hosted remotes yield None so the caller reports them unscanned with the
-    host named, because a queue nobody looked at must never read as empty.
+    Any other host is not guessed at. GitLab and self-hosted remotes yield None
+    so the caller reports them unscanned with the host named, because a queue
+    nobody looked at must never read as empty.
     """
-    m = GITHUB_HOST_RE.search((url or "").strip())
-    return "%s/%s" % (m.group(1), m.group(2)) if m else None
+    text = (url or "").strip()
+    for host, pattern in HOST_RES.items():
+        m = pattern.search(text)
+        if m:
+            return host, m.group(1), m.group(2)
+    return None
 
 
-def github_slug(entry: dict, repo_dir: Path) -> str | None:
-    """Resolve owner/name, preferring the manifest over the working copy.
+UNSUPPORTED = "is on neither github.com nor bitbucket.org"
+
+
+def declared_target(entry: dict, repo_dir: Path) -> tuple[tuple[str, str, str] | None, str | None]:
+    """Resolve (host, owner, name), preferring the manifest over the working copy. (target, reason).
 
     A pull-request queue is a fact about the REMOTE, not about the local disk,
     so a declared repo with no local clone is still scannable. The manifest
     already records `remotes.origin`; git is only consulted when it does not.
+    The reason names what was actually found, so an unsupported origin and a
+    missing clone read differently.
     """
     declared = ((entry.get("remotes") or {}) or {}).get("origin")
-    slug = slug_from_url(str(declared)) if declared else None
-    if slug:
-        return slug
+    if declared:
+        target = remote_target(str(declared))
+        return (target, None) if target else (None, "origin %s %s" % (declared, UNSUPPORTED))
     if not repo_dir.exists():
-        return None
+        return None, "no origin declared in the manifest, and no local clone at %s" % repo_dir
     try:
         out = subprocess.run(
             ["git", "-C", str(repo_dir), "remote", "get-url", "origin"],
             capture_output=True, text=True, timeout=10,
         )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return slug_from_url(out.stdout) if out.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, "no origin declared in the manifest, and git could not read %s: %s" % (repo_dir, exc)
+    if out.returncode != 0:
+        return None, "no origin declared in the manifest, and %s has no origin remote" % repo_dir
+    target = remote_target(out.stdout)
+    if target:
+        return target, None
+    return None, "origin %s of %s %s" % (out.stdout.strip(), repo_dir, UNSUPPORTED)
 
 
 def age_days(iso: str, now: datetime.datetime) -> int:
@@ -198,32 +230,98 @@ def query_repo(slug: str, login: str, now: datetime.datetime) -> tuple[list[dict
     return items, None
 
 
-def gh_login() -> str | None:
+def gh_login() -> tuple[str | None, str | None]:
+    """The authenticated GitHub login. (login, reason-when-None)."""
+    if not shutil.which("gh"):
+        return None, "gh CLI not installed"
     try:
         out = subprocess.run(
             ["gh", "api", "user", "--jq", ".login"],
             capture_output=True, text=True, timeout=15,
         )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return out.stdout.strip() or None if out.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, "could not run gh: %s" % exc
+    login = out.stdout.strip() if out.returncode == 0 else ""
+    return (login, None) if login else (None, "gh is not authenticated")
 
 
-def scan(repos: list[dict], workspace: str, login: str, now: datetime.datetime) -> dict:
+@functools.lru_cache(maxsize=None)
+def bitbucket_helper():
+    """The sibling synthesis-bitbucket skill's `scripts/pr_queue.py`, loaded by path.
+
+    Skills are not a package and the plugin lays them out side by side, so the
+    helper is found relative to this file's skill root rather than imported.
+    Loaded once per process; a missing file raises and the caller reports the
+    repo unscanned with the path it looked at.
+    """
+    if not BITBUCKET_HELPER.is_file():
+        raise FileNotFoundError("synthesis-bitbucket helper not found at %s" % BITBUCKET_HELPER)
+    spec = importlib.util.spec_from_file_location("synthesis_bitbucket_pr_queue", BITBUCKET_HELPER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def bkt_identity() -> tuple[dict | None, str | None]:
+    """The authenticated Bitbucket user via the helper's `bkt api /user`. (identity, reason-when-None)."""
+    if not shutil.which("bkt"):
+        return None, "bkt CLI not installed"
+    try:
+        helper = bitbucket_helper()
+    except (OSError, ImportError, SyntaxError) as exc:
+        return None, str(exc)
+    return helper.bkt_identity()
+
+
+def query_bitbucket_repo(workspace: str, slug: str, identity: dict,
+                         now: datetime.datetime) -> tuple[list[dict], str | None]:
+    """Open PRs for one Bitbucket Cloud repo, through the sibling helper. (items, error)."""
+    try:
+        helper = bitbucket_helper()
+    except (OSError, ImportError, SyntaxError) as exc:
+        return [], str(exc)
+    record = helper.list_open_prs(workspace, slug, identity=identity, now=now)
+    if record["status"] != "scanned":
+        return [], record["reason"]
+    return record["items"], None
+
+
+def scan(repos: list[dict], workspace: str, login: str | None, now: datetime.datetime) -> dict:
+    """Read every declared repo's queue through its host's CLI.
+
+    `login` is the --login override; when None the GitHub login is resolved
+    through `gh` on the first GitHub repo. The Bitbucket identity is resolved
+    through `bkt` on the first Bitbucket repo. Each is resolved at most once,
+    and never for a host the manifest does not use.
+    """
     found: list[dict] = []
     unscanned: list[dict] = []
     scanned: list[str] = []
+    credentials: dict[str, tuple] = {}
+    if login:
+        credentials["github.com"] = (login, None)
+
+    def credential(host: str) -> tuple:
+        if host not in credentials:
+            credentials[host] = gh_login() if host == "github.com" else bkt_identity()
+        return credentials[host]
 
     for entry in repos:
         name = str(entry.get("name", "?"))
         rdir = repo_path(entry, workspace)
-        slug = github_slug(entry, rdir)
-        if not slug:
-            reason = ("origin is not a GitHub remote" if (entry.get("remotes") or {}).get("origin")
-                      else "no GitHub remote declared, and no local clone at %s" % rdir)
+        target, reason = declared_target(entry, rdir)
+        if not target:
             unscanned.append({"repo": name, "reason": reason})
             continue
-        items, err = query_repo(slug, login, now)
+        host, owner, repo = target
+        who, reason = credential(host)
+        if who is None:
+            unscanned.append({"repo": name, "reason": reason})
+            continue
+        if host == "github.com":
+            items, err = query_repo("%s/%s" % (owner, repo), who, now)
+        else:
+            items, err = query_bitbucket_repo(owner, repo, who, now)
         if err:
             unscanned.append({"repo": name, "reason": err})
             continue
@@ -231,7 +329,10 @@ def scan(repos: list[dict], workspace: str, login: str, now: datetime.datetime) 
         found.extend(items)
 
     found.sort(key=lambda i: (-i["age_days"], i["repo"]))
-    return {"found": found, "unscanned": unscanned, "scanned": scanned}
+    return {
+        "found": found, "unscanned": unscanned, "scanned": scanned,
+        "login": credentials.get("github.com", (None, None))[0],
+    }
 
 
 def main() -> int:
@@ -249,22 +350,10 @@ def main() -> int:
         print(json.dumps({"error": msg}) if args.json else "  " + msg)
         return 0
 
-    if not shutil.which("gh"):
-        msg = "pr_queue_scan: gh CLI not installed; PR queue NOT scanned"
-        print(json.dumps({"error": msg}) if args.json else "  " + msg)
-        return 0
-
-    login = args.login or gh_login()
-    if not login:
-        msg = "pr_queue_scan: gh is not authenticated; PR queue NOT scanned"
-        print(json.dumps({"error": msg}) if args.json else "  " + msg)
-        return 0
-
     workspace = args.workspace or path.parent.parent.name
     now = datetime.datetime.now(datetime.timezone.utc)
-    result = scan(declared_repos(path), workspace, login, now)
+    result = scan(declared_repos(path), workspace, args.login, now)
     result["workspace"] = workspace
-    result["login"] = login
     hits = [i for i in result["found"] if i["age_days"] >= args.threshold]
     result["found"] = hits
 

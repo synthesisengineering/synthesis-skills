@@ -77,36 +77,68 @@ repos:
 # --- host detection ----------------------------------------------------------
 
 @pytest.mark.parametrize("url,expected", [
-    ("https://github.com/owner/repo.git", "owner/repo"),
-    ("git@github.com:owner/repo.git", "owner/repo"),
-    ("https://github.com/owner/repo", "owner/repo"),
+    ("https://github.com/owner/repo.git", ("github.com", "owner", "repo")),
+    ("git@github.com:owner/repo.git", ("github.com", "owner", "repo")),
+    ("https://github.com/owner/repo", ("github.com", "owner", "repo")),
+    ("https://github.com/owner/repo/", ("github.com", "owner", "repo")),
+    ("https://github.com/owner/my.site.git", ("github.com", "owner", "my.site")),
+    ("https://bitbucket.org/team/repo.git", ("bitbucket.org", "team", "repo")),
+    ("git@bitbucket.org:team/repo.git", ("bitbucket.org", "team", "repo")),
+    ("ssh://git@bitbucket.org/team/repo.git", ("bitbucket.org", "team", "repo")),
 ])
-def test_slug_from_url_parses_supported_remotes(url, expected):
-    assert mod.slug_from_url(url) == expected
+def test_remote_target_parses_supported_remotes(url, expected):
+    assert mod.remote_target(url) == expected
 
 
 @pytest.mark.parametrize("url", [
-    "https://bitbucket.org/team/repo.git",
     "git@gitlab.com:team/repo.git",
     "https://git.internal.example/team/repo.git",
+    "https://github.com/owner",
+    "",
 ])
-def test_slug_from_url_refuses_to_guess_other_hosts(url):
-    """A non-GitHub remote yields None so the caller reports it unscanned."""
-    assert mod.slug_from_url(url) is None
+def test_remote_target_refuses_to_guess_other_hosts(url):
+    """A remote on neither supported host yields None so the caller reports it unscanned."""
+    assert mod.remote_target(url) is None
 
 
-def test_github_slug_prefers_the_manifest_over_the_working_copy(tmp_path):
+def test_declared_target_prefers_the_manifest_over_the_working_copy(tmp_path):
     """A PR queue is a remote fact: a declared repo with no clone is still scannable."""
     entry = {"remotes": {"origin": "https://github.com/owner/repo.git"}}
-    assert mod.github_slug(entry, tmp_path / "does-not-exist") == "owner/repo"
+    assert mod.declared_target(entry, tmp_path / "does-not-exist") == (
+        ("github.com", "owner", "repo"), None)
+    entry = {"remotes": {"origin": "git@bitbucket.org:team/repo.git"}}
+    assert mod.declared_target(entry, tmp_path / "does-not-exist") == (
+        ("bitbucket.org", "team", "repo"), None)
 
 
-def test_github_slug_falls_back_to_git_when_manifest_is_silent(monkeypatch, tmp_path):
+def test_declared_target_names_an_unsupported_manifest_origin(tmp_path):
+    entry = {"remotes": {"origin": "git@gitlab.com:team/repo.git"}}
+    target, reason = mod.declared_target(entry, tmp_path)
+    assert target is None
+    assert reason == "origin git@gitlab.com:team/repo.git is on neither github.com nor bitbucket.org"
+
+
+def test_declared_target_falls_back_to_git_when_manifest_is_silent(monkeypatch, tmp_path):
     tmp_path.mkdir(exist_ok=True)
     monkeypatch.setattr(mod.subprocess, "run",
                         lambda *a, **k: type("R", (), {
                             "returncode": 0, "stdout": "git@github.com:o/r.git"})())
-    assert mod.github_slug({}, tmp_path) == "o/r"
+    assert mod.declared_target({}, tmp_path) == (("github.com", "o", "r"), None)
+
+
+def test_declared_target_names_a_missing_clone(tmp_path):
+    target, reason = mod.declared_target({}, tmp_path / "nope")
+    assert target is None
+    assert reason == "no origin declared in the manifest, and no local clone at %s" % (tmp_path / "nope")
+
+
+def test_declared_target_names_an_unsupported_working_copy_origin(monkeypatch, tmp_path):
+    monkeypatch.setattr(mod.subprocess, "run",
+                        lambda *a, **k: type("R", (), {
+                            "returncode": 0, "stdout": "git@gitlab.com:o/r.git\n"})())
+    target, reason = mod.declared_target({}, tmp_path)
+    assert target is None
+    assert reason == "origin git@gitlab.com:o/r.git of %s is on neither github.com nor bitbucket.org" % tmp_path
 
 
 def test_repo_path_resolves_manifest_paths_against_the_workspace_root(monkeypatch, tmp_path):
@@ -207,29 +239,46 @@ def test_query_repo_reports_error_rather_than_empty(monkeypatch):
 
 # --- the invariant this script exists for ------------------------------------
 
+def _no_cli(monkeypatch):
+    """Fail loudly if a scan reaches for a host CLI the test did not stub."""
+    def refuse(*a, **k):
+        raise AssertionError("scan reached a host CLI: %r" % (a[:1],))
+    monkeypatch.setattr(mod, "gh_login", refuse)
+    monkeypatch.setattr(mod, "bkt_identity", refuse)
+    monkeypatch.setattr(mod, "query_repo", refuse)
+    monkeypatch.setattr(mod, "query_bitbucket_repo", refuse)
+
+
 def test_unscannable_repos_are_named_not_silently_dropped(monkeypatch, tmp_path):
     """A repo that could not be read must never contribute to a clean-looking result."""
+    _no_cli(monkeypatch)
     (tmp_path / "present").mkdir()
     repos = [
         {"name": "present", "path": str(tmp_path / "present")},
         {"name": "absent", "path": str(tmp_path / "nope")},
+        {"name": "elsewhere", "remotes": {"origin": "git@gitlab.com:team/repo.git"}},
     ]
-    monkeypatch.setattr(mod, "github_slug", lambda e, d: None)  # unsupported host
+    monkeypatch.setattr(mod.subprocess, "run",
+                        lambda *a, **k: type("R", (), {
+                            "returncode": 0, "stdout": "https://git.internal.example/t/r.git"})())
 
     result = mod.scan(repos, "ws", "me", NOW)
 
     assert result["found"] == []
     assert result["scanned"] == []
     reasons = {u["repo"]: u["reason"] for u in result["unscanned"]}
-    assert set(reasons) == {"present", "absent"}
-    assert "no GitHub remote declared" in reasons["present"]
-    assert "no GitHub remote declared" in reasons["absent"]
+    assert set(reasons) == {"present", "absent", "elsewhere"}
+    assert reasons["present"] == (
+        "origin https://git.internal.example/t/r.git of %s is on neither github.com nor bitbucket.org"
+        % (tmp_path / "present"))
+    assert reasons["absent"] == (
+        "no origin declared in the manifest, and no local clone at %s" % (tmp_path / "nope"))
+    assert reasons["elsewhere"] == (
+        "origin git@gitlab.com:team/repo.git is on neither github.com nor bitbucket.org")
 
 
 def test_scan_sorts_oldest_first(monkeypatch, tmp_path):
-    (tmp_path / "a").mkdir()
-    (tmp_path / "b").mkdir()
-    monkeypatch.setattr(mod, "github_slug", lambda e, d: "o/" + e["name"])
+    _no_cli(monkeypatch)
 
     def fake_query(slug, login, now):
         n = 200 if slug.endswith("a") else 3
@@ -238,9 +287,162 @@ def test_scan_sorts_oldest_first(monkeypatch, tmp_path):
 
     monkeypatch.setattr(mod, "query_repo", fake_query)
     result = mod.scan(
-        [{"name": "a", "path": str(tmp_path / "a")},
-         {"name": "b", "path": str(tmp_path / "b")}], "ws", "me", NOW)
+        [{"name": "a", "remotes": {"origin": "https://github.com/o/a.git"}},
+         {"name": "b", "remotes": {"origin": "https://github.com/o/b.git"}}], "ws", "me", NOW)
     assert [i["age_days"] for i in result["found"]] == [200, 3]
+    assert result["login"] == "me"
+
+
+# --- dispatch by host --------------------------------------------------------
+
+ME = {"uuid": "{me-uuid}", "account_id": "me-account", "username": "me"}
+
+
+def _bkt_runner(pr_rows, user=ME, pr_rc=0, pr_stderr=""):
+    """A stand-in for subprocess.run that answers only bkt, recording argv."""
+    def run(cmd, **kwargs):
+        run.calls.append(list(cmd))
+        if cmd[:2] == ["bkt", "api"]:
+            return type("R", (), {"returncode": 0, "stdout": json.dumps(user), "stderr": ""})()
+        if cmd[:3] == ["bkt", "pr", "list"]:
+            body = json.dumps({"workspace": cmd[4], "repo": cmd[6], "pull_requests": pr_rows})
+            return type("R", (), {"returncode": pr_rc, "stdout": body if pr_rc == 0 else "",
+                                  "stderr": pr_stderr})()
+        raise AssertionError("unexpected invocation: %r" % (cmd,))
+    run.calls = []
+    return run
+
+
+def _inject_bkt_runner(monkeypatch, run):
+    """Route the real sibling helper's subprocess calls through `run`.
+
+    The helper is the actual synthesis-bitbucket/scripts/pr_queue.py, loaded
+    the way the scan loads it, so this exercises the dispatch end to end with
+    only the process boundary replaced.
+    """
+    import functools
+    helper = mod.bitbucket_helper()
+    monkeypatch.setattr(helper, "list_open_prs",
+                        functools.partial(helper.list_open_prs, runner=run))
+    monkeypatch.setattr(helper, "bkt_identity",
+                        functools.partial(helper.bkt_identity, runner=run))
+    monkeypatch.setattr(mod.shutil, "which", lambda name: "/opt/homebrew/bin/bkt" if name == "bkt" else None)
+    return helper
+
+
+def test_bitbucket_helper_is_the_sibling_skill_module():
+    helper = mod.bitbucket_helper()
+    expected = Path(__file__).resolve().parents[2] / "synthesis-bitbucket" / "scripts" / "pr_queue.py"
+    assert Path(helper.__file__) == expected
+    assert callable(helper.list_open_prs) and callable(helper.bkt_identity)
+    assert mod.bitbucket_helper() is helper  # loaded once per process
+
+
+def test_scan_dispatches_bitbucket_origins_to_the_bitbucket_helper(monkeypatch):
+    """A bitbucket.org origin is scanned through bkt, bucketed by uuid, slug passed alone."""
+    monkeypatch.setattr(mod, "gh_login", lambda: (_ for _ in ()).throw(AssertionError("gh called")))
+    monkeypatch.setattr(mod, "query_repo", lambda *a, **k: (_ for _ in ()).throw(AssertionError("gh called")))
+    run = _bkt_runner([
+        {"id": 41, "title": "theirs, awaiting me", "state": "OPEN", "draft": False,
+         "created_on": "2026-04-19T12:00:00.000000+00:00",
+         "author": {"uuid": "{someone}"}, "reviewers": [{"uuid": "{me-uuid}"}]},
+        {"id": 42, "title": "mine", "state": "OPEN", "draft": True,
+         "created_on": "2026-09-01T12:00:00.000000+00:00",
+         "author": {"uuid": "{me-uuid}"}, "reviewers": []},
+        {"id": 43, "title": "someone else's review", "state": "OPEN", "draft": False,
+         "created_on": "2026-09-01T12:00:00.000000+00:00",
+         "author": {"uuid": "{other}"}, "reviewers": [{"uuid": "{third}"}]},
+    ])
+    _inject_bkt_runner(monkeypatch, run)
+
+    result = mod.scan(
+        [{"name": "csa", "remotes": {"origin": "git@bitbucket.org:team/content-scaling-agents.git"}}],
+        "ws", None, NOW)
+
+    assert result["scanned"] == ["csa"]
+    assert result["unscanned"] == []
+    assert [(i["number"], i["kind"], i["age_days"], i["repo"]) for i in result["found"]] == [
+        (41, "review-requested", 139, "team/content-scaling-agents"),
+        (42, "own-open", 4, "team/content-scaling-agents"),
+    ]
+    assert run.calls == [
+        ["bkt", "api", "/user", "--json"],
+        ["bkt", "pr", "list", "--workspace", "team", "--repo", "content-scaling-agents",
+         "--state", "OPEN", "--limit", "0", "--json"],
+    ]
+
+
+def test_scan_resolves_the_bitbucket_identity_once_for_many_repos(monkeypatch):
+    run = _bkt_runner([])
+    _inject_bkt_runner(monkeypatch, run)
+    result = mod.scan(
+        [{"name": "a", "remotes": {"origin": "git@bitbucket.org:team/a.git"}},
+         {"name": "b", "remotes": {"origin": "https://bitbucket.org/team/b.git"}}], "ws", None, NOW)
+    assert result["scanned"] == ["a", "b"]
+    assert [c[:2] for c in run.calls].count(["bkt", "api"]) == 1
+    assert [c[6] for c in run.calls if c[:3] == ["bkt", "pr", "list"]] == ["a", "b"]
+
+
+def test_scan_reports_a_bitbucket_404_as_unscanned_not_empty(monkeypatch):
+    run = _bkt_runner([], pr_rc=1, pr_stderr="Error: HTTP 404 Not Found: repository team/gone")
+    _inject_bkt_runner(monkeypatch, run)
+    result = mod.scan(
+        [{"name": "gone", "remotes": {"origin": "git@bitbucket.org:team/gone.git"}}], "ws", None, NOW)
+    assert result["scanned"] == []
+    assert result["found"] == []
+    assert result["unscanned"] == [
+        {"repo": "gone", "reason": "Error: HTTP 404 Not Found: repository team/gone"}]
+
+
+def test_scan_marks_bitbucket_repos_unscanned_when_bkt_is_missing(monkeypatch):
+    monkeypatch.setattr(mod.shutil, "which", lambda name: None)
+    monkeypatch.setattr(mod, "query_bitbucket_repo",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("queried without bkt")))
+    result = mod.scan(
+        [{"name": "csa", "remotes": {"origin": "git@bitbucket.org:team/csa.git"}}], "ws", None, NOW)
+    assert result["scanned"] == []
+    assert result["unscanned"] == [{"repo": "csa", "reason": "bkt CLI not installed"}]
+
+
+def test_scan_marks_bitbucket_repos_unscanned_when_bkt_is_unauthenticated(monkeypatch):
+    def run(cmd, **kwargs):
+        assert cmd == ["bkt", "api", "/user", "--json"]
+        return type("R", (), {"returncode": 1, "stdout": "", "stderr": "Error: not logged in"})()
+    _inject_bkt_runner(monkeypatch, run)
+    result = mod.scan(
+        [{"name": "csa", "remotes": {"origin": "git@bitbucket.org:team/csa.git"}}], "ws", None, NOW)
+    assert result["unscanned"] == [{"repo": "csa", "reason": "bkt api /user failed: Error: not logged in"}]
+
+
+def test_scan_marks_github_repos_unscanned_when_gh_is_missing_and_still_scans_bitbucket(monkeypatch):
+    """One host's missing CLI must not hide the other host's queue."""
+    run = _bkt_runner([
+        {"id": 5, "title": "mine", "state": "OPEN", "draft": False,
+         "created_on": "2026-09-01T12:00:00+00:00", "author": {"uuid": "{me-uuid}"}, "reviewers": []},
+    ])
+    _inject_bkt_runner(monkeypatch, run)
+    monkeypatch.setattr(mod.shutil, "which", lambda name: "/opt/homebrew/bin/bkt" if name == "bkt" else None)
+    monkeypatch.setattr(mod, "query_repo",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("gh queried while missing")))
+    result = mod.scan(
+        [{"name": "gh-repo", "remotes": {"origin": "https://github.com/o/gh-repo.git"}},
+         {"name": "bb-repo", "remotes": {"origin": "git@bitbucket.org:team/bb-repo.git"}}], "ws", None, NOW)
+    assert result["scanned"] == ["bb-repo"]
+    assert result["unscanned"] == [{"repo": "gh-repo", "reason": "gh CLI not installed"}]
+    assert [i["number"] for i in result["found"]] == [5]
+    assert result["login"] is None
+
+
+def test_scan_never_calls_a_host_cli_the_manifest_does_not_need(monkeypatch):
+    """A GitHub-only workspace must not touch bkt, and a --login skips gh entirely."""
+    monkeypatch.setattr(mod, "bkt_identity",
+                        lambda: (_ for _ in ()).throw(AssertionError("bkt api /user called needlessly")))
+    monkeypatch.setattr(mod, "gh_login",
+                        lambda: (_ for _ in ()).throw(AssertionError("gh api user called despite --login")))
+    monkeypatch.setattr(mod, "query_repo", lambda slug, login, now: ([], None))
+    result = mod.scan(
+        [{"name": "a", "remotes": {"origin": "https://github.com/o/a.git"}}], "ws", "me", NOW)
+    assert result["scanned"] == ["a"]
 
 
 # --- it is a surface, never a gate -------------------------------------------
@@ -251,19 +453,68 @@ def test_missing_repos_yaml_exits_zero(monkeypatch, capsys, tmp_path):
     assert "nothing declared to scan" in capsys.readouterr().out
 
 
-def test_missing_gh_exits_zero_and_says_not_scanned(monkeypatch, capsys, tmp_path):
-    p = write_yaml(tmp_path, "repos:\n  - name: alpha\n    ritual_sync: yes\n")
+def test_missing_gh_exits_zero_and_names_each_github_repo_not_scanned(monkeypatch, capsys, tmp_path):
+    p = write_yaml(tmp_path, """
+repos:
+  - name: alpha
+    remotes:
+      origin: https://github.com/o/alpha.git
+""")
     monkeypatch.setattr(mod.sys, "argv", ["pr_queue_scan.py", "--repos-yaml", str(p)])
     monkeypatch.setattr(mod.shutil, "which", lambda _: None)
     assert mod.main() == 0
     out = capsys.readouterr().out
-    assert "NOT scanned" in out
+    assert "0 repo(s) scanned, 1 not scanned" in out
+    assert "NOT SCANNED" in out
+    assert "alpha" in out and "gh CLI not installed" in out
 
 
-def test_unauthenticated_gh_exits_zero_and_says_not_scanned(monkeypatch, capsys, tmp_path):
-    p = write_yaml(tmp_path, "repos:\n  - name: alpha\n    ritual_sync: yes\n")
+def test_unauthenticated_gh_exits_zero_and_names_each_github_repo_not_scanned(monkeypatch, capsys, tmp_path):
+    p = write_yaml(tmp_path, """
+repos:
+  - name: alpha
+    remotes:
+      origin: https://github.com/o/alpha.git
+""")
     monkeypatch.setattr(mod.sys, "argv", ["pr_queue_scan.py", "--repos-yaml", str(p)])
     monkeypatch.setattr(mod.shutil, "which", lambda _: "/usr/bin/gh")
-    monkeypatch.setattr(mod, "gh_login", lambda: None)
+    monkeypatch.setattr(mod, "gh_login", lambda: (None, "gh is not authenticated"))
     assert mod.main() == 0
-    assert "not authenticated" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "NOT SCANNED" in out
+    assert "alpha" in out and "gh is not authenticated" in out
+
+
+def test_main_prints_bitbucket_hits_and_json_carries_both_hosts(monkeypatch, capsys, tmp_path):
+    p = write_yaml(tmp_path, """
+repos:
+  - name: csa
+    remotes:
+      origin: git@bitbucket.org:team/csa.git
+  - name: alpha
+    remotes:
+      origin: https://github.com/o/alpha.git
+""")
+    created = "2026-04-19T12:00:00+00:00"
+    run = _bkt_runner([
+        {"id": 9, "title": "awaiting me", "state": "OPEN", "draft": False,
+         "created_on": created,
+         "author": {"uuid": "{someone}"}, "reviewers": [{"uuid": "{me-uuid}"}]},
+    ])
+    _inject_bkt_runner(monkeypatch, run)
+    monkeypatch.setattr(mod, "query_repo", lambda slug, login, now: ([], None))
+    monkeypatch.setattr(mod.sys, "argv", ["pr_queue_scan.py", "--repos-yaml", str(p), "--login", "me"])
+    assert mod.main() == 0
+    out = capsys.readouterr().out
+    assert "2 repo(s) scanned, 0 not scanned" in out
+    assert "Waiting on your review (1)" in out
+    # main() reads the real clock, so the age is computed the same way it is.
+    age = mod.age_days(created, datetime.datetime.now(datetime.timezone.utc))
+    assert "%4dd  team/csa#9  awaiting me" % age in out
+
+    monkeypatch.setattr(mod.sys, "argv", ["pr_queue_scan.py", "--repos-yaml", str(p), "--login", "me", "--json"])
+    assert mod.main() == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["scanned"] == ["csa", "alpha"]
+    assert data["login"] == "me"
+    assert [i["url"] for i in data["found"]] == ["https://bitbucket.org/team/csa/pull-requests/9"]
