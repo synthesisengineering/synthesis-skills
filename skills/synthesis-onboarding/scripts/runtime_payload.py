@@ -27,6 +27,10 @@ from system_contract import (
 
 COMPONENTS = frozenset({"git-hooks", "message-guard", "kernel", "day-end"})
 INTRODUCED_DEPENDENCIES = {
+    "skills/synthesis-project-management/scripts/claim_scope.py": (
+        "skills/synthesis-project-management/scripts/coordination.py",
+        "skills/synthesis-git-hooks/scripts/pre-commit",
+    ),
     "skills/synthesis-daily-rituals/scripts/ritual_state.py": (
         "skills/synthesis-daily-rituals/scripts/day-end",
         "skills/synthesis-daily-rituals/scripts/day-end-nudge.sh",
@@ -249,7 +253,12 @@ def _released_match(entry, before, historical):
         return True
     if entry.source_relative == "@git-hooks-source-path" and before[1] == entry.mode:
         required = {relative for component, relative, _, _ in _specs(entry.target.parents[2], entry.target.parent, {"git-hooks"})}
-        if required <= set(by_relative):
+        missing = required - set(by_relative)
+        # A historical bundle predates explicitly declared dependencies. Its
+        # old pointer still needs every other member and the released anchors
+        # that authorize introducing each absent dependency.
+        if (missing <= set(INTRODUCED_DEPENDENCIES)
+                and all(set(INTRODUCED_DEPENDENCIES[relative]) <= set(by_relative) for relative in missing)):
             return _pointer_matches(entry.target.read_bytes(), historical)
     return False
 
@@ -317,8 +326,8 @@ def plan(source_root, home, state_dir, components, receipt_data, *, legacy_relea
     Legacy descriptors identify explicit immutable roots. The optional local
     acquisition repository supplies older tagged blobs bound to the current
     source commit; this function never fetches, checks out or scans other roots.
-    Only the declared day-end helper may be newly introduced, and only when
-    both already-present launcher anchors have independent released-byte proof.
+    Only declared dependencies may be newly introduced, and only when their
+    already-present companion anchors have independent released-byte proof.
     """
     home, state_dir = Path(home), Path(state_dir)
     if pending(state_dir):
@@ -351,7 +360,7 @@ def plan(source_root, home, state_dir, components, receipt_data, *, legacy_relea
         for relative in INTRODUCED_DEPENDENCIES[accepted[position].source_relative]:
             anchor = by_relative.get(relative)
             if anchor is None or snapshots[anchor] is None:
-                raise ContractError("new runtime dependency requires both existing released day-end anchors")
+                raise ContractError("new runtime dependency requires its existing released companion anchors")
             required_anchors.add(anchor)
     needed = unresolved | (required_anchors - released)
 

@@ -130,6 +130,17 @@ def _hint(pattern: str) -> tuple[str, ...] | None:
     return parts[indices[-1] + 1:] if indices else None
 
 
+def _mixed_paths_intersect(absolute: tuple[str, ...], relative: tuple[str, ...]) -> bool:
+    # Without a checkout context, align only against known directory names.
+    # A trailing ** cannot invent a new repository root for a relative claim.
+    for i, segment in enumerate(absolute):
+        if any(token in segment for token in "*?["):
+            break
+        if _patterns_intersect(absolute[i:], relative):
+            return True
+    return False
+
+
 class ClaimScopeResolver:
     """One-operation identity cache; never retained across board transactions."""
     def __init__(self):
@@ -200,14 +211,19 @@ class ClaimScopeResolver:
             if Path(a).is_absolute() == Path(b).is_absolute():
                 return False
             absolute, relative = (_parts(a), _parts(b)) if Path(a).is_absolute() else (_parts(b), _parts(a))
-            return any(_patterns_intersect(absolute[i:], relative) for i in range(len(absolute)))
+            return _mixed_paths_intersect(absolute, relative)
         left_hint, right_hint = _hint(a), _hint(b)
-        if left_hint is not None and right_hint is not None and not _patterns_intersect(left_hint, right_hint):
-            return False
         try:
             left_common, left_root = self._identity(a)
             right_common, right_root = self._identity(b)
         except ClaimIdentityError:
+            # Synthetic, non-Git paths in one physical projects directory can
+            # still prove disjointness. Never use an ancestor's directory name
+            # to decide the logical namespace of a verified Git checkout.
+            if (left_hint is not None and right_hint is not None
+                    and a.rsplit("/projects/", 1)[0] == b.rsplit("/projects/", 1)[0]
+                    and not _patterns_intersect(left_hint, right_hint)):
+                return False
             if left_hint is not None or right_hint is not None:
                 raise
             # No project metadata is implicated and no repository identity is
@@ -216,7 +232,7 @@ class ClaimScopeResolver:
             if Path(plain(left)).is_absolute() == Path(plain(right)).is_absolute():
                 return _patterns_intersect(raw_a, raw_b)
             absolute, relative = (raw_a, raw_b) if Path(plain(left)).is_absolute() else (raw_b, raw_a)
-            return any(_patterns_intersect(absolute[i:], relative) for i in range(len(absolute)))
+            return _mixed_paths_intersect(absolute, relative)
         if left_common != right_common:
             return False
         try:
