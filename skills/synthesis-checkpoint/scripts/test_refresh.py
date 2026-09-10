@@ -114,6 +114,27 @@ def test_inspection_is_local_and_reports_exact_scope(fixture, monkeypatch, tmp_p
     assert tree(tmp_path) == before
 
 
+@pytest.mark.parametrize("adopted", [False, True])
+def test_refresh_uses_structured_checkpoint_applicability(fixture, adopted):
+    args, project, _ = fixture
+    if adopted:
+        path = project / refresh.project_state.STATE_FILE
+        path.write_text('{}\n')
+        git(project.parent.parent, "add", "projects")
+        git(project.parent.parent, "commit", "-m", "Fixture")
+        path.unlink()
+        git(project.parent.parent, "add", "-u")
+        git(project.parent.parent, "commit", "-m", "Fixture")
+    report, _ = refresh.inspect(args)
+    target = next(row for row in report["read_targets"] if row["role"] == "structured_state")
+    assert target["required"] is adopted
+    if adopted:
+        assert report["checks"]["structured_checkpoint"]["status"] in {"FAIL", "UNKNOWN"}
+        assert report["overall"] != "READY"
+    else:
+        assert report["checks"]["structured_checkpoint"]["status"] == "NOT_APPLICABLE"
+
+
 @pytest.mark.parametrize("outcome", ["CONFLICT", "UNKNOWN", "FAIL"])
 def test_conflict_reads_no_project_prose(fixture, monkeypatch, outcome):
     args, project, _ = fixture
