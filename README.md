@@ -11,6 +11,14 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Bitbucket queues and shell-aware peer sends (September 2026).** Release **4.97.0**
+reads Bitbucket Cloud repositories in the pull-request queue scan through the
+synthesis-bitbucket helper; GitHub is unchanged and other hosts stay named as
+unscanned. The peer-send gate judges the command the shell would run,
+so quoted heredoc text and quoted data are never a send. Cross-session merge
+requests name the target head they were tested against, and worktree retirement
+names the accepted base form when it refuses one.
+
 **Checkpoint applicability (September 2026).** Release **4.96.6** distinguishes
 ordinary projects from projects that adopted structured state. Ordinary projects
 can finish checkpoint inspection without migration or a receipt; missing or

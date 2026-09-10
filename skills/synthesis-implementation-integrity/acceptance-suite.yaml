@@ -1,7 +1,8 @@
 schema: 2
-suite: checkpoint-applicability-2026-09-09
+suite: board-fixes-2026-09-10
 membership: closed
-production_entry_point: project_state.py checkpoint/validate/hook and refresh.py inspect
+production_entry_point: pr_queue_scan.py scan and main, synthesis-bitbucket pr_queue.py list_open_prs and bkt_identity,
+  peer_send_gate.py --gate classify and message_body, retire_worktree.py --base validation
 enforcing_boundary: release.py derives exact Git changed paths and consumes fresh transaction-bound acceptance
   before publication and both-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
@@ -9,157 +10,633 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures establish scoped source applicability and preservation of checkpoint bindings.
-  They do not establish native startup, complete agent reading, natural Stop, project migration or multi-computer
+unverified_remainder: Fixtures establish the host dispatch of the pull-request queue scan, the Bitbucket helper's
+  contract at the process boundary, the shell-aware peer-send parse, the retirement base refusal text, the
+  daily-rituals version record, the documented merge-claim rule, and one coherent release read from the actual
+  plugin manifests, CHANGELOG top heading and README release marker. They never reach gh or bkt, do not read the
+  body text of the 4.97.0 README note or CHANGELOG entry beyond that marker and heading, and no fixture reads
+  skills/synthesis-bitbucket/SKILL.md (its PR-queue section is bound to the helper cases that pin the contract
+  it documents). They do not establish native startup, complete agent reading, natural Stop, or multi-computer
   readiness. Installed and genuine native acceptance are separate.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
   - release-contract
+  - release-surfaces-pinned
+  - release-contract-version
 - path: .codex-plugin/plugin.json
   cases:
   - release-contract
+  - release-surfaces-pinned
+  - release-contract-version
+- path: .github/workflows/validate.yml
+  cases:
+  - release-contract-verification
+  - release-contract-required-checks
+- path: AGENTS.md
+  cases:
+  - release-contract-verification
+  - release-contract-required-checks
 - path: CHANGELOG.md
   cases:
   - release-contract
+  - release-surfaces-pinned
+  - release-contract-changelog
+  - public-surfaces
 - path: README.md
   cases:
   - release-contract
-- path: skills/synthesis-project-management/SKILL.md
+  - release-surfaces-pinned
+  - release-contract-version
+  - public-surfaces
+- path: skills/synthesis-agent-conformance/scripts/test_conformance.py
   cases:
-  - ordinary-cli
-  - lost-state
-- path: skills/synthesis-project-management/references/project-state-recovery.md
+  - hook-live-receipt-selectors
+- path: skills/synthesis-bitbucket/SKILL.md
   cases:
-  - ordinary-cli
-  - receipt-api
-  - lost-state
-  - unknown-project
-- path: skills/synthesis-project-management/scripts/project_state.py
+  - bitbucket-helper-module
+  - bkt-slug-alone
+  - bkt-identity-fields
+  - bkt-identity-required
+  - bkt-404-reason
+  - bkt-binary-missing
+- path: skills/synthesis-bitbucket/scripts/pr_queue.py
   cases:
-  - ordinary-cli
-  - receipt-api
-  - lost-state
-  - native-discovery
-  - unknown-project
-  - unknown-history
-  - structured-positive
-  - observer-identity
-  - native-pending
-  - unknown-owned-project
-  - registry-registration
-  - anonymous-nonsynthesis
-  - retained-adoption
-  - observer-dependencies
-- path: skills/synthesis-project-management/scripts/test_project_applicability.py
+  - bitbucket-dispatch
+  - bkt-buckets-by-uuid
+  - bkt-account-id-match
+  - bkt-participants-fallback
+  - bkt-identity-required
+  - bkt-slug-alone
+  - bkt-rejects-owner-slash-name
+  - bkt-rejects-empty
+  - bkt-identity-fields
+  - bkt-identity-failure
+  - bkt-identity-resolved
+  - bkt-identity-unresolvable
+  - bkt-404-reason
+  - bkt-exit-code-named
+  - bkt-unparseable
+  - bkt-missing-key
+  - bkt-wrong-shape
+  - bkt-null-empty-queue
+  - bkt-empty-list-queue
+  - bkt-timeout
+  - bkt-binary-missing
+  - bkt-age-days
+- path: skills/synthesis-bitbucket/scripts/test_pr_queue.py
   cases:
-  - ordinary-cli
-  - receipt-api
-  - lost-state
-  - native-discovery
-  - unknown-project
-  - unknown-history
-  - unknown-owned-project
-  - registry-registration
-- path: skills/synthesis-checkpoint/SKILL.md
-  cases:
-  - refresh-agreement
-- path: skills/synthesis-checkpoint/references/refresh-and-report.md
-  cases:
-  - refresh-agreement
-  - ordinary-cli
-- path: skills/synthesis-checkpoint/scripts/refresh.py
-  cases:
-  - refresh-agreement
+  - bkt-buckets-by-uuid
+  - bkt-account-id-match
+  - bkt-participants-fallback
+  - bkt-identity-required
+  - bkt-slug-alone
+  - bkt-rejects-owner-slash-name
+  - bkt-rejects-empty
+  - bkt-identity-fields
+  - bkt-identity-failure
+  - bkt-identity-resolved
+  - bkt-identity-unresolvable
+  - bkt-404-reason
+  - bkt-exit-code-named
+  - bkt-unparseable
+  - bkt-missing-key
+  - bkt-wrong-shape
+  - bkt-null-empty-queue
+  - bkt-empty-list-queue
+  - bkt-timeout
+  - bkt-binary-missing
+  - bkt-age-days
 - path: skills/synthesis-checkpoint/scripts/test_refresh.py
   cases:
-  - refresh-agreement
+  - optional-plan-absent
+- path: skills/synthesis-daily-rituals/SKILL.md
+  cases:
+  - version-record-labels
+  - version-record-declared
+  - version-record-newest
+  - version-record-labels-not-ahead
+  - bitbucket-dispatch
+  - unscanned-named
+  - remote-target-refusal
+- path: skills/synthesis-daily-rituals/references/version-history.md
+  cases:
+  - version-record-labels
+  - version-record-declared
+  - version-record-newest
+  - version-record-labels-not-ahead
+- path: skills/synthesis-daily-rituals/scripts/pr_queue_scan.py
+  cases:
+  - remote-target-hosts
+  - remote-target-refusal
+  - declared-target-manifest
+  - declared-target-unsupported-origin
+  - declared-target-git-fallback
+  - declared-target-missing-clone
+  - declared-target-unsupported-clone-origin
+  - unscanned-named
+  - scan-oldest-first
+  - bitbucket-helper-module
+  - bitbucket-dispatch
+  - bitbucket-identity-once
+  - bitbucket-404-unscanned
+  - bkt-missing
+  - bkt-unauthenticated
+  - gh-missing-bitbucket-scanned
+  - no-needless-host-cli
+  - main-gh-missing
+  - main-gh-unauthenticated
+  - main-both-hosts
+- path: skills/synthesis-daily-rituals/scripts/test_pr_queue_scan.py
+  cases:
+  - remote-target-hosts
+  - remote-target-refusal
+  - declared-target-manifest
+  - declared-target-unsupported-origin
+  - declared-target-git-fallback
+  - declared-target-missing-clone
+  - declared-target-unsupported-clone-origin
+  - unscanned-named
+  - scan-oldest-first
+  - bitbucket-helper-module
+  - bitbucket-dispatch
+  - bitbucket-identity-once
+  - bitbucket-404-unscanned
+  - bkt-missing
+  - bkt-unauthenticated
+  - gh-missing-bitbucket-scanned
+  - no-needless-host-cli
+  - main-gh-missing
+  - main-gh-unauthenticated
+  - main-both-hosts
+- path: skills/synthesis-daily-rituals/scripts/test_version_record.py
+  cases:
+  - version-record-labels
+  - version-record-declared
+  - version-record-newest
+  - version-record-labels-not-ahead
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
-  - ordinary-cli
-  - receipt-api
-  - lost-state
-  - native-discovery
-  - unknown-project
-  - unknown-history
-  - refresh-agreement
-  - structured-positive
-  - observer-identity
-  - native-pending
-  - release-contract
   - manifest
   - unlisted-path
   - transaction-binding
-  - unknown-owned-project
-  - registry-registration
-  - anonymous-nonsynthesis
-  - retained-adoption
-  - observer-dependencies
-- path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
+- path: skills/synthesis-project-management/SKILL.md
   cases:
-  - anonymous-nonsynthesis
-  - retained-adoption
-  - observer-dependencies
-  - structured-positive
-  - observer-identity
-  - native-pending
+  - merge-claim-anchors
+  - public-surfaces
+- path: skills/synthesis-project-management/references/parallel-agent-protocol.md
+  cases:
+  - merge-claim-anchors
+  - shell-lane-boundary
+  - public-surfaces
+- path: skills/synthesis-project-management/scripts/peer_send_gate.py
+  cases:
+  - shell-lane-boundary
+  - heredoc-literal-not-a-send
+  - thread-values-as-data
+  - real-send-still-codex-lane
+  - nested-shell-send
+  - quoted-substitution-send
+  - unquoted-heredoc-expansion
+  - here-string-shell
+  - named-coprocess
+  - nesting-bound-fails-closed
+  - message-from-parsed-send
+  - nested-send-end-to-end
+  - unbalanced-quotes-raw-words
+  - gate-process-fails-closed
+- path: skills/synthesis-project-management/scripts/retire_worktree.py
+  cases:
+  - base-refusal-names-form
+  - ambiguous-base-diagnosis
+  - revision-expression-base
+- path: skills/synthesis-project-management/scripts/test_coordination.py
+  cases:
+  - merge-claim-anchors
+- path: skills/synthesis-project-management/scripts/test_peer_send_gate.py
+  cases:
+  - shell-lane-boundary
+  - heredoc-literal-not-a-send
+  - thread-values-as-data
+  - real-send-still-codex-lane
+  - nested-shell-send
+  - quoted-substitution-send
+  - unquoted-heredoc-expansion
+  - here-string-shell
+  - named-coprocess
+  - nesting-bound-fails-closed
+  - message-from-parsed-send
+  - nested-send-end-to-end
+  - unbalanced-quotes-raw-words
+  - gate-process-fails-closed
+- path: skills/synthesis-project-management/scripts/test_project_applicability.py
+  cases:
+  - shallow-clone-applicability
+- path: skills/synthesis-project-management/scripts/test_retire_worktree.py
+  cases:
+  - base-refusal-names-form
+  - ambiguous-base-diagnosis
+  - revision-expression-base
+- path: skills/synthesis-skills-manager/scripts/release.py
+  cases:
+  - release-contract-required-checks
 cases:
-- id: ordinary-cli
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_ordinary_registered_project_cli_is_explicitly_not_applicable
-  motivating_defect: Never-adopted ordinary projects must finish inspection without migration or a false
-    receipt.
-- id: receipt-api
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_direct_checkpoint_api_remains_receipt_only
-  motivating_defect: A non-applicable inspection must not manufacture a structured receipt.
-- id: lost-state
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_adopted_or_unsafe_state_never_becomes_not_applicable
-  motivating_defect: Deleting or damaging adopted state must retain checkpoint obligations.
-- id: native-discovery
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_owned_hook_and_observer_discovery_keep_adoption_obligations
-  motivating_defect: Owned native discovery must not ignore deleted structured state.
-- id: unknown-project
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_unknown_project_is_not_an_ordinary_project
-  motivating_defect: A typo or missing registration cannot establish non-applicability.
-- id: unknown-history
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_unverifiable_adoption_history_refuses_applicability
-  motivating_defect: Unreadable adoption evidence must fail closed.
-- id: refresh-agreement
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-checkpoint/scripts/test_refresh.py::test_refresh_uses_structured_checkpoint_applicability
-  motivating_defect: Refresh optionality must agree with checkpoint applicability.
-- id: structured-positive
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_owner_checkpoint_authority_is_preserved
-  motivating_defect: Valid adopted checkpoints retain their complete authority binding.
-- id: observer-identity
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_observer_identity_is_native_and_fail_closed
-  motivating_defect: Missing native identity must never grant checkpoint authority.
-- id: native-pending
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_known_native_pending_work_blocks_from_workspace_root
-  motivating_defect: Changing cwd must not hide exact-session pending work.
 - id: release-contract
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
-  motivating_defect: Release metadata must describe one coherent release.
+  motivating_defect: Release metadata must describe one coherent release read from the actual files; both
+    plugin versions agree, the CHANGELOG top heading carries that version, and README notes Release **version**.
+- id: release-surfaces-pinned
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_release_surfaces_agree_and_public_commands_are_pinned
+  motivating_defect: A second independent reader of the actual release surfaces; at 4.92.1 the README's native
+    plugin commands still installed from the default branch instead of the stable ref.
+- id: release-contract-version
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
+  motivating_defect: Both client manifests must agree on one version before a release is described; the
+    boundary reads that agreed version.
+- id: release-contract-changelog
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
+  motivating_defect: The changelog's newest heading must parse as the version the boundary compares with
+    both manifests.
+- id: release-contract-verification
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
+  motivating_defect: The AGENTS.md verification fence and the CI conformance job drifted apart once; the
+    Bitbucket test group joins both together or the release fails.
+- id: release-contract-required-checks
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_cover_ci_pytest_groups
+  motivating_defect: The Bitbucket test group joined CI and AGENTS.md but not the release gate; every CI pytest
+    group must be covered by REQUIRED_CHECKS.
+- id: public-surfaces
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_peer_resolution_documented_on_public_surfaces
+  motivating_defect: README, CHANGELOG and the coordination surfaces must keep documenting the peer-resolution
+    mechanism after the release note and entry are added.
+- id: version-record-labels
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_version_record.py::test_every_labeled_version_has_a_record_entry
+  motivating_defect: A checklist step labeled v2.35.0 sent readers to a record whose newest entry was v2.34.0.
+- id: version-record-declared
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_version_record.py::test_declared_version_has_a_record_entry
+  motivating_defect: The frontmatter version had no heading in the release record.
+- id: version-record-newest
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_version_record.py::test_record_newest_entry_is_the_declared_version
+  motivating_defect: The record's newest entry trailed the declared version; the record is newest first and
+    every release adds its entry.
+- id: version-record-labels-not-ahead
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_version_record.py::test_no_label_runs_ahead_of_the_declared_version
+  motivating_defect: A step label named a version newer than the frontmatter declared.
+- id: remote-target-hosts
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_remote_target_parses_supported_remotes
+  motivating_defect: Bitbucket and GitHub origins in https, ssh and scp forms must resolve to host, owner and
+    name, keeping dots in the name.
+- id: remote-target-refusal
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_remote_target_refuses_to_guess_other_hosts
+  motivating_defect: A remote on neither supported host must yield nothing so the caller reports it unscanned
+    rather than guessing.
+- id: declared-target-manifest
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_declared_target_prefers_the_manifest_over_the_working_copy
+  motivating_defect: A declared repo with no local clone is still scannable on either host because the queue is
+    a remote fact.
+- id: declared-target-unsupported-origin
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_declared_target_names_an_unsupported_manifest_origin
+  motivating_defect: An unsupported manifest origin must be named in the unscanned reason.
+- id: declared-target-git-fallback
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_declared_target_falls_back_to_git_when_manifest_is_silent
+  motivating_defect: Git is consulted for the origin only when the manifest declares none.
+- id: declared-target-missing-clone
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_declared_target_names_a_missing_clone
+  motivating_defect: A missing clone and an unsupported origin must read differently in the unscanned reason.
+- id: declared-target-unsupported-clone-origin
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_declared_target_names_an_unsupported_working_copy_origin
+  motivating_defect: An unsupported working-copy origin must be named together with the clone it was read from.
+- id: unscanned-named
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_unscannable_repos_are_named_not_silently_dropped
+  motivating_defect: A repo the scan could not read must appear in unscanned with its reason and never
+    contribute to a clean-looking result.
+- id: scan-oldest-first
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_scan_sorts_oldest_first
+  motivating_defect: Oldest-first ordering and the login field must survive the dispatch by host.
+- id: bitbucket-helper-module
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_bitbucket_helper_is_the_sibling_skill_module
+  motivating_defect: The scan must load the sibling synthesis-bitbucket helper by path, once per process.
+- id: bitbucket-dispatch
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_scan_dispatches_bitbucket_origins_to_the_bitbucket_helper
+  motivating_defect: A bitbucket.org origin was reported unscanned on every run; it must be read through bkt,
+    bucketed by uuid, with the slug passed alone.
+- id: bitbucket-identity-once
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_scan_resolves_the_bitbucket_identity_once_for_many_repos
+  motivating_defect: The Bitbucket identity is resolved once for many repos, not once per repo.
+- id: bitbucket-404-unscanned
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_scan_reports_a_bitbucket_404_as_unscanned_not_empty
+  motivating_defect: A 404 from bkt must be an unscanned queue carrying the reason, never an empty one.
+- id: bkt-missing
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_scan_marks_bitbucket_repos_unscanned_when_bkt_is_missing
+  motivating_defect: A missing bkt binary marks only Bitbucket repos unscanned and never queries them.
+- id: bkt-unauthenticated
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_scan_marks_bitbucket_repos_unscanned_when_bkt_is_unauthenticated
+  motivating_defect: An unauthenticated bkt marks Bitbucket repos unscanned with bkt's own failure text.
+- id: gh-missing-bitbucket-scanned
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_scan_marks_github_repos_unscanned_when_gh_is_missing_and_still_scans_bitbucket
+  motivating_defect: One host's missing CLI must not hide the other host's queue.
+- id: no-needless-host-cli
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_scan_never_calls_a_host_cli_the_manifest_does_not_need
+  motivating_defect: A GitHub-only workspace must not touch bkt, and a --login override skips gh entirely.
+- id: main-gh-missing
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_missing_gh_exits_zero_and_names_each_github_repo_not_scanned
+  motivating_defect: A missing gh no longer aborts the whole scan; each GitHub repo is named not scanned and
+    the exit stays zero.
+- id: main-gh-unauthenticated
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_unauthenticated_gh_exits_zero_and_names_each_github_repo_not_scanned
+  motivating_defect: An unauthenticated gh names each GitHub repo not scanned and the exit stays zero.
+- id: main-both-hosts
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_main_prints_bitbucket_hits_and_json_carries_both_hosts
+  motivating_defect: The text and JSON reports carry hits and scanned repos from both hosts.
+- id: bkt-buckets-by-uuid
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_list_open_prs_buckets_by_uuid
+  motivating_defect: Open PRs are bucketed as awaiting your review, your own, and unreviewed by the
+    authenticated uuid.
+- id: bkt-account-id-match
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_list_open_prs_matches_identity_by_account_id_when_reviewer_has_no_uuid
+  motivating_defect: A reviewer record carrying only account_id must still match the identity.
+- id: bkt-participants-fallback
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_list_open_prs_reads_participants_when_reviewers_key_is_absent
+  motivating_defect: Reviewers are read from participants when the reviewers key is absent.
+- id: bkt-identity-required
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_list_open_prs_refuses_identity_without_uuid_or_account_id
+  motivating_defect: An identity with neither uuid nor account_id can bucket nothing and is refused.
+- id: bkt-slug-alone
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_list_open_prs_passes_workspace_and_slug_alone
+  motivating_defect: bkt receives the slug alone; the workspace/slug form is the one that 404s.
+- id: bkt-rejects-owner-slash-name
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_list_open_prs_rejects_owner_slash_name
+  motivating_defect: A workspace/slug repo argument is refused before bkt is called.
+- id: bkt-rejects-empty
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_list_open_prs_rejects_empty_workspace_or_slug
+  motivating_defect: An empty workspace or slug is refused before bkt is called.
+- id: bkt-identity-fields
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_bkt_identity_reads_uuid_account_id_and_username
+  motivating_defect: bkt api /user yields uuid, account_id and username.
+- id: bkt-identity-failure
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_bkt_identity_reports_failure_not_anonymous
+  motivating_defect: A failed identity call reports the failure instead of an anonymous user.
+- id: bkt-identity-resolved
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_list_open_prs_resolves_identity_when_none_is_given
+  motivating_defect: The helper resolves the identity itself when the caller passes none.
+- id: bkt-identity-unresolvable
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_list_open_prs_is_unscanned_when_identity_cannot_be_resolved
+  motivating_defect: An unresolvable identity makes the queue unscanned, not empty.
+- id: bkt-404-reason
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_404_is_unscanned_with_the_stderr_reason
+  motivating_defect: A 404 is unscanned with bkt's stderr as the reason.
+- id: bkt-exit-code-named
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_nonzero_exit_without_stderr_names_the_exit_code
+  motivating_defect: A silent non-zero exit names the exit code as the reason.
+- id: bkt-unparseable
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_unparseable_json_is_unscanned
+  motivating_defect: An unparseable body is unscanned.
+- id: bkt-missing-key
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_json_without_pull_requests_key_is_unscanned
+  motivating_defect: A body without pull_requests is unscanned.
+- id: bkt-wrong-shape
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_pull_requests_as_string_is_unscanned
+  motivating_defect: A pull_requests value of the wrong shape is unscanned.
+- id: bkt-null-empty-queue
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_null_pull_requests_is_a_scanned_empty_queue
+  motivating_defect: A null pull_requests is a scanned empty queue.
+- id: bkt-empty-list-queue
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_empty_pull_requests_list_is_a_scanned_empty_queue
+  motivating_defect: An empty pull_requests list is a scanned empty queue.
+- id: bkt-timeout
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_timeout_is_unscanned
+  motivating_defect: A timeout is unscanned with the reason.
+- id: bkt-binary-missing
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_missing_bkt_binary_is_unscanned
+  motivating_defect: A missing bkt binary is unscanned with the reason.
+- id: bkt-age-days
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_age_days_handles_bitbucket_timestamps
+  motivating_defect: Bitbucket's microsecond timestamps yield the same age computation the scan uses.
+- id: shell-lane-boundary
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_shell_lane_boundary_is_stated_in_the_protocol_and_the_gate
+  motivating_defect: The gate cannot see a send inside a script file or a program piped to a shell; the protocol
+    and the docstring must state both boundaries.
+- id: heredoc-literal-not-a-send
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_literal_codex_queue_in_a_heredoc_body_is_not_a_send
+  motivating_defect: Intake 2026-09-09, an inert heredoc body spelling the command was blocked as a send
+    lacking a thread.
+- id: thread-values-as-data
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_thread_values_carried_as_data_are_never_selected
+  motivating_defect: A thread value in a heredoc body or a quoted argument to another command is data and
+    selects no target.
+- id: real-send-still-codex-lane
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_a_real_send_with_a_thread_is_still_the_codex_lane
+  motivating_defect: A direct send, behind env, nice, timeout, time, command, exec or coproc, or after other
+    commands, is still the codex lane with its thread.
+- id: nested-shell-send
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_a_nested_shell_string_send_is_still_detected
+  motivating_defect: A send inside a bash -c, sh -c, zsh -c or eval string is still detected.
+- id: quoted-substitution-send
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_a_send_inside_a_quoted_command_substitution_is_still_detected
+  motivating_defect: A send inside a $(...) or backtick substitution in double quotes was lost as part of
+    the word.
+- id: unquoted-heredoc-expansion
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_an_unquoted_heredoc_body_runs_its_substitutions
+  motivating_defect: A substitution in an unquoted-tag heredoc body runs; a quoted tag keeps the body literal.
+- id: here-string-shell
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_a_here_string_handed_to_a_shell_is_nested_execution
+  motivating_defect: A shell given its program on a here-string runs that program from the tool call's own text.
+- id: named-coprocess
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_a_named_coprocess_runs_the_group_that_follows_its_name
+  motivating_defect: The gate stopped at the coproc name, so a send in the brace group on the same line was
+    invisible.
+- id: nesting-bound-fails-closed
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_nesting_past_the_bound_is_gated_on_the_raw_words_not_crashed
+  motivating_defect: Seven hundred nested evals raised RecursionError, which the hook turned into a
+    non-blocking exit.
+- id: message-from-parsed-send
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_message_is_read_from_the_parsed_send_only
+  motivating_defect: The message is read from the parsed send's own argv, not from the first --message in
+    the text.
+- id: nested-send-end-to-end
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_nested_send_passes_the_gate_end_to_end_with_a_receipt
+  motivating_defect: A nested send with a receipt passes the whole gate; a literal heredoc beside it is
+    not logged.
+- id: unbalanced-quotes-raw-words
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_unbalanced_quotes_fail_closed_on_the_raw_words
+  motivating_defect: Text the shell would reject has no structure to judge, so its raw words decide and the
+    gate fails closed.
+- id: gate-process-fails-closed
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_gate_process_fails_closed_when_the_call_cannot_be_evaluated
+  motivating_defect: A crash in evaluation exited 1, which does not block; whatever evaluation raises now
+    blocks with exit 2 and the reason.
+- id: base-refusal-names-form
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_local_verification_base_is_rejected
+  motivating_defect: A refused base must name the accepted form, the value received and what it resolved to.
+- id: ambiguous-base-diagnosis
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_ambiguous_short_base_refusal_carries_git_diagnosis
+  motivating_defect: A short name shadowed by a local branch is refused with git's own ambiguity diagnosis and
+    an example that is not the refused value.
+- id: revision-expression-base
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_revision_expression_base_is_rejected
+  motivating_defect: A revision expression such as HEAD~0 resolves to a commit but to no single ref name and is
+    refused saying so.
+- id: hook-live-receipt-selectors
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_conformance.py::test_receipt_selectors_are_optional_and_hook_live_only
+  motivating_defect: Receipt selectors parse in any combination for hook-live and are refused by name for all.
+- id: optional-plan-absent
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-checkpoint/scripts/test_refresh.py::test_explicit_no_plan_declaration_is_absent_not_invalid
+  motivating_defect: A CONTEXT.md declaring no active plan beside a checklist link is optional absence, not a
+    blocking declaration.
+- id: shallow-clone-applicability
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_shallow_clone_cannot_establish_not_applicable
+  motivating_defect: A depth-1 clone cannot prove that no ancestor adopted structured state; the full clone is
+    the positive control.
+- id: merge-claim-anchors
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_skill_document_stays_within_repo_budget
+  motivating_defect: The rule that a merge request names the tested target head must live in SKILL.md and the
+    protocol reference within the line budget.
 - id: manifest
   control_class: acceptance-test
   expected_status: pass
@@ -175,30 +652,3 @@ cases:
   expected_status: pass
   fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_schema2_receipt_binds_transaction_and_git_state
   motivating_defect: Acceptance must bind the actual release transaction and Git state.
-- id: unknown-owned-project
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_owned_hook_unknown_project_cannot_be_not_applicable
-  motivating_defect: An explicitly claimed missing or unregistered project must not disappear from native
-    checkpoint obligations.
-- id: registry-registration
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_narrative_registry_id_cannot_establish_checkpoint_applicability
-  motivating_defect: Narrative text cannot establish a registered project for non-applicability.
-- id: anonymous-nonsynthesis
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_unrelated_projects_directory_does_not_require_synthesis_checkpoint
-  motivating_defect: Unrelated Git and non-Git projects directories must not acquire synthesis checkpoint
-    obligations.
-- id: retained-adoption
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_observer_retains_adoption_when_registry_and_state_are_deleted
-  motivating_defect: Deleted registry and state cannot erase established adoption.
-- id: observer-dependencies
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_observer_discovery_does_not_exonerate_unverifiable_dependencies
-  motivating_defect: Unreadable Git evidence or registry dependencies cannot prove that a project is unrelated.
