@@ -111,6 +111,44 @@ def assert_no_receipt(fixture: SimpleNamespace) -> None:
 
 
 @pytest.mark.parametrize("client", ["claude", "codex"])
+@pytest.mark.parametrize("git_repository", [False, True])
+@pytest.mark.parametrize("ordinary_index", [False, True])
+def test_unrelated_projects_directory_does_not_require_synthesis_checkpoint(observer, client, git_repository, ordinary_index):
+    root = observer.root / "ordinary-code"
+    project = root / "projects" / "app"
+    project.mkdir(parents=True)
+    (project / "main.py").write_text("print('fixture')\n")
+    if ordinary_index:
+        (project.parent / "index.yaml").write_text("application_modules:\n  - app\n")
+    if git_repository:
+        run("git", "init", "-b", "main", cwd=root)
+        run("git", "config", "user.name", "Fixture", cwd=root)
+        run("git", "config", "user.email", "fixture@example.invalid", cwd=root)
+        run("git", "add", ".", cwd=root)
+        run("git", "commit", "-m", "Fixture", cwd=root)
+    assert state._observer_project(project) is None
+    assert inspect(observer, event(observer, client, cwd=str(project))) == ("NOT_APPLICABLE", [])
+    assert not (project / state.STATE_FILE).exists()
+    assert_no_receipt(observer)
+
+
+@pytest.mark.parametrize("deletion", ["unstaged", "staged", "committed"])
+@pytest.mark.parametrize("client", ["claude", "codex"])
+def test_observer_retains_adoption_when_registry_and_state_are_deleted(observer, deletion, client):
+    (observer.project / state.STATE_FILE).unlink()
+    (observer.project.parent / "index.yaml").unlink()
+    # Exercise retained Git evidence without relying on a compiled marker.
+    (observer.project / "CONTEXT.md").write_text("# Context\n")
+    if deletion in {"staged", "committed"}:
+        run("git", "add", "-u", cwd=observer.repo)
+    if deletion == "committed":
+        run("git", "commit", "-m", "Fixture", cwd=observer.repo)
+    verdict, _issues = inspect(observer, event(observer, client))
+    assert verdict not in {"PASS", "NOT_APPLICABLE"}
+    assert_no_receipt(observer)
+
+
+@pytest.mark.parametrize("client", ["claude", "codex"])
 def test_clean_native_observer_has_no_checkpoint_authority(observer: SimpleNamespace, client: str, monkeypatch: pytest.MonkeyPatch) -> None:
     before = {path: path.read_bytes() for path in observer.project.rglob("*") if path.is_file()}
     board_before = observer.board.read_bytes()
