@@ -763,3 +763,96 @@ def test_failed_dependency_introduction_restores_anchors_and_absence(day_end_his
     after = snapshot(machine.home)
     assert {path: after[path] for path in before} == before
     machine.receipts.assert_current()
+
+
+CLAIM_DEPENDENCY = "skills/synthesis-project-management/scripts/claim_scope.py"
+
+
+@pytest.fixture
+def pre_claim_bundle(tmp_path):
+    """A released standalone bundle whose installed closure predates the helper."""
+    from types import SimpleNamespace
+    old = tmp_path / "old"
+    descriptor = release(old, "1.0.0", omit=(CLAIM_DEPENDENCY,))
+    current = tmp_path / "current"
+    subprocess.run(["git", "clone", str(old), str(current)], check=True, capture_output=True)
+    fixture_git(current, "config", "user.name", "Fixture")
+    fixture_git(current, "config", "user.email", "fixture@example.invalid")
+    source = Path(runtime.__file__).resolve().parents[3]
+    for relative in SOURCE_FILES["git-hooks"]:
+        (current / relative).write_bytes((source / relative).read_bytes())
+    for client in ("claude", "codex"):
+        (current / ("." + client + "-plugin/plugin.json")).write_text(json.dumps({
+            "name": "synthesis-skills", "version": "1.0.1",
+        }))
+    fixture_git(current, "add", ".")
+    fixture_git(current, "commit", "-qm", "Fixture")
+    fixture_git(current, "tag", "v1.0.1")
+    home = tmp_path / "home"
+    state = home / ".local/state/synthesis"
+    for relative, (target, mode) in SOURCE_FILES["git-hooks"].items():
+        if relative == CLAIM_DEPENDENCY:
+            continue
+        path = home / target
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes((old / relative).read_bytes())
+        path.chmod(mode)
+    pointer = home / ".synthesis/git-hooks/source-path"
+    pointer.write_text(str(old / "skills/synthesis-git-hooks/scripts") + "\n")
+    pointer.chmod(0o644)
+    return SimpleNamespace(current=current, old=old, descriptor=descriptor, home=home,
+        state=state, receipts=Receipts(state / "receipts.json"), pointer=pointer,
+        helper=home / SOURCE_FILES["git-hooks"][CLAIM_DEPENDENCY][0])
+
+
+def claim_bundle_plan(machine, proof="descriptor"):
+    kwargs = {"legacy_releases": [(machine.old, machine.descriptor)]} if proof == "descriptor" else {
+        "legacy_git_root": machine.current,
+    }
+    return runtime.plan(machine.current, machine.home, machine.state, {"git-hooks"},
+                        machine.receipts.data, **kwargs)
+
+
+@pytest.mark.parametrize("proof", ["descriptor", "history"])
+def test_pre_helper_bundle_upgrade_proves_old_pointer_and_executes_new_closure(pre_claim_bundle, proof):
+    machine = pre_claim_bundle
+    assert not machine.helper.exists()
+    runtime.apply(claim_bundle_plan(machine, proof), machine.receipts)
+    assert machine.helper.read_bytes() == (machine.current / CLAIM_DEPENDENCY).read_bytes()
+    assert machine.helper.stat().st_mode & 0o777 == 0o755
+    assert machine.pointer.read_text().strip() == str(machine.current / "skills/synthesis-git-hooks/scripts")
+    result = subprocess.run([sys.executable, "-B", "-c",
+        "import coordination; assert coordination.overlaps('release-train:fixture', 'release-train:fixture')"],
+        cwd=machine.helper.parent, capture_output=True, text=True, timeout=15,
+        env={**os.environ, "HOME": str(machine.home)})
+    assert result.returncode == 0, result.stderr
+    assert all(row["status"] == "current" for row in runtime.verify(claim_bundle_plan(machine, proof)))
+
+
+@pytest.mark.parametrize("damage", ["missing-engine", "modified-engine", "missing-hook", "modified-hook", "unrelated-pointer"])
+def test_claim_helper_introduction_requires_released_companion_anchors(pre_claim_bundle, damage):
+    machine = pre_claim_bundle
+    if damage == "unrelated-pointer":
+        machine.pointer.write_text(str(machine.home / "unrelated/scripts") + "\n")
+    else:
+        target = machine.helper.with_name("coordination.py" if damage.endswith("engine") else "pre-commit")
+        if damage.startswith("missing"):
+            target.unlink()
+        else:
+            target.write_text("independent local changes\n")
+    before = snapshot(machine.home)
+    with pytest.raises(ContractError):
+        claim_bundle_plan(machine)
+    assert snapshot(machine.home) == before
+    assert not machine.helper.exists()
+
+
+def test_failed_claim_helper_introduction_restores_old_bundle_and_absence(pre_claim_bundle):
+    machine = pre_claim_bundle
+    before = snapshot(machine.home)
+    with pytest.raises(ContractError, match="doctor failed"):
+        runtime.apply(claim_bundle_plan(machine), machine.receipts, verify_after=lambda: False)
+    after = snapshot(machine.home)
+    assert {path: after[path] for path in before} == before
+    assert not machine.helper.exists()
+    machine.receipts.assert_current()
