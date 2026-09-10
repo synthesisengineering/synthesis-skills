@@ -810,14 +810,17 @@ def test_overlap_detects_relative_and_absolute_spellings_of_one_path() -> None:
     assert MODULE.overlaps(
         "ai-knowledge-demo/projects/index.yaml",
         "/home/user/workspaces/demo/ai-knowledge-demo/projects/index.yaml",
+        left_workspaces=["/home/user/workspaces/demo/ai-knowledge-demo @ main"],
     )
     assert MODULE.overlaps(
         "/home/user/workspaces/demo/ai-knowledge-demo/projects/**",
         "ai-knowledge-demo/projects/index.yaml",
+        right_workspaces=["/home/user/workspaces/demo/ai-knowledge-demo @ main"],
     )
     assert MODULE.overlaps(
         "ai-knowledge-demo/projects/demo-project/sessions/2026-07.md",
         "/home/user/workspaces/demo/ai-knowledge-demo/projects/**",
+        left_workspaces=["/home/user/workspaces/demo/ai-knowledge-demo @ main"],
     )
 
 
@@ -2572,3 +2575,26 @@ def test_virtual_resources_never_use_filesystem_identity(metadata_worktrees, tmp
     scope = scope_module()
     assert scope.claim_conflicts("release-train:fixture", area) is (expected == 10)
     assert scope.claim_conflicts(area, "release-train:fixture") is (expected == 10)
+
+
+def test_public_overlap_api_uses_shared_logical_metadata_policy(metadata_worktrees):
+    root, sibling = metadata_worktrees
+    assert MODULE.overlaps(str(root / "projects/index.yaml"), str(sibling / "projects/index.yaml"))
+    assert not MODULE.overlaps(str(root / "src/main.py"), str(sibling / "src/main.py"))
+
+
+@pytest.mark.parametrize("pattern", ["**", "pr?jects/index.yaml", "projects/index.yaml"])
+def test_metadata_namespace_is_relative_to_git_root_not_ancestor_names(tmp_path, pattern):
+    parent = tmp_path / "projects" / "container"
+    parent.mkdir(parents=True)
+    root = staged_repository(parent)
+    (root / "projects").mkdir()
+    (root / "projects/index.yaml").write_text("projects: []\n")
+    assert git(root, "add", ".").returncode == 0
+    assert git(root, "commit", "-m", "Fixture").returncode == 0
+    sibling = tmp_path / "outside-linked"
+    assert git(root, "worktree", "add", "-b", "sibling", str(sibling)).returncode == 0
+    scope = scope_module()
+    left, right = str(root / pattern), str(sibling / "projects/index.yaml")
+    assert scope.claim_conflicts(left, right)
+    assert scope.claim_conflicts(right, left)
