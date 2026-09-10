@@ -2537,6 +2537,12 @@ def test_shared_scope_preserves_physical_synthetic_paths_and_row_delimiters(tmp_
     assert scope.split_values("`one`; **two**<br>three, four") == ["one", "two", "three", "four"]
 
 
+def test_relative_source_scope_does_not_inherit_the_invoking_checkout():
+    scope = scope_module()
+    assert not scope.claim_conflicts("repo/src/a.py", "repo/src/b.py")
+    assert scope.claim_conflicts("repo/src/**", "repo/src/b.py")
+
+
 @pytest.mark.parametrize("register_sibling", [False, True])
 def test_logical_metadata_conflict_never_authorizes_sibling_checkout(metadata_worktrees, tmp_path, capsys, register_sibling):
     root, sibling = metadata_worktrees
