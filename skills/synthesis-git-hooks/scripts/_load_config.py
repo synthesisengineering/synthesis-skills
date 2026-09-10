@@ -55,7 +55,7 @@ import warnings
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-SIDECAR_VERSION = "2.4.0"
+SIDECAR_VERSION = "2.4.1"
 REQUIRED_CONFIG_VERSION = 2
 
 DEFAULT_CONFIG = Path.home() / ".synthesis" / "git-hook-config.yaml"
