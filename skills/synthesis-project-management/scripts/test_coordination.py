@@ -2598,3 +2598,48 @@ def test_metadata_namespace_is_relative_to_git_root_not_ancestor_names(tmp_path,
     left, right = str(root / pattern), str(sibling / "projects/index.yaml")
     assert scope.claim_conflicts(left, right)
     assert scope.claim_conflicts(right, left)
+
+
+@pytest.mark.parametrize("name", ["git-hooks", "agent-control"])
+def test_existing_nonrepo_runtime_scope_can_be_admitted_beside_metadata(metadata_worktrees, tmp_path, name):
+    root, _ = metadata_worktrees
+    runtime = tmp_path / "home/.synthesis" / name
+    runtime.mkdir(parents=True)
+    metadata = str(root / "projects/index.yaml")
+    scope = scope_module()
+    assert not scope.claim_conflicts(metadata, str(runtime))
+    assert not scope.claim_conflicts(str(runtime), metadata)
+    board = tmp_path / "board.md"
+    assert MODULE.command_claim(claim_args(board, session_id="A", project="first",
+        workspace=f"{root} @ main", area=metadata)) == 0
+    assert MODULE.command_claim(claim_args(board, session_id="B", project="runtime",
+        workspace=f"{root} @ main", area=str(runtime))) == 0
+
+
+def test_nonrepo_ancestor_containing_linked_checkout_still_conflicts(metadata_worktrees, tmp_path):
+    root, _ = metadata_worktrees
+    ancestor = tmp_path / "installation-container"
+    ancestor.mkdir()
+    assert git(root, "worktree", "add", "-b", "nested", str(ancestor / "linked")).returncode == 0
+    scope = scope_module()
+    metadata = str(root / "projects/index.yaml")
+    assert scope.claim_conflicts(metadata, str(ancestor))
+    assert scope.claim_conflicts(str(ancestor), metadata)
+
+
+@pytest.mark.parametrize("form", ["missing", "metadata", "glob", "broken-git"])
+def test_nonrepo_scope_exception_never_hides_unresolved_metadata_identity(metadata_worktrees, tmp_path, form):
+    root, _ = metadata_worktrees
+    area = tmp_path / "ordinary"
+    area.mkdir()
+    if form == "missing":
+        area /= "missing"
+    elif form == "metadata":
+        area /= "projects/item"
+        area.mkdir(parents=True)
+    elif form == "glob":
+        area /= "**"
+    else:
+        (area / ".git").write_text("gitdir: /missing-fixture-git\n")
+    with pytest.raises(scope_module().ClaimIdentityError):
+        scope_module().claim_conflicts(str(root / "projects/index.yaml"), str(area))
