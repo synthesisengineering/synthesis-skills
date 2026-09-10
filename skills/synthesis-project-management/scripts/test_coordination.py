@@ -2601,10 +2601,13 @@ def test_metadata_namespace_is_relative_to_git_root_not_ancestor_names(tmp_path,
 
 
 @pytest.mark.parametrize("name", ["git-hooks", "agent-control"])
-def test_existing_nonrepo_runtime_scope_can_be_admitted_beside_metadata(metadata_worktrees, tmp_path, name):
+@pytest.mark.parametrize("recursive", [False, True])
+def test_existing_nonrepo_runtime_scope_can_be_admitted_beside_metadata(metadata_worktrees, tmp_path, name, recursive):
     root, _ = metadata_worktrees
     runtime = tmp_path / "home/.synthesis" / name
     runtime.mkdir(parents=True)
+    if recursive:
+        runtime /= "**"
     metadata = str(root / "projects/index.yaml")
     scope = scope_module()
     assert not scope.claim_conflicts(metadata, str(runtime))
@@ -2613,14 +2616,17 @@ def test_existing_nonrepo_runtime_scope_can_be_admitted_beside_metadata(metadata
     assert MODULE.command_claim(claim_args(board, session_id="A", project="first",
         workspace=f"{root} @ main", area=metadata)) == 0
     assert MODULE.command_claim(claim_args(board, session_id="B", project="runtime",
-        workspace=f"{root} @ main", area=str(runtime))) == 0
+        workspace=f"{tmp_path / 'home'} @ runtime", area=str(runtime))) == 0
 
 
-def test_nonrepo_ancestor_containing_linked_checkout_still_conflicts(metadata_worktrees, tmp_path):
+@pytest.mark.parametrize("recursive", [False, True])
+def test_nonrepo_ancestor_containing_linked_checkout_still_conflicts(metadata_worktrees, tmp_path, recursive):
     root, _ = metadata_worktrees
     ancestor = tmp_path / "installation-container"
     ancestor.mkdir()
     assert git(root, "worktree", "add", "-b", "nested", str(ancestor / "linked")).returncode == 0
+    if recursive:
+        ancestor /= "**"
     scope = scope_module()
     metadata = str(root / "projects/index.yaml")
     assert scope.claim_conflicts(metadata, str(ancestor))
@@ -2638,7 +2644,7 @@ def test_nonrepo_scope_exception_never_hides_unresolved_metadata_identity(metada
         area /= "projects/item"
         area.mkdir(parents=True)
     elif form == "glob":
-        area /= "**"
+        area /= "*/**"
     else:
         (area / ".git").write_text("gitdir: /missing-fixture-git\n")
     with pytest.raises(scope_module().ClaimIdentityError):
