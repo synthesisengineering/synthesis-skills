@@ -160,6 +160,31 @@ def test_owned_hook_unknown_project_cannot_be_not_applicable(machine, monkeypatc
     assert not receipts.exists()
 
 
+@pytest.mark.parametrize("depth", [1, None])
+def test_shallow_clone_cannot_establish_not_applicable(machine, tmp_path, depth):
+    """A depth-1 clone cannot prove that no ancestor ever adopted structured state.
+
+    NOT_APPLICABLE rests on complete local history showing no adoption; a
+    shallow clone truncates that history, so applicability is refused instead
+    of reported clean. The full clone of the same remote is the positive control.
+    """
+    remote = "file://" + str(tmp_path / "remote.git")
+    clone = tmp_path / ("shallow" if depth else "full")
+    options = ["--quiet", "-c", f"core.hooksPath={tmp_path / 'fixture-hooks'}"]
+    if depth:
+        options += ["--depth", str(depth)]
+    run("git", "clone", *options, remote, str(clone), cwd=tmp_path)
+    project = clone / "projects" / "alpha"
+    assert not (project / state.STATE_FILE).exists()
+    if depth:
+        assert run("git", "rev-parse", "--is-shallow-repository", cwd=clone) == "true"
+        with pytest.raises(state.ProjectStateError, match="complete local adoption history"):
+            state.checkpoint_applicability(project)
+    else:
+        assert run("git", "rev-parse", "--is-shallow-repository", cwd=clone) == "false"
+        assert state.checkpoint_applicability(project)[0] == "NOT_APPLICABLE"
+
+
 def test_narrative_registry_id_cannot_establish_checkpoint_applicability(machine, capsys):
     repo, _, _, _ = machine
     (repo / "projects/index.yaml").write_text("notes: |\n  id: alpha\nprojects:\n  - id: beta\n")
