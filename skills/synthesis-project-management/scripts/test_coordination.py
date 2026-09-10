@@ -810,14 +810,17 @@ def test_overlap_detects_relative_and_absolute_spellings_of_one_path() -> None:
     assert MODULE.overlaps(
         "ai-knowledge-demo/projects/index.yaml",
         "/home/user/workspaces/demo/ai-knowledge-demo/projects/index.yaml",
+        left_workspaces=["/home/user/workspaces/demo/ai-knowledge-demo @ main"],
     )
     assert MODULE.overlaps(
         "/home/user/workspaces/demo/ai-knowledge-demo/projects/**",
         "ai-knowledge-demo/projects/index.yaml",
+        right_workspaces=["/home/user/workspaces/demo/ai-knowledge-demo @ main"],
     )
     assert MODULE.overlaps(
         "ai-knowledge-demo/projects/demo-project/sessions/2026-07.md",
         "/home/user/workspaces/demo/ai-knowledge-demo/projects/**",
+        left_workspaces=["/home/user/workspaces/demo/ai-knowledge-demo @ main"],
     )
 
 
@@ -2335,7 +2338,7 @@ def test_every_command_notes_a_newer_installed_engine(tmp_path):
     relative = Path("skills") / "synthesis-project-management" / "scripts"
     older = cache / "4.80.0" / relative
     older.mkdir(parents=True)
-    for name in ("coordination.py", "coordination_schema.py", "pointer_lock.py", "peer_addressing.py"):
+    for name in ("coordination.py", "claim_scope.py", "coordination_schema.py", "pointer_lock.py", "peer_addressing.py"):
         (older / name).write_bytes((MODULE_PATH.parent / name).read_bytes())
     newer = cache / "4.81.0" / relative
     newer.mkdir(parents=True)
@@ -2431,3 +2434,229 @@ def test_invalid_explicit_report_registry_cannot_use_free_address(tmp_path, caps
     assert MODULE.command_message(message) == 10
     assert board.read_bytes() == before
     assert "recipient" in capsys.readouterr().err
+
+
+@pytest.fixture
+def metadata_worktrees(tmp_path):
+    root = staged_repository(tmp_path)
+    for name in ("projects/index.yaml", "projects/item/CONTEXT.md", "projects/item/REFERENCE.md",
+                 "projects/item/CURRENT_STATE.json", "projects/item/resources/a.md", "src/main.py"):
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("Fixture\n")
+    assert git(root, "add", ".").returncode == 0
+    assert git(root, "commit", "-m", "Fixture").returncode == 0
+    sibling = tmp_path / "sibling"
+    assert git(root, "worktree", "add", "-b", "sibling", str(sibling)).returncode == 0
+    return root, sibling
+
+
+def scope_module():
+    import claim_scope
+    return claim_scope
+
+
+def test_logical_metadata_claim_is_refused_before_board_admission(metadata_worktrees, tmp_path):
+    root, sibling = metadata_worktrees
+    board = tmp_path / "board.md"
+    first = claim_args(board, session_id="A", project="first", workspace=f"{root} @ main", area=f"{root}/projects/index.yaml")
+    second = claim_args(board, session_id="B", project="second", workspace=f"{sibling} @ sibling", area=f"{sibling}/projects/index.yaml")
+    assert MODULE.command_claim(first) == 0
+    before = board.read_bytes()
+    assert MODULE.command_claim(second) == 10
+    assert board.read_bytes() == before
+
+
+@pytest.mark.parametrize("left,right,expected", [
+    ("projects/index.yaml", "projects/index.yaml", True),
+    ("projects/item/CONTEXT.md", "projects/item/CONTEXT.md", True),
+    ("projects/item/CURRENT_STATE.json", "projects/item/CURRENT_STATE.json", True),
+    ("projects/item/CONTEXT.md", "projects/item/REFERENCE.md", False),
+    ("projects/item/resources/a.md", "projects/item/resources/b.md", False),
+    ("projects/item/**", "projects/item/REFERENCE.md", True),
+    ("projects/**", "projects/index.yaml", True),
+    ("**", "projects/index.yaml", True),
+    ("projects/*/CONTEXT.md", "projects/item/REFERENCE.md", False),
+    ("projects/*/CONTEXT.md", "projects/item/CONTEXT.md", True),
+    ("projects/item/resources/*.md", "projects/item/resources/*.py", False),
+    ("projects/item/resources/[ab].md", "projects/item/resources/[bc].md", True),
+    ("projects/item/resources/[ab].md", "projects/item/resources/[cd].md", False),
+    ("projects/item/resources/*.md", "projects/item/resources/nested/a.md", False),
+    ("projects/item/resources/**/*.md", "projects/item/resources/nested/a.md", True),
+    ("projects/item", "projects/item-other/CONTEXT.md", False),
+    ("src/main.py", "src/main.py", False),
+    ("src/**", "src/**", False),
+])
+def test_shared_claim_scope_is_symmetric_and_preserves_disjoint_work(metadata_worktrees, left, right, expected):
+    root, sibling = metadata_worktrees
+    scope = scope_module()
+    left, right = str(root / left), str(sibling / right)
+    assert scope.claim_conflicts(left, right) is expected
+    assert scope.claim_conflicts(right, left) is expected
+
+
+def test_metadata_relative_and_symlink_spellings_use_verified_checkout(metadata_worktrees, tmp_path):
+    root, sibling = metadata_worktrees
+    scope = scope_module()
+    alias = tmp_path / "alias"
+    alias.symlink_to(sibling, target_is_directory=True)
+    assert scope.claim_conflicts("projects/index.yaml", str(alias / "projects/index.yaml"), left_workspaces=[f"{root} @ main"])
+    assert scope.claim_conflicts(f"{root.name}/projects/index.yaml", "projects/index.yaml",
+        left_workspaces=[f"{root} @ main"], right_workspaces=[f"{alias} @ sibling"])
+
+
+@pytest.mark.parametrize("kind", ["missing", "ambiguous", "forged"])
+def test_metadata_identity_failure_cannot_be_treated_as_disjoint(metadata_worktrees, tmp_path, kind):
+    root, sibling = metadata_worktrees
+    scope = scope_module()
+    claim = str(tmp_path / "missing/projects/index.yaml")
+    workspaces = []
+    if kind == "ambiguous":
+        claim = "projects/index.yaml"
+        workspaces = [f"{root} @ main", f"{sibling} @ sibling"]
+    elif kind == "forged":
+        fake = tmp_path / "forged"
+        fake.mkdir()
+        (fake / ".git").write_text(f"gitdir: {root / '.git'}\n")
+        claim = str(fake / "projects/index.yaml")
+    with pytest.raises(scope.ClaimIdentityError):
+        scope.claim_conflicts(str(root / "projects/index.yaml"), claim, right_workspaces=workspaces)
+
+
+def test_possible_repair_scope_is_explicitly_broader_than_exact_resource_claims(metadata_worktrees):
+    root, sibling = metadata_worktrees
+    scope = scope_module()
+    assert not scope.claim_conflicts(str(root / "projects/item/resources/a.md"), str(sibling / "projects/item/resources/b.md"))
+    assert scope.project_claim_overlap(root / "projects/item", str(sibling / "projects/item/resources/b.md"))
+    assert scope.project_claim_overlap(root / "projects/item", str(sibling / "projects/index.yaml"))
+    assert not scope.project_claim_overlap(root / "projects/item", str(sibling / "projects/another/CONTEXT.md"))
+
+
+def test_shared_scope_preserves_physical_synthetic_paths_and_row_delimiters(tmp_path):
+    scope = scope_module()
+    assert scope.claim_conflicts(str(tmp_path / "projects/item/**"), str(tmp_path / "projects/item/CONTEXT.md"))
+    assert not scope.claim_conflicts(str(tmp_path / "projects/first/CONTEXT.md"), str(tmp_path / "projects/second/CONTEXT.md"))
+    assert not scope.claim_conflicts("/missing/branch-a/src/**", "/missing/branch-b/src/**")
+    assert scope.split_values("`one`; **two**<br>three, four") == ["one", "two", "three", "four"]
+
+
+def test_relative_source_scope_does_not_inherit_the_invoking_checkout():
+    scope = scope_module()
+    assert not scope.claim_conflicts("repo/src/a.py", "repo/src/b.py")
+    assert scope.claim_conflicts("repo/src/**", "repo/src/b.py")
+
+
+@pytest.mark.parametrize("register_sibling", [False, True])
+def test_logical_metadata_conflict_never_authorizes_sibling_checkout(metadata_worktrees, tmp_path, capsys, register_sibling):
+    root, sibling = metadata_worktrees
+    board = tmp_path / "board.md"
+    request = claim_args(board, session_id="A", project="item", workspace=f"{root} @ main", area=f"{root}/projects/item/CONTEXT.md")
+    if register_sibling:
+        request.workspace.append(f"{sibling} @ sibling")
+    assert MODULE.command_claim(request) == 0
+    (sibling / "projects/item/CONTEXT.md").write_text("Changed fixture\n")
+    assert git(sibling, "add", "projects/item/CONTEXT.md").returncode == 0
+    capsys.readouterr()
+    assert MODULE.command_check_staged(check_staged_args(board, sibling)) == 10
+    result = json.loads(capsys.readouterr().out)
+    assert result["enforcement_outcome"] == ("refused-outside-claim" if register_sibling else "refused-unregistered-worktree")
+    assert not result["issues_authority_receipt"]
+
+
+@pytest.mark.parametrize("second,expected", [("metadata", 0), ("release-train:other", 0), ("release-train:fixture", 10)])
+def test_virtual_resources_never_use_filesystem_identity(metadata_worktrees, tmp_path, second, expected):
+    root, sibling = metadata_worktrees
+    board = tmp_path / "board.md"
+    first = claim_args(board, session_id="A", project="first", workspace=f"{root} @ main", area="release-train:fixture")
+    area = str(sibling / "projects/index.yaml") if second == "metadata" else second
+    later = claim_args(board, session_id="B", project="second", workspace=f"{sibling} @ sibling", area=area)
+    assert MODULE.command_claim(first) == 0
+    assert MODULE.command_claim(later) == expected
+    scope = scope_module()
+    assert scope.claim_conflicts("release-train:fixture", area) is (expected == 10)
+    assert scope.claim_conflicts(area, "release-train:fixture") is (expected == 10)
+
+
+def test_public_overlap_api_uses_shared_logical_metadata_policy(metadata_worktrees):
+    root, sibling = metadata_worktrees
+    assert MODULE.overlaps(str(root / "projects/index.yaml"), str(sibling / "projects/index.yaml"))
+    assert not MODULE.overlaps(str(root / "src/main.py"), str(sibling / "src/main.py"))
+
+
+@pytest.mark.parametrize("pattern", ["**", "pr?jects/index.yaml", "projects/index.yaml"])
+def test_metadata_namespace_is_relative_to_git_root_not_ancestor_names(tmp_path, pattern):
+    parent = tmp_path / "projects" / "container"
+    parent.mkdir(parents=True)
+    root = staged_repository(parent)
+    (root / "projects").mkdir()
+    (root / "projects/index.yaml").write_text("projects: []\n")
+    assert git(root, "add", ".").returncode == 0
+    assert git(root, "commit", "-m", "Fixture").returncode == 0
+    sibling = tmp_path / "outside-linked"
+    assert git(root, "worktree", "add", "-b", "sibling", str(sibling)).returncode == 0
+    scope = scope_module()
+    left, right = str(root / pattern), str(sibling / "projects/index.yaml")
+    assert scope.claim_conflicts(left, right)
+    assert scope.claim_conflicts(right, left)
+
+
+@pytest.mark.parametrize("name", ["git-hooks", "agent-control"])
+@pytest.mark.parametrize("recursive", [False, True])
+def test_existing_nonrepo_runtime_scope_can_be_admitted_beside_metadata(metadata_worktrees, tmp_path, name, recursive):
+    root, _ = metadata_worktrees
+    runtime = tmp_path / "home/.synthesis" / name
+    runtime.mkdir(parents=True)
+    if recursive:
+        runtime /= "**"
+    metadata = str(root / "projects/index.yaml")
+    scope = scope_module()
+    assert not scope.claim_conflicts(metadata, str(runtime))
+    assert not scope.claim_conflicts(str(runtime), metadata)
+    board = tmp_path / "board.md"
+    assert MODULE.command_claim(claim_args(board, session_id="A", project="first",
+        workspace=f"{root} @ main", area=metadata)) == 0
+    assert MODULE.command_claim(claim_args(board, session_id="B", project="runtime",
+        workspace=f"{tmp_path / 'home'} @ runtime", area=str(runtime))) == 0
+
+
+@pytest.mark.parametrize("recursive", [False, True])
+def test_nonrepo_ancestor_containing_linked_checkout_still_conflicts(metadata_worktrees, tmp_path, recursive):
+    root, _ = metadata_worktrees
+    ancestor = tmp_path / "installation-container"
+    ancestor.mkdir()
+    assert git(root, "worktree", "add", "-b", "nested", str(ancestor / "linked")).returncode == 0
+    if recursive:
+        ancestor /= "**"
+    scope = scope_module()
+    metadata = str(root / "projects/index.yaml")
+    assert scope.claim_conflicts(metadata, str(ancestor))
+    assert scope.claim_conflicts(str(ancestor), metadata)
+
+
+@pytest.mark.parametrize("relative", [".gitconfig", ".codex/config.toml", ".synthesis/references/session-words.txt"])
+def test_existing_nonrepo_runtime_files_are_disjoint_from_metadata(metadata_worktrees, tmp_path, relative):
+    root, _ = metadata_worktrees
+    runtime = tmp_path / "home" / relative
+    runtime.parent.mkdir(parents=True, exist_ok=True)
+    runtime.write_text("test-owned runtime configuration\n")
+    metadata = str(root / "projects/index.yaml")
+    assert not scope_module().claim_conflicts(metadata, str(runtime))
+    assert not scope_module().claim_conflicts(str(runtime), metadata)
+
+
+@pytest.mark.parametrize("form", ["missing", "metadata", "glob", "broken-git"])
+def test_nonrepo_scope_exception_never_hides_unresolved_metadata_identity(metadata_worktrees, tmp_path, form):
+    root, _ = metadata_worktrees
+    area = tmp_path / "ordinary"
+    area.mkdir()
+    if form == "missing":
+        area /= "missing"
+    elif form == "metadata":
+        area /= "projects/item"
+        area.mkdir(parents=True)
+    elif form == "glob":
+        area /= "*/**"
+    else:
+        (area / ".git").write_text("gitdir: /missing-fixture-git\n")
+    with pytest.raises(scope_module().ClaimIdentityError):
+        scope_module().claim_conflicts(str(root / "projects/index.yaml"), str(area))

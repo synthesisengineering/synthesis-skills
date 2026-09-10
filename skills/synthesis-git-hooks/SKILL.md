@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.4.0"
+  version: "2.4.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -217,7 +217,7 @@ synthesis-git-hooks/
     └── per-repo-overrides.md         # delegation to repo-local .githooks
 ```
 
-The installer also copies `coordination.py`, `coordination_schema.py`,
+The installer also copies `coordination.py`, `claim_scope.py`, `coordination_schema.py`,
 `pointer_lock.py`, `peer_addressing.py`, and the versioned session-word asset from the declared
 `synthesis-project-management` dependency into the shared runtime. Their
 canonical source remains in that owning skill; the git-hooks doctor compares

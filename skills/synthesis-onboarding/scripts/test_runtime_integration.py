@@ -33,7 +33,7 @@ GIT_PAYLOADS = {
     **{"skills/synthesis-git-hooks/scripts/" + name: (".synthesis/git-hooks/" + name, 0o755)
        for name in ("pre-commit", "commit-msg", "_load_config.py")},
     **{"skills/synthesis-project-management/scripts/" + name: (".synthesis/git-hooks/" + name, 0o755)
-       for name in ("coordination.py", "coordination_schema.py", "pointer_lock.py", "peer_addressing.py")},
+       for name in ("coordination.py", "claim_scope.py", "coordination_schema.py", "pointer_lock.py", "peer_addressing.py")},
     "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85":
         (".synthesis/references/session-words-v1.txt.zlib.b85", 0o644),
 }
@@ -199,7 +199,7 @@ def test_public_update_refreshes_independently_wired_runtime_and_preserves_perso
     assert receipt["layer_choices"] == machine.original_receipt["layer_choices"]
     assert receipt["component_choices"] == machine.original_receipt["component_choices"]
     assert receipt["generated_files"] == {}, "independent refresh must not invent uninstall ownership"
-    assert len(receipt["runtime_payloads"]["files"]) == 9
+    assert len(receipt["runtime_payloads"]["files"]) == 10
     assert onboard._protective_doctors({"git-hooks"})[0] is True
     assert phase(machine, verify_only=True).exit_code() == 0
 

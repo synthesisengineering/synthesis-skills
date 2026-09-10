@@ -102,6 +102,7 @@ def inbox_project(tmp_path: Path, monkeypatch):
         return next(row for row in coordination.rows(board.read_text(encoding="utf-8"))
                     if row.project == project_name)
 
+    (tmp_path / "sender-project").mkdir()
     sender = claim("sender-project", "codex:22222222-2222-4222-8222-222222222222")
     recipient = claim(project.name, SESSION_REF)
     for target, message in ((recipient.compact_id, DIRECT_MESSAGE),

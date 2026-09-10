@@ -25,6 +25,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from pointer_lock import locked_pointer
+import claim_scope
 from peer_addressing import (
     CLIENT_CODEX,
     SelfIdentity,
@@ -232,8 +233,7 @@ def template() -> str:
 
 
 def plain(value: str) -> str:
-    without_bold = re.sub(r"\*\*(.+?)\*\*", r"\1", value)
-    return re.sub(r"`(.+?)`", r"\1", without_bold).strip()
+    return claim_scope.plain(value)
 
 
 def sanitize(value: str) -> str:
@@ -241,73 +241,17 @@ def sanitize(value: str) -> str:
 
 
 def split_values(value: str) -> list[str]:
-    clean = plain(value)
-    if not clean or clean.lower().startswith("released"):
-        return []
-    # Semicolons appear in hand-migrated rows; treating them as content would
-    # fuse several claims into one unmatchable string and silently disable
-    # overlap detection for that row.
-    return [
-        item.strip()
-        for item in re.split(r"[,;]|<br\s*/?>", clean)
-        if item.strip()
-    ]
+    return claim_scope.split_values(value)
 
 
-def claim_prefix(claim: str) -> str:
-    marker = len(claim)
-    for token in ("*", "?", "["):
-        position = claim.find(token)
-        if position >= 0:
-            marker = min(marker, position)
-    return claim[:marker].rstrip("/")
-
-
-def claim_segments(claim: str) -> tuple[bool, list[str]]:
-    prefix = claim_prefix(claim)
-    if not prefix:
-        return True, []
-    expanded = os.path.expanduser(prefix)
-    absolute = expanded.startswith("/")
-    segments = [part for part in expanded.strip("/").split("/") if part]
-    return absolute, segments
-
-
-def overlaps(left: str, right: str) -> bool:
-    """Conflict test for two claim globs.
-
-    Claims arrive in mixed spellings — absolute, ``~``-prefixed, and
-    repository-relative — and two spellings of one real path must still
-    conflict. Same-form claims overlap on segment-boundary containment.
-    A relative claim overlaps an absolute one when its segment run aligns
-    anywhere inside the absolute claim through the end of either claim;
-    that alignment can flag unrelated trees that share segment names, and
-    the protocol prefers that false conflict (resolved by re-scoping to
-    absolute claims) over silently missing a real one.
-    """
-    left_absolute, left_segments = claim_segments(left)
-    right_absolute, right_segments = claim_segments(right)
-    if not left_segments or not right_segments:
-        return True
-    if left_absolute == right_absolute:
-        shorter, longer = sorted(
-            (left_segments, right_segments), key=len
-        )
-        return longer[: len(shorter)] == shorter
-    absolute_segments = left_segments if left_absolute else right_segments
-    relative_segments = right_segments if left_absolute else left_segments
-    for start in range(len(absolute_segments)):
-        length = min(len(relative_segments), len(absolute_segments) - start)
-        if absolute_segments[start : start + length] == relative_segments[:length]:
-            return True
-    return False
+def overlaps(left: str, right: str, *, left_workspaces=(), right_workspaces=()) -> bool:
+    """Use the shared conflict policy without granting checkout authority."""
+    return claim_scope.claim_conflicts(left, right,
+        left_workspaces=left_workspaces, right_workspaces=right_workspaces)
 
 
 def workspace_parts(workspace: str) -> tuple[str, str]:
-    if " @ " not in workspace:
-        return plain(workspace), "unknown"
-    path, branch = workspace.rsplit(" @ ", 1)
-    return plain(path), plain(branch)
+    return claim_scope.workspace_parts(workspace)
 
 
 def workspace_conflict(left: str, right: str) -> bool:
@@ -1189,6 +1133,7 @@ def _check_staged_board_snapshot(board: Path) -> str | None:
 
 def validate_sessions(sessions: list[Session]) -> list[str]:
     problems: list[str] = []
+    scopes = claim_scope.ClaimScopeResolver()
     seen_selectors: dict[tuple[str, object], str] = {}
     for session in sessions:
         if session.session_uuid:
@@ -1232,7 +1177,13 @@ def validate_sessions(sessions: list[Session]) -> list[str]:
         for right in live[index + 1 :]:
             for left_claim in left.claims:
                 for right_claim in right.claims:
-                    if overlaps(left_claim, right_claim):
+                    try:
+                        conflict = scopes.conflicts(left_claim, right_claim,
+                            left_workspaces=left.workspaces, right_workspaces=right.workspaces)
+                    except claim_scope.ClaimIdentityError as exc:
+                        problems.append(f"{left.label} / {right.label}: unverifiable claim scope: {exc}")
+                        continue
+                    if conflict:
                         problems.append(
                             f"{left.label}:{left_claim} overlaps "
                             f"{right.label}:{right_claim}"

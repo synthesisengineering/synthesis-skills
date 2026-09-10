@@ -55,7 +55,7 @@ import warnings
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-SIDECAR_VERSION = "2.4.0"
+SIDECAR_VERSION = "2.4.1"
 REQUIRED_CONFIG_VERSION = 2
 
 DEFAULT_CONFIG = Path.home() / ".synthesis" / "git-hook-config.yaml"
@@ -67,6 +67,7 @@ DEFAULT_CONFIG = Path.home() / ".synthesis" / "git-hook-config.yaml"
 CORE_ENGINE_FILES = ("pre-commit", "commit-msg", "_load_config.py")
 COORDINATION_ENGINE_FILES = (
     "coordination.py",
+    "claim_scope.py",
     "coordination_schema.py",
     "pointer_lock.py",
     "peer_addressing.py",
