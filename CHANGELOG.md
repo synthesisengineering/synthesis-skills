@@ -13,8 +13,8 @@ independent; logical conflicts never grant permission to write another checkout.
 Relative metadata claims require unambiguous workspace context, and unresolved metadata
 identity refuses admission. Named resources retain their separate namespace.
 
-Standalone Git hooks and onboarding updates include the shared helper. Updates
-from an older bundle verify its released companion files before introducing the
+Standalone Git hooks and onboarding updates include the shared helper. Onboarding
+updates from an older bundle verify its released companion files before introducing the
 new dependency; missing, modified or unrelated origins remain blocked.
 
 ## [4.96.4] - 2026-09-09
