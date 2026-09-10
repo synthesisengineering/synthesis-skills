@@ -11,6 +11,13 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Metadata ownership across linked worktrees (September 2026).** Release **4.96.5**
+uses one conflict policy for board admission and record-repair consumers. Claims
+on the same project metadata conflict across verified linked checkouts, while
+disjoint files and ordinary source branches remain independent. Write permission
+still requires the actor's exact checkout, branch and paths. Existing hook
+bundles receive the shared helper only after their installed origins are verified.
+
 **Successor feedback and session freshness (September 2026).** Release **4.96.4**
 routes reports through explicit registry successor links while preserving their
 source project and execution boundaries. Freshness checks use dated session

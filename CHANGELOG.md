@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.96.5] - 2026-09-09
+
+Board admission and record-repair consumers share one metadata conflict policy.
+The same project record in linked worktrees conflicts through verified Git
+repository identity. Disjoint metadata files and ordinary source branches remain
+independent; logical conflicts never grant permission to write another checkout.
+Relative metadata claims require unambiguous workspace context, and unresolved metadata
+identity refuses admission. Named resources retain their separate namespace.
+
+Standalone Git hooks and onboarding updates include the shared helper. Updates
+from an older bundle verify its released companion files before introducing the
+new dependency; missing, modified or unrelated origins remain blocked.
+
 ## [4.96.4] - 2026-09-09
 
 Refresh feedback follows explicit registry successor links to the current

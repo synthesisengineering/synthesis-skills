@@ -1,7 +1,7 @@
 schema: 2
-suite: successor-routing-freshness-2026-09-09
+suite: metadata-claim-agreement-2026-09-09
 membership: closed
-production_entry_point: Refresh feedback and opt-in report routing; context doctor dated-session evidence
+production_entry_point: Board claim admission, copied Git hooks and verified runtime update
 enforcing_boundary: release.py derives exact Git changed paths and consumes fresh transaction-bound acceptance
   before source publication and both-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
@@ -9,11 +9,10 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures establish source behavior with isolated Git records, boards and native-evidence
-  fixtures. They do not prove actual native startup, agent adherence to prose, real recipient delivery,
-  multi-computer support or foreign project repair. Documentation receives manual review; installed bytes
-  and genuine native behavior require separate acceptance. No project activation, claim transfer, foreign
-  repair, deployment, automation or memory change is authorized by this suite.
+unverified_remainder: Fixtures prove source behavior and verified update mechanics. They do not establish
+  actual native startup, full agent instruction reads, natural Stop completion, multi-computer readiness
+  or foreign repair. Installed bytes and real native acceptance are verified separately. No row-level
+  registry authority is implemented.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -27,255 +26,309 @@ changed_surfaces:
 - path: README.md
   cases:
   - release-contract
-- path: skills/synthesis-checkpoint/SKILL.md
+- path: skills/synthesis-git-hooks/SKILL.md
   cases:
-  - successor-delivery
-  - invalid-route
-  - route-revision
-  - explicit-registry
-  - peer-delivery
-  - exact-address
-  - structural-route
-  - registry-layout
-  - no-free-fallback
-  - workday-publication
-  - session-mismatch
-  - ahead-record
-  - missing-evidence
-  - conflicting-caches
-  - invalid-date
-  - unreadable-log
-  - author-committer
-  - late-closure
-  - bulk-new-evidence
-  - dirty-new-evidence
-  - index-new-evidence
-  - changed-anchor
-  - review-positive
-  - review-expiry
-  - review-unresolvable
-- path: skills/synthesis-checkpoint/references/refresh-and-report.md
-  cases: &id001
-  - successor-delivery
-  - invalid-route
-  - route-revision
-  - explicit-registry
-  - peer-delivery
-  - exact-address
-  - structural-route
-  - registry-layout
-  - no-free-fallback
-- path: skills/synthesis-checkpoint/scripts/refresh.py
-  cases: *id001
-- path: skills/synthesis-checkpoint/scripts/test_refresh.py
-  cases: *id001
-- path: skills/synthesis-context-lifecycle/SKILL.md
-  cases: &id002
-  - workday-publication
-  - session-mismatch
-  - ahead-record
-  - missing-evidence
-  - conflicting-caches
-  - invalid-date
-  - unreadable-log
-  - author-committer
-  - late-closure
-  - bulk-new-evidence
-  - dirty-new-evidence
-  - index-new-evidence
-  - changed-anchor
-  - review-positive
-  - review-expiry
-  - review-unresolvable
-- path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
-  cases: *id002
-- path: skills/synthesis-context-lifecycle/scripts/test_context_doctor.py
-  cases: *id002
-- path: skills/synthesis-daily-rituals/SKILL.md
-  cases: *id002
+  - standalone-bundle
+  - missing-runtime
+  - release-contract
+- path: skills/synthesis-git-hooks/scripts/_load_config.py
+  cases:
+  - standalone-bundle
+  - missing-runtime
+- path: skills/synthesis-git-hooks/scripts/install.sh
+  cases:
+  - standalone-bundle
+  - missing-runtime
+- path: skills/synthesis-git-hooks/scripts/pre-commit
+  cases:
+  - standalone-bundle
+  - missing-runtime
+- path: skills/synthesis-git-hooks/scripts/test_pre_commit.py
+  cases:
+  - standalone-bundle
+  - missing-runtime
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
-  - successor-delivery
-  - invalid-route
-  - route-revision
-  - explicit-registry
-  - peer-delivery
-  - exact-address
-  - structural-route
-  - registry-layout
-  - no-free-fallback
-  - workday-publication
-  - session-mismatch
-  - ahead-record
-  - missing-evidence
-  - conflicting-caches
-  - invalid-date
-  - unreadable-log
-  - author-committer
-  - late-closure
-  - bulk-new-evidence
-  - dirty-new-evidence
-  - index-new-evidence
-  - changed-anchor
-  - review-positive
-  - review-expiry
-  - review-unresolvable
+  - metadata-admission
+  - scope-controls
+  - aliases
+  - unknown-identity
+  - repair-scope
+  - physical-delimiters
+  - relative-source
+  - actor-authority
+  - virtual-resource
+  - public-api
+  - git-root
+  - nonrepo-installation
+  - nonrepo-ancestor
+  - nonrepo-refusal
+  - nonrepo-files
+  - introduce-helper
+  - reject-unproven-bundle
+  - restore-failed-update
+  - standalone-bundle
+  - missing-runtime
+  - phase-update
   - release-contract
   - manifest
   - unlisted-path
   - transaction-binding
+- path: skills/synthesis-onboarding/SKILL.md
+  cases:
+  - introduce-helper
+  - reject-unproven-bundle
+  - restore-failed-update
+  - phase-update
+  - release-contract
+- path: skills/synthesis-onboarding/scripts/runtime_payload.py
+  cases:
+  - introduce-helper
+  - reject-unproven-bundle
+  - restore-failed-update
+  - phase-update
+- path: skills/synthesis-onboarding/scripts/test_runtime_integration.py
+  cases:
+  - introduce-helper
+  - reject-unproven-bundle
+  - restore-failed-update
+  - phase-update
+- path: skills/synthesis-onboarding/scripts/test_runtime_payload.py
+  cases:
+  - introduce-helper
+  - reject-unproven-bundle
+  - restore-failed-update
+  - phase-update
 - path: skills/synthesis-project-management/SKILL.md
   cases:
+  - metadata-admission
+  - scope-controls
+  - aliases
+  - unknown-identity
+  - repair-scope
+  - physical-delimiters
+  - relative-source
+  - actor-authority
+  - virtual-resource
+  - public-api
+  - git-root
+  - nonrepo-installation
+  - nonrepo-ancestor
+  - nonrepo-refusal
+  - nonrepo-files
   - release-contract
+- path: skills/synthesis-project-management/references/parallel-agent-protocol.md
+  cases:
+  - metadata-admission
+  - scope-controls
+  - aliases
+  - unknown-identity
+  - repair-scope
+  - physical-delimiters
+  - relative-source
+  - actor-authority
+  - virtual-resource
+  - public-api
+  - git-root
+  - nonrepo-installation
+  - nonrepo-ancestor
+  - nonrepo-refusal
+  - nonrepo-files
+- path: skills/synthesis-project-management/scripts/claim_scope.py
+  cases:
+  - metadata-admission
+  - scope-controls
+  - aliases
+  - unknown-identity
+  - repair-scope
+  - physical-delimiters
+  - relative-source
+  - actor-authority
+  - virtual-resource
+  - public-api
+  - git-root
+  - nonrepo-installation
+  - nonrepo-ancestor
+  - nonrepo-refusal
+  - nonrepo-files
 - path: skills/synthesis-project-management/scripts/coordination.py
-  cases: *id001
-- path: skills/synthesis-project-management/scripts/project_recipient.py
-  cases: *id001
+  cases:
+  - metadata-admission
+  - scope-controls
+  - aliases
+  - unknown-identity
+  - repair-scope
+  - physical-delimiters
+  - relative-source
+  - actor-authority
+  - virtual-resource
+  - public-api
+  - git-root
+  - nonrepo-installation
+  - nonrepo-ancestor
+  - nonrepo-refusal
+  - nonrepo-files
 - path: skills/synthesis-project-management/scripts/test_coordination.py
-  cases: *id001
+  cases:
+  - metadata-admission
+  - scope-controls
+  - aliases
+  - unknown-identity
+  - repair-scope
+  - physical-delimiters
+  - relative-source
+  - actor-authority
+  - virtual-resource
+  - public-api
+  - git-root
+  - nonrepo-installation
+  - nonrepo-ancestor
+  - nonrepo-refusal
+  - nonrepo-files
 cases:
-- id: successor-delivery
+- id: metadata-admission
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-checkpoint/scripts/test_refresh.py::test_successor_feedback_delivers_without_reactivating_source
-  motivating_defect: Archived report destinations lost feedback; rerouting must preserve source restrictions.
-- id: invalid-route
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_logical_metadata_claim_is_refused_before_board_admission
+  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
+    authority.
+- id: scope-controls
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-checkpoint/scripts/test_refresh.py::test_invalid_successor_route_preserves_board_and_local_report
-  motivating_defect: Ambiguous, missing or cyclic relationships must not misdeliver a report.
-- id: route-revision
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_shared_claim_scope_is_symmetric_and_preserves_disjoint_work
+  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
+    authority.
+- id: aliases
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-checkpoint/scripts/test_refresh.py::test_successor_route_change_is_a_new_revision
-  motivating_defect: Changed routing evidence must not be suppressed as an old duplicate.
-- id: explicit-registry
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_metadata_relative_and_symlink_spellings_use_verified_checkout
+  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
+    authority.
+- id: unknown-identity
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-checkpoint/scripts/test_refresh.py::test_explicit_recipient_registry_never_falls_back
-  motivating_defect: An unavailable explicit recipient registry must not choose another workspace.
-- id: peer-delivery
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_metadata_identity_failure_cannot_be_treated_as_disjoint
+  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
+    authority.
+- id: repair-scope
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_project_report_message_reaches_successor_inbox_without_claim_mutation
-  motivating_defect: Reports need actual peer-consumer delivery without altering ownership.
-- id: exact-address
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_possible_repair_scope_is_explicitly_broader_than_exact_resource_claims
+  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
+    authority.
+- id: physical-delimiters
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_report_exact_session_recipient_is_never_redirected
-  motivating_defect: Exact session addresses must not inherit project successor routes.
-- id: structural-route
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_shared_scope_preserves_physical_synthetic_paths_and_row_delimiters
+  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
+    authority.
+- id: relative-source
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_report_route_needs_unambiguous_structural_relationship
-  motivating_defect: Narrative, duplicate fields and unsupported syntax cannot authorize routing.
-- id: registry-layout
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_relative_source_scope_does_not_inherit_the_invoking_checkout
+  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
+    authority.
+- id: actor-authority
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_report_registry_supports_project_block_layouts_without_prose_inference
-  motivating_defect: Supported registry layouts must resolve literal relationships consistently.
-- id: no-free-fallback
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_logical_metadata_conflict_never_authorizes_sibling_checkout
+  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
+    authority.
+- id: virtual-resource
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_invalid_explicit_report_registry_cannot_use_free_address
-  motivating_defect: Explicit routing failure must not become an unregistered delivery.
-- id: workday-publication
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_virtual_resources_never_use_filesystem_identity
+  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
+    authority.
+- id: public-api
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SessionEvidenceTests::test_delayed_publication_preserves_recorded_workday
-  motivating_defect: Overnight and delayed publication timestamps falsely redefined workdays.
-- id: session-mismatch
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_public_overlap_api_uses_shared_logical_metadata_policy
+  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
+    authority.
+- id: git-root
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SessionEvidenceTests::test_session_mismatch_is_detected_without_a_newer_commit_date
-  motivating_defect: A backdated commit must not hide newer dated session evidence.
-- id: ahead-record
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_metadata_namespace_is_relative_to_git_root_not_ancestor_names
+  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
+    authority.
+- id: nonrepo-installation
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SessionEvidenceTests::test_cache_ahead_of_archive_is_a_mismatch_not_uncommitted_work
-  motivating_defect: A record ahead of its archive is not proof of uncommitted work.
-- id: missing-evidence
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_existing_nonrepo_runtime_scope_can_be_admitted_beside_metadata
+  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
+    authority.
+- id: nonrepo-ancestor
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SessionEvidenceTests::test_missing_log_is_explicit_and_cannot_make_commit_day_authoritative
-  motivating_defect: Missing dated evidence cannot be filled with commit dates.
-- id: conflicting-caches
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_nonrepo_ancestor_containing_linked_checkout_still_conflicts
+  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
+    authority.
+- id: nonrepo-refusal
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SessionEvidenceTests::test_missing_log_does_not_hide_disagreeing_cache_dates
-  motivating_defect: Missing archive coverage must not hide explicit field disagreement.
-- id: invalid-date
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_nonrepo_scope_exception_never_hides_unresolved_metadata_identity
+  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
+    authority.
+- id: nonrepo-files
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SessionEvidenceTests::test_invalid_log_date_is_unverifiable
-  motivating_defect: Invalid dates must not certify freshness.
-- id: unreadable-log
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_existing_nonrepo_runtime_files_are_disjoint_from_metadata
+  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
+    authority.
+- id: introduce-helper
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SessionEvidenceTests::test_unreadable_log_fails_closed_without_a_clean_report
-  motivating_defect: Unreadable session evidence must prevent a clean conclusion.
-- id: author-committer
+  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_pre_helper_bundle_upgrade_proves_old_pointer_and_executes_new_closure
+  motivating_defect: The new helper must reach verified existing bundles without adopting unrelated or
+    damaged payloads.
+- id: reject-unproven-bundle
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SessionEvidenceTests::test_author_and_committer_dates_do_not_override_session_evidence
-  motivating_defect: Distinct author and committer times cannot override the workday.
-- id: late-closure
+  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_claim_helper_introduction_requires_released_companion_anchors
+  motivating_defect: The new helper must reach verified existing bundles without adopting unrelated or
+    damaged payloads.
+- id: restore-failed-update
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SessionEvidenceTests::test_delayed_completion_commit_does_not_reopen_project
-  motivating_defect: Publishing closure later must not imply resumed work.
-- id: bulk-new-evidence
+  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_failed_claim_helper_introduction_restores_old_bundle_and_absence
+  motivating_defect: The new helper must reach verified existing bundles without adopting unrelated or
+    damaged payloads.
+- id: standalone-bundle
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SessionEvidenceTests::test_post_completion_session_rearms_review_even_in_bulk_commit
-  motivating_defect: New session evidence in bulk commits must expire an old review.
-- id: dirty-new-evidence
+  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_installer_copies_coordination_runtime
+  motivating_defect: The copied runtime must contain and verify its actual import closure.
+- id: missing-runtime
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SessionEvidenceTests::test_uncommitted_post_completion_session_is_not_covered_by_review
-  motivating_defect: Pending dated evidence must not inherit an older review.
-- id: index-new-evidence
+  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_configured_hook_missing_runtime_fails_closed
+  motivating_defect: Missing ownership enforcement cannot permit a commit.
+- id: phase-update
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SessionEvidenceTests::test_index_only_session_change_cannot_inherit_project_review
-  motivating_defect: A new index session date must expire an old project-path acknowledgment.
-- id: changed-anchor
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SessionEvidenceTests::test_changed_completion_anchor_cannot_inherit_project_review
-  motivating_defect: Changing the completion anchor must not inherit review of another dated claim.
-- id: review-positive
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::PostCloseAcknowledgmentTests::test_a_review_covering_every_commit_silences_it
-  motivating_defect: A review covering the actual dated evidence remains effective.
-- id: review-expiry
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::PostCloseAcknowledgmentTests::test_the_acknowledgment_re_arms_on_the_next_project_commit
-  motivating_defect: A later project snapshot must not inherit old review authority.
-- id: review-unresolvable
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::PostCloseAcknowledgmentTests::test_an_unresolvable_sha_is_a_defect_not_a_silent_pass
-  motivating_defect: Missing Git review evidence must fail visibly.
+  fixture: ../synthesis-onboarding/scripts/test_runtime_integration.py::test_public_update_refreshes_independently_wired_runtime_and_preserves_personal_state
+  motivating_defect: The real update phase must preserve settings while installing the selected runtime.
 - id: release-contract
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
-  motivating_defect: Release manifests, changelog, README and skill versions must describe one release.
+  motivating_defect: Manifests and documentation must describe one release.
 - id: manifest
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-  motivating_defect: Closed membership and fixture paths must validate.
+  motivating_defect: The release boundary must consume fresh acceptance covering the exact changed file
+    universe.
 - id: unlisted-path
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_schema2_rejects_undeclared_git_changed_surface
-  motivating_defect: Changed files must not escape the acceptance universe.
+  motivating_defect: The release boundary must consume fresh acceptance covering the exact changed file
+    universe.
 - id: transaction-binding
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_schema2_receipt_binds_transaction_and_git_state
-  motivating_defect: A different source or transaction cannot reuse acceptance evidence.
+  motivating_defect: The release boundary must consume fresh acceptance covering the exact changed file
+    universe.
