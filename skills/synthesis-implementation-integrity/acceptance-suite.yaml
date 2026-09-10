@@ -48,6 +48,9 @@ changed_surfaces:
   - native-pending
   - unknown-owned-project
   - registry-registration
+  - anonymous-nonsynthesis
+  - retained-adoption
+  - observer-dependencies
 - path: skills/synthesis-project-management/scripts/test_project_applicability.py
   cases:
   - ordinary-cli
@@ -89,6 +92,17 @@ changed_surfaces:
   - transaction-binding
   - unknown-owned-project
   - registry-registration
+  - anonymous-nonsynthesis
+  - retained-adoption
+  - observer-dependencies
+- path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
+  cases:
+  - anonymous-nonsynthesis
+  - retained-adoption
+  - observer-dependencies
+  - structured-positive
+  - observer-identity
+  - native-pending
 cases:
 - id: ordinary-cli
   control_class: acceptance-test
@@ -172,3 +186,19 @@ cases:
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_narrative_registry_id_cannot_establish_checkpoint_applicability
   motivating_defect: Narrative text cannot establish a registered project for non-applicability.
+- id: anonymous-nonsynthesis
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_unrelated_projects_directory_does_not_require_synthesis_checkpoint
+  motivating_defect: Unrelated Git and non-Git projects directories must not acquire synthesis checkpoint
+    obligations.
+- id: retained-adoption
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_observer_retains_adoption_when_registry_and_state_are_deleted
+  motivating_defect: Deleted registry and state cannot erase established adoption.
+- id: observer-dependencies
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_observer_discovery_does_not_exonerate_unverifiable_dependencies
+  motivating_defect: Unreadable Git evidence or registry dependencies cannot prove that a project is unrelated.
