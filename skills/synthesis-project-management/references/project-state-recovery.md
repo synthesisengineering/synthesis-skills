@@ -20,6 +20,22 @@ untracked path would be overwritten, and the selected project still exists
 after the move. Otherwise the resolver reports the exact fresher source without
 mutating unrelated state.
 
+## Checkpoint applicability
+
+The checkpoint CLI, validation, native project discovery and refresh inspection
+share the structured-state applicability decision. A verified registered ordinary
+project that never adopted structured state returns `NOT_APPLICABLE`,
+`checkpoint_accepted: false` and `no_receipt_issued: true`, with successful command
+completion. This is neither project health nor a recovery/authority receipt.
+Ordinary context, session records and normal continuity obligations still apply.
+
+Existing state, compiled state markers and verified Git adoption evidence retain
+the structured obligation. Deleted, malformed, unreadable or unsafe state remains
+blocking. Missing project paths, missing registration or unverifiable evidence
+cannot establish non-applicability. Removing the state file is not a migration.
+The direct `checkpoint_project` function is a receipt-only API for adopted state;
+command and hook callers establish applicability before requesting a receipt.
+
 Structured projects store mutable operational truth in `CURRENT_STATE.json`:
 phase, status, accepted baseline, controlling plan, next actions, last session,
 owning coordination session, repository/project identity, durable Markdown

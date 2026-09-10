@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.7.1"
+  version: "1.7.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -215,7 +215,8 @@ Without admitted authority, report the exact blocking seat and preserve the work
 Under an accepted claim, make the verified correction, attribute it to this
 session and retain local continuity. Publish at the next authorized remote
 handoff or day-end. A missing structured-state file alone does not authorize a
-migration. Release claims acquired solely for the checkpoint before pausing;
+migration. Shared applicability distinguishes never-adopted ordinary projects
+from required state that is missing or unsafe. Release claims acquired solely for the checkpoint before pausing;
 narrow or release genuinely owned completed/paused work under the normal protocol.
 
 Before the checkpoint closes, ask: **What executable state or required input

@@ -291,11 +291,25 @@ def inspect(args, *, ignore_campaign: bool = False) -> tuple[dict, dict | None]:
             # conflict-to-recovered transition; selected checkout stays in
             # recovery evidence instead of silently changing the report key.
             checks["project_status"], state, invalid_state = selected_lifecycle(project, args.index.name, args.project_id)
+            structured_required = True
+            try:
+                applicability, _issues = project_state.checkpoint_applicability(project)
+                structured_required = applicability == "REQUIRED"
+                checks["structured_checkpoint"] = status(applicability, "STRUCTURED_CHECKPOINT_APPLICABILITY",
+                    checkpoint_accepted=False, no_receipt_issued=True)
+                if structured_required and not (project / project_state.STATE_FILE).is_file():
+                    invalid_state = True
+                    checks["structured_checkpoint"] = status("FAIL", "ADOPTED_STRUCTURED_STATE_MISSING",
+                        checkpoint_accepted=False, no_receipt_issued=True)
+            except (OSError, project_state.ProjectStateError):
+                invalid_state = True
+                checks["structured_checkpoint"] = status("UNKNOWN", "STRUCTURED_APPLICABILITY_UNVERIFIED",
+                    checkpoint_accepted=False, no_receipt_issued=True)
             if invalid_state:
                 checks["structured_hashes"] = status("FAIL", "STRUCTURED_STATE_INVALID")
             if "project_tiers" in requested:
                 targets = report["read_targets"]
-                targets.append(file_evidence(project / project_state.STATE_FILE, "structured_state", required=False))
+                targets.append(file_evidence(project / project_state.STATE_FILE, "structured_state", required=structured_required))
                 targets.append(file_evidence(project / "CONTEXT.md", "context"))
                 if targets[-1]["status"] == "PASS":
                     context = (project / "CONTEXT.md").read_text(encoding="utf-8")

@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
 import uuid
@@ -96,9 +97,19 @@ def _atomic_text(path: Path, value: str) -> None:
 
 
 def _load_json(path: Path) -> dict[str, Any]:
+    def unique_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON field: {key}")
+            result[key] = value
+        return result
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        if path.name == STATE_FILE and (path.is_symlink() or not stat.S_ISREG(path.stat().st_mode)):
+            raise ValueError("structured state must be a regular nonsymlink file")
+        payload = json.loads(path.read_text(encoding="utf-8"),
+            **({"object_pairs_hook": unique_pairs} if path.name == STATE_FILE else {}))
+    except (OSError, ValueError) as exc:
         raise ProjectStateError(f"unreadable JSON evidence {path}: {exc}") from exc
     if not isinstance(payload, dict):
         raise ProjectStateError(f"JSON evidence is not an object: {path}")
@@ -125,6 +136,62 @@ def _index_entry(text: str, project_id: str) -> str:
     following = re.search(r"(?m)^\s*-?\s*id:\s*", text[matches[0].end() :])
     end = matches[0].end() + following.start() if following else len(text)
     return text[start:end]
+
+
+def checkpoint_applicability(project: Path) -> tuple[str, list[str]]:
+    """Determine structured adoption without issuing a receipt or health verdict.
+
+    Absence alone is insufficient: current index entries, complete local Git
+    history and compiled project records retain adoption after deletion.
+    Callers must keep unknown applicability non-green. checkpoint_project is
+    receipt-only; CLI and lifecycle callers handle NOT_APPLICABLE explicitly.
+    """
+    project = Path(project).absolute()
+    if project.parent.name != "projects" or not project.is_dir():
+        raise ProjectStateError("checkpoint requires an existing registered project directory")
+    repo = _repository_root(project)
+    if project.parent != repo / "projects":
+        raise ProjectStateError("project registry is not at the verified repository root")
+    index = project.parent / "index.yaml"
+    for path in (project, project.parent, index):
+        if path.is_symlink():
+            raise ProjectStateError("checkpoint project or registry crosses an unsafe symlink")
+    tracked = _run(repo, "ls-files", "--error-unmatch", "--", ":(literal)projects/index.yaml")
+    if not tracked.stdout.strip():
+        raise ProjectStateError("checkpoint project registry is not tracked")
+    try:
+        from project_recipient import registry_entries
+        entries = registry_entries(index.read_text(encoding="utf-8"))
+    except (ImportError, SyntaxError, ValueError) as exc:
+        raise ProjectStateError("checkpoint registry collection cannot be verified") from exc
+    if project.name not in entries:
+        raise ProjectStateError("checkpoint project is not registered in the project collection")
+    context = project / "CONTEXT.md"
+    if context.is_symlink() or not context.is_file():
+        raise ProjectStateError("checkpoint project context is missing or unsafe")
+    state_path = project / STATE_FILE
+    if state_path.exists() or state_path.is_symlink():
+        value = _load_json(state_path)
+        if type(value.get("schema_version")) is not int or value["schema_version"] != STATE_SCHEMA or value.get("project_id") != project.name:
+            raise ProjectStateError("current operational state schema or project identity is invalid")
+        return "REQUIRED", ["structured state is present"]
+    relative = str(state_path.relative_to(repo))
+    if "<!-- synthesis-current-state:" in context.read_text(encoding="utf-8"):
+        return "REQUIRED", ["compiled project context records structured-state adoption"]
+    for worktree, _head, _branch in _worktrees(repo):
+        candidate = worktree / relative
+        if candidate.exists() or candidate.is_symlink():
+            return "REQUIRED", ["a registered checkout retains structured state"]
+        indexed = _run(worktree, "ls-files", "--stage", "--", f":(literal){relative}")
+        if indexed.stdout.strip():
+            return "REQUIRED", ["Git index records structured-state adoption"]
+    historical = _run(repo, "log", "--all", "--reflog", "-1", "--format=%H", "--", f":(literal){relative}")
+    if historical.stdout.strip():
+        return "REQUIRED", ["Git history records structured-state adoption"]
+    shallow = _run(repo, "rev-parse", "--is-shallow-repository").stdout.strip()
+    if shallow != "false":
+        raise ProjectStateError("complete local adoption history cannot be verified")
+    return "NOT_APPLICABLE", ["registered project has no structured-state adoption evidence; no checkpoint receipt issued and no recovery/state-health PASS implied"]
 
 
 def _latest_session_date(project: Path) -> str | None:
@@ -1047,7 +1114,10 @@ def checkpoint_project(
     receipt_root: Path,
     source_heads: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Issue a clean checkpoint only when state, claim, Git, and hashes bind."""
+    """Receipt-only API: require adopted state, claim, Git, and hash bindings."""
+    applicability, issues = checkpoint_applicability(project)
+    if applicability == "NOT_APPLICABLE":
+        raise ProjectStateError("structured checkpoint is not applicable: " + "; ".join(issues))
     project = project.resolve()
     state = _load_json(project / STATE_FILE)
     project_id = str(state.get("project_id") or "")
@@ -1095,10 +1165,13 @@ def validate_checkpoint(
     source_heads: dict[str, str] | None = None,
 ) -> tuple[str, list[str]]:
     """Validate an outgoing receipt without turning missing evidence green."""
-    project = project.resolve()
     try:
+        applicability, issues = checkpoint_applicability(project)
+        if applicability == "NOT_APPLICABLE":
+            return applicability, issues
+        project = project.resolve()
         state = _load_json(project / STATE_FILE)
-    except ProjectStateError as exc:
+    except (OSError, ProjectStateError) as exc:
         return "UNKNOWN", [str(exc)]
     project_id = str(state.get("project_id") or "")
     path = _receipt_path(receipt_root.resolve(), session_id, project_id)
@@ -1197,6 +1270,7 @@ def _project_from_claim(row: dict[str, str]) -> Path | None:
     if not project_id:
         return None
     paths: list[Path] = []
+    explicit: set[Path] = set()
     cells = (
         row.get("claimed areas (advisory lock)", "")
         + ","
@@ -1211,10 +1285,13 @@ def _project_from_claim(row: dict[str, str]) -> Path | None:
         parts = path.parts
         for index in range(len(parts) - 1):
             if tuple(parts[index : index + 2]) == marker:
-                paths.append(Path(*parts[: index + 2]))
+                direct = Path(*parts[: index + 2])
+                paths.append(direct)
+                explicit.add(direct)
         paths.append(path / "projects" / project_id)
     existing = sorted(
-        {path.resolve() for path in paths if (path / STATE_FILE).is_file()},
+        {path.resolve() for path in paths if path.parent.name == "projects"
+         and (path.is_dir() or path in explicit or (path.parent / "index.yaml").exists())},
         key=lambda item: (len(str(item)), str(item)),
     )
     if len(existing) > 1:
@@ -1227,7 +1304,9 @@ def _project_from_claim(row: dict[str, str]) -> Path | None:
                 continue
         if len(matching) == 1:
             return matching[0]
-        raise ProjectStateError("active claim names multiple structured project states")
+        raise ProjectStateError("active claim names multiple project directories")
+    if existing:
+        checkpoint_applicability(existing[0])
     return existing[0] if existing else None
 
 
@@ -1277,18 +1356,72 @@ def _observer_native_identity(payload: dict[str, Any]) -> tuple[str, str]:
 def _observer_git(project: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-C", str(project), *arguments], capture_output=True, text=True,
-        env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"}, timeout=15,
+        env={**os.environ, "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C"}, timeout=15,
     )
+
+
+def _observer_synthesis_evidence(project: Path) -> bool:
+    """A directory named projects is not itself evidence of Synthesis adoption.
+
+    Anonymous discovery needs a real registry entry or retained adoption
+    evidence. Explicit CLI and claim paths still use strict applicability.
+    """
+    try:
+        from project_recipient import registry_entries
+    except (ImportError, SyntaxError) as exc:
+        raise ProjectStateError("observer project registry reader is unavailable") from exc
+
+    def registered(text: str) -> bool:
+        try:
+            return project.name in registry_entries(text)
+        except ValueError:
+            return False
+
+    index = project.parent / "index.yaml"
+    if index.is_file() and not index.is_symlink():
+        if registered(index.read_text(encoding="utf-8")):
+            return True
+    context = project / "CONTEXT.md"
+    if context.is_file() and not context.is_symlink():
+        if "<!-- synthesis-current-state:" in context.read_text(encoding="utf-8"):
+            return True
+    identity = _observer_git(project, "rev-parse", "--show-toplevel")
+    if identity.returncode:
+        administrative = any((parent / ".git").exists() or (parent / ".git").is_symlink()
+            for parent in (project, *project.parents))
+        if identity.returncode == 128 and "not a git repository" in identity.stderr.lower() and not administrative:
+            return False
+        raise ProjectStateError("observer project Git identity could not be verified")
+    repo = Path(identity.stdout.strip()).resolve()
+    if project.parent != repo / "projects":
+        return False
+    relative = str((project / STATE_FILE).relative_to(repo))
+    if _run(repo, "ls-files", "--stage", "--", f":(literal){relative}").stdout.strip():
+        return True
+    if _run(repo, "log", "--all", "--reflog", "-1", "--format=%H", "--", f":(literal){relative}").stdout.strip():
+        return True
+    # A deleted registry still identifies an ordinary Synthesis project. Read
+    # the last retained registry blob, never infer registration from its name.
+    revision = _run(repo, "log", "--all", "--reflog", "-1", "--diff-filter=AM", "--format=%H",
+        "--", ":(literal)projects/index.yaml").stdout.strip()
+    if revision:
+        previous = _run(repo, "show", f"{revision}:projects/index.yaml")
+        return registered(previous.stdout)
+    return False
 
 
 def _observer_project(cwd: Path) -> Path | None:
     for candidate in (cwd, *cwd.parents):
         if (candidate / STATE_FILE).exists() or (candidate / STATE_FILE).is_symlink():
+            try:
+                checkpoint_applicability(candidate)
+            except (OSError, ProjectStateError) as exc:
+                raise ProjectStateError(f"observer project Git state or applicability could not be verified: {exc}") from exc
             return candidate
-        # A deleted tracked state file must remain an observable obligation.
-        tracked = _observer_git(candidate, "ls-files", "--error-unmatch", "--", f":(literal){STATE_FILE}")
-        if tracked.returncode == 0:
-            return candidate
+        if candidate.parent.name == "projects" and _observer_synthesis_evidence(candidate):
+            applicability, _issues = checkpoint_applicability(candidate)
+            if applicability == "REQUIRED":
+                return candidate
     return None
 
 
@@ -1325,11 +1458,13 @@ def _observer_pending_scope(payload: dict[str, Any], repo_guard_root: Path) -> t
 
 def _observer_checkpoint_scope(payload: dict[str, Any], project: Path) -> tuple[str, list[str]]:
     _observer_native_identity(payload)
+    checkpoint_applicability(project)
     dirty = _observer_git(project, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".")
     if dirty.returncode:
         raise ProjectStateError("observer project Git state could not be verified")
     if dirty.stdout:
         return "UNKNOWN", ["unowned structured project has staged, unstaged or untracked changes; absence of native attribution does not prove read-only work"]
+    _load_json(project / STATE_FILE)  # a clean Git deletion is still missing evidence
     return "NOT_APPLICABLE", ["no active checkpoint ownership or native pending attribution; observed Git project subtree is clean; no checkpoint receipt issued and no recovery/state-health PASS implied"]
 
 
@@ -1361,6 +1496,9 @@ def checkpoint_hook(
         project = _project_from_claim(row)
         if project is None:
             return "NOT_APPLICABLE", []
+        applicability, issues = checkpoint_applicability(project)
+        if applicability == "NOT_APPLICABLE":
+            return applicability, issues
         state = _load_json(project / STATE_FILE)
         session_id = row.get("session uuid", "")
         source_heads = _live_source_heads(state)
@@ -1536,6 +1674,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "checkpoint":
         try:
+            applicability, issues = checkpoint_applicability(args.project)
+            if applicability == "NOT_APPLICABLE":
+                print(json.dumps({"status": applicability, "issues": issues,
+                    "checkpoint_accepted": False, "no_receipt_issued": True}, indent=2))
+                return 0
             payload = checkpoint_project(
                 args.project,
                 session_id=args.session_id,
@@ -1569,8 +1712,11 @@ def main(argv: list[str] | None = None) -> int:
         receipt_root=args.receipt_root,
         source_heads=_source_head_args(args.source_head),
     )
-    print(json.dumps({"status": verdict, "issues": issues}, indent=2))
-    return 0 if verdict == "PASS" else 1
+    report = {"status": verdict, "issues": issues, "checkpoint_accepted": verdict == "PASS"}
+    if verdict == "NOT_APPLICABLE":
+        report["no_receipt_issued"] = True
+    print(json.dumps(report, indent=2))
+    return 0 if verdict in {"PASS", "NOT_APPLICABLE"} else 1
 
 
 if __name__ == "__main__":

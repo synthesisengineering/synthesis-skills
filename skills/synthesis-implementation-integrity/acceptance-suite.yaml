@@ -1,18 +1,17 @@
 schema: 2
-suite: metadata-claim-agreement-2026-09-09
+suite: checkpoint-applicability-2026-09-09
 membership: closed
-production_entry_point: Board claim admission, copied Git hooks and verified runtime update
+production_entry_point: project_state.py checkpoint/validate/hook and refresh.py inspect
 enforcing_boundary: release.py derives exact Git changed paths and consumes fresh transaction-bound acceptance
-  before source publication and both-client installation
+  before publication and both-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures prove source behavior and verified update mechanics. They do not establish
-  actual native startup, full agent instruction reads, natural Stop completion, multi-computer readiness
-  or foreign repair. Installed bytes and real native acceptance are verified separately. No row-level
-  registry authority is implemented.
+unverified_remainder: Fixtures establish scoped source applicability and preservation of checkpoint bindings.
+  They do not establish native startup, complete agent reading, natural Stop, project migration or multi-computer
+  readiness. Installed and genuine native acceptance are separate.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -26,332 +25,180 @@ changed_surfaces:
 - path: README.md
   cases:
   - release-contract
-- path: skills/synthesis-agent-conformance/scripts/test_diagnostic_parity.py
+- path: skills/synthesis-project-management/SKILL.md
   cases:
-  - diagnostic-claim-fixture
-- path: skills/synthesis-git-hooks/SKILL.md
+  - ordinary-cli
+  - lost-state
+- path: skills/synthesis-project-management/references/project-state-recovery.md
   cases:
-  - standalone-bundle
-  - missing-runtime
-  - release-contract
-- path: skills/synthesis-git-hooks/scripts/_load_config.py
+  - ordinary-cli
+  - receipt-api
+  - lost-state
+  - unknown-project
+- path: skills/synthesis-project-management/scripts/project_state.py
   cases:
-  - standalone-bundle
-  - missing-runtime
-- path: skills/synthesis-git-hooks/scripts/install.sh
+  - ordinary-cli
+  - receipt-api
+  - lost-state
+  - native-discovery
+  - unknown-project
+  - unknown-history
+  - structured-positive
+  - observer-identity
+  - native-pending
+  - unknown-owned-project
+  - registry-registration
+  - anonymous-nonsynthesis
+  - retained-adoption
+  - observer-dependencies
+- path: skills/synthesis-project-management/scripts/test_project_applicability.py
   cases:
-  - standalone-bundle
-  - missing-runtime
-- path: skills/synthesis-git-hooks/scripts/pre-commit
+  - ordinary-cli
+  - receipt-api
+  - lost-state
+  - native-discovery
+  - unknown-project
+  - unknown-history
+  - unknown-owned-project
+  - registry-registration
+- path: skills/synthesis-checkpoint/SKILL.md
   cases:
-  - standalone-bundle
-  - missing-runtime
-- path: skills/synthesis-git-hooks/scripts/test_pre_commit.py
+  - refresh-agreement
+- path: skills/synthesis-checkpoint/references/refresh-and-report.md
   cases:
-  - standalone-bundle
-  - missing-runtime
+  - refresh-agreement
+  - ordinary-cli
+- path: skills/synthesis-checkpoint/scripts/refresh.py
+  cases:
+  - refresh-agreement
+- path: skills/synthesis-checkpoint/scripts/test_refresh.py
+  cases:
+  - refresh-agreement
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
-  - metadata-admission
-  - scope-controls
-  - aliases
-  - unknown-identity
-  - repair-scope
-  - physical-delimiters
-  - relative-source
-  - actor-authority
-  - virtual-resource
-  - public-api
-  - git-root
-  - nonrepo-installation
-  - nonrepo-ancestor
-  - nonrepo-refusal
-  - nonrepo-files
-  - introduce-helper
-  - reject-unproven-bundle
-  - restore-failed-update
-  - standalone-bundle
-  - missing-runtime
-  - phase-update
+  - ordinary-cli
+  - receipt-api
+  - lost-state
+  - native-discovery
+  - unknown-project
+  - unknown-history
+  - refresh-agreement
+  - structured-positive
+  - observer-identity
+  - native-pending
   - release-contract
   - manifest
   - unlisted-path
   - transaction-binding
-  - engine-versions
-  - diagnostic-claim-fixture
-- path: skills/synthesis-onboarding/SKILL.md
+  - unknown-owned-project
+  - registry-registration
+  - anonymous-nonsynthesis
+  - retained-adoption
+  - observer-dependencies
+- path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
   cases:
-  - introduce-helper
-  - reject-unproven-bundle
-  - restore-failed-update
-  - phase-update
-  - release-contract
-  - engine-versions
-- path: skills/synthesis-onboarding/scripts/onboard.py
-  cases:
-  - engine-versions
-- path: skills/synthesis-onboarding/scripts/runtime_payload.py
-  cases:
-  - introduce-helper
-  - reject-unproven-bundle
-  - restore-failed-update
-  - phase-update
-- path: skills/synthesis-onboarding/scripts/synthesis_cli.py
-  cases:
-  - engine-versions
-- path: skills/synthesis-onboarding/scripts/test_runtime_integration.py
-  cases:
-  - introduce-helper
-  - reject-unproven-bundle
-  - restore-failed-update
-  - phase-update
-- path: skills/synthesis-onboarding/scripts/test_runtime_payload.py
-  cases:
-  - introduce-helper
-  - reject-unproven-bundle
-  - restore-failed-update
-  - phase-update
-- path: skills/synthesis-project-management/SKILL.md
-  cases:
-  - metadata-admission
-  - scope-controls
-  - aliases
-  - unknown-identity
-  - repair-scope
-  - physical-delimiters
-  - relative-source
-  - actor-authority
-  - virtual-resource
-  - public-api
-  - git-root
-  - nonrepo-installation
-  - nonrepo-ancestor
-  - nonrepo-refusal
-  - nonrepo-files
-  - release-contract
-- path: skills/synthesis-project-management/references/parallel-agent-protocol.md
-  cases:
-  - metadata-admission
-  - scope-controls
-  - aliases
-  - unknown-identity
-  - repair-scope
-  - physical-delimiters
-  - relative-source
-  - actor-authority
-  - virtual-resource
-  - public-api
-  - git-root
-  - nonrepo-installation
-  - nonrepo-ancestor
-  - nonrepo-refusal
-  - nonrepo-files
-- path: skills/synthesis-project-management/scripts/claim_scope.py
-  cases:
-  - metadata-admission
-  - scope-controls
-  - aliases
-  - unknown-identity
-  - repair-scope
-  - physical-delimiters
-  - relative-source
-  - actor-authority
-  - virtual-resource
-  - public-api
-  - git-root
-  - nonrepo-installation
-  - nonrepo-ancestor
-  - nonrepo-refusal
-  - nonrepo-files
-- path: skills/synthesis-project-management/scripts/coordination.py
-  cases:
-  - metadata-admission
-  - scope-controls
-  - aliases
-  - unknown-identity
-  - repair-scope
-  - physical-delimiters
-  - relative-source
-  - actor-authority
-  - virtual-resource
-  - public-api
-  - git-root
-  - nonrepo-installation
-  - nonrepo-ancestor
-  - nonrepo-refusal
-  - nonrepo-files
-- path: skills/synthesis-project-management/scripts/test_coordination.py
-  cases:
-  - metadata-admission
-  - scope-controls
-  - aliases
-  - unknown-identity
-  - repair-scope
-  - physical-delimiters
-  - relative-source
-  - actor-authority
-  - virtual-resource
-  - public-api
-  - git-root
-  - nonrepo-installation
-  - nonrepo-ancestor
-  - nonrepo-refusal
-  - nonrepo-files
+  - anonymous-nonsynthesis
+  - retained-adoption
+  - observer-dependencies
+  - structured-positive
+  - observer-identity
+  - native-pending
 cases:
-- id: metadata-admission
+- id: ordinary-cli
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_logical_metadata_claim_is_refused_before_board_admission
-  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
-    authority.
-- id: scope-controls
+  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_ordinary_registered_project_cli_is_explicitly_not_applicable
+  motivating_defect: Never-adopted ordinary projects must finish inspection without migration or a false
+    receipt.
+- id: receipt-api
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_shared_claim_scope_is_symmetric_and_preserves_disjoint_work
-  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
-    authority.
-- id: aliases
+  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_direct_checkpoint_api_remains_receipt_only
+  motivating_defect: A non-applicable inspection must not manufacture a structured receipt.
+- id: lost-state
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_metadata_relative_and_symlink_spellings_use_verified_checkout
-  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
-    authority.
-- id: unknown-identity
+  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_adopted_or_unsafe_state_never_becomes_not_applicable
+  motivating_defect: Deleting or damaging adopted state must retain checkpoint obligations.
+- id: native-discovery
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_metadata_identity_failure_cannot_be_treated_as_disjoint
-  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
-    authority.
-- id: repair-scope
+  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_owned_hook_and_observer_discovery_keep_adoption_obligations
+  motivating_defect: Owned native discovery must not ignore deleted structured state.
+- id: unknown-project
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_possible_repair_scope_is_explicitly_broader_than_exact_resource_claims
-  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
-    authority.
-- id: physical-delimiters
+  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_unknown_project_is_not_an_ordinary_project
+  motivating_defect: A typo or missing registration cannot establish non-applicability.
+- id: unknown-history
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_shared_scope_preserves_physical_synthetic_paths_and_row_delimiters
-  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
-    authority.
-- id: relative-source
+  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_unverifiable_adoption_history_refuses_applicability
+  motivating_defect: Unreadable adoption evidence must fail closed.
+- id: refresh-agreement
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_relative_source_scope_does_not_inherit_the_invoking_checkout
-  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
-    authority.
-- id: actor-authority
+  fixture: ../synthesis-checkpoint/scripts/test_refresh.py::test_refresh_uses_structured_checkpoint_applicability
+  motivating_defect: Refresh optionality must agree with checkpoint applicability.
+- id: structured-positive
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_logical_metadata_conflict_never_authorizes_sibling_checkout
-  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
-    authority.
-- id: virtual-resource
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_owner_checkpoint_authority_is_preserved
+  motivating_defect: Valid adopted checkpoints retain their complete authority binding.
+- id: observer-identity
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_virtual_resources_never_use_filesystem_identity
-  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
-    authority.
-- id: public-api
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_observer_identity_is_native_and_fail_closed
+  motivating_defect: Missing native identity must never grant checkpoint authority.
+- id: native-pending
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_public_overlap_api_uses_shared_logical_metadata_policy
-  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
-    authority.
-- id: git-root
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_metadata_namespace_is_relative_to_git_root_not_ancestor_names
-  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
-    authority.
-- id: nonrepo-installation
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_existing_nonrepo_runtime_scope_can_be_admitted_beside_metadata
-  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
-    authority.
-- id: nonrepo-ancestor
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_nonrepo_ancestor_containing_linked_checkout_still_conflicts
-  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
-    authority.
-- id: nonrepo-refusal
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_nonrepo_scope_exception_never_hides_unresolved_metadata_identity
-  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
-    authority.
-- id: nonrepo-files
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_existing_nonrepo_runtime_files_are_disjoint_from_metadata
-  motivating_defect: Board admission and consumers must agree on declared scope without widening actor
-    authority.
-- id: introduce-helper
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_pre_helper_bundle_upgrade_proves_old_pointer_and_executes_new_closure
-  motivating_defect: The new helper must reach verified existing bundles without adopting unrelated or
-    damaged payloads.
-- id: reject-unproven-bundle
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_claim_helper_introduction_requires_released_companion_anchors
-  motivating_defect: The new helper must reach verified existing bundles without adopting unrelated or
-    damaged payloads.
-- id: restore-failed-update
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_failed_claim_helper_introduction_restores_old_bundle_and_absence
-  motivating_defect: The new helper must reach verified existing bundles without adopting unrelated or
-    damaged payloads.
-- id: standalone-bundle
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_installer_copies_coordination_runtime
-  motivating_defect: The copied runtime must contain and verify its actual import closure.
-- id: missing-runtime
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_configured_hook_missing_runtime_fails_closed
-  motivating_defect: Missing ownership enforcement cannot permit a commit.
-- id: phase-update
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_runtime_integration.py::test_public_update_refreshes_independently_wired_runtime_and_preserves_personal_state
-  motivating_defect: The real update phase must preserve settings while installing the selected runtime.
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_known_native_pending_work_blocks_from_workspace_root
+  motivating_defect: Changing cwd must not hide exact-session pending work.
 - id: release-contract
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
-  motivating_defect: Manifests and documentation must describe one release.
+  motivating_defect: Release metadata must describe one coherent release.
 - id: manifest
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-  motivating_defect: The release boundary must consume fresh acceptance covering the exact changed file
-    universe.
+  motivating_defect: The declared acceptance universe must validate.
 - id: unlisted-path
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_schema2_rejects_undeclared_git_changed_surface
-  motivating_defect: The release boundary must consume fresh acceptance covering the exact changed file
-    universe.
+  motivating_defect: The release boundary must reject an undeclared changed surface.
 - id: transaction-binding
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_schema2_receipt_binds_transaction_and_git_state
-  motivating_defect: The release boundary must consume fresh acceptance covering the exact changed file
-    universe.
-- id: engine-versions
+  motivating_defect: Acceptance must bind the actual release transaction and Git state.
+- id: unknown-owned-project
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_engine_versions_and_skill_contract_agree
-  motivating_defect: Both executable version surfaces and their skill contract must agree.
-- id: diagnostic-claim-fixture
+  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_owned_hook_unknown_project_cannot_be_not_applicable
+  motivating_defect: An explicitly claimed missing or unregistered project must not disappear from native
+    checkpoint obligations.
+- id: registry-registration
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_diagnostic_parity.py::test_valid_active_pointer_reconciles_without_mutation
-  motivating_defect: The diagnostic fixture must supply an actual sender workspace before ownership can
-    be verified.
+  fixture: ../synthesis-project-management/scripts/test_project_applicability.py::test_narrative_registry_id_cannot_establish_checkpoint_applicability
+  motivating_defect: Narrative text cannot establish a registered project for non-applicability.
+- id: anonymous-nonsynthesis
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_unrelated_projects_directory_does_not_require_synthesis_checkpoint
+  motivating_defect: Unrelated Git and non-Git projects directories must not acquire synthesis checkpoint
+    obligations.
+- id: retained-adoption
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_observer_retains_adoption_when_registry_and_state_are_deleted
+  motivating_defect: Deleted registry and state cannot erase established adoption.
+- id: observer-dependencies
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_observer_discovery_does_not_exonerate_unverifiable_dependencies
+  motivating_defect: Unreadable Git evidence or registry dependencies cannot prove that a project is unrelated.

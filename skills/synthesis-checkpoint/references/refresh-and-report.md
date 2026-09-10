@@ -65,6 +65,13 @@ an event or relabel an installed tree as a live reload.
 
 ## Finishing inspection
 
+Structured-state input is optional only for a verified ordinary project that
+never adopted it. Refresh uses the shared checkpoint applicability decision;
+missing or unsafe adopted state remains required and reports failure. Explicit
+checkpoint/validation commands return `NOT_APPLICABLE` for ordinary projects,
+without state creation, a receipt or a health claim. No missing file authorizes
+migration. Existing native identity and pending-attribution checks still apply.
+
 For a structured project discovered from the working directory, the Stop gate
 can return `NOT_APPLICABLE` for an unclaimed session only after validating its
 native identity, checking exact-session pending edit
