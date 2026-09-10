@@ -25,6 +25,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from pointer_lock import locked_pointer
+import claim_scope
 from peer_addressing import (
     CLIENT_CODEX,
     SelfIdentity,
@@ -232,8 +233,7 @@ def template() -> str:
 
 
 def plain(value: str) -> str:
-    without_bold = re.sub(r"\*\*(.+?)\*\*", r"\1", value)
-    return re.sub(r"`(.+?)`", r"\1", without_bold).strip()
+    return claim_scope.plain(value)
 
 
 def sanitize(value: str) -> str:
@@ -241,17 +241,7 @@ def sanitize(value: str) -> str:
 
 
 def split_values(value: str) -> list[str]:
-    clean = plain(value)
-    if not clean or clean.lower().startswith("released"):
-        return []
-    # Semicolons appear in hand-migrated rows; treating them as content would
-    # fuse several claims into one unmatchable string and silently disable
-    # overlap detection for that row.
-    return [
-        item.strip()
-        for item in re.split(r"[,;]|<br\s*/?>", clean)
-        if item.strip()
-    ]
+    return claim_scope.split_values(value)
 
 
 def claim_prefix(claim: str) -> str:
@@ -304,10 +294,7 @@ def overlaps(left: str, right: str) -> bool:
 
 
 def workspace_parts(workspace: str) -> tuple[str, str]:
-    if " @ " not in workspace:
-        return plain(workspace), "unknown"
-    path, branch = workspace.rsplit(" @ ", 1)
-    return plain(path), plain(branch)
+    return claim_scope.workspace_parts(workspace)
 
 
 def workspace_conflict(left: str, right: str) -> bool:
@@ -1189,6 +1176,7 @@ def _check_staged_board_snapshot(board: Path) -> str | None:
 
 def validate_sessions(sessions: list[Session]) -> list[str]:
     problems: list[str] = []
+    scopes = claim_scope.ClaimScopeResolver()
     seen_selectors: dict[tuple[str, object], str] = {}
     for session in sessions:
         if session.session_uuid:
@@ -1232,7 +1220,13 @@ def validate_sessions(sessions: list[Session]) -> list[str]:
         for right in live[index + 1 :]:
             for left_claim in left.claims:
                 for right_claim in right.claims:
-                    if overlaps(left_claim, right_claim):
+                    try:
+                        conflict = scopes.conflicts(left_claim, right_claim,
+                            left_workspaces=left.workspaces, right_workspaces=right.workspaces)
+                    except claim_scope.ClaimIdentityError as exc:
+                        problems.append(f"{left.label} / {right.label}: unverifiable claim scope: {exc}")
+                        continue
+                    if conflict:
                         problems.append(
                             f"{left.label}:{left_claim} overlaps "
                             f"{right.label}:{right_claim}"

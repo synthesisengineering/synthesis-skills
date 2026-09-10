@@ -67,6 +67,7 @@ DEFAULT_CONFIG = Path.home() / ".synthesis" / "git-hook-config.yaml"
 CORE_ENGINE_FILES = ("pre-commit", "commit-msg", "_load_config.py")
 COORDINATION_ENGINE_FILES = (
     "coordination.py",
+    "claim_scope.py",
     "coordination_schema.py",
     "pointer_lock.py",
     "peer_addressing.py",

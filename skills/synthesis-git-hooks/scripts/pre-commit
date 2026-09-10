@@ -111,7 +111,7 @@ case "${COORDINATION_CHECK_STAGED:-}" in
     1)
         COORDINATION_RUNTIME="$HOOK_DIR/coordination.py"
         COORDINATION_ASSET="$HOOK_DIR/../references/session-words-v1.txt.zlib.b85"
-        for dependency in coordination.py coordination_schema.py pointer_lock.py; do
+        for dependency in coordination.py claim_scope.py coordination_schema.py pointer_lock.py; do
             [ -f "$HOOK_DIR/$dependency" ] || fail_closed "coordination runtime incomplete: missing $HOOK_DIR/$dependency."
         done
         [ -f "$COORDINATION_ASSET" ] || fail_closed "coordination runtime incomplete: missing $COORDINATION_ASSET."

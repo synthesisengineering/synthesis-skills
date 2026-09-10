@@ -34,6 +34,21 @@ machine:
 
 ## Claim scope over the task lifecycle
 
+Claim admission uses the shared `scripts/claim_scope.py` conflict predicate.
+Besides physical overlap, the same `projects/` metadata path in registered Git
+worktrees conflicts when their verified Git common directory is identical.
+Disjoint exact files and segment globs remain independent; ordinary source
+paths outside `projects/` remain isolated by checkout. Relative metadata claims
+need one unambiguous workspace context, and missing or ambiguous Git evidence
+refuses a possible logical overlap. Named resources such as release-train claims
+remain a separate namespace, independent of filesystem paths.
+
+Conflict identity does not grant write authority. Check-staged still requires
+the actor's exact physical worktree, branch and staged paths. A currency guard
+may ask whether a claim intersects the broader possible repair area (the project
+subtree or registry); that is explicitly broader than comparing two exact edits
+and is never proof of ownership or permission to write another checkout.
+
 Claims reserve the smallest coherent area needed for the current authorized
 task. Use exact files for independent edits. A directory claim is appropriate
 when the task requires coordinated changes across that directory, such as a

@@ -199,7 +199,7 @@ def test_public_update_refreshes_independently_wired_runtime_and_preserves_perso
     assert receipt["layer_choices"] == machine.original_receipt["layer_choices"]
     assert receipt["component_choices"] == machine.original_receipt["component_choices"]
     assert receipt["generated_files"] == {}, "independent refresh must not invent uninstall ownership"
-    assert len(receipt["runtime_payloads"]["files"]) == 9
+    assert len(receipt["runtime_payloads"]["files"]) == 10
     assert onboard._protective_doctors({"git-hooks"})[0] is True
     assert phase(machine, verify_only=True).exit_code() == 0
 

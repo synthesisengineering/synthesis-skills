@@ -217,7 +217,7 @@ synthesis-git-hooks/
     └── per-repo-overrides.md         # delegation to repo-local .githooks
 ```
 
-The installer also copies `coordination.py`, `coordination_schema.py`,
+The installer also copies `coordination.py`, `claim_scope.py`, `coordination_schema.py`,
 `pointer_lock.py`, `peer_addressing.py`, and the versioned session-word asset from the declared
 `synthesis-project-management` dependency into the shared runtime. Their
 canonical source remains in that owning skill; the git-hooks doctor compares

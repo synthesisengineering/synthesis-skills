@@ -26,6 +26,7 @@ CONFIG_PATH="$HOME/.synthesis/git-hook-config.yaml"
 
 for source in \
     "$COORDINATION_SOURCE/coordination.py" \
+    "$COORDINATION_SOURCE/claim_scope.py" \
     "$COORDINATION_SOURCE/coordination_schema.py" \
     "$COORDINATION_SOURCE/pointer_lock.py" \
     "$COORDINATION_SOURCE/peer_addressing.py" \
@@ -45,6 +46,7 @@ cp -f "$SCRIPT_DIR/pre-commit" "$TARGET_DIR/pre-commit"
 cp -f "$SCRIPT_DIR/commit-msg" "$TARGET_DIR/commit-msg"
 cp -f "$SCRIPT_DIR/_load_config.py" "$TARGET_DIR/_load_config.py"
 cp -f "$COORDINATION_SOURCE/coordination.py" "$TARGET_DIR/coordination.py"
+cp -f "$COORDINATION_SOURCE/claim_scope.py" "$TARGET_DIR/claim_scope.py"
 cp -f "$COORDINATION_SOURCE/coordination_schema.py" "$TARGET_DIR/coordination_schema.py"
 cp -f "$COORDINATION_SOURCE/pointer_lock.py" "$TARGET_DIR/pointer_lock.py"
 cp -f "$COORDINATION_SOURCE/peer_addressing.py" "$TARGET_DIR/peer_addressing.py"
@@ -56,6 +58,7 @@ chmod +x \
     "$TARGET_DIR/commit-msg" \
     "$TARGET_DIR/_load_config.py" \
     "$TARGET_DIR/coordination.py" \
+    "$TARGET_DIR/claim_scope.py" \
     "$TARGET_DIR/coordination_schema.py" \
     "$TARGET_DIR/pointer_lock.py" \
     "$TARGET_DIR/peer_addressing.py"
