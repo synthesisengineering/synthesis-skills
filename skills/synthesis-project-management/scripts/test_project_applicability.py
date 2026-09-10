@@ -143,3 +143,25 @@ def test_unverifiable_adoption_history_refuses_applicability(machine, monkeypatc
     monkeypatch.setattr(state, "_run", unavailable)
     result, report = cli(machine, "checkpoint", capsys)
     assert result != 0 and report["status"] not in {"PASS", "NOT_APPLICABLE"}
+
+
+@pytest.mark.parametrize("missing", [True, False])
+def test_owned_hook_unknown_project_cannot_be_not_applicable(machine, monkeypatch, tmp_path, missing):
+    repo, project, claims, receipts = machine
+    unknown = project.parent / "typo"
+    if not missing:
+        unknown.mkdir()
+    claims.write_text(claims.read_text().replace("alpha", "typo").replace(f"tool:{SESSION}", f"codex:{SESSION}"))
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", f"codex:{SESSION}")
+    payload = native_hook_fixture(tmp_path, monkeypatch, "codex", SESSION, repo)
+    verdict, _ = state.checkpoint_hook(payload, coordination_board=claims, receipt_root=receipts,
+        refresh_coordination=False, repo_guard_root=tmp_path / "repo-guard")
+    assert verdict not in {"PASS", "NOT_APPLICABLE"}
+    assert not receipts.exists()
+
+
+def test_narrative_registry_id_cannot_establish_checkpoint_applicability(machine, capsys):
+    repo, _, _, _ = machine
+    (repo / "projects/index.yaml").write_text("notes: |\n  id: alpha\nprojects:\n  - id: beta\n")
+    result, report = cli(machine, "checkpoint", capsys)
+    assert result != 0 and report["status"] not in {"PASS", "NOT_APPLICABLE"}
