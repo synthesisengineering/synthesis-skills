@@ -23,7 +23,7 @@ SOURCE_FILES = {
         "skills/synthesis-git-hooks/scripts/_load_config.py": (".synthesis/git-hooks/_load_config.py", 0o755),
         **{"skills/synthesis-project-management/scripts/" + n:
            (".synthesis/git-hooks/" + n, 0o755) for n in
-           ("coordination.py", "coordination_schema.py", "pointer_lock.py", "peer_addressing.py")},
+           ("coordination.py", "claim_scope.py", "coordination_schema.py", "pointer_lock.py", "peer_addressing.py")},
         "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85":
             (".synthesis/references/session-words-v1.txt.zlib.b85", 0o644),
     },

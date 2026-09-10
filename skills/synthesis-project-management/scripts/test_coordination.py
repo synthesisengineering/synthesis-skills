@@ -2335,7 +2335,7 @@ def test_every_command_notes_a_newer_installed_engine(tmp_path):
     relative = Path("skills") / "synthesis-project-management" / "scripts"
     older = cache / "4.80.0" / relative
     older.mkdir(parents=True)
-    for name in ("coordination.py", "coordination_schema.py", "pointer_lock.py", "peer_addressing.py"):
+    for name in ("coordination.py", "claim_scope.py", "coordination_schema.py", "pointer_lock.py", "peer_addressing.py"):
         (older / name).write_bytes((MODULE_PATH.parent / name).read_bytes())
     newer = cache / "4.81.0" / relative
     newer.mkdir(parents=True)
@@ -2552,3 +2552,17 @@ def test_logical_metadata_conflict_never_authorizes_sibling_checkout(metadata_wo
     result = json.loads(capsys.readouterr().out)
     assert result["enforcement_outcome"] == ("refused-outside-claim" if register_sibling else "refused-unregistered-worktree")
     assert not result["issues_authority_receipt"]
+
+
+@pytest.mark.parametrize("second,expected", [("metadata", 0), ("release-train:other", 0), ("release-train:fixture", 10)])
+def test_virtual_resources_never_use_filesystem_identity(metadata_worktrees, tmp_path, second, expected):
+    root, sibling = metadata_worktrees
+    board = tmp_path / "board.md"
+    first = claim_args(board, session_id="A", project="first", workspace=f"{root} @ main", area="release-train:fixture")
+    area = str(sibling / "projects/index.yaml") if second == "metadata" else second
+    later = claim_args(board, session_id="B", project="second", workspace=f"{sibling} @ sibling", area=area)
+    assert MODULE.command_claim(first) == 0
+    assert MODULE.command_claim(later) == expected
+    scope = scope_module()
+    assert scope.claim_conflicts("release-train:fixture", area) is (expected == 10)
+    assert scope.claim_conflicts(area, "release-train:fixture") is (expected == 10)

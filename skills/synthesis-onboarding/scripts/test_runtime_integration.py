@@ -33,7 +33,7 @@ GIT_PAYLOADS = {
     **{"skills/synthesis-git-hooks/scripts/" + name: (".synthesis/git-hooks/" + name, 0o755)
        for name in ("pre-commit", "commit-msg", "_load_config.py")},
     **{"skills/synthesis-project-management/scripts/" + name: (".synthesis/git-hooks/" + name, 0o755)
-       for name in ("coordination.py", "coordination_schema.py", "pointer_lock.py", "peer_addressing.py")},
+       for name in ("coordination.py", "claim_scope.py", "coordination_schema.py", "pointer_lock.py", "peer_addressing.py")},
     "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85":
         (".synthesis/references/session-words-v1.txt.zlib.b85", 0o644),
 }
