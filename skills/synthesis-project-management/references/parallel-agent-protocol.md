@@ -30,7 +30,12 @@ machine:
 5. **Close.** Update durable project tiers, create the local handoff receipt,
    message affected sessions, release the claim, and retire merged worktrees
    with `retire_worktree.py`, never by hand. Publish the attributed batch
-   only for explicit remote handoff or day-end.
+   only for explicit remote handoff or day-end. A merge or fast-forward
+   request sent to another session names the target head it was
+   tested against (`fast-forward clean as of main=<sha>`); the receiver
+   re-runs `git merge-base --is-ancestor <current-target-head> <source-head>`
+   against the target's current head, not the named sha, before acting, and
+   any advance of the target since the named head invalidates the claim.
 
 ## Claim scope over the task lifecycle
 
@@ -125,10 +130,11 @@ that moment.
    lands in `peer-sends.jsonl`. Anything the gate cannot verify blocks.
    One boundary is stated rather than hidden: on the shell lane the gate
    reads the command text of the tool call, so a `codex queue` invoked
-   from inside a script file is invisible to it — the boundary every
+   from inside a script file is invisible to it, whether that script is
+   run by path or piped to a shell on its stdin — the boundary every
    shell-level guard shares. Invoke `codex queue` directly in the tool
-   call; wrapping it in a script is evasion, not delivery, and the send
-   log will show no decision for it.
+   call; wrapping it in a script, run by path or through a pipe, is
+   evasion, not delivery, and the send log will show no decision for it.
 4. **Never assign work to a guess.** An unresolvable peer means a bus
    message addressed to the project, which its sessions self-select at their
    next prompt — a dispatch to the wrong session starts work in a context
@@ -266,7 +272,12 @@ The context owner reads all new contribution artifacts as a set, verifies their
 claims against git and test output, merges or integrates the implementation,
 updates canonical project context once, then records which artifacts were
 reconciled. This prevents last-writer-wins corruption of the durable project
-record.
+record. A contributor's merge or fast-forward claim is scoped to the target
+head it names (`fast-forward clean as of main=<sha>`); before acting on it the
+owner re-runs the ancestry check against the target's current head, not the
+named sha (`git merge-base --is-ancestor <current-target-head> <source-head>`),
+and if the target has advanced past the named head the claim is void and the
+contributor re-tests against the current head.
 
 ## Shared repositories
 

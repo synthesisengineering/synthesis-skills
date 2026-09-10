@@ -413,8 +413,8 @@ def main() -> int:
     parser.add_argument(
         "--base",
         default=None,
-        help="Verification base ref (default: <remote>/HEAD, falling back to "
-        "<remote>/main).",
+        help="Verification base ref; must be a <remote> remote-tracking ref such "
+        "as <remote>/main (default: <remote>/HEAD, falling back to <remote>/main).",
     )
     parser.add_argument("--remote", default="origin")
     parser.add_argument(
@@ -514,15 +514,27 @@ def main() -> int:
         )
     symbolic_base = run(repository, "rev-parse", "--symbolic-full-name", base)
     remote_prefix = f"refs/remotes/{args.remote}/"
-    if (
-        symbolic_base.returncode != 0
-        or not symbolic_base.stdout.strip().startswith(remote_prefix)
-    ):
+    resolved_name = symbolic_base.stdout.strip()
+    if symbolic_base.returncode != 0 or not resolved_name.startswith(remote_prefix):
+        if symbolic_base.returncode != 0:
+            resolution = "does not resolve to any ref"
+        elif resolved_name:
+            resolution = f"resolves to {resolved_name}"
+        else:
+            # rev-parse exited 0 but printed no name: a revision expression
+            # such as HEAD~0, or a short name that a local branch or tag
+            # shadows (git reports that ambiguity only on stderr), so carry
+            # git's own diagnosis rather than guessing the cause.
+            resolution = "resolves to a commit but not to a single ref name"
+            diagnosis = symbolic_base.stderr.strip().splitlines()
+            if diagnosis:
+                resolution += f" ({diagnosis[-1]})"
         return fail(
             f"verification base must be a freshly fetched {args.remote} "
-            "remote-tracking ref"
+            f"remote-tracking ref under {remote_prefix} (for example "
+            f"{remote_prefix}main); received {base!r}, which {resolution}"
         )
-    base = symbolic_base.stdout.strip()
+    base = resolved_name
     base_check = run(repository, "rev-parse", "--verify", f"{base}^{{commit}}")
     if base_check.returncode != 0 or not base_check.stdout.strip():
         return fail(f"verification base does not resolve: {base}")

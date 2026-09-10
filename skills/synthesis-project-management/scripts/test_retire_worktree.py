@@ -219,6 +219,65 @@ def test_local_verification_base_is_rejected(tmp_path: Path) -> None:
 
     assert result.returncode == 2
     assert "remote-tracking ref" in result.stderr
+    # The refusal names the accepted form, the value received, and the name
+    # the value resolved to — a bare "must be a remote-tracking ref" leaves
+    # the caller guessing which of the three went wrong.
+    assert "origin/main" in result.stderr
+    assert "'HEAD'" in result.stderr
+    assert "refs/heads/main" in result.stderr
+    assert worktree.exists()
+
+
+def test_ambiguous_short_base_refusal_carries_git_diagnosis(tmp_path: Path) -> None:
+    _remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    commit_and_merge(clone, worktree)
+    # A local branch named origin/main shadows refs/remotes/origin/main. For
+    # the short name, rev-parse --symbolic-full-name exits 0, prints nothing,
+    # and reports the ambiguity only on stderr.
+    git(clone, "branch", "origin/main")
+
+    result = retire(
+        "--repository",
+        str(clone),
+        "--worktree",
+        str(worktree),
+        "--base",
+        "origin/main",
+    )
+
+    assert result.returncode == 2
+    assert "remote-tracking ref" in result.stderr
+    assert "'origin/main'" in result.stderr
+    # The refusal carries git's own diagnosis and names the condition it
+    # tested, rather than a cause the code never checked.
+    assert "is ambiguous" in result.stderr
+    assert "bare commit id" not in result.stderr
+    # The accepted form it offers must not be the value it just refused.
+    assert "for example refs/remotes/origin/main" in result.stderr
+    assert worktree.exists()
+
+
+def test_revision_expression_base_is_rejected(tmp_path: Path) -> None:
+    _remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    commit_and_merge(clone, worktree)
+
+    result = retire(
+        "--repository",
+        str(clone),
+        "--worktree",
+        str(worktree),
+        "--base",
+        "HEAD~0",
+    )
+
+    assert result.returncode == 2
+    assert "'HEAD~0'" in result.stderr
+    # HEAD~0 resolves to a commit but rev-parse --symbolic-full-name has no
+    # ref name to print for a revision expression.
+    assert "not to a single ref name" in result.stderr
+    assert "bare commit id" not in result.stderr
     assert worktree.exists()
 
 

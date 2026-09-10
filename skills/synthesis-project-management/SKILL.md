@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.13.9"
+  version: "2.13.10"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -357,14 +357,14 @@ or save state by hand:
 3. Append chronological detail to `sessions/YYYY-MM.md`
 4. End the session-log entry with an Attribution line for the departing agent (see Agent Attribution) — the receiving agent should know who did what, with what verification
 5. Save substantial plans, audits, or checklists under `resources/artifacts/`
-6. Verify `LOCAL_READY` or `LOCAL_RECOVERABLE`; a same-machine client switch
-   does not require a commit, push, or manual lifecycle command
+6. Verify `LOCAL_READY` or `LOCAL_RECOVERABLE`; a same-machine client switch does not require a commit, push, or manual lifecycle command
 7. If `synthesis-agent-conformance` is installed, run its `activate`,
    `pointer`, and `continuity --readiness local` commands for the project
 8. When changing computers, run `synthesis-mac-sync` remote-handoff mode, then
    verify `continuity --readiness remote`. Day-end performs the same transition.
-9. Release or transfer this session's coordination claims. Normal release recoverably archives its session's active-project pointer; another session's pointer is untouched. Normal release is
-   caller-bound; administrative release is distinct and audited.
+9. Release or transfer this session's coordination claims. Normal release recoverably archives its session's active-project pointer; another session's pointer is untouched. Normal release is caller-bound; administrative release is distinct and audited.
+
+A cross-session merge or fast-forward request names the target head it was tested against (`fast-forward clean as of main=<sha>`); the receiver re-runs `git merge-base --is-ancestor <current-target-head> <source-head>` against the target's current head, not the named sha, before acting, and any advance of the target since the named head invalidates the claim.
 
 Resuming from another agent: run `scripts/project_state.py resolve` against the
 Git-tracked index before reading prose. Divergence is `CONFLICT`; unreadable or
