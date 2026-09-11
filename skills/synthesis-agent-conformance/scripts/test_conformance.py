@@ -1500,6 +1500,29 @@ def test_exact_receipt_selectors_cannot_replace_all_current_health(
         MODULE.main()
 
 
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        (["hook-live", "--claude-receipt-session-id", "x"], (None, "x")),
+        (["hook-live", "--codex-receipt-session-id", "x"], ("x", None)),
+        (["hook-live"], (None, None)),
+        (["all", "--claude-receipt-session-id", "x"], SystemExit),
+    ],
+)
+def test_receipt_selectors_are_optional_and_hook_live_only(
+    monkeypatch, argv: list[str], expected
+) -> None:
+    """Either selector, both, or neither parse for hook-live; all refuses them by name."""
+    args = MODULE.parser().parse_args(argv)
+    assert args.command == argv[0]
+    if expected is SystemExit:
+        monkeypatch.setattr(sys, "argv", ["conformance.py", *argv])
+        with pytest.raises(SystemExit, match="hook-live"):
+            MODULE.main()
+    else:
+        assert (args.codex_receipt_session_id, args.claude_receipt_session_id) == expected
+
+
 def test_claude_receipt_rejects_subagent_transcript_with_parent_uuid(
     tmp_path: Path, monkeypatch
 ) -> None:

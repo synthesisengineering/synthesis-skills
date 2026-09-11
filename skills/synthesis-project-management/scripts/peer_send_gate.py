@@ -15,17 +15,32 @@ that on every direct lane the plugin knows:
 - ``mcp__ccd_session_mgmt__send_message``: the ``session_id`` must equal the
   ccd address on a live receipt, and the board row must still be active.
 - shell tools: a ``codex queue --thread`` command needs a receipt naming
-  that thread; every other command passes untouched. The gate reads the
-  tool call's command text: a ``codex queue`` run from inside a script
-  file is invisible to it, the boundary every shell-level guard shares,
-  so the protocol requires the direct invocation.
+  that thread; every other command passes untouched. The gate parses the
+  tool call's command text the way the shell would and judges what runs:
+  ``codex queue`` as a command's own argv, directly, behind ``env``,
+  ``nice``, ``timeout``, ``time``, ``command`` or ``exec``, or in the
+  brace group or subshell a ``coproc`` (named or not) runs; inside a
+  ``bash -c``, ``sh -c``, ``zsh -c`` or ``eval`` string or a here-string a
+  shell reads as its program; and inside a ``$(…)`` or backtick
+  substitution wherever the shell expands one — unquoted, in double
+  quotes, or in the body of a heredoc whose tag is unquoted. The same
+  words in a single-quoted string, in the body of a quoted-tag heredoc
+  (``<<'TAG'``, ``<<"TAG"``, ``<<\\TAG``) or in a quoted argument to another
+  command are data, not a send. Text the shell would reject (an
+  unterminated quote or substitution), or that nests strings and
+  substitutions deeper than the gate reads, has no structure to judge, so
+  its raw words decide and the gate fails closed. A ``codex queue`` run
+  from inside a script file, or piped to a shell on its stdin, is
+  invisible to it, the boundary every shell-level guard shares, so the
+  protocol requires the direct invocation.
 
 Every direct send must carry the sender's own board id so the recipient can
 resolve the reply without guessing, and the same text to a second peer
 within the broadcast window is refused. A reply may copy the ``from=`` of a
 message this session received (the harness wrote that address). Every
 decision is appended to the send log. Anything the gate cannot verify —
-no session id, unreadable board, unknown tool shape — blocks.
+no session id, unreadable board, unknown tool shape, an evaluation that
+raises — blocks.
 
 Exit 0 admits the call; exit 2 blocks it with the reason and the remedy on
 stderr, which both clients show to the agent.
@@ -36,6 +51,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -70,9 +86,33 @@ HARNESS_TOOL = "SendMessage"
 CCD_TOOL_RE = re.compile(r"ccd_session_mgmt__send_message$")
 SHELL_TOOLS = {"Bash", "exec_command", "exec", "shell", "local_shell"}
 AGENT_ID_RE = re.compile(r"^a[0-9a-f]{16}$")
+# Raw-word fallback, used only for text with no command structure to read: what
+# the shell would reject (an unterminated quote or substitution) or what nests
+# past NESTING_LIMIT. The words alone decide.
 CODEX_QUEUE_RE = re.compile(r"(?<![\w./-])codex\s+queue\b")
 THREAD_RE = re.compile(r"--thread(?:=|\s+)(?:\"([^\"]+)\"|'([^']+)'|(\S+))")
 MESSAGE_RE = re.compile(r"--message(?:=|\s+)(?:\"((?:[^\"\\]|\\.)*)\"|'([^']*)'|(\S+))")
+# Shell structure: what ends a simple command, what redirects, what opens a heredoc.
+CONTROL_OPERATORS = ("&&", "||", "|&", ";;", ";", "|", "&", "\n", "(", ")")
+REDIRECT_OPERATORS = ("&>>", "&>", ">>", ">|", ">&", "<&", "<>", "<<<", ">", "<")
+HEREDOC_OPERATORS = ("<<-", "<<")
+OPERATORS = sorted(CONTROL_OPERATORS + REDIRECT_OPERATORS + HEREDOC_OPERATORS, key=len, reverse=True)
+ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+RESERVED_PREFIXES = {"!", "{", "}", "if", "then", "elif", "else", "while", "until", "do", "coproc"}
+# Wrappers that run their operand unchanged, each with the options that consume the next word.
+WRAPPER_VALUE_OPTIONS = {
+    "env": {"-u", "-C", "-S", "--unset", "--chdir", "--split-string"},
+    "nice": {"-n", "--adjustment"},
+    "timeout": {"-s", "-k", "--signal", "--kill-after"},
+    "time": set(),
+    "command": set(),
+    "exec": {"-a"},
+}
+NESTED_SHELLS = {"bash", "sh", "zsh"}
+SHELL_VALUE_OPTIONS = {"-o", "+o", "-O", "+O", "--rcfile", "--init-file"}
+# Strings inside strings and substitutions inside substitutions are read as
+# structure this many levels deep; past it the raw words decide.
+NESTING_LIMIT = 32
 FROM_RE = re.compile(r'cross-session-message from=\\?"([^"\\]+)\\?"')
 TRANSCRIPT_TAIL_BYTES = 4_000_000
 
@@ -94,6 +134,21 @@ class Decision:
     reason: str = ""
     target_uuid: str = ""
     logged: bool = True
+
+
+@dataclass
+class PeerSend:
+    thread: str
+    message: str
+
+
+@dataclass
+class Command:
+    """One simple command the shell would run: its argv, and the here-string
+    (``<<<``) on its stdin when it has one."""
+
+    argv: list[str]
+    stdin: str = ""
 
 
 def board_rows(board: Path):
@@ -142,7 +197,7 @@ def shell_command(tool_input: dict) -> str:
         if isinstance(value, str):
             return value
         if isinstance(value, list):
-            return " ".join(str(part) for part in value)
+            return shlex.join(str(part) for part in value)
     return ""
 
 
@@ -150,6 +205,324 @@ def first_group(match: re.Match | None) -> str:
     if match is None:
         return ""
     return next((group for group in match.groups() if group), "")
+
+
+def backtick_span(text: str, start: int) -> tuple[str, int]:
+    """The command text between the backtick at ``start`` and its closing
+    backtick (inside, a backslash escapes only ``\\``, ``$`` and a backtick)
+    and the index just past the close. Raises ValueError when the close is
+    missing, text the shell rejects."""
+    inner: list[str] = []
+    i, n = start + 1, len(text)
+    while i < n:
+        char = text[i]
+        if char == "\\" and text[i + 1 : i + 2] in ("\\", "$", "`"):
+            inner.append(text[i + 1])
+            i += 2
+        elif char == "`":
+            return "".join(inner), i + 1
+        else:
+            inner.append(char)
+            i += 1
+    raise ValueError("unterminated backtick substitution")
+
+
+def expanded_span(text: str, start: int, commands: list[Command], terminator: str | None, depth: int) -> tuple[str, int]:
+    """Text the shell expands — double-quoted text (``terminator`` is the
+    closing quote) or the body of an unquoted-tag heredoc (no terminator) —
+    with every ``$(…)`` and backtick substitution in it parsed as the
+    commands it runs, appended to ``commands``. Returns the text's value and
+    the index just past the terminator. Raises ValueError when the terminator
+    is missing."""
+    value: list[str] = []
+    i, n = start, len(text)
+    while i < n:
+        char = text[i]
+        if char == terminator:
+            return "".join(value), i + 1
+        if char == "\\" and text[i + 1 : i + 2] in ('"', "\\", "$", "`", "\n"):
+            if text[i + 1] != "\n":
+                value.append(text[i + 1])
+            i += 2
+        elif text.startswith("$(", i):
+            inner, end = parse_commands(text, i + 2, ")", depth + 1)
+            commands.extend(inner)
+            value.append(text[i:end])
+            i = end
+        elif char == "`":
+            inner, end = backtick_span(text, i)
+            commands.extend(shell_commands(inner, depth + 1))
+            value.append(text[i:end])
+            i = end
+        else:
+            value.append(char)
+            i += 1
+    if terminator is not None:
+        raise ValueError("unterminated double quote")
+    return "".join(value), i
+
+
+def skip_heredoc_bodies(text: str, start: int, heredocs: list[tuple[str, bool, bool]], commands: list[Command], depth: int) -> int:
+    """Index just past the body lines of each pending heredoc, in order. The
+    shell expands a body whose tag was unquoted, so its substitutions are
+    parsed as the commands they run; a quoted tag keeps its body literal."""
+    i = start
+    for tag, strip_tabs, quoted in heredocs:
+        lines: list[str] = []
+        while i < len(text):
+            end = text.find("\n", i)
+            line, i = (text[i:], len(text)) if end < 0 else (text[i:end], end + 1)
+            if (line.lstrip("\t") if strip_tabs else line) == tag:
+                break
+            lines.append(line)
+        if not quoted:
+            expanded_span("\n".join(lines), 0, commands, None, depth)
+    return i
+
+
+def shell_commands(text: str, depth: int = 0) -> list[Command]:
+    """Every simple command the shell would run from ``text``.
+
+    Quotes and backslashes are honored as bash honors them; control
+    operators (``;`` ``&&`` ``||`` ``|`` ``&`` newline, subshell
+    parentheses) end a command; a redirection and its target are dropped,
+    except a here-string, which stays on its command as stdin; a ``$(…)`` or
+    backtick substitution is parsed for the commands it runs wherever the
+    shell expands one (unquoted, inside double quotes, in the body of a
+    heredoc whose tag is unquoted); the body of a quoted-tag heredoc is
+    skipped whole. Raises ValueError for an unterminated quote or
+    substitution, or nesting past NESTING_LIMIT — text with no command
+    structure to read.
+    """
+    commands, _ = parse_commands(text, 0, None, depth)
+    return commands
+
+
+def parse_commands(text: str, start: int, closer: str | None, depth: int) -> tuple[list[Command], int]:
+    """The commands in ``text`` from ``start`` to its end (``closer`` None) or
+    to the ``)`` closing a ``$(`` substitution, and the index just past where
+    parsing stopped."""
+    if depth > NESTING_LIMIT:
+        raise ValueError(f"shell text nested deeper than {NESTING_LIMIT} levels")
+    commands: list[Command] = []
+    argv: list[str] = []
+    word: list[str] = []
+    in_word = word_quoted = False
+    here_string = ""
+    heredocs: list[tuple[str, bool, bool]] = []
+    role = "argument"
+    subshells = 0
+    i, n = start, len(text)
+
+    def close_word() -> None:
+        nonlocal in_word, word_quoted, role, here_string
+        if not in_word:
+            return
+        value, in_word = "".join(word), False
+        word.clear()
+        if role == "argument":
+            argv.append(value)
+        elif role == "heredoc-tag":
+            heredocs.append((value, False, word_quoted))
+        elif role == "heredoc-tag-strip":
+            heredocs.append((value, True, word_quoted))
+        elif role == "here-string":
+            here_string = value
+        role, word_quoted = "argument", False
+
+    def close_command() -> None:
+        nonlocal role, here_string
+        close_word()
+        role = "argument"
+        if argv:
+            commands.append(Command(list(argv), here_string))
+            argv.clear()
+        here_string = ""
+
+    while i < n:
+        char = text[i]
+        if char == "\\":
+            if text[i + 1 : i + 2] != "\n":
+                word.append(text[i + 1 : i + 2])
+                in_word = word_quoted = True
+            i += 2
+        elif char == "'":
+            end = text.find("'", i + 1)
+            if end < 0:
+                raise ValueError("unterminated single quote")
+            word.append(text[i + 1 : end])
+            in_word = word_quoted = True
+            i = end + 1
+        elif char == '"':
+            value, i = expanded_span(text, i + 1, commands, '"', depth)
+            word.append(value)
+            in_word = word_quoted = True
+        elif text.startswith("$(", i):
+            inner, end = parse_commands(text, i + 2, ")", depth + 1)
+            commands.extend(inner)
+            word.append(text[i:end])
+            in_word = True
+            i = end
+        elif char == "`":
+            inner, end = backtick_span(text, i)
+            commands.extend(shell_commands(inner, depth + 1))
+            word.append(text[i:end])
+            in_word = True
+            i = end
+        elif char in " \t":
+            close_word()
+            i += 1
+        elif char == "#" and not in_word:
+            end = text.find("\n", i)
+            i = n if end < 0 else end
+        else:
+            operator = next((op for op in OPERATORS if text.startswith(op, i)), None)
+            if operator is None:
+                word.append(char)
+                in_word = True
+                i += 1
+                continue
+            if in_word and operator not in CONTROL_OPERATORS and "".join(word).isdigit():
+                word.clear()  # a file descriptor number, as in 2>&1
+                in_word = False
+            i += len(operator)
+            if operator in CONTROL_OPERATORS:
+                close_command()
+                if operator == "(":
+                    subshells += 1
+                elif operator == ")":
+                    if subshells:
+                        subshells -= 1
+                    elif closer == ")":
+                        return commands, i
+                elif operator == "\n" and heredocs:
+                    i = skip_heredoc_bodies(text, i, heredocs, commands, depth)
+                    heredocs.clear()
+            else:
+                close_word()
+                if operator == "<<-":
+                    role = "heredoc-tag-strip"
+                elif operator == "<<":
+                    role = "heredoc-tag"
+                elif operator == "<<<":
+                    role = "here-string"
+                else:
+                    role = "redirect-target"
+    close_command()
+    if closer is not None:
+        raise ValueError("unterminated command substitution")
+    return commands, i
+
+
+def after_wrapper(words: list[str]) -> list[str]:
+    """The operand of ``env``, ``nice``, ``timeout``, ``time``, ``command`` or ``exec``:
+    the wrapper, its options, their values and (for timeout) the duration are consumed."""
+    wrapper, rest = words[0], words[1:]
+    while rest:
+        head = rest[0]
+        if head == "--":
+            del rest[0]
+            break
+        if head.startswith("-") and len(head) > 1:
+            del rest[: 2 if head in WRAPPER_VALUE_OPTIONS[wrapper] else 1]
+        elif wrapper == "env" and ASSIGNMENT_RE.match(head):
+            del rest[0]
+        else:
+            break
+    if wrapper == "timeout":
+        del rest[:1]
+    return rest
+
+
+def after_coproc(words: list[str]) -> list[str]:
+    """The command ``coproc`` runs. Bash reads a name after ``coproc`` only
+    when a compound command follows it, and any word serves as that name:
+    ``coproc NAME { …; }`` forks the brace group as the coprocess before it
+    checks the name, so an invalid identifier forfeits only the COPROC
+    variables. The ``{`` opens this argv, so the name goes with the keyword;
+    ``coproc NAME command`` runs ``NAME`` itself. ``coproc NAME ( … )`` needs
+    no reading here: ``(`` closes the argv at the name and the subshell's
+    commands are listed on their own."""
+    return words[2 if len(words) > 2 and words[2] == "{" else 1 :]
+
+
+def shell_program(words: list[str], stdin: str) -> str | None:
+    """The program a ``bash``, ``sh`` or ``zsh`` invocation runs: its ``-c``
+    string, or the here-string on its stdin when it is given no script
+    operand (``bash <<< '…'``, ``bash -s``). None when the shell is handed a
+    script file, whose text the gate cannot see."""
+    has_c = reads_stdin = False
+    rest = words[1:]
+    while rest and rest[0] not in ("--", "-") and rest[0][:1] in ("-", "+") and len(rest[0]) > 1:
+        head = rest.pop(0)
+        if head[0] == "-" and head[1] != "-":
+            has_c = has_c or "c" in head
+            reads_stdin = reads_stdin or "s" in head
+        if head in SHELL_VALUE_OPTIONS:
+            del rest[:1]
+    if rest and rest[0] in ("--", "-"):
+        del rest[0]
+    if has_c:
+        return rest[0] if rest else None
+    if reads_stdin or not rest:
+        return stdin or None
+    return None
+
+
+def executed_command(command: Command, depth: int = 0) -> list[str] | None:
+    """The ``codex queue`` argv this simple command runs — directly, behind a
+    wrapper, or inside a nested shell program — or None when it runs none.
+    Nested programs are parsed at ``depth + 1``; past NESTING_LIMIT the parser
+    raises and the raw words decide."""
+    words = list(command.argv)
+    while words and (words[0] in RESERVED_PREFIXES or words[0] in WRAPPER_VALUE_OPTIONS or ASSIGNMENT_RE.match(words[0])):
+        if words[0] in WRAPPER_VALUE_OPTIONS:
+            words = after_wrapper(words)
+        elif words[0] == "coproc":
+            words = after_coproc(words)
+        else:
+            words = words[1:]
+    if not words:
+        return None
+    head = words[0]
+    if head.rsplit("/", 1)[-1] == "codex":
+        return words if words[1:2] == ["queue"] else None
+    if head in NESTED_SHELLS:
+        nested = shell_program(words, command.stdin)
+    elif head == "eval":
+        nested = " ".join(words[1:])
+    else:
+        return None
+    if nested is None:
+        return None
+    return next((send for send in (executed_command(run, depth + 1) for run in shell_commands(nested, depth + 1)) if send), None)
+
+
+def option_value(argv: list[str], name: str) -> str:
+    """The value of ``name X`` or ``name=X`` in an argv, or empty when absent."""
+    for index, word in enumerate(argv):
+        if word == name:
+            return argv[index + 1] if index + 1 < len(argv) else ""
+        if word.startswith(name + "="):
+            return word[len(name) + 1 :]
+    return ""
+
+
+def peer_send(command: str) -> PeerSend | None:
+    """The ``codex queue`` send the shell text would run, its thread and message
+    read from that command's own argv; None when nothing runs one. Text the shell
+    would reject (an unterminated quote or substitution), or that nests past
+    NESTING_LIMIT, has no command structure to read, so its raw words decide as
+    they did before the parser: the gate fails closed, never open."""
+    try:
+        argv = next((send for send in (executed_command(run) for run in shell_commands(command)) if send), None)
+    except ValueError:
+        if not CODEX_QUEUE_RE.search(command):
+            return None
+        return PeerSend(first_group(THREAD_RE.search(command)), first_group(MESSAGE_RE.search(command)))
+    if argv is None:
+        return None
+    return PeerSend(option_value(argv, "--thread"), option_value(argv, "--message"))
 
 
 def classify(tool_name: str, tool_input: dict, home: Path | None = None) -> Decision:
@@ -176,19 +549,19 @@ def classify(tool_name: str, tool_input: dict, home: Path | None = None) -> Deci
             return Decision(False, "ccd", "", "peer send carries no session_id")
         return Decision(True, "ccd", session_id, "")
     if tool_name in SHELL_TOOLS:
-        command = shell_command(tool_input)
-        if not CODEX_QUEUE_RE.search(command):
+        send = peer_send(shell_command(tool_input))
+        if send is None:
             return Decision(True, "shell", "", "not a peer send", logged=False)
-        thread = first_group(THREAD_RE.search(command))
-        if not thread:
+        if not send.thread:
             return Decision(False, "codex", "", "codex queue without a --thread value")
-        return Decision(True, "codex", thread, "")
+        return Decision(True, "codex", send.thread, "")
     return Decision(True, "other", "", "not a peer tool", logged=False)
 
 
 def message_body(lane: str, tool_input: dict) -> str:
     if lane == "codex":
-        return first_group(MESSAGE_RE.search(shell_command(tool_input)))
+        send = peer_send(shell_command(tool_input))
+        return send.message if send else ""
     return str(tool_input.get("message") or "")
 
 
@@ -335,7 +708,18 @@ def gate(board: Path) -> int:
     if not isinstance(payload, dict):
         sys.stderr.write("peer-send-gate BLOCKED: hook payload is not an object\n")
         return 2
-    decision = evaluate(payload, board=board)
+    try:
+        decision = evaluate(payload, board=board)
+    except Exception as exc:  # RecursionError included: a crash would exit 1, which does not block
+        tool_name = str(payload.get("tool_name") or "")
+        decision = Decision(
+            False,
+            "shell" if tool_name in SHELL_TOOLS else "unknown",
+            "",
+            f"evaluating the call raised {type(exc).__name__}: {exc}; a call the gate cannot "
+            "read fails closed. A peer send is `codex queue --thread <id> --message <text>` "
+            "invoked directly, not nested in shells, evals or substitutions",
+        )
     if decision.logged:
         record(board, payload, decision)
     if decision.allow:

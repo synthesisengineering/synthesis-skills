@@ -2180,6 +2180,8 @@ def test_skill_document_stays_within_repo_budget() -> None:
         "Archive FIRST, delete second",
         "## Project Discovery",
         "Git-index collisions.",
+        "merge-base --is-ancestor",
+        "<current-target-head>",
     ):
         assert rule_anchor in skill, f"load-bearing rule left SKILL.md: {rule_anchor}"
 
@@ -2194,6 +2196,8 @@ def test_skill_document_stays_within_repo_budget() -> None:
         ("parallel-agent-protocol.md", "active-project-history"),
         ("parallel-agent-protocol.md", "SYNTHESIS_HANDOFF_SELF"),
         ("parallel-agent-protocol.md", "resumable intent"),
+        ("parallel-agent-protocol.md", "tested against"),
+        ("parallel-agent-protocol.md", "<current-target-head>"),
     ):
         text = (refs / reference_name).read_text(encoding="utf-8")
         assert marker in text, f"moved block missing from {reference_name}: {marker}"

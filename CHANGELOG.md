@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.97.0] - 2026-09-10
+
+The pull-request queue scan dispatches by origin host: Bitbucket Cloud
+repositories are read through the synthesis-bitbucket helper, GitHub is
+unchanged, and other hosts stay named as unscanned. The peer-send gate judges
+the command the shell would run, so the same words in a quoted heredoc or quoted
+data are never a send. Cross-session merge requests name the target head they
+were tested against; worktree retirement names the accepted base form when it
+refuses one. The daily-rituals version record covers every labeled version.
+Tests lock optional-plan absence, shallow-clone applicability and hook-live selectors.
+
 ## [4.96.6] - 2026-09-09
 
 Checkpoint commands and native discovery share an applicability rule. Registered

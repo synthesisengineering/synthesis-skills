@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -91,6 +91,15 @@ Global flags on any command: `--json` · `--jq '<expr>'` (with `--json`) · `--f
 | `gh api …` | `bkt api …` |
 
 Bitbucket Cloud has **no PR labels** and its PR states are `OPEN`, `MERGED`, `DECLINED`, `SUPERSEDED` — port `gh` habits accordingly.
+
+## PR queue
+
+`scripts/pr_queue.py` is the Bitbucket half of the daily-rituals PR-queue scan (`synthesis-daily-rituals/scripts/pr_queue_scan.py`), which dispatches each declared repo by origin host and loads this helper by path.
+
+- `list_open_prs(workspace, repo_slug)` runs `bkt pr list --workspace <ws> --repo <slug> --state OPEN --limit 0 --json` — the slug **alone**, never `workspace/slug`, which is the form that 404s — and buckets the result the way the scan reports it: awaiting your review, your own open PRs, and open PRs nobody was asked to review.
+- Identity comes from `bkt api /user --json` (`uuid`, `account_id`, `username`), matched on `uuid` and `account_id` only. Resolve it once with `bkt_identity()` and pass it through when scanning many repos.
+- A 404, non-zero exit, timeout, or unparseable body returns `{"status": "unscanned", "reason": ...}` with no `items` key, so an unread queue can never be mistaken for an empty one.
+- Read-only. Tests inject a `runner` and never reach `bkt`.
 
 ## Safety rules
 

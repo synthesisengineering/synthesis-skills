@@ -1,6 +1,7 @@
 """The peer send gate: every direct lane needs a receipt, a live target, and a named sender."""
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
@@ -258,6 +259,256 @@ def test_shell_lane_boundary_is_stated_in_the_protocol_and_the_gate() -> None:
     assert "inside a script" in (GATE.__doc__ or "")
     wrapped = GATE.classify("Bash", {"command": "bash /tmp/run-queue.sh"})
     assert wrapped.allow and not wrapped.logged, "a wrapper is not classified as a peer send; the doc states why"
+    assert "piped to a shell" in (GATE.__doc__ or ""), "a program arriving on a pipe is the other stated boundary"
+    assert "or piped to a shell on its stdin" in protocol, "the protocol states the pipe boundary the gate's docstring states"
+    piped = GATE.classify("Bash", {"command": "echo 'codex queue --thread abc' | bash"})
+    assert piped.allow and not piped.logged, "a program on a pipe is not classified as a peer send; the doc states why"
+
+
+def assert_not_a_send(decision: GATE.Decision, command) -> None:
+    assert decision.allow, (command, decision)
+    assert decision.lane == "shell" and not decision.logged and decision.target == "", (command, decision)
+
+
+def test_literal_codex_queue_in_a_heredoc_body_is_not_a_send() -> None:
+    """Intake 2026-09-09: an inert heredoc body spelling the command was
+    classified as a peer send and blocked for lacking a --thread."""
+    bodies = (
+        "cat <<'TEXT'\nA task's literal codex queue example.\nTEXT\n",
+        'cat <<"TEXT"\nRun codex queue to reach a peer.\nTEXT\n',
+        "cat <<TEXT > notes.md\ncodex queue is the send command\nTEXT\n",
+        "cat <<-TEXT\n\tcodex queue example\n\tTEXT\n",
+        "python3 - <<'PY'\nprint('codex queue')\nPY\n",
+    )
+    for command in bodies:
+        assert_not_a_send(GATE.classify("Bash", {"command": command}), command)
+        assert_not_a_send(GATE.classify("exec_command", {"cmd": command}), command)
+
+
+def test_thread_values_carried_as_data_are_never_selected() -> None:
+    """A --thread in a heredoc body or a quoted argument to another command
+    is data: no send is logged and no thread is chosen from it."""
+    data = (
+        "cat <<EOF\ncodex queue --thread abc --message hi\nEOF\n",
+        "printf '%s\\n' 'codex queue --thread abc'",
+        'git commit -m "docs: codex queue --thread abc usage"',
+        "python3 -c \"print('codex queue --thread abc')\"",
+        "echo codex queue --thread abc",
+        "grep -n 'codex queue --thread abc' notes.md",
+    )
+    for command in data:
+        decision = GATE.classify("Bash", {"command": command})
+        assert_not_a_send(decision, command)
+        assert "abc" not in decision.target
+
+
+def test_a_real_send_with_a_thread_is_still_the_codex_lane() -> None:
+    sends = (
+        'codex queue --thread abc --message "hi"',
+        "codex queue --thread=abc --message hi",
+        "env FOO=1 codex queue --thread abc",
+        "FOO=1 codex queue --thread abc",
+        "nice -n 5 timeout 30 codex queue --thread abc",
+        "exec codex queue --thread abc",
+        "command codex queue --thread abc",
+        "/usr/local/bin/codex queue --thread abc",
+        "echo start && codex queue --thread abc --message m",
+        "codex queue --thread abc --message m 2>&1 | tee /tmp/log",
+        "cat <<EOF\nnotes\nEOF\ncodex queue --thread abc --message m",
+        "time codex queue --thread abc",
+        "time -p codex queue --thread abc",
+        "coproc codex queue --thread abc",
+    )
+    for command in sends:
+        decision = GATE.classify("Bash", {"command": command})
+        assert decision.allow and decision.lane == "codex" and decision.logged, (command, decision)
+        assert decision.target == "abc", (command, decision)
+    missing = GATE.classify("Bash", {"command": 'echo "--thread zzz"; codex queue --message x'})
+    assert not missing.allow and missing.lane == "codex"
+    assert missing.reason == "codex queue without a --thread value"
+
+
+def test_a_nested_shell_string_send_is_still_detected() -> None:
+    nested = (
+        "bash -c 'codex queue --thread abc --message \"hi\"'",
+        'sh -c "codex queue --thread abc"',
+        "zsh -lc 'codex queue --thread abc'",
+        "bash -o pipefail -c 'echo go && codex queue --thread abc'",
+        "eval 'codex queue --thread abc'",
+        "eval codex queue --thread abc",
+    )
+    for command in nested:
+        decision = GATE.classify("Bash", {"command": command})
+        assert decision.allow and decision.lane == "codex" and decision.target == "abc", (command, decision)
+    listed = GATE.classify("shell", {"command": ["bash", "-lc", "codex queue --thread abc --message m"]})
+    assert listed.lane == "codex" and listed.target == "abc", listed
+
+
+def test_a_send_inside_a_quoted_command_substitution_is_still_detected() -> None:
+    """Repair round: bash runs a `$(…)` or backtick substitution inside double
+    quotes, and capturing a send's output is a natural agent pattern; the gate
+    read those characters as part of the word and lost the send."""
+    sends = (
+        'result="$(codex queue --thread abc --message hi)"',
+        'echo "`codex queue --thread abc --message hi`"',
+        'echo "start $(echo x; codex queue --thread abc) end"',
+        'cat > "$(codex queue --thread abc)"',
+        "x=$(codex queue --thread abc --message hi) && echo done",
+        "y=`codex queue --thread abc`",
+        'echo "$(bash -c "codex queue --thread abc")"',
+    )
+    for command in sends:
+        decision = GATE.classify("Bash", {"command": command})
+        assert decision.allow and decision.lane == "codex" and decision.logged, (command, decision)
+        assert decision.target == "abc", (command, decision)
+    data = (
+        'echo "literal \\$(codex queue --thread abc)"',
+        'echo "literal \\`codex queue --thread abc\\`"',
+        "echo '$(codex queue --thread abc)'",
+        "echo '`codex queue --thread abc`'",
+    )
+    for command in data:
+        decision = GATE.classify("Bash", {"command": command})
+        assert_not_a_send(decision, command)
+        assert "abc" not in decision.target
+    quoted = 'out="$(codex queue --thread abc --message "from s1 (p): hi")"'
+    assert GATE.message_body("codex", {"command": quoted}) == "from s1 (p): hi"
+
+
+def test_an_unquoted_heredoc_body_runs_its_substitutions() -> None:
+    """Repair round: bash expands `$(…)` and backticks in the body of a heredoc
+    whose tag is unquoted, so a send there runs; a quoted tag (`<<'EOF'`,
+    `<<"EOF"`, `<<\\EOF`) keeps the body literal."""
+    expanded = (
+        "cat <<EOF\n$(codex queue --thread abc --message hi)\nEOF\n",
+        "cat <<EOF\ntext `codex queue --thread abc` more\nEOF\n",
+        "cat <<-EOF\n\t$(codex queue --thread abc)\n\tEOF\n",
+        "cat <<EOF > out.md\nline one\n$(codex queue --thread abc)\nEOF\necho after",
+        "cat <<EOF\n$(codex queue \\\n  --thread abc)\nEOF\n",
+    )
+    for command in expanded:
+        decision = GATE.classify("Bash", {"command": command})
+        assert decision.allow and decision.lane == "codex" and decision.logged, (command, decision)
+        assert decision.target == "abc", (command, decision)
+    literal = (
+        "cat <<'EOF'\n$(codex queue --thread abc --message hi)\nEOF\n",
+        'cat <<"EOF"\n$(codex queue --thread abc --message hi)\nEOF\n',
+        "cat <<\\EOF\n$(codex queue --thread abc --message hi)\nEOF\n",
+        "cat <<'EOF'\n`codex queue --thread abc`\nEOF\n",
+        "cat <<EOF\n\\$(codex queue --thread abc)\nEOF\n",
+        "cat <<EOF\n\\`codex queue --thread abc\\`\nEOF\n",
+    )
+    for command in literal:
+        decision = GATE.classify("Bash", {"command": command})
+        assert_not_a_send(decision, command)
+        assert "abc" not in decision.target
+
+
+def test_a_here_string_handed_to_a_shell_is_nested_execution() -> None:
+    """A shell given no script reads its program from stdin, and a here-string
+    puts that program in the tool call's own text."""
+    for command in (
+        "bash <<< 'codex queue --thread abc'",
+        'zsh <<< "codex queue --thread abc --message hi"',
+        "sh -s <<< 'codex queue --thread abc'",
+        "bash -x <<< 'echo go; codex queue --thread abc'",
+        "bash -- <<< 'codex queue --thread abc'",
+    ):
+        decision = GATE.classify("Bash", {"command": command})
+        assert decision.allow and decision.lane == "codex" and decision.target == "abc", (command, decision)
+    for command in (
+        "cat <<< 'codex queue --thread abc'",
+        "bash /tmp/run.sh <<< 'codex queue --thread abc'",
+        "bash -c 'wc -l' <<< 'codex queue --thread abc'",
+    ):
+        assert_not_a_send(GATE.classify("Bash", {"command": command}), command)
+
+
+def test_a_named_coprocess_runs_the_group_that_follows_its_name() -> None:
+    """Follow-up: bash runs the compound command after ``coproc NAME`` as the
+    coprocess. The gate stripped ``coproc`` and stopped at the name, so a send
+    inside the brace group on the same line was invisible. Repair round: any
+    word serves as the name — bash forks the group before it checks the
+    identifier, so ``coproc 1bad { …; }`` runs the send and only forfeits the
+    COPROC variables; a gate that read the name as an identifier let those
+    through."""
+    sends = (
+        "coproc job { codex queue --thread abc --message hi; }",
+        "coproc { codex queue --thread abc --message hi; }",
+        "coproc job (codex queue --thread abc --message hi)",
+        "coproc job { echo go; codex queue --thread abc --message hi; }",
+        "coproc job { codex queue --thread abc --message hi; } 2>&1",
+        "coproc job {\n  codex queue --thread abc --message hi\n}",
+        "coproc 1bad { codex queue --thread abc --message hi; }",
+        "coproc bad-name { codex queue --thread abc --message hi; }",
+        'coproc "$name" { codex queue --thread abc --message hi; }',
+        "coproc { { codex queue --thread abc --message hi; }; }",
+    )
+    for command in sends:
+        decision = GATE.classify("Bash", {"command": command})
+        assert decision.allow and decision.lane == "codex" and decision.logged, (command, decision)
+        assert decision.target == "abc", (command, decision)
+    assert GATE.message_body("codex", {"command": sends[0]}) == "hi"
+    data = (
+        "coproc job { echo 'codex queue --thread abc --message hi'; }",
+        "coproc { printf '%s\\n' 'codex queue --thread abc'; }",
+        "coproc job { cat <<'EOF'\ncodex queue --thread abc\nEOF\n}",
+        "coproc job codex 'queue --thread abc'",
+    )
+    for command in data:
+        decision = GATE.classify("Bash", {"command": command})
+        assert_not_a_send(decision, command)
+        assert "abc" not in decision.target
+
+
+def test_nesting_past_the_bound_is_gated_on_the_raw_words_not_crashed() -> None:
+    """Repair round: 700 nested evals raised RecursionError, which the hook
+    turned into exit 1 — a non-blocking exit for a call that runs the send."""
+    evals = "eval " * 700 + "codex queue --thread abc --message hi"
+    decision = GATE.classify("Bash", {"command": evals})
+    assert decision.allow and decision.lane == "codex" and decision.logged, decision
+    assert decision.target == "abc", decision
+    substitutions = "$(" * 700 + "codex queue --thread abc --message hi" + ")" * 700
+    decision = GATE.classify("Bash", {"command": substitutions})
+    assert decision.lane == "codex" and decision.target == "abc", decision
+    shells = 'bash -c "sh -c \'zsh -c \\"codex queue --thread abc\\"\'"'
+    assert GATE.classify("Bash", {"command": shells}).target == "abc", "three nested shells are within the bound"
+    assert_not_a_send(GATE.classify("Bash", {"command": "eval " * 700 + "echo hi"}), "deep eval without a send")
+
+
+def test_message_is_read_from_the_parsed_send_only() -> None:
+    quoted = 'codex queue --thread abc --message "from s1 (p): it\'s \\"ok\\""'
+    assert GATE.message_body("codex", {"command": quoted}) == 'from s1 (p): it\'s "ok"'
+    two = "echo --message nope; codex queue --thread abc --message real"
+    assert GATE.message_body("codex", {"command": two}) == "real"
+    nested = "bash -c 'codex queue --thread abc --message \"from s1 (p): inner\"'"
+    assert GATE.message_body("codex", {"command": nested}) == "from s1 (p): inner"
+
+
+def test_nested_send_passes_the_gate_end_to_end_with_a_receipt(world, monkeypatch) -> None:
+    codex = claim(world.board, "project-x", {"SYNTHESIS_CLIENT_SESSION_REF": "codex:0a0a0a0a-1b1b-4c1c-8d1d-2e2e2e2e2e2e"}, monkeypatch, agent="OpenAI Codex")
+    monkeypatch.delenv("SYNTHESIS_CLIENT_SESSION_REF")
+    for key, value in SENDER_ENV.items():
+        monkeypatch.setenv(key, value)
+    resolve(world, codex.compact_id)
+    command = f"bash -c 'codex queue --thread 0a0a0a0a-1b1b-4c1c-8d1d-2e2e2e2e2e2e --message \"{body(world, 'nested handoff')}\"'"
+    allowed = evaluate(world, payload("Bash", {"command": command}))
+    assert allowed.allow, allowed.reason
+    assert allowed.lane == "codex" and allowed.target_uuid == codex.session_uuid
+    literal = evaluate(world, payload("Bash", {"command": "cat <<'EOF'\ncodex queue --thread 0a0a0a0a-1b1b-4c1c-8d1d-2e2e2e2e2e2e\nEOF\n"}))
+    assert_not_a_send(literal, "heredoc")
+
+
+def test_unbalanced_quotes_fail_closed_on_the_raw_words() -> None:
+    """Text the shell would reject cannot be parsed into commands, so the raw
+    words decide, exactly as before the parser existed."""
+    threaded = GATE.classify("Bash", {"command": 'echo "codex queue --thread abc'})
+    assert threaded.allow and threaded.lane == "codex" and threaded.target == "abc" and threaded.logged
+    bare = GATE.classify("Bash", {"command": "echo 'codex queue"})
+    assert not bare.allow and bare.lane == "codex" and bare.reason == "codex queue without a --thread value"
+    assert GATE.message_body("codex", {"command": "codex queue --thread abc --message 'unterminated"}) == "'unterminated"
+    assert_not_a_send(GATE.classify("Bash", {"command": "echo don't"}), "unbalanced without the command")
+    assert_not_a_send(GATE.classify("Bash", {"command": 'echo "don\'t"'}), "balanced apostrophe")
 
 
 # --- process contract -----------------------------------------------------------------------
@@ -278,6 +529,30 @@ def test_gate_process_blocks_with_exit_2_and_admits_with_exit_0(world) -> None:
     assert [entry["decision"] for entry in log] == ["deny", "allow"]
     garbage = subprocess.run([sys.executable, str(script), "--board", str(world.board), "--gate"], input="not json", capture_output=True, text=True, env=env)
     assert garbage.returncode == 2
+
+
+def test_gate_process_fails_closed_when_the_call_cannot_be_evaluated(world, monkeypatch, capsys) -> None:
+    """Claude Code blocks a tool call only on exit 2; a crash exits 1 and the
+    call runs. Whatever evaluation raises, the gate blocks and says why."""
+    script = SCRIPTS_DIR / "peer_send_gate.py"
+    env = {**os.environ, **SENDER_ENV, "SYNTHESIS_PEER_REGISTRY": str(world.registry)}
+    env.pop("SYNTHESIS_CLIENT_SESSION_REF", None)
+    data = payload("Bash", {"command": "eval " * 700 + "codex queue --thread abc --message hi"})
+    deep = subprocess.run([sys.executable, str(script), "--board", str(world.board), "--gate"], input=json.dumps(data), capture_output=True, text=True, env=env)
+    assert deep.returncode == 2 and "peer-send-gate BLOCKED" in deep.stderr, (deep.returncode, deep.stderr)
+    assert "Traceback" not in deep.stderr
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(GATE, "evaluate", explode)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(data)))
+    assert GATE.gate(world.board) == 2
+    err = capsys.readouterr().err
+    assert "peer-send-gate BLOCKED" in err and "RuntimeError" in err and "fails closed" in err, err
+    assert "codex queue --thread <id> --message <text>" in err, err
+    log = [json.loads(line) for line in PA.send_log_path(world.board).read_text(encoding="utf-8").splitlines()]
+    assert log[-1]["decision"] == "deny" and "RuntimeError" in log[-1]["reason"]
 
 
 def test_doctor_reports_seat_and_stores(world, capsys) -> None:

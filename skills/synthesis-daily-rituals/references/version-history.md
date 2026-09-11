@@ -6,6 +6,74 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v2.36.0 — The PR-queue scan dispatches by origin host; Bitbucket joins GitHub
+
+v2.36.0 (2026-09-10): `scripts/pr_queue_scan.py` dispatches each declared
+repo by its origin host. GitHub origins are queried as before; `bitbucket.org`
+origins are scanned through the `pr_queue` helper the synthesis-bitbucket
+skill ships; every other host stays NOT SCANNED with the host named as the
+reason. v2.35.0 reported every non-GitHub origin as unscanned, and a queue
+that is named unscanned on every run is a gap the review keeps announcing
+without closing — for Bitbucket-hosted repos it is now read. The rule from
+v2.35.0 is unchanged: an unscanned queue must never read as an empty one, so
+the hosts the scan cannot reach are still listed with a reason rather than
+dropped.
+
+## v2.35.0 — The pull-request queue joins the weekly review's declared sources
+
+v2.35.0 (2026-09-05): Day-End Step 10 scans the pull-request queue for the
+workspace's own repos. `scripts/pr_queue_scan.py --workspace <W>` reads the
+workspace's `.agents/repos.yaml` — the same declaration the source-code sync
+uses, so scope follows the manifest and no second list is maintained — and
+reports, oldest first: review requests naming the principal, their own open
+PRs, and PRs in the declared repos that nobody else was asked to review. The
+scan is deliberately NOT filtered by `ritual_sync`: that flag governs whether
+a working copy is fast-forwarded, not whether a repo has a request waiting on
+a human, and skill sources and context repos carry `ritual_sync: no` while
+still having PRs. It exits 0 always and names every repo it could not read.
+Origin: on 2026-08-28 the review reported one waiting-on item past seven days
+while a review request naming the principal sat 139 days old — the review had
+not missed it, it had not looked. The step carried this label from the day it
+landed while the frontmatter stayed at 2.34.0 and then took two patch bumps,
+which is why this entry sits above two releases whose changes postdate it;
+the record is ordered by version, and `scripts/test_version_record.py` now
+fails when a label and the frontmatter disagree.
+
+## v2.34.2 — The deadline sweep selects by target date across the declared plan scope; commit dates are not session dates
+
+v2.34.2 (2026-09-09): Day-End Step 4 runs `scripts/decay_sweep.py --as-of
+<verified-current-date> --plans-dir <declared-daily-plans-directory> --json`
+(repeating declared roots, adding `--artifacts-dir` for worker artifacts) and
+collects every unresolved `**Decays:**` date on or before today across the
+complete declared plan and archive scope, with no lookback cutoff. A deadline
+noticed in an older plan stays visible when due, even after a long
+interruption; the previous step read only today's plan. The collector is
+read-only and grants no send authority: it reports every selected, skipped,
+excluded, malformed, unreadable, and refused source; missing or empty declared
+roots, incomplete enumeration, invalid tags, and ambiguous identity produce
+`BLOCKED` (exit 2); due candidates produce `REVIEW`; only a complete scan with
+nothing due is `CLEAR`. A gap blocks a clean sweep conclusion, not the rest of
+the ritual. Items may carry a stable `**Decay ID:**` so carry-forward and
+re-dating keep one identity per obligation. Contract and boundaries:
+[decay-sweep.md](decay-sweep.md). In the same release Day-Start
+Step 1 stops treating a commit timestamp as a verified session date: dated
+session entries are the evidence, `git log` and status are inspected
+separately for publication and pending changes, and a disagreement between
+records is reported with both sources instead of overwritten — a commit that
+lands overnight, in another timezone, or after a delay does not redate the
+work it records. Step 2's archive keeps the archived session's verified
+workday and labels today's recording time separately.
+
+## v2.34.1 — The day-end installer ships its state helper as one release
+
+v2.34.1 (2026-09-06): `scripts/install_day_end.py` copies the launcher, the
+nudge, and the `ritual_state.py` query helper from the same release as
+executable files, so the nudge and the launcher never run against a state
+helper from a different version. Reinstallation refreshes all three without
+changing the selected agent unless asked, and the LaunchAgent keeps its
+template schedule. The nudge queries ritual state without writing it and
+stays quiet once every expected workspace has closed.
+
 ## v2.34.0 — Google Chat gets a declared target set; wholesale advance is refused
 
 v2.34.0 (2026-09-02): the fifth sync defect from the field. A surface-level
@@ -67,6 +135,38 @@ the epoch `oldest` a read call takes — a window parameter is a claim about
 time and is computed, not typed. Every sync re-reads every declared target:
 "already read today" is a statement about the past. Contract, store, and
 rationale: [references/sync-watermarks.md](references/sync-watermarks.md).
+
+## v2.29.0 — The open-items horizon matches what the item is
+
+v2.29.0 (2026-08-31): Day-End Step 7 distinguishes owed work from a backlog.
+The 14-day default horizon is for something owed — blocked on a named person,
+with a consequence if it slips. A list of feature ideas, article ideas, or a
+bug inventory is a record of intent nobody promised by a date, so it is
+stamped `(as of YYYY-MM-DD, review 180d)`; measured once on a real corpus, 17
+of 38 open-item findings were wishlists ageing at the owed-work horizon. A
+recorded decision parked under an open-items heading is moved under a
+decisions heading rather than given a longer horizon, because the section
+heading is what the checker reads. No code change; the full note is under
+"Rationale notes moved from the checklists" below.
+
+## v2.28.0 — The watermark gate cannot be walked past; ritual state derives from an append-only log
+
+v2.28.0 (2026-08-29): both ritual checklists carry the exact
+`sync_watermark.py status --workspace <W> --surface <s>` invocation with every
+declared surface passed explicitly. The store only knows surfaces that have
+already been written, so a status that consults only the store exits 0
+straight past a declared surface that has never been swept; the command
+refuses an empty surface set for exactly that reason, and a non-zero exit is
+a gap to close or defer with a reason before the ritual proceeds. The same
+label marks the ritual-state steps that replaced
+`~/.synthesis/day-end/state.json` on 2026-09-02: `scripts/ritual_state.py`
+derives per-workspace last-close, streak, and open workdays from an
+append-only log (one O_APPEND write per record, capped at 2048B so appends
+stay atomic under concurrent seats), and `record --date` is the logical
+workday being closed, never inferred from the clock. Origin: the predecessor
+kept one `last_day_end` slot written by every seat, and on 2026-09-02 one
+seat's close overwrote another's; a lock would not have saved a single-slot
+shape with many writers, so the shape was deleted rather than guarded.
 
 ## v2.27.0 — Sync windows follow the last write, and a recorded gap blocks
 

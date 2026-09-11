@@ -169,6 +169,27 @@ def test_optional_and_required_inputs_stay_separate(fixture):
     assert next(t for t in report["read_targets"] if t["role"] == "controlling_plan")["status"] == "FAIL"
 
 
+def test_explicit_no_plan_declaration_is_absent_not_invalid(fixture):
+    """'No active plan' beside a checklist link is absence, not a declaration.
+
+    A CONTEXT.md that says both plans are COMPLETE and links one of them from a
+    checklist item declares no controlling plan; the link is a dependency, not
+    authority. The controlling_plan target is optional and absent, so the
+    project is not blocked over a plan it explicitly does not have.
+    """
+    args, project, _ = fixture
+    write(project / "CONTEXT.md", "# Context\n\n**No active plan — both are COMPLETE:**\n\n"
+        "- [x] Fold the [inbox-cleanup plan](../inbox-cleanup/resources/artifacts/plan.md) outcomes into REFERENCE.md\n"
+        "- [x] Archive the finished sweep\n")
+    git(project, "add", "CONTEXT.md")
+    git(project, "commit", "-m", "Fixture change")
+    report, _ = refresh.inspect(args)
+    target = next(t for t in report["read_targets"] if t["role"] == "controlling_plan")
+    assert target["status"] == "NOT_PRESENT" and target["code"] == "OPTIONAL_PLAN_ABSENT"
+    assert target["required"] is False
+    assert report["checks"]["project_tiers"]["status"] == "PASS"
+
+
 def test_archived_project_remains_blocked(fixture):
     args, project, _ = fixture
     write(args.index, "projects:\n  - id: alpha\n    status: archived\n    superseded_by: successor\n")
