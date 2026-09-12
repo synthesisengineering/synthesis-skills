@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.13.10"
+  version: "2.14.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---

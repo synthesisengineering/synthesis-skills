@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -32,6 +35,7 @@ def isolated_runtime(tmp_path: Path, monkeypatch):
         "REMOTE_HANDOFF_STATE": state / "remote-handoff-last.json", "RETIREMENT_DIR": state / "retired-worktrees",
     }.items():
         monkeypatch.setattr(MODULE, name, path)
+    monkeypatch.setattr(MODULE, "RETIRED_PENDING_DIR", state / "retired-pending")
 
 
 def command(*args: str, cwd: Path | None = None) -> str:
@@ -941,3 +945,645 @@ def test_flush_rejects_symlinked_manifest_lock(tmp_path: Path, monkeypatch) -> N
     assert observed == []
     assert results[0]["action"] == "failed"
     assert manifest.exists()
+
+
+# ---------------------------------------------------------------------------
+# Stranded entries: a manifest path beneath a worktree that vanished before any
+# retirement record or receipt existed. Regressions for the accreting-manifest
+# defect (session 2a0f680b…, 2026-09-11).
+# ---------------------------------------------------------------------------
+
+DROP_FORM = '--drop-stranded --assert "<why the work is known published>"'
+
+
+def write_manifest(
+    session_id: str, paths: list[str], remote_paths: list[str], extra: dict | None = None
+) -> Path:
+    manifest = MODULE.pending_manifest_path(session_id)
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": 2,
+        "session_id": session_id,
+        "updated_at": "2026-08-31T00:00:00Z",
+        "paths": paths,
+        "remote_paths": remote_paths,
+        **(extra or {}),
+    }
+    manifest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return manifest
+
+
+def stranded_state(tmp_path: Path) -> tuple[Path, Path]:
+    """A worktrees directory outside every git working tree, and a worktree
+    root beneath it that no longer exists."""
+    worktrees = tmp_path / ".worktrees"
+    worktrees.mkdir()
+    assert MODULE.git(worktrees, "rev-parse", "--show-toplevel")[0] != 0  # positive control
+    return worktrees, worktrees / "gone-20260831"
+
+
+def configured_repository(tmp_path: Path, name: str) -> tuple[Path, Path]:
+    remote = tmp_path / f"{name}-remote.git"
+    repo = tmp_path / name
+    command("git", "init", "--bare", "-q", "-b", "main", str(remote))
+    command("git", "clone", "-q", str(remote), str(repo))
+    command("git", "config", "core.hooksPath", str(tmp_path / "fixture-hooks"), cwd=repo)
+    command("git", "config", "user.name", "Test", cwd=repo)
+    command("git", "config", "user.email", "test@example.com", cwd=repo)
+    context = repo / "projects" / "alpha" / "CONTEXT.md"
+    context.parent.mkdir(parents=True)
+    context.write_text("one\n", encoding="utf-8")
+    command("git", "add", "projects/alpha/CONTEXT.md", cwd=repo)
+    command("git", "commit", "-qm", "seed", cwd=repo)
+    command("git", "push", "-qu", "origin", "main", cwd=repo)
+    return repo, remote
+
+
+def test_flush_reports_stranded_entry_and_still_evaluates_other_repositories(
+    tmp_path: Path,
+) -> None:
+    repo, _remote, cfg = repository(tmp_path)
+    context = repo / "projects" / "alpha" / "CONTEXT.md"
+    context.write_text("published\n", encoding="utf-8")
+    worktrees, missing_root = stranded_state(tmp_path)
+    stranded = missing_root / "lessons" / "note.md"
+    session = "session-stranded"
+    manifest = write_manifest(session, [str(context), str(stranded)], [str(context), str(stranded)])
+
+    results, observed = MODULE.flush_pending_session(cfg, session, dry_run=False)
+
+    assert observed == [manifest]
+    by_action = {result["action"]: result for result in results}
+    entry = by_action["stranded"]
+    assert entry["repo"] == str(stranded)
+    assert str(missing_root) in entry["alert"]
+    assert f"--flush-session {session} {DROP_FORM}" in entry["alert"]
+    assert entry["drop_eligible"] is True
+    assert entry["evidence"]["nearest_existing_ancestor"] == str(worktrees)
+    assert entry["evidence"]["missing_worktree_root"] == str(missing_root)
+    assert "failed" not in by_action
+    assert by_action["committed-pushed"]["repo"] == str(repo)
+    assert command("git", "show", "HEAD:projects/alpha/CONTEXT.md", cwd=repo) == "published"
+    # The published repository's entries retire; the stranded entry stays visible.
+    assert json.loads(manifest.read_text(encoding="utf-8"))["paths"] == [str(stranded)]
+
+
+def test_stranded_entry_with_retained_receipt_names_session_reconcile_remedy(
+    tmp_path: Path,
+) -> None:
+    _repo, _remote, cfg = repository(tmp_path)
+    _worktrees, missing_root = stranded_state(tmp_path)
+    stranded = missing_root / "projects" / "alpha" / "CONTEXT.md"
+    session = "018f0000-0000-7000-8000-00000000000a"
+    manifest = write_manifest(session, [str(stranded)], [str(stranded)])
+    receipt = MODULE.LOCAL_HANDOFF_DIR / manifest.name
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text(json.dumps({
+        "schema_version": 1, "readiness": "LOCAL_READY", "session_id": session,
+        "pending_manifest": str(manifest),
+        "pending_manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+        "results": [{"repo": str(missing_root), "name": missing_root.name, "action": "local-ready",
+                     "branch": "feature/gone", "head": "a" * 40, "files": 1,
+                     "file_evidence": [], "alert": None}],
+    }), encoding="utf-8")
+    before = manifest.read_bytes(), receipt.read_bytes()
+
+    results, _ = MODULE.flush_pending_session(cfg, session, dry_run=False)
+
+    entry = next(result for result in results if result["action"] == "stranded")
+    assert entry["drop_eligible"] is False
+    assert f"--reconcile-retired-worktree {missing_root} --retirement-session {session}" in entry["alert"]
+    assert "--retirement-head" not in entry["alert"]
+    assert "--drop-stranded" not in entry["alert"]
+    assert entry["evidence"]["local_handoff_receipt_head"] == "a" * 40
+    # Retained evidence outranks an assertion: the drop leaves this entry alone.
+    dropped, _ = MODULE.flush_pending_session(
+        cfg, session, dry_run=False, drop_stranded=True, assertion="published elsewhere"
+    )
+    assert {result["action"] for result in dropped} == {"no-stranded-entries", "stranded"}
+    assert (manifest.read_bytes(), receipt.read_bytes()) == before
+    assert not MODULE.RETIRED_PENDING_DIR.exists()
+
+
+@pytest.mark.parametrize("state", ["prepared", "completed"])
+def test_stranded_entry_named_by_retirement_intent_points_at_the_intent(
+    tmp_path: Path, state: str
+) -> None:
+    repo, _remote, cfg = repository(tmp_path)
+    _worktrees, missing_root = stranded_state(tmp_path)
+    session = "session-intent"
+    manifest = write_manifest(session, [str(missing_root / "x.md")], [])
+    MODULE.RETIREMENT_DIR.mkdir(parents=True)
+    intent = MODULE.RETIREMENT_DIR / ("1" * 64 + ".json")
+    intent.write_text(json.dumps({
+        "schema_version": 2, "state": state, "worktree": str(missing_root), "repository": str(repo),
+        "head": "b" * 40, "base_ref": "refs/remotes/origin/main", "base_oid": "c" * 40,
+    }), encoding="utf-8")
+    before = manifest.read_bytes()
+
+    results, _ = MODULE.flush_pending_session(
+        cfg, session, dry_run=False, drop_stranded=True, assertion="known published"
+    )
+
+    entry = next(result for result in results if result["action"] == "stranded")
+    assert entry["drop_eligible"] is False
+    assert str(intent) in entry["alert"]
+    if state == "prepared":
+        assert f"--complete-worktree-retirement {intent}" in entry["alert"]
+    else:
+        assert (f"--reconcile-retired-worktree {missing_root} --retirement-repository {repo} "
+                f"--retirement-head {'b' * 40} --retirement-base refs/remotes/origin/main") in entry["alert"]
+    assert manifest.read_bytes() == before
+    assert not MODULE.RETIRED_PENDING_DIR.exists()
+
+
+def test_local_handoff_records_stranded_entry_without_aborting_other_repositories(
+    tmp_path: Path,
+) -> None:
+    repo, _remote, cfg = repository(tmp_path)
+    context = repo / "projects" / "alpha" / "CONTEXT.md"
+    context.write_text("local\n", encoding="utf-8")
+    _worktrees, missing_root = stranded_state(tmp_path)
+    session = "session-local-stranded"
+    manifest = write_manifest(session, [str(context), str(missing_root / "lessons" / "note.md")], [str(context)])
+
+    results, observed = MODULE.local_handoff_checkpoint({"session_id": session, "cwd": str(repo)}, cfg)
+
+    assert observed == manifest
+    assert [result["action"] for result in results] == ["stranded", "local-ready"]
+    assert results[0]["drop_eligible"] is True
+    assert results[1]["repo"] == str(repo) and results[1]["head"]
+    payload = json.loads((MODULE.LOCAL_HANDOFF_DIR / manifest.name).read_text(encoding="utf-8"))
+    assert payload["readiness"] == "BLOCKED"
+    assert [result["action"] for result in payload["results"]] == ["stranded", "local-ready"]
+
+
+def test_local_handoff_preserves_receipt_that_retains_stranded_worktree_evidence(
+    tmp_path: Path,
+) -> None:
+    repo, _remote, cfg = repository(tmp_path)
+    context = repo / "projects" / "alpha" / "CONTEXT.md"
+    context.write_text("local\n", encoding="utf-8")
+    _worktrees, missing_root = stranded_state(tmp_path)
+    session = "018f0000-0000-7000-8000-00000000000b"
+    manifest = write_manifest(session, [str(context), str(missing_root / "x.md")], [str(context)])
+    receipt = MODULE.LOCAL_HANDOFF_DIR / manifest.name
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text(json.dumps({
+        "schema_version": 1, "readiness": "LOCAL_READY", "session_id": session,
+        "pending_manifest": str(manifest), "pending_manifest_sha256": "0" * 64,
+        "results": [{"repo": str(missing_root), "name": missing_root.name, "action": "local-ready",
+                     "branch": "feature/gone", "head": "a" * 40, "files": 1, "file_evidence": [], "alert": None}],
+    }), encoding="utf-8")
+    before = receipt.read_bytes()
+
+    results, _ = MODULE.local_handoff_checkpoint({"session_id": session, "cwd": str(repo)}, cfg)
+
+    assert [result["action"] for result in results] == ["stranded", "local-ready"]
+    assert results[0]["drop_eligible"] is False
+    assert "retained local-handoff receipt" in results[0]["alert"]
+    assert receipt.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "assertion",
+    [None, "", "  \n\t", "\u00a0\u3000\u2028\u0085", "\u200b", "\u200b\u200c\u200d", "\ufeff"],
+)
+def test_drop_stranded_refuses_blank_assertion(tmp_path: Path, assertion: str | None) -> None:
+    _repo, _remote, cfg = repository(tmp_path)
+    _worktrees, missing_root = stranded_state(tmp_path)
+    session = "session-no-assert"
+    manifest = write_manifest(session, [str(missing_root / "x.md")], [])
+    before = manifest.read_bytes()
+
+    results, observed = MODULE.flush_pending_session(
+        cfg, session, dry_run=False, drop_stranded=True, assertion=assertion
+    )
+
+    assert observed == []
+    assert results[0]["action"] == "failed"
+    assert "non-blank --assert" in results[0]["alert"]
+    assert f"--flush-session {session} {DROP_FORM}" in results[0]["alert"]
+    assert manifest.read_bytes() == before
+    assert not MODULE.RETIRED_PENDING_DIR.exists()
+
+
+def test_drop_stranded_cli_refuses_wrong_combinations(tmp_path: Path, monkeypatch, capsys) -> None:
+    config = tmp_path / "config.yaml"
+    config.write_text("repos: []\n", encoding="utf-8")
+    base = [str(MODULE_PATH), "--config", str(config)]
+    for argv in (
+        [*base, "--flush-session", "s", "--drop-stranded"],
+        [*base, "--flush-session", "s", "--drop-stranded", "--assert", " "],
+        [*base, "--flush-session", "s", "--drop-stranded", "--assert", "\u200b"],
+        [*base, "--flush-session", "s", "--drop-stranded", "--assert", "\ufeff"],
+        [*base, "--flush-session", "s", "--assert", "x"],
+        [*base, "--flush-pending", "--drop-stranded", "--assert", "x"],
+        [*base, "--drop-stranded", "--assert", "x"],
+    ):
+        monkeypatch.setattr(sys, "argv", argv)
+        assert MODULE.main() == 2, argv
+        assert f"--flush-session SESSION_ID {DROP_FORM}" in capsys.readouterr().err, argv
+    assert not MODULE.RETIRED_PENDING_DIR.exists()
+    assert not MODULE.REMOTE_HANDOFF_STATE.exists()
+
+
+def test_drop_stranded_refuses_when_worktree_root_exists_at_drop_time(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _repo, _remote, cfg = repository(tmp_path)
+    _worktrees, missing_root = stranded_state(tmp_path)
+    session = "session-reappeared"
+    manifest = write_manifest(session, [str(missing_root / "x.md")], [])
+    before = manifest.read_bytes()
+    original = MODULE.classify_stranded_entry
+
+    def reappearing(*args, **kwargs):
+        record = original(*args, **kwargs)
+        if record is not None:
+            missing_root.mkdir(exist_ok=True)  # the worktree returns between classification and the drop
+        return record
+
+    monkeypatch.setattr(MODULE, "classify_stranded_entry", reappearing)
+
+    results, _ = MODULE.flush_pending_session(
+        cfg, session, dry_run=False, drop_stranded=True, assertion="known published"
+    )
+
+    failed = next(result for result in results if result["action"] == "failed")
+    assert str(missing_root) in failed["alert"] and "exists now" in failed["alert"]
+    assert manifest.read_bytes() == before
+    assert not MODULE.RETIRED_PENDING_DIR.exists()
+
+
+def test_drop_stranded_writes_append_only_ledger_and_narrows_manifest(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo, _remote, cfg = repository(tmp_path)
+    source = repo / "src" / "feature.py"
+    source.parent.mkdir()
+    source.write_text("local only\n", encoding="utf-8")  # uncommitted source keeps the manifest blocked
+    worktrees, missing_root = stranded_state(tmp_path)
+    mirrored = missing_root / "projects" / "alpha" / "CONTEXT.md"  # tracked at HEAD of the configured repo
+    orphan = missing_root / "lessons" / "orphan.md"
+    session = "session-drop"
+    manifest = write_manifest(
+        session, [str(source), str(mirrored), str(orphan)], [str(mirrored)],
+        extra={"retired_worktrees": [{"note": "history"}]},
+    )
+    monkeypatch.setenv("SYNTHESIS_COORDINATION_SESSION", "s-test-seat")
+    monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "host-1234")
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    monkeypatch.delenv("SYNTHESIS_CLIENT_SESSION_REF", raising=False)
+    before_digest = hashlib.sha256(manifest.read_bytes()).hexdigest()
+    assertion = "both files were merged to main on 2026-08-31"
+
+    results, observed = MODULE.flush_pending_session(
+        cfg, session, dry_run=False, drop_stranded=True, assertion=assertion
+    )
+
+    assert observed == [manifest]
+    by_action = {result["action"]: result for result in results}
+    assert by_action["dropped-stranded"]["files"] == 2
+    assert "source-local-only" in by_action
+    assert "stranded" not in by_action
+    ledger = Path(by_action["dropped-stranded"]["ledger"])
+    assert ledger.parent == MODULE.RETIRED_PENDING_DIR
+    assert re.fullmatch(rf"{manifest.stem}-stranded-\d{{8}}T\d{{6}}Z\.json", ledger.name)
+    record = json.loads(ledger.read_text(encoding="utf-8"))
+    assert record["schema_version"] == 1
+    assert record["session_id"] == session
+    assert record["manifest"] == str(manifest)
+    assert record["manifest_sha256_before"] == before_digest
+    assert record["dropped_paths"] == [str(mirrored), str(orphan)]
+    assert record["assertion"] == assertion
+    assert record["acting_identity"] == {
+        "SYNTHESIS_COORDINATION_SESSION": "s-test-seat",
+        "CLAUDE_CODE_HOST_SESSION_ID": "host-1234",
+    }
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", record["dropped_at"])
+    evidence = {item["path"]: item for item in record["evidence"]}
+    assert evidence[str(mirrored)]["nearest_existing_ancestor"] == str(worktrees)
+    assert evidence[str(mirrored)]["missing_worktree_root"] == str(missing_root)
+    assert evidence[str(mirrored)]["retirement_intent_named_worktree"] is False
+    assert evidence[str(mirrored)]["local_handoff_receipt_named_worktree"] is False
+    canonical = evidence[str(mirrored)]["canonical_copy"]
+    assert Path(canonical["repository"]).resolve() == repo.resolve()
+    assert canonical["relative_path"] == "projects/alpha/CONTEXT.md"
+    assert canonical["blob_oid"] == command("git", "rev-parse", "HEAD:projects/alpha/CONTEXT.md", cwd=repo)
+    assert canonical["head"] == command("git", "rev-parse", "HEAD", cwd=repo)
+    assert evidence[str(orphan)]["canonical_copy"] is None
+    narrowed = json.loads(manifest.read_text(encoding="utf-8"))
+    assert narrowed["paths"] == [str(source)]
+    assert narrowed["remote_paths"] == []
+    assert narrowed["session_id"] == session
+    assert narrowed["retired_worktrees"] == [{"note": "history"}]
+    assert narrowed["dropped_stranded"][0]["ledger"] == str(ledger)
+    # Append-only: a record path that already exists is never overwritten.
+    second = MODULE.append_only_json(ledger, {"probe": True})
+    assert second != ledger and second.parent == ledger.parent
+    assert json.loads(ledger.read_text(encoding="utf-8")) == record
+    assert json.loads(second.read_text(encoding="utf-8")) == {"probe": True}
+
+
+def test_drop_stranded_dry_run_reports_and_writes_nothing(tmp_path: Path) -> None:
+    repo, _remote, cfg = repository(tmp_path)
+    source = repo / "src" / "feature.py"
+    source.parent.mkdir()
+    source.write_text("local only\n", encoding="utf-8")
+    _worktrees, missing_root = stranded_state(tmp_path)
+    session = "session-dry-drop"
+    manifest = write_manifest(
+        session, [str(source), str(missing_root / "a.md"), str(missing_root / "b.md")], [str(missing_root / "a.md")]
+    )
+    before = manifest.read_bytes()
+
+    results, observed = MODULE.flush_pending_session(
+        cfg, session, dry_run=True, drop_stranded=True, assertion="known published"
+    )
+
+    assert observed == [manifest]
+    by_action = {result["action"]: result for result in results}
+    assert by_action["would-drop-stranded"]["files"] == 2
+    assert "stranded" not in by_action
+    assert "source-local-only" in by_action
+    assert manifest.read_bytes() == before
+    assert not MODULE.RETIRED_PENDING_DIR.exists()
+    assert not MODULE.LOCAL_HANDOFF_DIR.exists()
+
+
+def test_drop_stranded_cli_retires_an_all_stranded_manifest(tmp_path: Path, monkeypatch) -> None:
+    _worktrees, missing_root = stranded_state(tmp_path)
+    session = "session-cli-drop"
+    manifest = write_manifest(session, [str(missing_root / "a.md")], [str(missing_root / "a.md")])
+    config = tmp_path / "config.yaml"
+    config.write_text("repos: []\n", encoding="utf-8")
+    argv = [str(MODULE_PATH), "--config", str(config), "--flush-session", session,
+            "--drop-stranded", "--assert", "a.md is lessons/a.md at origin/main", "--json"]
+
+    monkeypatch.setattr(sys, "argv", [*argv, "--dry-run"])
+    assert MODULE.main() == 0
+    assert manifest.exists()
+    assert not MODULE.RETIRED_PENDING_DIR.exists()
+
+    monkeypatch.setattr(sys, "argv", argv)
+    assert MODULE.main() == 0
+    assert not manifest.exists()
+    assert len(list(MODULE.RETIRED_PENDING_DIR.glob("*.json"))) == 1
+    state = json.loads(MODULE.REMOTE_HANDOFF_STATE.read_text(encoding="utf-8"))
+    assert state["readiness"] == "REMOTE_READY"
+    assert state["session_id"] == session
+
+
+def test_flush_retires_published_repositories_and_keeps_blocked_entries(tmp_path: Path) -> None:
+    repo, _remote, cfg = repository(tmp_path)
+    second, second_remote = configured_repository(tmp_path, "second")
+    cfg = {**cfg, "repos": [str(repo), str(second)]}
+    published = repo / "projects" / "alpha" / "CONTEXT.md"
+    published.write_text("published\n", encoding="utf-8")
+    blocked = second / "projects" / "alpha" / "CONTEXT.md"
+    blocked.write_text("blocked\n", encoding="utf-8")
+    command("git", "remote", "set-url", "origin", str(second_remote) + "-missing", cwd=second)
+    session = "session-partial"
+    manifest = write_manifest(session, [str(published), str(blocked)], [str(published), str(blocked)])
+
+    results, _ = MODULE.flush_pending_session(cfg, session, dry_run=False)
+
+    by_repo = {result["repo"]: result for result in results if result["repo"] in {str(repo), str(second)}}
+    assert by_repo[str(repo)]["action"] == "committed-pushed"
+    assert by_repo[str(second)]["action"] == "committed-no-push"
+    summary = next(result for result in results if result["action"] == "retired-repositories")
+    assert summary["retired_repositories"] == [str(repo)]
+    assert summary["files"] == 1
+    assert summary["manifest_removed"] is False
+    assert summary["alert"] is None
+    narrowed = json.loads(manifest.read_text(encoding="utf-8"))
+    assert narrowed["paths"] == [str(blocked)]
+    assert narrowed["remote_paths"] == [str(blocked)]
+
+    command("git", "remote", "set-url", "origin", str(second_remote), cwd=second)
+    results, _ = MODULE.flush_pending_session(cfg, session, dry_run=False)
+
+    assert next(r for r in results if r["repo"] == str(second))["action"] == "pushed-stranded"
+    summary = next(result for result in results if result["action"] == "retired-repositories")
+    assert summary["retired_repositories"] == [str(second)]
+    assert summary["manifest_removed"] is True
+    assert not manifest.exists()
+    assert not any(result.get("alert") for result in results)
+
+
+def test_deleted_file_inside_existing_repository_is_deleted_or_missing_not_stranded(
+    tmp_path: Path,
+) -> None:
+    repo, _remote, cfg = repository(tmp_path)
+    removed = repo / "projects" / "alpha" / "removed" / "note.md"  # its directory is gone, its repository is not
+    session = "session-deleted"
+    manifest = write_manifest(session, [str(removed)], [str(removed)])
+
+    local, _ = MODULE.local_handoff_checkpoint({"session_id": session, "cwd": str(repo)}, cfg)
+    assert local[0]["action"] == "local-ready"
+    assert local[0]["file_evidence"] == [{"path": str(removed), "state": "deleted-or-missing"}]
+
+    results, _ = MODULE.flush_pending_session(cfg, session, dry_run=False)
+    assert [result["action"] for result in results] == ["clean", "retired-repositories"]
+    assert not manifest.exists()
+
+
+def test_missing_registered_nested_worktree_stays_failed_not_stranded(tmp_path: Path) -> None:
+    repo, _remote, cfg = repository(tmp_path)
+    nested = repo / "nested"
+    command("git", "worktree", "add", "-q", "--orphan", "-b", "nested", str(nested), cwd=repo)
+    assert nested.parent == repo and (nested / ".git").is_file()
+    shutil.rmtree(nested)  # interruption, not the sanctioned retirement workflow
+    session = "session-nested"
+    manifest = write_manifest(session, [str(nested / "file.md")], [str(nested / "file.md")])
+
+    results, _ = MODULE.flush_pending_session(cfg, session, dry_run=False)
+
+    assert results[0]["action"] == "failed"
+    assert "not inside an available git worktree" in results[0]["alert"]
+    assert manifest.exists()
+
+
+# ---------------------------------------------------------------------------
+# Repair round (2026-09-11): a git probe that cannot answer, or answers while
+# a .git entry is visible in the ancestor chain, must never make a live
+# repository's deleted file drop-eligible; a receipt bound to an older digest
+# must name a remedy that runs; an assertion of invisible characters is blank.
+# ---------------------------------------------------------------------------
+
+GIT_UNAVAILABLE = [(-1, "", "timeout"), (-1, "", "git not found")]
+
+
+def toplevel_probe_returning(monkeypatch, outcome: tuple[int, str, str]) -> None:
+    """Fail only ``git rev-parse --show-toplevel``; every other git call is real."""
+    original = MODULE.git
+
+    def patched(repo, *args, **kwargs):
+        if args[:2] == ("rev-parse", "--show-toplevel"):
+            return outcome
+        return original(repo, *args, **kwargs)
+
+    monkeypatch.setattr(MODULE, "git", patched)
+
+
+@pytest.mark.parametrize("outcome", GIT_UNAVAILABLE)
+def test_stop_reports_git_unavailability_as_failed_not_stranded(
+    tmp_path: Path, monkeypatch, outcome: tuple[int, str, str]
+) -> None:
+    repo, _remote, cfg = repository(tmp_path)
+    removed = repo / "projects" / "alpha" / "removed" / "note.md"  # directory gone, repository intact
+    session = "session-git-unavailable"
+    manifest = write_manifest(session, [str(removed)], [str(removed)])
+    toplevel_probe_returning(monkeypatch, outcome)
+
+    results, observed = MODULE.local_handoff_checkpoint({"session_id": session, "cwd": str(repo)}, cfg)
+
+    assert observed == manifest
+    assert [result["action"] for result in results] == ["failed"]
+    assert results[0]["alert"].startswith("stranded classification unavailable: ")
+    assert f"git is unavailable for {removed.parent.parent}: {outcome[2]}" in results[0]["alert"]
+    assert "--drop-stranded" not in results[0]["alert"]
+    assert not (MODULE.LOCAL_HANDOFF_DIR / manifest.name).exists()
+
+
+@pytest.mark.parametrize("outcome", GIT_UNAVAILABLE)
+def test_drop_stranded_never_drops_a_live_repository_when_git_is_unavailable(
+    tmp_path: Path, monkeypatch, outcome: tuple[int, str, str]
+) -> None:
+    repo, _remote, cfg = repository(tmp_path)
+    removed = repo / "projects" / "alpha" / "removed" / "note.md"
+    session = "session-git-unavailable-drop"
+    manifest = write_manifest(session, [str(removed)], [str(removed)])
+    before = manifest.read_bytes()
+    toplevel_probe_returning(monkeypatch, outcome)
+
+    results, observed = MODULE.flush_pending_session(
+        cfg, session, dry_run=False, drop_stranded=True, assertion="the note was merged on 2026-09-01"
+    )
+
+    assert observed == [manifest]
+    actions = [result["action"] for result in results]
+    assert set(actions) == {"failed"}, actions
+    assert all(f"git is unavailable for {removed.parent.parent}: {outcome[2]}" in result["alert"] for result in results)
+    assert manifest.read_bytes() == before
+    assert not MODULE.RETIRED_PENDING_DIR.exists()
+
+
+def test_visible_git_directory_keeps_a_refused_probe_out_of_stranded(tmp_path: Path, monkeypatch) -> None:
+    """git can refuse a live repository (safe.directory, a damaged gitdir) with a
+    non-zero status; the ancestor chain still shows repo/.git, so the existing
+    handling applies and nothing is drop-eligible."""
+    repo, _remote, cfg = repository(tmp_path)
+    removed = repo / "projects" / "alpha" / "removed" / "note.md"
+    session = "session-refused-probe"
+    manifest = write_manifest(session, [str(removed)], [str(removed)])
+    before = manifest.read_bytes()
+    assert (repo / ".git").is_dir()  # positive control for the ancestor-chain test
+    toplevel_probe_returning(monkeypatch, (128, "", "fatal: detected dubious ownership in repository"))
+
+    assert MODULE.classify_stranded_entry(removed, session, manifest, MODULE.StrandedEvidence()) is None
+    stop, _ = MODULE.local_handoff_checkpoint({"session_id": session, "cwd": str(repo)}, cfg)
+    assert [result["action"] for result in stop] == ["failed"]
+    assert "not inside an available git worktree" in stop[0]["alert"]
+    results, _ = MODULE.flush_pending_session(
+        cfg, session, dry_run=False, drop_stranded=True, assertion="known published"
+    )
+    assert {result["action"] for result in results} == {"no-stranded-entries", "failed"}
+    assert manifest.read_bytes() == before
+    assert not MODULE.RETIRED_PENDING_DIR.exists()
+
+
+@pytest.mark.parametrize("outcome", [None, *GIT_UNAVAILABLE])
+def test_genuine_missing_worktree_root_classifies_stranded_only_with_a_working_git(
+    tmp_path: Path, monkeypatch, outcome: tuple[int, str, str] | None
+) -> None:
+    worktrees, missing_root = stranded_state(tmp_path)
+    path = missing_root / "lessons" / "note.md"
+    session = "session-positive-control"
+    manifest = write_manifest(session, [str(path)], [str(path)])
+    assert not any((candidate / ".git").exists() for candidate in (worktrees, *worktrees.parents))
+    if outcome is None:
+        record = MODULE.classify_stranded_entry(path, session, manifest, MODULE.StrandedEvidence())
+        assert record["action"] == "stranded" and record["drop_eligible"] is True
+        assert record["evidence"]["missing_worktree_root"] == str(missing_root)
+        return
+    toplevel_probe_returning(monkeypatch, outcome)
+    with pytest.raises(ValueError, match=f"git is unavailable for {re.escape(str(worktrees))}: {outcome[2]}"):
+        MODULE.classify_stranded_entry(path, session, manifest, MODULE.StrandedEvidence())
+
+
+def test_stranded_entry_with_stale_receipt_digest_names_a_head_remedy_that_runs(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo, _remote, cfg = repository(tmp_path)
+    worktree = tmp_path / "retired-worktree"
+    command("git", "worktree", "add", "-qb", "feature/retired", str(worktree), cwd=repo)
+    retired_path = worktree / "change.txt"
+    retired_path.write_text("change\n", encoding="utf-8")
+    command("git", "add", "change.txt", cwd=worktree)
+    command("git", "commit", "-qm", "change", cwd=worktree)
+    head = command("git", "rev-parse", "HEAD", cwd=worktree)
+    command("git", "merge", "-q", "--no-edit", "feature/retired", cwd=repo)
+    command("git", "push", "-q", "origin", "main", cwd=repo)
+    command("git", "worktree", "remove", str(worktree), cwd=repo)
+    session = "018f0000-0000-7000-8000-00000000000c"
+    survivor = repo / "projects" / "alpha" / "CONTEXT.md"
+    manifest = write_manifest(session, [str(retired_path), str(survivor)], [str(survivor)])
+    receipt = MODULE.LOCAL_HANDOFF_DIR / manifest.name
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text(json.dumps({
+        "schema_version": 1, "readiness": "LOCAL_READY", "session_id": session,
+        "pending_manifest": str(manifest), "pending_manifest_sha256": "0" * 64,  # the manifest accreted since
+        "results": [{"repo": str(worktree), "name": worktree.name, "action": "local-ready",
+                     "branch": "feature/retired", "head": head, "files": 1, "file_evidence": [], "alert": None}],
+    }), encoding="utf-8")
+    head_form = (
+        f"--reconcile-retired-worktree {worktree} --retirement-repository <owning repository> "
+        f"--retirement-head {head} --retirement-base <fetched remote ref such as origin/main>"
+    )
+
+    results, _ = MODULE.flush_pending_session(cfg, session, dry_run=True)
+
+    entry = next(result for result in results if result["action"] == "stranded")
+    assert entry["drop_eligible"] is False
+    assert "binds an older attribution digest" in entry["alert"]
+    assert entry["remedy"] == head_form and f"accepted form: {head_form}" in entry["alert"]
+    assert "--retirement-session" not in entry["remedy"]
+    assert entry["evidence"]["local_handoff_receipt_head"] == head
+    # The session-bound form the alert no longer names is refused for this receipt ...
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", session)
+    monkeypatch.delenv("SYNTHESIS_CLIENT_SESSION_REF", raising=False)
+    refused, _ = MODULE.recover_retired_session(worktree, repo, session, "origin/main", dry_run=True)
+    assert "lacks current attribution-digest evidence" in refused[0]["alert"]
+    # ... and the named form runs.
+    reconciled, touched = MODULE.reconcile_retired_worktree(worktree, repo, head, "origin/main", dry_run=False)
+    assert reconciled[0]["alert"] is None
+    assert reconciled[0]["action"] == "retired-worktree-reconciled"
+    assert touched == [manifest]
+    assert json.loads(manifest.read_text(encoding="utf-8"))["paths"] == [str(survivor)]
+
+
+def test_stranded_entry_with_blocked_receipt_names_the_head_remedy(tmp_path: Path) -> None:
+    _repo, _remote, cfg = repository(tmp_path)
+    _worktrees, missing_root = stranded_state(tmp_path)
+    session = "018f0000-0000-7000-8000-00000000000d"
+    manifest = write_manifest(session, [str(missing_root / "x.md")], [])
+    receipt = MODULE.LOCAL_HANDOFF_DIR / manifest.name
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text(json.dumps({
+        "schema_version": 1, "readiness": "BLOCKED", "session_id": session,
+        "pending_manifest": str(manifest),
+        "pending_manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+        "results": [{"repo": str(missing_root), "name": missing_root.name, "action": "local-ready",
+                     "branch": "feature/gone", "head": "d" * 40, "files": 1, "file_evidence": [], "alert": None}],
+    }), encoding="utf-8")
+
+    results, _ = MODULE.flush_pending_session(cfg, session, dry_run=True)
+
+    entry = next(result for result in results if result["action"] == "stranded")
+    assert entry["drop_eligible"] is False
+    assert "records readiness BLOCKED" in entry["alert"]
+    assert "--retirement-session" not in entry["remedy"]
+    assert f"--retirement-head {'d' * 40}" in entry["remedy"]
+    assert f"accepted form: {entry['remedy']}" in entry["alert"]

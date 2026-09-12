@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.4.2"
+  version: "2.5.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -87,7 +87,8 @@ Config `~/.synthesis/checkpoint-sync.yaml` (copy `checkpoint-sync.example.yaml`)
   one lifecycle lock. Retirement pins a freshly fetched remote-tracking
   commit, fsyncs a resumable intent before removal, invalidates old receipts,
   and completes idempotently after interruption. A missing worktree without
-  this proof remains a fail-closed Stop error. Deleted files and child
+  this proof is reported as a `stranded` entry that blocks readiness (see
+  below) rather than silently attributed elsewhere. Deleted files and child
   directories within a verified live repository are recorded as missing,
   without restoring them or discarding their pending attribution. Resolution
   refuses symlink ancestry, unavailable worktree inventory and a missing
@@ -104,6 +105,54 @@ Config `~/.synthesis/checkpoint-sync.yaml` (copy `checkpoint-sync.example.yaml`)
 - A successful edit leaves a manifest even if Stop never runs. Remote
   publication retains manifests until source and context paths are verified
   upstream-current.
+
+### Stranded entries and per-repository retirement
+
+A manifest entry is **stranded** when its path is missing, its nearest
+existing ancestor sits outside every git working tree, and so the first
+missing component beneath that ancestor is a worktree root that no longer
+exists — a worktree removed before any retirement intent or Stop receipt could
+name it. Stop and flush report it as `stranded`, name the missing worktree
+root, and name the one accepted remedy. Other repositories in the same
+manifest are still evaluated. A deleted file whose repository still resolves
+is not stranded; it stays `deleted-or-missing`. Classification needs git's
+answer: when `git rev-parse` cannot run for the nearest existing ancestor (a
+timeout, no binary) the entry is `failed` as `stranded classification
+unavailable`, never `stranded`, and nothing is drop-eligible; when git refuses
+a live repository (a safe.directory refusal, a damaged gitdir) the `.git`
+entry visible in the ancestor chain keeps the existing handling. A transient
+git failure never discards a live repository's pending attribution.
+
+- Evidence outranks assertion. When a retirement intent names the worktree,
+  the remedy is `--complete-worktree-retirement INTENT` (prepared) or the
+  intent's own verified head through `--reconcile-retired-worktree`
+  (completed). When this session's retained receipt names it with a
+  local-ready head, the remedy is `--reconcile-retired-worktree WORKTREE
+  --retirement-session ID` while that receipt is LOCAL_READY and still binds
+  the current manifest digest; a receipt the manifest outgrew (edits accreted
+  after Stop wrote it) names the receipt's own head through
+  `--retirement-head` instead, which retires only what that head proves.
+  Stop leaves that receipt unchanged so the evidence survives.
+- With neither, the entry is drop-eligible:
+  `--flush-session ID --drop-stranded --assert "<why the work is known published>"`.
+  The drop recomputes the stranded set at run time, refuses if the worktree
+  root exists again, writes an append-only record to
+  `~/.synthesis/repo-guard/retired-pending/<manifest>-stranded-<UTC>.json`
+  (session, dropped paths, nearest existing ancestor, missing worktree root,
+  whether an intent or receipt named it, any repository whose HEAD tracks the
+  same relative path with its blob oid, the assertion, the acting identity,
+  the timestamp), then rewrites the manifest without those entries and
+  continues the normal flush. A blank `--assert` (whitespace or invisible
+  format characters only) is refused. `--dry-run`
+  reports the drop and writes nothing. Existing ledger records are never
+  replaced.
+- Every flush that is not a dry run retires the entries of each repository
+  whose result is `clean`, `committed-pushed`, `pushed-stranded`
+  (earlier commits pushed now) or `source-remote-ready`, keeps the blocked
+  repositories' entries, and deletes the manifest only once it is empty. The
+  `retired-repositories` result names what was retired. A long-lived session
+  therefore stops accreting already-published work onto a manifest one
+  blocked repository keeps alive.
 
 ---
 
@@ -133,6 +182,9 @@ Config `~/.synthesis/checkpoint-sync.yaml` (copy `checkpoint-sync.example.yaml`)
 
 # Publish and retire one exact session without inspecting unrelated sessions
 ./checkpoint_sync.py --flush-session <session-id>
+
+# Drop stranded entries (removed worktree, no retained evidence) under a recorded assertion
+./checkpoint_sync.py --flush-session <session-id> --drop-stranded --assert "merged to main on 2026-08-31"
 ```
 
 ### Exit codes (both scripts)
@@ -232,7 +284,8 @@ repo_sync_check.py [--workspace W] [--max-depth N] [--quiet] [--json]
                    [--report-dir D] [--no-report]
 
 checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
-                   [--flush-pending | --flush-session SESSION_ID]
+                   [--flush-pending | --flush-session SESSION_ID
+                    [--drop-stranded --assert TEXT]]
                    [--no-throttle] [--dry-run]
                    [--prepare-worktree-retirement PATH
                     --retirement-repository REPO --retirement-head SHA
@@ -256,6 +309,10 @@ checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
   delete any other session manifest. Use it when unrelated pending work must
   remain recoverable while one fully published session transitions to
   `REMOTE_READY`.
+- `--drop-stranded --assert TEXT` is valid only with `--flush-session`. It
+  retires drop-eligible stranded entries after recording the operator's
+  assertion in the retired-pending ledger; see "Stranded entries and
+  per-repository retirement" above.
 - `--retirement-session` derives a removed worktree's historical head from
   this native session's retained local receipt. It verifies the manifest
   digest, attributed bytes/deletions and file modes, and remote ancestry;
@@ -279,6 +336,11 @@ checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
 
 ## Changelog
 
+- **2.5.0 (2026-09-11):** classifies manifest entries beneath a removed,
+  unrecorded worktree as `stranded` instead of aborting the whole manifest;
+  adds `--flush-session ID --drop-stranded --assert TEXT` with an append-only
+  retired-pending ledger; retires published repositories' entries per flush
+  so blocked repositories no longer keep already-published work pending.
 - **2.3.0 (2026-08-23):** adds a fail-closed exact-session remote handoff that
   retires one verified manifest without coupling it to unrelated pending
   sessions; preserves global flush behavior and fsyncs successful manifest
