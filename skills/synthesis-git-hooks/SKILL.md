@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.4.1"
+  version: "2.5.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,23 @@ The engine is a Bash boundary plus standard-library Python sidecars. The policy
 is data — a YAML file at `~/.synthesis/git-hook-config.yaml` that anyone
 adopting synthesis engineering fills in with personal-remote patterns, client
 names, internal URLs, and optionally a coordination-board path.
+
+## v2.5.0 — Required repo-local delegate, fail closed
+
+Global `core.hooksPath` makes this chain the only path to a repository's own
+`.githooks/pre-commit`; an absent or mode-644 delegate used to be skipped
+silently, so a repository's own commit guards reported success while running
+nothing. Declaring `.githooks/required` opts in — declared means the marker
+is present in the working tree or listed in the index; content is ignored.
+With the declaration, a missing, non-regular, or non-executable delegate (a
+symlink is judged by its target) blocks the commit and names the remedy
+(`create .githooks/pre-commit` or `chmod +x .githooks/pre-commit`); without
+it nothing changes. Withdrawal is a staged `git rm .githooks/required` in a
+reviewed commit; an unstaged `rm` leaves the index entry, and the
+declaration, standing, unless the commit itself stages the removal
+(`git commit -a`, or a partial commit naming `.githooks/required`). The
+doctor's `delegate-required` control applies the same rule and reports the
+same verdict.
 
 ## v2.4.0 — Coordination claims at the commit boundary
 

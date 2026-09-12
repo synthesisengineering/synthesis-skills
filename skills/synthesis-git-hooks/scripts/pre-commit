@@ -85,6 +85,37 @@ EOF
     exit 1
 }
 
+delegate_refused() {
+    cat >&2 <<EOF
+
+==================================================================
+  X  COMMIT BLOCKED — required repo-local hook cannot run
+==================================================================
+
+This repository declares .githooks/required — the marker is present
+in the working tree or listed in the index — so its own pre-commit
+hook must run on every commit. Tested condition:
+
+  $1
+
+Remedy:  $2
+
+The chain FAILS CLOSED: while the declaration stands, no commit
+proceeds with the repository's own guards running nothing. Accepted
+form: .githooks/pre-commit as a regular, executable file (a symlink
+to one also qualifies). Withdrawing the declaration means staging
+the removal (git rm .githooks/required) in a reviewed change; an
+unstaged rm leaves the index entry, and the declaration, standing,
+unless the commit itself stages the removal (git commit -a, or a
+partial commit naming .githooks/required).
+
+Marker:     $REPO_HOOK_MARKER
+Delegate:   $REPO_HOOK
+Diagnose:   python3 $SIDECAR --doctor   (control: delegate-required)
+EOF
+    exit 1
+}
+
 [ -f "$CONFIG" ]  || fail_closed "Config not found at $CONFIG. Run the skill's install.sh to set it up."
 [ -f "$SIDECAR" ] || fail_closed "Sidecar not found at $SIDECAR."
 
@@ -103,6 +134,7 @@ eval "$SIDECAR_OUT"
 [ -n "${ACTIVE_REGEX:-}" ] || fail_closed "Active pattern set is empty — Tier 0 must never be empty in a valid config."
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || fail_closed "Cannot resolve the Git worktree root."
+[ -n "$REPO_ROOT" ] || fail_closed "Git worktree root resolved to an empty path."
 
 # A configured board promotes the advisory source-area claim to a commit
 # boundary. Without a configured board the content scanner still runs, but D6
@@ -398,12 +430,41 @@ fi
 # directory (v2.1+), driven by the same sidecar's CHECK_COMMIT_MSG flag.
 
 # Export class for any delegated per-repo hook, then chain.
+#
+# Global core.hooksPath makes this chain the only path to a repository's own
+# .githooks/pre-commit. The chain execs that delegate only when it is present
+# and executable; otherwise it exits 0 — so a repository whose commit-boundary
+# guards live in the delegate can report success while running nothing. A
+# declared .githooks/required opts the repository in — declared means present
+# in the working tree (-e or -L) OR listed in the index (git ls-files
+# --error-unmatch at the worktree root); content is ignored. Testing the
+# index too means an unstaged rm of the marker does not withdraw the
+# declaration; a staged git rm withdraws it in that commit, which is the
+# reviewed change the refusal text names. With the declaration, a missing,
+# non-regular, or non-executable delegate (a symlink is judged by its
+# target) blocks the commit and names the remedy. Without it the chain
+# behaves exactly as before. The doctor's delegate-required control applies
+# the same declaration rule and reports the same verdict.
 export SYNTHESIS_REPO_CLASS="$REPO_CLASS"
-if [ -n "$REPO_ROOT" ]; then
-    REPO_HOOK="$REPO_ROOT/.githooks/pre-commit"
-    if [ -f "$REPO_HOOK" ] && [ -x "$REPO_HOOK" ]; then
-        exec "$REPO_HOOK"
+REPO_HOOK="$REPO_ROOT/.githooks/pre-commit"
+REPO_HOOK_MARKER="$REPO_ROOT/.githooks/required"
+if [ -e "$REPO_HOOK_MARKER" ] || [ -L "$REPO_HOOK_MARKER" ] \
+    || git -C "$REPO_ROOT" ls-files --error-unmatch -- .githooks/required >/dev/null 2>&1; then
+    if [ ! -e "$REPO_HOOK" ] && [ ! -L "$REPO_HOOK" ]; then
+        delegate_refused ".githooks/pre-commit is missing." \
+            "create .githooks/pre-commit (an executable regular file) and track it beside .githooks/required"
+    elif [ ! -f "$REPO_HOOK" ]; then
+        delegate_refused ".githooks/pre-commit exists but is not a regular file." \
+            "replace .githooks/pre-commit with an executable regular file"
+    elif [ ! -x "$REPO_HOOK" ]; then
+        REPO_HOOK_MODE="$(ls -ldL -- "$REPO_HOOK" 2>/dev/null | cut -c1-10 || true)"
+        delegate_refused ".githooks/pre-commit exists but is not executable (mode ${REPO_HOOK_MODE:-unreadable})." \
+            "chmod +x .githooks/pre-commit"
     fi
+    echo "delegate-required: .githooks/required declared; chaining to .githooks/pre-commit" >&2
+fi
+if [ -f "$REPO_HOOK" ] && [ -x "$REPO_HOOK" ]; then
+    exec "$REPO_HOOK"
 fi
 
 exit 0
