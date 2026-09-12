@@ -25,7 +25,11 @@ v2 design changes (fail-closed hardening):
 * **`--doctor`.** Self-check for rituals/bootstrap: config parses, every
   pattern compiles under both Python `re` and `grep -E`, core.hooksPath is
   wired, installed engine matches the skill source (drift detection), and
-  the cwd repo's classification + chained hook are reported. The drift
+  the cwd repo's classification + chained hook are reported, and the
+  `delegate-required` control asserts a repository that declares
+  `.githooks/required` (present in the working tree or listed in the
+  index) has a regular executable `.githooks/pre-commit` (the chain
+  fails closed on the same condition). The drift
   source resolves portably — `$SYNTHESIS_GIT_HOOKS_SOURCE` (authoritative;
   invalid values fail closed), else this script's own directory when it is
   not itself an installed copy, else documented install locations — never
@@ -55,7 +59,7 @@ import warnings
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-SIDECAR_VERSION = "2.4.1"
+SIDECAR_VERSION = "2.5.0"
 REQUIRED_CONFIG_VERSION = 2
 
 DEFAULT_CONFIG = Path.home() / ".synthesis" / "git-hook-config.yaml"
@@ -654,6 +658,124 @@ def emit_shell_vars(config: dict) -> None:
     print("SYNTHESIS_SIDECAR_OK=1")
 
 
+# ─── delegate-required control ───────────────────────────────────────────
+#
+# Global core.hooksPath makes the installed pre-commit the only path to a
+# repository's own `.githooks/pre-commit`. The chain execs that delegate only
+# when it is present and executable; otherwise it exits 0, so a repository
+# whose commit-boundary guards live in the delegate can report success while
+# running nothing. A declared `.githooks/required` opts the repository in —
+# declared means present in the working tree OR listed in the index, so an
+# unstaged `rm` does not withdraw it while a staged `git rm` does; content
+# is ignored. The chain then fails closed on a missing, non-regular, or
+# non-executable delegate, and this control applies the same declaration
+# rule and reports the same verdict with the same remedy.
+
+DELEGATE_MARKER = ".githooks/required"
+DELEGATE_HOOK = ".githooks/pre-commit"
+
+
+def _worktree_root() -> str:
+    """Return the cwd's Git worktree root, or "" outside a worktree."""
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+    except FileNotFoundError:
+        return ""
+
+
+def _marker_listed_in_index(repo_root: Path) -> bool:
+    """True when the index at `repo_root` lists the marker path, which
+    keeps the declaration standing through an unstaged `rm`; a staged
+    `git rm` clears the entry. Without a `git` binary nothing is listed."""
+    try:
+        return (
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(repo_root),
+                    "ls-files",
+                    "--error-unmatch",
+                    "--",
+                    DELEGATE_MARKER,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            ).returncode
+            == 0
+        )
+    except FileNotFoundError:
+        return False
+
+
+def delegate_required_control(repo_root: Path) -> Tuple[bool, str]:
+    """Evaluate the `delegate-required` doctor control for one worktree root.
+
+    Returns (healthy, report). The report always starts with
+    `delegate-required:`. The marker is declared when it is present in the
+    working tree or listed in the index — the pre-commit chain's rule.
+    `healthy` is False when the marker is declared and
+    the delegate is not a regular executable file — the exact state the
+    pre-commit chain refuses — and also when, without the marker, a delegate
+    exists that the chain would skip silently. Each unhealthy report names the
+    tested condition and the remedy.
+    """
+    marker = repo_root / DELEGATE_MARKER
+    delegate = repo_root / DELEGATE_HOOK
+    present = delegate.exists() or delegate.is_symlink()
+    runnable = delegate.is_file() and os.access(delegate, os.X_OK)
+    declared = (
+        marker.exists()
+        or marker.is_symlink()
+        or _marker_listed_in_index(repo_root)
+    )
+    if not declared:
+        prefix = (
+            f"delegate-required: not opted in ({DELEGATE_MARKER} is neither "
+            "in the working tree nor in the index)"
+        )
+        if not present:
+            return True, f"{prefix}; no repo-local hook to chain"
+        if runnable:
+            return True, f"{prefix}; chained repo-local hook: present, executable"
+        return False, (
+            f"{prefix}, yet {DELEGATE_HOOK} is present and not runnable, so "
+            "the chain skips it silently and every commit passes without "
+            f"it: chmod +x {DELEGATE_HOOK} (or replace it with an executable "
+            f"regular file), and declare {DELEGATE_MARKER} (add it to the "
+            "working tree or the index) so the chain fails closed on this "
+            "condition instead"
+        )
+    prefix = f"delegate-required: {DELEGATE_MARKER} is declared but"
+    if not present:
+        return False, (
+            f"{prefix} {DELEGATE_HOOK} is missing; the pre-commit chain "
+            f"refuses every commit here: create {DELEGATE_HOOK} (an "
+            "executable regular file) and track it beside the marker"
+        )
+    if not delegate.is_file():
+        return False, (
+            f"{prefix} {DELEGATE_HOOK} is not a regular file; the pre-commit "
+            f"chain refuses every commit here: replace {DELEGATE_HOOK} with "
+            "an executable regular file"
+        )
+    if not os.access(delegate, os.X_OK):
+        return False, (
+            f"{prefix} {DELEGATE_HOOK} is not executable; the pre-commit "
+            f"chain refuses every commit here: chmod +x {DELEGATE_HOOK}"
+        )
+    return True, (
+        f"delegate-required: opted in ({DELEGATE_MARKER} declared); "
+        f"{DELEGATE_HOOK} is a regular executable file and runs on every commit"
+    )
+
+
 # ─── doctor ──────────────────────────────────────────────────────────────
 
 def _grep_validates(pattern: str) -> Optional[str]:
@@ -987,23 +1109,20 @@ def run_doctor(config_path: Path) -> int:
             infos.append(
                 f"cwd repo class: {cls} ({len(push_urls)} push remotes)"
             )
-            try:
-                top = subprocess.run(
-                    ["git", "rev-parse", "--show-toplevel"],
-                    capture_output=True,
-                    text=True,
-                ).stdout.strip()
-            except FileNotFoundError:
-                top = ""
-            if top:
-                chained = Path(top) / ".githooks" / "pre-commit"
-                if chained.exists():
-                    if os.access(chained, os.X_OK):
-                        infos.append("chained repo-local hook: present, executable")
-                    else:
-                        problems.append(
-                            f"chained hook not executable: {chained}"
-                        )
+
+    # 7. delegate-required: the cwd repository's own declaration that its
+    # .githooks/pre-commit must run. A repository's opt-in is a fact about
+    # that repository, so this control runs whenever the cwd is a worktree,
+    # independent of config health or push remotes.
+    top = _worktree_root()
+    if top:
+        healthy, report = delegate_required_control(Path(top))
+        (infos if healthy else problems).append(report)
+    else:
+        infos.append(
+            "delegate-required: cwd is not inside a Git worktree "
+            "(control not evaluated)"
+        )
 
     print("synthesis-git-hooks doctor")
     for line in infos:
@@ -1053,7 +1172,7 @@ def main(argv: List[str]) -> int:
     mode.add_argument(
         "--doctor",
         action="store_true",
-        help="Self-check the protection chain: config, patterns, hooksPath wiring, source drift, cwd classification. Exit 0 = healthy.",
+        help="Self-check the protection chain: config, patterns, hooksPath wiring, source drift, cwd classification, delegate-required. Exit 0 = healthy.",
     )
     args = parser.parse_args(argv)
 

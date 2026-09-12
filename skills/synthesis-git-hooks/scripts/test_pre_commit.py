@@ -738,14 +738,17 @@ def test_installed_copy_never_compares_against_itself(tmp_path, monkeypatch) -> 
     assert resolved == direct_copy
 
 
-def test_doctor_detects_drift_end_to_end(tmp_path: Path) -> None:
-    """Installed engine + discovered source, healthy then drifted."""
+def doctor_harness(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
+    """An installed engine, a discoverable skill source, a policy, and a
+    global hooksPath under a private HOME — every doctor control healthy, so
+    a test can drift or opt in one thing and read that control's verdict.
+    Returns (installed engine dir, source dir, environment)."""
     home = tmp_path / "home"
     installed = home / ".synthesis" / "git-hooks"
     engine_copy(installed)
     source = home / ".claude" / "skills" / "synthesis-git-hooks" / "scripts"
     engine_copy(source)
-    config = tmp_path / "policy.yaml"
+    config = tmp_path / "doctor-policy.yaml"
     policy(config)
     (home / ".gitconfig").write_text(
         f"[core]\n\thooksPath = {installed}\n", encoding="utf-8"
@@ -760,23 +763,30 @@ def test_doctor_detects_drift_end_to_end(tmp_path: Path) -> None:
         "GIT_CONFIG_GLOBAL",
     ):
         environment.pop(variable, None)
+    return installed, source, environment
 
-    def doctor():
-        return subprocess.run(
-            [sys.executable, str(installed / "_load_config.py"), "--doctor"],
-            cwd=tmp_path,
-            env=environment,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
 
-    healthy = doctor()
+def doctor(installed: Path, environment: dict[str, str], cwd: Path):
+    return subprocess.run(
+        [sys.executable, str(installed / "_load_config.py"), "--doctor"],
+        cwd=cwd,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_doctor_detects_drift_end_to_end(tmp_path: Path) -> None:
+    """Installed engine + discovered source, healthy then drifted."""
+    installed, source, environment = doctor_harness(tmp_path)
+
+    healthy = doctor(installed, environment, tmp_path)
     assert healthy.returncode == 0, healthy.stdout + healthy.stderr
     assert "no drift" in healthy.stdout
 
     (source / "pre-commit").write_bytes(b"#!/bin/bash\n# hotfixed\n")
-    drifted = doctor()
+    drifted = doctor(installed, environment, tmp_path)
     assert drifted.returncode == 1, drifted.stdout + drifted.stderr
     assert "DRIFT: installed pre-commit" in drifted.stdout
 
@@ -1065,3 +1075,367 @@ def test_r4_config_sidecar_emits_board_gate(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "COORDINATION_CHECK_STAGED=1" in completed.stdout
     assert f"COORDINATION_BOARD={shlex.quote(str(board))}" in completed.stdout
+
+
+# ─── required repo-local delegate (fail closed) ──────────────────────────
+#
+# Global core.hooksPath makes the installed pre-commit the only path to a
+# repository's own `.githooks/pre-commit`. A declared `.githooks/required`
+# (present in the working tree or listed in the index) requires the delegate
+# to run on every commit; with the marker, a
+# missing or non-executable delegate blocks the commit and names the remedy.
+# Without the marker today's behavior stands: chain when runnable, else exit 0.
+
+
+DELEGATE_SCRIPT = """\
+#!/bin/bash
+# Repo-local pre-commit: leaves evidence that it ran, then exits 3 so the
+# chain's honoring of the delegate's exit status is observable.
+printf 'ran\\n' > "$(git rev-parse --show-toplevel)/delegate-ran"
+exit 3
+"""
+
+
+def delegate_repository(
+    tmp_path: Path, *, marker: bool, delegate: str | None
+) -> tuple[Path, dict[str, str]]:
+    """A staged, otherwise-clean repository with `.githooks/pre-commit` in
+    the requested state: None = absent, "644" = present but not executable,
+    "755" = executable, "dir" = a directory where the file should be,
+    "link644" = a symlink to a mode-644 regular file beside it."""
+    root, environment = repository(tmp_path)
+    hooks = root / ".githooks"
+    hooks.mkdir()
+    if marker:
+        (hooks / "required").write_text(
+            "This repository's own pre-commit hook must run on every commit.\n",
+            encoding="utf-8",
+        )
+    if delegate == "dir":
+        (hooks / "pre-commit").mkdir()
+    elif delegate == "link644":
+        target = hooks / "pre-commit.target"
+        target.write_text(DELEGATE_SCRIPT, encoding="utf-8")
+        target.chmod(0o644)
+        (hooks / "pre-commit").symlink_to("pre-commit.target")
+    elif delegate is not None:
+        script = hooks / "pre-commit"
+        script.write_text(DELEGATE_SCRIPT, encoding="utf-8")
+        script.chmod(0o755 if delegate == "755" else 0o644)
+    (root / "ordinary.md").write_text("ordinary content\n", encoding="utf-8")
+    assert run(root, "git", "add", "-A").returncode == 0
+    return root, environment
+
+
+def test_marker_with_missing_delegate_blocks_with_create_remedy(
+    tmp_path: Path,
+) -> None:
+    root, environment = delegate_repository(tmp_path, marker=True, delegate=None)
+
+    completed = run(root, str(HOOK), env=environment)
+
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "COMMIT BLOCKED" in completed.stderr
+    assert ".githooks/pre-commit is missing" in completed.stderr
+    assert "create .githooks/pre-commit" in completed.stderr
+    assert not (root / "delegate-ran").exists()
+
+
+def test_marker_with_non_executable_delegate_blocks_with_chmod_remedy(
+    tmp_path: Path,
+) -> None:
+    root, environment = delegate_repository(tmp_path, marker=True, delegate="644")
+
+    completed = run(root, str(HOOK), env=environment)
+
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "COMMIT BLOCKED" in completed.stderr
+    assert ".githooks/pre-commit exists but is not executable" in completed.stderr
+    assert "chmod +x .githooks/pre-commit" in completed.stderr
+    assert not (root / "delegate-ran").exists()
+
+
+def test_marker_with_directory_delegate_blocks_with_replace_remedy(
+    tmp_path: Path,
+) -> None:
+    root, environment = delegate_repository(tmp_path, marker=True, delegate="dir")
+
+    completed = run(root, str(HOOK), env=environment)
+
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "COMMIT BLOCKED" in completed.stderr
+    assert ".githooks/pre-commit exists but is not a regular file" in completed.stderr
+    assert (
+        "replace .githooks/pre-commit with an executable regular file"
+        in completed.stderr
+    )
+
+
+def test_marker_with_executable_delegate_runs_it_and_honors_its_exit(
+    tmp_path: Path,
+) -> None:
+    root, environment = delegate_repository(tmp_path, marker=True, delegate="755")
+
+    completed = run(root, str(HOOK), env=environment)
+
+    assert (root / "delegate-ran").read_text(encoding="utf-8") == "ran\n"
+    assert completed.returncode == 3, completed.stdout + completed.stderr
+    assert "COMMIT BLOCKED" not in completed.stderr
+
+
+def test_no_marker_with_non_executable_delegate_passes_unchanged(
+    tmp_path: Path,
+) -> None:
+    root, environment = delegate_repository(tmp_path, marker=False, delegate="644")
+
+    completed = run(root, str(HOOK), env=environment)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "COMMIT BLOCKED" not in completed.stderr
+    assert "delegate-required" not in completed.stdout + completed.stderr
+    assert not (root / "delegate-ran").exists()
+
+
+def test_no_marker_with_executable_delegate_still_chains(tmp_path: Path) -> None:
+    root, environment = delegate_repository(tmp_path, marker=False, delegate="755")
+
+    completed = run(root, str(HOOK), env=environment)
+
+    assert (root / "delegate-ran").read_text(encoding="utf-8") == "ran\n"
+    assert completed.returncode == 3, completed.stdout + completed.stderr
+
+
+def test_doctor_delegate_required_reports_not_opted_in(tmp_path: Path) -> None:
+    installed, _, environment = doctor_harness(tmp_path)
+    root, _ = delegate_repository(tmp_path, marker=False, delegate=None)
+
+    completed = doctor(installed, environment, root)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "ok  delegate-required: not opted in" in completed.stdout
+    assert "HEALTHY: policy engine fully operational." in completed.stdout
+
+
+def test_doctor_delegate_required_healthy_with_executable_delegate(
+    tmp_path: Path,
+) -> None:
+    installed, _, environment = doctor_harness(tmp_path)
+    root, _ = delegate_repository(tmp_path, marker=True, delegate="755")
+
+    completed = doctor(installed, environment, root)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "ok  delegate-required: opted in" in completed.stdout
+    assert "regular executable file" in completed.stdout
+    assert "HEALTHY: policy engine fully operational." in completed.stdout
+
+
+def test_doctor_delegate_required_unhealthy_when_delegate_missing(
+    tmp_path: Path,
+) -> None:
+    installed, _, environment = doctor_harness(tmp_path)
+    root, _ = delegate_repository(tmp_path, marker=True, delegate=None)
+
+    completed = doctor(installed, environment, root)
+
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "!!  delegate-required:" in completed.stdout
+    assert ".githooks/pre-commit is missing" in completed.stdout
+    assert "create .githooks/pre-commit" in completed.stdout
+    assert "UNHEALTHY" in completed.stdout
+
+
+def test_doctor_delegate_required_unhealthy_when_delegate_not_executable(
+    tmp_path: Path,
+) -> None:
+    installed, _, environment = doctor_harness(tmp_path)
+    root, _ = delegate_repository(tmp_path, marker=True, delegate="644")
+
+    completed = doctor(installed, environment, root)
+
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "!!  delegate-required:" in completed.stdout
+    assert ".githooks/pre-commit is not executable" in completed.stdout
+    assert "chmod +x .githooks/pre-commit" in completed.stdout
+    assert "UNHEALTHY" in completed.stdout
+
+
+def test_doctor_delegate_required_unhealthy_when_delegate_not_a_file(
+    tmp_path: Path,
+) -> None:
+    installed, _, environment = doctor_harness(tmp_path)
+    root, _ = delegate_repository(tmp_path, marker=True, delegate="dir")
+
+    completed = doctor(installed, environment, root)
+
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "!!  delegate-required:" in completed.stdout
+    assert ".githooks/pre-commit is not a regular file" in completed.stdout
+    assert (
+        "replace .githooks/pre-commit with an executable regular file"
+        in completed.stdout
+    )
+    assert "UNHEALTHY" in completed.stdout
+
+
+def test_doctor_not_opted_in_still_flags_a_silently_skipped_delegate(
+    tmp_path: Path,
+) -> None:
+    """Without the marker the chain exits 0 past a mode-644 delegate; the
+    doctor keeps naming that latent skip as a problem and points at the
+    opt-in that would turn it into a commit-boundary refusal."""
+    installed, _, environment = doctor_harness(tmp_path)
+    root, _ = delegate_repository(tmp_path, marker=False, delegate="644")
+
+    completed = doctor(installed, environment, root)
+
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "!!  delegate-required: not opted in" in completed.stdout
+    assert "chmod +x .githooks/pre-commit" in completed.stdout
+    assert ".githooks/required" in completed.stdout
+    assert "UNHEALTHY" in completed.stdout
+
+
+# ─── declaration = working tree OR index ─────────────────────────────────
+#
+# The refusal text says withdrawing the declaration is a reviewed change, so
+# the declaration must not evaporate on an unstaged `rm`. The marker is
+# declared when `.githooks/required` is present in the working tree OR listed
+# in the index; a staged `git rm` withdraws it in that commit, an unstaged
+# `rm` does not. The doctor's delegate-required control uses the same rule.
+
+
+def committed_delegate_repository(
+    tmp_path: Path, *, delegate: str | None
+) -> tuple[Path, dict[str, str]]:
+    """`delegate_repository` with the marker and delegate COMMITTED (hooks
+    disabled for that commit) and a fresh ordinary change staged, so a test
+    can then remove the marker from the working tree alone (unstaged `rm`)
+    or from the index as well (staged `git rm`) and observe which of the two
+    withdraws the declaration."""
+    root, environment = delegate_repository(
+        tmp_path, marker=True, delegate=delegate
+    )
+    committed = run(
+        root, "git", "-c", "core.hooksPath=/dev/null", "commit", "-m", "Declare"
+    )
+    assert committed.returncode == 0, committed.stdout + committed.stderr
+    (root / "later.md").write_text("later content\n", encoding="utf-8")
+    assert run(root, "git", "add", "later.md").returncode == 0
+    return root, environment
+
+
+def marker_listed_in_index(root: Path) -> bool:
+    return (
+        run(root, "git", "ls-files", "--error-unmatch", "--", ".githooks/required")
+        .returncode
+        == 0
+    )
+
+
+def test_unstaged_rm_of_committed_marker_leaves_declaration_standing(
+    tmp_path: Path,
+) -> None:
+    """An unstaged `rm .githooks/required` leaves the index entry, so the
+    declaration stands and a mode-644 delegate is still refused with the
+    chmod remedy."""
+    root, environment = committed_delegate_repository(tmp_path, delegate="644")
+    (root / ".githooks" / "required").unlink()
+    assert marker_listed_in_index(root)
+
+    completed = run(root, str(HOOK), env=environment)
+
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "COMMIT BLOCKED" in completed.stderr
+    assert ".githooks/pre-commit exists but is not executable" in completed.stderr
+    assert "chmod +x .githooks/pre-commit" in completed.stderr
+    assert not (root / "delegate-ran").exists()
+
+
+def test_staged_git_rm_of_marker_withdraws_declaration_in_that_commit(
+    tmp_path: Path,
+) -> None:
+    """A staged `git rm .githooks/required` removes the index entry and the
+    working-tree file together: the commit that withdraws the declaration is
+    the first one a mode-644 delegate no longer blocks."""
+    root, environment = committed_delegate_repository(tmp_path, delegate="644")
+    removed = run(root, "git", "rm", "--quiet", "--", ".githooks/required")
+    assert removed.returncode == 0, removed.stdout + removed.stderr
+    assert not marker_listed_in_index(root)
+
+    completed = run(root, str(HOOK), env=environment)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "COMMIT BLOCKED" not in completed.stderr
+    assert "delegate-required" not in completed.stdout + completed.stderr
+    assert not (root / "delegate-ran").exists()
+
+
+def test_marker_with_symlink_to_non_executable_target_reports_target_mode(
+    tmp_path: Path,
+) -> None:
+    """The refusal's mode parenthetical describes the file the chain would
+    exec — the symlink's target — not the link itself."""
+    root, environment = delegate_repository(
+        tmp_path, marker=True, delegate="link644"
+    )
+
+    completed = run(root, str(HOOK), env=environment)
+
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "COMMIT BLOCKED" in completed.stderr
+    assert "(mode -rw-r--r--)" in completed.stderr
+    assert "chmod +x .githooks/pre-commit" in completed.stderr
+    assert not (root / "delegate-ran").exists()
+
+
+def test_doctor_marker_in_index_only_still_evaluates_as_opted_in(
+    tmp_path: Path,
+) -> None:
+    """Doctor parity with the chain: a committed marker removed from the
+    working tree alone is still listed in the index, so the control reports
+    the repository as opted in."""
+    installed, _, environment = doctor_harness(tmp_path)
+    root, _ = committed_delegate_repository(tmp_path, delegate="755")
+    (root / ".githooks" / "required").unlink()
+    assert marker_listed_in_index(root)
+
+    completed = doctor(installed, environment, root)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "ok  delegate-required: opted in" in completed.stdout
+    assert "HEALTHY: policy engine fully operational." in completed.stdout
+
+
+def test_empty_worktree_root_fails_closed(tmp_path: Path) -> None:
+    """A Git that answers `rev-parse --show-toplevel` with an empty line and
+    exit 0 would make the chain probe `/.githooks/...` and ignore the
+    repository's own declaration; the root guard refuses instead. Real Git
+    never does this, so a PATH shim answers that one query and hands every
+    other call to the real binary."""
+    root, environment = delegate_repository(tmp_path, marker=True, delegate="644")
+    real_git = shutil.which("git")
+    assert real_git
+    shim_dir = tmp_path / "shim"
+    shim_dir.mkdir()
+    shim = shim_dir / "git"
+    shim.write_text(
+        "#!/bin/bash\n"
+        'if [ "${1:-}" = rev-parse ] && [ "${2:-}" = --show-toplevel ]; then\n'
+        '  echo ""\n'
+        "  exit 0\n"
+        "fi\n"
+        f'exec "{real_git}" "$@"\n',
+        encoding="utf-8",
+    )
+    shim.chmod(0o755)
+    environment = dict(environment)
+    environment["PATH"] = f"{shim_dir}{os.pathsep}{environment['PATH']}"
+
+    completed = run(root, str(HOOK), env=environment)
+
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "COMMIT BLOCKED" in completed.stderr
+    assert "Git worktree root resolved to an empty path." in completed.stderr
+    assert "delegate-required" not in completed.stderr
+    assert not (root / "delegate-ran").exists()

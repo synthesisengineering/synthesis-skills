@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.98.0] - 2026-09-11
+
+Pending manifests classify entries beneath a removed, unrecorded worktree as
+stranded, name the missing worktree root and the accepted remedy, and keep
+evaluating the other repositories. An operator-asserted `--drop-stranded`
+retires such entries only after an append-only ledger record carries the
+assertion, and every flush retires each published repository's entries, so
+long-lived manifests no longer accrete. The global pre-commit chain fails
+closed for repositories that declare `.githooks/required` when the delegate is
+missing or not executable; the doctor's `delegate-required` control agrees.
+
 ## [4.97.0] - 2026-09-10
 
 The pull-request queue scan dispatches by origin host: Bitbucket Cloud

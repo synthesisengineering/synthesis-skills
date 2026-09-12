@@ -68,3 +68,42 @@ backfill it from assumptions, synthesize an approval, or delete the manifest
 to obtain a green Stop. Independently reconstructible historical evidence or
 an explicit administrative decision is required for such a case. Source
 repair does not itself authorize repairing existing native manifests.
+
+## A worktree removed before any record could name it
+
+When the worktree vanished before a retirement intent or a Stop receipt named
+it, no historical HEAD exists to verify. `checkpoint_sync.py` reports each
+such path as `stranded`, names the missing worktree root, and keeps
+evaluating the manifest's other repositories. A path whose repository still
+resolves is not stranded; it stays `deleted-or-missing`. When git cannot
+answer for the nearest existing ancestor (a timeout, a missing binary) the
+path is reported `failed` as `stranded classification unavailable` and stays
+on the manifest; a `.git` entry visible in the ancestor chain likewise keeps
+it out of `stranded` even when git refuses the repository.
+
+If an intent or this session's retained receipt does name the worktree, the
+report points at that evidence (`--complete-worktree-retirement`, or
+`--reconcile-retired-worktree ... --retirement-session`), and Stop leaves the
+receipt unchanged so the evidence survives. The session-bound form is named
+only while the receipt is LOCAL_READY and bound to the current manifest
+digest; a receipt the manifest outgrew names the receipt's own head through
+`--retirement-head`, which retires only what that head proves. Only when
+neither exists is the explicit administrative decision above expressed as:
+
+```
+checkpoint_sync.py --flush-session NATIVE_SESSION_ID --drop-stranded \
+  --assert "<why the work is known published>" --dry-run --json
+```
+
+Review the preview, then omit `--dry-run`. The drop recomputes the stranded
+set, refuses if the worktree root exists again, writes an append-only record
+under `~/.synthesis/repo-guard/retired-pending/` carrying the dropped paths,
+the nearest existing ancestor, the missing worktree root, whether any intent
+or receipt named it, any repository whose HEAD tracks the same relative path
+with its blob oid, the assertion, the acting identity and the timestamp, and
+only then rewrites the manifest without those entries. A blank assertion
+(whitespace or invisible format characters only) is refused; existing
+records are never replaced. The same flush retires the
+entries of every repository whose result proves publication and keeps the
+blocked repositories' entries, so a manifest no longer accretes published
+work behind one blocked repository.

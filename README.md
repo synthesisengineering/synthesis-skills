@@ -11,6 +11,16 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Stranded manifests and required delegates (September 2026).** Release **4.98.0**
+classifies pending-manifest entries beneath a removed, unrecorded worktree as
+stranded, names the missing worktree root and the accepted remedy, and keeps
+evaluating the other repositories. An operator-asserted `--drop-stranded` retires
+such entries only after an append-only ledger record carries the assertion, and
+every flush retires each published repository's entries, so long-lived manifests
+no longer accrete. The global pre-commit chain fails closed for repositories that
+declare `.githooks/required` when the delegate is missing or not executable, and
+the doctor's `delegate-required` control reports the same verdict.
+
 **Bitbucket queues and shell-aware peer sends (September 2026).** Release **4.97.0**
 reads Bitbucket Cloud repositories in the pull-request queue scan through the
 synthesis-bitbucket helper; GitHub is unchanged and other hosts stay named as
