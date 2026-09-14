@@ -31,10 +31,15 @@ structural rather than diligent:
     sync_watermark.py status   --workspace W --surface S ... [--target S:T ...]
                                [--targets-from FILE] [--since TS|run] [--max-age 4h]
 
-TS is an ISO-8601 timestamp (naive means local time), the word `now`, or a
-bare YYYY-MM-DD meaning complete through the END of that day — which is
-refused when that end lies in the future, so a mid-day run cannot stamp
-"today" and must record the moment it actually read.
+TS is an ISO-8601 timestamp (naive means local time), Unix epoch seconds as
+`window` prints them (1789397434) or as Slack's `ts` carries them
+(1789397434.123456 — the fraction is dropped, never rounded up), the word
+`now`, or a bare YYYY-MM-DD meaning complete through the END of that day —
+which is refused when that end lies in the future, so a mid-day run cannot
+stamp "today" and must record the moment it actually read. Whatever the
+input form, the store holds one canonical shape: ISO-8601 to the second
+with a UTC offset, so `window`'s printed `latest=` is `advance`'s accepted
+`--through` and the two ends of a sync pipeline agree by construction.
 """
 
 from __future__ import annotations
@@ -58,6 +63,22 @@ _DURATION_UNITS = {
     "h": timedelta(hours=1),
     "m": timedelta(minutes=1),
 }
+_BARE_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+# Ten digits of epoch seconds span 2001-09-09 to 2286-11-20 and never start
+# with a zero: `0999999999` is a typo, not a value `window` prints. An
+# optional fraction is Slack's `ts` shape. Thirteen digits is the one near
+# miss a Slack or JavaScript caller produces: epoch milliseconds. Both
+# patterns are anchored at each end and on a non-zero first digit, so a
+# leading zero or a fourteenth digit matches neither and is refused as no
+# form at all.
+_EPOCH_SECONDS = re.compile(r"\A([1-9]\d{9})(?:\.\d+)?\Z")
+_EPOCH_MILLISECONDS = re.compile(r"\A[1-9]\d{12}\Z")
+ACCEPTED_MOMENTS = (
+    "ISO-8601 such as 2026-09-14T09:15 or 2026-09-14T09:15:00-04:00, "
+    "YYYY-MM-DD for complete through the END of that day, "
+    "Unix epoch seconds as `window` prints them (1789397434) or as Slack's "
+    "ts carries them (1789397434.123456), or 'now'"
+)
 
 
 # --- time -------------------------------------------------------------------
@@ -73,25 +94,50 @@ def _localize(moment: datetime, reference: datetime) -> datetime:
     return moment
 
 
+def _bare_date(raw: str) -> date | None:
+    """A YYYY-MM-DD by shape, not by length: a ten-digit epoch is also ten
+    characters long and must never read as a day."""
+    if not _BARE_DATE.fullmatch(raw):
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
 def parse_moment(text: str, now: datetime) -> datetime:
-    """`now`, an ISO-8601 timestamp (naive = local), or a date = END of that day."""
+    """`now`, an ISO-8601 timestamp (naive = local), Unix epoch seconds with
+    an optional fraction (Slack's `ts`), or a date = END of that day. Every
+    form resolves to a datetime in `now`'s zone with `now`'s awareness (a
+    naive `now` is local time and yields naive moments), whole seconds."""
     raw = str(text).strip()
     if raw.lower() == "now":
         return now
-    if len(raw) == 10:
-        try:
-            day = date.fromisoformat(raw)
-        except ValueError:
-            day = None
-        if day is not None:
-            end = datetime.combine(day + timedelta(days=1), datetime.min.time())
-            return _localize(end, now)
+    day = _bare_date(raw)
+    if day is not None:
+        end = datetime.combine(day + timedelta(days=1), datetime.min.time())
+        return _localize(end, now)
+    epoch = _EPOCH_SECONDS.fullmatch(raw)
+    if epoch is not None:
+        # An epoch is an instant, so it carries its own zone; render it in
+        # `now`'s zone with `now`'s awareness. Naive means local time here
+        # exactly as in _localize, so a naive `now` yields a naive local
+        # moment and `advance` never compares aware against naive. The
+        # fraction is dropped, never rounded up: a watermark claims at most
+        # what was read.
+        seconds = int(epoch.group(1))
+        if now.tzinfo is None:
+            return datetime.fromtimestamp(seconds)
+        return datetime.fromtimestamp(seconds, tz=now.tzinfo)
+    if _EPOCH_MILLISECONDS.fullmatch(raw):
+        raise ValueError(
+            f"not a timestamp: {text!r} — thirteen digits reads as epoch "
+            f"milliseconds; pass epoch seconds ({raw[:10]}) (use {ACCEPTED_MOMENTS})"
+        )
     try:
         moment = datetime.fromisoformat(raw)
     except ValueError as exc:
-        raise ValueError(
-            f"not a timestamp: {text!r} (use ISO-8601, YYYY-MM-DD, or 'now')"
-        ) from exc
+        raise ValueError(f"not a timestamp: {text!r} (use {ACCEPTED_MOMENTS})") from exc
     return _localize(moment, now).replace(microsecond=0)
 
 
@@ -111,6 +157,13 @@ def human(moment: datetime) -> str:
     # Stored offsets parse as fixed-offset zones whose %Z reads "UTC-04:00";
     # render in the machine's local zone so the label is the familiar one.
     return moment.astimezone().strftime("%a %Y-%m-%d %H:%M %Z")
+
+
+def precise(moment: datetime) -> str:
+    """`human` to the second, for a refusal that sets two moments side by
+    side: a value one second ahead of, or behind, the other must read as two
+    different times, not the same minute twice."""
+    return moment.astimezone().strftime("%a %Y-%m-%d %H:%M:%S %Z")
 
 
 def span(delta: timedelta) -> str:
@@ -161,7 +214,7 @@ def _migrate(data: dict, reference: datetime) -> dict:
     for entry in data["surfaces"].values():
         entry.setdefault("targets", {})
         through = entry.get("through")
-        if isinstance(through, str) and len(through) == 10:
+        if isinstance(through, str) and _bare_date(through) is not None:
             # A schema-1 date meant "that day is written" and was recorded
             # when the write happened. A mirror cannot be complete past the
             # moment it was written, so the earlier of end-of-day and the
@@ -289,12 +342,13 @@ def advance(
     new = parse_moment(through, moment)
     if new > moment:
         hint = ""
-        if len(str(through).strip()) == 10:
+        if _bare_date(str(through).strip()) is not None:
             hint = (" — a bare date means complete through the END of that day; "
-                    "pass the moment you actually read (an ISO timestamp or 'now')")
+                    "pass the moment you actually read (an ISO timestamp, the epoch "
+                    "`window` prints as latest=, or 'now')")
         raise ValueError(
-            f"refusing a future watermark: {through} resolves to {human(new)}, "
-            f"ahead of {human(moment)}{hint}"
+            f"refusing a future watermark: {through} resolves to {precise(new)}, "
+            f"ahead of {precise(moment)}{hint}"
         )
     data = load(workspace, home, moment)
     surface_entry = data["surfaces"].setdefault(surface, {})
@@ -320,7 +374,7 @@ def advance(
         old = _stored(entry.get("through"))
         if old is not None and new < old:
             entries.append({"key": key, "through": stamp(old), "moved": False,
-                            "detail": f"refused: {human(new)} is behind the recorded {human(old)}"})
+                            "detail": f"refused: {precise(new)} is behind the recorded {precise(old)}"})
             continue
         entry["through"] = stamp(new)
         entry["updated_at"] = stamp(moment)
@@ -537,7 +591,9 @@ def main(argv: list[str] | None = None) -> int:
         if name == "window" or name == "defer":
             p.add_argument("--target")
         if name == "advance":
-            p.add_argument("--through", required=True)
+            p.add_argument("--through", required=True,
+                           help="ISO-8601, YYYY-MM-DD (END of that day), epoch seconds as "
+                                "`window` prints them or Slack's ts carries them, or `now`")
             p.add_argument("--target", action="append", default=[])
             p.add_argument("--surface-level", action="store_true",
                            help="assert whole-surface coverage on a surface that carries targets")
@@ -549,7 +605,9 @@ def main(argv: list[str] | None = None) -> int:
                            help="declared read target as surface:id (repeatable)")
             p.add_argument("--targets-from",
                            help='JSON file: {"surface": ["id", ...]} or ["surface:id", ...]')
-            p.add_argument("--since", help="ISO timestamp, or `run` for the last `begin`")
+            p.add_argument("--since",
+                           help="ISO-8601, YYYY-MM-DD, epoch seconds (window's latest= or "
+                                "Slack's ts), `now`, or `run` for the last `begin`")
             p.add_argument("--max-age", help="duration such as 90m, 4h, 1d")
     args = parser.parse_args(argv)
 

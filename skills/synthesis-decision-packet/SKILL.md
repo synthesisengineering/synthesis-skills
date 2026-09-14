@@ -1,18 +1,18 @@
 ---
 name: synthesis-decision-packet
-description: Collect many parallel decisions from a principal in one sitting instead of one per turn. Generates a self-contained HTML packet — one row per decision carrying the item, the agent's recommendation, the reasoning, and a link — with buttons, a per-row note box, local persistence, and a paste-able summary the principal returns in a single message. Use when you owe five or more decisions of the same shape; when a review, migration, upgrade, triage, or backlog pass has produced a list someone must rule on; or when a per-item conversation is burning round-trips.
+description: Collect many parallel decisions from a principal in one sitting instead of one per turn. Generates a self-contained HTML packet — one row per decision carrying the item, the agent's recommendation, the reasoning, and a link — with buttons labeled by what pressing them does, the consequence under each button, a per-row note box, local persistence, and a paste-able summary the principal returns in a single message; files the spec, the page, and the returned rulings in the owning project's resources/artifacts/ so every agent on the project can read them. Use when you owe five or more decisions of the same shape; when a review, migration, upgrade, triage, or backlog pass has produced a list someone must rule on; or when a per-item conversation is burning round-trips.
 license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.0"
+  version: "1.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Decision Packet
 
-**Version 1.1.0** (2026-08-29)
+**Version 1.4.0** (2026-09-14)
 
 An agent that has analysed N items needs N decisions from its principal. Every default shape
 fails at scale, and the measurement that produced this skill is blunt: **26 rounds of per-item
@@ -54,7 +54,7 @@ to build now, later, or never · candidates to advance on a defined rubric.
 
 The failure mode of a good pattern is over-application. These three limits are the skill.
 
-## The five load-bearing properties
+## The six load-bearing properties
 
 Requirements, not suggestions. Each is why it worked.
 
@@ -71,6 +71,13 @@ Requirements, not suggestions. Each is why it worked.
    says so in the summary.
 5. **A paste-able summary the tool generates.** *This is the property that closes the loop.* The
    structure you need is produced by the packet, not composed by the person.
+6. **Filed in the owning project, never only as a chat artifact.** The spec, the generated page,
+   and the rulings the principal pastes back live in the owning synthesis project's
+   `resources/artifacts/` as `<date>-<slug>-spec.json`, `<date>-<slug>.html`, and
+   `<date>-<slug>-rulings.json`. A packet that exists only as a published Claude artifact is
+   readable by one client in one conversation; the project directory is readable by every agent
+   working the project, ChatGPT Codex included, and by the next session after this one is gone.
+   `build_packet.py --file-into` files the first two; `record_rulings.py` files the third.
 
 ## Content requirements, which matter as much as the mechanics
 
@@ -110,18 +117,35 @@ does it ask, what do they leave with. Then, per row:
   happens if they take the recommendation and if they don't, in outcomes
   the principal cares about (what ships, what it costs, what dies), never
   in internal treatment vocabulary. The generator renders it distinctly.
-- **Options are labeled by consequence,** not by the agent's internal
-  verbs. "Keep it out of your published skill; test once more" beats
-  "retest".
+- **Options are labeled by what pressing them does,** never by a bare
+  acknowledgement. Measured on 2026-09-14: on a 9-row packet, three rows
+  offering "Yes, do that" / "No" collected notes instead of decisions — the
+  principal could not tell what each button would do to the thing in
+  question, so the note boxes carried what the buttons should have. "Keep
+  them on my phone" / "Take them off my phone" is the accepted form. The generator raises a
+  READER finding for a bare label (yes, no, ok, okay, cancel, accept,
+  decline, approve, reject, do it, go, stop, and their "Yes, do that" /
+  "No thanks" forms, compared after trimming punctuation and case, and any
+  of these padded with a stopword: "Accept it", "Approve this", "Do that")
+  and for two labels in one option set that do not differ in a content word;
+  `--strict-reader` refuses to build, naming the row, the labels, and the
+  accepted form.
+- **The consequence sits on the button.** Each option button carries, under
+  its label, what pressing it does: the option's own `consequence` when the
+  spec gives one, otherwise `impact.accept` under the recommended option and
+  `impact.decline` under every other one. The row's impact block stays as
+  the row's summary; the text on the button is what the principal reads at
+  the moment of choosing.
 - **Every surviving term of art gets a one-clause gloss** — inline on first
   use, or in the packet-level `glossary` band.
 - **`audience` names the reader.** One sentence. If you cannot write it,
   you do not know who the packet is for, and neither will they.
 
 `--strict-reader` makes the generator refuse a packet missing `audience` or
-per-row `impact`. **Use it for every packet handed to a principal.** The
-warnings print either way; strictness is the difference between a warning
-you read and a packet they cannot.
+per-row `impact`, or carrying option labels that name no consequence. **Use it
+for every packet handed to a principal.** The warnings print either way;
+strictness is the difference between a warning you read and a packet they
+cannot.
 
 ## Use
 
@@ -129,19 +153,49 @@ you read and a packet they cannot.
 python3 scripts/build_packet.py --schema              # the spec format
 python3 scripts/build_packet.py spec.json -o packet.html --strict-reader
 python3 scripts/build_packet.py spec.json --stdout    # to a pipe
+python3 scripts/build_packet.py spec.json --strict-reader \
+    --file-into PROJECT/resources/artifacts/         # + <date>-<slug>-spec.json, <date>-<slug>.html
+python3 scripts/record_rulings.py paste.txt \
+    --file-into PROJECT/resources/artifacts/         # -> <date>-<slug>-rulings.json
 ```
 
-Write a JSON spec, generate, hand over the file. It is self-contained: no build step, no
+Write a JSON spec, generate, file, hand over the file. It is self-contained: no build step, no
 dependencies, no server. It opens from disk, over a local HTTP server, or published as an
 artifact, in light or dark, on a phone or a laptop.
+
+**File it, then hand it over.** `--file-into DIR` writes a dated copy of the spec and of the page
+into DIR after a successful build. DIR is the owning project's `resources/artifacts/` and must
+already exist: the generator refuses a missing directory rather than creating one where you did
+not mean. `--date YYYY-MM-DD` sets the date in the names (default: today). Publish the page as
+an artifact too if that is how the principal will open it; the filed copy is the one other
+agents read.
+
+**Record what came back.** When the principal pastes the summary, save the paste to a file and
+run `record_rulings.py paste.txt --file-into DIR`. It parses the exact text the packet's "Copy
+summary" button emits and writes `<date>-<slug>-rulings.json` beside the spec and page: `packet`,
+`ruled_on`, `decided`, `total`, and one ruling per row with `id`, `label`, `choice_label`,
+`took_recommendation` (true, false for an override, null when undecided or when the row carried
+no recommendation), `accepted_in_bulk` (the packet keeps bulk acceptance distinct from a
+considered click, and so does the file), `recommended_label`, and `note`. It refuses text that
+is not in that format, naming the line that failed, the form expected there and the text it
+received; it reads a whitespace-only line as blank, since chat surfaces pad empty lines; it
+refuses a paste whose row count or decided count disagrees with its own `Decided n of m.` line;
+and it keeps an existing rulings file for the same date and packet unless `--replace` is passed.
+Commit all three files with the project.
 
 **Generate from a data array; never hand-author rows.** Thirty hand-written blocks drift. One
 array with a render loop cannot. That is the whole reason this is a generator rather than a
 template.
 
 The generator validates before it emits and refuses to build a broken packet: duplicate ids
-(they key persistence), a recommendation outside its own option set, a packet with no
-recommendations at all, malformed disagreement blocks.
+(they key persistence), ids with leading, trailing or doubled whitespace or a line break (the
+summary line is `id  label`, split on its first double space), a line break in the title, a row
+label or an option label (the paste is one line per field, and a packet that builds must file),
+an option set with fewer than two options (a one-button set records no decision), two options
+in one set sharing a value or a value that is not a non-empty string (the value keys the pressed
+state and the summary label through a DOM dataset, which stores strings), a recommendation
+outside its own option set, a packet with no recommendations at all, malformed option sets at
+the packet level or on a row, malformed disagreement, impact, or glossary blocks.
 
 ## Two defects that are permanent fixtures
 
@@ -173,9 +227,37 @@ regression-tested in `scripts/test_build_packet.py`.
   agents*. The decision packet moves decisions *between agent and principal*. Together they are
   the two directions that stop routing everything through a person as the transport layer.
 
+## Changelog
+
+- **1.4.0 (2026-09-14)** — Option labels must name consequences: READER findings for bare
+  acknowledgements and for two labels that do not differ in a content word, fatal under
+  `--strict-reader`, with the row, the labels, and the accepted form in the message. Each option
+  button carries its consequence under the label (`consequence` per option, else the row's
+  `impact` mapped onto the buttons). Sixth load-bearing property: packets and rulings are filed
+  in the owning project's `resources/artifacts/` — `--file-into`, `--date`, and the new
+  `record_rulings.py`, whose parser is pinned to the summary format the page emits. Per-row
+  option sets are validated like the packet-level set; ids with edge or doubled whitespace are
+  refused. The worked example's options now name outcomes. Repair round the same day: a line
+  break in the title, a row label, an option label or an id is refused, so a packet that builds
+  can always be filed; a one-button option set, two options sharing a value, and a non-string
+  value are refused; an acknowledgement padded with a stopword ("Accept it", "Do that") is
+  caught; `record_rulings.py` counts the title underline in UTF-16 units as the page does,
+  reads whitespace-only lines as blank, and every refusal quotes the text it received; the
+  worked example's paste and rulings file match its two-row spec, and a fixture holds them to
+  the parser.
+- **1.3.0 (2026-08-29)** — Ids must be non-empty strings: JSON `1` and `"1"` become the same
+  localStorage key, so JSON-distinct ids could share saved state.
+- **1.2.0 (2026-08-29)** — The relationship section names the handoff queue as the
+  agent-to-agent transport.
+- **1.1.0 (2026-08-29)** — The reader contract: `audience`, `glossary`, per-row `impact`, and
+  `--strict-reader`, after a 15-row packet in project-internal language collected 0 of 15.
+- **1.0.0 (2026-08-28)** — First release: the packet, the five properties, and the two
+  permanent fixtures.
+
 ## Related
 
-- `references/worked-example.md` — a complete spec and what it produces.
+- `references/worked-example.md` — a complete spec, the filed copies, the paste that comes
+  back, and the rulings file it becomes.
 - `synthesis-reader-briefing` — the four questions every packet is authored
   against; the reader contract above is that skill applied to this medium.
 - `synthesis-thinking-framework` — for deciding *what* to recommend before you build the packet.

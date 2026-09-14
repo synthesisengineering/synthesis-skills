@@ -6,6 +6,25 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v2.37.0 — The weekly-review query answers for one workspace; `advance --through` takes the epoch `window` prints
+
+v2.37.0 (2026-09-14): `ritual_state.py query weekly-review --workspace <W>`
+returns the latest weekly-review record for that workspace only, and the
+`summary` and `open` views scope to `--workspace` the way `last` already
+did; `summary` carries each workspace's last review in its own row instead
+of one log-wide field. Without `--workspace` the weekly-review query refuses
+and names the accepted form, unless the log names exactly one workspace,
+which it then uses and names. Origin: `record --direction weekly-review` has
+required `--workspace` since v2.28.0, but the query returned the newest
+review in the log regardless, so one workspace's Friday review silenced
+every other workspace's owed-weekly gate — the single-slot shape v2.28.0
+removed for closes, found again in the weekly review on 2026-09-14.
+Day-Start Step 1 and Day-End Step 10 show the scoped command, and
+`scripts/test_ritual_state.py` pins, per query view, that `--workspace` is
+honored or refused and never dropped.
+
+Also in v2.37.0 (2026-09-14): `sync_watermark.py advance --through` and `status --since` accept Unix epoch seconds — the bare integer `window` prints as `latest=` and Slack's fractional `ts` (the fraction is dropped, never rounded up) — beside ISO-8601, `YYYY-MM-DD`, and `now`; every form is stored as ISO-8601 to the second with a UTC offset, so the store's shape is unchanged. Origin: on 2026-09-14 `window` printed `latest=1789397434` and `advance --through 1789397434` refused it as not a timestamp, so the pipeline the reference itself instructs failed on every Slack target. The refusal names every accepted form, and `scripts/test_sync_watermark.py` round-trips `window`'s printed `latest=` into `advance` through the CLI and pins the reference's `advance` bullet to name the form.
+
 ## v2.36.0 — The PR-queue scan dispatches by origin host; Bitbucket joins GitHub
 
 v2.36.0 (2026-09-10): `scripts/pr_queue_scan.py` dispatches each declared

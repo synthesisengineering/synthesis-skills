@@ -50,10 +50,14 @@ python3 <skill-root>/scripts/sync_watermark.py status  --workspace <W> --surface
   window (nothing written yet) says to read to the workspace's backfill bound
   and to state that bound.
 - **`advance`** records a successful write and moves only forward, never into
-  the future. `--through` is the read's `latest` — an ISO timestamp, `now`,
-  or a bare `YYYY-MM-DD`, which means complete through the **END of that day**
-  and is therefore refused for today until the day is over: a mid-day run
-  records the moment it read, not the date. With `--target` (repeatable)
+  the future. `--through` is the read's `latest` — an ISO timestamp, Unix
+  epoch seconds as `window` prints them (`latest=1789397434`) or as Slack's
+  `ts` carries them (`1789397434.123456`; the fraction is dropped, never
+  rounded up), `now`, or a bare `YYYY-MM-DD`, which means complete through
+  the **END of that day** and is therefore refused for today until the day is
+  over: a mid-day run records the moment it read, not the date. Whatever the
+  input form, the store holds ISO-8601 to the second with a UTC offset, so
+  `window`'s printed `latest=` is `advance`'s input. With `--target` (repeatable)
   each target's own watermark advances; without it the surface's does — and
   once a surface carries per-target entries, a surface-level advance is
   refused unless `--surface-level` asserts whole-surface coverage

@@ -1,8 +1,8 @@
 schema: 2
-suite: stranded-and-required-delegate-2026-09-11
+suite: intakes-2026-09-14
 membership: closed
-production_entry_point: checkpoint_sync.py --hook, --flush-pending and --flush-session ID [--drop-stranded --assert TEXT],
-  the pre-commit chain's delegate step, and _load_config.py --doctor delegate-required control
+production_entry_point: build_packet.py SPEC --strict-reader [--file-into DIR --date YYYY-MM-DD], record_rulings.py PASTE
+  --file-into DIR, ritual_state.py query weekly-review --workspace W, and sync_watermark.py advance --through EPOCH
 enforcing_boundary: release.py derives exact Git changed paths and consumes fresh transaction-bound acceptance
   before publication and both-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
@@ -10,19 +10,22 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures establish the stranded classification of manifest entries beneath a removed,
-  unrecorded worktree, the remedies named from retained intents and receipts, the operator-asserted drop with its
-  append-only ledger, per-repository retirement on flush, the failed-not-stranded verdict when git cannot answer,
-  the marker-gated delegate refusal in the pre-commit chain, the doctor's delegate-required control, and one
-  coherent release read from the actual plugin manifests, CHANGELOG top heading and README release marker. They
-  read skills/synthesis-repo-guard/SKILL.md and skills/synthesis-project-management/SKILL.md only for the
-  metadata version floor, the reference-link budget and the peer-resolution markers. No fixture in this suite
-  reads skills/synthesis-git-hooks/SKILL.md; its metadata version has no reliability floor, and within this suite
-  the file is bound only through the marker, no-marker, empty-root and doctor cases that pin the chain and
-  doctor it documents. No fixture
-  reads the body text of the 4.98.0 README note or CHANGELOG entry beyond that marker and heading, the stranded
-  section of skills/synthesis-repo-guard/SKILL.md, or the removed-worktree section of
-  checkpoint-closure-recovery.md (each is bound to the cases that pin the contract it documents). The coverage
+unverified_remainder: Fixtures establish that every decision-packet option label names a consequence, that the
+  reader contract reports bare acknowledgements and labels sharing every content word as findings the strict
+  reader turns into refusals naming the row and the accepted form, that each button carries its consequence,
+  that --file-into writes the dated spec and page only into an existing directory, that record_rulings.py
+  round-trips the pasted summary of a generated packet and of one captured from the real page into a rulings
+  file and quotes what it refuses, that the weekly-review query answers for the named workspace only and refuses
+  an unscoped call unless the log names exactly one workspace, that every ritual_state view honors --workspace,
+  that advance and status accept epoch seconds and Slack's fractional ts and store every form canonically, and
+  one coherent release read from the actual plugin manifests, CHANGELOG top heading and README release marker.
+  They read skills/synthesis-decision-packet/SKILL.md only for the handoff path anchor; no fixture reads its
+  consequence-labeling, --strict-reader or --file-into prose, which is bound through the cases that pin the
+  behavior it documents. They read skills/synthesis-daily-rituals/SKILL.md for the watermark-gate invocation,
+  the version labels, the line budget and the reference links; no fixture reads the scoped weekly-review
+  command in Day-Start Step 1 or Day-End Step 10, and references/version-history.md is read only for its
+  version headings and the anchors the moved-block fixture pins, not the v2.37.0 entry's body. No fixture reads
+  the body text of the 4.99.0 README note or CHANGELOG entry beyond that marker and heading. The coverage
   coherence fixtures compare the pytest group lists in validate.yml, AGENTS.md and release.py; they do not
   execute the group, which CI and the release gate run. They do not establish native startup, complete agent
   reading, natural Stop, or multi-computer readiness. Installed and genuine native acceptance are separate.
@@ -56,135 +59,181 @@ changed_surfaces:
   - release-surfaces-pinned
   - release-contract-version
   - public-surfaces
-- path: skills/synthesis-git-hooks/SKILL.md
+- path: skills/synthesis-daily-rituals/SKILL.md
   cases:
-  - marker-missing-delegate
-  - marker-non-executable-delegate
-  - marker-directory-delegate
-  - marker-executable-delegate-chains
-  - no-marker-unchanged
-  - doctor-delegate-not-opted-in
-  - doctor-delegate-healthy
-  - doctor-delegate-missing
-- path: skills/synthesis-git-hooks/scripts/_load_config.py
+  - rituals-watermark-gate-documented
+  - rituals-watermark-gate-invocation
+  - rituals-begin-and-reread
+  - rituals-labels-recorded
+  - rituals-declared-version-recorded
+  - rituals-newest-record-is-declared
+  - rituals-no-label-ahead
+  - rituals-skill-budget
+  - rituals-moved-blocks-survive
+  - rituals-references-linked
+- path: skills/synthesis-daily-rituals/references/sync-watermarks.md
   cases:
-  - doctor-delegate-not-opted-in
-  - doctor-delegate-healthy
-  - doctor-delegate-missing
-  - doctor-delegate-not-executable
-  - doctor-delegate-not-a-file
-  - doctor-silently-skipped-delegate
-  - doctor-drift-end-to-end
-- path: skills/synthesis-git-hooks/scripts/pre-commit
+  - watermark-reference-contract
+  - watermark-reference-names-epoch
+  - rituals-references-linked
+- path: skills/synthesis-daily-rituals/references/version-history.md
   cases:
-  - marker-missing-delegate
-  - marker-non-executable-delegate
-  - marker-directory-delegate
-  - marker-executable-delegate-chains
-  - no-marker-unchanged
-  - no-marker-executable-chains
-  - empty-root-fails-closed
-- path: skills/synthesis-git-hooks/scripts/test_pre_commit.py
+  - rituals-labels-recorded
+  - rituals-declared-version-recorded
+  - rituals-newest-record-is-declared
+  - rituals-no-label-ahead
+  - rituals-moved-blocks-survive
+  - rituals-references-linked
+- path: skills/synthesis-daily-rituals/scripts/ritual_state.py
   cases:
-  - marker-missing-delegate
-  - marker-non-executable-delegate
-  - marker-directory-delegate
-  - marker-executable-delegate-chains
-  - no-marker-unchanged
-  - no-marker-executable-chains
-  - empty-root-fails-closed
-  - doctor-delegate-not-opted-in
-  - doctor-delegate-healthy
-  - doctor-delegate-missing
-  - doctor-delegate-not-executable
-  - doctor-delegate-not-a-file
-  - doctor-silently-skipped-delegate
-  - doctor-drift-end-to-end
+  - weekly-review-per-workspace
+  - weekly-review-named-workspace-latest
+  - weekly-review-unscoped-refused-several
+  - weekly-review-unscoped-refused-empty
+  - weekly-review-unscoped-single-workspace
+  - weekly-review-inference-ignores-legacy
+  - open-honors-workspace
+  - summary-honors-workspace
+  - summary-per-workspace-review
+  - last-honors-workspace
+  - streak-requires-workspace
+  - empty-workspace-refused
+  - record-refuses-empty-workspace
+  - ritual-state-self-test
+- path: skills/synthesis-daily-rituals/scripts/sync_watermark.py
+  cases:
+  - epoch-seconds-accepted
+  - slack-ts-floored
+  - window-latest-round-trips
+  - future-epoch-refused
+  - refusal-names-forms
+  - non-ten-digit-not-epoch
+  - milliseconds-named
+  - leading-zero-not-epoch
+  - cli-leading-zero-refused
+  - milliseconds-anchored
+  - forms-share-now
+  - naive-epoch-local
+  - future-refusal-renders-seconds
+  - backwards-refusal-renders-seconds
+  - cli-window-round-trips
+  - cli-status-since-epoch
+  - cli-help-names-epoch
+- path: skills/synthesis-daily-rituals/scripts/test_ritual_state.py
+  cases:
+  - weekly-review-per-workspace
+  - weekly-review-named-workspace-latest
+  - weekly-review-unscoped-refused-several
+  - weekly-review-unscoped-refused-empty
+  - weekly-review-unscoped-single-workspace
+  - weekly-review-inference-ignores-legacy
+  - open-honors-workspace
+  - summary-honors-workspace
+  - summary-per-workspace-review
+  - last-honors-workspace
+  - streak-requires-workspace
+  - empty-workspace-refused
+  - record-refuses-empty-workspace
+  - ritual-state-self-test
+- path: skills/synthesis-daily-rituals/scripts/test_sync_watermark.py
+  cases:
+  - epoch-seconds-accepted
+  - slack-ts-floored
+  - window-latest-round-trips
+  - future-epoch-refused
+  - refusal-names-forms
+  - non-ten-digit-not-epoch
+  - milliseconds-named
+  - leading-zero-not-epoch
+  - cli-leading-zero-refused
+  - milliseconds-anchored
+  - forms-share-now
+  - naive-epoch-local
+  - future-refusal-renders-seconds
+  - backwards-refusal-renders-seconds
+  - cli-window-round-trips
+  - cli-status-since-epoch
+  - cli-help-names-epoch
+  - watermark-reference-names-epoch
+- path: skills/synthesis-decision-packet/SKILL.md
+  cases:
+  - decision-packet-handoff-path
+- path: skills/synthesis-decision-packet/references/worked-example.md
+  cases:
+  - worked-example-round-trip
+- path: skills/synthesis-decision-packet/scripts/build_packet.py
+  cases:
+  - ids-edge-whitespace-refused
+  - bare-labels-reader-finding
+  - bare-labels-normalized
+  - packet-level-bare-labels-once
+  - indistinct-labels-reader-finding
+  - bare-not-double-reported
+  - consequence-labels-clean
+  - strict-reader-refuses-bare-labels
+  - button-carries-consequence
+  - consequence-non-empty
+  - row-option-sets-validated
+  - file-into-writes-dated
+  - file-into-missing-dir-refused
+  - date-requires-file-into
+  - summary-literals-pinned
+  - rulings-round-trip
+  - browser-fixture-clean
+  - line-breaks-refused
+  - title-underline-utf16
+  - worked-example-round-trip
+  - one-button-set-refused
+  - duplicate-option-values-refused
+  - option-values-strings
+- path: skills/synthesis-decision-packet/scripts/record_rulings.py
+  cases:
+  - date-requires-file-into
+  - summary-literals-pinned
+  - rulings-round-trip
+  - rulings-trailer-and-stdin
+  - rulings-malformed-refused
+  - rulings-file-into-and-date
+  - rulings-parse-real-page
+  - line-breaks-refused
+  - title-underline-utf16
+  - worked-example-round-trip
+  - rulings-refusals-quote-input
+- path: skills/synthesis-decision-packet/scripts/test_build_packet.py
+  cases:
+  - ids-edge-whitespace-refused
+  - bare-labels-reader-finding
+  - bare-labels-normalized
+  - packet-level-bare-labels-once
+  - indistinct-labels-reader-finding
+  - bare-not-double-reported
+  - consequence-labels-clean
+  - strict-reader-refuses-bare-labels
+  - button-carries-consequence
+  - consequence-non-empty
+  - row-option-sets-validated
+  - file-into-writes-dated
+  - file-into-missing-dir-refused
+  - date-requires-file-into
+  - summary-literals-pinned
+  - rulings-round-trip
+  - rulings-trailer-and-stdin
+  - rulings-malformed-refused
+  - rulings-file-into-and-date
+  - browser-fixture-clean
+  - rulings-parse-real-page
+  - line-breaks-refused
+  - title-underline-utf16
+  - worked-example-round-trip
+  - one-button-set-refused
+  - duplicate-option-values-refused
+  - option-values-strings
+  - rulings-refusals-quote-input
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest
   - unlisted-path
   - transaction-binding
-- path: skills/synthesis-project-management/SKILL.md
-  cases:
-  - release-contract
-  - reference-linked
-  - public-surfaces
-- path: skills/synthesis-project-management/references/checkpoint-closure-recovery.md
-  cases:
-  - reference-linked
-  - stranded-reported-others-evaluated
-  - stranded-receipt-session-remedy
-  - stranded-intent-remedy
-  - stale-receipt-head-remedy
-  - drop-ledger-append-only
-  - drop-refuses-returned-root
-  - drop-blank-assertion
-  - drop-dry-run
-  - per-repository-retirement
-  - git-unavailable-failed
-  - visible-gitdir-not-stranded
-- path: skills/synthesis-repo-guard/SKILL.md
-  cases:
-  - release-contract
-  - stranded-reported-others-evaluated
-  - stranded-receipt-session-remedy
-  - stranded-intent-remedy
-  - stale-receipt-head-remedy
-  - blocked-receipt-head-remedy
-  - drop-cli-combinations
-  - drop-blank-assertion
-  - drop-ledger-append-only
-  - drop-dry-run
-  - per-repository-retirement
-  - deleted-file-not-stranded
-  - git-unavailable-failed
-  - visible-gitdir-not-stranded
-- path: skills/synthesis-repo-guard/checkpoint_sync.py
-  cases:
-  - stranded-reported-others-evaluated
-  - stranded-receipt-session-remedy
-  - stranded-intent-remedy
-  - stop-records-stranded
-  - stop-preserves-receipt
-  - drop-blank-assertion
-  - drop-cli-combinations
-  - drop-refuses-returned-root
-  - drop-ledger-append-only
-  - drop-dry-run
-  - drop-all-stranded-manifest
-  - per-repository-retirement
-  - deleted-file-not-stranded
-  - nested-worktree-stays-failed
-  - git-unavailable-failed
-  - drop-never-drops-live-repository
-  - visible-gitdir-not-stranded
-  - stranded-needs-working-git
-  - stale-receipt-head-remedy
-  - blocked-receipt-head-remedy
-  - retirement-reconciles-manifest
-- path: skills/synthesis-repo-guard/test_checkpoint_sync.py
-  cases:
-  - stranded-reported-others-evaluated
-  - stranded-receipt-session-remedy
-  - stranded-intent-remedy
-  - stop-records-stranded
-  - stop-preserves-receipt
-  - drop-blank-assertion
-  - drop-cli-combinations
-  - drop-refuses-returned-root
-  - drop-ledger-append-only
-  - drop-dry-run
-  - drop-all-stranded-manifest
-  - per-repository-retirement
-  - deleted-file-not-stranded
-  - nested-worktree-stays-failed
-  - git-unavailable-failed
-  - drop-never-drops-live-repository
-  - visible-gitdir-not-stranded
-  - stranded-needs-working-git
-  - stale-receipt-head-remedy
-  - blocked-receipt-head-remedy
 - path: skills/synthesis-skills-manager/scripts/release.py
   cases:
   - gate-covers-ci-groups
@@ -196,7 +245,7 @@ cases:
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
   motivating_defect: Release metadata must describe one coherent release read from the actual files; both
     plugin versions agree, the CHANGELOG top heading carries that version, README notes Release **version**,
-    and the repo-guard and project-management SKILL.md versions stay at or above the reliability floor.
+    and the reliability-tranche SKILL.md versions stay at or above their floors.
 - id: release-surfaces-pinned
   control_class: acceptance-test
   expected_status: pass
@@ -217,40 +266,34 @@ cases:
   motivating_defect: The changelog's newest heading must parse as the version the boundary compares with
     both manifests. This fixture exercises the boundary's parser on a synthetic repository; the shipped files
     are read by release-contract and release-surfaces-pinned.
-- id: ci-verification-coherence
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
-  motivating_defect: The AGENTS.md Verification fence and the validate.yml conformance job are held equal
-    step for step; the rituals-guard-hooks pytest group gained skills/synthesis-repo-guard/test_*.py in both,
-    so this release's core fixtures (test_checkpoint_sync.py, test_deleted_paths.py) run in CI and in the
-    documented local verification instead of in neither.
-- id: gate-covers-ci-groups
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_cover_ci_pytest_groups
-  motivating_defect: Every pytest group the conformance job runs must be covered by a release.py
-    REQUIRED_CHECKS pytest command; skills/synthesis-repo-guard/ joined pytest.rituals-guard-hooks so the
-    release gate no longer publishes without running the tests this release depends on.
-- id: gate-no-glob
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_do_not_depend_on_shell_glob_expansion
-  motivating_defect: release.py hands argv to subprocess without a shell, so the new repo-guard entry is the
-    directory skills/synthesis-repo-guard/ and never the test_*.py glob the workflow and AGENTS.md spell;
-    a glob there would run zero tests.
 - id: public-surfaces
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_coordination.py::test_peer_resolution_documented_on_public_surfaces
   motivating_defect: README, CHANGELOG and the coordination surfaces must keep documenting the peer-resolution
     mechanism after the release note and entry are added.
-- id: reference-linked
+- id: ci-verification-coherence
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_skill_document_stays_within_repo_budget
-  motivating_defect: SKILL.md must stay within the line budget, keep its load-bearing rules, and link every
-    reference, so the extended checkpoint-closure-recovery reference cannot become an orphan.
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
+  motivating_defect: The AGENTS.md Verification fence and the validate.yml conformance job are held equal
+    step for step; the rituals-guard-hooks pytest group gained skills/synthesis-decision-packet/scripts/test_*.py
+    in both, so this release's packet fixtures (test_build_packet.py) run in CI and in the documented local
+    verification instead of in neither, which is where they ran before this release.
+- id: gate-covers-ci-groups
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_cover_ci_pytest_groups
+  motivating_defect: Every pytest group the conformance job runs must be covered by a release.py
+    REQUIRED_CHECKS pytest command; skills/synthesis-decision-packet/scripts/ joined pytest.rituals-guard-hooks
+    so the release gate no longer publishes without running the packet fixtures.
+- id: gate-no-glob
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_do_not_depend_on_shell_glob_expansion
+  motivating_defect: release.py hands argv to subprocess without a shell, so the new decision-packet entry is
+    the directory skills/synthesis-decision-packet/scripts/ and never the test_*.py glob the workflow and
+    AGENTS.md spell; a glob there would run zero tests.
 - id: manifest
   control_class: acceptance-test
   expected_status: pass
@@ -266,210 +309,399 @@ cases:
   expected_status: pass
   fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_schema2_receipt_binds_transaction_and_git_state
   motivating_defect: Acceptance must bind the actual release transaction and Git state.
-- id: stranded-reported-others-evaluated
+- id: rituals-watermark-gate-documented
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_flush_reports_stranded_entry_and_still_evaluates_other_repositories
-  motivating_defect: A manifest entry beneath a removed, unrecorded worktree aborted the whole flush as a
-    missing-worktree error; it must be reported stranded, naming the missing worktree root, while the other
-    repositories are still evaluated.
-- id: stranded-receipt-session-remedy
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_rituals_document_the_watermark_and_blocking_gap
+  motivating_defect: The rewritten watermark-gate bullet must still tell the ritual to run sync_watermark.py,
+    define a watermark as the last moment actually written, and name the non-zero exit; a mechanism nobody is
+    told to run is not a control.
+- id: rituals-watermark-gate-invocation
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_stranded_entry_with_retained_receipt_names_session_reconcile_remedy
-  motivating_defect: When this session's LOCAL_READY receipt still binds the manifest digest, the remedy is the
-    session-bound reconcile, not a drop; evidence outranks assertion.
-- id: stranded-intent-remedy
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_rituals_carry_the_watermark_gate_invocation
+  motivating_defect: Day-Start Step 3b and Day-End Step 1 must keep the exact status invocation with explicit
+    surfaces and the run bound after the bullet gained the epoch-form sentence.
+- id: rituals-begin-and-reread
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_stranded_entry_named_by_retirement_intent_points_at_the_intent
-  motivating_defect: When a retirement intent names the worktree, the remedy is completing that intent, not a
-    drop.
-- id: stop-records-stranded
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_rituals_open_every_sync_with_begin_and_reread_every_target
+  motivating_defect: The protocol must still stamp the run with begin and re-read every declared target; a DM
+    read at day-start was once treated as current all day.
+- id: rituals-labels-recorded
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_local_handoff_records_stranded_entry_without_aborting_other_repositories
-  motivating_defect: Stop must record the stranded entry as a readiness blocker and still record the other
-    repositories' local handoff.
-- id: stop-preserves-receipt
+  fixture: ../synthesis-daily-rituals/scripts/test_version_record.py::test_every_labeled_version_has_a_record_entry
+  motivating_defect: Every version label SKILL.md carries, including the new v2.37.0 label on the weekly-review
+    step, must have a heading in references/version-history.md.
+- id: rituals-declared-version-recorded
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_local_handoff_preserves_receipt_that_retains_stranded_worktree_evidence
-  motivating_defect: Stop must leave a receipt that retains the stranded worktree's evidence unchanged, so the
-    evidence survives to drive the remedy.
-- id: drop-blank-assertion
+  fixture: ../synthesis-daily-rituals/scripts/test_version_record.py::test_declared_version_has_a_record_entry
+  motivating_defect: The declared metadata.version 2.37.0 must have its own heading in the version record.
+- id: rituals-newest-record-is-declared
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_drop_stranded_refuses_blank_assertion
-  motivating_defect: An assertion of whitespace or invisible format characters only is no assertion and is
-    refused before anything is dropped.
-- id: drop-cli-combinations
+  fixture: ../synthesis-daily-rituals/scripts/test_version_record.py::test_record_newest_entry_is_the_declared_version
+  motivating_defect: The newest heading in the version record must be the declared version, so the record
+    cannot run ahead of or behind the frontmatter.
+- id: rituals-no-label-ahead
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_drop_stranded_cli_refuses_wrong_combinations
-  motivating_defect: --drop-stranded is valid only with --flush-session and --assert; every other combination
-    is refused naming the accepted form, and nothing is written.
-- id: drop-refuses-returned-root
+  fixture: ../synthesis-daily-rituals/scripts/test_version_record.py::test_no_label_runs_ahead_of_the_declared_version
+  motivating_defect: No step label may name a version newer than the declared one.
+- id: rituals-skill-budget
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_drop_stranded_refuses_when_worktree_root_exists_at_drop_time
-  motivating_defect: The stranded set is recomputed at drop time; a worktree root that exists again makes the
-    entry live and the drop is refused.
-- id: drop-ledger-append-only
+  fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_skill_document_stays_within_repo_budget
+  motivating_defect: SKILL.md must stay under the 500-line budget and keep its load-bearing rules after the
+    weekly-review and watermark bullets grew.
+- id: rituals-moved-blocks-survive
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_drop_stranded_writes_append_only_ledger_and_narrows_manifest
-  motivating_defect: The drop writes the ledger record (session, paths, ancestor, missing root, evidence
-    presence, tracking repositories, assertion, identity, timestamp) before the manifest is narrowed, and never
-    replaces an existing record.
-- id: drop-dry-run
+  fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_moved_blocks_survive_in_their_references
+  motivating_defect: The blocks moved out of SKILL.md on 2026-09-01 must still be present in their references,
+    including the version-history anchors, after the v2.37.0 entry was added at the top.
+- id: rituals-references-linked
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_drop_stranded_dry_run_reports_and_writes_nothing
-  motivating_defect: A dry run reports the drop it would make and writes neither ledger nor manifest.
-- id: drop-all-stranded-manifest
+  fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_references_are_all_linked
+  motivating_defect: Every reference file, sync-watermarks.md and version-history.md included, must be linked
+    from SKILL.md so none becomes an orphan.
+- id: watermark-reference-contract
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_drop_stranded_cli_retires_an_all_stranded_manifest
-  motivating_defect: A manifest whose every entry is stranded is retired through the CLI once the drop is
-    recorded.
-- id: per-repository-retirement
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_watermark_reference_carries_the_contract
+  motivating_defect: The reference must keep --since run, the END-of-day meaning of a bare date, and
+    --targets-from after the advance bullet was rewritten.
+- id: watermark-reference-names-epoch
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_flush_retires_published_repositories_and_keeps_blocked_entries
-  motivating_defect: A long-lived manifest accreted already-published work behind one blocked repository;
-    each flush now retires the published repositories' entries and keeps the blocked ones.
-- id: deleted-file-not-stranded
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_watermark_reference_names_the_epoch_form_for_through
+  motivating_defect: The reference's own advance line instructs --through with the latest window prints as
+    epoch seconds; the form list under that verb must name epoch seconds, window and Slack, or the document
+    contradicts the command it sits under.
+- id: weekly-review-per-workspace
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_deleted_file_inside_existing_repository_is_deleted_or_missing_not_stranded
-  motivating_defect: A deleted file whose repository still resolves stays deleted-or-missing; it is never
-    stranded or drop-eligible.
-- id: nested-worktree-stays-failed
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_weekly_review_recorded_for_one_workspace_leaves_another_owed
+  motivating_defect: One workspace's Friday review silenced every other workspace's owed-weekly gate because
+    the query returned the newest review in the log regardless of workspace.
+- id: weekly-review-named-workspace-latest
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_missing_registered_nested_worktree_stays_failed_not_stranded
-  motivating_defect: A missing worktree that git still registers keeps the existing failed handling; only an
-    unregistered, unrecorded root is stranded.
-- id: git-unavailable-failed
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_weekly_review_returns_the_named_workspace_s_latest_not_the_log_s_latest
+  motivating_defect: The query must return the named workspace's latest review, never the log's latest.
+- id: weekly-review-unscoped-refused-several
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_stop_reports_git_unavailability_as_failed_not_stranded
-  motivating_defect: When git cannot answer for the nearest existing ancestor the entry is failed as stranded
-    classification unavailable, never stranded.
-- id: drop-never-drops-live-repository
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_weekly_review_without_workspace_is_refused_when_the_log_holds_several
+  motivating_defect: An unscoped weekly-review query against a log naming several workspaces must refuse and
+    name the accepted form rather than answer for an arbitrary one.
+- id: weekly-review-unscoped-refused-empty
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_drop_stranded_never_drops_a_live_repository_when_git_is_unavailable
-  motivating_defect: A transient git failure must never make a live repository's pending attribution
-    drop-eligible.
-- id: visible-gitdir-not-stranded
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_weekly_review_without_workspace_on_an_empty_log_is_refused
+  motivating_defect: An unscoped query on an empty log has no workspace to infer and must refuse.
+- id: weekly-review-unscoped-single-workspace
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_visible_git_directory_keeps_a_refused_probe_out_of_stranded
-  motivating_defect: A .git entry visible in the ancestor chain keeps a repository git refuses out of stranded.
-- id: stranded-needs-working-git
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_weekly_review_without_workspace_uses_the_only_workspace_and_names_it
+  motivating_defect: When the log names exactly one workspace the unscoped query uses it and says which.
+- id: weekly-review-inference-ignores-legacy
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_genuine_missing_worktree_root_classifies_stranded_only_with_a_working_git
-  motivating_defect: The stranded verdict needs git's own answer; the same missing root is failed when git is
-    absent and stranded when git works.
-- id: stale-receipt-head-remedy
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_weekly_review_inference_ignores_unattributed_legacy_records
+  motivating_defect: Legacy records without a workspace must not count toward the single-workspace inference.
+- id: open-honors-workspace
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_stranded_entry_with_stale_receipt_digest_names_a_head_remedy_that_runs
-  motivating_defect: A receipt the manifest outgrew names the receipt's own head through --retirement-head,
-    and that remedy runs, retiring only what the head proves.
-- id: blocked-receipt-head-remedy
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_open_honors_workspace
+  motivating_defect: The open view must scope to --workspace the way last already did.
+- id: summary-honors-workspace
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_stranded_entry_with_blocked_receipt_names_the_head_remedy
-  motivating_defect: A receipt that is not LOCAL_READY cannot drive the session-bound reconcile; the head
-    remedy is named instead.
-- id: retirement-reconciles-manifest
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_summary_honors_workspace_in_every_section
+  motivating_defect: Every section of the summary view must honor --workspace.
+- id: summary-per-workspace-review
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retirement_reconciles_session_manifest_and_invalidates_receipt
-  motivating_defect: Worktree retirement still reconciles the session manifest through checkpoint_sync.py
-    and invalidates the receipt; the recorded path the stranded classification defers to keeps working.
-- id: marker-missing-delegate
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_summary_without_workspace_reports_the_weekly_review_per_workspace
+  motivating_defect: The unscoped summary must carry each workspace's last review in its own row instead of one
+    log-wide field.
+- id: last-honors-workspace
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_marker_with_missing_delegate_blocks_with_create_remedy
-  motivating_defect: With .githooks/required tracked, a missing .githooks/pre-commit was skipped silently and
-    the commit succeeded with the repository's own guards running nothing; it must block and name the create
-    remedy.
-- id: marker-non-executable-delegate
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_last_honors_workspace
+  motivating_defect: The last view must keep honoring --workspace after the query views were rescoped.
+- id: streak-requires-workspace
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_marker_with_non_executable_delegate_blocks_with_chmod_remedy
-  motivating_defect: With the marker, a mode-644 delegate must block and name chmod +x as the remedy.
-- id: marker-directory-delegate
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_streak_refuses_without_workspace_and_honors_it
+  motivating_defect: The streak view must refuse without --workspace and honor it when given.
+- id: empty-workspace-refused
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_marker_with_directory_delegate_blocks_with_replace_remedy
-  motivating_defect: With the marker, a delegate that is not a regular file must block and name the accepted
-    form.
-- id: marker-executable-delegate-chains
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_an_empty_workspace_is_refused_on_every_view
+  motivating_defect: An empty --workspace must be refused on every view rather than matching nothing silently.
+- id: record-refuses-empty-workspace
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_marker_with_executable_delegate_runs_it_and_honors_its_exit
-  motivating_defect: With the marker and an executable delegate, the chain runs it and returns its exit
-    status.
-- id: no-marker-unchanged
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_record_refuses_an_empty_workspace_before_appending
+  motivating_defect: record must refuse an empty workspace before it appends, so the log never gains an
+    unattributed record the scoped query cannot find.
+- id: ritual-state-self-test
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_no_marker_with_non_executable_delegate_passes_unchanged
-  motivating_defect: Without the marker a non-executable delegate changes nothing; the chain exits 0 and says
-    nothing about delegate-required.
-- id: no-marker-executable-chains
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_script_self_test_suite_passes
+  motivating_defect: The script's own self-test suite must pass under the rescoped views.
+- id: epoch-seconds-accepted
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_no_marker_with_executable_delegate_still_chains
-  motivating_defect: Without the marker an executable delegate still chains exactly as before.
-- id: empty-root-fails-closed
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_epoch_seconds_are_an_accepted_moment_and_stored_canonically
+  motivating_defect: On 2026-09-14 window printed latest=1789397434 and advance --through refused it as not a
+    timestamp; epoch seconds must be accepted and stored as ISO-8601 with an offset.
+- id: slack-ts-floored
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_empty_worktree_root_fails_closed
-  motivating_defect: A Git answering rev-parse --show-toplevel with an empty path and exit 0 would make the chain probe
-    /.githooks and ignore the repository's declaration; the root guard refuses instead, proven through a PATH shim.
-- id: doctor-delegate-not-opted-in
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_slack_ts_with_a_fractional_part_is_floored_to_the_second
+  motivating_defect: Slack's fractional ts must be floored to the second, never rounded up past a message.
+- id: window-latest-round-trips
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_doctor_delegate_required_reports_not_opted_in
-  motivating_defect: The doctor's delegate-required control reports a repository without the marker as not
-    opted in.
-- id: doctor-delegate-healthy
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_window_latest_round_trips_into_advance
+  motivating_defect: The latest window prints must be accepted by advance unchanged.
+- id: future-epoch-refused
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_doctor_delegate_required_healthy_with_executable_delegate
-  motivating_defect: The doctor reports an opted-in repository with an executable delegate as healthy.
-- id: doctor-delegate-missing
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_a_future_epoch_is_refused_without_the_bare_date_hint
+  motivating_defect: A future epoch is refused as future, without the bare-date hint that applies only to dates.
+- id: refusal-names-forms
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_doctor_delegate_required_unhealthy_when_delegate_missing
-  motivating_defect: The doctor reports the same verdict the chain enforces when the delegate is missing.
-- id: doctor-delegate-not-executable
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_refusal_names_every_accepted_form
+  motivating_defect: A refused moment must name every accepted form, epoch seconds included.
+- id: non-ten-digit-not-epoch
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_doctor_delegate_required_unhealthy_when_delegate_not_executable
-  motivating_defect: The doctor reports the same verdict the chain enforces when the delegate is not
-    executable.
-- id: doctor-delegate-not-a-file
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_an_integer_that_is_not_ten_digits_is_not_an_epoch
+  motivating_defect: Only a ten-digit integer reads as epoch seconds; other integers are refused.
+- id: milliseconds-named
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_doctor_delegate_required_unhealthy_when_delegate_not_a_file
-  motivating_defect: The doctor reports the same verdict the chain enforces when the delegate is not a regular
-    file.
-- id: doctor-silently-skipped-delegate
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_epoch_milliseconds_are_named_in_the_refusal
+  motivating_defect: A thirteen-digit millisecond epoch is refused with a message naming milliseconds.
+- id: leading-zero-not-epoch
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_doctor_not_opted_in_still_flags_a_silently_skipped_delegate
-  motivating_defect: Without the marker the chain exits 0 past a mode-644 delegate; the doctor still names that
-    latent skip and points at the opt-in that turns it into a refusal.
-- id: doctor-drift-end-to-end
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_a_leading_zero_is_not_a_ten_digit_epoch
+  motivating_defect: A leading zero disqualifies a ten-digit string from reading as an epoch.
+- id: cli-leading-zero-refused
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_doctor_detects_drift_end_to_end
-  motivating_defect: The doctor's existing drift detection must keep working through the harness that now
-    also carries the delegate-required control.
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_advance_refuses_a_leading_zero_epoch_naming_the_accepted_form
+  motivating_defect: The CLI refuses a leading-zero epoch and names the accepted form.
+- id: milliseconds-anchored
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_the_milliseconds_branch_is_anchored_to_thirteen_leading_nonzero_digits
+  motivating_defect: The milliseconds branch matches exactly thirteen leading non-zero digits.
+- id: forms-share-now
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_every_form_shares_the_awareness_of_now
+  motivating_defect: Every accepted form must be judged against the same now for the future check.
+- id: naive-epoch-local
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_a_naive_epoch_is_the_local_wall_clock
+  motivating_defect: An epoch is rendered on the local wall clock, matching the other stored forms.
+- id: future-refusal-renders-seconds
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_future_refusal_renders_both_moments_to_the_second
+  motivating_defect: The future refusal renders the given moment and now to the second.
+- id: backwards-refusal-renders-seconds
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_backwards_refusal_renders_both_moments_to_the_second
+  motivating_defect: The backwards refusal renders the given moment and the stored watermark to the second.
+- id: cli-window-round-trips
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_window_latest_round_trips_into_advance
+  motivating_defect: Through the CLI, the latest window prints feeds advance --through and is recorded.
+- id: cli-status-since-epoch
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_status_since_accepts_epoch_seconds
+  motivating_defect: status --since accepts epoch seconds beside run and the other forms.
+- id: cli-help-names-epoch
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_help_names_the_epoch_form_on_every_moment_argument
+  motivating_defect: The CLI help names the epoch form on every argument that takes a moment.
+- id: decision-packet-handoff-path
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_handoff.py::test_decision_packet_names_concrete_handoff_path
+  motivating_defect: The rewritten SKILL.md must still name the concrete handoff.py path so the packet flow
+    hands rulings to the queue instead of describing it abstractly.
+- id: ids-edge-whitespace-refused
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_ids_with_edge_or_doubled_whitespace_are_refused
+  motivating_defect: The pasted summary prints id and label separated by two spaces and record_rulings.py
+    splits on that; an id with edge or doubled whitespace would not round-trip, so the builder refuses it.
+- id: bare-labels-reader-finding
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_bare_acknowledgement_labels_raise_reader_findings_naming_row_and_labels
+  motivating_defect: A bare acknowledgement such as OK or Yes names no consequence; the reader contract must
+    report it naming the row and the labels.
+- id: bare-labels-normalized
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_every_listed_bare_acknowledgement_is_caught_after_trimming_and_case_folding
+  motivating_defect: Every listed bare acknowledgement is caught after trimming and case folding, so padding or
+    capitalization cannot slip one past the reader.
+- id: packet-level-bare-labels-once
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_packet_level_bare_labels_are_reported_once_at_packet_level
+  motivating_defect: A bare label in the packet-level option set is reported once, at packet level, not once per
+    row that inherits it.
+- id: indistinct-labels-reader-finding
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_labels_that_share_every_content_word_raise_a_reader_finding
+  motivating_defect: Two labels that share every content word cannot be told apart by their consequence; the
+    reader contract must report the pair.
+- id: bare-not-double-reported
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_a_bare_label_is_not_also_reported_as_an_indistinct_pair
+  motivating_defect: A bare label is reported as bare, not also as half of an indistinct pair.
+- id: consequence-labels-clean
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_consequence_phrased_labels_raise_no_label_findings
+  motivating_defect: Labels phrased by their consequence raise no label findings; the reader must not flag the
+    accepted form.
+- id: strict-reader-refuses-bare-labels
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_strict_reader_refuses_bare_labels_naming_row_labels_and_accepted_form
+  motivating_defect: Under --strict-reader a bare label is a refusal naming the row, the labels and the accepted
+    form, so a packet handed to a principal cannot carry one.
+- id: button-carries-consequence
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_each_option_button_carries_its_consequence
+  motivating_defect: Each option button in the rendered page carries the consequence of pressing it, so the
+    principal reads the consequence where the choice is made.
+- id: consequence-non-empty
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_per_option_consequence_must_be_a_non_empty_string
+  motivating_defect: A per-option consequence must be a non-empty string; an empty one would render a button
+    with nothing under it.
+- id: row-option-sets-validated
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_per_row_option_sets_are_validated_like_the_packet_level_set
+  motivating_defect: A per-row option set is validated by the same rules as the packet-level set.
+- id: file-into-writes-dated
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_file_into_writes_dated_spec_and_page
+  motivating_defect: The --file-into option writes a dated copy of the spec and of the page into the owning
+    project's artifacts directory after a successful build.
+- id: file-into-missing-dir-refused
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_file_into_refuses_a_missing_directory_before_building
+  motivating_defect: A missing --file-into directory is refused before the build, so nothing is built that
+    cannot be filed.
+- id: date-requires-file-into
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_date_is_validated_and_requires_file_into
+  motivating_defect: The --date option is validated as YYYY-MM-DD and, on the builder, requires --file-into.
+- id: summary-literals-pinned
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_summary_format_literals_are_pinned_to_the_packet_javascript
+  motivating_defect: The summary format literals record_rulings.py parses must equal the literals the packet's
+    JavaScript composes, or the paste stops round-tripping without any test noticing.
+- id: rulings-round-trip
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_record_rulings_round_trips_a_generated_packet
+  motivating_defect: The summary a generated packet produces must parse back into a rulings file that names
+    every row's choice and note.
+- id: rulings-trailer-and-stdin
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_record_rulings_reads_the_storage_blocked_trailer_and_stdin
+  motivating_defect: The paste may arrive on stdin and may carry the storage-blocked trailer; both are read.
+- id: rulings-malformed-refused
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_record_rulings_refuses_malformed_input_naming_the_expected_first_line
+  motivating_defect: Malformed input is refused naming the expected first line.
+- id: rulings-file-into-and-date
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_record_rulings_file_into_must_exist_and_date_is_validated
+  motivating_defect: record_rulings.py refuses a missing --file-into directory and validates --date.
+- id: browser-fixture-clean
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_browser_fixture_spec_builds_clean_under_the_reader_contract
+  motivating_defect: The browser fixture spec must build clean under the reader contract so the captured
+    summary comes from a compliant page.
+- id: rulings-parse-real-page
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_record_rulings_parses_a_summary_captured_from_the_real_page
+  motivating_defect: A summary captured from the real page, not composed in Python, must parse.
+- id: line-breaks-refused
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_line_breaks_in_title_row_label_option_label_or_id_are_refused
+  motivating_defect: A packet that builds but cannot be filed was found only when its paste failed; a line break
+    in a title, row label, option label or id is refused at build time.
+- id: title-underline-utf16
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_title_underline_counts_utf16_units_like_the_page
+  motivating_defect: The title underline counts UTF-16 units the way the page's JavaScript does, so the parser
+    accepts what the page prints.
+- id: worked-example-round-trip
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_worked_example_paste_parses_to_the_rulings_file_it_shows
+  motivating_defect: references/worked-example.md shows a spec, the paste its page produces, and the rulings
+    JSON record_rulings.py writes from that paste; the three must agree with the code.
+- id: one-button-set-refused
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_a_one_button_option_set_is_refused_at_packet_and_row_level
+  motivating_defect: A one-button option set is no decision; it is refused at packet and row level.
+- id: duplicate-option-values-refused
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_duplicate_option_values_in_one_set_are_refused
+  motivating_defect: Duplicate option values in one set would key the same button twice; they are refused.
+- id: option-values-strings
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_option_values_must_be_strings_because_the_page_compares_dataset_strings
+  motivating_defect: Option values must be strings because the page compares dataset strings.
+- id: rulings-refusals-quote-input
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_record_rulings_refusals_quote_what_they_received
+  motivating_defect: A refusal quotes the offending line with its number and the accepted forms, never an empty
+    string for a blank line the parser itself required.
