@@ -29,6 +29,19 @@ A principal closes one workspace at 18:00 and may start another at 18:30; closes
 are often written the next morning for the prior day. `date` is REQUIRED and never
 inferred from `ts` — inferring it is how a 01:30 close lands on the wrong day.
 
+PER-WORKSPACE VIEWS
+-------------------
+The log is shared by every workspace seat, so every view answers for ONE
+workspace: a `query` view that accepts --workspace honors it, or refuses
+without it and names the accepted form. A view that accepts the argument and
+answers for the whole log is the single-slot shape again — on 2026-09-14
+`query weekly-review` did exactly that, and one workspace's Friday review
+silenced every other workspace's owed-weekly gate. `weekly-review` alone may
+run unscoped when the log names exactly one workspace, and then says so.
+An empty `--workspace ""` — the shape an unset shell variable produces — is
+neither a seat nor an omission: every view and `record` refuse it, naming
+the accepted form, rather than read it as "every workspace".
+
 EXERCISING THIS FROM OUTSIDE
 ---------------------------
 `--state-dir DIR` (or the RITUAL_STATE_DIR env var) points every command at an
@@ -177,6 +190,18 @@ def closed_dates(records, workspace, direction="day-end") -> set:
     return {r["date"] for r in records
             if r.get("workspace") == workspace and r.get("direction") == direction}
 
+
+def refuse_empty_workspace(value, command: str, consequence: str, accepted: str) -> None:
+    """`--workspace ""` is the shape an unset shell variable produces. It is
+    neither a seat nor an omission: read as omitted, a scoped query answers
+    for the whole log (the single-slot shape again) and a record lands
+    unattributed. Refused before either happens, naming the accepted form."""
+    if value is None or value.strip():
+        return
+    raise SystemExit(
+        f"ritual_state: {command} --workspace {value!r} is an empty workspace — the shape "
+        f"an unset shell variable produces. {consequence} Accepted form: {accepted}")
+
 # ---------------------------------------------------------------- queries
 
 
@@ -209,19 +234,28 @@ def q_streak(records, cfg, workspace, today: date):
     return n
 
 
-def q_open(records, today: date, lookback=OPEN_LOOKBACK_DAYS):
-    """(workspace, date) pairs with a day-start and no matching day-end."""
+def q_open(records, today: date, lookback=OPEN_LOOKBACK_DAYS, workspace=None):
+    """(workspace, date) pairs with a day-start and no matching day-end —
+    log-wide, or for one workspace when `workspace` is given."""
     floor = (today - timedelta(days=lookback)).isoformat()
-    starts = {(r.get("workspace"), r["date"]) for r in records
-              if r.get("direction") == "day-start" and r["date"] >= floor}
-    ends = {(r.get("workspace"), r["date"]) for r in records
-            if r.get("direction") == "day-end" and r["date"] >= floor}
+    scoped = [r for r in records
+              if r["date"] >= floor and (workspace is None or r.get("workspace") == workspace)]
+    starts = {(r.get("workspace"), r["date"]) for r in scoped if r.get("direction") == "day-start"}
+    ends = {(r.get("workspace"), r["date"]) for r in scoped if r.get("direction") == "day-end"}
     return sorted(starts - ends, key=lambda t: (t[1], str(t[0])))
 
 
-def q_weekly_review(records):
-    hits = [r for r in records if r.get("direction") == "weekly-review"]
-    return max(hits, key=lambda r: r["date"]) if hits else None
+def q_weekly_review(records, workspace):
+    """Latest weekly-review record for ONE workspace. Every seat owes its own
+    review; a log-wide answer is the single slot v2.28.0 removed for closes."""
+    hits = [r for r in records
+            if r.get("workspace") == workspace and r.get("direction") == "weekly-review"]
+    return max(hits, key=lambda r: (r["date"], r.get("ts", ""))) if hits else None
+
+
+def stamped_workspaces(records) -> list[str]:
+    """Workspaces named in the log, sorted. An unstamped legacy record is not one."""
+    return sorted({r.get("workspace") for r in records if r.get("workspace")} - {UNKNOWN_WS})
 
 
 def unknown_count(records) -> int:
@@ -254,6 +288,11 @@ def unattributed_status(records, cfg) -> tuple[int, int | None, str]:
 
 
 def cmd_record(a) -> int:
+    refuse_empty_workspace(
+        a.workspace, "record",
+        "A record names the seat that wrote it, so it is refused rather than appended "
+        "unattributed.",
+        "record --direction <direction> --workspace <workspace> --date YYYY-MM-DD")
     try:
         d(a.date)
     except ValueError:
@@ -289,34 +328,54 @@ def cmd_record(a) -> int:
 
 
 def cmd_query(a) -> int:
+    refuse_empty_workspace(
+        a.workspace, f"query {a.view}",
+        "An empty value is neither a seat nor an omission, so it is refused rather than "
+        "answered for the whole log.",
+        f"query {a.view} --workspace <workspace>")
     records, bad = read_records()
     cfg = load_config()
     today = d(a.today) if a.today else date.today()
     out: dict = {}
 
     if a.view in ("last", "summary"):
-        names = [a.workspace] if a.workspace else sorted(
-            {r.get("workspace") for r in records if r.get("workspace")} - {UNKNOWN_WS})
+        names = [a.workspace] if a.workspace else stamped_workspaces(records)
         last = {}
         for w in names:
             e, s = q_last(records, w, "day-end"), q_last(records, w, "day-start")
+            wr = q_weekly_review(records, w)
             last[w] = {
                 "last_day_end": {k: e[k] for k in ("date", "mode", "outcome") if k in e} if e else None,
                 "last_day_start": {k: s[k] for k in ("date", "mode") if k in s} if s else None,
                 "streak": q_streak(records, cfg, w, today),
+                "last_weekly_review": wr["date"] if wr else None,
             }
         out["workspaces"] = last
 
     if a.view in ("open", "summary"):
-        out["open_workdays"] = [{"workspace": w, "date": dt} for w, dt in q_open(records, today)]
+        out["open_workdays"] = [{"workspace": w, "date": dt}
+                                for w, dt in q_open(records, today, workspace=a.workspace)]
 
-    if a.view in ("weekly-review", "summary"):
-        wr = q_weekly_review(records)
-        out["last_weekly_review"] = wr["date"] if wr else None
+    if a.view == "weekly-review":
+        workspace, inferred = a.workspace, False
+        if not workspace:
+            stamped = stamped_workspaces(records)
+            if len(stamped) != 1:
+                raise SystemExit(
+                    f"ritual_state: query weekly-review needs --workspace: the log holds records "
+                    f"for {len(stamped)} workspaces ({', '.join(stamped) or 'none'}), so no single "
+                    "workspace can be assumed and one seat's review must not answer for another. "
+                    "Accepted form: query weekly-review --workspace <workspace>")
+            workspace, inferred = stamped[0], True
+        wr = q_weekly_review(records, workspace)
+        out = {"workspace": workspace, "last_weekly_review": wr["date"] if wr else None}
+        if inferred:
+            out["workspace_inferred"] = True
 
     if a.view == "streak":
         if not a.workspace:
-            raise SystemExit("ritual_state: query streak needs --workspace")
+            raise SystemExit("ritual_state: query streak needs --workspace. "
+                             "Accepted form: query streak --workspace <workspace>")
         out = {"workspace": a.workspace, "streak": q_streak(records, cfg, a.workspace, today)}
 
     n, base, status = unattributed_status(records, cfg)
@@ -354,14 +413,20 @@ def _print_human(out: dict) -> None:
         streak = v["streak"]
         st = f"  streak {streak}" if streak is not None else "  streak n/a"
         print(f"  {w:14} close {e['date'] if e else '—':12} "
-              f"start {s['date'] if s else '—':12}{st}")
+              f"start {s['date'] if s else '—':12}{st:12}"
+              f"  weekly {v['last_weekly_review'] or '—'}")
     if "open_workdays" in out:
         ow = out["open_workdays"]
-        print(f"  open workdays: {len(ow)}" + ("" if not ow else ""))
+        print(f"  open workdays: {len(ow)}")
         for o in ow:
             print(f"     OPEN  {o['workspace']:14} {o['date']}")
     if "last_weekly_review" in out:
-        print(f"  last weekly review: {out['last_weekly_review'] or '—'}")
+        origin = "  (the only workspace in the log)" if out.get("workspace_inferred") else ""
+        print(f"  last weekly review ({out['workspace']}): "
+              f"{out['last_weekly_review'] or '—'}{origin}")
+    if "streak" in out:
+        streak = out["streak"]
+        print(f"  streak ({out['workspace']}): {streak if streak is not None else 'n/a'}")
     if out.get("unattributed_alarm"):
         print(f"  ALARM: {out['unattributed_alarm']}")
     if out.get("malformed_lines"):
@@ -582,6 +647,21 @@ def cmd_test(a) -> int:
         eq(q_last(records, "w")["date"], "2026-09-15", "seat w preserved")
         eq(q_last(records, "other")["date"], "2026-09-15", "seat other preserved")
 
+        # Every view answers for one seat: a weekly review recorded by one
+        # workspace never answers for another, and open workdays scope the same
+        # way (the 2026-09-14 recurrence of the single-slot shape).
+        rec("2026-09-11", "weekly-review", "w")
+        records, _ = read_records()
+        eq(q_weekly_review(records, "w")["date"], "2026-09-11", "weekly review for its own seat")
+        eq(q_weekly_review(records, "other"), None, "weekly review does not cross seats")
+        rec("2026-09-16", "day-start", "w")
+        rec("2026-09-16", "day-start", "other")
+        records, _ = read_records()
+        eq(q_open(records, d("2026-09-16"), workspace="other"), [("other", "2026-09-16")],
+           "open workdays scoped to one seat")
+        eq(len(q_open(records, d("2026-09-16"))), 2, "open workdays log-wide when unscoped")
+        eq(stamped_workspaces(records), ["other", "w"], "stamped workspaces are the named seats")
+
         # The unattributable baseline is a TRIPWIRE, not a permanent note.
         cfg_b = dict(cfg); cfg_b["legacy_unattributed_baseline"] = 0
         eq(unattributed_status(records, cfg_b)[2], "baseline",
@@ -591,11 +671,30 @@ def cmd_test(a) -> int:
         records, _ = read_records()
         eq(unattributed_status(records, cfg_b)[2], "above",
            "a new unstamped record trips the wire")
+        eq(stamped_workspaces(records), ["other", "w"], "an unstamped record is not a workspace")
         cfg_b["legacy_unattributed_baseline"] = 5
         eq(unattributed_status(records, cfg_b)[2], "below",
            "losing records below baseline also trips")
         eq(unattributed_status(records, {})[2], "unacknowledged",
            "no baseline means the count cannot be interpreted")
+
+        # An empty --workspace is the shape an unset shell variable produces:
+        # refused on every query view and on record, never read as omitted.
+        for view in ("last", "open", "streak", "weekly-review", "summary"):
+            try:
+                main(["query", view, "--workspace", "", "--json"])
+                fails.append(f"query {view} --workspace '' was not refused")
+            except SystemExit as exc:
+                if f"query {view} --workspace <workspace>" not in str(exc):
+                    fails.append(f"query {view} --workspace '' refusal does not name the form: {exc}")
+        before = len(read_records()[0])
+        try:
+            main(["record", "--direction", "day-end", "--workspace", "", "--date", "2026-09-17"])
+            fails.append("record --workspace '' was not refused")
+        except SystemExit as exc:
+            if "record --direction <direction> --workspace <workspace>" not in str(exc):
+                fails.append(f"record --workspace '' refusal does not name the form: {exc}")
+        eq(len(read_records()[0]), before, "an empty-workspace record is not appended")
 
         # Oversized records are refused.
         try:

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -150,6 +151,168 @@ def test_a_bare_date_means_end_of_day_so_today_is_refused_mid_day(tmp_path: Path
 def test_now_is_an_accepted_moment(tmp_path: Path) -> None:
     result = MODULE.advance(WS, "slack", "now", now=NOW, home=tmp_path)
     assert result["through"] == "2026-08-28T12:00:00-04:00"
+
+
+# --- epoch seconds: window's printed bound is advance's accepted input (2026-09-14)
+
+EPOCH_0915 = 1787922900  # 2026-08-28T09:15:00-04:00, the MORNING read
+EPOCH_1300 = 1787936400  # 2026-08-28T13:00:00-04:00, an hour ahead of NOW
+
+
+def test_epoch_seconds_are_an_accepted_moment_and_stored_canonically(tmp_path: Path) -> None:
+    """The 2026-09-14 defect: `window` printed `latest=1789397434` and
+    `advance --through 1789397434` refused it as 'not a timestamp', so the
+    natural pipeline failed on every Slack target. An epoch is accepted and
+    normalized to the store's ISO-8601 form — the store never holds an epoch."""
+    result = MODULE.advance(WS, "slack", str(EPOCH_0915), now=NOW, home=tmp_path)
+
+    assert result["moved"] is True
+    assert result["through"] == MORNING
+    stored = json.loads(MODULE.store_path(WS, tmp_path).read_text(encoding="utf-8"))
+    assert stored["surfaces"]["slack"]["through"] == MORNING
+
+
+def test_slack_ts_with_a_fractional_part_is_floored_to_the_second(tmp_path: Path) -> None:
+    """Slack's `ts` is epoch seconds with six fractional digits. The fraction
+    is dropped, never rounded up: a watermark claims at most what was read."""
+    result = MODULE.advance(WS, "slack", f"{EPOCH_0915}.999999", now=NOW, home=tmp_path)
+
+    assert result["through"] == MORNING
+
+
+def test_window_latest_round_trips_into_advance(tmp_path: Path) -> None:
+    """window's `to_epoch` is advance's `--through`, and the store lands on
+    window's `to`: the two ends of the pipeline are pinned to agree."""
+    MODULE.advance(WS, "slack", "2026-08-27T09:15", now=at(9, 20, day=27), home=tmp_path)
+    before = MODULE.window(WS, "slack", now=NOW, home=tmp_path)
+
+    result = MODULE.advance(WS, "slack", str(before["to_epoch"]), now=NOW, home=tmp_path)
+
+    assert result["moved"] is True
+    assert result["through"] == before["to"] == "2026-08-28T12:00:00-04:00"
+    after = MODULE.window(WS, "slack", now=NOW, home=tmp_path)
+    assert after["from"] == before["to"]
+    assert after["from_epoch"] == before["to_epoch"]
+
+
+def test_a_future_epoch_is_refused_without_the_bare_date_hint(tmp_path: Path) -> None:
+    """A ten-digit epoch is ten characters long, exactly like YYYY-MM-DD; the
+    end-of-day hint belongs to a bare date and must not attach to an epoch."""
+    with pytest.raises(ValueError, match="future") as caught:
+        MODULE.advance(WS, "slack", str(EPOCH_1300), now=NOW, home=tmp_path)
+
+    assert "END of that day" not in str(caught.value)
+
+
+def test_refusal_names_every_accepted_form() -> None:
+    with pytest.raises(ValueError, match="not a timestamp") as caught:
+        MODULE.parse_moment("soon", NOW)
+
+    message = str(caught.value)
+    for form in ("ISO-8601", "YYYY-MM-DD", "epoch seconds", "1789397434",
+                 "1789397434.123456", "'now'"):
+        assert form in message, form
+
+
+@pytest.mark.parametrize("text", ["178793280", "17879328000", "1787932800000", "1787932800."])
+def test_an_integer_that_is_not_ten_digits_is_not_an_epoch(text: str) -> None:
+    """Nine digits is 1975, eleven is 2536, thirteen is milliseconds, a
+    trailing dot carries no fraction: none is a moment this store records."""
+    with pytest.raises(ValueError, match="not a timestamp"):
+        MODULE.parse_moment(text, NOW)
+
+
+def test_epoch_milliseconds_are_named_in_the_refusal() -> None:
+    """A thirteen-digit value is the one near miss a Slack or JS caller
+    produces; the refusal names it and the seconds form to pass instead."""
+    with pytest.raises(ValueError, match="milliseconds") as caught:
+        MODULE.parse_moment("1787932800000", NOW)
+
+    assert "1787932800" in str(caught.value)
+
+
+def test_a_leading_zero_is_not_a_ten_digit_epoch() -> None:
+    """`0999999999` is ten digits long, but no epoch `window` prints starts
+    with a zero; read as seconds it is 2001-09-09, a typo accepted as a
+    moment. It is refused, and the refusal names every accepted form."""
+    with pytest.raises(ValueError, match="not a timestamp") as caught:
+        MODULE.parse_moment("0999999999", NOW)
+
+    message = str(caught.value)
+    assert "'0999999999'" in message
+    for form in ("ISO-8601", "YYYY-MM-DD", "1789397434", "1789397434.123456", "'now'"):
+        assert form in message, form
+
+
+def test_cli_advance_refuses_a_leading_zero_epoch_naming_the_accepted_form(tmp_path: Path) -> None:
+    done = run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "slack",
+                   "--through", "0999999999")
+
+    assert done.returncode == 2
+    assert "not a timestamp: '0999999999'" in done.stderr
+    assert "1789397434" in done.stderr and "'now'" in done.stderr
+
+
+@pytest.mark.parametrize("text", ["17879328000000", "178793280000000", "0999999999999"])
+def test_the_milliseconds_branch_is_anchored_to_thirteen_leading_nonzero_digits(text: str) -> None:
+    """Fourteen or fifteen digits is no near miss this store names, and a
+    thirteen-digit value with a leading zero would suggest a ten-digit
+    seconds form the parser itself refuses. Each gets the plain refusal."""
+    with pytest.raises(ValueError, match="not a timestamp") as caught:
+        MODULE.parse_moment(text, NOW)
+
+    assert "milliseconds" not in str(caught.value)
+
+
+NAIVE_NOW = NOW.replace(tzinfo=None)
+# The refusals render a moment as `Fri 2026-08-28 12:00:01 EDT`; the echoed
+# ISO input carries a `T` between date and time, so this picks out only the
+# rendered moments and never the input.
+RENDERED_TIME = r"\d{4}-\d{2}-\d{2} (\d{2}:\d{2}:\d{2}) "
+
+
+@pytest.mark.parametrize("text", [str(EPOCH_0915), f"{EPOCH_0915}.5", "2026-08-28T09:15",
+                                  "2026-08-27", "now"])
+def test_every_form_shares_the_awareness_of_now(text: str) -> None:
+    """_localize copies `now`'s zone onto an ISO or bare-date form, so a naive
+    `now` yields a naive moment; the epoch branch must agree, or `advance`
+    compares an aware moment against a naive one and Python raises."""
+    assert MODULE.parse_moment(text, NOW).tzinfo is not None
+    assert MODULE.parse_moment(text, NAIVE_NOW).tzinfo is None
+
+
+def test_a_naive_epoch_is_the_local_wall_clock() -> None:
+    """Naive means local time for the epoch form as for every other."""
+    assert MODULE.parse_moment(str(EPOCH_0915), NAIVE_NOW) == datetime.fromtimestamp(EPOCH_0915)
+    assert MODULE.parse_moment(str(EPOCH_0915), NOW) == datetime(2026, 8, 28, 9, 15, tzinfo=TZ)
+
+
+def test_future_refusal_renders_both_moments_to_the_second(tmp_path: Path) -> None:
+    """A value one second ahead of now is refused, and the refusal must show
+    two different times: rendered to the minute, both read 12:00 and the
+    message contradicts itself."""
+    one_second_ahead = MODULE.stamp(NOW + timedelta(seconds=1))
+    with pytest.raises(ValueError, match="future") as caught:
+        MODULE.advance(WS, "slack", one_second_ahead, now=NOW, home=tmp_path)
+
+    times = re.findall(RENDERED_TIME, str(caught.value))
+    assert len(times) == 2, str(caught.value)
+    assert times[0] != times[1], str(caught.value)
+    assert times[0].endswith(":01") and times[1].endswith(":00"), times
+
+
+def test_backwards_refusal_renders_both_moments_to_the_second(tmp_path: Path) -> None:
+    """The same two-moment shape: a value one second behind the recorded
+    watermark is refused, and the detail must show two different times."""
+    MODULE.advance(WS, "slack", "2026-08-28T10:00:00", now=NOW, home=tmp_path)
+
+    result = MODULE.advance(WS, "slack", "2026-08-28T09:59:59", now=NOW, home=tmp_path)
+
+    assert result["moved"] is False
+    times = re.findall(RENDERED_TIME, result["entries"][0]["detail"])
+    assert len(times) == 2, result["entries"][0]["detail"]
+    assert times[0] != times[1]
+    assert times[0].endswith(":59") and times[1].endswith(":00"), times
 
 
 # --- a run proves its own coverage: status --since run --------------------------
@@ -386,6 +549,64 @@ def test_cli_window_prints_the_epoch_bounds_a_read_call_takes(tmp_path: Path) ->
     assert "oldest=" in done.stdout and "latest=" in done.stdout
 
 
+def test_cli_window_latest_round_trips_into_advance(tmp_path: Path) -> None:
+    """The verbatim 2026-09-14 failure: `window` printed `latest=1789397434`
+    and `advance --through 1789397434` was refused as not a timestamp. The
+    printed value is the accepted input, and the store lands on that second
+    in its canonical ISO-8601-with-offset form."""
+    run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "slack",
+            "--target", "C1", "--through", "2026-08-27T09:15")
+    shown = run_cli(tmp_path, "window", "--workspace", WS, "--surface", "slack", "--target", "C1")
+    assert shown.returncode == 0, shown.stderr
+    latest = re.search(r"latest=(\d{10})\b", shown.stdout)
+    assert latest, shown.stdout
+
+    done = run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "slack",
+                   "--target", "C1", "--through", latest.group(1))
+
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout)["moved"] is True
+    stored = json.loads(MODULE.store_path(WS, tmp_path).read_text(encoding="utf-8"))
+    through = stored["surfaces"]["slack"]["targets"]["C1"]["through"]
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}", through), through
+    assert int(datetime.fromisoformat(through).timestamp()) == int(latest.group(1))
+    again = run_cli(tmp_path, "window", "--workspace", WS, "--surface", "slack", "--target", "C1")
+    assert f"oldest={latest.group(1)} " in again.stdout
+
+
+def test_cli_status_since_accepts_epoch_seconds(tmp_path: Path) -> None:
+    """`--since` shares the parser with `--through`: an epoch, with or without
+    Slack's fraction, is a freshness bound."""
+    run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "slack", "--through", "now")
+    written = json.loads(MODULE.store_path(WS, tmp_path).read_text(encoding="utf-8"))
+    at_write = int(datetime.fromisoformat(written["surfaces"]["slack"]["through"]).timestamp())
+
+    clear = run_cli(tmp_path, "status", "--workspace", WS, "--surface", "slack",
+                    "--since", str(at_write - 3600), "--json")
+    stale = run_cli(tmp_path, "status", "--workspace", WS, "--surface", "slack",
+                    "--since", f"{at_write + 3600}.250000", "--json")
+
+    assert clear.returncode == 0, clear.stderr
+    assert json.loads(clear.stdout)["blocking"] == []
+    assert int(datetime.fromisoformat(json.loads(clear.stdout)["since"]).timestamp()) == at_write - 3600
+    assert stale.returncode == 1, stale.stderr
+    assert json.loads(stale.stdout)["blocking"] == ["slack"]
+
+
+def test_cli_help_names_the_epoch_form_on_every_moment_argument(tmp_path: Path) -> None:
+    """`advance --through` and `status --since` share parse_moment, and each
+    argument's own help is the documentation closest to the command: it names
+    the epoch form beside the others, so what the help lists and what the
+    parser accepts cannot drift apart."""
+    for command, flag in (("advance", "--through"), ("status", "--since")):
+        shown = run_cli(tmp_path, command, "--help")
+        assert shown.returncode == 0, shown.stderr
+        text = " ".join(shown.stdout.split())
+        assert flag in text, (command, text)
+        for form in ("ISO-8601", "YYYY-MM-DD", "epoch seconds", "window", "Slack", "now"):
+            assert form in text, (command, form, text)
+
+
 def test_cli_status_refuses_an_empty_surface_set(tmp_path: Path) -> None:
     """The declared set must come from the caller: the store only knows
     surfaces already written, so a store-only status walks straight past a
@@ -453,6 +674,27 @@ def test_watermark_reference_carries_the_contract() -> None:
     assert "--since run" in text
     assert "END of that day" in text
     assert "--targets-from" in text
+
+
+def _reference_bullet(verb: str) -> str:
+    """The `- **`<verb>`**` bullet of the watermark reference, up to the next verb's."""
+    reference = (SKILLS_ROOT / "synthesis-daily-rituals" / "references" / "sync-watermarks.md")
+    text = reference.read_text(encoding="utf-8")
+    start = text.index(f"- **`{verb}`**")
+    end = text.find("\n- **`", start + 1)
+    return text[start:] if end < 0 else text[start:end]
+
+
+def test_watermark_reference_names_the_epoch_form_for_through() -> None:
+    """The reference's own `advance` line instructs `--through <latest>`, and
+    `window` prints `latest=` as epoch seconds; the prose form list under the
+    same verb must name that form, or the document contradicts the command it
+    sits under (2026-09-14 review of the epoch-form repair)."""
+    bullet = _reference_bullet("advance")
+
+    assert "--through" in bullet
+    for form in ("epoch seconds", "window", "Slack"):
+        assert form in bullet, (form, bullet)
 
 
 def test_slack_sync_takes_the_window_from_the_tool() -> None:
