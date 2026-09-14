@@ -9,9 +9,13 @@ or a chat table makes the principal supply the structure the agent needs.
 The origin run: 26 rounds of per-item conversation produced 0 of 30 decisions. One packet
 produced 30 of 30, in one pass, in one paste.
 
-    python3 build_packet.py spec.json -o packet.html
+    python3 build_packet.py spec.json -o packet.html --strict-reader
     python3 build_packet.py spec.json --stdout > packet.html
+    python3 build_packet.py spec.json --strict-reader --file-into PROJECT/resources/artifacts/
     python3 build_packet.py --schema          # print the spec schema and exit
+
+--file-into files a dated copy of the spec and the page in the owning project, where every
+agent on the project can read them; record_rulings.py files the principal's paste beside them.
 
 Stdlib only. No build step, no dependencies, no server: the emitted file opens from disk,
 from a local HTTP server, or as a published artifact.
@@ -19,6 +23,7 @@ from a local HTTP server, or as a published artifact.
 from __future__ import annotations
 
 import argparse
+import datetime
 import html
 import json
 import pathlib
@@ -30,7 +35,7 @@ Decision-packet spec (JSON)
 ===========================
 
 {
-  "title":       "Code review — CSA content pipeline",     REQUIRED
+  "title":       "Code review — CSA content pipeline",     REQUIRED, one line
   "subtitle":    "12 findings from an adversarial pass",    optional
   "intro":       "Markdown-free prose shown under the title.",  optional
   "storage_key": "csa-review-2026-09",   optional; defaults to a slug of the title.
@@ -48,11 +53,23 @@ Decision-packet spec (JSON)
   ],
 
   "options": [                            REQUIRED — the default choice set for every row
-    {"value": "fix-now",  "label": "Fix now",  "tone": "danger"},
-    {"value": "fix-later","label": "Fix later","tone": "warn"},
-    {"value": "waive",    "label": "Waive",    "tone": "muted"}
+    {"value": "fix-now",  "label": "Fix it before the next release",
+     "tone": "danger", "consequence": "The release waits for the fix."},
+    {"value": "fix-later","label": "Ship now, fix it next sprint", "tone": "warn"},
+    {"value": "waive",    "label": "Leave it as it is",            "tone": "muted"}
   ],
   tone ∈ {danger, warn, ok, muted, info} — colours the selected button only.
+  value: a non-empty string, unique within its set — it keys the button's
+         pressed state and the summary's label. A set offers at least two.
+  label: what pressing the button DOES, in the principal's terms, on one line.
+         A bare acknowledgement (Yes, No, OK, Cancel, Accept, Decline, Approve,
+         Reject, Do it, Go, Stop, "Yes, do that", "No thanks", or any of these
+         padded with a stopword: "Accept it", "Do that") or two labels that
+         share every content word raise READER findings; --strict-reader
+         refuses them.
+  consequence: optional — shown under the label on the button itself. Without
+         it, the row's impact.accept sits under the recommended option and
+         impact.decline under every other option.
 
   "filters": [                            optional; name these from the CONTENT
     {"id": "needs-fix", "label": "Needs a fix", "tags": ["correctness"]},
@@ -65,7 +82,7 @@ Decision-packet spec (JSON)
   "rows": [                               REQUIRED
     {
       "id":    "F-01",                    REQUIRED — stable; it keys localStorage
-      "label": "Unbounded retry loop in the publish worker",   REQUIRED
+      "label": "Unbounded retry loop in the publish worker",   REQUIRED, one line
       "context":  "What the reader needs to judge it.",        optional
       "reasoning":"Why the agent recommends what it does.",    optional
       "impact": {                          optional in the format, REQUIRED by the
@@ -98,6 +115,61 @@ Decision-packet spec (JSON)
 TONES = {"danger", "warn", "ok", "muted", "info"}
 SEVERITIES = {"high", "medium", "low", "none"}
 
+# Option labels must say what pressing the button DOES. Fixture of the failure,
+# 2026-09-14: on a 9-row packet, three rows carrying the options
+# {"Yes, do that", "No"} collected notes instead of decisions - the principal
+# could not tell what each button would do to the thing in question, so the
+# note boxes carried what the buttons should have. Labels are compared after
+# lower-casing, stripping punctuation and collapsing whitespace.
+BARE_ACKNOWLEDGEMENTS = {
+    "yes", "no", "ok", "okay", "cancel", "accept", "decline", "approve", "reject",
+    "do it", "yes do that", "go", "stop", "no thanks",
+}
+# Words that carry no consequence on their own; two labels that differ only in
+# these (or in words under three letters) do not differ at all.
+STOPWORDS = {"the", "a", "an", "it", "that", "this", "do", "to", "of", "in", "on",
+             "my", "me", "and", "or", "not"}
+ACCEPTED_LABEL_FORM = ('label each option by what pressing it does, '
+                       'e.g. "Keep them on my phone" / "Take them off my phone"')
+# The pasted summary is line-based: the title, each "id  label" header and each
+# decision line occupy one line, and record_rulings.py reads them back one line
+# at a time. A line break inside any of those fields builds a packet whose own
+# paste is refused - discovered only after the principal's sitting.
+LINE_BREAK = re.compile(r"[\r\n]")
+SINGLE_LINE_FORM = ("the pasted summary is one line per field, so title, row labels "
+                    "and option labels must be single-line")
+
+
+def normalize_label(label) -> str:
+    """Lower-case, punctuation stripped, whitespace collapsed."""
+    return " ".join(re.findall(r"[^\W_]+", str(label).lower()))
+
+
+def is_bare_acknowledgement(label) -> bool:
+    """True when the label names no consequence: it is one of the listed
+    acknowledgements, or becomes one once its stopwords are removed ("Accept
+    it", "Approve this"), or has nothing left at all once they are ("Do that")."""
+    norm = normalize_label(label)
+    stripped = " ".join(w for w in norm.split() if w not in STOPWORDS)
+    return norm in BARE_ACKNOWLEDGEMENTS or stripped in BARE_ACKNOWLEDGEMENTS or not stripped
+
+
+def content_words(label) -> frozenset[str]:
+    """Words of three or more letters that are not stopwords."""
+    return frozenset(w for w in re.findall(r"[^\W\d_]+", str(label).lower())
+                     if len(w) >= 3 and w not in STOPWORDS)
+
+
+def parse_iso_date(text) -> str | None:
+    """Return the date as YYYY-MM-DD when `text` is exactly that form and a real
+    calendar date; None otherwise."""
+    if not isinstance(text, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return None
+    try:
+        return datetime.date.fromisoformat(text).isoformat()
+    except ValueError:
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Validation — fail loudly at build time, never emit a broken packet
@@ -105,6 +177,70 @@ SEVERITIES = {"high", "medium", "low", "none"}
 
 def slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", str(text).lower()).strip("-") or "packet"
+
+
+def _validate_option_set(opts: list, where: str, problems: list[str]) -> None:
+    """Shape checks (hard) and label checks (READER) on one option set.
+
+    `where` is "options" for the packet-level set or "rows[i] (id)" for a
+    per-row override; it prefixes every finding so the message names the row.
+    """
+    prefix = "options" if where == "options" else f"{where} options"
+    if len(opts) < 2:
+        problems.append(
+            f"{prefix} must offer at least two options - a one-button set records no "
+            "decision; give the principal the alternative as a second labelled option")
+    labels: list[str] = []
+    values: list[str] = []
+    for i, o in enumerate(opts):
+        if not isinstance(o, dict) or not o.get("value") or not o.get("label"):
+            problems.append(f"{prefix}[{i}] needs both 'value' and 'label'")
+            continue
+        if not isinstance(o["value"], str) or not o["value"].strip():
+            # b.dataset.value stores a string while the saved choice keeps the
+            # JSON type, so a numeric value counts as decided and never renders
+            # pressed; JSON 1 and "1" also collide in the DOM.
+            problems.append(
+                f"{prefix}[{i}].value {o['value']!r} must be a non-empty string - the button's "
+                "pressed state is keyed through a DOM dataset, which stores strings only")
+            continue
+        if LINE_BREAK.search(str(o["label"])):
+            problems.append(
+                f"{prefix}[{i}] label {o['label']!r} contains a line break - {SINGLE_LINE_FORM}")
+        if o.get("tone") and o["tone"] not in TONES:
+            problems.append(f"{prefix}[{i}].tone {o['tone']!r} not in {sorted(TONES)}")
+        if "consequence" in o and (not isinstance(o["consequence"], str)
+                                   or not o["consequence"].strip()):
+            problems.append(f"{prefix}[{i}].consequence must be a non-empty string")
+        labels.append(str(o["label"]))
+        values.append(o["value"])
+
+    # One saved choice presses every button sharing its value, and the summary's
+    # labelFor() returns the first label whichever was pressed, so the filed
+    # rulings would record the second button's press as the first.
+    dupes = sorted({v for v in values if values.count(v) > 1})
+    if dupes:
+        noun, verb = ("value", "is") if len(dupes) == 1 else ("values", "are")
+        problems.append(
+            f"{prefix} {noun} {', '.join(repr(v) for v in dupes)} {verb} used by more than one "
+            "option - every option in a set needs its own value because the value keys the "
+            "pressed state and the summary label")
+
+    head = "READER: options:" if where == "options" else f"READER: {where} option"
+    bare = [lab for lab in labels if is_bare_acknowledgement(lab)]
+    if bare:
+        problems.append(
+            f"{head} labels {', '.join(repr(lab) for lab in bare)} are bare acknowledgements "
+            f"that name no consequence - {ACCEPTED_LABEL_FORM}")
+    # A bare label is already reported; the pair check covers the rest.
+    rest = [lab for lab in labels if lab not in bare]
+    pairs = [f"{a!r} / {b!r}"
+             for ai, a in enumerate(rest) for b in rest[ai + 1:]
+             if content_words(a) == content_words(b)]
+    if pairs:
+        problems.append(
+            f"{head} labels {', '.join(pairs)} do not differ in a content word - "
+            f"{ACCEPTED_LABEL_FORM}")
 
 
 def validate(spec: dict) -> list[str]:
@@ -115,16 +251,16 @@ def validate(spec: dict) -> list[str]:
         return ["spec must be a JSON object"]
     if not spec.get("title"):
         problems.append("missing required field: title")
+    elif LINE_BREAK.search(str(spec["title"])):
+        problems.append(
+            f"title {spec['title']!r} contains a line break - {SINGLE_LINE_FORM}")
 
     opts = spec.get("options")
     if not isinstance(opts, list) or not opts:
         problems.append("missing required field: options (a non-empty list)")
         opts = []
-    for i, o in enumerate(opts):
-        if not isinstance(o, dict) or not o.get("value") or not o.get("label"):
-            problems.append(f"options[{i}] needs both 'value' and 'label'")
-        elif o.get("tone") and o["tone"] not in TONES:
-            problems.append(f"options[{i}].tone {o['tone']!r} not in {sorted(TONES)}")
+    else:
+        _validate_option_set(opts, "options", problems)
 
     rows = spec.get("rows")
     if not isinstance(rows, list) or not rows:
@@ -156,16 +292,34 @@ def validate(spec: dict) -> list[str]:
                 "storage coerces ids to strings, so non-string ids can "
                 "collide after coercion"
             )
-        elif rid.strip() in seen:
-            problems.append(f"rows[{i}] duplicate id {rid.strip()!r} — ids key localStorage and must be unique")
+        elif rid != rid.strip() or re.search(r"\s{2,}", rid) or LINE_BREAK.search(rid):
+            # The pasted summary prints "id  label" on one line and
+            # record_rulings.py splits that line on its first double space.
+            problems.append(
+                f"rows[{i}] id {rid!r} has leading, trailing or doubled whitespace or a line "
+                'break - the pasted summary prints "id  label" on one line and '
+                "record_rulings.py splits on the first double space"
+            )
+        elif rid in seen:
+            problems.append(f"rows[{i}] duplicate id {rid!r} — ids key localStorage and must be unique")
         else:
-            seen.add(rid.strip())
+            seen.add(rid)
         if not r.get("label"):
             problems.append(f"rows[{i}] ({rid}) missing required field: label")
+        elif LINE_BREAK.search(str(r["label"])):
+            problems.append(
+                f"rows[{i}] ({rid}) label {r['label']!r} contains a line break - {SINGLE_LINE_FORM}")
         sev = r.get("severity")
         if sev and sev not in SEVERITIES:
             problems.append(f"rows[{i}] ({rid}) severity {sev!r} not in {sorted(SEVERITIES)}")
-        row_opts = r.get("options") or opts
+        row_opts = r.get("options")
+        if row_opts is None:
+            row_opts = opts
+        elif not isinstance(row_opts, list) or not row_opts:
+            problems.append(f"rows[{i}] ({rid}) options must be a non-empty list")
+            row_opts = opts
+        else:
+            _validate_option_set(row_opts, f"rows[{i}] ({rid})", problems)
         values = {o.get("value") for o in row_opts if isinstance(o, dict)}
         rec = r.get("recommendation")
         if rec and rec not in values:
@@ -317,11 +471,20 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
   color: var(--warn); margin-bottom: 5px; }
 .dis p { margin: 3px 0; color: var(--ink-2); }
 .dis b { color: var(--ink); }
-.opts { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin: 11px 0 0; }
+.opts { display: flex; flex-wrap: wrap; gap: 7px; align-items: stretch; margin: 11px 0 0; }
 .opts button {
   font: inherit; font-size: 13.5px; padding: 7px 14px; border-radius: 7px; cursor: pointer;
   background: var(--bg); color: var(--ink-2); border: 1px solid var(--line-2);
+  display: flex; flex-direction: column; align-items: flex-start; text-align: left;
+  max-width: 100%;
 }
+/* The consequence sits ON the control, under its label: the principal reads what
+   pressing this button does at the point of pressing it, not in a block above. */
+.opts button .oconseq {
+  font-size: 12px; font-weight: 400; line-height: 1.35; color: var(--ink-3);
+  margin-top: 3px; max-width: 34ch;
+}
+.opts button[aria-pressed="true"] .oconseq { color: var(--sel-fg); opacity: .88; }
 .opts button[aria-pressed="true"] { color: var(--sel-fg); border-color: transparent; font-weight: 600; }
 .opts button[aria-pressed="true"][data-tone="danger"] { background: var(--danger); }
 .opts button[aria-pressed="true"][data-tone="warn"]   { background: var(--warn); }
@@ -335,11 +498,11 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
 .opts button[data-recommended="true"] {
   border-color: var(--accent); border-width: 1.5px; font-weight: 600; color: var(--ink);
 }
-.opts button[data-recommended="true"]::before {
+.opts button[data-recommended="true"] .olabel::before {
   content: "★ "; color: var(--accent); font-size: 11px; vertical-align: 1px;
 }
-.opts button[aria-pressed="true"][data-recommended="true"]::before { color: var(--sel-fg); }
-.rec { font-size: 12px; color: var(--ink-3); margin-left: 2px; }
+.opts button[aria-pressed="true"][data-recommended="true"] .olabel::before { color: var(--sel-fg); }
+.rec { font-size: 12px; color: var(--ink-3); margin-left: 2px; align-self: center; }
 .note { margin-top: 9px; }
 .note textarea {
   width: 100%; min-height: 38px; font: inherit; font-size: 14px; padding: 8px 10px;
@@ -452,6 +615,14 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
     var s = get(row.id);
     return s.choice !== undefined ? s.choice : null;
   }
+  function consequenceFor(row, o) {
+    // What pressing this button does, shown under its label. An explicit
+    // per-option text wins; otherwise the row's impact block maps "accept"
+    // to the recommended option and "decline" to every other one.
+    if (o.consequence) return o.consequence;
+    if (!row.impact || !row.recommendation) return "";
+    return row.recommendation === o.value ? row.impact.accept : row.impact.decline;
+  }
 
   // ---- filters -----------------------------------------------------------
   var active = "all";
@@ -550,9 +721,18 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
     opts.className = "opts";
     optionsFor(row).forEach(function (o) {
       var b = document.createElement("button");
-      b.type = "button"; b.textContent = o.label;
+      b.type = "button";
       b.dataset.tone = o.tone || "info";
       b.dataset.value = o.value;
+      var lab = document.createElement("span");
+      lab.className = "olabel"; lab.textContent = o.label;
+      b.appendChild(lab);
+      var text = consequenceFor(row, o);
+      if (text) {
+        var why = document.createElement("span");
+        why.className = "oconseq"; why.textContent = text;
+        b.appendChild(why);
+      }
       if (row.recommendation === o.value) {
         b.dataset.recommended = "true";
         b.title = "The agent recommends this";
@@ -789,6 +969,22 @@ def build(spec: dict) -> str:
     return out
 
 
+def file_packet(spec: dict, page: str, directory: pathlib.Path, date: str) -> tuple[pathlib.Path, pathlib.Path]:
+    """Write <date>-<slug>-spec.json and <date>-<slug>.html into `directory`.
+
+    The slug is the title's, the same slug record_rulings.py derives from the
+    summary's first line, so the spec, the page and the rulings share a stem.
+    A same-day rebuild replaces the same-day copies: the spec is the source and
+    the page is generated from it, so neither copy is a record in its own right.
+    """
+    slug = slugify(spec["title"])
+    spec_copy = directory / f"{date}-{slug}-spec.json"
+    page_copy = directory / f"{date}-{slug}.html"
+    spec_copy.write_text(json.dumps(spec, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    page_copy.write_text(page, encoding="utf-8")
+    return spec_copy, page_copy
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("spec", nargs="?", help="path to the JSON spec ('-' for stdin)")
@@ -798,8 +994,15 @@ def main() -> int:
     ap.add_argument("--allow-small", action="store_true",
                     help="build even with fewer than five rows (see the anti-trigger)")
     ap.add_argument("--strict-reader", action="store_true",
-                    help="make reader-contract findings (missing audience/impact) fatal; "
-                         "SKILL.md requires this for packets handed to a principal")
+                    help="make reader-contract findings (missing audience/impact, option labels "
+                         "that name no consequence) fatal; SKILL.md requires this for packets "
+                         "handed to a principal")
+    ap.add_argument("--file-into", metavar="DIR",
+                    help="after a successful build, file a dated copy of the spec "
+                         "(<date>-<slug>-spec.json) and of the page (<date>-<slug>.html) into DIR, "
+                         "the owning project's resources/artifacts/ directory; DIR must exist")
+    ap.add_argument("--date", metavar="YYYY-MM-DD",
+                    help="the date in the filed names (default: today); requires --file-into")
     args = ap.parse_args()
 
     if args.schema:
@@ -807,6 +1010,17 @@ def main() -> int:
         return 0
     if not args.spec:
         ap.error("a spec path is required (or --schema)")
+    if args.date and not args.file_into:
+        ap.error("--date requires --file-into")
+    if args.date and parse_iso_date(args.date) is None:
+        ap.error(f"--date {args.date!r} is not a calendar date in YYYY-MM-DD form")
+    filing_dir = None
+    if args.file_into:
+        filing_dir = pathlib.Path(args.file_into)
+        if not filing_dir.is_dir():
+            print(f"--file-into: {filing_dir} is not an existing directory - pass the owning "
+                  "project's resources/artifacts/ directory and create it first", file=sys.stderr)
+            return 2
 
     raw = sys.stdin.read() if args.spec == "-" else pathlib.Path(args.spec).read_text(encoding="utf-8")
     try:
@@ -832,13 +1046,19 @@ def main() -> int:
         return 2
 
     out = build(spec)
-    if args.stdout or not args.out:
+    # With the page on stdout, every status line goes to stderr.
+    report = sys.stderr if args.stdout else sys.stdout
+    if args.stdout or (not args.out and filing_dir is None):
         sys.stdout.write(out)
-    else:
+    if args.out:
         dest = pathlib.Path(args.out)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(out, encoding="utf-8")
-        print(f"{dest}  ({len(out):,} bytes, {len(spec['rows'])} rows)")
+        print(f"{dest}  ({len(out):,} bytes, {len(spec['rows'])} rows)", file=report)
+    if filing_dir is not None:
+        date = parse_iso_date(args.date) if args.date else datetime.date.today().isoformat()
+        for copy in file_packet(spec, out, filing_dir, date):
+            print(f"filed {copy}", file=report)
     return 0
 
 
