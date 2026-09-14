@@ -11,6 +11,16 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Consequence-labeled packets and scoped weekly reviews (September 2026).** Release **4.99.0**
+labels every decision-packet option by its consequence: each button carries the
+consequence of pressing it, and `--strict-reader` refuses bare acknowledgements
+and labels that share every content word. `--file-into` files the spec and the
+page in the owning project's `resources/artifacts/`, and `record_rulings.py`
+files the returned rulings beside them. `ritual_state.py query weekly-review` is
+scoped by `--workspace`, so one workspace's review no longer silences another's
+owed-weekly gate, and `sync_watermark.py advance --through` accepts the epoch
+seconds `window` prints and Slack's fractional `ts`.
+
 **Stranded manifests and required delegates (September 2026).** Release **4.98.0**
 classifies pending-manifest entries beneath a removed, unrecorded worktree as
 stranded, names the missing worktree root and the accepted remedy, and keeps

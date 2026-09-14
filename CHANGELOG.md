@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.99.0] - 2026-09-14
+
+Decision packets label every option by its consequence: each button carries
+the consequence of pressing it, and `--strict-reader` refuses bare
+acknowledgements and labels that share every content word. `--file-into`
+files the spec and the page in the owning project's `resources/artifacts/`,
+and `record_rulings.py` files the returned rulings beside them.
+`ritual_state.py query weekly-review` is scoped by `--workspace`, so one
+workspace's review no longer silences another's owed-weekly gate.
+`sync_watermark.py advance --through` accepts the epoch seconds `window` prints.
+
 ## [4.98.0] - 2026-09-11
 
 Pending manifests classify entries beneath a removed, unrecorded worktree as
