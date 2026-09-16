@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.5.0"
+  version: "2.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,14 @@ The engine is a Bash boundary plus standard-library Python sidecars. The policy
 is data — a YAML file at `~/.synthesis/git-hook-config.yaml` that anyone
 adopting synthesis engineering fills in with personal-remote patterns, client
 names, internal URLs, and optionally a coordination-board path.
+
+## v2.6.0 — Cached pattern validation
+
+The sidecar validates the configured pattern set once per config digest and
+grep identity and reuses that result on later commits instead of re-running
+every pattern through `grep -E` at each commit boundary; a changed config or
+grep invalidates the cache. Install writes the cache directory with the
+engine. Refusals and surface classes are unchanged.
 
 ## v2.5.0 — Required repo-local delegate, fail closed
 

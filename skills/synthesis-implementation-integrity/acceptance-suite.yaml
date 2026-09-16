@@ -35,6 +35,46 @@ unverified_remainder: This manifest declares a source candidate, with existing v
   do not activate the real managed launcher or prove an existing native session has adopted it. Separate
   installed/native acceptance remains required.
 changed_surfaces:
+- path: .claude-plugin/plugin.json
+  cases:
+  - release-contract
+  - release-surfaces-pinned
+  - release-contract-version
+- path: .codex-plugin/plugin.json
+  cases:
+  - release-contract
+  - release-surfaces-pinned
+  - release-contract-version
+- path: CHANGELOG.md
+  cases:
+  - release-contract
+  - release-surfaces-pinned
+  - release-contract-changelog
+- path: README.md
+  cases:
+  - release-contract
+  - release-surfaces-pinned
+- path: skills/synthesis-project-management/SKILL.md
+  cases:
+  - release-contract
+- path: skills/synthesis-onboarding/SKILL.md
+  cases:
+  - release-contract
+- path: skills/synthesis-git-hooks/SKILL.md
+  cases:
+  - release-contract
+- path: skills/synthesis-repo-guard/SKILL.md
+  cases:
+  - release-contract
+- path: skills/synthesis-skills-manager/SKILL.md
+  cases:
+  - release-contract
+- path: skills/synthesis-agent-conformance/SKILL.md
+  cases:
+  - release-contract
+- path: skills/synthesis-implementation-integrity/SKILL.md
+  cases:
+  - release-contract
 - path: .github/scripts/install-ci-python.sh
   cases:
   - d09-ci-interpreter.ci_installer_refuses_local_execution_before_commands
@@ -654,6 +694,33 @@ changed_surfaces:
   cases:
   - direct-copy-bytecode.direct_copy_ignores_generated_bytecode_but_detects_python_source_drift
 cases:
+- id: release-contract
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
+  motivating_defect: Release metadata must describe one coherent release read from the actual files; both
+    plugin versions agree, the CHANGELOG top heading carries that version, README notes Release **version**,
+    and the reliability-tranche SKILL.md versions stay at or above their floors.
+- id: release-surfaces-pinned
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_release_surfaces_agree_and_public_commands_are_pinned
+  motivating_defect: A second independent reader of the actual release surfaces; at 4.92.1 the README's native
+    plugin commands still installed from the default branch instead of the stable ref.
+- id: release-contract-version
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
+  motivating_defect: Both client manifests must agree on one version before a release is described; the
+    boundary reads that agreed version. This fixture exercises the boundary's parser on a synthetic
+    repository; the shipped files are read by release-contract and release-surfaces-pinned.
+- id: release-contract-changelog
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
+  motivating_defect: The changelog's newest heading must parse as the version the boundary compares with
+    both manifests. This fixture exercises the boundary's parser on a synthetic repository; the shipped files
+    are read by release-contract and release-surfaces-pinned.
 - id: board-grammar.markdown_cell_meaning_is_identical_for_all_consumers
   control_class: acceptance-test
   expected_status: pass
