@@ -1327,8 +1327,14 @@ def phase_ecosystem(
     preserve_ahead=False,
     policy_transition=False,
 ):
-    """Public synthesis-skills into each present client; fallback to install.sh."""
-    need_fallback = False
+    """Install native plugins, or copies only when explicitly requested.
+
+    The compatibility install.sh entry point bootstraps the public CLI. Calling
+    it from an active reconciliation transaction can replace the selected
+    release and wait on the caller's own lock. Native failures must terminate;
+    explicit copy requests use the internal capability with a bound source.
+    """
+    copy_clients = []
     for name, binary in clients.items():
         if not binary:
             continue
@@ -1457,13 +1463,20 @@ def phase_ecosystem(
                 )
             continue
         if no_plugin_cli:
-            need_fallback = True
-            report.add("ecosystem", WARN, "plugin CLI disabled by flag for %s; using file fallback" % name)
+            copy_clients.append(name)
+            report.add("ecosystem", WARN, "plugin CLI disabled by flag for %s; direct copies do not load native hooks" % name)
             continue
         if dry_run:
             report.add("ecosystem", CHANGED, "would install %s plugin via %s CLI" % (PLUGIN_NAME, name))
             continue
         success, detail = install_plugin(name, binary, policy)
+        if not success:
+            report.add(
+                "ecosystem", ERROR,
+                "%s native plugin installation failed; no automatic copy fallback" % name,
+                hint=detail,
+            )
+            continue
         after_state, after_version = plugin_record(name, binary)
         expected, expectation_detail = expected_policy_version(policy)
         if success and after_state is True and expected and after_version != expected:
@@ -1488,32 +1501,81 @@ def phase_ecosystem(
                 hint=recovery_instruction([name], initial=True),
             )
         else:
-            need_fallback = True
-            report.add("ecosystem", WARN, "%s plugin CLI route failed; using file fallback" % name,
-                       hint=detail)
-    if need_fallback:
-        installer = source_root() / "install.sh"
-        if not installer.exists():
-            report.add("ecosystem", ERROR, "fallback installer missing at %s" % installer)
-            return
-        if dry_run:
-            report.add("ecosystem", CHANGED, "would run fallback: sh %s install" % installer)
-            return
-        # A clean `status` alone is not proof of an install: on a machine
-        # where the target directories do not exist yet, status has nothing
-        # to check and exits 0. Require actual copies before skipping.
-        rc, _, _ = run(["sh", str(installer), "status"], timeout=300)
-        copies_present = any(
-            target.is_dir() and any(target.glob("synthesis-*"))
-            for target in (HOME / ".claude" / "skills", HOME / ".agents" / "skills"))
-        if rc == 0 and copies_present:
-            report.add("ecosystem", OK, "fallback skill copies already current")
-            return
-        rc, out, err = run(["sh", str(installer), "install"], timeout=600)
-        if rc == 0:
-            report.add("ecosystem", CHANGED, "fallback skill copies installed (install.sh)")
-        else:
-            report.add("ecosystem", ERROR, "fallback install.sh failed", hint=(err or out).strip()[-400:])
+            report.add(
+                "ecosystem", ERROR,
+                "%s native plugin installation could not be verified; no automatic copy fallback" % name,
+                hint=detail,
+            )
+    if copy_clients and not report.exit_code():
+        phase_explicit_skill_copies(report, copy_clients, dry_run)
+
+
+def phase_explicit_skill_copies(report, clients, dry_run):
+    """Apply the selected source only to explicitly selected copy clients."""
+    source = source_root()
+    installer = source / "skills" / "synthesis-onboarding" / "scripts" / "direct_copy.sh"
+    if not installer.is_file():
+        report.add("ecosystem", ERROR, "direct-copy capability missing at %s" % installer)
+        return
+    targets = organization_skill_targets(clients)
+    # The shell capability represents target lists with whitespace separators.
+    # Its word-split loops also expand shell wildcards. Refuse ambiguous paths
+    # rather than expanding the write boundary beyond the selected home/source.
+    source_names = [path.parent.name for path in (source / "skills").glob("*/SKILL.md")]
+    scope = [source, *targets, *(source / "skills" / name for name in source_names)]
+    if any(any(character.isspace() or character in "*?[]" for character in str(path)) for path in scope):
+        report.add("ecosystem", ERROR, "direct-copy capability cannot represent source or target paths containing whitespace or shell wildcards")
+        return
+    try:
+        if not source_names:
+            raise ContractError("selected source contains no skills")
+        regular_tree(source / "skills")
+        for target in targets:
+            if not target.is_absolute() or ".." in target.parts:
+                raise ContractError("direct-copy target must be an absolute path without parent traversal")
+            if target.exists() and not target.is_dir():
+                raise ContractError("direct-copy target is not a directory")
+            source_resolved, target_resolved = source.resolve(), target.resolve()
+            if source_resolved == target_resolved or source_resolved in target_resolved.parents or target_resolved in source_resolved.parents:
+                raise ContractError("direct-copy source and target overlap")
+            # Inspect only source-owned destinations: unrelated private skills
+            # in a selected directory are not part of this copy operation.
+            for name in source_names:
+                regular_tree(target / name)
+        backup_root = Path(os.environ.get("XDG_CACHE_HOME", str(HOME / ".cache"))) / "synthesis-skills-backups"
+        regular_tree(backup_root)
+        for boundary in [source, *targets]:
+            boundary_resolved, backup_resolved = boundary.resolve(), backup_root.resolve()
+            if boundary_resolved == backup_resolved or boundary_resolved in backup_resolved.parents or backup_resolved in boundary_resolved.parents:
+                raise ContractError("direct-copy source/target overlaps the prunable backup root")
+    except (ContractError, OSError, ValueError) as exc:
+        report.add("ecosystem", ERROR, "direct-copy boundary validation failed: %s" % exc)
+        return
+    if dry_run:
+        report.add("ecosystem", CHANGED, "would install direct skill copies for %s" % ", ".join(clients))
+        return
+    env = {
+        "SYNTHESIS_SKILLS_SOURCE_DIR": str(source),
+        "SYNTHESIS_SKILLS_HOME": str(HOME),
+        "SYNTHESIS_SKILLS_TARGETS": " ".join(map(str, targets)),
+        "SYNTHESIS_SKILLS_SOURCE_REPO": "github.com/synthesisengineering/synthesis-skills",
+        "SYNTHESIS_SKILLS_SOURCE_TYPE": "public",
+    }
+    # Empty target directories produce a clean status. Require every selected
+    # source skill at every selected target before treating copies as current.
+    rc, _, _ = run(["sh", str(installer), "status"], env=env, timeout=300)
+    copies_present = bool(source_names) and all(
+        (target / name / "SKILL.md").is_file()
+        for target in targets for name in source_names
+    )
+    if rc == 0 and copies_present:
+        report.add("ecosystem", OK, "direct skill copies already current; native hooks remain unavailable")
+        return
+    rc, out, err = run(["sh", str(installer), "install"], env=env, timeout=600)
+    if rc == 0:
+        report.add("ecosystem", CHANGED, "direct skill copies installed; native hooks remain unavailable")
+    else:
+        report.add("ecosystem", ERROR, "direct skill copy installation failed", hint=(err or out).strip()[-400:])
 
 
 def organization_skill_targets(clients_wanted=None):

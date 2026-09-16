@@ -1,75 +1,288 @@
 schema: 2
-suite: cache-guardian-exec-public-2026-09-16
+suite: installer-local-stop-repair-2026-09-16
 membership: closed
-production_entry_point: release.py install.codex.cache-guardian (cache_guardian.py archive validation)
+production_entry_point: onboard.py phase_ecosystem and project_state.py native Stop observer
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and both-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures establish that the guardian resolves executed scripts from the exec-public command
-  form, validates an archive root whose hooks use it, refuses one whose executed script is missing, refuses hooks
-  that name no plugin script, and one coherent release read from the actual manifests, CHANGELOG and README. They
-  do not establish the live archive of this machine's Codex cache; the release's install.codex.cache-guardian
-  step is that proof, recorded in the project's session log.
+unverified_remainder: Source fixtures use disposable homes, repositories and client executables. They do not establish
+  installed-client reload, native live acceptance, hosted operating-system matrix results, network publication or
+  deployment approval. Those remain separate release and installation gates.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
-  cases: [release-contract, release-surfaces-pinned, release-contract-version]
+  cases:
+  - release-metadata-coherence
 - path: .codex-plugin/plugin.json
-  cases: [release-contract, release-surfaces-pinned, release-contract-version]
+  cases:
+  - release-metadata-coherence
 - path: CHANGELOG.md
-  cases: [release-contract, release-surfaces-pinned, release-contract-changelog]
+  cases:
+  - release-metadata-coherence
 - path: README.md
-  cases: [release-contract, release-surfaces-pinned]
-- path: skills/synthesis-skills-manager/SKILL.md
-  cases: [release-contract]
-- path: skills/synthesis-skills-manager/scripts/cache_guardian.py
-  cases: [guardian-exec-public-valid, guardian-exec-public-missing-script, guardian-no-plugin-script]
-- path: skills/synthesis-skills-manager/scripts/test_cache_guardian.py
-  cases: [guardian-exec-public-valid, guardian-exec-public-missing-script, guardian-no-plugin-script]
+  cases:
+  - release-metadata-coherence
+- path: skills/synthesis-checkpoint/references/refresh-and-report.md
+  cases: &id002
+  - stop-committed-source-local-handoff-survives-release
+  - stop-local-ready-alone-does-not-exonerate-uncommitted-source
+  - stop-completed-local-source-still-checks-structured-project
+  - stop-local-completion-integrity-defects-remain-blocked
+  - stop-local-completion-distinguishes-committed-deletion
+  - stop-empty-remote-paths-cannot-disguise-project-records-as-source
+  - stop-ordinary-source-projects-directory-is-not-registry-adoption
+  - stop-local-completion-preserves-foreign-manifests-claims-and-dirty-files
+  - stop-local-completion-rechecks-evidence-across-concurrent-changes
+  - stop-local-completion-invalid-json-and-file-types-fail-closed
+  - stop-committed-binary-and-executable-source-use-exact-git-objects
+  - stop-rewritten-registry-cannot-erase-retained-adoption
+  - stop-local-completion-ignores-ambient-git-redirects
+  - stop-fake-ambient-index-cannot-hide-staged-source
+  - stop-observer-never-executes-configured-fsmonitor-or-clean-filters
+  - stop-observer-preserves-configured-safe-directory-trust
+  - stop-replacement-objects-cannot-substitute-committed-evidence
+  - stop-missing-promisor-object-never-contacts-a-remote
+  - stop-owner-authority
+  - stop-native-wire
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
-  cases: [manifest-validates]
+  cases:
+  - manifest-validates
+- path: skills/synthesis-onboarding/SKILL.md
+  cases: &id001
+  - install-native-failure-preserves-reviewed-release-and-terminates
+  - install-native-success-retains-selected-profile-and-client
+  - install-explicit-copy-is-bound-and-does-not-claim-native-readiness
+  - install-successful-native-command-without-verified-installation-fails-closed
+  - install-copy-dry-run-does-not-enter-any-installer
+  - install-copy-refuses-ambiguous-target-without-running-shell
+  - install-copy-preserves-unselected-native-client-copies
+  - install-copy-refuses-symlink-boundaries-before-invoking-script
+  - install-copy-refuses-shell-path-expansion
+  - install-explicit-custom-destination-does-not-retire-default-client-roots
+  - install-direct-copy-entrypoint-refuses-symlink-scope
+  - install-copy-refuses-source-inside-prunable-backups
+- path: skills/synthesis-onboarding/scripts/direct_copy.sh
+  cases: *id001
+- path: skills/synthesis-onboarding/scripts/onboard.py
+  cases: *id001
+- path: skills/synthesis-onboarding/scripts/test_native_failure_boundary.py
+  cases: *id001
+- path: skills/synthesis-onboarding/scripts/test_onboard.py
+  cases: *id001
+- path: skills/synthesis-project-management/SKILL.md
+  cases: *id002
+- path: skills/synthesis-project-management/references/checkpoint-closure-recovery.md
+  cases: *id002
+- path: skills/synthesis-project-management/scripts/project_state.py
+  cases: *id002
+- path: skills/synthesis-project-management/scripts/test_checkpoint_local_completion.py
+  cases: *id002
+- path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
+  cases: *id002
 cases:
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-  motivating_defect: The patch must declare its exact changed membership through the existing acceptance consumer.
-- id: guardian-exec-public-valid
+  motivating_defect: The repair must declare the exact changed-file membership consumed by the existing release
+    boundary.
+- id: install-native-failure-preserves-reviewed-release-and-terminates
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_archive_root_with_exec_public_hooks_is_valid
-  motivating_defect: Plugin roots from 4.100.0 on run hooks through the launcher's exec-public verb; the guardian
-    read only ${CLAUDE_PLUGIN_ROOT} targets and refused every current root, stopping the 4.100.1 install.
-- id: guardian-exec-public-missing-script
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_native_failure_preserves_reviewed_release_and_terminates
+  motivating_defect: Native failure must preserve the reviewed release and terminate without recursive bootstrap;
+    explicit copies must stay within selected destinations.
+- id: install-native-success-retains-selected-profile-and-client
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_archive_root_refuses_exec_public_hook_whose_script_is_missing
-  motivating_defect: An exec-public hook whose executed script is absent from the root must still be refused as a
-    missing hook target.
-- id: guardian-no-plugin-script
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_native_success_retains_selected_profile_and_client
+  motivating_defect: Native failure must preserve the reviewed release and terminate without recursive bootstrap;
+    explicit copies must stay within selected destinations.
+- id: install-explicit-copy-is-bound-and-does-not-claim-native-readiness
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_archive_root_refuses_hooks_that_name_no_plugin_script
-  motivating_defect: A hook definition naming no plugin script in either form is not an archivable root.
-- id: release-contract
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_explicit_copy_is_bound_and_does_not_claim_native_readiness
+  motivating_defect: Native failure must preserve the reviewed release and terminate without recursive bootstrap;
+    explicit copies must stay within selected destinations.
+- id: install-successful-native-command-without-verified-installation-fails-closed
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
-  motivating_defect: Release metadata must describe one coherent release read from the actual files.
-- id: release-surfaces-pinned
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_successful_native_command_without_verified_installation_fails_closed
+  motivating_defect: Native failure must preserve the reviewed release and terminate without recursive bootstrap;
+    explicit copies must stay within selected destinations.
+- id: install-copy-dry-run-does-not-enter-any-installer
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_release_surfaces_agree_and_public_commands_are_pinned
-  motivating_defect: A second independent reader of the actual release surfaces.
-- id: release-contract-version
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_copy_dry_run_does_not_enter_any_installer
+  motivating_defect: Native failure must preserve the reviewed release and terminate without recursive bootstrap;
+    explicit copies must stay within selected destinations.
+- id: install-copy-refuses-ambiguous-target-without-running-shell
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
-  motivating_defect: Both client manifests must agree on one version; this fixture exercises the boundary's parser.
-- id: release-contract-changelog
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_copy_refuses_ambiguous_target_without_running_shell
+  motivating_defect: Native failure must preserve the reviewed release and terminate without recursive bootstrap;
+    explicit copies must stay within selected destinations.
+- id: install-copy-preserves-unselected-native-client-copies
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
-  motivating_defect: The changelog's newest heading must parse as the version the boundary compares with both manifests.
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_copy_preserves_unselected_native_client_copies
+  motivating_defect: Native failure must preserve the reviewed release and terminate without recursive bootstrap;
+    explicit copies must stay within selected destinations.
+- id: install-copy-refuses-symlink-boundaries-before-invoking-script
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_copy_refuses_symlink_boundaries_before_invoking_script
+  motivating_defect: Native failure must preserve the reviewed release and terminate without recursive bootstrap;
+    explicit copies must stay within selected destinations.
+- id: install-copy-refuses-shell-path-expansion
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_copy_refuses_shell_path_expansion
+  motivating_defect: Native failure must preserve the reviewed release and terminate without recursive bootstrap;
+    explicit copies must stay within selected destinations.
+- id: install-explicit-custom-destination-does-not-retire-default-client-roots
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_explicit_custom_destination_does_not_retire_default_client_roots
+  motivating_defect: Native failure must preserve the reviewed release and terminate without recursive bootstrap;
+    explicit copies must stay within selected destinations.
+- id: install-direct-copy-entrypoint-refuses-symlink-scope
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_direct_copy_entrypoint_refuses_symlink_scope
+  motivating_defect: Native failure must preserve the reviewed release and terminate without recursive bootstrap;
+    explicit copies must stay within selected destinations.
+- id: install-copy-refuses-source-inside-prunable-backups
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_copy_refuses_source_inside_prunable_backups
+  motivating_defect: Native failure must preserve the reviewed release and terminate without recursive bootstrap;
+    explicit copies must stay within selected destinations.
+- id: stop-committed-source-local-handoff-survives-release
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_committed_source_local_handoff_survives_release
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-local-ready-alone-does-not-exonerate-uncommitted-source
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_local_ready_alone_does_not_exonerate_uncommitted_source
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-completed-local-source-still-checks-structured-project
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_completed_local_source_still_checks_structured_project
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-local-completion-integrity-defects-remain-blocked
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_local_completion_integrity_defects_remain_blocked
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-local-completion-distinguishes-committed-deletion
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_local_completion_distinguishes_committed_deletion
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-empty-remote-paths-cannot-disguise-project-records-as-source
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_empty_remote_paths_cannot_disguise_project_records_as_source
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-ordinary-source-projects-directory-is-not-registry-adoption
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_ordinary_source_projects_directory_is_not_registry_adoption
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-local-completion-preserves-foreign-manifests-claims-and-dirty-files
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_local_completion_preserves_foreign_manifests_claims_and_dirty_files
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-local-completion-rechecks-evidence-across-concurrent-changes
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_local_completion_rechecks_evidence_across_concurrent_changes
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-local-completion-invalid-json-and-file-types-fail-closed
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_local_completion_invalid_json_and_file_types_fail_closed
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-committed-binary-and-executable-source-use-exact-git-objects
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_committed_binary_and_executable_source_use_exact_git_objects
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-rewritten-registry-cannot-erase-retained-adoption
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_rewritten_registry_cannot_erase_retained_adoption
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-local-completion-ignores-ambient-git-redirects
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_local_completion_ignores_ambient_git_redirects
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-fake-ambient-index-cannot-hide-staged-source
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_fake_ambient_index_cannot_hide_staged_source
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-observer-never-executes-configured-fsmonitor-or-clean-filters
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_observer_never_executes_configured_fsmonitor_or_clean_filters
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-observer-preserves-configured-safe-directory-trust
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_observer_preserves_configured_safe_directory_trust
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-replacement-objects-cannot-substitute-committed-evidence
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_replacement_objects_cannot_substitute_committed_evidence
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-missing-promisor-object-never-contacts-a-remote
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_local_completion.py::test_missing_promisor_object_never_contacts_a_remote
+  motivating_defect: A released owner with committed local source must finish without new authority; incomplete
+    or unsafe attribution must continue to block.
+- id: stop-owner-authority
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_owner_checkpoint_authority_is_preserved
+  motivating_defect: Observer completion must preserve active-owner checkpoint obligations and the native consumer
+    wire contract.
+- id: stop-native-wire
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_stop_output_conforms_to_native_codex_consumer_schema
+  motivating_defect: Observer completion must preserve active-owner checkpoint obligations and the native consumer
+    wire contract.
+- id: release-metadata-coherence
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
+  motivating_defect: The released manifests and current changelog must agree; documented maintenance contracts must
+    remain coherent.

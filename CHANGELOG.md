@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.100.3] - 2026-09-16
+
+Native plugin failures stop installation without reentering the bootstrap
+transaction. Explicit skill copies use the selected source and client directories,
+with checks for unsafe paths and overlapping source, target or backup roots.
+Released sessions with committed local source can finish after the Stop observer
+verifies their exact native identity, attribution and local receipt. Pending
+publication records remain intact; no checkpoint or publication authority is issued.
+
 ## [4.100.2] - 2026-09-16
 
 The Codex cache guardian resolves hook targets from the `synthesis

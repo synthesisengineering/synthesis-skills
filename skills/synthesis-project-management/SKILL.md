@@ -226,9 +226,9 @@ For an explicitly requested refresh-and-report pass, use the current installed
 `synthesis-checkpoint` mode. It inspects and reports without project edits,
 state generation, activation or claim acquisition; normal record-owner closure
 above applies only to work actually written under accepted authority.
-An unclaimed session inspecting a discovered structured project, with valid
-native identity, no exact-session pending edits and a clean Git subtree, can finish with `NOT_APPLICABLE`; this
-issues no receipt and proves neither successful recovery nor execution authority.
+An unclaimed session inspecting a discovered structured project, with valid native identity, no exact-session pending edits and a clean Git subtree, can finish with `NOT_APPLICABLE`; this issues no receipt and proves neither successful recovery nor execution authority.
+An exact-session source-only manifest may also remain after a completed local pause. Stop verifies the complete local receipt against committed files, Git identity and current attribution before accepting observer non-applicability;
+it preserves the manifest and grants no checkpoint or publication authority.
 Unresolved evidence remains explicit; see the checkpoint refresh reference for
 failure termination and client-specific behavior.
 For identity mismatches and stranded attribution, follow [checkpoint closure recovery](references/checkpoint-closure-recovery.md). A Stop
