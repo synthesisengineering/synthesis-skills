@@ -27,6 +27,13 @@ from system_contract import (
 
 COMPONENTS = frozenset({"git-hooks", "message-guard", "kernel", "day-end"})
 INTRODUCED_DEPENDENCIES = {
+    "skills/synthesis-project-management/scripts/coordination_archive.py": (
+        "skills/synthesis-project-management/scripts/coordination.py",
+    ),
+    "skills/synthesis-project-management/scripts/board_grammar.py": (
+        "skills/synthesis-project-management/scripts/coordination.py",
+        "skills/synthesis-project-management/scripts/coordination_schema.py",
+    ),
     "skills/synthesis-project-management/scripts/claim_scope.py": (
         "skills/synthesis-project-management/scripts/coordination.py",
         "skills/synthesis-git-hooks/scripts/pre-commit",
@@ -102,7 +109,7 @@ def _specs(home, state_dir, components):
         for name in ("pre-commit", "commit-msg", "_load_config.py"):
             result.append(("git-hooks", "skills/synthesis-git-hooks/scripts/" + name,
                            home / ".synthesis/git-hooks" / name, 0o755))
-        for name in ("coordination.py", "claim_scope.py", "coordination_schema.py", "pointer_lock.py", "peer_addressing.py"):
+        for name in ("coordination.py", "claim_scope.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py"):
             result.append(("git-hooks", "skills/synthesis-project-management/scripts/" + name,
                            home / ".synthesis/git-hooks" / name, 0o755))
         result.append(("git-hooks", "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85",

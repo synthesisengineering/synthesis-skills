@@ -103,6 +103,24 @@ def test_no_session_id_means_silence(board, tmp_path) -> None:
     assert INBOX.inbox_text({}, board=board, environ={}) == ""
 
 
+def test_live_inbox_refuses_stale_delivery_without_advancing_watermark(board, monkeypatch):
+    import coordination as live_engine
+    before = {str(p.relative_to(board.parent)): p.read_bytes() for p in board.parent.rglob("*") if p.is_file()}
+    monkeypatch.setattr(live_engine, "lease_refresh", lambda _board: {"configured": True, "refreshed": False, "error": "fixture outage"})
+    with pytest.raises(RuntimeError, match="fixture outage"):
+        INBOX.inbox_text({"session_id": ME_SID}, board=board, environ=ME_ENV)
+    after = {str(p.relative_to(board.parent)): p.read_bytes() for p in board.parent.rglob("*") if p.is_file()}
+    assert after == before
+
+
+def test_diagnostic_inbox_never_fetches_or_marks(board, monkeypatch):
+    import coordination as live_engine
+    monkeypatch.setattr(live_engine, "lease_refresh", lambda *_a, **_kw: pytest.fail("diagnostic must not refresh"))
+    first = INBOX.inbox_text({"session_id": ME_SID}, board=board, environ=ME_ENV, strict=True, mark=False)
+    assert "2 unread message(s)" in first
+    assert INBOX.inbox_text({"session_id": ME_SID}, board=board, environ=ME_ENV, strict=True, mark=False) == first
+
+
 def test_hook_process_emits_additional_context_json_or_nothing(board, tmp_path) -> None:
     script = SCRIPTS_DIR / "board_inbox.py"
     env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE") and k != "SYNTHESIS_CLIENT_SESSION_REF"}

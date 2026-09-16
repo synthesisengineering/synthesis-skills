@@ -47,38 +47,12 @@ DEFAULT_BOARD = Path.home() / ".synthesis" / "coordination" / "active-sessions.m
 
 def _board_rows(text: str, *, strict: bool = False):
     """Use the engine's parser, checking diagnostic input cannot disappear."""
-    from coordination import board_schema, parse_cells, rows
-    from coordination_schema import SCHEMA_VERSION, V1_COLUMNS, V2_COLUMNS, V3_COLUMNS, V4_COLUMNS, validate_identity
+    from board_grammar import board_schema
+    from coordination import rows
+    from coordination_schema import validate_identity
 
-    if strict:
-        declared = board_schema(text)
-        if (
-            declared is None or not 1 <= declared <= SCHEMA_VERSION
-            or sum(line.startswith("Schema:") for line in text.splitlines()) != 1
-        ):
-            raise ValueError("coordination board has an invalid or unsupported schema")
-        lines = text.splitlines()
-        if sum(line.strip() == "## Active sessions" for line in lines) != 1:
-            raise ValueError("coordination board must have one Active sessions section")
-        if sum(line.strip() == "## Messages" for line in lines) != 1:
-            raise ValueError("coordination board must have one Messages section")
-        start = next(i for i, line in enumerate(lines) if line.strip() == "## Active sessions")
-        end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
-        table = [line for line in lines[start + 1:end] if line.strip()]
-        columns = {1: V1_COLUMNS, 2: V2_COLUMNS, 3: V3_COLUMNS, 4: V4_COLUMNS}[declared]
-        header_cells = [cell.strip() for cell in table[0].split("|")[1:-1]] if table else []
-        separator_cells = [cell.strip() for cell in table[1].split("|")[1:-1]] if len(table) > 1 else []
-        if (
-            len(table) < 2 or any(not line.startswith("|") or not line.rstrip().endswith("|") for line in table[:2])
-            or header_cells != list(columns) or len(separator_cells) != len(columns)
-            or any(re.fullmatch(r"-{3,}", cell) is None for cell in separator_cells)
-        ):
-            raise ValueError("coordination board has an invalid active-session table header")
-        for line in table[2:]:
-            cells = parse_cells(line)
-            if not line.rstrip().endswith("|") or cells is None or len(cells) != len(columns):
-                raise ValueError("coordination board has an invalid active-session row")
-    board_rows = rows(text)
+    declared = board_schema(text)
+    board_rows = rows(text, strict=strict)
     if strict:
         for row in board_rows:
             if (declared >= 3 and not row.session_uuid) or (row.session_uuid and validate_identity(row.identity)):
@@ -133,6 +107,7 @@ def inbox_text(
     environ: dict[str, str] | None = None,
     mark: bool = True,
     strict: bool = False,
+    refresh_coordination: bool | None = None,
 ) -> str:
     """Messages for this session's claimed seat, or nothing.
 
@@ -144,6 +119,9 @@ def inbox_text(
     key = identity.sender_key
     if not key and not strict:
         return ""
+    if (not strict if refresh_coordination is None else refresh_coordination):
+        from coordination import require_fresh_board
+        require_fresh_board(board)
     try:
         text = board.read_text(encoding="utf-8")
     except FileNotFoundError:

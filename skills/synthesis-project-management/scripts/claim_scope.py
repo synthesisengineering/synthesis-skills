@@ -7,6 +7,7 @@ sibling checkout. Missing identity is an error, not evidence of foreign work.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from functools import lru_cache
 import fnmatch
 import os
@@ -179,10 +180,105 @@ def _ordinary_nonrepo_scope(pattern: str) -> bool:
 
 
 class ClaimScopeResolver:
-    """One-operation identity cache; never retained across board transactions."""
+    """One-operation registration cache; native identity is always revalidated."""
     def __init__(self):
-        self.identities = {}
         self.registered = {}
+        self.registry_stamps = {}
+        self._observations = {}
+        self._snapshot = None
+
+    @staticmethod
+    def _identity_prefix(pattern: str) -> str:
+        prefix = Path(_prefix(pattern) or "/")
+        while not prefix.is_dir() and prefix != prefix.parent:
+            prefix = prefix.parent
+        # A checkout's ordinary descendants share Git's administrative scope.
+        # Keep discovery overrides and mount/bare boundaries literal: moving a
+        # native probe across one could change the identity Git would discover.
+        # Every original path is checked again at snapshot exit, so a newly
+        # introduced nested marker cannot hide behind a grouped representative.
+        if os.environ.get("GIT_CEILING_DIRECTORIES") or os.environ.get("GIT_DISCOVERY_ACROSS_FILESYSTEM"):
+            return str(prefix)
+        try:
+            device = prefix.stat().st_dev
+            for directory in (prefix, *prefix.parents):
+                if directory.stat().st_dev != device:
+                    break
+                if os.path.lexists(directory / ".git"):
+                    return str(directory)
+                if (directory / "HEAD").is_file() and (directory / "objects").is_dir():
+                    break
+        except OSError as exc:
+            raise ClaimIdentityError("claim administrative boundary is unavailable") from exc
+        return str(prefix)
+
+    def _observe(self, pattern):
+        key = self._identity_prefix(pattern)
+        try:
+            result = self._native_identity(pattern)
+        except ClaimIdentityError as exc:
+            return (key, "error", type(exc), str(exc))
+        return (key, "ok", result, self._observations[key], self.registered[result[0]])
+
+    @contextmanager
+    def snapshot(self, claims):
+        """Compare a bounded set provisionally, then revalidate before return.
+
+        Only pure pair comparisons may run inside this context. A caller must
+        not publish an authority verdict or mutate protected state until exit
+        succeeds. Native probes at both bounds cover every physical prefix;
+        no identity verdict survives this context or another board operation.
+        """
+        if self._snapshot is not None:
+            raise ClaimIdentityError("nested claim identity snapshots are forbidden")
+        physical = []
+        observations = {}
+        for claim, workspaces in claims:
+            if re.match(r"^[A-Za-z][A-Za-z0-9_-]*:", plain(claim)):
+                continue
+            target = self._physical(claim, workspaces)
+            key = self._identity_prefix(target) if Path(target).is_absolute() else None
+            physical.append((claim, workspaces, target, key))
+            if Path(target).is_absolute():
+                if key not in observations:
+                    observations[key] = (target, self._observe(target))
+        self._snapshot = observations
+        try:
+            yield
+            self._snapshot = None
+            for claim, workspaces, target, key in physical:
+                if self._physical(claim, workspaces) != target:
+                    raise ClaimIdentityError("claim identity snapshot physical scope changed")
+                if key is not None and self._identity_prefix(target) != key:
+                    raise ClaimIdentityError("claim identity snapshot administrative boundary changed")
+            for target, observed in observations.values():
+                if self._observe(target) != observed:
+                    raise ClaimIdentityError("claim identity snapshot changed or became unreadable")
+        finally:
+            self._snapshot = None
+
+    @staticmethod
+    def _marker(path: Path):
+        try:
+            info = path.lstat()
+            data = path.read_bytes() if stat.S_ISREG(info.st_mode) else None
+            return (info.st_dev, info.st_ino, info.st_mode, info.st_mtime_ns, info.st_ctime_ns, data)
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise ClaimIdentityError("metadata claim administrative identity is unavailable") from exc
+
+    def _registry_stamp(self, common: str):
+        root = Path(common)
+        directory = root / "worktrees"
+        try:
+            entries = sorted(directory.iterdir()) if directory.is_dir() else []
+            return (self._marker(root), self._marker(root / "config"), self._marker(root / "config.worktree"),
+                    self._marker(directory), tuple((entry.name, self._marker(entry),
+                        self._marker(entry / "gitdir"), self._marker(entry / "commondir"),
+                        self._marker(entry / "config.worktree")) for entry in entries))
+        except OSError as exc:
+            raise ClaimIdentityError("metadata claim worktree registry is unavailable") from exc
 
     def _physical(self, claim: str, workspaces) -> str:
         raw = os.path.expanduser(plain(claim))
@@ -206,12 +302,20 @@ class ClaimScopeResolver:
         return candidates.pop()
 
     def _identity(self, pattern: str) -> tuple[str, str]:
-        prefix = Path(_prefix(pattern) or "/")
-        while not prefix.is_dir() and prefix != prefix.parent:
-            prefix = prefix.parent
-        key = str(prefix)
-        if key in self.identities:
-            return self.identities[key]
+        if self._snapshot is None:
+            return self._native_identity(pattern)
+        key = self._identity_prefix(pattern)
+        if key not in self._snapshot:
+            raise ClaimIdentityError("claim identity snapshot encountered an unobserved scope")
+        observed = self._snapshot[key][1]
+        if observed[1] == "error":
+            raise observed[2](observed[3])
+        result = observed[2]
+        self.registered[result[0]] = observed[4]
+        return result
+
+    def _native_identity(self, pattern: str) -> tuple[str, str]:
+        key = self._identity_prefix(pattern)
         env = os.environ.copy()
         for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE"):
             env.pop(name, None)
@@ -223,17 +327,28 @@ class ClaimScopeResolver:
             if done.returncode:
                 raise _NoVerifiedCheckout("metadata claim has no verified Git checkout")
             return done.stdout
+        # Git owns identity semantics, including worktree config, conditional
+        # includes and environment config. Neither an exact prefix nor an
+        # unchanged .git marker establishes a reusable identity verdict.
+        configuration = git("config", "--null", "--show-origin", "--list")
         lines = git("rev-parse", "--path-format=absolute", "--git-common-dir", "--show-toplevel").splitlines()
         if len(lines) != 2 or not all(Path(line).is_absolute() and Path(line).is_dir() for line in lines):
             raise ClaimIdentityError("metadata claim Git identity is ambiguous")
         common, root = (str(Path(line).resolve()) for line in lines)
-        registered = [str(Path(item[len("worktree "):]).resolve()) for item in git("worktree", "list", "--porcelain", "-z").split("\0") if item.startswith("worktree ")]
+        before = self._registry_stamp(common)
+        binding = (before, configuration)
+        if self.registry_stamps.get(common) == binding:
+            registered = self.registered[common]
+        else:
+            registered = tuple(str(Path(item[len("worktree "):]).resolve()) for item in git("worktree", "list", "--porcelain", "-z").split("\0") if item.startswith("worktree "))
+        if self._registry_stamp(common) != before or git("config", "--null", "--show-origin", "--list") != configuration:
+            raise ClaimIdentityError("metadata claim worktree identity changed during discovery")
         if registered.count(root) != 1:
             raise ClaimIdentityError("metadata claim checkout is not uniquely registered")
         self.registered[common] = tuple(registered)
-        result = (common, root)
-        self.identities[key] = result
-        return result
+        self.registry_stamps[common] = binding
+        self._observations[key] = binding
+        return (common, root)
 
     def _scope_identity(self, pattern: str):
         try:

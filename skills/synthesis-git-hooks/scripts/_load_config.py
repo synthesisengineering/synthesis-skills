@@ -50,16 +50,23 @@ https://github.com/synthesisengineering/synthesis-skills.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
+import locale
+import marshal
 import os
 import re
 import shlex
+import shutil
+import stat
 import subprocess
 import sys
+import uuid
 import warnings
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-SIDECAR_VERSION = "2.5.0"
+SIDECAR_VERSION = "2.6.0"
 REQUIRED_CONFIG_VERSION = 2
 
 DEFAULT_CONFIG = Path.home() / ".synthesis" / "git-hook-config.yaml"
@@ -73,6 +80,8 @@ COORDINATION_ENGINE_FILES = (
     "coordination.py",
     "claim_scope.py",
     "coordination_schema.py",
+    "board_grammar.py",
+    "coordination_archive.py",
     "pointer_lock.py",
     "peer_addressing.py",
 )
@@ -492,7 +501,7 @@ ALL_PATTERN_KEYS = (
 )
 
 
-def validate_all_patterns(config: dict) -> List[str]:
+def validate_all_patterns(config: dict, grep_executable: Optional[str] = None) -> List[str]:
     """Return problems for every configured regex in the policy.
 
     v2.1 validated only the tier patterns. An invalid exclusion or
@@ -533,9 +542,168 @@ def validate_all_patterns(config: dict) -> List[str]:
                     re.compile(pattern)
             except re.error as exc:
                 problems.append(f"{key}: rejected by python re: {pattern!r} ({exc})")
-            err = _grep_validates(pattern)
+            err = (_grep_validates(pattern, grep_executable)
+                   if grep_executable else _grep_validates(pattern))
             if err:
                 problems.append(f"{key}: rejected by grep -E: {pattern!r} ({err})")
+    return problems
+
+
+def _validation_json(value: Any) -> bytes:
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _validation_file_identity(path: Path) -> dict:
+    resolved = path.resolve(strict=True)
+    with resolved.open("rb") as handle:
+        before = os.fstat(handle.fileno())
+        if not stat.S_ISREG(before.st_mode):
+            raise OSError("validator dependency is not a regular file")
+        digest = hashlib.sha256()
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+        after = os.fstat(handle.fileno())
+    def fields(value):
+        return (value.st_dev, value.st_ino, value.st_size,
+                value.st_mtime_ns, value.st_ctime_ns, value.st_mode)
+    if fields(before) != fields(after) or fields(after) != fields(resolved.stat()):
+        raise OSError("validator dependency changed while reading")
+    return {"path": str(resolved), "sha256": digest.hexdigest(), "stat": fields(after)}
+
+
+def _validation_binding(config_bytes: bytes) -> Optional[dict]:
+    """Bind successful validation to its exact inputs, never emitted policy."""
+    try:
+        grep = shutil.which("grep")
+        if not grep:
+            return None
+        return {
+            "config_sha256": hashlib.sha256(config_bytes).hexdigest(),
+            "validator": _validation_file_identity(Path(__file__)),
+            "validator_code_sha256": hashlib.sha256(marshal.dumps(tuple(
+                function.__code__ for function in (
+                    parse_simple_yaml, _strip_trailing_comment, _parse_scalar,
+                    _split_key, flatten_patterns, validate_all_patterns, _grep_validates)
+            ))).hexdigest(),
+            "sidecar_version": SIDECAR_VERSION,
+            "grep_lookup": os.path.abspath(grep),
+            "grep": _validation_file_identity(Path(grep)),
+            "python": _validation_file_identity(Path(sys.executable)),
+            "python_version": sys.version,
+            "python_implementation": [sys.implementation.name, sys.implementation.cache_tag],
+            "locale": {key: value for key, value in os.environ.items()
+                       if key.startswith("LC_") or key in (
+                           "LANG", "LANGUAGE", "GREP_OPTIONS", "POSIXLY_CORRECT")},
+            "python_locale": locale.setlocale(locale.LC_CTYPE),
+            "python_encoding": locale.getpreferredencoding(False),
+        }
+    except Exception:
+        # An unverifiable optimization must run the real validator.
+        return None
+
+
+def _pattern_cache_directory(create: bool) -> int:
+    root = Path(os.environ.get("SYNTHESIS_PATTERN_CACHE_DIR") or (
+        Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis")))
+        / "git-hook-pattern-cache"))
+    root = Path(os.path.abspath(root))
+    descriptor = os.open(root.anchor, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for index, part in enumerate(root.parts[1:]):
+            try:
+                child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                dir_fd=descriptor)
+            except FileNotFoundError:
+                if not create or index != len(root.parts) - 2:
+                    raise
+                try:
+                    os.mkdir(part, mode=0o700, dir_fd=descriptor)
+                except FileExistsError:
+                    pass
+                child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        metadata = os.fstat(descriptor)
+        if metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) != 0o700:
+            raise OSError("pattern cache directory is not private and writable")
+        return descriptor
+    except Exception:
+        os.close(descriptor)
+        raise
+
+
+def _pattern_cache_hit(binding: dict) -> bool:
+    directory = None
+    try:
+        directory = _pattern_cache_directory(False)
+        name = hashlib.sha256(_validation_json(binding)).hexdigest() + ".json"
+        descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                             dir_fd=directory)
+        with os.fdopen(descriptor, "rb") as handle:
+            metadata = os.fstat(handle.fileno())
+            if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid()
+                    or stat.S_IMODE(metadata.st_mode) != 0o600 or metadata.st_nlink != 1
+                    or metadata.st_size > 65536):
+                return False
+            document = json.loads(handle.read())
+        if not isinstance(document, dict) or set(document) != {"schema", "binding", "valid", "checksum"}:
+            return False
+        checksum = document.pop("checksum")
+        # JSON normalizes the stat tuples in the in-memory binding to lists.
+        return (type(document["schema"]) is int and document["schema"] == 1
+                and document["valid"] is True
+                and _validation_json(document["binding"]) == _validation_json(binding)
+                and checksum == hashlib.sha256(_validation_json(document)).hexdigest())
+    except Exception:
+        return False
+    finally:
+        if directory is not None:
+            os.close(directory)
+
+
+def _publish_pattern_validation(binding: dict) -> None:
+    """Atomically create an immutable receipt; never replace an existing file.
+
+    Competing writers may both validate; the first complete receipt wins. No
+    hook waits for a lock, and unsafe/corrupt existing entries are left intact.
+    """
+    directory = descriptor = temporary = None
+    try:
+        directory = _pattern_cache_directory(True)
+        name = hashlib.sha256(_validation_json(binding)).hexdigest() + ".json"
+        document = {"schema": 1, "binding": binding, "valid": True}
+        document["checksum"] = hashlib.sha256(_validation_json(document)).hexdigest()
+        temporary = "." + uuid.uuid4().hex + ".tmp"
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=directory)
+        with os.fdopen(descriptor, "wb") as handle:
+            descriptor = None
+            handle.write(_validation_json(document))
+        os.link(temporary, name, src_dir_fd=directory, dst_dir_fd=directory,
+                follow_symlinks=False)
+    except Exception:
+        pass
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if temporary is not None and directory is not None:
+            try:
+                os.unlink(temporary, dir_fd=directory)
+            except OSError:
+                pass
+        if directory is not None:
+            os.close(directory)
+
+
+def _validated_pattern_problems(config: dict, config_bytes: bytes) -> List[str]:
+    binding = _validation_binding(config_bytes)
+    if binding is not None and _pattern_cache_hit(binding):
+        return []
+    executable = binding["grep"]["path"] if binding is not None else None
+    problems = validate_all_patterns(config, executable)
+    if not problems and binding is not None and binding == _validation_binding(config_bytes):
+        _publish_pattern_validation(binding)
     return problems
 
 
@@ -547,7 +715,8 @@ def load_config(path: Path) -> dict:
         )
         sys.exit(2)
     try:
-        config = parse_simple_yaml(path.read_text())
+        config_bytes = path.read_bytes()
+        config = parse_simple_yaml(config_bytes.decode("utf-8"))
     except ConfigError as exc:
         print(
             f"synthesis-git-hooks: cannot parse {path}: {exc}\n"
@@ -591,7 +760,7 @@ def load_config(path: Path) -> dict:
             file=sys.stderr,
         )
         sys.exit(2)
-    problems = validate_all_patterns(config)
+    problems = _validated_pattern_problems(config, config_bytes)
     if problems:
         print(
             "synthesis-git-hooks: invalid pattern(s) in "
@@ -778,7 +947,7 @@ def delegate_required_control(repo_root: Path) -> Tuple[bool, str]:
 
 # ─── doctor ──────────────────────────────────────────────────────────────
 
-def _grep_validates(pattern: str) -> Optional[str]:
+def _grep_validates(pattern: str, executable: Optional[str] = None) -> Optional[str]:
     """Return an error string if `grep -E` rejects the pattern, else None."""
     try:
         proc = subprocess.run(
@@ -786,6 +955,7 @@ def _grep_validates(pattern: str) -> Optional[str]:
             input="",
             capture_output=True,
             text=True,
+            **({"executable": executable} if executable else {}),
         )
     except FileNotFoundError:  # pragma: no cover
         return "grep not found on PATH"

@@ -468,11 +468,10 @@ def test_shipped_python_hooks_disable_bytecode_writes() -> None:
         for registration in registrations
         for hook in registration["hooks"]
         if hook.get("type") == "command"
-        and hook.get("command", "").startswith("python3 ")
     ]
 
     assert commands
-    assert all(command.startswith("python3 -B ") for command in commands)
+    assert all(command.startswith('"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis" exec-public ') for command in commands)
 
 
 def test_release_lock_defers_guardian_without_writing(tmp_path: Path) -> None:
@@ -558,7 +557,7 @@ def test_launchd_definition_is_persistent_and_runs_stable_runtime(tmp_path: Path
     payload = plistlib.loads(guardian._launchd_payload(home, runtime))
 
     assert payload["Label"] == guardian.LABEL
-    assert payload["ProgramArguments"] == [os.sys.executable, str(runtime), "--watch"]
+    assert payload["ProgramArguments"] == [os.sys.executable, "-B", str(runtime), "--watch"]
     assert payload["RunAtLoad"] is True
     assert payload["KeepAlive"] is True
     assert payload["ThrottleInterval"] == 10

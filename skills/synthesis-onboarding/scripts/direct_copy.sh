@@ -253,13 +253,16 @@ checksum_stdin() {
 }
 
 # Checksum of an entire skill directory: every file except installer-written
-# provenance (.source.json) and Finder noise (.DS_Store), keyed by relative
-# path so an installed copy and its source dir compare equal. Whole-directory
+# provenance (.source.json), Finder noise (.DS_Store), and generated Python
+# bytecode, keyed by relative path so an installed copy and its source dir
+# compare equal even after imports or compileall. Whole-directory
 # coverage matters: drift in scripts/, references/, or data tables
 # (e.g. tiers.yaml) must be detected, not just drift in SKILL.md.
 skill_dir_checksum() {
     (cd "$1" 2>/dev/null || exit 0
-     find . -type f ! -name '.source.json' ! -name '.DS_Store' -print0 \
+     find . -type d -name '__pycache__' -prune -o \
+        -type f ! -name '.source.json' ! -name '.DS_Store' \
+        ! -name '*.pyc' ! -name '*.pyo' -print0 \
         | LC_ALL=C sort -z \
         | xargs -0 $CHECKSUM_TOOL 2>/dev/null) | checksum_stdin
 }

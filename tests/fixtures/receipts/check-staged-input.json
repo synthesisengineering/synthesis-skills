@@ -1,0 +1,30 @@
+{
+  "board_text": "# Synthetic receipt input; never a coordination authority\n",
+  "session": {
+    "agent": "Fixture",
+    "claims": [
+      "/fixture/records/projects/demo/",
+      "/fixture/records/projects/index.yaml",
+      "/fixture/skills/skills/synthesis-project-management/",
+      "/fixture/skills/docs/contracts/",
+      "/fixture/skills/tests/fixtures/receipts/",
+      "/fixture/skills/skills/synthesis-autopilot/scripts/test_autopilot_gate.py"
+    ],
+    "client_ref": "",
+    "compact_id": "",
+    "context_role": "owner",
+    "goal": "contract fixture",
+    "heartbeat": "2000-01-02T03:04:05+00:00",
+    "legacy_id": "",
+    "machine": "fixture-host",
+    "mode": "fixture",
+    "project": "demo",
+    "session_uuid": "018f0000-0000-7000-8000-000000000001",
+    "speakable_id": "",
+    "started": "2000-01-02T03:04:05+00:00",
+    "status": "active",
+    "workspaces": [
+      "/fixture/records @ project/receipt-demo"
+    ]
+  }
+}

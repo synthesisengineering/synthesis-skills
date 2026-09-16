@@ -495,6 +495,9 @@ def build(
 ) -> str:
     now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z (%A)")
     lines = [f"Verified local time: {now}."]
+    if not diagnostic:
+        from coordination import require_fresh_board
+        require_fresh_board(coordination_board)
     sessions = active_session_ids(coordination_board)
     if sessions:
         lines.append(
@@ -567,7 +570,7 @@ def append_inbox(
     try:
         from board_inbox import inbox_text
 
-        extra = inbox_text(payload, board=board, mark=not diagnostic, strict=diagnostic)
+        extra = inbox_text(payload, board=board, mark=not diagnostic, strict=diagnostic, refresh_coordination=not diagnostic)
     except Exception as exc:  # the inbox never blocks a session start
         if diagnostic:
             raise

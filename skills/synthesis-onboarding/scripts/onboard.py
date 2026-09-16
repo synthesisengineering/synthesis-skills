@@ -94,7 +94,7 @@ from whole_system import (
     validate_personal_policy,
 )
 
-ENGINE_VERSION = "2.4.1"
+ENGINE_VERSION = "2.5.0"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -3375,6 +3375,8 @@ def _coordination_probe():
     required = [
         root / "coordination.py",
         root / "coordination_schema.py",
+        root / "board_grammar.py",
+        root / "coordination_archive.py",
         root / "peer_addressing.py",
     ]
     if not all(path.is_file() for path in required):

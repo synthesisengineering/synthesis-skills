@@ -722,9 +722,9 @@ def test_v1_board_migrates_without_losing_messages(tmp_path: Path) -> None:
 def test_status_json_reports_stale_legacy_session(tmp_path: Path, capsys) -> None:
     board = tmp_path / "active-sessions.md"
     board.write_text(
-        MODULE.template().replace(
+        MODULE.template().replace("Schema: v4", "Schema: v2").replace(
             MODULE.TABLE_HEADER,
-            MODULE.TABLE_HEADER
+            MODULE.table_header(MODULE.V2_COLUMNS)
             + "\n| A | Claude | unknown | unknown | yesterday | yesterday | "
             "interactive |  | work | repo/** | none | active |",
         ),
@@ -1749,6 +1749,7 @@ def _stale_board(tmp_path, heartbeat, worktree, status="active"):
     board = tmp_path / "board.md"
     board.write_text(
         "Schema: v3\n## Active sessions\n"
+        + MODULE.table_header(MODULE.V3_COLUMNS) + "\n"
         "| 01a01155-25a0-7c39-9af2-505104044949 | s-aaaa-bbbb-cccc | a-b-c-d-00001 |  | "
         f"Claude Code | {platform.node()} | proj | 2026-08-01T00:00:00+00:00 | {heartbeat} | "
         f"interactive | {worktree} | goal | area/** | owner | {status} |\n"
@@ -2342,7 +2343,7 @@ def test_every_command_notes_a_newer_installed_engine(tmp_path):
     relative = Path("skills") / "synthesis-project-management" / "scripts"
     older = cache / "4.80.0" / relative
     older.mkdir(parents=True)
-    for name in ("coordination.py", "claim_scope.py", "coordination_schema.py", "pointer_lock.py", "peer_addressing.py"):
+    for name in ("coordination.py", "claim_scope.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py"):
         (older / name).write_bytes((MODULE_PATH.parent / name).read_bytes())
     newer = cache / "4.81.0" / relative
     newer.mkdir(parents=True)

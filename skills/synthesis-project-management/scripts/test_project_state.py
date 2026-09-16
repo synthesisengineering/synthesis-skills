@@ -88,14 +88,15 @@ def commit_version(repo: Path, project: Path, version: str) -> str:
 
 def board(path: Path, rows: list[tuple[str, str, str, str]]) -> Path:
     header = (
-        "# Board\nLease: file:///fixture\n\n## Active sessions\n\n"
-        "| Session UUID | Compact ID | Speakable ID | Client session ref | Project | "
-        "Workspace(s) / branch | Claimed areas (advisory lock) | Context role | Started | Heartbeat | Status |\n"
-        "|---|---|---|---|---|---|---|---|---|---|---|\n"
+        "# Board\nSchema: v4\n\n## Active sessions\n\n"
+        "| session uuid | compact id | speakable id v1 | legacy id | agent | machine | client session ref | project | "
+        "started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
     )
     body = "".join(
-        f"| {session} | {compact} | words-1 | tool:{session} | {project} | {workspace} | "
-        f"{workspace}/projects/{project}/** | owner | 2026-09-03T12:00:00-04:00 | 2026-09-03T12:00:00-04:00 | active |\n"
+        f"| {session} | {compact} | words-1 | | agent | machine | tool:{session} | {project} | "
+        f"2026-09-03T12:00:00-04:00 | 2026-09-03T12:00:00-04:00 | interactive | {workspace} | fixture | "
+        f"{workspace}/projects/{project}/** | owner | active |\n"
         for session, compact, project, workspace in rows
     )
     path.write_text(header + body + "\n## Messages\n\n## Protocol\n", encoding="utf-8")
@@ -669,11 +670,15 @@ def test_unreachable_remote_is_unknown_not_green(tmp_path: Path) -> None:
 
 
 def test_unreachable_coordination_lease_is_unknown_not_green(tmp_path: Path) -> None:
+    from coordination_schema import identity_from_uuid
+
     repo, _project = init_repo(tmp_path)
+    identity = identity_from_uuid("018f0000-0000-7000-8000-000000000001")
     claims = board(
         tmp_path / "board.md",
-        [("018f0000-0000-7000-8000-000000000001", "s-abcd-efgh-jkmn", "alpha", str(repo))],
+        [(identity.session_uuid, identity.compact_id, "alpha", str(repo))],
     )
+    claims.write_text(claims.read_text(encoding="utf-8").replace("words-1", identity.speakable_id), encoding="utf-8")
     report = state.resolve_project(
         "alpha",
         repo / "projects" / "index.yaml",
@@ -812,7 +817,7 @@ def test_lifecycle_hook_fails_closed_when_lease_cannot_refresh(
     monkeypatch.setattr(
         state,
         "_refresh_coordination_board",
-        lambda _path: "coordination lease refresh failed: fixture outage",
+        lambda _path, **_kw: "coordination lease refresh failed: fixture outage",
     )
     verdict, issues = state.checkpoint_hook(
         {"session_id": session, "cwd": str(repo)},

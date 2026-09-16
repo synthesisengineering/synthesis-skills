@@ -859,6 +859,12 @@ def hook_definition_checks(source_root: Path) -> list[Check]:
             str(hook_file),
         )
         session_start = mapping.get("SessionStart", [])
+        all_commands = [hook.get("command", "") for groups in mapping.values() for group in groups
+            for hook in group.get("hooks", []) if hook.get("type") == "command"]
+        pinned_launcher = '"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis" exec-public '
+        add(checks, "hook-definition.pinned-execution", bool(all_commands)
+            and all(command.startswith(pinned_launcher) and "--timeout-seconds " in command for command in all_commands),
+            "every public hook requires the setup-owned pinned launcher")
         commands = [
             hook.get("command", "")
             for group in session_start

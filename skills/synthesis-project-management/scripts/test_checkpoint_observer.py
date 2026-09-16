@@ -366,7 +366,7 @@ def desktop_owner(observer: SimpleNamespace) -> None:
     board(observer.board, [(FOREIGN, identity.compact_id, "alpha", str(observer.repo))])
     observer.board.write_text(observer.board.read_text().replace(f"tool:{FOREIGN}", "ccd:local_fixture"))
     peer_addressing.write_seat(
-        observer.board, session_uuid=FOREIGN, compact_id=identity.compact_id, machine="fixture",
+        observer.board, session_uuid=FOREIGN, compact_id=identity.compact_id, machine="machine",
         identity=peer_addressing.SelfIdentity(client="claude-code", harness_session_id=NATIVE,
                                              host_session_id="local_fixture"),
     )
@@ -386,7 +386,46 @@ def test_desktop_native_hook_matches_its_existing_seat_without_shell_override(ob
     assert json.loads(next(observer.receipts.glob("*.json")).read_text())["session_id"] == FOREIGN
 
 
-@pytest.mark.parametrize("defect", ["missing", "foreign_native", "wrong_host", "symlink", "fake_override"])
+@pytest.mark.parametrize("change", ["unchanged", "different-native", "released", "outage"])
+def test_owner_stop_forces_authority_after_passive_observation(observer, monkeypatch, change):
+    import coordination as live_engine
+    desktop_owner(observer)
+    content = observer.board.read_text()
+    (observer.root / "lease.json").write_text(json.dumps({"remote": "fixture-remote"}))
+    refresh_modes = []
+    fetches = []
+    publishes = []
+
+    def passive(_board, *, passive_stop=False):
+        refresh_modes.append(passive_stop)
+        return None
+
+    def fetch(_config):
+        fetches.append(True)
+        if change == "outage":
+            raise RuntimeError("fixture lease outage")
+        updated = content
+        if change == "different-native":
+            updated = updated.replace("ccd:local_fixture", "ccd:local_other")
+        elif change == "released":
+            updated = updated.replace("| active |", "| released |")
+        return "a" * 40, updated
+
+    monkeypatch.setattr(state, "_refresh_coordination_board", passive)
+    monkeypatch.setattr(live_engine, "lease_fetch", fetch)
+    monkeypatch.setattr(live_engine, "lease_publish", lambda *a: (publishes.append(a) or True, ""))
+    verdict, issues = state.checkpoint_hook(event(observer), coordination_board=observer.board,
+        receipt_root=observer.receipts, repo_guard_root=observer.guard)
+    assert refresh_modes == [True] and fetches == [True]
+    if change == "unchanged":
+        assert (verdict, issues) == ("PASS", []) and len(publishes) == 1
+        assert list(observer.receipts.glob("*.json"))
+    else:
+        assert verdict == "FAIL" and issues
+        assert_no_receipt(observer)
+
+
+@pytest.mark.parametrize("defect", ["missing", "foreign_native", "wrong_host", "wrong_machine", "symlink", "fake_override"])
 def test_desktop_claim_mapping_never_accepts_unbound_authority(observer: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, defect: str) -> None:
     desktop_owner(observer)
     path = peer_addressing.seat_path(observer.board, FOREIGN)
@@ -398,7 +437,8 @@ def test_desktop_claim_mapping_never_accepts_unbound_authority(observer: SimpleN
         path.symlink_to(saved)
     else:
         data = json.loads(path.read_text())
-        data["harness_session_id" if defect == "foreign_native" else "host_session_id"] = FOREIGN
+        field = {"foreign_native": "harness_session_id", "wrong_host": "host_session_id", "wrong_machine": "machine"}[defect]
+        data[field] = FOREIGN
         path.write_text(json.dumps(data))
     if defect == "fake_override":
         monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "ccd:local_fixture")
@@ -422,7 +462,7 @@ def test_registered_stop_entrypoint_uses_native_identity(observer: SimpleNamespa
         observer.board.write_text(observer.board.read_text().replace(f"tool:{FOREIGN}", f"codex:{NATIVE}"))
     # Only the remote lease transport is replaced; the registered hook's CLI,
     # native transcript reader, claim matcher, state verifier and wire emitter run.
-    monkeypatch.setattr(state, "_refresh_coordination_board", lambda _board: None)
+    monkeypatch.setattr(state, "_refresh_coordination_board", lambda _board, **_kw: None)
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(event(observer, client))))
     assert state.main(["hook", "--coordination-board", str(observer.board),
                        "--receipt-root", str(observer.receipts), "--repo-guard-root", str(observer.guard)]) == 0

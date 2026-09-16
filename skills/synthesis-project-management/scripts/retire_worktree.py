@@ -15,11 +15,15 @@ directory, and refuses every unsafe state:
 - the target must be a linked worktree of that repository, never its main
   worktree, and never a directory containing the current working directory;
 - the worktree must be completely clean (tracked and untracked);
-- the checked-out branch must be an ancestor of the verification base
+- the checked-out HEAD must be an ancestor of the verification base
   (default: the remote's fetched main) — by default after a fresh fetch, so
   "merged" means merged on the REMOTE, not in a stale local ref;
-- the local branch is deleted with git's safe delete only, and the remote
-  branch only when --delete-remote is passed.
+- local branch deletion checks the recorded head and delegates checked-out and
+  ancestry protection to native Git, using a pinned remote base as its upstream;
+- the remote branch is deleted only when --delete-remote is passed.
+
+Verified detached worktrees use the same clean-state, ancestry and manifest
+checks. They retire without deleting any local or remote branch.
 
 Nothing here uses unconditional force. Optional remote deletion uses only a
 commit-bound --force-with-lease compare-and-delete operation, and nothing is
@@ -33,10 +37,12 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
 import tempfile
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -66,6 +72,7 @@ def run(
         text=True,
         timeout=timeout,
         check=False,
+        env={**os.environ, "LC_ALL": "C"},
     )
 
 
@@ -282,12 +289,94 @@ def matching_retirement_intent(
     return matches[0] if matches else None
 
 
+def delete_local_branch(
+    repository: Path, branch: str, expected_head: str, *,
+    base_ref: str, base_oid: str,
+) -> None:
+    """Use native safe deletion against an immutable, command-selected upstream.
+
+    Git owns checked-out-branch refusal and config cleanup. The preflight checks
+    are observations, not global serialization of arbitrary concurrent Git.
+    The lifecycle lock serializes this helper only; it cannot lock git switch.
+    """
+    local_ref = f"refs/heads/{branch}"
+    config_result = run(repository, "rev-parse", "--path-format=absolute", "--git-path", "config")
+    if config_result.returncode != 0 or not Path(config_result.stdout.strip()).is_absolute():
+        raise ValueError("Git configuration path cannot be verified")
+    config = Path(config_result.stdout.strip())
+    validate_state_paths(config)
+    if not stat.S_ISREG(config.stat().st_mode):
+        raise ValueError("Git configuration is not a regular file")
+    if os.path.lexists(config.with_name(config.name + ".lock")):
+        raise ValueError("Git configuration is locked; branch and config retained")
+    exists = run(repository, "show-ref", "--verify", "--quiet", local_ref)
+    if exists.returncode == 1:
+        remaining = run(repository, "config", "--local", "--get-regexp",
+                        r"^branch\." + re.escape(branch) + r"\.")
+        if remaining.returncode != 1:
+            raise ValueError("local branch is absent but its configuration remains or cannot be verified; inspect it before retirement")
+        return
+    if exists.returncode != 0:
+        raise ValueError("local branch cannot be inspected before cleanup")
+    if run(repository, "symbolic-ref", "--quiet", local_ref).returncode != 1:
+        raise ValueError("local branch is symbolic or cannot be verified as a direct ref")
+    if any(entry.get("branch") == local_ref for entry in worktree_entries(repository)):
+        raise ValueError("local branch is checked out; branch and config retained")
+    current = run(repository, "rev-parse", "--verify", local_ref)
+    if current.returncode != 0 or current.stdout.strip() != expected_head:
+        raise ValueError(f"local branch no longer equals verified retirement head {expected_head}")
+
+    merge = run(repository, "config", "--get-all", f"branch.{branch}.merge")
+    if merge.returncode not in {0, 1}:
+        raise ValueError("branch upstream configuration cannot be read")
+    merge_refs = list(dict.fromkeys(merge.stdout.splitlines())) if merge.returncode == 0 else [local_ref]
+    if not merge_refs or any(run(repository, "check-ref-format", ref).returncode != 0 for ref in merge_refs):
+        raise ValueError("branch upstream merge configuration is not a set of valid refs")
+    identifier = uuid.uuid4().hex
+    remote_name = "synthesis-retirement-" + identifier
+    collision = run(repository, "config", "--get-regexp", r"^remote\." + remote_name + r"\.")
+    if collision.returncode != 1:
+        raise ValueError("temporary retirement remote name is configured or cannot be verified absent")
+    pinned_ref = "refs/synthesis-retirement/" + identifier
+    created = run(repository, "update-ref", pinned_ref, base_oid, "0" * len(base_oid))
+    if created.returncode != 0:
+        raise ValueError("cannot pin verified retirement base: " + created.stderr.strip())
+    try:
+        options = ["-c", f"branch.{branch}.remote={remote_name}",
+                   "-c", f"remote.{remote_name}.url=."]
+        # branch.merge is multivalued: another -c merge=... does not replace
+        # its first value. Map every existing merge source through a unique
+        # command-only remote, to a real ref (a raw OID silently falls back to HEAD).
+        for ref in merge_refs:
+            options.extend(["-c", f"remote.{remote_name}.fetch={ref}:{pinned_ref}"])
+        if merge.returncode == 1:
+            options.extend(["-c", f"branch.{branch}.merge={local_ref}"])
+        upstream = run(repository, *options, "for-each-ref", "--format=%(upstream)", local_ref)
+        pinned = run(repository, "rev-parse", "--verify", pinned_ref)
+        if (upstream.returncode != 0 or upstream.stdout.strip() != pinned_ref
+                or pinned.returncode != 0 or pinned.stdout.strip() != base_oid):
+            raise ValueError("native branch deletion does not resolve to the pinned verification base")
+        deleted = run(repository, *options, "branch", "-d", "--", branch)
+        if deleted.returncode != 0:
+            raise ValueError(f"native branch deletion against {base_ref} at {base_oid} refused: " + deleted.stderr.strip())
+        remaining = run(repository, "config", "--local", "--get-regexp",
+                        r"^branch\." + re.escape(branch) + r"\.")
+        if remaining.returncode != 1:
+            raise ValueError("native branch deletion left branch configuration or its cleanup cannot be verified")
+    finally:
+        removed = run(repository, "update-ref", "-d", pinned_ref, base_oid)
+        if removed.returncode != 0:
+            raise ValueError("temporary retirement base cleanup refused; ref may have changed: " + pinned_ref)
+
+
 def cleanup_branch(
     repository: Path,
     branch: str,
     remote: str,
     expected_head: str,
     *,
+    base_ref: str,
+    base_oid: str,
     delete_remote: bool,
 ) -> int:
     branch_check = run(repository, "check-ref-format", "--branch", branch)
@@ -296,21 +385,32 @@ def cleanup_branch(
     head_check = run(repository, "rev-parse", "--verify", f"{expected_head}^{{commit}}")
     if head_check.returncode != 0 or head_check.stdout.strip() != expected_head:
         return fail("retirement intent head is not a canonical commit")
+    if (
+        not isinstance(base_ref, str)
+        or not base_ref.startswith(f"refs/remotes/{remote}/")
+        or run(repository, "check-ref-format", base_ref).returncode != 0
+    ):
+        return fail("retirement intent base is not a remote-tracking ref for " + remote)
+    if not isinstance(base_oid, str) or not base_oid:
+        return fail("retirement intent base commit is invalid")
+    base_check = run(repository, "rev-parse", "--verify", f"{base_oid}^{{commit}}")
+    if base_check.returncode != 0 or base_check.stdout.strip() != base_oid:
+        return fail(f"retirement intent base {base_ref} has no canonical commit")
+    ancestry = run(repository, "merge-base", "--is-ancestor", expected_head, base_oid)
+    if ancestry.returncode != 0:
+        return fail(
+            f"verified retirement head {expected_head} is not contained in "
+            f"pinned base {base_ref} at {base_oid}; no branch was deleted"
+            + (f": {ancestry.stderr.strip()}" if ancestry.stderr.strip() else "")
+        )
 
-    local_ref = f"refs/heads/{branch}"
-    local_exists = run(repository, "show-ref", "--verify", "--quiet", local_ref)
-    if local_exists.returncode == 0:
-        deleted = run(repository, "branch", "-d", branch)
-        if deleted.returncode != 0:
-            return fail(
-                "local branch cleanup failed; remote branch was not touched: "
-                + (deleted.stderr.strip() or f"could not delete {branch}")
-            )
-        print(f"Deleted local branch {branch}")
-    elif local_exists.returncode == 1:
-        print(f"Local branch {branch} already absent")
-    else:
-        return fail(local_exists.stderr.strip() or "could not inspect local branch")
+    try:
+        with lifecycle_lock():
+            delete_local_branch(repository, branch, expected_head,
+                base_ref=base_ref, base_oid=base_oid)
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+        return fail(f"local branch cleanup failed; remote branch was not touched: {exc}")
+    print(f"Retired local branch {branch} and its config against {base_ref} at {base_oid}")
 
     if delete_remote:
         remote_ref = f"refs/heads/{branch}"
@@ -367,9 +467,9 @@ def resume_retirement(
         )
     if not isinstance(recorded_head, str) or not recorded_head:
         return fail("retirement intent head is invalid")
-    if expected_branch and recorded_branch and expected_branch != recorded_branch:
+    if expected_branch and expected_branch != recorded_branch:
         return fail(
-            f"retirement intent is for {recorded_branch}, not {expected_branch}"
+            f"retirement intent is for {recorded_branch or 'detached HEAD'}, not {expected_branch}"
         )
     try:
         with lifecycle_lock() as lock_fd:
@@ -383,7 +483,7 @@ def resume_retirement(
             print(f"Resumed retirement from {intent}")
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return fail(str(exc))
-    branch = expected_branch or recorded_branch
+    branch = recorded_branch
     if not branch:
         print("retire-worktree: no recorded branch; branch cleanup was not attempted")
         return 0
@@ -392,6 +492,8 @@ def resume_retirement(
         branch,
         recorded_remote,
         recorded_head,
+        base_ref=data.get("base_ref"),
+        base_oid=data.get("base_oid"),
         delete_remote=delete_remote,
     )
 
@@ -487,11 +589,14 @@ def main() -> int:
         )
 
     branch_ref = match.get("branch", "")
-    if not branch_ref.startswith("refs/heads/"):
-        return fail(f"worktree is not on a local branch: {branch_ref or 'detached'}")
-    branch = branch_ref[len("refs/heads/") :]
+    if branch_ref.startswith("refs/heads/"):
+        branch = branch_ref[len("refs/heads/") :]
+    elif not branch_ref and "detached" in match:
+        branch = None
+    else:
+        return fail(f"worktree branch state cannot be verified: {branch_ref or 'missing'}")
     if args.branch and args.branch != branch:
-        return fail(f"worktree is on {branch}, not the expected {args.branch}")
+        return fail(f"worktree is on {branch or 'detached HEAD'}, not the expected {args.branch}")
 
     fetched = run(repository, "fetch", "--quiet", "--prune", args.remote)
     if fetched.returncode != 0:
@@ -540,17 +645,16 @@ def main() -> int:
         return fail(f"verification base does not resolve: {base}")
     base_oid = base_check.stdout.strip()
 
-    ancestry = run(repository, "merge-base", "--is-ancestor", branch, base_oid)
-    if ancestry.returncode != 0:
-        return fail(
-            f"branch {branch} is not fully contained in {base}; its commits "
-            "have not been verified on the remote"
-        )
-
     head_result = run(worktree, "rev-parse", "HEAD")
     if head_result.returncode != 0 or not head_result.stdout.strip():
         return fail(head_result.stderr.strip() or "worktree HEAD is unavailable")
     head = head_result.stdout.strip()
+    ancestry = run(repository, "merge-base", "--is-ancestor", head, base_oid)
+    if ancestry.returncode != 0:
+        return fail(
+            f"worktree HEAD {head} is not fully contained in {base}; its commits "
+            "have not been verified on the remote"
+        )
 
     try:
         with lifecycle_lock() as lock_fd:
@@ -569,9 +673,7 @@ def main() -> int:
                     args.remote,
                     "--retirement-base",
                     base,
-                    "--retirement-branch",
-                    branch,
-                ],
+                ] + (["--retirement-branch", branch] if branch else []),
                 lock_fd,
             )
             intent = reconciler_detail(prepared)
@@ -594,11 +696,16 @@ def main() -> int:
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return fail(str(exc))
 
+    if branch is None:
+        print("Retired verified detached worktree; no branch cleanup was attempted")
+        return 0
     return cleanup_branch(
         repository,
         branch,
         args.remote,
         head,
+        base_ref=intent_data.get("base_ref"),
+        base_oid=intent_data.get("base_oid"),
         delete_remote=args.delete_remote,
     )
 

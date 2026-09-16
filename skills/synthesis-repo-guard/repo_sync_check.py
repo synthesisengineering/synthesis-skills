@@ -41,6 +41,7 @@ Examples:
 """
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import socket
@@ -53,6 +54,7 @@ from pathlib import Path
 SYNTHESIS_HOME = Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis")))
 QUIET_AUDIO_FLAG = SYNTHESIS_HOME / "quiet-audio"
 DEFAULT_REPORT_DIR = SYNTHESIS_HOME / "repo-guard"
+MAX_SCAN_WORKERS = 8
 
 
 def find_git_repos(workspace: Path, max_depth: int = 3) -> list[Path]:
@@ -90,6 +92,7 @@ def git_cmd(repo: Path, *args: str, strip: bool = True) -> tuple[int, str]:
             capture_output=True,
             text=True,
             timeout=30,
+            env={**os.environ, "GIT_OPTIONAL_LOCKS": "0", "GIT_NO_LAZY_FETCH": "1"},
         )
         return result.returncode, result.stdout.strip() if strip else result.stdout
     except subprocess.TimeoutExpired:
@@ -158,6 +161,14 @@ def check_repo(repo: Path) -> dict:
             })
 
     return status
+
+
+def check_repos(repos: list[Path]) -> list[dict]:
+    """Bound subprocess fanout while retaining discovery and error order."""
+    if not repos:
+        return []
+    with ThreadPoolExecutor(max_workers=min(MAX_SCAN_WORKERS, len(repos))) as pool:
+        return list(pool.map(check_repo, repos))
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +360,7 @@ def main() -> int:
             print(f"No git repositories found under {workspace}")
         return 0
 
-    results = [check_repo(repo) for repo in repos]
+    results = check_repos(repos)
     dirty = [r for r in results if not r["clean"]]
 
     # Reports — the detailed pull channel (written on every run unless opted out)

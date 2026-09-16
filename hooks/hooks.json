@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -B ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-agent-conformance/scripts/session_context.py --format claude",
+            "command": "\"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis\" exec-public --timeout-seconds 28 synthesis-agent-conformance/scripts/session_context.py --format claude",
             "timeout": 30,
             "statusMessage": "Loading verified synthesis project context"
           }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -B ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-project-management/scripts/board_inbox.py --hook",
+            "command": "\"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis\" exec-public --timeout-seconds 8 synthesis-project-management/scripts/board_inbox.py --hook",
             "timeout": 10,
             "statusMessage": "Delivering coordination board messages addressed to this session"
           }
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -B ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-project-management/scripts/peer_send_gate.py --gate",
+            "command": "\"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis\" exec-public --timeout-seconds 13 synthesis-project-management/scripts/peer_send_gate.py --gate",
             "timeout": 15,
             "statusMessage": "Verifying the peer address against a delivery receipt and the coordination board"
           }
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -B ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-project-management/scripts/peer_send_gate.py --gate",
+            "command": "\"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis\" exec-public --timeout-seconds 13 synthesis-project-management/scripts/peer_send_gate.py --gate",
             "timeout": 15
           }
         ]
@@ -52,13 +52,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -B ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-autopilot/scripts/autopilot_gate.py --gate",
+            "command": "\"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis\" exec-public --timeout-seconds 13 synthesis-autopilot/scripts/autopilot_gate.py --gate",
             "timeout": 15,
             "statusMessage": "Checking autopilot engagements for a continuation"
           },
           {
             "type": "command",
-            "command": "python3 -B ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-project-management/scripts/project_state.py hook",
+            "command": "\"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis\" exec-public --timeout-seconds 28 synthesis-project-management/scripts/project_state.py hook",
             "timeout": 30,
             "statusMessage": "Binding durable project state to this lifecycle event"
           }

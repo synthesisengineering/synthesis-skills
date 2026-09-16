@@ -252,7 +252,9 @@ def acceptance_expectation(
         [
             "git",
             "diff",
+            "--no-renames",
             "--name-only",
+            "-z",
             "--diff-filter=ACDMRTUXB",
             f"{base_sha}..{head_sha}",
             "--",
@@ -262,7 +264,7 @@ def acceptance_expectation(
     if changed.returncode != 0:
         return None, changed.stderr.strip() or "git diff failed"
     changed_paths = sorted(
-        {line.strip() for line in changed.stdout.splitlines() if line.strip()}
+        {path for path in changed.stdout.split("\0") if path}
     )
     manifest = repo / ACCEPTANCE_MANIFEST
     try:
@@ -1591,6 +1593,15 @@ def main(argv: list[str] | None = None) -> int:
             print("\nRELEASE ABORTED: published tag could not be verified locally. Clients left untouched.")
             return 1
 
+    # New plugin hooks call exec-public, so establish their verified execution
+    # prerequisite before either client can load the new hook definitions.
+    if not activate_published_cli(repo, version, result, args.dry_run):
+        print(
+            f"\nRELEASE INCOMPLETE for {version}: the public synthesis CLI "
+            "could not be activated through the release verifier. Clients left untouched."
+        )
+        return 1
+
     for client in ("claude", "codex"):
         refresh_client(client, result, args.dry_run, repo=repo)
 
@@ -1607,12 +1618,6 @@ def main(argv: list[str] | None = None) -> int:
             f"\nRELEASE INCOMPLETE for {version}: "
             f"{len(result.failed)} step(s) failed. The clients are NOT confirmed current — "
             "re-run with --install-only after fixing."
-        )
-        return 1
-    if not activate_published_cli(repo, version, result, args.dry_run):
-        print(
-            f"\nRELEASE INCOMPLETE for {version}: the public synthesis CLI "
-            "could not be activated through the release verifier."
         )
         return 1
     if not refresh_stable_path(version, result, args.dry_run):

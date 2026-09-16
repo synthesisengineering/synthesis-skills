@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.100.0] - 2026-09-16
+
+The Python-only sprint of ADR-001 lands. Coordination reads the board through
+one shared grammar and binds receipts through a documented canonical JSON
+contract; lease refresh follows a written fence (a cached mirror is never a
+write grant), the board archives released rows older than thirty days at
+day-start, and discovery reuses its snapshot within a transaction. Public hooks
+execute through the verified active release (`synthesis exec-public`) on the
+interpreter recorded at setup, so hook commands no longer depend on shell path
+order. The commit sidecar caches pattern validation by config digest, repository
+checks run in a bounded pool, and transcript and snapshot passes are shared.
+Changed hook manifests re-trust once in Codex; no Go code ships.
+
 ## [4.99.0] - 2026-09-14
 
 Decision packets label every option by its consequence: each button carries

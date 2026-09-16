@@ -23,7 +23,7 @@ SOURCE_FILES = {
         "skills/synthesis-git-hooks/scripts/_load_config.py": (".synthesis/git-hooks/_load_config.py", 0o755),
         **{"skills/synthesis-project-management/scripts/" + n:
            (".synthesis/git-hooks/" + n, 0o755) for n in
-           ("coordination.py", "claim_scope.py", "coordination_schema.py", "pointer_lock.py", "peer_addressing.py")},
+           ("coordination.py", "claim_scope.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py")},
         "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85":
             (".synthesis/references/session-words-v1.txt.zlib.b85", 0o644),
     },
@@ -766,14 +766,17 @@ def test_failed_dependency_introduction_restores_anchors_and_absence(day_end_his
 
 
 CLAIM_DEPENDENCY = "skills/synthesis-project-management/scripts/claim_scope.py"
+GRAMMAR_DEPENDENCY = "skills/synthesis-project-management/scripts/board_grammar.py"
+ARCHIVE_DEPENDENCY = "skills/synthesis-project-management/scripts/coordination_archive.py"
 
 
-@pytest.fixture
-def pre_claim_bundle(tmp_path):
+@pytest.fixture(params=[CLAIM_DEPENDENCY, GRAMMAR_DEPENDENCY, ARCHIVE_DEPENDENCY])
+def pre_claim_bundle(tmp_path, request):
     """A released standalone bundle whose installed closure predates the helper."""
     from types import SimpleNamespace
     old = tmp_path / "old"
-    descriptor = release(old, "1.0.0", omit=(CLAIM_DEPENDENCY,))
+    dependency = request.param
+    descriptor = release(old, "1.0.0", omit=(dependency,))
     current = tmp_path / "current"
     subprocess.run(["git", "clone", str(old), str(current)], check=True, capture_output=True)
     fixture_git(current, "config", "user.name", "Fixture")
@@ -791,7 +794,7 @@ def pre_claim_bundle(tmp_path):
     home = tmp_path / "home"
     state = home / ".local/state/synthesis"
     for relative, (target, mode) in SOURCE_FILES["git-hooks"].items():
-        if relative == CLAIM_DEPENDENCY:
+        if relative == dependency:
             continue
         path = home / target
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -802,7 +805,7 @@ def pre_claim_bundle(tmp_path):
     pointer.chmod(0o644)
     return SimpleNamespace(current=current, old=old, descriptor=descriptor, home=home,
         state=state, receipts=Receipts(state / "receipts.json"), pointer=pointer,
-        helper=home / SOURCE_FILES["git-hooks"][CLAIM_DEPENDENCY][0])
+        helper=home / SOURCE_FILES["git-hooks"][dependency][0], dependency=dependency)
 
 
 def claim_bundle_plan(machine, proof="descriptor"):
@@ -818,7 +821,7 @@ def test_pre_helper_bundle_upgrade_proves_old_pointer_and_executes_new_closure(p
     machine = pre_claim_bundle
     assert not machine.helper.exists()
     runtime.apply(claim_bundle_plan(machine, proof), machine.receipts)
-    assert machine.helper.read_bytes() == (machine.current / CLAIM_DEPENDENCY).read_bytes()
+    assert machine.helper.read_bytes() == (machine.current / machine.dependency).read_bytes()
     assert machine.helper.stat().st_mode & 0o777 == 0o755
     assert machine.pointer.read_text().strip() == str(machine.current / "skills/synthesis-git-hooks/scripts")
     result = subprocess.run([sys.executable, "-B", "-c",
@@ -856,3 +859,12 @@ def test_failed_claim_helper_introduction_restores_old_bundle_and_absence(pre_cl
     assert {path: after[path] for path in before} == before
     assert not machine.helper.exists()
     machine.receipts.assert_current()
+
+
+def test_new_helper_never_overwrites_an_unowned_local_file(pre_claim_bundle):
+    machine = pre_claim_bundle
+    machine.helper.write_text("independent local helper\n")
+    before = snapshot(machine.home)
+    with pytest.raises(ContractError):
+        claim_bundle_plan(machine)
+    assert snapshot(machine.home) == before

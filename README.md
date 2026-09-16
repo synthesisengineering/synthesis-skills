@@ -11,6 +11,14 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Verified execution runtime and coordination contracts (September 2026).** Release **4.100.0**
+lands the Python-only sprint of ADR-001: one board grammar and a canonical JSON
+contract for receipts, a written lease fence, thirty-day board archival at
+day-start, public hooks executed through the verified active release on the
+interpreter recorded at setup, a cached pattern-validation step in the commit
+sidecar, and bounded repository checks. Changed hook manifests re-trust once in
+Codex; no Go code ships.
+
 **Consequence-labeled packets and scoped weekly reviews (September 2026).** Release **4.99.0**
 labels every decision-packet option by its consequence: each button carries the
 consequence of pressing it, and `--strict-reader` refuses bare acknowledgements

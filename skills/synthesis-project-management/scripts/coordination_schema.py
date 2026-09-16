@@ -16,64 +16,13 @@ from pathlib import Path
 from typing import Iterable
 
 
-SCHEMA_VERSION = 4
-V4_COLUMNS = (
-    "session uuid",
-    "compact id",
-    "speakable id v1",
-    "legacy id",
-    "agent",
-    "machine",
-    "client session ref",
-    "project",
-    "started",
-    "heartbeat",
-    "mode",
-    "workspace(s) / branch",
-    "goal",
-    "claimed areas (advisory lock)",
-    "context role",
-    "status",
-)
-V3_COLUMNS = (
-    "session uuid",
-    "compact id",
-    "speakable id v1",
-    "legacy id",
-    "agent",
-    "machine",
-    "project",
-    "started",
-    "heartbeat",
-    "mode",
-    "workspace(s) / branch",
-    "goal",
-    "claimed areas (advisory lock)",
-    "context role",
-    "status",
-)
-V2_COLUMNS = (
-    "id",
-    "agent",
-    "machine",
-    "project",
-    "started",
-    "heartbeat",
-    "mode",
-    "workspace(s) / branch",
-    "goal",
-    "claimed areas (advisory lock)",
-    "context role",
-    "status",
-)
-V1_COLUMNS = (
-    "id",
-    "agent",
-    "started",
-    "mode",
-    "goal",
-    "claimed areas (advisory lock)",
-    "status",
+from board_grammar import (
+    SCHEMA_VERSION,
+    V1_COLUMNS,
+    V2_COLUMNS,
+    V3_COLUMNS,
+    V4_COLUMNS,
+    parse_table_rows,
 )
 
 CROCKFORD_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz"
@@ -109,11 +58,6 @@ class SessionIdentity:
             )
             if value
         )
-
-
-def _plain(value: str) -> str:
-    without_bold = re.sub(r"\*\*(.+?)\*\*", r"\1", value)
-    return re.sub(r"`(.+?)`", r"\1", without_bold).strip()
 
 
 def uuid7() -> uuid.UUID:
@@ -402,39 +346,6 @@ def column_count_error(cells: list[str], script_path: Path | str) -> ValueError:
         f"{head}. A narrower unknown width is a malformed row (hand edit?): "
         "repair it or restore the board from its lease remote"
     )
-
-
-def parse_table_rows(text: str) -> list[dict[str, str]]:
-    """Parse v1-v3 active-session rows without mutating legacy boards."""
-    result: list[dict[str, str]] = []
-    in_table = False
-    for line in text.splitlines():
-        if line.strip() == "## Active sessions":
-            in_table = True
-            continue
-        if in_table and line.startswith("## "):
-            break
-        if not in_table or not line.startswith("|"):
-            continue
-        cells = [_plain(value) for value in line.split("|")[1:-1]]
-        if not cells or set(cells[0]) == {"-"} or cells[0] in {
-            "id",
-            "session uuid",
-        }:
-            continue
-        if len(cells) == len(V4_COLUMNS):
-            result.append(dict(zip(V4_COLUMNS, cells)))
-        elif len(cells) == len(V3_COLUMNS):
-            result.append(dict(zip(V3_COLUMNS, cells)))
-        elif len(cells) == len(V2_COLUMNS):
-            result.append(dict(zip(V2_COLUMNS, cells)))
-        elif len(cells) == len(V1_COLUMNS):
-            result.append(dict(zip(V1_COLUMNS, cells)))
-        else:
-            raise column_count_error(
-                cells, Path(__file__).with_name("coordination.py")
-            )
-    return result
 
 
 def row_identity(row: dict[str, str]) -> SessionIdentity:

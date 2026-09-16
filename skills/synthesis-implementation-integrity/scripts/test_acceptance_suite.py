@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import yaml
+import pytest
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -119,6 +120,89 @@ def schema2_payload() -> dict:
         {"path": "acceptance-suite.yaml", "cases": ["passing-probe"]},
     ]
     return payload
+
+
+def deletion_candidate(root: Path, *, renamed=False, name="retired.py"):
+    init_change_repository(root)
+    (root / name).write_text("# exact source retained as fixture\n")
+    commit_change_repository(root)
+    base = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+    fixture_file(root)
+    if renamed:
+        (root / name).rename(root / "replacement.py")
+    else:
+        (root / name).unlink()
+    payload = schema2_payload()
+    payload["changed_surfaces"].append({"path": name, "state": "deleted", "cases": ["passing-probe"]})
+    if renamed:
+        payload["changed_surfaces"].append({"path": "replacement.py", "cases": ["passing-probe"]})
+    manifest = write_manifest(root, payload)
+    commit_change_repository(root)
+    return base, manifest, payload
+
+
+def run_bound(root, base, manifest):
+    return subprocess.run([sys.executable, str(RUNNER), "run", "--repo-root", str(root),
+                           "--manifest", str(manifest), "--change-base", base,
+                           "--transaction-id", "deletion-fixture", "--json"],
+                          capture_output=True, text=True)
+
+
+@pytest.mark.parametrize("renamed", [False, True])
+def test_schema2_covers_deleted_source_and_both_rename_paths(tmp_path, renamed):
+    base, manifest, payload = deletion_candidate(tmp_path, renamed=renamed)
+    completed = run_bound(tmp_path, base, manifest)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    receipt = json.loads(completed.stdout)
+    assert receipt["changed_paths"] == sorted(surface["path"] for surface in payload["changed_surfaces"])
+
+
+def test_schema2_deleted_path_requires_exact_git_deletion(tmp_path):
+    base, manifest, payload = deletion_candidate(tmp_path)
+    payload["changed_surfaces"].append({"path": "invented.py", "state": "deleted", "cases": ["passing-probe"]})
+    write_manifest(tmp_path, payload)
+    commit_change_repository(tmp_path)
+    completed = run_bound(tmp_path, base, manifest)
+    assert completed.returncode == 2 and "deletion" in completed.stdout
+
+
+@pytest.mark.parametrize("kind", ["present", "symlink", "parent-symlink", "escape", "schema1", "unknown-state"])
+def test_deleted_surface_refuses_unsafe_or_unsupported_declarations(tmp_path, kind):
+    fixture_file(tmp_path)
+    payload = schema2_payload()
+    surface = {"path": "retired.py", "state": "deleted", "cases": ["passing-probe"]}
+    if kind == "present":
+        (tmp_path / "retired.py").write_text("retained")
+    elif kind == "symlink":
+        (tmp_path / "retired.py").symlink_to(tmp_path / "missing")
+    elif kind == "parent-symlink":
+        (tmp_path / "redirect").symlink_to(tmp_path.parent)
+        surface["path"] = "redirect/retired.py"
+    elif kind == "escape":
+        surface["path"] = "../retired.py"
+    elif kind == "schema1":
+        payload["schema"] = 1
+    else:
+        surface["state"] = "optional"
+        surface["path"] = "tool.py"
+    payload["changed_surfaces"].append(surface)
+    completed = run_cli(tmp_path, "validate", write_manifest(tmp_path, payload))
+    assert completed.returncode == 2, completed.stdout
+
+
+def test_deleted_surface_never_relaxes_fixture_existence(tmp_path):
+    base, manifest, payload = deletion_candidate(tmp_path)
+    payload["cases"][0]["fixture"] = "retired.py::test_pass"
+    write_manifest(tmp_path, payload)
+    completed = run_cli(tmp_path, "validate", manifest)
+    assert completed.returncode == 2 and "fixture" in completed.stdout
+
+
+def test_changed_paths_preserve_literal_newline_and_spaces(tmp_path):
+    base, manifest, payload = deletion_candidate(tmp_path, name=" retired\nsource.py ")
+    completed = run_bound(tmp_path, base, manifest)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert " retired\nsource.py " in json.loads(completed.stdout)["changed_paths"]
 
 
 def test_manifest_rejects_open_membership(tmp_path: Path) -> None:

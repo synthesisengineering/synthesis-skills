@@ -681,7 +681,7 @@ def _launchd_payload(home: Path, runtime: Path) -> bytes:
     return plistlib.dumps(
         {
             "Label": LABEL,
-            "ProgramArguments": [sys.executable, str(runtime), "--watch"],
+            "ProgramArguments": [sys.executable, "-B", str(runtime), "--watch"],
             "RunAtLoad": True,
             "KeepAlive": True,
             "ThrottleInterval": 10,
@@ -698,7 +698,7 @@ def _systemd_quote(value: str) -> str:
 
 
 def _systemd_payload(runtime: Path) -> bytes:
-    command = " ".join(_systemd_quote(value) for value in (sys.executable, str(runtime), "--watch"))
+    command = " ".join(_systemd_quote(value) for value in (sys.executable, "-B", str(runtime), "--watch"))
     return (
         "[Unit]\nDescription=Synthesis Skills historical Codex cache guardian\n\n"
         "[Service]\nType=simple\n"
