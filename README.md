@@ -11,6 +11,10 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**The cache guardian understands exec-public hooks (September 2026).** Release **4.100.2**
+lets the Codex cache guardian archive plugin roots whose hooks run through
+`synthesis exec-public`, which stopped the 4.100.1 install at the guardian.
+
 **Receipts name the loaded plugin root (September 2026).** Release **4.100.1**
 corrects the 4.100.0 receipts written under `synthesis exec-public`: the
 SessionStart receipt names the plugin root the client loaded and records the
