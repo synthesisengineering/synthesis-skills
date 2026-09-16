@@ -12,6 +12,18 @@ unverified_remainder: Source fixtures use disposable homes, repositories and cli
   installed-client reload, native live acceptance, hosted operating-system matrix results, network publication or
   deployment approval. Those remain separate release and installation gates.
 changed_surfaces:
+- path: .claude-plugin/plugin.json
+  cases:
+  - release-metadata-coherence
+- path: .codex-plugin/plugin.json
+  cases:
+  - release-metadata-coherence
+- path: CHANGELOG.md
+  cases:
+  - release-metadata-coherence
+- path: README.md
+  cases:
+  - release-metadata-coherence
 - path: skills/synthesis-checkpoint/references/refresh-and-report.md
   cases: &id002
   - stop-committed-source-local-handoff-survives-release
@@ -268,3 +280,9 @@ cases:
   fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_stop_output_conforms_to_native_codex_consumer_schema
   motivating_defect: Observer completion must preserve active-owner checkpoint obligations and the native consumer
     wire contract.
+- id: release-metadata-coherence
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
+  motivating_defect: The released manifests and current changelog must agree; documented maintenance contracts must
+    remain coherent.

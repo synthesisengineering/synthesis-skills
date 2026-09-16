@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Installer failures and completed local pauses (September 2026).** Release **4.100.3**
+stops recursive bootstrap fallback after native plugin failure and confines explicit
+skill copies to their selected destinations. The Stop observer verifies committed
+local source after a claim is released, preserving pending publication records
+without issuing new checkpoint authority.
+
 **The cache guardian understands exec-public hooks (September 2026).** Release **4.100.2**
 lets the Codex cache guardian archive plugin roots whose hooks run through
 `synthesis exec-public`, which stopped the 4.100.1 install at the guardian.
