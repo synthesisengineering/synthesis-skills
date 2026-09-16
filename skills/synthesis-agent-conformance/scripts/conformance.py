@@ -972,6 +972,18 @@ def hook_trust_checks(cwd: Path) -> list[Check]:
     return checks
 
 
+def _plugin_manifest_version(root: Path) -> str | None:
+    """Version declared by a plugin tree, from either client manifest."""
+    for manifest in (root / ".codex-plugin" / "plugin.json", root / ".claude-plugin" / "plugin.json"):
+        try:
+            version = json.loads(manifest.read_text(encoding="utf-8")).get("version")
+        except (OSError, ValueError):
+            continue
+        if version:
+            return str(version)
+    return None
+
+
 def _receipt_check(
     checks: list[Check],
     name: str,
@@ -994,6 +1006,7 @@ def _receipt_check(
         transcript_path = payload.get("transcript_path")
         transcript_bound_at_record = payload.get("transcript_bound_at_record")
         plugin_root = payload.get("plugin_root")
+        execution_root = payload.get("execution_root")
         try:
             uuid.UUID(str(session_id))
             valid_session_id = True
@@ -1049,6 +1062,15 @@ def _receipt_check(
                     ok = ok and Path(str(plugin_root)).resolve() == expected_plugin_root.resolve()
                 except OSError:
                     ok = False
+            if execution_root is not None:
+                # The hook may execute from the active release root rather
+                # than the loaded plugin cache; that root must carry the same
+                # plugin version, or the client ran code from another release.
+                ok = bool(
+                    ok
+                    and _plugin_manifest_version(Path(str(execution_root)))
+                    == expected_plugin_version
+                )
         recorded_at = payload.get("recorded_at")
         age_seconds: float | None = None
         try:
@@ -1071,6 +1093,7 @@ def _receipt_check(
             f"session_id={session_id}; "
             f"plugin_version={actual_version}; expected_plugin_version={expected_plugin_version}; "
             f"plugin_root={plugin_root}; expected_plugin_root={expected_plugin_root}; "
+            f"execution_root={execution_root}; "
             f"provenance_env={provenance}; transcript_path={transcript_path}; "
             f"transcript_bound_at_record={transcript_bound_at_record}; "
             f"recorded_at={recorded_at}; age_seconds="

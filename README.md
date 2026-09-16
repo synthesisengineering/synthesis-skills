@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Receipts name the loaded plugin root (September 2026).** Release **4.100.1**
+corrects the 4.100.0 receipts written under `synthesis exec-public`: the
+SessionStart receipt names the plugin root the client loaded and records the
+execution root separately, and hook-live checks that both carry the same
+version.
+
 **Verified execution runtime and coordination contracts (September 2026).** Release **4.100.0**
 lands the Python-only sprint of ADR-001: one board grammar and a canonical JSON
 contract for receipts, a written lease fence, thirty-day board archival at
