@@ -88,7 +88,7 @@ def commit_version(repo: Path, project: Path, version: str) -> str:
 
 def board(path: Path, rows: list[tuple[str, str, str, str]]) -> Path:
     header = (
-        "# Board\nLease: file:///fixture\nSchema: v4\n\n## Active sessions\n\n"
+        "# Board\nSchema: v4\n\n## Active sessions\n\n"
         "| session uuid | compact id | speakable id v1 | legacy id | agent | machine | client session ref | project | "
         "started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |\n"
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
@@ -817,7 +817,7 @@ def test_lifecycle_hook_fails_closed_when_lease_cannot_refresh(
     monkeypatch.setattr(
         state,
         "_refresh_coordination_board",
-        lambda _path: "coordination lease refresh failed: fixture outage",
+        lambda _path, **_kw: "coordination lease refresh failed: fixture outage",
     )
     verdict, issues = state.checkpoint_hook(
         {"session_id": session, "cwd": str(repo)},

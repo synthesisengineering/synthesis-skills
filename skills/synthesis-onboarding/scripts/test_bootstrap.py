@@ -188,6 +188,7 @@ def test_onboard_handoff_consumes_resolution_policy_before_update_cli(
     fixture_scripts = checkout / "skills" / "synthesis-onboarding" / "scripts"
     shutil.copyfile(SCRIPTS / "bootstrap.py", fixture_scripts / "bootstrap.py")
     shutil.copyfile(SCRIPTS / "system_contract.py", fixture_scripts / "system_contract.py")
+    shutil.copyfile(SCRIPTS / "release_runtime.py", fixture_scripts / "release_runtime.py")
     marker = tmp_path / "cli-argv.json"
     (fixture_scripts / "synthesis_cli.py").write_text(
         "import argparse, json, os, sys\n"

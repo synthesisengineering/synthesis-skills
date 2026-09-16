@@ -987,6 +987,7 @@ def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
         "claim_scope.py",
         "coordination_schema.py",
         "board_grammar.py",
+        "coordination_archive.py",
         "pointer_lock.py",
         "peer_addressing.py",
         "source-path",

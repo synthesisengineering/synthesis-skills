@@ -8,14 +8,17 @@ import fnmatch
 import hashlib
 import fcntl
 import json
+import math
 import os
 import re
 import shutil
 import socket
+import stat
 import subprocess
 import platform
 import sys
 import tempfile
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -785,17 +788,48 @@ def replace_table(
     )
 
 
+BOARD_BACKUPS_KEEP = 200
+
+
+def _prune_board_backups(board: Path, newest: Path) -> None:
+    """Delete only our regular recovery files, retaining the new verified copy."""
+    directory = newest.parent
+    if directory.is_symlink():
+        raise OSError("coordination backup directory is a symlink")
+    pattern = re.compile(re.escape(board.name) + r"\.\d{8}T\d{12}(?:\.[A-Za-z0-9_-]+)?\.bak\Z")
+    backups = [p for p in directory.iterdir() if pattern.fullmatch(p.name)
+               and stat.S_ISREG(p.lstat().st_mode) and p != newest]
+    # Keep the just-created copy even when the wall clock moved backward.
+    for path in sorted(backups, key=lambda p: p.name, reverse=True)[BOARD_BACKUPS_KEEP - 1:]:
+        if not path.is_symlink() and stat.S_ISREG(path.lstat().st_mode):
+            path.unlink()
+
+
 def write_board(board: Path, content: str) -> None:
     board.parent.mkdir(parents=True, exist_ok=True)
+    backup = None
     if board.exists():
+        original = board.read_bytes()
+        if original == content.encode("utf-8"):
+            return
         backup_dir = board.parent / "backups"
+        if backup_dir.is_symlink():
+            raise OSError("coordination backup directory is a symlink")
         backup_dir.mkdir(parents=True, exist_ok=True)
-        backup = backup_dir / (
-            f"{board.name}.{datetime.now().strftime('%Y%m%dT%H%M%S%f')}.bak"
+        descriptor, backup_name = tempfile.mkstemp(
+            prefix=f".{board.name}.{datetime.now().strftime('%Y%m%dT%H%M%S%f')}.",
+            suffix=".tmp", dir=str(backup_dir),
         )
-        shutil.copy2(board, backup)
-        if backup.read_bytes() != board.read_bytes():
-            raise OSError(f"coordination backup verification failed: {backup}")
+        os.close(descriptor)
+        temporary_backup = Path(backup_name)
+        backup = backup_dir / (temporary_backup.name[1:-4] + ".bak")
+        try:
+            shutil.copy2(board, temporary_backup)
+            if temporary_backup.read_bytes() != original or board.read_bytes() != original:
+                raise OSError(f"coordination backup verification failed: {temporary_backup}")
+            os.replace(temporary_backup, backup)
+        finally:
+            temporary_backup.unlink(missing_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{board.name}.", suffix=".tmp", dir=str(board.parent)
     )
@@ -811,11 +845,19 @@ def write_board(board: Path, content: str) -> None:
         except FileNotFoundError:
             pass
         raise
+    if backup is not None:
+        try:
+            _prune_board_backups(board, backup)
+        except OSError as exc:
+            # The mutation already succeeded. Do not invite an unsafe retry of
+            # a published operation because optional recovery pruning failed.
+            print(f"COORDINATION maintenance warning: backup pruning failed: {exc}", file=sys.stderr)
 
 
 LEASE_CONFIG_NAME = "lease.json"
 LEASE_DEFAULT_REF = "refs/synthesis/coordination-board"
 LEASE_RETRIES = 3
+PASSIVE_STOP_REFRESH_SECONDS = 300
 LEASE_GIT_TIMEOUT = 30
 LEASE_IDENTITY = {
     "GIT_AUTHOR_NAME": "synthesis-coordination",
@@ -929,7 +971,7 @@ def lease_fetch(config: dict) -> tuple[str, str | None]:
 
 
 def lease_publish(
-    config: dict, board_name: str, content: str, expected_sha: str
+    config: dict, board_name: str, content: str, expected_sha: str, *, archive_parent: str | None = None
 ) -> tuple[bool, str]:
     repository = lease_repository(config)
     blob = git_lease(repository, "hash-object", "-w", "--stdin", input_text=content)
@@ -945,6 +987,10 @@ def lease_publish(
     commit_arguments = ["commit-tree", tree.stdout.strip(), "-m", "Update coordination board"]
     if expected_sha:
         commit_arguments.extend(["-p", expected_sha])
+    if archive_parent:
+        if not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", archive_parent):
+            raise ValueError("invalid archive parent")
+        commit_arguments.extend(["-p", archive_parent])
     committed = git_lease(repository, *commit_arguments)
     if committed.returncode != 0:
         raise RuntimeError(
@@ -996,18 +1042,24 @@ def remove_lease_declaration(content: str) -> str:
 
 
 def lease_update(
-    board: Path, config: dict, operation, *, declare: bool = True
+    board: Path, config: dict, operation, *, declare: bool = True, require_fence: bool = False
 ) -> None:
+    _invalidate_lease_stamp(board)
     failure = ""
     for _ in range(LEASE_RETRIES):
         sha, content = lease_fetch(config)
         if content is None:
+            if require_fence:
+                raise RuntimeError("coordination lease remote ref has not been published; an authority read cannot bootstrap local claims")
             content = (
                 board.read_text(encoding="utf-8") if board.exists() else template()
             )
         updated = operation(content)
         if declare:
             updated = ensure_lease_declaration(updated, config["remote"])
+        if sha and updated == content and not require_fence:
+            write_board(board, updated)
+            return
         published, failure = lease_publish(config, board.name, updated, sha)
         if published:
             write_board(board, updated)
@@ -1018,42 +1070,131 @@ def lease_update(
     )
 
 
-def lease_refresh(board: Path) -> dict:
+def lease_stamp_path(board: Path) -> Path:
+    return board.parent / f".{board.name}.lease-fetch.json"
+
+
+def _lease_stamp_binding(board: Path, config: dict) -> dict:
+    return {"board": str(board.resolve()), "remote": config["remote"],
+            "ref": config["ref"], "repository": str(config["repository"].resolve()),
+            "board_sha256": hashlib.sha256(board.read_bytes()).hexdigest()}
+
+
+def _invalidate_lease_stamp(board: Path) -> None:
+    try:
+        lease_stamp_path(board).unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _cached_lease_refresh(board: Path, config: dict, max_age_seconds: float) -> dict | None:
+    try:
+        path = lease_stamp_path(board)
+        if path.is_symlink() or not path.is_file() or not board.is_file():
+            return None
+        stamp = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(stamp, dict) or stamp.get("schema") != 1:
+            return None
+        fetched_at = stamp.get("fetched_at")
+        if isinstance(fetched_at, bool) or not isinstance(fetched_at, (int, float)):
+            return None
+        age = time.time() - fetched_at
+        if not math.isfinite(age) or not 0 <= age < max_age_seconds:
+            return None
+        if not re.fullmatch(r"[a-f0-9]{40}|[a-f0-9]{64}", str(stamp.get("sha", ""))):
+            return None
+        if stamp.get("binding") != _lease_stamp_binding(board, config):
+            return None
+        return {"configured": True, "refreshed": False, "cache_hit": True,
+                "age_seconds": age, "sha": stamp["sha"]}
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _write_lease_stamp(board: Path, config: dict, sha: str) -> None:
+    stamp = {"schema": 1, "fetched_at": time.time(), "sha": sha,
+             "binding": _lease_stamp_binding(board, config)}
+    descriptor, name = tempfile.mkstemp(prefix=f".{board.name}.lease-fetch.", suffix=".tmp", dir=board.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(stamp, handle, sort_keys=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(name, lease_stamp_path(board))
+    finally:
+        try:
+            os.unlink(name)
+        except FileNotFoundError:
+            pass
+
+
+def lease_refresh(board: Path, *, max_age_seconds: float = 0) -> dict:
     """Refresh the mirror under the same local lock as board mutations.
 
     Fetching before taking the lock can restore stale active rows after a
     same-machine release or claim. Keep configuration, fetch and mirror write
     together. This is local serialization, not a remote CAS authority fence;
-    commit authorization still uses ``_check_staged_board_snapshot``.
+    commit authorization still uses ``_check_staged_board_snapshot``. Only the
+    passive Stop observer opts into the five-minute cache; default reads fetch.
     """
     try:
         board.parent.mkdir(parents=True, exist_ok=True)
         lock_path = board.parent / ".active-sessions.lock"
         with lock_path.open("a+", encoding="utf-8") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-            config = lease_configuration(board)
-            if config is None:
-                return {"configured": False}
-            sha, content = lease_fetch(config)
-            if content is not None and (
-                not board.exists() or board.read_text(encoding="utf-8") != content
-            ):
+            try:
+                config = lease_configuration(board)
+                if config is None:
+                    if board.is_file() and declared_lease(board.read_text(encoding="utf-8")):
+                        raise RuntimeError("board declares a lease but lease.json is missing")
+                    return {"configured": False}
+                if max_age_seconds:
+                    if not math.isfinite(max_age_seconds) or not 0 < max_age_seconds <= PASSIVE_STOP_REFRESH_SECONDS:
+                        raise RuntimeError("passive lease refresh interval must be at most 300 seconds")
+                    cached = _cached_lease_refresh(board, config, max_age_seconds)
+                    if cached is not None:
+                        return cached
+                # Invalidate under the mutation lock, before trying the remote.
+                # Failed forced reads cannot leave an older success usable.
+                _invalidate_lease_stamp(board)
+                sha, content = lease_fetch(config)
+                if content is None:
+                    raise RuntimeError("coordination lease remote ref has not been published")
                 write_board(board, content)
-            return {"configured": True, "refreshed": True, "sha": sha}
+                result = {"configured": True, "refreshed": True, "sha": sha}
+                try:
+                    _write_lease_stamp(board, config, sha)
+                except OSError as exc:
+                    result["cache_warning"] = str(exc)
+                return result
+            except (RuntimeError, OSError):
+                try:
+                    _invalidate_lease_stamp(board)
+                except OSError:
+                    pass
+                raise
     except (RuntimeError, OSError) as exc:
         # An unreadable lock/configuration is not evidence of an unleased
         # board. Preserve the read-path error result so strict status fails.
         return {"configured": True, "refreshed": False, "error": str(exc)}
 
 
-def locked_update(board: Path, operation) -> None:
+def require_fresh_board(board: Path) -> dict:
+    """Forced live read; a legitimate local-only board needs no remote."""
+    result = lease_refresh(board)
+    if result.get("error") or (result.get("configured") and not result.get("refreshed")):
+        raise RuntimeError("coordination lease refresh failed: " + str(result.get("error") or "remote authority was not refreshed"))
+    return result
+
+
+def locked_update(board: Path, operation, *, require_fence: bool = False) -> None:
     board.parent.mkdir(parents=True, exist_ok=True)
     lock_path = board.parent / ".active-sessions.lock"
     with lock_path.open("a+", encoding="utf-8") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         config = lease_configuration(board)
         if config is not None:
-            lease_update(board, config, operation)
+            lease_update(board, config, operation, require_fence=require_fence)
             return
         content = board.read_text(encoding="utf-8") if board.exists() else template()
         declared = declared_lease(content)
@@ -1084,7 +1225,7 @@ def _check_staged_board_snapshot(board: Path) -> str | None:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         config = lease_configuration(board)
         if config is not None:
-            lease_update(board, config, lambda content: content)
+            lease_update(board, config, lambda content: content, require_fence=True)
             return board.read_text(encoding="utf-8")
         if not board.exists():
             return None
@@ -1101,8 +1242,17 @@ def _check_staged_board_snapshot(board: Path) -> str | None:
 
 
 def validate_sessions(sessions: list[Session]) -> list[str]:
-    problems: list[str] = []
     scopes = claim_scope.ClaimScopeResolver()
+    claims = [(claim, tuple(session.workspaces)) for session in sessions if active(session) for claim in session.claims]
+    try:
+        with scopes.snapshot(claims):
+            return _validate_sessions(sessions, scopes)
+    except claim_scope.ClaimIdentityError as exc:
+        return [f"unverifiable claim identity snapshot: {exc}"]
+
+
+def _validate_sessions(sessions: list[Session], scopes) -> list[str]:
+    problems: list[str] = []
     seen_selectors: dict[tuple[str, object], str] = {}
     for session in sessions:
         if session.session_uuid:
@@ -1179,7 +1329,7 @@ def validate_sessions(sessions: list[Session]) -> list[str]:
 
 
 def command_status(args) -> int:
-    lease = lease_refresh(args.board)
+    lease = lease_refresh(args.board, max_age_seconds=PASSIVE_STOP_REFRESH_SECONDS if getattr(args, "passive_stop", False) else 0)
     if not args.board.is_file():
         if lease.get("error"):
             print(f"COORDINATION ERROR: {lease['error']}", file=sys.stderr)
@@ -1399,7 +1549,7 @@ def command_check_staged(args) -> int:
             )
 
         try:
-            locked_update(args.board, record_override)
+            locked_update(args.board, record_override, require_fence=True)
             board_text = args.board.read_text(encoding="utf-8")
         except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
             payload = _check_staged_payload(
@@ -1959,7 +2109,11 @@ def command_resolve(args) -> int:
     bus). The lesson this mechanizes: the board id is the identity, the client
     label is a display string.
     """
-    lease_refresh(args.board)
+    try:
+        require_fresh_board(args.board)
+    except RuntimeError as exc:
+        print(f"resolve: {exc}", file=sys.stderr)
+        return 10
     if not args.board.is_file():
         print(f"resolve: no coordination board at {args.board}", file=sys.stderr)
         return 21
@@ -2109,7 +2263,11 @@ def command_resolve(args) -> int:
 
 def command_inbox(args) -> int:
     """Unread board messages addressed to a seat (any identity form) or its project."""
-    lease_refresh(args.board)
+    try:
+        require_fresh_board(args.board)
+    except RuntimeError as exc:
+        print(f"inbox: {exc}", file=sys.stderr)
+        return 10
     if not args.board.is_file():
         print(f"inbox: no coordination board at {args.board}", file=sys.stderr)
         return 1
@@ -2480,13 +2638,30 @@ def command_doctor(args) -> int:
     return 0
 
 
+def command_archive(args) -> int:
+    try:
+        from coordination_archive import archive
+        result = archive(args.board, dry_run=args.dry_run)
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(f"coordination archive failed: {exc}", file=sys.stderr)
+        return 10
+    print(json.dumps(result, sort_keys=True) if args.json else
+          f"Coordination archive: {result['rows']} released rows, {result['messages']} messages"
+          + (" (dry run)" if args.dry_run else ""))
+    return 0
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--board", type=Path, default=DEFAULT_BOARD)
     commands = result.add_subparsers(dest="command", required=True)
+    archive = commands.add_parser("archive", help="Archive released rows older than 30 days and their closed addressed messages through lease CAS")
+    archive.add_argument("--dry-run", action="store_true")
+    archive.add_argument("--json", action="store_true")
     status = commands.add_parser("status")
     status.add_argument("--json", action="store_true")
     status.add_argument("--strict", action="store_true")
+    status.add_argument("--passive-stop", action="store_true", help="Passive Stop observation only; permit a successful mirror refresh younger than five minutes")
     status.add_argument("--stale-after-minutes", type=int, default=240)
     check_staged = commands.add_parser(
         "check-staged",
@@ -2640,6 +2815,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 COMMANDS = {
+    "archive": command_archive,
     "status": command_status,
     "check-staged": command_check_staged,
     "claim": command_claim,

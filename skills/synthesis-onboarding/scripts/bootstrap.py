@@ -14,6 +14,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import release_runtime
+
 from system_contract import (
     ContractError,
     activate_cli,
@@ -194,6 +196,14 @@ def _validate_cli_arguments(checkout: Path, cli_args: list[str]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        pin = release_runtime.interpreter_pin()
+        if Path(sys.executable).resolve() != Path(pin["resolved_executable"]):
+            os.execv(pin["executable"], [pin["executable"], "-B", str(Path(__file__).resolve()), *(sys.argv[1:] if argv is None else argv)])
+        release_runtime.verify_interpreter(pin)
+    except (release_runtime.RuntimeContractError, OSError) as exc:
+        print("Synthesis bootstrap refused: %s" % exc, file=sys.stderr)
+        return 2
     args = build_parser().parse_args(argv)
     cli_args = list(args.cli_args)
     if cli_args[:1] == ["--"]:

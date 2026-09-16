@@ -107,6 +107,7 @@ def inbox_text(
     environ: dict[str, str] | None = None,
     mark: bool = True,
     strict: bool = False,
+    refresh_coordination: bool | None = None,
 ) -> str:
     """Messages for this session's claimed seat, or nothing.
 
@@ -118,6 +119,9 @@ def inbox_text(
     key = identity.sender_key
     if not key and not strict:
         return ""
+    if (not strict if refresh_coordination is None else refresh_coordination):
+        from coordination import require_fresh_board
+        require_fresh_board(board)
     try:
         text = board.read_text(encoding="utf-8")
     except FileNotFoundError:

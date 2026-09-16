@@ -81,9 +81,14 @@ if ! command -v git >/dev/null 2>&1; then
   echo "On macOS, install the command-line developer tools, then run this command again." >&2
   exit 2
 fi
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "python3 is required and not found." >&2
-  echo "Install Python 3 with your operating system package manager, then run this command again." >&2
+if [ "$(/usr/bin/uname -s)" = "Darwin" ]; then
+  SYNTHESIS_BOOTSTRAP_PYTHON="/Library/Frameworks/Python.framework/Versions/3.12/bin/python3"
+else
+  SYNTHESIS_BOOTSTRAP_PYTHON=$(command -v python3 || true)
+fi
+if [ -z "$SYNTHESIS_BOOTSTRAP_PYTHON" ] || [ ! -x "$SYNTHESIS_BOOTSTRAP_PYTHON" ]; then
+  echo "The prescribed Python interpreter is unavailable." >&2
+  echo "macOS requires python.org Python 3.12.3; other platforms require Python 3.12." >&2
   exit 2
 fi
 
@@ -155,7 +160,7 @@ fi
 if [ "$#" -eq 0 ]; then
   set -- setup
 fi
-python3 -B "$CHECKOUT/$BOOTSTRAP_REL" \
+"$SYNTHESIS_BOOTSTRAP_PYTHON" -B "$CHECKOUT/$BOOTSTRAP_REL" \
   --checkout "$CHECKOUT" \
   --releases-dir "$RELEASES_DIR" \
   --launcher "$LAUNCHER" \

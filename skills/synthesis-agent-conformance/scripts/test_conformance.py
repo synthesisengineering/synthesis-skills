@@ -977,7 +977,7 @@ def _hook_config(*, gate: bool = True, inbox: bool = True) -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-agent-conformance/scripts/session_context.py --format claude",
+                        "command": "\"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis\" exec-public --timeout-seconds 28 synthesis-agent-conformance/scripts/session_context.py --format claude",
                     }
                 ]
             }
@@ -987,20 +987,30 @@ def _hook_config(*, gate: bool = True, inbox: bool = True) -> dict:
         hooks["PreToolUse"] = [
             {
                 "matcher": "SendMessage|mcp__ccd_session_mgmt__send_message",
-                "hooks": [{"type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-project-management/scripts/peer_send_gate.py --gate"}],
+                "hooks": [{"type": "command", "command": "\"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis\" exec-public --timeout-seconds 28 synthesis-project-management/scripts/peer_send_gate.py --gate"}],
             },
             {
                 "matcher": "Bash|exec_command|exec|shell|local_shell",
-                "hooks": [{"type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-project-management/scripts/peer_send_gate.py --gate"}],
+                "hooks": [{"type": "command", "command": "\"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis\" exec-public --timeout-seconds 28 synthesis-project-management/scripts/peer_send_gate.py --gate"}],
             },
         ]
     if inbox:
         hooks["UserPromptSubmit"] = [
             {
-                "hooks": [{"type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/synthesis-project-management/scripts/board_inbox.py --hook"}]
+                "hooks": [{"type": "command", "command": "\"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis\" exec-public --timeout-seconds 28 synthesis-project-management/scripts/board_inbox.py --hook"}]
             }
         ]
     return {"hooks": hooks}
+
+
+def test_hook_definition_refuses_ambient_interpreter_without_setup_pin(tmp_path):
+    payload = _hook_config()
+    payload["hooks"]["SessionStart"][0]["hooks"][0]["command"] = "python3 /fixture/session_context.py --format claude"
+    hook_file = tmp_path / "hooks/hooks.json"
+    hook_file.parent.mkdir()
+    hook_file.write_text(json.dumps(payload))
+    checks = {check.name: check for check in MODULE.hook_definition_checks(tmp_path)}
+    assert not checks["hook-definition.pinned-execution"].ok
 
 
 def test_hook_definition_checks_require_session_context(tmp_path: Path) -> None:

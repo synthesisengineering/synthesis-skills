@@ -398,6 +398,30 @@ def test_repository_ci_executes_release_wiring_tests() -> None:
     )
 
 
+@pytest.mark.parametrize("activation_ok", [True, False])
+def test_release_establishes_required_launcher_before_exposing_new_hooks(repo, monkeypatch, activation_ok):
+    ready = False
+    observations = []
+    monkeypatch.setattr(release, "preflight", lambda *args: "9.9.9")
+
+    def activate(repository, version, result, dry_run):
+        nonlocal ready
+        ready = activation_ok
+        return result.add("install.synthesis-cli", activation_ok, "fixture")
+
+    def refresh(client, *args, **kwargs):
+        observations.append((client, ready))
+        return True
+
+    monkeypatch.setattr(release, "activate_published_cli", activate)
+    monkeypatch.setattr(release, "refresh_client", refresh)
+    monkeypatch.setattr(release, "install_codex_cache_guardian", lambda *args, **kwargs: True)
+    monkeypatch.setattr(release, "deep_verify", lambda *args, **kwargs: True)
+    monkeypatch.setattr(release, "refresh_stable_path", lambda *args, **kwargs: True)
+    assert release.main(["--repo-root", str(repo), "--install-only"]) == (0 if activation_ok else 1)
+    assert observations == ([("claude", True), ("codex", True)] if activation_ok else [])
+
+
 def test_publisher_activates_cli_through_public_release_verifier(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -808,7 +832,6 @@ def test_cache_guardian_lock_release_contract_is_public_and_coherent() -> None:
         for registration in registrations
         for hook in registration["hooks"]
         if hook.get("type") == "command"
-        and hook.get("command", "").startswith("python3 ")
     ]
 
     # This is a historical feature contract. Current release metadata must
@@ -821,7 +844,7 @@ def test_cache_guardian_lock_release_contract_is_public_and_coherent() -> None:
     assert "watcher and explicit one-shot mode stay nonblocking" in manager
     assert "bounded failure" in readme
     assert "## [4.91.4]" in changelog
-    assert commands and all(command.startswith("python3 -B ") for command in commands)
+    assert commands and all(command.startswith('"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis" exec-public ') for command in commands)
 
 
 def test_whole_system_onboarding_release_contract_is_public_and_coherent() -> None:
@@ -1787,3 +1810,15 @@ def test_required_checks_cover_ci_pytest_groups() -> None:
     assert not missing, (
         "CI pytest groups absent from release.py REQUIRED_CHECKS: " + repr(missing)
     )
+
+
+def test_acceptance_expectation_covers_both_rename_paths_and_literal_names(tmp_path):
+    repository, authority = accepted_publish_fixture(tmp_path)
+    base = authority.expected["change_head"]
+    target = " renamed\nsource.py "
+    (repository / "production.py").rename(repository / target)
+    subprocess.run(["git", "-C", str(repository), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repository), "commit", "-qm", "fixture rename"], check=True)
+    expected, detail = release.acceptance_expectation(repository, base, "fixture-rename")
+    assert expected is not None, detail
+    assert expected["changed_paths"] == sorted(["production.py", target])

@@ -348,10 +348,10 @@ def _parse_board_rows(path: Path) -> list[dict[str, str]]:
         raise ProjectStateError(f"coordination board invalid: {exc}") from exc
 
 
-def _refresh_coordination_board(path: Path) -> str | None:
+def _refresh_coordination_board(path: Path, *, passive_stop: bool = False) -> str | None:
     helper = Path(__file__).with_name("coordination.py")
     result = subprocess.run(
-        [sys.executable, str(helper), "--board", str(path), "status", "--json"],
+        [sys.executable, str(helper), "--board", str(path), "status", "--json"] + (["--passive-stop"] if passive_stop else []),
         capture_output=True,
         text=True,
         check=False,
@@ -370,7 +370,8 @@ def _refresh_coordination_board(path: Path) -> str | None:
         return f"coordination lease refresh returned invalid evidence: {exc}"
     if problems:
         return "coordination board is invalid after refresh: " + "; ".join(map(str, problems))
-    if not lease.get("configured") or not lease.get("refreshed") or lease.get("error"):
+    passive_hit = passive_stop and lease.get("cache_hit") is True and isinstance(lease.get("age_seconds"), (int, float)) and 0 <= lease["age_seconds"] < 300
+    if not lease.get("configured") or not (lease.get("refreshed") or passive_hit) or lease.get("error"):
         return "coordination lease refresh failed: " + str(
             lease.get("error") or "remote authority was not refreshed"
         )
@@ -1070,8 +1071,8 @@ def _working_digest(project: Path) -> str:
     return _sha_bytes(json.dumps(entries, separators=(",", ":")).encode())
 
 
-def _active_claim(path: Path, session_id: str, project_id: str, project: Path) -> dict[str, str]:
-    rows = _parse_board_rows(path)
+def _active_claim(path: Path, session_id: str, project_id: str, project: Path, *, claim_rows: list[dict[str, str]] | None = None) -> dict[str, str]:
+    rows = _parse_board_rows(path) if claim_rows is None else claim_rows
     matches = [
         row for row in rows
         if row.get("session uuid") == session_id
@@ -1101,6 +1102,7 @@ def checkpoint_project(
     coordination_board: Path,
     receipt_root: Path,
     source_heads: dict[str, str] | None = None,
+    native_event: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Receipt-only API: require adopted state, claim, Git, and hash bindings."""
     applicability, issues = checkpoint_applicability(project)
@@ -1121,7 +1123,24 @@ def checkpoint_project(
         problems.append("source heads changed after current state was written")
     if problems:
         raise ProjectStateError("; ".join(problems))
-    claim = _active_claim(coordination_board.resolve(), session_id, project_id, project)
+    # Receipt creation is an authority boundary even when called directly by
+    # the CLI. An observer's cached mirror can never authorize this write.
+    from coordination import _check_staged_board_snapshot
+    try:
+        snapshot = _check_staged_board_snapshot(coordination_board.resolve())
+    except (RuntimeError, OSError, ValueError) as exc:
+        raise ProjectStateError(f"checkpoint lease authority failed: {exc}") from exc
+    if snapshot is None:
+        raise ProjectStateError("checkpoint requires a coordination board")
+    try:
+        claim_rows = parse_table_rows(snapshot)
+    except ValueError as exc:
+        raise ProjectStateError(f"checkpoint coordination board invalid: {exc}") from exc
+    if native_event is not None:
+        fresh_row = _row_for_event(claim_rows, native_event, coordination_board.resolve())
+        if fresh_row is None or fresh_row.get("session uuid") != session_id:
+            raise ProjectStateError("native lifecycle identity no longer owns the refreshed checkpoint claim")
+    claim = _active_claim(coordination_board.resolve(), session_id, project_id, project, claim_rows=claim_rows)
     _repo, _relative, head, tree = _git_identity(project)
     payload: dict[str, Any] = {
         "receipt_schema": RECEIPT_SCHEMA,
@@ -1467,7 +1486,7 @@ def checkpoint_hook(
     """Bind a lifecycle event to its seat and issue an exact clean receipt."""
     try:
         if refresh_coordination:
-            refresh_issue = _refresh_coordination_board(coordination_board.resolve())
+            refresh_issue = _refresh_coordination_board(coordination_board.resolve(), passive_stop=payload.get("hook_event_name") == "Stop")
             if refresh_issue:
                 return "FAIL", [refresh_issue]
         row = _row_for_event(_parse_board_rows(coordination_board.resolve()), payload, coordination_board.resolve())
@@ -1496,6 +1515,7 @@ def checkpoint_hook(
             coordination_board=coordination_board,
             receipt_root=receipt_root,
             source_heads=source_heads,
+            native_event=payload,
         )
         return validate_checkpoint(
             project,

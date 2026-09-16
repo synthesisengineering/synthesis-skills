@@ -621,6 +621,7 @@ def test_activation_refuses_user_owned_launcher(tmp_path: Path) -> None:
     descriptor = system_contract.release_descriptor_from_checkout(
         root, "stable", "stable", "https://example.test/synthesis-skills.git"
     )
+    root = materialized_fixture(root, tmp_path)
     launcher = tmp_path / "bin" / "synthesis"
     launcher.parent.mkdir()
     launcher.write_text("#!/bin/sh\necho mine\n", encoding="utf-8")
@@ -634,6 +635,7 @@ def test_managed_launcher_dispatches_through_the_atomic_active_pointer(tmp_path:
     descriptor = system_contract.release_descriptor_from_checkout(
         root, "stable", "stable", "https://example.test/synthesis-skills.git"
     )
+    root = materialized_fixture(root, tmp_path)
     launcher = tmp_path / "bin" / "synthesis"
     active = tmp_path / "state" / "active.json"
     system_contract.activate_cli(root, descriptor, launcher, active)
@@ -649,6 +651,7 @@ def test_activation_refuses_launcher_that_spoofs_the_public_marker(tmp_path: Pat
     descriptor = system_contract.release_descriptor_from_checkout(
         root, "stable", "stable", "https://example.test/synthesis-skills.git"
     )
+    root = materialized_fixture(root, tmp_path)
     launcher = tmp_path / "bin" / "synthesis"
     launcher.parent.mkdir()
     forged = system_contract.LAUNCHER_MARK + "\n#!/bin/sh\necho user-owned\n"
@@ -665,6 +668,7 @@ def test_activation_failure_cannot_split_launcher_from_active_descriptor(
     descriptor = system_contract.release_descriptor_from_checkout(
         root, "stable", "stable", "https://example.test/synthesis-skills.git"
     )
+    root = materialized_fixture(root, tmp_path)
     launcher = tmp_path / "bin" / "synthesis"
     active = tmp_path / "state" / "active.json"
     system_contract.activate_cli(root, descriptor, launcher, active)
@@ -679,6 +683,125 @@ def test_activation_failure_cannot_split_launcher_from_active_descriptor(
         system_contract.activate_cli(root, descriptor, launcher, active)
     assert launcher.read_bytes() == launcher_before
     assert active.read_bytes() == active_before
+
+
+def materialized_fixture(root, tmp_path):
+    import bootstrap
+    generation, _ = bootstrap.materialize_release(root, tmp_path / "generations",
+        channel="stable", ref="stable", source_url="https://example.test/synthesis-skills.git")
+    return generation
+
+
+def test_activation_rejects_dangling_git_marker_without_replacing_current_pair(tmp_path):
+    source = release_repo(tmp_path)
+    descriptor = system_contract.release_descriptor_from_checkout(source, "stable", "stable", "https://example.test/synthesis-skills.git")
+    root = materialized_fixture(source, tmp_path)
+    launcher, active = tmp_path / "bin/synthesis", tmp_path / "state/active.json"
+    system_contract.activate_cli(root, descriptor, launcher, active)
+    before = launcher.read_bytes(), active.read_bytes()
+    # Model corruption of a retained generation before a repeated setup.
+    root.chmod(0o755)
+    (root / ".git").symlink_to(tmp_path / "absent-git-metadata")
+    with pytest.raises(system_contract.ContractError, match="materialized release"):
+        system_contract.activate_cli(root, descriptor, launcher, active)
+    assert (launcher.read_bytes(), active.read_bytes()) == before
+
+
+def test_launcher_records_absolute_pin_and_ignores_hostile_path(tmp_path, monkeypatch):
+    root = release_repo(tmp_path)
+    descriptor = system_contract.release_descriptor_from_checkout(root, "stable", "stable", "https://example.test/synthesis-skills.git")
+    root = materialized_fixture(root, tmp_path)
+    launcher, active = tmp_path / "bin/synthesis", tmp_path / "state/active.json"
+    system_contract.activate_cli(root, descriptor, launcher, active)
+    recorded = json.loads(active.read_text())
+    assert recorded["interpreter"]["version"] == ".".join(map(str, sys.version_info[:3]))
+    assert launcher.read_text().splitlines()[0] == "#!" + recorded["interpreter"]["executable"] + " -B"
+    hostile = tmp_path / "hostile"
+    hostile.mkdir()
+    fake = hostile / "python3"
+    fake.write_text("#!/bin/sh\nprintf hijacked\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", str(hostile))
+    result = subprocess.run([str(launcher)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == str(active)
+
+
+def test_exact_legacy_launcher_migrates_and_unknown_edits_refuse(tmp_path):
+    root = release_repo(tmp_path)
+    descriptor = system_contract.release_descriptor_from_checkout(root, "stable", "stable", "https://example.test/synthesis-skills.git")
+    root = materialized_fixture(root, tmp_path)
+    launcher, active = tmp_path / "bin/synthesis", tmp_path / "state/active.json"
+    launcher.parent.mkdir()
+    launcher.write_bytes(system_contract.legacy_launcher_bytes(active))
+    launcher.chmod(0o755)
+    system_contract.activate_cli(root, descriptor, launcher, active)
+    assert b"exec python3" not in launcher.read_bytes()
+    launcher.write_bytes(launcher.read_bytes() + b"\n# unowned modification\n")
+    before = active.read_bytes()
+    with pytest.raises(system_contract.ContractError, match="user-owned"):
+        system_contract.activate_cli(root, descriptor, launcher, active)
+    assert active.read_bytes() == before
+
+
+def test_legacy_migration_failure_restores_exact_old_pair(tmp_path, monkeypatch):
+    root = release_repo(tmp_path)
+    descriptor = system_contract.release_descriptor_from_checkout(root, "stable", "stable", "https://example.test/synthesis-skills.git")
+    root = materialized_fixture(root, tmp_path)
+    launcher, active = tmp_path / "bin/synthesis", tmp_path / "state/active.json"
+    launcher.parent.mkdir()
+    active.parent.mkdir()
+    old_launcher = system_contract.legacy_launcher_bytes(active)
+    old_active = json.dumps({**descriptor, "release_root": str(root)}).encode()
+    launcher.write_bytes(old_launcher)
+    active.write_bytes(old_active)
+    original = system_contract.atomic_write_json
+    def failing(path, value):
+        if path == active:
+            raise OSError("injected pointer failure")
+        return original(path, value)
+    monkeypatch.setattr(system_contract, "atomic_write_json", failing)
+    with pytest.raises(OSError, match="injected"):
+        system_contract.activate_cli(root, descriptor, launcher, active)
+    assert launcher.read_bytes() == old_launcher
+    assert active.read_bytes() == old_active
+    assert not active.with_name(active.name + ".activation-pending.json").exists()
+
+
+def test_interrupted_migration_refuses_execution_then_recovers(tmp_path):
+    root = release_repo(tmp_path)
+    descriptor = system_contract.release_descriptor_from_checkout(root, "stable", "stable", "https://example.test/synthesis-skills.git")
+    root = materialized_fixture(root, tmp_path)
+    launcher, active = tmp_path / "bin/synthesis", tmp_path / "state/active.json"
+    launcher.parent.mkdir()
+    active.parent.mkdir()
+    launcher.write_bytes(system_contract.legacy_launcher_bytes(active))
+    launcher.chmod(0o755)
+    active.write_text(json.dumps({**descriptor, "release_root": str(root)}))
+    program = """import json, os, sys
+from pathlib import Path
+import system_contract as c
+original = c.atomic_write_json
+def interrupt(path, value):
+    if Path(path) == Path(sys.argv[4]):
+        os._exit(73)
+    return original(path, value)
+c.atomic_write_json = interrupt
+c.activate_cli(Path(sys.argv[1]), json.loads(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]))
+"""
+    env = {**os.environ, "PYTHONPATH": str(SCRIPTS)}
+    crashed = subprocess.run([sys.executable, "-B", "-c", program, str(root), json.dumps(descriptor), str(launcher), str(active)], env=env, capture_output=True)
+    assert crashed.returncode == 73, crashed.stderr
+    pending = active.with_name(active.name + ".activation-pending.json")
+    assert pending.is_file()
+    refused = subprocess.run([str(launcher)], capture_output=True, text=True)
+    assert refused.returncode == 2
+    assert "unfinished setup activation" in refused.stderr
+    system_contract.activate_cli(root, descriptor, launcher, active)
+    assert not pending.exists()
+    recovered = subprocess.run([str(launcher)], capture_output=True, text=True)
+    assert recovered.returncode == 0, recovered.stderr
+    assert recovered.stdout.strip() == str(active)
 
 
 def test_concurrent_transactions_preserve_every_generation(tmp_path: Path) -> None:

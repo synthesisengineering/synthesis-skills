@@ -12,6 +12,7 @@ import copy
 import json
 import re
 import shlex
+import sys
 from pathlib import Path
 
 
@@ -339,7 +340,7 @@ def rendered_kernel(source: str, client: str) -> str:
 
 
 def message_guard_hook(command_path: Path) -> dict:
-    command = "python3 %s --gate" % shlex.quote(str(command_path))
+    command = "%s -B %s --gate" % (shlex.quote(sys.executable), shlex.quote(str(command_path)))
     return {
         "matcher": SEND_TOOL_MATCHER,
         "hooks": [{"type": "command", "command": command}],
@@ -349,7 +350,7 @@ def message_guard_hook(command_path: Path) -> dict:
 def kernel_sync_hook(command_path: Path, client: str) -> dict:
     if client not in KERNEL_EDIT_MATCHERS:
         raise ValueError("kernel hook client must be claude or codex")
-    command = "python3 %s --hook" % shlex.quote(str(command_path))
+    command = "%s -B %s --hook" % (shlex.quote(sys.executable), shlex.quote(str(command_path)))
     return {
         "matcher": KERNEL_EDIT_MATCHERS[client],
         "hooks": [{"type": "command", "command": command, "timeout": 60}],

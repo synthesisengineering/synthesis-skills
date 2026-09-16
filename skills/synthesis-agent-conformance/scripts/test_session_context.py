@@ -135,6 +135,20 @@ def test_build_without_pointer_explains_automatic_named_project_recovery(
     assert "never ask the user to run a context-lifecycle command" in message
 
 
+def test_sessionstart_without_pointer_forces_refresh_before_local_claims(tmp_path, monkeypatch):
+    import coordination
+    board = tmp_path / "board.md"
+    board.write_text(coordination.template())
+    calls = []
+    monkeypatch.setattr(coordination, "lease_refresh", lambda path: calls.append(path) or {"configured": True, "refreshed": False, "error": "fixture unavailable"})
+    with pytest.raises(RuntimeError, match="fixture unavailable"):
+        MODULE.build(tmp_path / "no-pointer.json", board)
+    assert calls == [board]
+    # The exact same input is still usable for a no-write diagnostic.
+    message = MODULE.build(tmp_path / "no-pointer.json", board, diagnostic=True)
+    assert "No active synthesis project pointer" in message and calls == [board]
+
+
 def test_skill_documents_workspace_registry_freshness_notice() -> None:
     skill = (MODULE_PATH.parent.parent / "SKILL.md").read_text(encoding="utf-8")
 

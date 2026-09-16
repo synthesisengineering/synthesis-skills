@@ -18,6 +18,7 @@ from typing import Any, Callable
 
 import onboard
 import organization
+import release_runtime
 from reload_guidance import RECORDED_SESSION_DETAIL, RECORDED_SESSION_SCOPE, recovery_instruction
 from enrollment import (EnrollmentJournal, recover_enrollments, require_settled_enrollments,
                         engine_lock, engine_state_root, recover_copy_transactions)
@@ -83,6 +84,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _common_output(parser)
     commands = parser.add_subparsers(dest="command", required=True)
+    execute = commands.add_parser("exec-public", help="execute a declared script from the verified active release")
+    execute.add_argument("arguments", nargs=argparse.REMAINDER)
 
     setup = commands.add_parser("setup", help="converge a full or skills-only installation")
     setup.add_argument("--profile", choices=["full", "skills-only"], default="full")
@@ -214,6 +217,7 @@ def _current_planes(
     engine_code: int,
     engine_details: dict[str, Any] | None,
     active: dict[str, Any] | None,
+    home: Path | None = None,
 ) -> dict[str, Any]:
     """Derive every plane from current evidence, not from the last transaction.
 
@@ -313,6 +317,12 @@ def _current_planes(
             "command": "doctor",
             "detail": "; ".join(failing) or "engine exited %d" % engine_code,
         }
+    if active is not None:
+        try:
+            runtime = release_runtime.runtime_health(active, home=home)
+            planes["installed"]["execution_runtime"] = runtime
+        except release_runtime.RuntimeContractError as exc:
+            planes["installed"].update(status="defective", execution_runtime={"status": "defective", "detail": str(exc)})
     live = planes["live-loaded"]
     release_version = (recorded or {}).get("version")
     receipts = live.get("receipts") if isinstance(live.get("receipts"), dict) else {}
@@ -1146,6 +1156,9 @@ def main(
     state: SystemState | None = None,
     engine_runner: Callable[[list[str]], Any] | None = None,
 ) -> int:
+    actual = sys.argv[1:] if argv is None else argv
+    if actual[:1] == ["exec-public"]:
+        return release_runtime.exec_public_main(actual[1:], release_runtime.descriptor_path())
     args = build_parser().parse_args(argv)
     state = state or SystemState()
     engine_runner = engine_runner or (
@@ -1564,6 +1577,7 @@ def main(
                 engine_code=code,
                 engine_details=engine_details,
                 active=active,
+                home=state.home,
             )
             next_action = _next_action(desired, planes, disabled, promotion_note)
             payload: dict[str, Any] = {

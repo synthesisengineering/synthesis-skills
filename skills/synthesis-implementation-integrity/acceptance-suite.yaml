@@ -1,707 +1,1468 @@
 schema: 2
-suite: intakes-2026-09-14
+suite: ecosystem-reliability-source-candidate-2026-09-16-public
 membership: closed
-production_entry_point: build_packet.py SPEC --strict-reader [--file-into DIR --date YYYY-MM-DD], record_rulings.py PASTE
-  --file-into DIR, ritual_state.py query weekly-review --workspace W, and sync_watermark.py advance --through EPOCH
-enforcing_boundary: release.py derives exact Git changed paths and consumes fresh transaction-bound acceptance
-  before publication and both-client installation
+production_entry_point: Shared coordination/session recovery, archive and retirement CLI, local repo checks,
+  pre-commit policy validation and verified public release execution
+enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and both-client installation;
+  source-candidate validation alone has no authority
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures establish that every decision-packet option label names a consequence, that the
-  reader contract reports bare acknowledgements and labels sharing every content word as findings the strict
-  reader turns into refusals naming the row and the accepted form, that each button carries its consequence,
-  that --file-into writes the dated spec and page only into an existing directory, that record_rulings.py
-  round-trips the pasted summary of a generated packet and of one captured from the real page into a rulings
-  file and quotes what it refuses, that the weekly-review query answers for the named workspace only and refuses
-  an unscoped call unless the log names exactly one workspace, that every ritual_state view honors --workspace,
-  that advance and status accept epoch seconds and Slack's fractional ts and store every form canonically, and
-  one coherent release read from the actual plugin manifests, CHANGELOG top heading and README release marker.
-  They read skills/synthesis-decision-packet/SKILL.md only for the handoff path anchor; no fixture reads its
-  consequence-labeling, --strict-reader or --file-into prose, which is bound through the cases that pin the
-  behavior it documents. They read skills/synthesis-daily-rituals/SKILL.md for the watermark-gate invocation,
-  the version labels, the line budget and the reference links; no fixture reads the scoped weekly-review
-  command in Day-Start Step 1 or Day-End Step 10, and references/version-history.md is read only for its
-  version headings and the anchors the moved-block fixture pins, not the v2.37.0 entry's body. No fixture reads
-  the body text of the 4.99.0 README note or CHANGELOG entry beyond that marker and heading. The coverage
-  coherence fixtures compare the pytest group lists in validate.yml, AGENTS.md and release.py; they do not
-  execute the group, which CI and the release gate run. They do not establish native startup, complete agent
-  reading, natural Stop, or multi-computer readiness. Installed and genuine native acceptance are separate.
+unverified_remainder: This manifest declares a source candidate, with existing version labels; it does
+  not establish a completed release, installed bytes, both-client installation parity, genuine native
+  SessionStart/PostToolUse/Stop delivery, hook trust, multi-computer readiness or production remote transport/contended
+  operation. No publication, deployment, billing, disclosure or policy-activation authority follows from
+  it. Codex must not merge or activate the changed hooks. The Claude handoff must add the actual release
+  metadata, obtain release-train ownership, regenerate exact changed-surface membership including those
+  changes, rerun all required CI groups and fresh closed acceptance through the gated release scripts,
+  then complete the separate human hook-trust step. This declaration covers only changes from the named
+  review baseline to the eventual clean committed candidate; the real consumer still supplies and verifies
+  its own authoritative change base and transaction. Static manifest validation and AST-resolvable selectors
+  are not passing execution evidence. Parameterized selectors cover every fixture parameter when actually
+  run; pytest output must be inspected for skips or xfails because this runner classifies subprocess exit
+  codes. The selected fixtures do not replace full CI or the package independent-review dispositions.
+  The candidate review base is 13b7907. Temporary Git repositories and local bare remotes exercise grammar,
+  ownership/freshness, archive CAS/recovery and retirement, not the user coordination board. Cache and
+  thread-pool tests establish semantic boundaries and bounded fixture behavior, not native-client latency.
+  The canonical-JSON fixtures are relocated evidence and scalar vectors. Contract Markdown is linked to
+  tests of the documented behavior, not a test of every sentence. The ritual document cases read its instruction
+  budget and reference links; they do not prove an agent actually invokes archive or private orphan-snapshot
+  maintenance. The public declaration cannot execute private-repository pruning fixtures. Direct-copy
+  tests execute the actual shell boundary in disposable source/target roots; they do not operate either
+  installed client. D09 release/interpreter fixtures use temporary release pointers and launchers and
+  do not activate the real managed launcher or prove an existing native session has adopted it. Separate
+  installed/native acceptance remains required.
 changed_surfaces:
-- path: .claude-plugin/plugin.json
+- path: .github/scripts/install-ci-python.sh
   cases:
-  - release-contract
-  - release-surfaces-pinned
-  - release-contract-version
-- path: .codex-plugin/plugin.json
-  cases:
-  - release-contract
-  - release-surfaces-pinned
-  - release-contract-version
+  - d09-ci-interpreter.ci_installer_refuses_local_execution_before_commands
+  - d09-ci-interpreter.ci_package_verification_precedes_installer
+  - d09-ci-interpreter.mac_ci_installs_framework_before_dependencies_and_uses_python3
 - path: .github/workflows/validate.yml
   cases:
-  - ci-verification-coherence
-  - gate-covers-ci-groups
-- path: AGENTS.md
+  - d09-ci-interpreter.ci_installer_refuses_local_execution_before_commands
+  - d09-ci-interpreter.ci_package_verification_precedes_installer
+  - d09-ci-interpreter.mac_ci_installs_framework_before_dependencies_and_uses_python3
+- path: docs/contracts/canonical-json.md
   cases:
-  - ci-verification-coherence
-- path: CHANGELOG.md
+  - canonical-json.binding_excludes_only_top_level_binding_field
+  - canonical-json.canonical_scalar_and_nesting_vectors
+  - canonical-json.relocated_live_receipt_matches_frozen_binding
+- path: docs/contracts/coordination-archive.md
   cases:
-  - release-contract
-  - release-surfaces-pinned
-  - release-contract-changelog
-  - public-surfaces
-- path: README.md
+  - coordination-archive.archive_commit_existing_but_unreachable_is_refused
+  - coordination-archive.cas_retry_replans_against_competing_board
+  - coordination-archive.directory_durability_precedes_row_removal_and_journal_unlink
+  - coordination-archive.duplicate_messages_keep_multiplicity
+  - coordination-archive.failed_publication_preserves_local_board_and_no_archive_mirror
+  - coordination-archive.fenced_quoted_message_never_truncates_live_recipient
+  - coordination-archive.foreign_mirror_content_is_not_overwritten
+  - coordination-archive.fresh_machine_hydrates_monthly_history_from_same_remote
+  - coordination-archive.mirror_hydration_after_post_publish_crash
+  - coordination-archive.real_cas_retains_archive_as_reachable_second_parent_and_one_file_tree
+  - coordination-archive.recent_administrative_record_is_never_absorbed_into_old_message
+  - coordination-archive.split_preserves_active_recent_ambiguous_and_broadcast_bytes
+  - coordination-archive.unknown_naive_future_and_exact_cutoff_rows_retained
+  - coordination-archive.unleased_journal_divergence_preserves_new_board_and_journal
+- path: docs/contracts/execution-runtime.md
   cases:
-  - release-contract
-  - release-surfaces-pinned
-  - release-contract-version
-  - public-surfaces
+  - d09-release-runtime.active_release_is_verified_and_uses_current_pinned_executable
+  - d09-release-runtime.canonical_source_override_is_explicitly_rejected
+  - d09-release-runtime.child_bytes_and_attention_exit_are_preserved
+  - d09-release-runtime.child_timeout_and_start_failure_are_not_normalized
+  - d09-release-runtime.doctor_checks_launcher_and_guardian_against_setup_pin
+  - d09-release-runtime.hostile_path_cannot_choose_child_interpreter
+  - d09-release-runtime.interpreter_drift_or_unpinned_path_refuses
+  - d09-release-runtime.macos_pin_uses_prescribed_framework_and_refuses_other_version
+  - d09-release-runtime.managed_public_cli_cannot_normalize_runtime_failure
+  - d09-release-runtime.managed_public_cli_preserves_bytes_and_explicit_attention_adapter
+  - d09-release-runtime.only_declared_contained_public_entrypoints_are_executable
+  - d09-release-runtime.public_cli_reads_payload_from_held_open_harness_socket
+  - d09-release-runtime.setup_records_current_absolute_interpreter_identity
+  - d09-release-runtime.tree_hash_contract_matches_the_existing_release_format
+  - d09-release-runtime.unverified_release_never_becomes_an_execution_root
+- path: docs/contracts/lease-fence.md
+  cases:
+  - lease-freshness-and-backups.authoritative_read_refuses_failed_refresh_before_delivery
+  - lease-freshness-and-backups.backup_directory_symlink_refuses_without_touching_destination
+  - lease-freshness-and-backups.backup_retention_is_bounded_and_preserves_foreign_files
+  - lease-freshness-and-backups.check_staged_keeps_identity_cas_even_with_fresh_stamp
+  - lease-freshness-and-backups.commit_authority_cannot_bootstrap_unpublished_remote_from_local_claims
+  - lease-freshness-and-backups.diagnostic_inbox_never_fetches_or_marks
+  - lease-freshness-and-backups.direct_checkpoint_cannot_issue_receipt_from_unreachable_local_mirror
+  - lease-freshness-and-backups.failed_backup_is_not_counted_as_verified_recovery
+  - lease-freshness-and-backups.failed_forced_fetch_invalidates_previous_passive_success
+  - lease-freshness-and-backups.live_inbox_refuses_stale_delivery_without_advancing_watermark
+  - lease-freshness-and-backups.mirror_failure_retains_verified_backup_without_pruning
+  - lease-freshness-and-backups.noop_mutation_skips_publish_but_explicit_authority_fence_does_not
+  - lease-freshness-and-backups.owner_stop_forces_authority_after_passive_observation
+  - lease-freshness-and-backups.passive_interval_is_only_opt_in_and_expires_at_five_minutes
+  - lease-freshness-and-backups.passive_stamp_cannot_outlive_its_bound_evidence
+  - lease-freshness-and-backups.project_refresh_accepts_cache_only_for_bounded_passive_mode
+  - lease-freshness-and-backups.sessionstart_without_pointer_forces_refresh_before_local_claims
+  - lease-freshness-and-backups.unchanged_board_has_no_backup_or_write
+  - lease-freshness-and-backups.unreachable_coordination_lease_is_unknown_not_green
+- path: hooks/hooks.json
+  cases:
+  - d09-hook-contract.hook_definition_checks_require_session_context
+  - d09-hook-contract.hook_definition_refuses_ambient_interpreter_without_setup_pin
+  - d09-hook-contract.shipped_hook_config_routes_peer_sends_through_the_gate
+- path: onboard.sh
+  cases:
+  - d09-bootstrap.onboard_handoff_consumes_resolution_policy_before_update_cli
+- path: skills/synthesis-agent-conformance/scripts/conformance.py
+  cases:
+  - d09-hook-contract.hook_definition_checks_require_session_context
+  - d09-hook-contract.hook_definition_refuses_ambient_interpreter_without_setup_pin
+  - d09-hook-contract.shipped_hook_config_routes_peer_sends_through_the_gate
+- path: skills/synthesis-agent-conformance/scripts/session_context.py
+  cases:
+  - lease-freshness-and-backups.authoritative_read_refuses_failed_refresh_before_delivery
+  - lease-freshness-and-backups.backup_directory_symlink_refuses_without_touching_destination
+  - lease-freshness-and-backups.backup_retention_is_bounded_and_preserves_foreign_files
+  - lease-freshness-and-backups.check_staged_keeps_identity_cas_even_with_fresh_stamp
+  - lease-freshness-and-backups.commit_authority_cannot_bootstrap_unpublished_remote_from_local_claims
+  - lease-freshness-and-backups.diagnostic_inbox_never_fetches_or_marks
+  - lease-freshness-and-backups.direct_checkpoint_cannot_issue_receipt_from_unreachable_local_mirror
+  - lease-freshness-and-backups.failed_backup_is_not_counted_as_verified_recovery
+  - lease-freshness-and-backups.failed_forced_fetch_invalidates_previous_passive_success
+  - lease-freshness-and-backups.live_inbox_refuses_stale_delivery_without_advancing_watermark
+  - lease-freshness-and-backups.mirror_failure_retains_verified_backup_without_pruning
+  - lease-freshness-and-backups.noop_mutation_skips_publish_but_explicit_authority_fence_does_not
+  - lease-freshness-and-backups.owner_stop_forces_authority_after_passive_observation
+  - lease-freshness-and-backups.passive_interval_is_only_opt_in_and_expires_at_five_minutes
+  - lease-freshness-and-backups.passive_stamp_cannot_outlive_its_bound_evidence
+  - lease-freshness-and-backups.project_refresh_accepts_cache_only_for_bounded_passive_mode
+  - lease-freshness-and-backups.sessionstart_without_pointer_forces_refresh_before_local_claims
+  - lease-freshness-and-backups.unchanged_board_has_no_backup_or_write
+  - lease-freshness-and-backups.unreachable_coordination_lease_is_unknown_not_green
+- path: skills/synthesis-agent-conformance/scripts/test_conformance.py
+  cases:
+  - d09-hook-contract.hook_definition_checks_require_session_context
+  - d09-hook-contract.hook_definition_refuses_ambient_interpreter_without_setup_pin
+  - d09-hook-contract.shipped_hook_config_routes_peer_sends_through_the_gate
+- path: skills/synthesis-agent-conformance/scripts/test_session_context.py
+  cases:
+  - lease-freshness-and-backups.sessionstart_without_pointer_forces_refresh_before_local_claims
+- path: skills/synthesis-autopilot/scripts/test_autopilot_gate.py
+  cases:
+  - autopilot-fixture-schema.registration_is_bound_to_session_project_claim_and_client_ref
 - path: skills/synthesis-daily-rituals/SKILL.md
   cases:
-  - rituals-watermark-gate-documented
-  - rituals-watermark-gate-invocation
-  - rituals-begin-and-reread
-  - rituals-labels-recorded
-  - rituals-declared-version-recorded
-  - rituals-newest-record-is-declared
-  - rituals-no-label-ahead
-  - rituals-skill-budget
-  - rituals-moved-blocks-survive
-  - rituals-references-linked
-- path: skills/synthesis-daily-rituals/references/sync-watermarks.md
+  - ritual-document.rituals_references_are_all_linked
+  - ritual-document.rituals_skill_document_stays_within_repo_budget
+- path: skills/synthesis-git-hooks/scripts/_load_config.py
   cases:
-  - watermark-reference-contract
-  - watermark-reference-names-epoch
-  - rituals-references-linked
-- path: skills/synthesis-daily-rituals/references/version-history.md
+  - pattern-validation-cache.bad_cache_uses_real_validation_and_preserves_unsafe_targets
+  - pattern-validation-cache.cache_invalidates_every_validation_dependency
+  - pattern-validation-cache.concurrent_cache_publication_is_atomic
+  - pattern-validation-cache.exact_valid_policy_skips_only_redundant_pattern_validation
+  - pattern-validation-cache.invalid_policy_is_never_cached_or_allowed
+  - pattern-validation-cache.loaded_validator_logic_is_part_of_identity
+  - pattern-validation-cache.missing_grep_after_warm_cache_fails_closed
+  - pattern-validation-cache.symlink_cache_directory_does_not_receive_writes
+  - pattern-validation-cache.warm_validation_cache_never_skips_credential_scanning
+  - standalone-runtime-closure.claim_helper_introduction_requires_released_companion_anchors
+  - standalone-runtime-closure.failed_claim_helper_introduction_restores_old_bundle_and_absence
+  - standalone-runtime-closure.new_helper_never_overwrites_an_unowned_local_file
+  - standalone-runtime-closure.pre_helper_bundle_upgrade_proves_old_pointer_and_executes_new_closure
+  - standalone-runtime-closure.public_update_refreshes_independently_wired_runtime_and_preserves_personal_state
+  - standalone-runtime-closure.r4_configured_hook_missing_runtime_fails_closed
+  - standalone-runtime-closure.r4_installer_copies_coordination_runtime
+- path: skills/synthesis-git-hooks/scripts/install.sh
   cases:
-  - rituals-labels-recorded
-  - rituals-declared-version-recorded
-  - rituals-newest-record-is-declared
-  - rituals-no-label-ahead
-  - rituals-moved-blocks-survive
-  - rituals-references-linked
-- path: skills/synthesis-daily-rituals/scripts/ritual_state.py
+  - standalone-runtime-closure.claim_helper_introduction_requires_released_companion_anchors
+  - standalone-runtime-closure.failed_claim_helper_introduction_restores_old_bundle_and_absence
+  - standalone-runtime-closure.new_helper_never_overwrites_an_unowned_local_file
+  - standalone-runtime-closure.pre_helper_bundle_upgrade_proves_old_pointer_and_executes_new_closure
+  - standalone-runtime-closure.public_update_refreshes_independently_wired_runtime_and_preserves_personal_state
+  - standalone-runtime-closure.r4_configured_hook_missing_runtime_fails_closed
+  - standalone-runtime-closure.r4_installer_copies_coordination_runtime
+- path: skills/synthesis-git-hooks/scripts/pre-commit
   cases:
-  - weekly-review-per-workspace
-  - weekly-review-named-workspace-latest
-  - weekly-review-unscoped-refused-several
-  - weekly-review-unscoped-refused-empty
-  - weekly-review-unscoped-single-workspace
-  - weekly-review-inference-ignores-legacy
-  - open-honors-workspace
-  - summary-honors-workspace
-  - summary-per-workspace-review
-  - last-honors-workspace
-  - streak-requires-workspace
-  - empty-workspace-refused
-  - record-refuses-empty-workspace
-  - ritual-state-self-test
-- path: skills/synthesis-daily-rituals/scripts/sync_watermark.py
+  - standalone-runtime-closure.claim_helper_introduction_requires_released_companion_anchors
+  - standalone-runtime-closure.failed_claim_helper_introduction_restores_old_bundle_and_absence
+  - standalone-runtime-closure.new_helper_never_overwrites_an_unowned_local_file
+  - standalone-runtime-closure.pre_helper_bundle_upgrade_proves_old_pointer_and_executes_new_closure
+  - standalone-runtime-closure.public_update_refreshes_independently_wired_runtime_and_preserves_personal_state
+  - standalone-runtime-closure.r4_configured_hook_missing_runtime_fails_closed
+  - standalone-runtime-closure.r4_installer_copies_coordination_runtime
+- path: skills/synthesis-git-hooks/scripts/test_pattern_validation_cache.py
   cases:
-  - epoch-seconds-accepted
-  - slack-ts-floored
-  - window-latest-round-trips
-  - future-epoch-refused
-  - refusal-names-forms
-  - non-ten-digit-not-epoch
-  - milliseconds-named
-  - leading-zero-not-epoch
-  - cli-leading-zero-refused
-  - milliseconds-anchored
-  - forms-share-now
-  - naive-epoch-local
-  - future-refusal-renders-seconds
-  - backwards-refusal-renders-seconds
-  - cli-window-round-trips
-  - cli-status-since-epoch
-  - cli-help-names-epoch
-- path: skills/synthesis-daily-rituals/scripts/test_ritual_state.py
+  - pattern-validation-cache.bad_cache_uses_real_validation_and_preserves_unsafe_targets
+  - pattern-validation-cache.cache_invalidates_every_validation_dependency
+  - pattern-validation-cache.concurrent_cache_publication_is_atomic
+  - pattern-validation-cache.exact_valid_policy_skips_only_redundant_pattern_validation
+  - pattern-validation-cache.invalid_policy_is_never_cached_or_allowed
+  - pattern-validation-cache.loaded_validator_logic_is_part_of_identity
+  - pattern-validation-cache.missing_grep_after_warm_cache_fails_closed
+  - pattern-validation-cache.symlink_cache_directory_does_not_receive_writes
+  - pattern-validation-cache.warm_validation_cache_never_skips_credential_scanning
+- path: skills/synthesis-git-hooks/scripts/test_pre_commit.py
   cases:
-  - weekly-review-per-workspace
-  - weekly-review-named-workspace-latest
-  - weekly-review-unscoped-refused-several
-  - weekly-review-unscoped-refused-empty
-  - weekly-review-unscoped-single-workspace
-  - weekly-review-inference-ignores-legacy
-  - open-honors-workspace
-  - summary-honors-workspace
-  - summary-per-workspace-review
-  - last-honors-workspace
-  - streak-requires-workspace
-  - empty-workspace-refused
-  - record-refuses-empty-workspace
-  - ritual-state-self-test
-- path: skills/synthesis-daily-rituals/scripts/test_sync_watermark.py
-  cases:
-  - epoch-seconds-accepted
-  - slack-ts-floored
-  - window-latest-round-trips
-  - future-epoch-refused
-  - refusal-names-forms
-  - non-ten-digit-not-epoch
-  - milliseconds-named
-  - leading-zero-not-epoch
-  - cli-leading-zero-refused
-  - milliseconds-anchored
-  - forms-share-now
-  - naive-epoch-local
-  - future-refusal-renders-seconds
-  - backwards-refusal-renders-seconds
-  - cli-window-round-trips
-  - cli-status-since-epoch
-  - cli-help-names-epoch
-  - watermark-reference-names-epoch
-- path: skills/synthesis-decision-packet/SKILL.md
-  cases:
-  - decision-packet-handoff-path
-- path: skills/synthesis-decision-packet/references/worked-example.md
-  cases:
-  - worked-example-round-trip
-- path: skills/synthesis-decision-packet/scripts/build_packet.py
-  cases:
-  - ids-edge-whitespace-refused
-  - bare-labels-reader-finding
-  - bare-labels-normalized
-  - packet-level-bare-labels-once
-  - indistinct-labels-reader-finding
-  - bare-not-double-reported
-  - consequence-labels-clean
-  - strict-reader-refuses-bare-labels
-  - button-carries-consequence
-  - consequence-non-empty
-  - row-option-sets-validated
-  - file-into-writes-dated
-  - file-into-missing-dir-refused
-  - date-requires-file-into
-  - summary-literals-pinned
-  - rulings-round-trip
-  - browser-fixture-clean
-  - line-breaks-refused
-  - title-underline-utf16
-  - worked-example-round-trip
-  - one-button-set-refused
-  - duplicate-option-values-refused
-  - option-values-strings
-- path: skills/synthesis-decision-packet/scripts/record_rulings.py
-  cases:
-  - date-requires-file-into
-  - summary-literals-pinned
-  - rulings-round-trip
-  - rulings-trailer-and-stdin
-  - rulings-malformed-refused
-  - rulings-file-into-and-date
-  - rulings-parse-real-page
-  - line-breaks-refused
-  - title-underline-utf16
-  - worked-example-round-trip
-  - rulings-refusals-quote-input
-- path: skills/synthesis-decision-packet/scripts/test_build_packet.py
-  cases:
-  - ids-edge-whitespace-refused
-  - bare-labels-reader-finding
-  - bare-labels-normalized
-  - packet-level-bare-labels-once
-  - indistinct-labels-reader-finding
-  - bare-not-double-reported
-  - consequence-labels-clean
-  - strict-reader-refuses-bare-labels
-  - button-carries-consequence
-  - consequence-non-empty
-  - row-option-sets-validated
-  - file-into-writes-dated
-  - file-into-missing-dir-refused
-  - date-requires-file-into
-  - summary-literals-pinned
-  - rulings-round-trip
-  - rulings-trailer-and-stdin
-  - rulings-malformed-refused
-  - rulings-file-into-and-date
-  - browser-fixture-clean
-  - rulings-parse-real-page
-  - line-breaks-refused
-  - title-underline-utf16
-  - worked-example-round-trip
-  - one-button-set-refused
-  - duplicate-option-values-refused
-  - option-values-strings
-  - rulings-refusals-quote-input
+  - standalone-runtime-closure.r4_configured_hook_missing_runtime_fails_closed
+  - standalone-runtime-closure.r4_installer_copies_coordination_runtime
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
-  - manifest
-  - unlisted-path
-  - transaction-binding
+  - manifest.schema-valid
+  - manifest.undeclared-path-refused
+  - manifest.transaction-bound
+- path: skills/synthesis-implementation-integrity/scripts/acceptance_suite.py
+  cases:
+  - closed-deletion-boundary.changed_paths_preserve_literal_newline_and_spaces
+  - closed-deletion-boundary.deleted_surface_never_relaxes_fixture_existence
+  - closed-deletion-boundary.deleted_surface_refuses_unsafe_or_unsupported_declarations
+  - closed-deletion-boundary.schema2_covers_deleted_source_and_both_rename_paths
+  - closed-deletion-boundary.schema2_deleted_path_requires_exact_git_deletion
+- path: skills/synthesis-implementation-integrity/scripts/test_acceptance_suite.py
+  cases:
+  - closed-deletion-boundary.changed_paths_preserve_literal_newline_and_spaces
+  - closed-deletion-boundary.deleted_surface_never_relaxes_fixture_existence
+  - closed-deletion-boundary.deleted_surface_refuses_unsafe_or_unsupported_declarations
+  - closed-deletion-boundary.schema2_covers_deleted_source_and_both_rename_paths
+  - closed-deletion-boundary.schema2_deleted_path_requires_exact_git_deletion
+- path: skills/synthesis-onboarding/scripts/bootstrap.py
+  cases:
+  - d09-bootstrap.onboard_handoff_consumes_resolution_policy_before_update_cli
+- path: skills/synthesis-onboarding/scripts/direct_copy.sh
+  cases:
+  - direct-copy-bytecode.direct_copy_ignores_generated_bytecode_but_detects_python_source_drift
+- path: skills/synthesis-onboarding/scripts/onboard.py
+  cases:
+  - standalone-runtime-closure.claim_helper_introduction_requires_released_companion_anchors
+  - standalone-runtime-closure.failed_claim_helper_introduction_restores_old_bundle_and_absence
+  - standalone-runtime-closure.new_helper_never_overwrites_an_unowned_local_file
+  - standalone-runtime-closure.pre_helper_bundle_upgrade_proves_old_pointer_and_executes_new_closure
+  - standalone-runtime-closure.public_update_refreshes_independently_wired_runtime_and_preserves_personal_state
+  - standalone-runtime-closure.r4_configured_hook_missing_runtime_fails_closed
+  - standalone-runtime-closure.r4_installer_copies_coordination_runtime
+- path: skills/synthesis-onboarding/scripts/release_runtime.py
+  cases:
+  - d09-release-runtime.active_release_is_verified_and_uses_current_pinned_executable
+  - d09-release-runtime.canonical_source_override_is_explicitly_rejected
+  - d09-release-runtime.child_bytes_and_attention_exit_are_preserved
+  - d09-release-runtime.child_timeout_and_start_failure_are_not_normalized
+  - d09-release-runtime.doctor_checks_launcher_and_guardian_against_setup_pin
+  - d09-release-runtime.hostile_path_cannot_choose_child_interpreter
+  - d09-release-runtime.interpreter_drift_or_unpinned_path_refuses
+  - d09-release-runtime.macos_pin_uses_prescribed_framework_and_refuses_other_version
+  - d09-release-runtime.managed_public_cli_cannot_normalize_runtime_failure
+  - d09-release-runtime.managed_public_cli_preserves_bytes_and_explicit_attention_adapter
+  - d09-release-runtime.only_declared_contained_public_entrypoints_are_executable
+  - d09-release-runtime.public_cli_reads_payload_from_held_open_harness_socket
+  - d09-release-runtime.setup_records_current_absolute_interpreter_identity
+  - d09-release-runtime.tree_hash_contract_matches_the_existing_release_format
+  - d09-release-runtime.unverified_release_never_becomes_an_execution_root
+- path: skills/synthesis-onboarding/scripts/runtime_payload.py
+  cases:
+  - standalone-runtime-closure.claim_helper_introduction_requires_released_companion_anchors
+  - standalone-runtime-closure.failed_claim_helper_introduction_restores_old_bundle_and_absence
+  - standalone-runtime-closure.new_helper_never_overwrites_an_unowned_local_file
+  - standalone-runtime-closure.pre_helper_bundle_upgrade_proves_old_pointer_and_executes_new_closure
+  - standalone-runtime-closure.public_update_refreshes_independently_wired_runtime_and_preserves_personal_state
+  - standalone-runtime-closure.r4_configured_hook_missing_runtime_fails_closed
+  - standalone-runtime-closure.r4_installer_copies_coordination_runtime
+- path: skills/synthesis-onboarding/scripts/synthesis_cli.py
+  cases:
+  - d09-release-runtime.active_release_is_verified_and_uses_current_pinned_executable
+  - d09-release-runtime.canonical_source_override_is_explicitly_rejected
+  - d09-release-runtime.child_bytes_and_attention_exit_are_preserved
+  - d09-release-runtime.child_timeout_and_start_failure_are_not_normalized
+  - d09-release-runtime.doctor_checks_launcher_and_guardian_against_setup_pin
+  - d09-release-runtime.hostile_path_cannot_choose_child_interpreter
+  - d09-release-runtime.interpreter_drift_or_unpinned_path_refuses
+  - d09-release-runtime.macos_pin_uses_prescribed_framework_and_refuses_other_version
+  - d09-release-runtime.managed_public_cli_cannot_normalize_runtime_failure
+  - d09-release-runtime.managed_public_cli_preserves_bytes_and_explicit_attention_adapter
+  - d09-release-runtime.only_declared_contained_public_entrypoints_are_executable
+  - d09-release-runtime.public_cli_reads_payload_from_held_open_harness_socket
+  - d09-release-runtime.setup_records_current_absolute_interpreter_identity
+  - d09-release-runtime.tree_hash_contract_matches_the_existing_release_format
+  - d09-release-runtime.unverified_release_never_becomes_an_execution_root
+- path: skills/synthesis-onboarding/scripts/system_contract.py
+  cases:
+  - d09-activation.activation_failure_cannot_split_launcher_from_active_descriptor
+  - d09-activation.activation_refuses_launcher_that_spoofs_the_public_marker
+  - d09-activation.activation_refuses_user_owned_launcher
+  - d09-activation.activation_rejects_dangling_git_marker_without_replacing_current_pair
+  - d09-activation.exact_legacy_launcher_migrates_and_unknown_edits_refuse
+  - d09-activation.interrupted_migration_refuses_execution_then_recovers
+  - d09-activation.launcher_records_absolute_pin_and_ignores_hostile_path
+  - d09-activation.legacy_migration_failure_restores_exact_old_pair
+  - d09-activation.managed_launcher_dispatches_through_the_atomic_active_pointer
+- path: skills/synthesis-onboarding/scripts/test_bootstrap.py
+  cases:
+  - d09-bootstrap.onboard_handoff_consumes_resolution_policy_before_update_cli
+- path: skills/synthesis-onboarding/scripts/test_ci_runtime.py
+  cases:
+  - d09-ci-interpreter.ci_installer_refuses_local_execution_before_commands
+  - d09-ci-interpreter.ci_package_verification_precedes_installer
+  - d09-ci-interpreter.mac_ci_installs_framework_before_dependencies_and_uses_python3
+- path: skills/synthesis-onboarding/scripts/test_direct_copy.py
+  cases:
+  - direct-copy-bytecode.direct_copy_ignores_generated_bytecode_but_detects_python_source_drift
+- path: skills/synthesis-onboarding/scripts/test_onboard.py
+  cases:
+  - source-fixture-binding.WholeSystemTests.test_full_init_configures_repo_local_identity_from_answers
+  - source-fixture-binding.source_fixture_captures_pending_bytes_without_ignored_runtime_state
+- path: skills/synthesis-onboarding/scripts/test_release_runtime.py
+  cases:
+  - d09-release-runtime.active_release_is_verified_and_uses_current_pinned_executable
+  - d09-release-runtime.canonical_source_override_is_explicitly_rejected
+  - d09-release-runtime.child_bytes_and_attention_exit_are_preserved
+  - d09-release-runtime.child_timeout_and_start_failure_are_not_normalized
+  - d09-release-runtime.doctor_checks_launcher_and_guardian_against_setup_pin
+  - d09-release-runtime.hostile_path_cannot_choose_child_interpreter
+  - d09-release-runtime.interpreter_drift_or_unpinned_path_refuses
+  - d09-release-runtime.macos_pin_uses_prescribed_framework_and_refuses_other_version
+  - d09-release-runtime.managed_public_cli_cannot_normalize_runtime_failure
+  - d09-release-runtime.managed_public_cli_preserves_bytes_and_explicit_attention_adapter
+  - d09-release-runtime.only_declared_contained_public_entrypoints_are_executable
+  - d09-release-runtime.public_cli_reads_payload_from_held_open_harness_socket
+  - d09-release-runtime.setup_records_current_absolute_interpreter_identity
+  - d09-release-runtime.tree_hash_contract_matches_the_existing_release_format
+  - d09-release-runtime.unverified_release_never_becomes_an_execution_root
+- path: skills/synthesis-onboarding/scripts/test_runtime_integration.py
+  cases:
+  - standalone-runtime-closure.public_update_refreshes_independently_wired_runtime_and_preserves_personal_state
+- path: skills/synthesis-onboarding/scripts/test_runtime_payload.py
+  cases:
+  - standalone-runtime-closure.claim_helper_introduction_requires_released_companion_anchors
+  - standalone-runtime-closure.failed_claim_helper_introduction_restores_old_bundle_and_absence
+  - standalone-runtime-closure.new_helper_never_overwrites_an_unowned_local_file
+  - standalone-runtime-closure.pre_helper_bundle_upgrade_proves_old_pointer_and_executes_new_closure
+- path: skills/synthesis-onboarding/scripts/test_synthesis_cli.py
+  cases:
+  - source-fixture-binding.real_full_setup_commits_effective_workspace_layers_and_present_client
+- path: skills/synthesis-onboarding/scripts/test_system_contract.py
+  cases:
+  - d09-activation.activation_failure_cannot_split_launcher_from_active_descriptor
+  - d09-activation.activation_refuses_launcher_that_spoofs_the_public_marker
+  - d09-activation.activation_refuses_user_owned_launcher
+  - d09-activation.activation_rejects_dangling_git_marker_without_replacing_current_pair
+  - d09-activation.exact_legacy_launcher_migrates_and_unknown_edits_refuse
+  - d09-activation.interrupted_migration_refuses_execution_then_recovers
+  - d09-activation.launcher_records_absolute_pin_and_ignores_hostile_path
+  - d09-activation.legacy_migration_failure_restores_exact_old_pair
+  - d09-activation.managed_launcher_dispatches_through_the_atomic_active_pointer
+- path: skills/synthesis-onboarding/scripts/whole_system.py
+  cases:
+  - d09-enrollment-hooks.EngineTests.test_full_init_converges_every_layer_and_reruns_cleanly
+  - d09-enrollment-hooks.WholeSystemTests.test_kernel_budget_and_hook_merge_are_deterministic
+- path: skills/synthesis-project-management/scripts/board_grammar.py
+  cases:
+  - board-grammar.canonical_v4_roundtrip_preserves_every_byte
+  - board-grammar.invalid_authority_rows_fail_in_every_consumer
+  - board-grammar.legacy_mutation_requires_explicit_schema_migration
+  - board-grammar.markdown_cell_meaning_is_identical_for_all_consumers
+  - board-grammar.message_tables_cannot_create_active_claims
+  - board-grammar.strict_inbox_authority_refuses_malformed_boards
+  - board-grammar.supported_versions_have_one_named_column_contract
+- path: skills/synthesis-project-management/scripts/board_inbox.py
+  cases:
+  - board-grammar.canonical_v4_roundtrip_preserves_every_byte
+  - board-grammar.invalid_authority_rows_fail_in_every_consumer
+  - board-grammar.legacy_mutation_requires_explicit_schema_migration
+  - board-grammar.markdown_cell_meaning_is_identical_for_all_consumers
+  - board-grammar.message_tables_cannot_create_active_claims
+  - board-grammar.strict_inbox_authority_refuses_malformed_boards
+  - board-grammar.supported_versions_have_one_named_column_contract
+  - lease-freshness-and-backups.authoritative_read_refuses_failed_refresh_before_delivery
+  - lease-freshness-and-backups.backup_directory_symlink_refuses_without_touching_destination
+  - lease-freshness-and-backups.backup_retention_is_bounded_and_preserves_foreign_files
+  - lease-freshness-and-backups.check_staged_keeps_identity_cas_even_with_fresh_stamp
+  - lease-freshness-and-backups.commit_authority_cannot_bootstrap_unpublished_remote_from_local_claims
+  - lease-freshness-and-backups.diagnostic_inbox_never_fetches_or_marks
+  - lease-freshness-and-backups.direct_checkpoint_cannot_issue_receipt_from_unreachable_local_mirror
+  - lease-freshness-and-backups.failed_backup_is_not_counted_as_verified_recovery
+  - lease-freshness-and-backups.failed_forced_fetch_invalidates_previous_passive_success
+  - lease-freshness-and-backups.live_inbox_refuses_stale_delivery_without_advancing_watermark
+  - lease-freshness-and-backups.mirror_failure_retains_verified_backup_without_pruning
+  - lease-freshness-and-backups.noop_mutation_skips_publish_but_explicit_authority_fence_does_not
+  - lease-freshness-and-backups.owner_stop_forces_authority_after_passive_observation
+  - lease-freshness-and-backups.passive_interval_is_only_opt_in_and_expires_at_five_minutes
+  - lease-freshness-and-backups.passive_stamp_cannot_outlive_its_bound_evidence
+  - lease-freshness-and-backups.project_refresh_accepts_cache_only_for_bounded_passive_mode
+  - lease-freshness-and-backups.sessionstart_without_pointer_forces_refresh_before_local_claims
+  - lease-freshness-and-backups.unchanged_board_has_no_backup_or_write
+  - lease-freshness-and-backups.unreachable_coordination_lease_is_unknown_not_green
+- path: skills/synthesis-project-management/scripts/claim_scope.py
+  cases:
+  - claim-discovery.board_validation_cannot_swallow_snapshot_failure
+  - claim-discovery.comparison_snapshot_refuses_mid_batch_identity_changes
+  - claim-discovery.discovery_reprobes_new_scopes_and_reuses_one_listing_per_configuration
+  - claim-discovery.environment_configuration_change_invalidates_registration_cache
+  - claim-discovery.invalid_included_configuration_cannot_reuse_identity
+  - claim-discovery.nested_marker_in_nonrepresentative_prefix_invalidates_group
+  - claim-discovery.registration_removal_invalidates_same_transaction
+  - claim-discovery.same_checkout_prefixes_share_a_verified_identity_boundary
+  - claim-discovery.worktree_configuration_change_cannot_reuse_identity
+- path: skills/synthesis-project-management/scripts/coordination.py
+  cases:
+  - board-grammar.canonical_v4_roundtrip_preserves_every_byte
+  - board-grammar.invalid_authority_rows_fail_in_every_consumer
+  - board-grammar.legacy_mutation_requires_explicit_schema_migration
+  - board-grammar.markdown_cell_meaning_is_identical_for_all_consumers
+  - board-grammar.message_tables_cannot_create_active_claims
+  - board-grammar.strict_inbox_authority_refuses_malformed_boards
+  - board-grammar.supported_versions_have_one_named_column_contract
+  - canonical-json.binding_excludes_only_top_level_binding_field
+  - canonical-json.canonical_scalar_and_nesting_vectors
+  - canonical-json.relocated_live_receipt_matches_frozen_binding
+  - coordination-archive.archive_commit_existing_but_unreachable_is_refused
+  - coordination-archive.cas_retry_replans_against_competing_board
+  - coordination-archive.directory_durability_precedes_row_removal_and_journal_unlink
+  - coordination-archive.duplicate_messages_keep_multiplicity
+  - coordination-archive.failed_publication_preserves_local_board_and_no_archive_mirror
+  - coordination-archive.fenced_quoted_message_never_truncates_live_recipient
+  - coordination-archive.foreign_mirror_content_is_not_overwritten
+  - coordination-archive.fresh_machine_hydrates_monthly_history_from_same_remote
+  - coordination-archive.mirror_hydration_after_post_publish_crash
+  - coordination-archive.real_cas_retains_archive_as_reachable_second_parent_and_one_file_tree
+  - coordination-archive.recent_administrative_record_is_never_absorbed_into_old_message
+  - coordination-archive.split_preserves_active_recent_ambiguous_and_broadcast_bytes
+  - coordination-archive.unknown_naive_future_and_exact_cutoff_rows_retained
+  - coordination-archive.unleased_journal_divergence_preserves_new_board_and_journal
+  - coordination-regression.every_command_notes_a_newer_installed_engine
+  - coordination-regression.logical_metadata_claim_is_refused_before_board_admission
+  - coordination-regression.r4_staged_path_outside_claim_is_refused
+  - coordination-regression.status_json_reports_stale_legacy_session
+  - lease-freshness-and-backups.authoritative_read_refuses_failed_refresh_before_delivery
+  - lease-freshness-and-backups.backup_directory_symlink_refuses_without_touching_destination
+  - lease-freshness-and-backups.backup_retention_is_bounded_and_preserves_foreign_files
+  - lease-freshness-and-backups.check_staged_keeps_identity_cas_even_with_fresh_stamp
+  - lease-freshness-and-backups.commit_authority_cannot_bootstrap_unpublished_remote_from_local_claims
+  - lease-freshness-and-backups.diagnostic_inbox_never_fetches_or_marks
+  - lease-freshness-and-backups.direct_checkpoint_cannot_issue_receipt_from_unreachable_local_mirror
+  - lease-freshness-and-backups.failed_backup_is_not_counted_as_verified_recovery
+  - lease-freshness-and-backups.failed_forced_fetch_invalidates_previous_passive_success
+  - lease-freshness-and-backups.live_inbox_refuses_stale_delivery_without_advancing_watermark
+  - lease-freshness-and-backups.mirror_failure_retains_verified_backup_without_pruning
+  - lease-freshness-and-backups.noop_mutation_skips_publish_but_explicit_authority_fence_does_not
+  - lease-freshness-and-backups.owner_stop_forces_authority_after_passive_observation
+  - lease-freshness-and-backups.passive_interval_is_only_opt_in_and_expires_at_five_minutes
+  - lease-freshness-and-backups.passive_stamp_cannot_outlive_its_bound_evidence
+  - lease-freshness-and-backups.project_refresh_accepts_cache_only_for_bounded_passive_mode
+  - lease-freshness-and-backups.sessionstart_without_pointer_forces_refresh_before_local_claims
+  - lease-freshness-and-backups.unchanged_board_has_no_backup_or_write
+  - lease-freshness-and-backups.unreachable_coordination_lease_is_unknown_not_green
+- path: skills/synthesis-project-management/scripts/coordination_archive.py
+  cases:
+  - coordination-archive.archive_commit_existing_but_unreachable_is_refused
+  - coordination-archive.cas_retry_replans_against_competing_board
+  - coordination-archive.directory_durability_precedes_row_removal_and_journal_unlink
+  - coordination-archive.duplicate_messages_keep_multiplicity
+  - coordination-archive.failed_publication_preserves_local_board_and_no_archive_mirror
+  - coordination-archive.fenced_quoted_message_never_truncates_live_recipient
+  - coordination-archive.foreign_mirror_content_is_not_overwritten
+  - coordination-archive.fresh_machine_hydrates_monthly_history_from_same_remote
+  - coordination-archive.mirror_hydration_after_post_publish_crash
+  - coordination-archive.real_cas_retains_archive_as_reachable_second_parent_and_one_file_tree
+  - coordination-archive.recent_administrative_record_is_never_absorbed_into_old_message
+  - coordination-archive.split_preserves_active_recent_ambiguous_and_broadcast_bytes
+  - coordination-archive.unknown_naive_future_and_exact_cutoff_rows_retained
+  - coordination-archive.unleased_journal_divergence_preserves_new_board_and_journal
+- path: skills/synthesis-project-management/scripts/coordination_schema.py
+  cases:
+  - board-grammar.canonical_v4_roundtrip_preserves_every_byte
+  - board-grammar.invalid_authority_rows_fail_in_every_consumer
+  - board-grammar.legacy_mutation_requires_explicit_schema_migration
+  - board-grammar.markdown_cell_meaning_is_identical_for_all_consumers
+  - board-grammar.message_tables_cannot_create_active_claims
+  - board-grammar.strict_inbox_authority_refuses_malformed_boards
+  - board-grammar.supported_versions_have_one_named_column_contract
+- path: skills/synthesis-project-management/scripts/project_state.py
+  cases:
+  - board-grammar.canonical_v4_roundtrip_preserves_every_byte
+  - board-grammar.invalid_authority_rows_fail_in_every_consumer
+  - board-grammar.legacy_mutation_requires_explicit_schema_migration
+  - board-grammar.markdown_cell_meaning_is_identical_for_all_consumers
+  - board-grammar.message_tables_cannot_create_active_claims
+  - board-grammar.strict_inbox_authority_refuses_malformed_boards
+  - board-grammar.supported_versions_have_one_named_column_contract
+  - lease-freshness-and-backups.authoritative_read_refuses_failed_refresh_before_delivery
+  - lease-freshness-and-backups.backup_directory_symlink_refuses_without_touching_destination
+  - lease-freshness-and-backups.backup_retention_is_bounded_and_preserves_foreign_files
+  - lease-freshness-and-backups.check_staged_keeps_identity_cas_even_with_fresh_stamp
+  - lease-freshness-and-backups.commit_authority_cannot_bootstrap_unpublished_remote_from_local_claims
+  - lease-freshness-and-backups.diagnostic_inbox_never_fetches_or_marks
+  - lease-freshness-and-backups.direct_checkpoint_cannot_issue_receipt_from_unreachable_local_mirror
+  - lease-freshness-and-backups.failed_backup_is_not_counted_as_verified_recovery
+  - lease-freshness-and-backups.failed_forced_fetch_invalidates_previous_passive_success
+  - lease-freshness-and-backups.live_inbox_refuses_stale_delivery_without_advancing_watermark
+  - lease-freshness-and-backups.mirror_failure_retains_verified_backup_without_pruning
+  - lease-freshness-and-backups.noop_mutation_skips_publish_but_explicit_authority_fence_does_not
+  - lease-freshness-and-backups.owner_stop_forces_authority_after_passive_observation
+  - lease-freshness-and-backups.passive_interval_is_only_opt_in_and_expires_at_five_minutes
+  - lease-freshness-and-backups.passive_stamp_cannot_outlive_its_bound_evidence
+  - lease-freshness-and-backups.project_refresh_accepts_cache_only_for_bounded_passive_mode
+  - lease-freshness-and-backups.sessionstart_without_pointer_forces_refresh_before_local_claims
+  - lease-freshness-and-backups.unchanged_board_has_no_backup_or_write
+  - lease-freshness-and-backups.unreachable_coordination_lease_is_unknown_not_green
+- path: skills/synthesis-project-management/scripts/retire_worktree.py
+  cases:
+  - retire-worktree.branch_mismatch_refuses_named_and_detached_worktrees
+  - retire-worktree.config_lock_contention_preserves_local_branch_and_config
+  - retire-worktree.local_branch_advance_at_delete_boundary_keeps_branch_and_remote
+  - retire-worktree.native_base_pin_cleanup_cannot_delete_a_changed_pin
+  - retire-worktree.native_base_selection_handles_upstream_variants_without_persistent_override
+  - retire-worktree.native_delete_refuses_checkout_created_after_helper_snapshot
+  - retire-worktree.native_delete_uses_pinned_base_if_branch_and_remote_base_advance
+  - retire-worktree.resumed_retirement_uses_intent_base_despite_stale_upstream
+  - retire-worktree.retirement_uses_verified_base_despite_stale_branch_upstream
+  - retire-worktree.retires_verified_detached_worktree_without_branch_mutation
+  - retire-worktree.unmerged_detached_worktree_is_preserved
+- path: skills/synthesis-project-management/scripts/test_board_grammar.py
+  cases:
+  - board-grammar.canonical_v4_roundtrip_preserves_every_byte
+  - board-grammar.invalid_authority_rows_fail_in_every_consumer
+  - board-grammar.legacy_mutation_requires_explicit_schema_migration
+  - board-grammar.markdown_cell_meaning_is_identical_for_all_consumers
+  - board-grammar.message_tables_cannot_create_active_claims
+  - board-grammar.strict_inbox_authority_refuses_malformed_boards
+  - board-grammar.supported_versions_have_one_named_column_contract
+- path: skills/synthesis-project-management/scripts/test_board_inbox.py
+  cases:
+  - lease-freshness-and-backups.diagnostic_inbox_never_fetches_or_marks
+  - lease-freshness-and-backups.live_inbox_refuses_stale_delivery_without_advancing_watermark
+- path: skills/synthesis-project-management/scripts/test_canonical_json_contract.py
+  cases:
+  - canonical-json.binding_excludes_only_top_level_binding_field
+  - canonical-json.canonical_scalar_and_nesting_vectors
+  - canonical-json.relocated_live_receipt_matches_frozen_binding
+- path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
+  cases:
+  - lease-freshness-and-backups.owner_stop_forces_authority_after_passive_observation
+- path: skills/synthesis-project-management/scripts/test_claim_scope_cache.py
+  cases:
+  - claim-discovery.board_validation_cannot_swallow_snapshot_failure
+  - claim-discovery.comparison_snapshot_refuses_mid_batch_identity_changes
+  - claim-discovery.discovery_reprobes_new_scopes_and_reuses_one_listing_per_configuration
+  - claim-discovery.environment_configuration_change_invalidates_registration_cache
+  - claim-discovery.invalid_included_configuration_cannot_reuse_identity
+  - claim-discovery.nested_marker_in_nonrepresentative_prefix_invalidates_group
+  - claim-discovery.registration_removal_invalidates_same_transaction
+  - claim-discovery.same_checkout_prefixes_share_a_verified_identity_boundary
+  - claim-discovery.worktree_configuration_change_cannot_reuse_identity
+- path: skills/synthesis-project-management/scripts/test_coordination.py
+  cases:
+  - coordination-regression.every_command_notes_a_newer_installed_engine
+  - coordination-regression.logical_metadata_claim_is_refused_before_board_admission
+  - coordination-regression.r4_staged_path_outside_claim_is_refused
+  - coordination-regression.status_json_reports_stale_legacy_session
+- path: skills/synthesis-project-management/scripts/test_coordination_archive.py
+  cases:
+  - coordination-archive.archive_commit_existing_but_unreachable_is_refused
+  - coordination-archive.cas_retry_replans_against_competing_board
+  - coordination-archive.directory_durability_precedes_row_removal_and_journal_unlink
+  - coordination-archive.duplicate_messages_keep_multiplicity
+  - coordination-archive.failed_publication_preserves_local_board_and_no_archive_mirror
+  - coordination-archive.fenced_quoted_message_never_truncates_live_recipient
+  - coordination-archive.foreign_mirror_content_is_not_overwritten
+  - coordination-archive.fresh_machine_hydrates_monthly_history_from_same_remote
+  - coordination-archive.mirror_hydration_after_post_publish_crash
+  - coordination-archive.real_cas_retains_archive_as_reachable_second_parent_and_one_file_tree
+  - coordination-archive.recent_administrative_record_is_never_absorbed_into_old_message
+  - coordination-archive.split_preserves_active_recent_ambiguous_and_broadcast_bytes
+  - coordination-archive.unknown_naive_future_and_exact_cutoff_rows_retained
+  - coordination-archive.unleased_journal_divergence_preserves_new_board_and_journal
+- path: skills/synthesis-project-management/scripts/test_lease_cache.py
+  cases:
+  - lease-freshness-and-backups.authoritative_read_refuses_failed_refresh_before_delivery
+  - lease-freshness-and-backups.backup_directory_symlink_refuses_without_touching_destination
+  - lease-freshness-and-backups.backup_retention_is_bounded_and_preserves_foreign_files
+  - lease-freshness-and-backups.check_staged_keeps_identity_cas_even_with_fresh_stamp
+  - lease-freshness-and-backups.commit_authority_cannot_bootstrap_unpublished_remote_from_local_claims
+  - lease-freshness-and-backups.direct_checkpoint_cannot_issue_receipt_from_unreachable_local_mirror
+  - lease-freshness-and-backups.failed_backup_is_not_counted_as_verified_recovery
+  - lease-freshness-and-backups.failed_forced_fetch_invalidates_previous_passive_success
+  - lease-freshness-and-backups.mirror_failure_retains_verified_backup_without_pruning
+  - lease-freshness-and-backups.noop_mutation_skips_publish_but_explicit_authority_fence_does_not
+  - lease-freshness-and-backups.passive_interval_is_only_opt_in_and_expires_at_five_minutes
+  - lease-freshness-and-backups.passive_stamp_cannot_outlive_its_bound_evidence
+  - lease-freshness-and-backups.project_refresh_accepts_cache_only_for_bounded_passive_mode
+  - lease-freshness-and-backups.unchanged_board_has_no_backup_or_write
+- path: skills/synthesis-project-management/scripts/test_project_state.py
+  cases:
+  - lease-freshness-and-backups.unreachable_coordination_lease_is_unknown_not_green
+- path: skills/synthesis-project-management/scripts/test_retire_worktree.py
+  cases:
+  - retire-worktree.branch_mismatch_refuses_named_and_detached_worktrees
+  - retire-worktree.config_lock_contention_preserves_local_branch_and_config
+  - retire-worktree.local_branch_advance_at_delete_boundary_keeps_branch_and_remote
+  - retire-worktree.native_base_pin_cleanup_cannot_delete_a_changed_pin
+  - retire-worktree.native_base_selection_handles_upstream_variants_without_persistent_override
+  - retire-worktree.native_delete_refuses_checkout_created_after_helper_snapshot
+  - retire-worktree.native_delete_uses_pinned_base_if_branch_and_remote_base_advance
+  - retire-worktree.resumed_retirement_uses_intent_base_despite_stale_upstream
+  - retire-worktree.retirement_uses_verified_base_despite_stale_branch_upstream
+  - retire-worktree.retires_verified_detached_worktree_without_branch_mutation
+  - retire-worktree.unmerged_detached_worktree_is_preserved
+- path: skills/synthesis-repo-guard/repo_sync_check.py
+  cases:
+  - repo-sync-parallel.main_uses_ordered_results_without_reports_when_requested
+  - repo-sync-parallel.parallel_checks_are_bounded_and_preserve_input_order
+  - repo-sync-parallel.repo_checks_only_issue_local_read_commands
+  - repo-sync-parallel.worker_exception_stays_an_exception
+- path: skills/synthesis-repo-guard/test_repo_sync_check.py
+  cases:
+  - repo-sync-parallel.main_uses_ordered_results_without_reports_when_requested
+  - repo-sync-parallel.parallel_checks_are_bounded_and_preserve_input_order
+  - repo-sync-parallel.repo_checks_only_issue_local_read_commands
+  - repo-sync-parallel.worker_exception_stays_an_exception
+- path: skills/synthesis-skills-manager/scripts/cache_guardian.py
+  cases:
+  - d09-supervisor.launchd_definition_is_persistent_and_runs_stable_runtime
+  - d09-supervisor.shipped_python_hooks_disable_bytecode_writes
+  - d09-supervisor.systemd_definition_restarts_and_uses_stable_runtime
 - path: skills/synthesis-skills-manager/scripts/release.py
   cases:
-  - gate-covers-ci-groups
-  - gate-no-glob
+  - release-deletion-boundary.acceptance_expectation_covers_both_rename_paths_and_literal_names
+  - release-deletion-boundary.release_establishes_required_launcher_before_exposing_new_hooks
+- path: skills/synthesis-skills-manager/scripts/test_cache_guardian.py
+  cases:
+  - d09-supervisor.launchd_definition_is_persistent_and_runs_stable_runtime
+  - d09-supervisor.shipped_python_hooks_disable_bytecode_writes
+  - d09-supervisor.systemd_definition_restarts_and_uses_stable_runtime
+- path: skills/synthesis-skills-manager/scripts/test_release.py
+  cases:
+  - release-deletion-boundary.acceptance_expectation_covers_both_rename_paths_and_literal_names
+  - release-deletion-boundary.release_establishes_required_launcher_before_exposing_new_hooks
+- path: tests/fixtures/receipts/canonical-vectors.json
+  cases:
+  - canonical-json.binding_excludes_only_top_level_binding_field
+  - canonical-json.canonical_scalar_and_nesting_vectors
+  - canonical-json.relocated_live_receipt_matches_frozen_binding
+- path: tests/fixtures/receipts/check-staged-input.json
+  cases:
+  - canonical-json.binding_excludes_only_top_level_binding_field
+  - canonical-json.canonical_scalar_and_nesting_vectors
+  - canonical-json.relocated_live_receipt_matches_frozen_binding
+- path: tests/fixtures/receipts/check-staged.canonical.json
+  cases:
+  - canonical-json.binding_excludes_only_top_level_binding_field
+  - canonical-json.canonical_scalar_and_nesting_vectors
+  - canonical-json.relocated_live_receipt_matches_frozen_binding
+- path: tests/fixtures/receipts/check-staged.json
+  cases:
+  - canonical-json.binding_excludes_only_top_level_binding_field
+  - canonical-json.canonical_scalar_and_nesting_vectors
+  - canonical-json.relocated_live_receipt_matches_frozen_binding
+- path: tests/test_installer.sh
+  cases:
+  - direct-copy-bytecode.direct_copy_ignores_generated_bytecode_but_detects_python_source_drift
 cases:
-- id: release-contract
+- id: board-grammar.markdown_cell_meaning_is_identical_for_all_consumers
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
-  motivating_defect: Release metadata must describe one coherent release read from the actual files; both
-    plugin versions agree, the CHANGELOG top heading carries that version, README notes Release **version**,
-    and the reliability-tranche SKILL.md versions stay at or above their floors.
-- id: release-surfaces-pinned
+  fixture: ../synthesis-project-management/scripts/test_board_grammar.py::test_markdown_cell_meaning_is_identical_for_all_consumers
+  motivating_defect: Different interpretations of Markdown cell formatting can assign different authority
+    to the same board row; all three consumers must agree.
+- id: board-grammar.invalid_authority_rows_fail_in_every_consumer
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_release_surfaces_agree_and_public_commands_are_pinned
-  motivating_defect: A second independent reader of the actual release surfaces; at 4.92.1 the README's native
-    plugin commands still installed from the default branch instead of the stable ref.
-- id: release-contract-version
+  fixture: ../synthesis-project-management/scripts/test_board_grammar.py::test_invalid_authority_rows_fail_in_every_consumer
+  motivating_defect: Malformed widths, headers or schema declarations must refuse in every authority consumer
+    instead of silently hiding a claim.
+- id: board-grammar.message_tables_cannot_create_active_claims
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
-  motivating_defect: Both client manifests must agree on one version before a release is described; the
-    boundary reads that agreed version. This fixture exercises the boundary's parser on a synthetic
-    repository; the shipped files are read by release-contract and release-surfaces-pinned.
-- id: release-contract-changelog
+  fixture: ../synthesis-project-management/scripts/test_board_grammar.py::test_message_tables_cannot_create_active_claims
+  motivating_defect: A row quoted in message content must not become an active coordination claim.
+- id: board-grammar.supported_versions_have_one_named_column_contract
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
-  motivating_defect: The changelog's newest heading must parse as the version the boundary compares with
-    both manifests. This fixture exercises the boundary's parser on a synthetic repository; the shipped files
-    are read by release-contract and release-surfaces-pinned.
-- id: public-surfaces
+  fixture: ../synthesis-project-management/scripts/test_board_grammar.py::test_supported_versions_have_one_named_column_contract
+  motivating_defect: Supported board versions need one named-column interpretation shared by schema, coordination
+    and project recovery.
+- id: board-grammar.canonical_v4_roundtrip_preserves_every_byte
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_peer_resolution_documented_on_public_surfaces
-  motivating_defect: README, CHANGELOG and the coordination surfaces must keep documenting the peer-resolution
-    mechanism after the release note and entry are added.
-- id: ci-verification-coherence
+  fixture: ../synthesis-project-management/scripts/test_board_grammar.py::test_canonical_v4_roundtrip_preserves_every_byte
+  motivating_defect: Reading and replacing an unchanged canonical table must preserve its exact board
+    bytes.
+- id: board-grammar.legacy_mutation_requires_explicit_schema_migration
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
-  motivating_defect: The AGENTS.md Verification fence and the validate.yml conformance job are held equal
-    step for step; the rituals-guard-hooks pytest group gained skills/synthesis-decision-packet/scripts/test_*.py
-    in both, so this release's packet fixtures (test_build_packet.py) run in CI and in the documented local
-    verification instead of in neither, which is where they ran before this release.
-- id: gate-covers-ci-groups
+  fixture: ../synthesis-project-management/scripts/test_board_grammar.py::test_legacy_mutation_requires_explicit_schema_migration
+  motivating_defect: Legacy v1/v2 authority may be read, but a mutation must require explicit migration
+    rather than silently changing schema.
+- id: board-grammar.strict_inbox_authority_refuses_malformed_boards
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_cover_ci_pytest_groups
-  motivating_defect: Every pytest group the conformance job runs must be covered by a release.py
-    REQUIRED_CHECKS pytest command; skills/synthesis-decision-packet/scripts/ joined pytest.rituals-guard-hooks
-    so the release gate no longer publishes without running the packet fixtures.
-- id: gate-no-glob
+  fixture: ../synthesis-project-management/scripts/test_board_grammar.py::test_strict_inbox_authority_refuses_malformed_boards
+  motivating_defect: Live inbox authority must reject missing, duplicate or malformed structural sections
+    and identities.
+- id: canonical-json.relocated_live_receipt_matches_frozen_binding
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_do_not_depend_on_shell_glob_expansion
-  motivating_defect: release.py hands argv to subprocess without a shell, so the new decision-packet entry is
-    the directory skills/synthesis-decision-packet/scripts/ and never the test_*.py glob the workflow and
-    AGENTS.md spell; a glob there would run zero tests.
-- id: manifest
+  fixture: ../synthesis-project-management/scripts/test_canonical_json_contract.py::test_relocated_live_receipt_matches_frozen_binding
+  motivating_defect: The check-staged producer must still reproduce a frozen relocated receipt and independently
+    hashed canonical bytes.
+- id: canonical-json.canonical_scalar_and_nesting_vectors
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-  motivating_defect: The declared acceptance universe must validate.
-- id: unlisted-path
+  fixture: ../synthesis-project-management/scripts/test_canonical_json_contract.py::test_canonical_scalar_and_nesting_vectors
+  motivating_defect: Scalar and nested canonical JSON representations must match frozen byte and SHA-256
+    vectors.
+- id: canonical-json.binding_excludes_only_top_level_binding_field
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_schema2_rejects_undeclared_git_changed_surface
-  motivating_defect: The release boundary must reject an undeclared changed surface.
-- id: transaction-binding
+  fixture: ../synthesis-project-management/scripts/test_canonical_json_contract.py::test_binding_excludes_only_top_level_binding_field
+  motivating_defect: Changing ordered staged paths or including the binding field must change the receipt
+    digest.
+- id: lease-freshness-and-backups.passive_interval_is_only_opt_in_and_expires_at_five_minutes
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_suite.py::test_schema2_receipt_binds_transaction_and_git_state
-  motivating_defect: Acceptance must bind the actual release transaction and Git state.
-- id: rituals-watermark-gate-documented
+  fixture: ../synthesis-project-management/scripts/test_lease_cache.py::test_passive_interval_is_only_opt_in_and_expires_at_five_minutes
+  motivating_defect: A successful fetch may be reused only for explicitly passive observation within the
+    bounded five-minute interval.
+- id: lease-freshness-and-backups.passive_stamp_cannot_outlive_its_bound_evidence
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_rituals_document_the_watermark_and_blocking_gap
-  motivating_defect: The rewritten watermark-gate bullet must still tell the ritual to run sync_watermark.py,
-    define a watermark as the last moment actually written, and name the non-zero exit; a mechanism nobody is
-    told to run is not a control.
-- id: rituals-watermark-gate-invocation
+  fixture: ../synthesis-project-management/scripts/test_lease_cache.py::test_passive_stamp_cannot_outlive_its_bound_evidence
+  motivating_defect: Changed board/config/path identity, corrupt or redirected stamps and invalid timestamps
+    must force a fresh fetch.
+- id: lease-freshness-and-backups.failed_forced_fetch_invalidates_previous_passive_success
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_rituals_carry_the_watermark_gate_invocation
-  motivating_defect: Day-Start Step 3b and Day-End Step 1 must keep the exact status invocation with explicit
-    surfaces and the run bound after the bullet gained the epoch-form sentence.
-- id: rituals-begin-and-reread
+  fixture: ../synthesis-project-management/scripts/test_lease_cache.py::test_failed_forced_fetch_invalidates_previous_passive_success
+  motivating_defect: An authority fetch failure must invalidate earlier passive success instead of masking
+    the outage.
+- id: lease-freshness-and-backups.commit_authority_cannot_bootstrap_unpublished_remote_from_local_claims
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_rituals_open_every_sync_with_begin_and_reread_every_target
-  motivating_defect: The protocol must still stamp the run with begin and re-read every declared target; a DM
-    read at day-start was once treated as current all day.
-- id: rituals-labels-recorded
+  fixture: ../synthesis-project-management/scripts/test_lease_cache.py::test_commit_authority_cannot_bootstrap_unpublished_remote_from_local_claims
+  motivating_defect: A staged-path authority read must not publish retained local claims to manufacture
+    an absent remote authority.
+- id: lease-freshness-and-backups.authoritative_read_refuses_failed_refresh_before_delivery
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_version_record.py::test_every_labeled_version_has_a_record_entry
-  motivating_defect: Every version label SKILL.md carries, including the new v2.37.0 label on the weekly-review
-    step, must have a heading in references/version-history.md.
-- id: rituals-declared-version-recorded
+  fixture: ../synthesis-project-management/scripts/test_lease_cache.py::test_authoritative_read_refuses_failed_refresh_before_delivery
+  motivating_defect: Resolve and inbox commands must refuse stale delivery when fresh leased authority
+    cannot be read.
+- id: lease-freshness-and-backups.check_staged_keeps_identity_cas_even_with_fresh_stamp
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_version_record.py::test_declared_version_has_a_record_entry
-  motivating_defect: The declared metadata.version 2.37.0 must have its own heading in the version record.
-- id: rituals-newest-record-is-declared
+  fixture: ../synthesis-project-management/scripts/test_lease_cache.py::test_check_staged_keeps_identity_cas_even_with_fresh_stamp
+  motivating_defect: A fresh passive stamp cannot remove check-staged's fresh identity CAS fence.
+- id: lease-freshness-and-backups.noop_mutation_skips_publish_but_explicit_authority_fence_does_not
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_version_record.py::test_record_newest_entry_is_the_declared_version
-  motivating_defect: The newest heading in the version record must be the declared version, so the record
-    cannot run ahead of or behind the frontmatter.
-- id: rituals-no-label-ahead
+  fixture: ../synthesis-project-management/scripts/test_lease_cache.py::test_noop_mutation_skips_publish_but_explicit_authority_fence_does_not
+  motivating_defect: An unchanged ordinary board transaction should avoid publication, while an explicit
+    authority fence must still publish its CAS.
+- id: lease-freshness-and-backups.direct_checkpoint_cannot_issue_receipt_from_unreachable_local_mirror
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_version_record.py::test_no_label_runs_ahead_of_the_declared_version
-  motivating_defect: No step label may name a version newer than the declared one.
-- id: rituals-skill-budget
+  fixture: ../synthesis-project-management/scripts/test_lease_cache.py::test_direct_checkpoint_cannot_issue_receipt_from_unreachable_local_mirror
+  motivating_defect: Checkpoint must not issue readiness from a local mirror when its configured authority
+    is unreachable.
+- id: lease-freshness-and-backups.project_refresh_accepts_cache_only_for_bounded_passive_mode
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_lease_cache.py::test_project_refresh_accepts_cache_only_for_bounded_passive_mode
+  motivating_defect: Project refresh may accept a cache only in passive mode with a finite, nonnegative
+    age below the bound.
+- id: lease-freshness-and-backups.unchanged_board_has_no_backup_or_write
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_lease_cache.py::test_unchanged_board_has_no_backup_or_write
+  motivating_defect: Reading or writing identical board content should not create backup churn or change
+    the board mtime.
+- id: lease-freshness-and-backups.backup_retention_is_bounded_and_preserves_foreign_files
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_lease_cache.py::test_backup_retention_is_bounded_and_preserves_foreign_files
+  motivating_defect: Backup pruning must bound owned recovery files while retaining foreign files, symlinks
+    and the newest verified recovery copy even after clock rollback.
+- id: lease-freshness-and-backups.backup_directory_symlink_refuses_without_touching_destination
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_lease_cache.py::test_backup_directory_symlink_refuses_without_touching_destination
+  motivating_defect: A redirected backup directory cannot authorize mutation of its target or the board.
+- id: lease-freshness-and-backups.failed_backup_is_not_counted_as_verified_recovery
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_lease_cache.py::test_failed_backup_is_not_counted_as_verified_recovery
+  motivating_defect: A partial failed recovery copy must not allow board replacement or leave a misleading
+    completed backup.
+- id: lease-freshness-and-backups.mirror_failure_retains_verified_backup_without_pruning
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_lease_cache.py::test_mirror_failure_retains_verified_backup_without_pruning
+  motivating_defect: Failed board replacement must retain verified recovery bytes and avoid pruning them.
+- id: lease-freshness-and-backups.live_inbox_refuses_stale_delivery_without_advancing_watermark
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_live_inbox_refuses_stale_delivery_without_advancing_watermark
+  motivating_defect: Failed fresh authority must block live message delivery without advancing its read
+    watermark.
+- id: lease-freshness-and-backups.diagnostic_inbox_never_fetches_or_marks
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_diagnostic_inbox_never_fetches_or_marks
+  motivating_defect: Diagnostic inbox reads must remain read-only without network refresh or read-watermark
+    mutation.
+- id: lease-freshness-and-backups.owner_stop_forces_authority_after_passive_observation
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_owner_stop_forces_authority_after_passive_observation
+  motivating_defect: An owner Stop cannot inherit an earlier passive observation as fresh checkpoint authority.
+- id: lease-freshness-and-backups.unreachable_coordination_lease_is_unknown_not_green
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_unreachable_coordination_lease_is_unknown_not_green
+  motivating_defect: Project recovery must represent an unreachable configured lease as unknown rather
+    than green ownership.
+- id: lease-freshness-and-backups.sessionstart_without_pointer_forces_refresh_before_local_claims
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_sessionstart_without_pointer_forces_refresh_before_local_claims
+  motivating_defect: SessionStart must refresh authority before presenting local claims even when no active-project
+    pointer exists.
+- id: claim-discovery.discovery_reprobes_new_scopes_and_reuses_one_listing_per_configuration
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_discovery_reprobes_new_scopes_and_reuses_one_listing_per_configuration
+  motivating_defect: Discovery should reuse one verified registration listing while still probing each
+    new source scope.
+- id: claim-discovery.worktree_configuration_change_cannot_reuse_identity
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_worktree_configuration_change_cannot_reuse_identity
+  motivating_defect: A worktree configuration change must invalidate a previously resolved source identity.
+- id: claim-discovery.invalid_included_configuration_cannot_reuse_identity
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_invalid_included_configuration_cannot_reuse_identity
+  motivating_defect: Invalid included Git configuration must refuse rather than reuse a cached valid identity.
+- id: claim-discovery.environment_configuration_change_invalidates_registration_cache
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_environment_configuration_change_invalidates_registration_cache
+  motivating_defect: Changing effective Git configuration through environment values must invalidate discovery
+    reuse.
+- id: claim-discovery.comparison_snapshot_refuses_mid_batch_identity_changes
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_comparison_snapshot_refuses_mid_batch_identity_changes
+  motivating_defect: A claim comparison must refuse when worktree identity changes between its verified
+    bounds.
+- id: claim-discovery.same_checkout_prefixes_share_a_verified_identity_boundary
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_same_checkout_prefixes_share_a_verified_identity_boundary
+  motivating_defect: Coherent scopes in the same checkout may share bounded identity probes without losing
+    registration verification.
+- id: claim-discovery.nested_marker_in_nonrepresentative_prefix_invalidates_group
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_nested_marker_in_nonrepresentative_prefix_invalidates_group
+  motivating_defect: A new nested Git marker in any grouped prefix must invalidate the whole cached comparison
+    identity.
+- id: claim-discovery.board_validation_cannot_swallow_snapshot_failure
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_board_validation_cannot_swallow_snapshot_failure
+  motivating_defect: Board validation must surface a discovery snapshot failure instead of treating uncertain
+    scopes as disjoint.
+- id: claim-discovery.registration_removal_invalidates_same_transaction
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_registration_removal_invalidates_same_transaction
+  motivating_defect: Removing linked-worktree registration must invalidate identity within the same transaction.
+- id: coordination-regression.status_json_reports_stale_legacy_session
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_status_json_reports_stale_legacy_session
+  motivating_defect: The CLI must continue reporting stale legacy sessions using the shared board grammar.
+- id: coordination-regression.every_command_notes_a_newer_installed_engine
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_every_command_notes_a_newer_installed_engine
+  motivating_defect: The copied command fixture must include the full coordination dependency closure
+    and still report installed-engine skew.
+- id: coordination-regression.logical_metadata_claim_is_refused_before_board_admission
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_logical_metadata_claim_is_refused_before_board_admission
+  motivating_defect: Logical project-metadata claims in linked checkouts must conflict before overlapping
+    authority is admitted.
+- id: coordination-regression.r4_staged_path_outside_claim_is_refused
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_r4_staged_path_outside_claim_is_refused
+  motivating_defect: A staged file outside the authenticated claim must remain a refusal after parser
+    and lease changes.
+- id: coordination-archive.split_preserves_active_recent_ambiguous_and_broadcast_bytes
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_archive.py::test_split_preserves_active_recent_ambiguous_and_broadcast_bytes
+  motivating_defect: Archival must retain active/recent rows, broadcasts and ambiguous messages while
+    moving only eligible exact identities.
+- id: coordination-archive.unknown_naive_future_and_exact_cutoff_rows_retained
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_archive.py::test_unknown_naive_future_and_exact_cutoff_rows_retained
+  motivating_defect: Unknown, naive, future and exact-cutoff timestamps cannot prove archival eligibility.
+- id: coordination-archive.duplicate_messages_keep_multiplicity
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_archive.py::test_duplicate_messages_keep_multiplicity
+  motivating_defect: Archival must preserve repeated-message multiplicity instead of deduplicating evidence.
+- id: coordination-archive.real_cas_retains_archive_as_reachable_second_parent_and_one_file_tree
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_archive.py::test_real_cas_retains_archive_as_reachable_second_parent_and_one_file_tree
+  motivating_defect: Board-row removal and reachable monthly archive history must publish in one real
+    Git CAS without adding archive files to the board tree.
+- id: coordination-archive.failed_publication_preserves_local_board_and_no_archive_mirror
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_archive.py::test_failed_publication_preserves_local_board_and_no_archive_mirror
+  motivating_defect: A rejected archive publication must preserve the local board and avoid a misleading
+    archive mirror.
+- id: coordination-archive.cas_retry_replans_against_competing_board
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_archive.py::test_cas_retry_replans_against_competing_board
+  motivating_defect: A CAS retry must recompute eligibility from the competing board and preserve its
+    newer active row.
+- id: coordination-archive.mirror_hydration_after_post_publish_crash
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_archive.py::test_mirror_hydration_after_post_publish_crash
+  motivating_defect: After remote publication succeeds but mirror writing fails, retry must hydrate reachable
+    archive bytes without duplicating removal.
+- id: coordination-archive.foreign_mirror_content_is_not_overwritten
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_archive.py::test_foreign_mirror_content_is_not_overwritten
+  motivating_defect: Foreign, corrupt or redirected archive mirror contents must never be overwritten
+    as if owned.
+- id: coordination-archive.unleased_journal_divergence_preserves_new_board_and_journal
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_archive.py::test_unleased_journal_divergence_preserves_new_board_and_journal
+  motivating_defect: A divergent local board during journal recovery must preserve both the new board
+    and recovery evidence.
+- id: coordination-archive.archive_commit_existing_but_unreachable_is_refused
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_archive.py::test_archive_commit_existing_but_unreachable_is_refused
+  motivating_defect: An archive object merely present in Git storage is insufficient; authority must bind
+    reachable history.
+- id: coordination-archive.fresh_machine_hydrates_monthly_history_from_same_remote
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_archive.py::test_fresh_machine_hydrates_monthly_history_from_same_remote
+  motivating_defect: A fresh temporary checkout of the same remote must recover archived monthly bytes
+    from reachable history.
+- id: coordination-archive.directory_durability_precedes_row_removal_and_journal_unlink
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_archive.py::test_directory_durability_precedes_row_removal_and_journal_unlink
+  motivating_defect: Archive directory entries must become durable before deleting live rows or their
+    recovery journal.
+- id: coordination-archive.fenced_quoted_message_never_truncates_live_recipient
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_archive.py::test_fenced_quoted_message_never_truncates_live_recipient
+  motivating_defect: A quoted message marker inside a fence must not truncate or archive a message to
+    a live recipient.
+- id: coordination-archive.recent_administrative_record_is_never_absorbed_into_old_message
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_archive.py::test_recent_administrative_record_is_never_absorbed_into_old_message
+  motivating_defect: Recent administrative release evidence must not be swallowed by an older message's
+    archive boundary.
+- id: retire-worktree.retirement_uses_verified_base_despite_stale_branch_upstream
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retirement_uses_verified_base_despite_stale_branch_upstream
+  motivating_defect: Safe retirement must use the verified remote base rather than an unrelated stale
+    branch upstream, retaining remote refs.
+- id: retire-worktree.resumed_retirement_uses_intent_base_despite_stale_upstream
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_resumed_retirement_uses_intent_base_despite_stale_upstream
+  motivating_defect: Interrupted retirement must resume from its recorded base OID, not a later upstream
+    interpretation.
+- id: retire-worktree.branch_mismatch_refuses_named_and_detached_worktrees
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_branch_mismatch_refuses_named_and_detached_worktrees
+  motivating_defect: Named and detached worktrees must refuse when their identity disagrees with the requested
+    retirement target.
+- id: retire-worktree.retires_verified_detached_worktree_without_branch_mutation
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retires_verified_detached_worktree_without_branch_mutation
+  motivating_defect: A verified merged detached checkout may retire without changing any branch or repository
+    configuration.
+- id: retire-worktree.unmerged_detached_worktree_is_preserved
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_unmerged_detached_worktree_is_preserved
+  motivating_defect: Detached work not contained in the verified remote base must remain intact.
+- id: retire-worktree.local_branch_advance_at_delete_boundary_keeps_branch_and_remote
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_local_branch_advance_at_delete_boundary_keeps_branch_and_remote
+  motivating_defect: A branch advancement immediately before deletion must preserve both local and remote
+    state.
+- id: retire-worktree.config_lock_contention_preserves_local_branch_and_config
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_config_lock_contention_preserves_local_branch_and_config
+  motivating_defect: A foreign Git config lock must cause refusal without deleting the branch or changing
+    configuration.
+- id: retire-worktree.native_delete_refuses_checkout_created_after_helper_snapshot
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_native_delete_refuses_checkout_created_after_helper_snapshot
+  motivating_defect: Native Git deletion must refuse a branch checked out after the helper's earlier snapshot.
+- id: retire-worktree.native_delete_uses_pinned_base_if_branch_and_remote_base_advance
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_native_delete_uses_pinned_base_if_branch_and_remote_base_advance
+  motivating_defect: Concurrent branch and remote-base movement must not broaden the pinned retirement
+    proof.
+- id: retire-worktree.native_base_selection_handles_upstream_variants_without_persistent_override
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_native_base_selection_handles_upstream_variants_without_persistent_override
+  motivating_defect: Temporary base selection must leave unrelated repository configuration bytes intact
+    across upstream variants.
+- id: retire-worktree.native_base_pin_cleanup_cannot_delete_a_changed_pin
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_native_base_pin_cleanup_cannot_delete_a_changed_pin
+  motivating_defect: A temporary proof ref changed by another actor must survive cleanup.
+- id: standalone-runtime-closure.r4_installer_copies_coordination_runtime
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_installer_copies_coordination_runtime
+  motivating_defect: A standalone pre-commit installation must contain every newly required coordination
+    helper before it can enforce ownership.
+- id: standalone-runtime-closure.r4_configured_hook_missing_runtime_fails_closed
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_configured_hook_missing_runtime_fails_closed
+  motivating_defect: Missing configured coordination runtime must block a real temporary commit instead
+    of warning and passing.
+- id: standalone-runtime-closure.pre_helper_bundle_upgrade_proves_old_pointer_and_executes_new_closure
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_pre_helper_bundle_upgrade_proves_old_pointer_and_executes_new_closure
+  motivating_defect: An older owned bundle missing claim, grammar or archive helper must upgrade only
+    from proven old anchors, then execute the new closure.
+- id: standalone-runtime-closure.claim_helper_introduction_requires_released_companion_anchors
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_claim_helper_introduction_requires_released_companion_anchors
+  motivating_defect: Missing or modified companion anchors and unrelated source pointers must refuse helper
+    introduction without writes.
+- id: standalone-runtime-closure.failed_claim_helper_introduction_restores_old_bundle_and_absence
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_failed_claim_helper_introduction_restores_old_bundle_and_absence
+  motivating_defect: A failed doctor during helper introduction must restore the old bundle and the helper's
+    prior absence.
+- id: standalone-runtime-closure.new_helper_never_overwrites_an_unowned_local_file
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_new_helper_never_overwrites_an_unowned_local_file
+  motivating_defect: Introducing a dependency must preserve an independent local file already occupying
+    the helper target.
+- id: standalone-runtime-closure.public_update_refreshes_independently_wired_runtime_and_preserves_personal_state
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_runtime_integration.py::test_public_update_refreshes_independently_wired_runtime_and_preserves_personal_state
+  motivating_defect: A real update must refresh independently wired public runtime bytes without claiming
+    ownership of personal state.
+- id: source-fixture-binding.source_fixture_captures_pending_bytes_without_ignored_runtime_state
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_onboard.py::test_source_fixture_captures_pending_bytes_without_ignored_runtime_state
+  motivating_defect: Setup regression fixtures must bind the pending source files under test while excluding
+    ignored runtime and foreign-worktree bytes.
+- id: source-fixture-binding.WholeSystemTests.test_full_init_configures_repo_local_identity_from_answers
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_onboard.py::WholeSystemTests::test_full_init_configures_repo_local_identity_from_answers
+  motivating_defect: The source snapshot fixture must still execute full initialization and honor explicit
+    repository-local identity answers.
+- id: source-fixture-binding.real_full_setup_commits_effective_workspace_layers_and_present_client
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_real_full_setup_commits_effective_workspace_layers_and_present_client
+  motivating_defect: The CLI's full setup fixture must exercise the current isolated source and verify
+    effective layers for the present client.
+- id: direct-copy-bytecode.direct_copy_ignores_generated_bytecode_but_detects_python_source_drift
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_direct_copy.py::test_direct_copy_ignores_generated_bytecode_but_detects_python_source_drift
+  motivating_defect: Running compileall in either direct-copy root must not create installation drift,
+    while editing actual Python source in either root must still fail status.
+- id: autopilot-fixture-schema.registration_is_bound_to_session_project_claim_and_client_ref
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_registration_is_bound_to_session_project_claim_and_client_ref
+  motivating_defect: The full v4 board fixture must keep autopilot registration bound to the exact session,
+    project claim and native client reference.
+- id: repo-sync-parallel.parallel_checks_are_bounded_and_preserve_input_order
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_repo_sync_check.py::test_parallel_checks_are_bounded_and_preserve_input_order
+  motivating_defect: Parallel local repository checks must use bounded workers while returning results
+    in caller input order.
+- id: repo-sync-parallel.worker_exception_stays_an_exception
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_repo_sync_check.py::test_worker_exception_stays_an_exception
+  motivating_defect: A worker exception must retain the prior error semantics rather than being converted
+    into a successful row.
+- id: repo-sync-parallel.repo_checks_only_issue_local_read_commands
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_repo_sync_check.py::test_repo_checks_only_issue_local_read_commands
+  motivating_defect: Repository health checks must not fetch or create optional Git locks, including implicit
+    lazy fetches.
+- id: repo-sync-parallel.main_uses_ordered_results_without_reports_when_requested
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_repo_sync_check.py::test_main_uses_ordered_results_without_reports_when_requested
+  motivating_defect: CLI output must retain input ordering and avoid report writes when the caller requests
+    no reports.
+- id: pattern-validation-cache.exact_valid_policy_skips_only_redundant_pattern_validation
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pattern_validation_cache.py::test_exact_valid_policy_skips_only_redundant_pattern_validation
+  motivating_defect: An exact valid policy may skip repeated pattern compilation, but must return the
+    same validated configuration.
+- id: pattern-validation-cache.cache_invalidates_every_validation_dependency
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pattern_validation_cache.py::test_cache_invalidates_every_validation_dependency
+  motivating_defect: Config bytes, validator, grep, Python and locale identity changes must each invalidate
+    a warm validation receipt.
+- id: pattern-validation-cache.bad_cache_uses_real_validation_and_preserves_unsafe_targets
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pattern_validation_cache.py::test_bad_cache_uses_real_validation_and_preserves_unsafe_targets
+  motivating_defect: Malformed, corrupt, redirected or insecure cache entries must fall back to real validation
+    without overwriting unsafe targets.
+- id: pattern-validation-cache.symlink_cache_directory_does_not_receive_writes
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pattern_validation_cache.py::test_symlink_cache_directory_does_not_receive_writes
+  motivating_defect: A redirected cache directory must not receive writes or suppress actual validation.
+- id: pattern-validation-cache.missing_grep_after_warm_cache_fails_closed
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pattern_validation_cache.py::test_missing_grep_after_warm_cache_fails_closed
+  motivating_defect: A warm cache cannot hide that the required pattern engine is now unavailable.
+- id: pattern-validation-cache.loaded_validator_logic_is_part_of_identity
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pattern_validation_cache.py::test_loaded_validator_logic_is_part_of_identity
+  motivating_defect: Editing or replacing loaded validator logic must invalidate reuse even when the source-path
+    identity appears unchanged.
+- id: pattern-validation-cache.invalid_policy_is_never_cached_or_allowed
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pattern_validation_cache.py::test_invalid_policy_is_never_cached_or_allowed
+  motivating_defect: An invalid pattern policy must fail every time and never receive a successful validation
+    cache entry.
+- id: pattern-validation-cache.concurrent_cache_publication_is_atomic
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pattern_validation_cache.py::test_concurrent_cache_publication_is_atomic
+  motivating_defect: Concurrent first writers must publish one valid complete receipt, never partial cache
+    data.
+- id: pattern-validation-cache.warm_validation_cache_never_skips_credential_scanning
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pattern_validation_cache.py::test_warm_validation_cache_never_skips_credential_scanning
+  motivating_defect: A real commit containing a newly introduced secret must still be blocked after warming
+    pattern validation.
+- id: ritual-document.rituals_skill_document_stays_within_repo_budget
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_skill_document_stays_within_repo_budget
-  motivating_defect: SKILL.md must stay under the 500-line budget and keep its load-bearing rules after the
-    weekly-review and watermark bullets grew.
-- id: rituals-moved-blocks-survive
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_moved_blocks_survive_in_their_references
-  motivating_defect: The blocks moved out of SKILL.md on 2026-09-01 must still be present in their references,
-    including the version-history anchors, after the v2.37.0 entry was added at the top.
-- id: rituals-references-linked
+  motivating_defect: Adding archive and snapshot-maintenance instructions must keep the ritual skill within
+    its enforced instruction budget.
+- id: ritual-document.rituals_references_are_all_linked
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_references_are_all_linked
-  motivating_defect: Every reference file, sync-watermarks.md and version-history.md included, must be linked
-    from SKILL.md so none becomes an orphan.
-- id: watermark-reference-contract
+  motivating_defect: The modified ritual document must retain resolvable links to its declared references.
+- id: d09-release-runtime.setup_records_current_absolute_interpreter_identity
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_watermark_reference_carries_the_contract
-  motivating_defect: The reference must keep --since run, the END-of-day meaning of a bare date, and
-    --targets-from after the advance bullet was rewritten.
-- id: watermark-reference-names-epoch
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_setup_records_current_absolute_interpreter_identity
+  motivating_defect: Setup must record an absolute Python executable, resolved executable, exact version
+    and binary digest so installed execution cannot silently select another interpreter.
+- id: d09-release-runtime.macos_pin_uses_prescribed_framework_and_refuses_other_version
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_watermark_reference_names_the_epoch_form_for_through
-  motivating_defect: The reference's own advance line instructs --through with the latest window prints as
-    epoch seconds; the form list under that verb must name epoch seconds, window and Slack, or the document
-    contradicts the command it sits under.
-- id: weekly-review-per-workspace
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_macos_pin_uses_prescribed_framework_and_refuses_other_version
+  motivating_defect: On macOS the runtime must select the prescribed framework Python 3.12.3 and refuse
+    another version.
+- id: d09-release-runtime.interpreter_drift_or_unpinned_path_refuses
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_weekly_review_recorded_for_one_workspace_leaves_another_owed
-  motivating_defect: One workspace's Friday review silenced every other workspace's owed-weekly gate because
-    the query returned the newest review in the log regardless of workspace.
-- id: weekly-review-named-workspace-latest
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_interpreter_drift_or_unpinned_path_refuses
+  motivating_defect: A changed interpreter digest/version or unpinned executable spelling must invalidate
+    the active runtime.
+- id: d09-release-runtime.active_release_is_verified_and_uses_current_pinned_executable
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_weekly_review_returns_the_named_workspace_s_latest_not_the_log_s_latest
-  motivating_defect: The query must return the named workspace's latest review, never the log's latest.
-- id: weekly-review-unscoped-refused-several
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_active_release_is_verified_and_uses_current_pinned_executable
+  motivating_defect: The verified release must construct child argv using its recorded absolute interpreter
+    and contained released script with bytecode writes disabled.
+- id: d09-release-runtime.unverified_release_never_becomes_an_execution_root
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_weekly_review_without_workspace_is_refused_when_the_log_holds_several
-  motivating_defect: An unscoped weekly-review query against a log naming several workspaces must refuse and
-    name the accepted form rather than answer for an arbitrary one.
-- id: weekly-review-unscoped-refused-empty
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_unverified_release_never_becomes_an_execution_root
+  motivating_defect: Missing, corrupt, drifted or symlinked release evidence must never become an execution
+    root.
+- id: d09-release-runtime.only_declared_contained_public_entrypoints_are_executable
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_weekly_review_without_workspace_on_an_empty_log_is_refused
-  motivating_defect: An unscoped query on an empty log has no workspace to infer and must refuse.
-- id: weekly-review-unscoped-single-workspace
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_only_declared_contained_public_entrypoints_are_executable
+  motivating_defect: Traversal, absolute paths and undeclared entrypoints must not escape the verified
+    public release execution surface.
+- id: d09-release-runtime.canonical_source_override_is_explicitly_rejected
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_weekly_review_without_workspace_uses_the_only_workspace_and_names_it
-  motivating_defect: When the log names exactly one workspace the unscoped query uses it and says which.
-- id: weekly-review-inference-ignores-legacy
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_canonical_source_override_is_explicitly_rejected
+  motivating_defect: An old canonical-source override must not restore source-checkout execution through
+    a released runtime.
+- id: d09-release-runtime.child_bytes_and_attention_exit_are_preserved
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_weekly_review_inference_ignores_unattributed_legacy_records
-  motivating_defect: Legacy records without a workspace must not count toward the single-workspace inference.
-- id: open-honors-workspace
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_child_bytes_and_attention_exit_are_preserved
+  motivating_defect: The verified child boundary must preserve binary stdin/stdout and the attention exit
+    status instead of normalizing them into success.
+- id: d09-release-runtime.hostile_path_cannot_choose_child_interpreter
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_open_honors_workspace
-  motivating_defect: The open view must scope to --workspace the way last already did.
-- id: summary-honors-workspace
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_hostile_path_cannot_choose_child_interpreter
+  motivating_defect: A hostile PATH must not select an alternative Python for a verified child.
+- id: d09-release-runtime.child_timeout_and_start_failure_are_not_normalized
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_summary_honors_workspace_in_every_section
-  motivating_defect: Every section of the summary view must honor --workspace.
-- id: summary-per-workspace-review
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_child_timeout_and_start_failure_are_not_normalized
+  motivating_defect: A child timeout or process-start failure must surface as a runtime refusal rather
+    than a normal result.
+- id: d09-release-runtime.tree_hash_contract_matches_the_existing_release_format
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_summary_without_workspace_reports_the_weekly_review_per_workspace
-  motivating_defect: The unscoped summary must carry each workspace's last review in its own row instead of one
-    log-wide field.
-- id: last-honors-workspace
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_tree_hash_contract_matches_the_existing_release_format
+  motivating_defect: Runtime tree verification must agree exactly with the release producer hash contract.
+- id: d09-release-runtime.managed_public_cli_preserves_bytes_and_explicit_attention_adapter
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_last_honors_workspace
-  motivating_defect: The last view must keep honoring --workspace after the query views were rescoped.
-- id: streak-requires-workspace
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_managed_public_cli_preserves_bytes_and_explicit_attention_adapter
+  motivating_defect: The real managed CLI must preserve output bytes and only adapt the explicitly requested
+    attention exit.
+- id: d09-release-runtime.managed_public_cli_cannot_normalize_runtime_failure
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_streak_refuses_without_workspace_and_honors_it
-  motivating_defect: The streak view must refuse without --workspace and honor it when given.
-- id: empty-workspace-refused
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_managed_public_cli_cannot_normalize_runtime_failure
+  motivating_defect: Attention-exit adaptation must never normalize runtime-integrity failure.
+- id: d09-release-runtime.public_cli_reads_payload_from_held_open_harness_socket
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_an_empty_workspace_is_refused_on_every_view
-  motivating_defect: An empty --workspace must be refused on every view rather than matching nothing silently.
-- id: record-refuses-empty-workspace
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_public_cli_reads_payload_from_held_open_harness_socket
+  motivating_defect: The runtime must read one complete native hook payload without waiting indefinitely
+    for a held-open input socket.
+- id: d09-release-runtime.doctor_checks_launcher_and_guardian_against_setup_pin
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_record_refuses_an_empty_workspace_before_appending
-  motivating_defect: record must refuse an empty workspace before it appends, so the log never gains an
-    unattributed record the scoped query cannot find.
-- id: ritual-state-self-test
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_doctor_checks_launcher_and_guardian_against_setup_pin
+  motivating_defect: Doctor must detect launcher and supervisor argv drift from the setup-recorded interpreter.
+- id: d09-activation.managed_launcher_dispatches_through_the_atomic_active_pointer
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_ritual_state.py::test_script_self_test_suite_passes
-  motivating_defect: The script's own self-test suite must pass under the rescoped views.
-- id: epoch-seconds-accepted
+  fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_managed_launcher_dispatches_through_the_atomic_active_pointer
+  motivating_defect: The managed launcher must dispatch using the active release descriptor rather than
+    a stale source checkout.
+- id: d09-activation.activation_refuses_user_owned_launcher
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_epoch_seconds_are_an_accepted_moment_and_stored_canonically
-  motivating_defect: On 2026-09-14 window printed latest=1789397434 and advance --through refused it as not a
-    timestamp; epoch seconds must be accepted and stored as ISO-8601 with an offset.
-- id: slack-ts-floored
+  fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_activation_refuses_user_owned_launcher
+  motivating_defect: Activation must preserve an independently owned launcher rather than replace it with
+    managed bytes.
+- id: d09-activation.activation_refuses_launcher_that_spoofs_the_public_marker
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_slack_ts_with_a_fractional_part_is_floored_to_the_second
-  motivating_defect: Slack's fractional ts must be floored to the second, never rounded up past a message.
-- id: window-latest-round-trips
+  fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_activation_refuses_launcher_that_spoofs_the_public_marker
+  motivating_defect: A copied management marker alone cannot prove ownership of launcher contents.
+- id: d09-activation.activation_failure_cannot_split_launcher_from_active_descriptor
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_window_latest_round_trips_into_advance
-  motivating_defect: The latest window prints must be accepted by advance unchanged.
-- id: future-epoch-refused
+  fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_activation_failure_cannot_split_launcher_from_active_descriptor
+  motivating_defect: An activation failure must restore the coherent old launcher/descriptor pair rather
+    than leave a mixed generation.
+- id: d09-activation.launcher_records_absolute_pin_and_ignores_hostile_path
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_a_future_epoch_is_refused_without_the_bare_date_hint
-  motivating_defect: A future epoch is refused as future, without the bare-date hint that applies only to dates.
-- id: refusal-names-forms
+  fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_launcher_records_absolute_pin_and_ignores_hostile_path
+  motivating_defect: Activation must embed the recorded absolute Python pin and still execute the active
+    generation under a hostile PATH.
+- id: d09-activation.exact_legacy_launcher_migrates_and_unknown_edits_refuse
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_refusal_names_every_accepted_form
-  motivating_defect: A refused moment must name every accepted form, epoch seconds included.
-- id: non-ten-digit-not-epoch
+  fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_exact_legacy_launcher_migrates_and_unknown_edits_refuse
+  motivating_defect: Only exact known prior managed-launcher bytes may migrate automatically; independently
+    modified bytes must refuse.
+- id: d09-activation.legacy_migration_failure_restores_exact_old_pair
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_an_integer_that_is_not_ten_digits_is_not_an_epoch
-  motivating_defect: Only a ten-digit integer reads as epoch seconds; other integers are refused.
-- id: milliseconds-named
+  fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_legacy_migration_failure_restores_exact_old_pair
+  motivating_defect: A failed legacy launcher migration must restore the exact original launcher and active
+    descriptor and close its rollback journal.
+- id: d09-activation.interrupted_migration_refuses_execution_then_recovers
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_epoch_milliseconds_are_named_in_the_refusal
-  motivating_defect: A thirteen-digit millisecond epoch is refused with a message naming milliseconds.
-- id: leading-zero-not-epoch
+  fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_interrupted_migration_refuses_execution_then_recovers
+  motivating_defect: An interrupted launcher migration must refuse execution until the coherent activation
+    pair is recovered.
+- id: d09-activation.activation_rejects_dangling_git_marker_without_replacing_current_pair
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_a_leading_zero_is_not_a_ten_digit_epoch
-  motivating_defect: A leading zero disqualifies a ten-digit string from reading as an epoch.
-- id: cli-leading-zero-refused
+  fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_activation_rejects_dangling_git_marker_without_replacing_current_pair
+  motivating_defect: An unsafe dangling release Git marker must not replace the current launcher and descriptor.
+- id: d09-bootstrap.onboard_handoff_consumes_resolution_policy_before_update_cli
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_advance_refuses_a_leading_zero_epoch_naming_the_accepted_form
-  motivating_defect: The CLI refuses a leading-zero epoch and names the accepted form.
-- id: milliseconds-anchored
+  fixture: ../synthesis-onboarding/scripts/test_bootstrap.py::test_onboard_handoff_consumes_resolution_policy_before_update_cli
+  motivating_defect: The actual shell bootstrap must hand the verified release and requested resolution
+    policy to the pinned Python CLI without leaking bootstrap options.
+- id: d09-hook-contract.hook_definition_refuses_ambient_interpreter_without_setup_pin
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_the_milliseconds_branch_is_anchored_to_thirteen_leading_nonzero_digits
-  motivating_defect: The milliseconds branch matches exactly thirteen leading non-zero digits.
-- id: forms-share-now
+  fixture: ../synthesis-agent-conformance/scripts/test_conformance.py::test_hook_definition_refuses_ambient_interpreter_without_setup_pin
+  motivating_defect: Every public hook must require the managed pinned launcher; an ambient Python command
+    must fail conformance.
+- id: d09-hook-contract.hook_definition_checks_require_session_context
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_every_form_shares_the_awareness_of_now
-  motivating_defect: Every accepted form must be judged against the same now for the future check.
-- id: naive-epoch-local
+  fixture: ../synthesis-agent-conformance/scripts/test_conformance.py::test_hook_definition_checks_require_session_context
+  motivating_defect: Source hook conformance must retain SessionStart, peer-send and inbox routing under
+    the new launcher contract.
+- id: d09-hook-contract.shipped_hook_config_routes_peer_sends_through_the_gate
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_a_naive_epoch_is_the_local_wall_clock
-  motivating_defect: An epoch is rendered on the local wall clock, matching the other stored forms.
-- id: future-refusal-renders-seconds
+  fixture: ../synthesis-agent-conformance/scripts/test_conformance.py::test_shipped_hook_config_routes_peer_sends_through_the_gate
+  motivating_defect: The shipped public hook map must keep peer-send and inbox enforcement while using
+    the pinned runtime.
+- id: d09-supervisor.launchd_definition_is_persistent_and_runs_stable_runtime
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_future_refusal_renders_both_moments_to_the_second
-  motivating_defect: The future refusal renders the given moment and now to the second.
-- id: backwards-refusal-renders-seconds
+  fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_launchd_definition_is_persistent_and_runs_stable_runtime
+  motivating_defect: The launchd supervisor argv must use the absolute runtime interpreter with bytecode
+    disabled.
+- id: d09-supervisor.systemd_definition_restarts_and_uses_stable_runtime
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_backwards_refusal_renders_both_moments_to_the_second
-  motivating_defect: The backwards refusal renders the given moment and the stored watermark to the second.
-- id: cli-window-round-trips
+  fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_systemd_definition_restarts_and_uses_stable_runtime
+  motivating_defect: The systemd supervisor argv must use the absolute runtime interpreter with bytecode
+    disabled.
+- id: d09-supervisor.shipped_python_hooks_disable_bytecode_writes
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_window_latest_round_trips_into_advance
-  motivating_defect: Through the CLI, the latest window prints feeds advance --through and is recorded.
-- id: cli-status-since-epoch
+  fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_shipped_python_hooks_disable_bytecode_writes
+  motivating_defect: Every shipped public hook must route through the pinned managed launcher with bytecode
+    writes disabled.
+- id: d09-enrollment-hooks.WholeSystemTests.test_kernel_budget_and_hook_merge_are_deterministic
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_status_since_accepts_epoch_seconds
-  motivating_defect: status --since accepts epoch seconds beside run and the other forms.
-- id: cli-help-names-epoch
+  fixture: ../synthesis-onboarding/scripts/test_onboard.py::WholeSystemTests::test_kernel_budget_and_hook_merge_are_deterministic
+  motivating_defect: Enrollment must merge the interpreter-bound protective hook definitions deterministically
+    and idempotently.
+- id: d09-enrollment-hooks.EngineTests.test_full_init_converges_every_layer_and_reruns_cleanly
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_cli_help_names_the_epoch_form_on_every_moment_argument
-  motivating_defect: The CLI help names the epoch form on every argument that takes a moment.
-- id: decision-packet-handoff-path
+  fixture: ../synthesis-onboarding/scripts/test_onboard.py::EngineTests::test_full_init_converges_every_layer_and_reruns_cleanly
+  motivating_defect: A real isolated full enrollment must converge its generated hooks and survive a repeat
+    setup.
+- id: closed-deletion-boundary.schema2_covers_deleted_source_and_both_rename_paths
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_handoff.py::test_decision_packet_names_concrete_handoff_path
-  motivating_defect: The rewritten SKILL.md must still name the concrete handoff.py path so the packet flow
-    hands rulings to the queue instead of describing it abstractly.
-- id: ids-edge-whitespace-refused
+  fixture: scripts/test_acceptance_suite.py::test_schema2_covers_deleted_source_and_both_rename_paths
+  motivating_defect: Closed membership must include actual deleted source paths and both sides of a rename.
+- id: closed-deletion-boundary.schema2_deleted_path_requires_exact_git_deletion
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_ids_with_edge_or_doubled_whitespace_are_refused
-  motivating_defect: The pasted summary prints id and label separated by two spaces and record_rulings.py
-    splits on that; an id with edge or doubled whitespace would not round-trip, so the builder refuses it.
-- id: bare-labels-reader-finding
+  fixture: scripts/test_acceptance_suite.py::test_schema2_deleted_path_requires_exact_git_deletion
+  motivating_defect: A deleted declaration cannot authorize an absent path unless the authoritative Git
+    boundary proves that exact deletion.
+- id: closed-deletion-boundary.deleted_surface_refuses_unsafe_or_unsupported_declarations
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_bare_acknowledgement_labels_raise_reader_findings_naming_row_and_labels
-  motivating_defect: A bare acknowledgement such as OK or Yes names no consequence; the reader contract must
-    report it naming the row and the labels.
-- id: bare-labels-normalized
+  fixture: scripts/test_acceptance_suite.py::test_deleted_surface_refuses_unsafe_or_unsupported_declarations
+  motivating_defect: Unsafe deleted paths and deletion declarations in unsupported schemas must refuse.
+- id: closed-deletion-boundary.deleted_surface_never_relaxes_fixture_existence
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_every_listed_bare_acknowledgement_is_caught_after_trimming_and_case_folding
-  motivating_defect: Every listed bare acknowledgement is caught after trimming and case folding, so padding or
-    capitalization cannot slip one past the reader.
-- id: packet-level-bare-labels-once
+  fixture: scripts/test_acceptance_suite.py::test_deleted_surface_never_relaxes_fixture_existence
+  motivating_defect: Source deletion support cannot allow an absent acceptance fixture.
+- id: closed-deletion-boundary.changed_paths_preserve_literal_newline_and_spaces
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_packet_level_bare_labels_are_reported_once_at_packet_level
-  motivating_defect: A bare label in the packet-level option set is reported once, at packet level, not once per
-    row that inherits it.
-- id: indistinct-labels-reader-finding
+  fixture: scripts/test_acceptance_suite.py::test_changed_paths_preserve_literal_newline_and_spaces
+  motivating_defect: Changed-path membership must preserve literal spaces and newlines through NUL-delimited
+    Git output.
+- id: release-deletion-boundary.acceptance_expectation_covers_both_rename_paths_and_literal_names
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_labels_that_share_every_content_word_raise_a_reader_finding
-  motivating_defect: Two labels that share every content word cannot be told apart by their consequence; the
-    reader contract must report the pair.
-- id: bare-not-double-reported
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_acceptance_expectation_covers_both_rename_paths_and_literal_names
+  motivating_defect: The public release consumer must supply exact added and deleted rename paths and
+    literal filenames to acceptance.
+- id: release-deletion-boundary.release_establishes_required_launcher_before_exposing_new_hooks
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_a_bare_label_is_not_also_reported_as_an_indistinct_pair
-  motivating_defect: A bare label is reported as bare, not also as half of an indistinct pair.
-- id: consequence-labels-clean
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_establishes_required_launcher_before_exposing_new_hooks
+  motivating_defect: Both install-only and normal releases must establish the required pinned launcher
+    before plugin refresh exposes new hook commands, and refuse refresh when launcher setup fails.
+- id: d09-ci-interpreter.mac_ci_installs_framework_before_dependencies_and_uses_python3
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_consequence_phrased_labels_raise_no_label_findings
-  motivating_defect: Labels phrased by their consequence raise no label findings; the reader must not flag the
-    accepted form.
-- id: strict-reader-refuses-bare-labels
+  fixture: ../synthesis-onboarding/scripts/test_ci_runtime.py::test_mac_ci_installs_framework_before_dependencies_and_uses_python3
+  motivating_defect: macOS CI must install the prescribed framework interpreter before dependencies and
+    run its Python commands under that exact runtime.
+- id: d09-ci-interpreter.ci_installer_refuses_local_execution_before_commands
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_strict_reader_refuses_bare_labels_naming_row_labels_and_accepted_form
-  motivating_defect: Under --strict-reader a bare label is a refusal naming the row, the labels and the accepted
-    form, so a packet handed to a principal cannot carry one.
-- id: button-carries-consequence
+  fixture: ../synthesis-onboarding/scripts/test_ci_runtime.py::test_ci_installer_refuses_local_execution_before_commands
+  motivating_defect: The CI-only interpreter installer must refuse local execution before invoking installation
+    commands.
+- id: d09-ci-interpreter.ci_package_verification_precedes_installer
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_each_option_button_carries_its_consequence
-  motivating_defect: Each option button in the rendered page carries the consequence of pressing it, so the
-    principal reads the consequence where the choice is made.
-- id: consequence-non-empty
+  fixture: ../synthesis-onboarding/scripts/test_ci_runtime.py::test_ci_package_verification_precedes_installer
+  motivating_defect: The interpreter installer must authenticate the exact package bytes before invoking
+    the system installer.
+- id: manifest.schema-valid
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_per_option_consequence_must_be_a_non_empty_string
-  motivating_defect: A per-option consequence must be a non-empty string; an empty one would render a button
-    with nothing under it.
-- id: row-option-sets-validated
+  fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
+  motivating_defect: The shipped closed manifest must resolve and satisfy the actual acceptance loader.
+- id: manifest.undeclared-path-refused
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_per_row_option_sets_are_validated_like_the_packet_level_set
-  motivating_defect: A per-row option set is validated by the same rules as the packet-level set.
-- id: file-into-writes-dated
+  fixture: scripts/test_acceptance_suite.py::test_schema2_rejects_undeclared_git_changed_surface
+  motivating_defect: A schema-2 declaration must refuse an authoritative changed path omitted from its
+    closed surface universe.
+- id: manifest.transaction-bound
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_file_into_writes_dated_spec_and_page
-  motivating_defect: The --file-into option writes a dated copy of the spec and of the page into the owning
-    project's artifacts directory after a successful build.
-- id: file-into-missing-dir-refused
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_file_into_refuses_a_missing_directory_before_building
-  motivating_defect: A missing --file-into directory is refused before the build, so nothing is built that
-    cannot be filed.
-- id: date-requires-file-into
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_date_is_validated_and_requires_file_into
-  motivating_defect: The --date option is validated as YYYY-MM-DD and, on the builder, requires --file-into.
-- id: summary-literals-pinned
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_summary_format_literals_are_pinned_to_the_packet_javascript
-  motivating_defect: The summary format literals record_rulings.py parses must equal the literals the packet's
-    JavaScript composes, or the paste stops round-tripping without any test noticing.
-- id: rulings-round-trip
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_record_rulings_round_trips_a_generated_packet
-  motivating_defect: The summary a generated packet produces must parse back into a rulings file that names
-    every row's choice and note.
-- id: rulings-trailer-and-stdin
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_record_rulings_reads_the_storage_blocked_trailer_and_stdin
-  motivating_defect: The paste may arrive on stdin and may carry the storage-blocked trailer; both are read.
-- id: rulings-malformed-refused
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_record_rulings_refuses_malformed_input_naming_the_expected_first_line
-  motivating_defect: Malformed input is refused naming the expected first line.
-- id: rulings-file-into-and-date
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_record_rulings_file_into_must_exist_and_date_is_validated
-  motivating_defect: record_rulings.py refuses a missing --file-into directory and validates --date.
-- id: browser-fixture-clean
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_browser_fixture_spec_builds_clean_under_the_reader_contract
-  motivating_defect: The browser fixture spec must build clean under the reader contract so the captured
-    summary comes from a compliant page.
-- id: rulings-parse-real-page
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_record_rulings_parses_a_summary_captured_from_the_real_page
-  motivating_defect: A summary captured from the real page, not composed in Python, must parse.
-- id: line-breaks-refused
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_line_breaks_in_title_row_label_option_label_or_id_are_refused
-  motivating_defect: A packet that builds but cannot be filed was found only when its paste failed; a line break
-    in a title, row label, option label or id is refused at build time.
-- id: title-underline-utf16
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_title_underline_counts_utf16_units_like_the_page
-  motivating_defect: The title underline counts UTF-16 units the way the page's JavaScript does, so the parser
-    accepts what the page prints.
-- id: worked-example-round-trip
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_worked_example_paste_parses_to_the_rulings_file_it_shows
-  motivating_defect: references/worked-example.md shows a spec, the paste its page produces, and the rulings
-    JSON record_rulings.py writes from that paste; the three must agree with the code.
-- id: one-button-set-refused
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_a_one_button_option_set_is_refused_at_packet_and_row_level
-  motivating_defect: A one-button option set is no decision; it is refused at packet and row level.
-- id: duplicate-option-values-refused
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_duplicate_option_values_in_one_set_are_refused
-  motivating_defect: Duplicate option values in one set would key the same button twice; they are refused.
-- id: option-values-strings
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_option_values_must_be_strings_because_the_page_compares_dataset_strings
-  motivating_defect: Option values must be strings because the page compares dataset strings.
-- id: rulings-refusals-quote-input
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_record_rulings_refusals_quote_what_they_received
-  motivating_defect: A refusal quotes the offending line with its number and the accepted forms, never an empty
-    string for a blank line the parser itself required.
+  fixture: scripts/test_acceptance_suite.py::test_schema2_receipt_binds_transaction_and_git_state
+  motivating_defect: The acceptance receipt must bind the supplied transaction and exact Git source state.

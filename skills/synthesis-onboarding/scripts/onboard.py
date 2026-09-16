@@ -3376,6 +3376,7 @@ def _coordination_probe():
         root / "coordination.py",
         root / "coordination_schema.py",
         root / "board_grammar.py",
+        root / "coordination_archive.py",
         root / "peer_addressing.py",
     ]
     if not all(path.is_file() for path in required):

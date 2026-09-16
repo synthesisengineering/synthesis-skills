@@ -60,8 +60,8 @@ def _lexical_path(raw: Path) -> Path:
     return Path(os.path.abspath(os.fspath(raw.expanduser())))
 
 
-def _bounded_regular_file(path: Path, root: Path, label: str) -> Path:
-    """Require a regular file inside root without traversing a symlink."""
+def _bounded_path(path: Path, root: Path, label: str) -> Path:
+    """Require a path inside root without traversing a symlink."""
 
     candidate = _lexical_path(path)
     try:
@@ -74,6 +74,12 @@ def _bounded_regular_file(path: Path, root: Path, label: str) -> Path:
         cursor = cursor / part
         if cursor.is_symlink():
             raise ManifestError(f"{label} traverses a symlink: {path}")
+    return candidate
+
+
+def _bounded_regular_file(path: Path, root: Path, label: str) -> Path:
+    """Require a regular file inside root without traversing a symlink."""
+    candidate = _bounded_path(path, root, label)
     if not candidate.is_file():
         raise ManifestError(f"{label} is not a regular file: {path}")
     return candidate
@@ -257,14 +263,24 @@ def validate_manifest(
             errors.append(f"{label} must be a mapping")
             continue
         raw_path = raw_surface.get("path")
+        state = raw_surface.get("state", "present")
+        if not isinstance(state, str) or state not in {"present", "deleted"}:
+            errors.append(f"{label}.state must be present or deleted")
+        if state == "deleted" and schema != 2:
+            errors.append(f"{label}: deleted surfaces require schema 2 Git evidence")
         if not isinstance(raw_path, str) or not raw_path.strip():
             errors.append(f"{label}.path must be a non-empty string")
             normalized_path = ""
         else:
             try:
-                surface_file = _bounded_regular_file(
-                    root / raw_path, root, f"{label}.path"
-                )
+                if state == "deleted":
+                    surface_file = _bounded_path(root / raw_path, root, f"{label}.path")
+                    if os.path.lexists(surface_file):
+                        raise ManifestError(f"{label}.path declares deletion but still exists: {raw_path}")
+                else:
+                    surface_file = _bounded_regular_file(
+                        root / raw_path, root, f"{label}.path"
+                    )
                 normalized_path = surface_file.relative_to(root).as_posix()
                 if normalized_path in surface_paths:
                     errors.append(f"duplicate changed surface: {normalized_path}")
@@ -284,7 +300,7 @@ def validate_manifest(
                 errors.append(f"{label}.cases references unknown case {mapped_id}")
             else:
                 mapped_cases.add(mapped_id)
-        surface_records.append({"path": normalized_path, "cases": surface_cases})
+        surface_records.append({"path": normalized_path, "state": state, "cases": surface_cases})
 
     if schema == 2:
         for case_id in sorted(case_ids - mapped_cases):
@@ -366,7 +382,9 @@ def authoritative_git_evidence(
     changed = _git(
         root,
         "diff",
+        "--no-renames",
         "--name-only",
+        "-z",
         "--diff-filter=ACDMRTUXB",
         f"{base_sha}..{head_sha}",
         "--",
@@ -377,8 +395,17 @@ def authoritative_git_evidence(
             f"authoritative Git change universe could not be established: {detail}"
         )
     changed_paths = sorted(
-        {line.strip() for line in changed.stdout.splitlines() if line.strip()}
+        {path for path in changed.stdout.split("\0") if path}
     )
+    deleted = _git(root, "diff", "--no-renames", "--name-only", "-z", "--diff-filter=D",
+                   f"{base_sha}..{head_sha}", "--")
+    if deleted.returncode != 0:
+        raise ManifestError("authoritative Git deletion evidence could not be established")
+    deleted_paths = {path for path in deleted.stdout.split("\0") if path}
+    declared_deleted = {surface["path"] for surface in validated["changed_surfaces"]
+                        if surface.get("state") == "deleted"}
+    if deleted_paths != declared_deleted:
+        raise ManifestError("declared deletion surfaces do not equal the authoritative Git deletion set")
     declared_paths = sorted(
         {surface["path"] for surface in validated["changed_surfaces"]}
     )
