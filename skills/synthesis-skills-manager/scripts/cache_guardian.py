@@ -40,6 +40,21 @@ PLUGIN_NAME = "synthesis-skills"
 LABEL = "org.synthesisengineering.synthesis-skills-cache-guardian"
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 HOOK_PLUGIN_PATH_RE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\s\"']+)")
+# Plugin roots from 4.100.0 on run hooks through the launcher: the executed
+# script is the first non-option argument after `exec-public`, relative to the
+# root's skills/ directory.
+EXEC_PUBLIC_TARGET_RE = re.compile(
+    r"\bexec-public\b(?:\s+--[\w-]+(?:\s+[^\s\"']+)?)*\s+([^\s\"'-][^\s\"']*)"
+)
+
+
+def hook_targets(hook_text: str) -> list[str]:
+    """Root-relative script paths a hook definition executes, from either the
+    `${CLAUDE_PLUGIN_ROOT}/<path>` form or the `synthesis exec-public <skill>/<script>` form."""
+    targets = set(HOOK_PLUGIN_PATH_RE.findall(hook_text))
+    for script in EXEC_PUBLIC_TARGET_RE.findall(hook_text):
+        targets.add(f"skills/{script}")
+    return sorted(targets)
 IGNORED_ROOTS = frozenset({".git", ".in_use", ".codex-marketplace-install.json"})
 BYTECODE_CACHE_DIRECTORY = "__pycache__"
 BYTECODE_SUFFIXES = frozenset({".pyc", ".pyo"})
@@ -461,7 +476,7 @@ def _validate_root(root: Path, version: str) -> None:
         json.loads(hook_text)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise GuardianError(f"unreadable archive hook definition {hooks}: {exc}") from exc
-    targets = sorted(set(HOOK_PLUGIN_PATH_RE.findall(hook_text)))
+    targets = hook_targets(hook_text)
     if not targets:
         raise GuardianError(f"archive hook definition has no plugin-root target: {hooks}")
     missing = [target for target in targets if not (root / target).is_file()]

@@ -621,3 +621,50 @@ def test_linux_supervisor_restarts_changed_runtime_and_verifies_active(
         "restart",
         "is-active",
     ]
+
+
+EXEC_PUBLIC_HOOK = (
+    '"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis" exec-public '
+    "--timeout-seconds 13 synthesis-autopilot/scripts/autopilot_gate.py --gate"
+)
+
+
+def _rewrite_hook_command(root: Path, command: str) -> None:
+    hooks = root / "hooks" / "hooks.json"
+    payload = json.loads(hooks.read_text(encoding="utf-8"))
+    payload["hooks"]["Stop"][0]["hooks"][0]["command"] = command
+    hooks.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_archive_root_with_exec_public_hooks_is_valid(tmp_path: Path) -> None:
+    """Plugin roots from 4.100.0 on run every hook through the launcher's
+    exec-public verb instead of naming ${CLAUDE_PLUGIN_ROOT}; the guardian must
+    resolve the executed script from that form, or every archive of a current
+    root fails and the release install stops at the guardian."""
+    root = tmp_path / "root"
+    seed_root(root, "4.100.0", "exec-public")
+    _rewrite_hook_command(root, EXEC_PUBLIC_HOOK)
+
+    assert guardian.hook_targets((root / "hooks" / "hooks.json").read_text(encoding="utf-8")) == [
+        "skills/synthesis-autopilot/scripts/autopilot_gate.py"
+    ]
+    guardian._validate_root(root, "4.100.0")
+
+
+def test_archive_root_refuses_exec_public_hook_whose_script_is_missing(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    seed_root(root, "4.100.0", "exec-public")
+    _rewrite_hook_command(root, EXEC_PUBLIC_HOOK)
+    (root / "skills" / "synthesis-autopilot" / "scripts" / "autopilot_gate.py").unlink()
+
+    with pytest.raises(guardian.GuardianError, match="misses hook target"):
+        guardian._validate_root(root, "4.100.0")
+
+
+def test_archive_root_refuses_hooks_that_name_no_plugin_script(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    seed_root(root, "4.100.0", "none")
+    _rewrite_hook_command(root, "python3 /usr/local/bin/elsewhere.py --gate")
+
+    with pytest.raises(guardian.GuardianError, match="no plugin-root target"):
+        guardian._validate_root(root, "4.100.0")

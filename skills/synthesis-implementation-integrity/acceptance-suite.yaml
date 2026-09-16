@@ -1,21 +1,18 @@
 schema: 2
-suite: receipt-plugin-root-2026-09-16
+suite: cache-guardian-exec-public-2026-09-16
 membership: closed
-production_entry_point: session_context.py SessionStart receipts under synthesis exec-public and the
-  conformance hook-live plane
+production_entry_point: release.py install.codex.cache-guardian (cache_guardian.py archive validation)
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and both-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures establish that plugin_identity prefers the client-exported plugin root when it
-  carries a manifest and falls back to the execution root otherwise, that the receipt records the execution
-  root, that hook-live accepts an execution root carrying the expected version and refuses a mismatched or
-  manifest-less one, and one coherent release read from the actual manifests, CHANGELOG and README. They do
-  not establish that either client exports the plugin root variable into hooks at runtime (evidence for that
-  is the shared 4.99.0 hooks.json, which expanded the same variable in both clients); a fresh native
-  SessionStart receipt after installation is the live proof, recorded in the project's session log.
+unverified_remainder: Fixtures establish that the guardian resolves executed scripts from the exec-public command
+  form, validates an archive root whose hooks use it, refuses one whose executed script is missing, refuses hooks
+  that name no plugin script, and one coherent release read from the actual manifests, CHANGELOG and README. They
+  do not establish the live archive of this machine's Codex cache; the release's install.codex.cache-guardian
+  step is that proof, recorded in the project's session log.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases: [release-contract, release-surfaces-pinned, release-contract-version]
@@ -25,16 +22,12 @@ changed_surfaces:
   cases: [release-contract, release-surfaces-pinned, release-contract-changelog]
 - path: README.md
   cases: [release-contract, release-surfaces-pinned]
-- path: skills/synthesis-agent-conformance/SKILL.md
+- path: skills/synthesis-skills-manager/SKILL.md
   cases: [release-contract]
-- path: skills/synthesis-agent-conformance/scripts/conformance.py
-  cases: [hook-live-execution-root]
-- path: skills/synthesis-agent-conformance/scripts/session_context.py
-  cases: [receipt-client-plugin-root, receipt-execution-root-fallback, receipt-records-execution-root]
-- path: skills/synthesis-agent-conformance/scripts/test_conformance.py
-  cases: [hook-live-execution-root]
-- path: skills/synthesis-agent-conformance/scripts/test_session_context.py
-  cases: [receipt-client-plugin-root, receipt-execution-root-fallback, receipt-records-execution-root]
+- path: skills/synthesis-skills-manager/scripts/cache_guardian.py
+  cases: [guardian-exec-public-valid, guardian-exec-public-missing-script, guardian-no-plugin-script]
+- path: skills/synthesis-skills-manager/scripts/test_cache_guardian.py
+  cases: [guardian-exec-public-valid, guardian-exec-public-missing-script, guardian-no-plugin-script]
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases: [manifest-validates]
 cases:
@@ -43,53 +36,40 @@ cases:
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The patch must declare its exact changed membership through the existing acceptance consumer.
-- id: receipt-client-plugin-root
+- id: guardian-exec-public-valid
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_plugin_identity_prefers_the_client_provided_plugin_root
-  motivating_defect: Under synthesis exec-public the script executes from the active release root, and at 4.100.0
-    the receipt named that root as the plugin root; the client's exported plugin root must win when it carries
-    a manifest, with the execution root recorded separately.
-- id: receipt-execution-root-fallback
+  fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_archive_root_with_exec_public_hooks_is_valid
+  motivating_defect: Plugin roots from 4.100.0 on run hooks through the launcher's exec-public verb; the guardian
+    read only ${CLAUDE_PLUGIN_ROOT} targets and refused every current root, stopping the 4.100.1 install.
+- id: guardian-exec-public-missing-script
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_plugin_identity_falls_back_to_the_execution_root_without_a_client_root
-  motivating_defect: Without a client-exported root, or with one that carries no manifest, the receipt keeps
-    naming the execution root, which is today's behavior for direct runs and tests.
-- id: receipt-records-execution-root
+  fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_archive_root_refuses_exec_public_hook_whose_script_is_missing
+  motivating_defect: An exec-public hook whose executed script is absent from the root must still be refused as a
+    missing hook target.
+- id: guardian-no-plugin-script
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_live_receipt_records_real_sessionstart_shape
-  motivating_defect: The real-shape receipt must carry execution_root so hook-live can verify the executed tree.
-- id: hook-live-execution-root
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_conformance.py::test_receipt_check_verifies_the_execution_root_carries_the_expected_version
-  motivating_defect: A receipt whose execution root carries a different or missing plugin version means the hook
-    ran code from another release than the client loaded; hook-live must refuse it and accept a matching one.
+  fixture: ../synthesis-skills-manager/scripts/test_cache_guardian.py::test_archive_root_refuses_hooks_that_name_no_plugin_script
+  motivating_defect: A hook definition naming no plugin script in either form is not an archivable root.
 - id: release-contract
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_project_state_reliability_release_contract_is_coherent
-  motivating_defect: Release metadata must describe one coherent release read from the actual files; both
-    plugin versions agree, the CHANGELOG top heading carries that version, README notes Release **version**,
-    and the reliability-tranche SKILL.md versions stay at or above their floors.
+  motivating_defect: Release metadata must describe one coherent release read from the actual files.
 - id: release-surfaces-pinned
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_release_surfaces_agree_and_public_commands_are_pinned
-  motivating_defect: A second independent reader of the actual release surfaces; at 4.92.1 the README's native
-    plugin commands still installed from the default branch instead of the stable ref.
+  motivating_defect: A second independent reader of the actual release surfaces.
 - id: release-contract-version
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
-  motivating_defect: Both client manifests must agree on one version before a release is described; this
-    fixture exercises the boundary's parser on a synthetic repository; the shipped files are read by
-    release-contract and release-surfaces-pinned.
+  motivating_defect: Both client manifests must agree on one version; this fixture exercises the boundary's parser.
 - id: release-contract-changelog
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_top_version_parsed
-  motivating_defect: The changelog's newest heading must parse as the version the boundary compares with both
-    manifests; this fixture exercises the boundary's parser on a synthetic repository.
+  motivating_defect: The changelog's newest heading must parse as the version the boundary compares with both manifests.

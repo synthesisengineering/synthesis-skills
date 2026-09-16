@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.100.2] - 2026-09-16
+
+The Codex cache guardian resolves hook targets from the `synthesis
+exec-public` command form as well as `${CLAUDE_PLUGIN_ROOT}` paths, so it can
+archive plugin roots from 4.100.0 on; at 4.100.1 the install stopped at the
+guardian with "archive hook definition has no plugin-root target" and the
+clients were left unconfirmed.
+
 ## [4.100.1] - 2026-09-16
 
 SessionStart receipts written under `synthesis exec-public` name the plugin
