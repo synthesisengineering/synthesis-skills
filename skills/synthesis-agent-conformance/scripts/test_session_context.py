@@ -492,6 +492,7 @@ def test_live_receipt_records_real_sessionstart_shape(
     assert recorded["transcript_bound_at_record"] is True
     assert recorded["transcript_path"] == str(transcript)
     assert Path(recorded["plugin_root"]).resolve() == MODULE.SCRIPTS_DIR.parents[2]
+    assert Path(recorded["execution_root"]).resolve() == MODULE.SCRIPTS_DIR.parents[2]
     event_path = (
         receipt.parent
         / "receipt-events"
@@ -1072,3 +1073,42 @@ def test_main_still_fails_closed_on_a_non_pointer_failure(monkeypatch, capsys, t
     assert code == 2
     assert calls == ["receipt", "build"]
     assert context == ""
+
+
+def _plugin_root_with_version(root: Path, version: str) -> Path:
+    (root / ".claude-plugin").mkdir(parents=True)
+    (root / ".claude-plugin" / "plugin.json").write_text(
+        json.dumps({"name": "synthesis-skills", "version": version}), encoding="utf-8"
+    )
+    return root
+
+
+def test_plugin_identity_prefers_the_client_provided_plugin_root(tmp_path: Path, monkeypatch) -> None:
+    """Under `synthesis exec-public` the script executes from the active
+    release root, but the client loaded the plugin from its own cache and
+    exports that root to every hook; the receipt must name the root the
+    client loaded, with the execution root recorded separately."""
+    loaded = _plugin_root_with_version(tmp_path / "cache" / "9.9.9", "9.9.9")
+    monkeypatch.setenv(MODULE.CLIENT_PLUGIN_ROOT_ENV, str(loaded))
+
+    version, root = MODULE.plugin_identity()
+
+    assert version == "9.9.9"
+    assert Path(root).resolve() == loaded.resolve()
+    assert MODULE.execution_root().resolve() == MODULE.SCRIPTS_DIR.parents[2]
+
+
+def test_plugin_identity_falls_back_to_the_execution_root_without_a_client_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv(MODULE.CLIENT_PLUGIN_ROOT_ENV, raising=False)
+    version, root = MODULE.plugin_identity()
+    assert Path(root).resolve() == MODULE.SCRIPTS_DIR.parents[2]
+    assert version
+
+    bare = tmp_path / "not-a-plugin"
+    bare.mkdir()
+    monkeypatch.setenv(MODULE.CLIENT_PLUGIN_ROOT_ENV, str(bare))
+    version_again, root_again = MODULE.plugin_identity()
+    assert Path(root_again).resolve() == MODULE.SCRIPTS_DIR.parents[2]
+    assert version_again == version

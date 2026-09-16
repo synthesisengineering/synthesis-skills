@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.100.1] - 2026-09-16
+
+SessionStart receipts written under `synthesis exec-public` name the plugin
+root the client loaded (the root both clients export to their hooks) and
+record the active release root separately as the execution root; hook-live
+verifies that the execution root carries the same plugin version. At 4.100.0
+the receipt named the release root as the plugin root and hook-live refused
+every fresh session.
+
 ## [4.100.0] - 2026-09-16
 
 The Python-only sprint of ADR-001 lands. Coordination reads the board through

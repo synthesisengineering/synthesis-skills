@@ -2273,3 +2273,60 @@ def test_render_atomically_writes_the_same_structured_evidence(
     assert stdout == cached
     assert cached["checks"][0]["plane"] == "source"
     assert not list(report.parent.glob("last-report.json.*.tmp"))
+
+
+def test_receipt_check_verifies_the_execution_root_carries_the_expected_version(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A receipt written under `synthesis exec-public` names the client's
+    plugin root and, separately, the execution root it ran from; the
+    execution root must carry the same plugin version, otherwise the hook
+    ran code from a different release than the client loaded."""
+    claude_home = tmp_path / ".claude"
+    session_id = "019fff79-5858-7993-a329-b301bccf5d40"
+    transcript = claude_home / "projects" / "workspace" / f"{session_id}.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(json.dumps({"sessionId": session_id}) + "\n", encoding="utf-8")
+    installed_root = tmp_path / "plugin" / "1.2.3"
+    installed_root.mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+
+    def receipt_with(execution_root: Path | None, version: str | None) -> Path:
+        if execution_root is not None and version is not None:
+            (execution_root / ".claude-plugin").mkdir(parents=True, exist_ok=True)
+            (execution_root / ".claude-plugin" / "plugin.json").write_text(
+                json.dumps({"version": version}), encoding="utf-8"
+            )
+        payload = {
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "client": "claude",
+            "plugin_version": "1.2.3",
+            "plugin_root": str(installed_root),
+            "provenance_env": "claude-transcript",
+            "transcript_path": str(transcript),
+            "transcript_bound_at_record": True,
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if execution_root is not None:
+            payload["execution_root"] = str(execution_root)
+        path = tmp_path / f"receipt-{'none' if execution_root is None else execution_root.name}.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return path
+
+    def check(path: Path) -> bool:
+        checks: list[MODULE.Check] = []
+        MODULE._receipt_check(
+            checks,
+            "hook-live.public-claude-sessionstart",
+            path,
+            expected_client="claude",
+            expected_plugin_version="1.2.3",
+            expected_plugin_root=installed_root,
+        )
+        return checks[0].ok
+
+    assert check(receipt_with(None, None)) is True
+    assert check(receipt_with(tmp_path / "release" / "same", "1.2.3")) is True
+    assert check(receipt_with(tmp_path / "release" / "other", "1.2.2")) is False
+    assert check(receipt_with(tmp_path / "release" / "missing", None)) is False

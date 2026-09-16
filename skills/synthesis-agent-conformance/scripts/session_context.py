@@ -154,9 +154,17 @@ def _write_latest_if_newer(
     atomic_json_write(destination, receipt)
 
 
-def plugin_identity() -> tuple[str | None, str]:
-    """Return the executing plugin package version and root."""
-    root = SCRIPTS_DIR.parents[2]
+CLIENT_PLUGIN_ROOT_ENV = "CLAUDE_PLUGIN_ROOT"
+
+
+def execution_root() -> Path:
+    """The plugin tree this script executes from: the client's plugin cache
+    when the hook runs the cached script directly, or the active release root
+    when it runs through `synthesis exec-public`."""
+    return SCRIPTS_DIR.parents[2]
+
+
+def _manifest_version(root: Path) -> str | None:
     for manifest in (
         root / ".codex-plugin" / "plugin.json",
         root / ".claude-plugin" / "plugin.json",
@@ -166,8 +174,28 @@ def plugin_identity() -> tuple[str | None, str]:
         except (OSError, ValueError):
             continue
         if version:
-            return str(version), str(root)
-    return None, str(root)
+            return str(version)
+    return None
+
+
+def plugin_identity() -> tuple[str | None, str]:
+    """Return the version and root of the plugin the client loaded.
+
+    Both clients export the root they loaded the plugin from to every hook
+    (the variable their hook commands expand). Under `synthesis exec-public`
+    the script runs from the active release root instead, so the receipt
+    would otherwise name a root the client never loaded and the hook-live
+    plane would refuse it. The client's root wins when it carries a plugin
+    manifest; otherwise the execution root is the only identity available.
+    """
+    client_root = os.environ.get(CLIENT_PLUGIN_ROOT_ENV, "").strip()
+    if client_root:
+        root = Path(client_root).expanduser()
+        version = _manifest_version(root)
+        if version:
+            return version, str(root)
+    root = execution_root()
+    return _manifest_version(root), str(root)
 
 
 def append_currency_notice(message: str, payload: dict[str, object]) -> str:
@@ -285,6 +313,7 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
         "provenance_env": provenance_env,
         "plugin_version": version,
         "plugin_root": plugin_root,
+        "execution_root": str(execution_root()),
         "recorded_at": datetime.now(timezone.utc).isoformat(),
     }
     generic_latest, client_latest = latest_receipt_paths(destination, client)
