@@ -25,9 +25,11 @@ def run_cli(tmp_path: Path, *args: str, stdin: str = "{}", env_extra=None):
     board = tmp_path / "board.md"
     if not board.exists():
         board.write_text(
-            "| Session UUID | Compact ID | Speakable ID | Client session ref | Project | Workspace(s) / branch | Claimed areas (advisory lock) | Context role | Started | Heartbeat | Status |\n"
-            "|---|---|---|---|---|---|---|---|---|---|---|\n"
-            "| session-a | s-aaaa-bbbb-cccc | words-1 | tool:session-a | alpha | /tmp/p | /tmp/p/** | owner | 2026-09-03T12:00:00-04:00 | 2026-09-03T12:00:00-04:00 | active |\n",
+            "# Board\n\nSchema: v4\n\n## Active sessions\n\n"
+            "| session uuid | compact id | speakable id v1 | legacy id | agent | machine | client session ref | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |\n"
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+            "| session-a | s-aaaa-bbbb-cccc | words-1 | | agent | machine | tool:session-a | alpha | 2026-09-03T12:00:00-04:00 | 2026-09-03T12:00:00-04:00 | interactive | /tmp/p | fixture | /tmp/p/** | owner | active |\n"
+            "\n## Messages\n",
             encoding="utf-8",
         )
     env = {

@@ -236,6 +236,7 @@ def test_profile_transitions_commit_each_selected_policy(tmp_path: Path) -> None
 def test_real_full_setup_commits_effective_workspace_layers_and_present_client() -> None:
     box = Sandbox()
     try:
+        box.isolate_public_source()
         client = box.fake_client()
         box.seed_currency()
         answers = box.answers(

@@ -366,7 +366,7 @@ def desktop_owner(observer: SimpleNamespace) -> None:
     board(observer.board, [(FOREIGN, identity.compact_id, "alpha", str(observer.repo))])
     observer.board.write_text(observer.board.read_text().replace(f"tool:{FOREIGN}", "ccd:local_fixture"))
     peer_addressing.write_seat(
-        observer.board, session_uuid=FOREIGN, compact_id=identity.compact_id, machine="fixture",
+        observer.board, session_uuid=FOREIGN, compact_id=identity.compact_id, machine="machine",
         identity=peer_addressing.SelfIdentity(client="claude-code", harness_session_id=NATIVE,
                                              host_session_id="local_fixture"),
     )
@@ -386,7 +386,7 @@ def test_desktop_native_hook_matches_its_existing_seat_without_shell_override(ob
     assert json.loads(next(observer.receipts.glob("*.json")).read_text())["session_id"] == FOREIGN
 
 
-@pytest.mark.parametrize("defect", ["missing", "foreign_native", "wrong_host", "symlink", "fake_override"])
+@pytest.mark.parametrize("defect", ["missing", "foreign_native", "wrong_host", "wrong_machine", "symlink", "fake_override"])
 def test_desktop_claim_mapping_never_accepts_unbound_authority(observer: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, defect: str) -> None:
     desktop_owner(observer)
     path = peer_addressing.seat_path(observer.board, FOREIGN)
@@ -398,7 +398,8 @@ def test_desktop_claim_mapping_never_accepts_unbound_authority(observer: SimpleN
         path.symlink_to(saved)
     else:
         data = json.loads(path.read_text())
-        data["harness_session_id" if defect == "foreign_native" else "host_session_id"] = FOREIGN
+        field = {"foreign_native": "harness_session_id", "wrong_host": "host_session_id", "wrong_machine": "machine"}[defect]
+        data[field] = FOREIGN
         path.write_text(json.dumps(data))
     if defect == "fake_override":
         monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "ccd:local_fixture")

@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 SCRIPT = Path(__file__).with_name("retire_worktree.py")
 CHECKPOINT_SCRIPT = (
@@ -18,6 +20,15 @@ SPEC = importlib.util.spec_from_file_location("retire_worktree", SCRIPT)
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
+
+
+@pytest.fixture(autouse=True)
+def isolated_module_state(tmp_path, monkeypatch):
+    state = tmp_path / "synthesis-home" / "repo-guard"
+    monkeypatch.setattr(MODULE, "STATE_DIR", state)
+    monkeypatch.setattr(MODULE, "LIFECYCLE_LOCK", state / "lifecycle.lock")
+    monkeypatch.setattr(MODULE, "RETIREMENT_RUNTIME_DIR", state / "retirement-runtime")
+    monkeypatch.setattr(MODULE, "RETIREMENT_DIR", state / "retired-worktrees")
 
 
 def git(cwd: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
@@ -107,6 +118,72 @@ def test_retires_merged_worktree_and_branches(tmp_path: Path) -> None:
     assert not remote_heads.strip()
 
 
+def stale_upstream_worktree(tmp_path: Path) -> tuple[Path, Path, str]:
+    """The branch advanced beyond its upstream but all work reached main."""
+    _remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    git(worktree, "push", "--quiet", "-u", "origin", "feature/demo")
+    (worktree / "change.txt").write_text("landed change\n", encoding="utf-8")
+    git(worktree, "add", "change.txt")
+    git(worktree, "commit", "--quiet", "-m", "landed change")
+    head = git(worktree, "rev-parse", "HEAD").stdout.strip()
+    git(clone, "merge", "--quiet", "--no-edit", "feature/demo")
+    git(clone, "push", "--quiet", "origin", "main")
+    assert git(clone, "rev-parse", "origin/feature/demo").stdout.strip() != head
+    assert git(clone, "rev-parse", "origin/main").stdout.strip() == head
+    return clone, worktree, head
+
+
+def prepare_interrupted_retirement(clone: Path, worktree: Path, head: str) -> Path:
+    synthesis_home = worktree.parent.parent / "synthesis-home"
+    runtime = synthesis_home / "repo-guard" / "retirement-runtime"
+    runtime.mkdir(parents=True)
+    digest = hashlib.sha256(CHECKPOINT_SCRIPT.read_bytes()).hexdigest()
+    pinned = runtime / f"checkpoint-sync-{digest}.py"
+    shutil.copy2(CHECKPOINT_SCRIPT, pinned)
+    environment = dict(os.environ, SYNTHESIS_HOME=str(synthesis_home))
+    prepared = subprocess.run(
+        [sys.executable, str(pinned), "--prepare-worktree-retirement", str(worktree),
+         "--retirement-repository", str(clone), "--retirement-head", head,
+         "--retirement-remote", "origin", "--retirement-base", "origin/main",
+         "--retirement-branch", "feature/demo", "--json"],
+        env=environment, capture_output=True, text=True, check=False,
+    )
+    assert prepared.returncode == 0, prepared.stderr
+    intent = Path(json.loads(prepared.stdout)[0]["detail"])
+    git(clone, "worktree", "remove", str(worktree))
+    return intent
+
+
+def test_retirement_uses_verified_base_despite_stale_branch_upstream(tmp_path: Path) -> None:
+    clone, worktree, _head = stale_upstream_worktree(tmp_path)
+    remote_before = git(clone, "ls-remote", "--heads", "origin").stdout
+
+    result = retire("--repository", str(clone), "--worktree", str(worktree),
+                    "--base", "origin/main")
+
+    assert result.returncode == 0, result.stderr
+    assert not worktree.exists()
+    assert not git(clone, "branch", "--list", "feature/demo").stdout.strip()
+    assert "branch.feature/demo" not in git(clone, "config", "--local", "--list").stdout
+    assert git(clone, "ls-remote", "--heads", "origin").stdout == remote_before
+
+
+def test_resumed_retirement_uses_intent_base_despite_stale_upstream(tmp_path: Path) -> None:
+    clone, worktree, head = stale_upstream_worktree(tmp_path)
+    intent = prepare_interrupted_retirement(clone, worktree, head)
+    before = json.loads(intent.read_text())
+    remote_before = git(clone, "ls-remote", "--heads", "origin").stdout
+
+    result = retire("--repository", str(clone), "--worktree", str(worktree))
+
+    assert result.returncode == 0, result.stderr
+    assert "Resumed retirement" in result.stdout
+    assert not git(clone, "branch", "--list", "feature/demo").stdout.strip()
+    assert json.loads(intent.read_text())["base_oid"] == before["base_oid"]
+    assert git(clone, "ls-remote", "--heads", "origin").stdout == remote_before
+
+
 def test_refuses_unmerged_branch(tmp_path: Path) -> None:
     remote, clone = build_repo(tmp_path)
     worktree = add_feature_worktree(tmp_path, clone)
@@ -164,7 +241,7 @@ def test_refuses_when_cwd_is_inside_target(tmp_path: Path) -> None:
     assert worktree.exists()
 
 
-def test_branch_mismatch_and_detached_head_refuse(tmp_path: Path) -> None:
+def test_branch_mismatch_refuses_named_and_detached_worktrees(tmp_path: Path) -> None:
     remote, clone = build_repo(tmp_path)
     worktree = add_feature_worktree(tmp_path, clone)
     commit_and_merge(clone, worktree)
@@ -181,9 +258,62 @@ def test_branch_mismatch_and_detached_head_refuse(tmp_path: Path) -> None:
     assert "not the expected" in result.stderr
 
     git(worktree, "checkout", "--quiet", "--detach")
-    result = retire("--repository", str(clone), "--worktree", str(worktree))
+    result = retire("--repository", str(clone), "--worktree", str(worktree),
+                    "--branch", "feature/demo")
     assert result.returncode == 2
-    assert "not on a local branch" in result.stderr
+    assert "not the expected feature/demo" in result.stderr
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_retires_verified_detached_worktree_without_branch_mutation(tmp_path, nested):
+    _remote, clone = build_repo(tmp_path)
+    driver = clone
+    target = tmp_path / "worktrees" / "detached"
+    if nested:
+        driver = tmp_path / "driver"
+        git(clone, "worktree", "add", "-b", "driver", str(driver))
+        target = clone / ".claude" / "worktrees" / "detached"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    git(clone, "worktree", "add", "--detach", str(target), "origin/main")
+    git(clone, "fetch", "--quiet", "--prune", "origin")
+    refs_before = git(clone, "for-each-ref", "--format=%(refname) %(objectname)").stdout
+    config_before = (clone / ".git/config").read_bytes()
+
+    result = retire("--repository", str(driver), "--worktree", str(target),
+                    "--base", "origin/main", "--delete-remote")
+
+    assert result.returncode == 0, result.stderr
+    assert not target.exists()
+    assert "detached" in result.stdout
+    assert git(clone, "for-each-ref", "--format=%(refname) %(objectname)").stdout == refs_before
+    assert (clone / ".git/config").read_bytes() == config_before
+    repeated = retire("--repository", str(driver), "--worktree", str(target),
+                      "--base", "origin/main", "--delete-remote")
+    assert repeated.returncode == 0, repeated.stderr
+    wrong_branch = retire("--repository", str(driver), "--worktree", str(target),
+                          "--branch", "main", "--delete-remote")
+    assert wrong_branch.returncode == 2
+    assert "for detached HEAD, not main" in wrong_branch.stderr
+    assert git(clone, "for-each-ref", "--format=%(refname) %(objectname)").stdout == refs_before
+
+
+def test_unmerged_detached_worktree_is_preserved(tmp_path):
+    _remote, clone = build_repo(tmp_path)
+    target = tmp_path / "worktrees" / "detached"
+    target.parent.mkdir(parents=True)
+    git(clone, "worktree", "add", "--detach", str(target), "origin/main")
+    (target / "unmerged.txt").write_text("retain detached work\n")
+    git(target, "add", "unmerged.txt")
+    git(target, "commit", "-m", "unmerged detached work")
+    head = git(target, "rev-parse", "HEAD").stdout.strip()
+
+    result = retire("--repository", str(clone), "--worktree", str(target),
+                    "--base", "origin/main")
+
+    assert result.returncode == 2
+    assert "not fully contained" in result.stderr
+    assert target.exists()
+    assert git(target, "rev-parse", "HEAD").stdout.strip() == head
 
 
 def test_no_fetch_escape_hatch_is_rejected(tmp_path: Path) -> None:
@@ -707,6 +837,8 @@ def test_remote_branch_advance_blocks_delete(tmp_path: Path) -> None:
         "feature/demo",
         "origin",
         expected_head,
+        base_ref="refs/remotes/origin/main",
+        base_oid=git(clone, "rev-parse", "origin/main").stdout.strip(),
         delete_remote=True,
     )
 
@@ -731,6 +863,8 @@ def test_local_branch_delete_failure_never_touches_remote(tmp_path: Path) -> Non
         "feature/demo",
         "origin",
         expected_head,
+        base_ref="refs/remotes/origin/main",
+        base_oid=git(clone, "rev-parse", "origin/main").stdout.strip(),
         delete_remote=True,
     )
 
@@ -748,6 +882,8 @@ def test_remote_delete_uses_compare_and_delete_lease(monkeypatch, tmp_path: Path
         calls.append(arguments)
         if arguments[:2] == ("check-ref-format", "--branch"):
             return subprocess.CompletedProcess(arguments, 0, "feature/demo\n", "")
+        if arguments[0] in {"check-ref-format", "merge-base"}:
+            return subprocess.CompletedProcess(arguments, 0, "", "")
         if arguments[:2] == ("rev-parse", "--verify"):
             return subprocess.CompletedProcess(arguments, 0, f"{expected_head}\n", "")
         if arguments[:3] == ("show-ref", "--verify", "--quiet"):
@@ -761,12 +897,15 @@ def test_remote_delete_uses_compare_and_delete_lease(monkeypatch, tmp_path: Path
         raise AssertionError(arguments)
 
     monkeypatch.setattr(MODULE, "run", fake_run)
+    monkeypatch.setattr(MODULE, "delete_local_branch", lambda *args, **kwargs: None)
 
     result = MODULE.cleanup_branch(
         tmp_path,
         "feature/demo",
         "origin",
         expected_head,
+        base_ref="refs/remotes/origin/main",
+        base_oid=expected_head,
         delete_remote=True,
     )
 
@@ -778,3 +917,177 @@ def test_remote_delete_uses_compare_and_delete_lease(monkeypatch, tmp_path: Path
         "origin",
         ":refs/heads/feature/demo",
     )
+
+
+def test_local_branch_advance_at_delete_boundary_keeps_branch_and_remote(tmp_path, monkeypatch):
+    clone, worktree, head = stale_upstream_worktree(tmp_path)
+    git(clone, "worktree", "remove", str(worktree))
+    remote_before = git(clone, "ls-remote", "--heads", "origin").stdout
+    config_before = (clone / ".git/config").read_bytes()
+    tree = git(clone, "rev-parse", f"{head}^{{tree}}").stdout.strip()
+    advanced = git(clone, "commit-tree", tree, "-p", head, "-m", "concurrent work").stdout.strip()
+    original = MODULE.delete_local_branch
+
+    def advance_then_delete(*args, **kwargs):
+        git(clone, "update-ref", "refs/heads/feature/demo", advanced, head)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(MODULE, "delete_local_branch", advance_then_delete)
+    result = MODULE.cleanup_branch(clone, "feature/demo", "origin", head,
+        base_ref="refs/remotes/origin/main", base_oid=head, delete_remote=True)
+
+    assert result == 2
+    assert git(clone, "rev-parse", "feature/demo").stdout.strip() == advanced
+    assert (clone / ".git/config").read_bytes() == config_before
+    assert git(clone, "ls-remote", "--heads", "origin").stdout == remote_before
+
+
+def test_config_lock_contention_preserves_local_branch_and_config(tmp_path):
+    clone, worktree, head = stale_upstream_worktree(tmp_path)
+    git(clone, "worktree", "remove", str(worktree))
+    config_before = (clone / ".git/config").read_bytes()
+    lock = clone / ".git/config.lock"
+    lock.write_text("foreign lock\n")
+
+    result = MODULE.cleanup_branch(clone, "feature/demo", "origin", head,
+        base_ref="refs/remotes/origin/main", base_oid=head, delete_remote=True)
+
+    assert result == 2
+    assert git(clone, "rev-parse", "feature/demo").stdout.strip() == head
+    assert (clone / ".git/config").read_bytes() == config_before
+    assert lock.read_text() == "foreign lock\n"
+
+
+@pytest.mark.parametrize("kind", ["checked-out", "symbolic", "ref-locked", "wrong-base"])
+def test_branch_cleanup_retains_unverified_local_state(tmp_path, kind, capsys):
+    clone, worktree, head = stale_upstream_worktree(tmp_path)
+    if kind != "checked-out":
+        git(clone, "worktree", "remove", str(worktree))
+    if kind == "symbolic":
+        git(clone, "symbolic-ref", "refs/heads/feature/demo", "refs/heads/main")
+    elif kind == "ref-locked":
+        (clone / ".git/refs/heads/feature/demo.lock").write_text("foreign ref lock\n")
+    base = git(clone, "rev-parse", f"{head}~1").stdout.strip() if kind == "wrong-base" else head
+    config_before = (clone / ".git/config").read_bytes()
+    remote_before = git(clone, "ls-remote", "--heads", "origin").stdout
+
+    result = MODULE.cleanup_branch(clone, "feature/demo", "origin", head,
+        base_ref="refs/remotes/origin/main", base_oid=base, delete_remote=True)
+
+    assert result == 2
+    assert git(clone, "rev-parse", "feature/demo").stdout.strip() == head
+    assert (clone / ".git/config").read_bytes() == config_before
+    assert git(clone, "ls-remote", "--heads", "origin").stdout == remote_before
+    if kind == "wrong-base":
+        assert f"pinned base refs/remotes/origin/main at {base}" in capsys.readouterr().err
+    if kind == "ref-locked":
+        assert (clone / ".git/refs/heads/feature/demo.lock").read_text() == "foreign ref lock\n"
+
+
+@pytest.mark.parametrize("operation", ["worktree-add", "switch"])
+def test_native_delete_refuses_checkout_created_after_helper_snapshot(tmp_path, monkeypatch, operation):
+    clone, worktree, head = stale_upstream_worktree(tmp_path)
+    git(clone, "worktree", "remove", str(worktree))
+    original_entries = MODULE.worktree_entries
+    checkout = tmp_path / "concurrent-checkout" if operation == "worktree-add" else clone
+    injected = False
+
+    def snapshot_then_checkout(repository):
+        nonlocal injected
+        entries = original_entries(repository)
+        if not injected:
+            injected = True
+            if operation == "worktree-add":
+                git(clone, "worktree", "add", str(checkout), "feature/demo")
+            else:
+                git(clone, "switch", "feature/demo")
+        return entries
+
+    monkeypatch.setattr(MODULE, "worktree_entries", snapshot_then_checkout)
+    config_before = (clone / ".git/config").read_bytes()
+    result = MODULE.cleanup_branch(clone, "feature/demo", "origin", head,
+        base_ref="refs/remotes/origin/main", base_oid=head, delete_remote=False)
+
+    assert injected
+    assert result == 2
+    assert git(clone, "rev-parse", "refs/heads/feature/demo").stdout.strip() == head
+    assert git(checkout, "rev-parse", "HEAD").stdout.strip() == head
+    assert (clone / ".git/config").read_bytes() == config_before
+    assert not git(clone, "for-each-ref", "refs/synthesis-retirement/").stdout.strip()
+
+
+def test_native_delete_uses_pinned_base_if_branch_and_remote_base_advance(tmp_path, monkeypatch):
+    clone, worktree, head = stale_upstream_worktree(tmp_path)
+    git(clone, "worktree", "remove", str(worktree))
+    tree = git(clone, "rev-parse", f"{head}^{{tree}}").stdout.strip()
+    advanced = git(clone, "commit-tree", tree, "-p", head, "-m", "concurrent work").stdout.strip()
+    original_run = MODULE.run
+    config_before = (clone / ".git/config").read_bytes()
+    injected = False
+
+    def advance_before_native_delete(repository, *arguments, **kwargs):
+        nonlocal injected
+        if arguments[-4:] == ("branch", "-d", "--", "feature/demo"):
+            injected = True
+            # HEAD and the mutable remote-tracking base both include the new
+            # commit. Only the immutable pin can make native deletion refuse.
+            for ref in ("refs/heads/feature/demo", "refs/heads/main", "refs/remotes/origin/main"):
+                git(clone, "update-ref", ref, advanced, head)
+        return original_run(repository, *arguments, **kwargs)
+
+    monkeypatch.setattr(MODULE, "run", advance_before_native_delete)
+    result = MODULE.cleanup_branch(clone, "feature/demo", "origin", head,
+        base_ref="refs/remotes/origin/main", base_oid=head, delete_remote=True)
+
+    assert injected
+    assert result == 2
+    assert git(clone, "rev-parse", "feature/demo").stdout.strip() == advanced
+    assert (clone / ".git/config").read_bytes() == config_before
+    assert not git(clone, "for-each-ref", "refs/synthesis-retirement/").stdout.strip()
+
+
+@pytest.mark.parametrize("upstream", ["remote", "local", "none", "multiple"])
+def test_native_base_selection_handles_upstream_variants_without_persistent_override(tmp_path, upstream):
+    clone, worktree, head = stale_upstream_worktree(tmp_path)
+    git(clone, "worktree", "remove", str(worktree))
+    if upstream == "local":
+        git(clone, "config", "branch.feature/demo.remote", ".")
+    elif upstream == "none":
+        git(clone, "branch", "--unset-upstream", "feature/demo")
+    elif upstream == "multiple":
+        git(clone, "config", "--add", "branch.feature/demo.merge", "refs/heads/main")
+    config = clone / ".git/config"
+    prefix = config.read_bytes().split(b'[branch "feature/demo"]', 1)[0]
+    sentinel = b'[safety]\n\t# Retain exact unrelated formatting.\n\tmarker = unchanged\n'
+    with config.open("ab") as handle:
+        handle.write(sentinel)
+
+    result = MODULE.cleanup_branch(clone, "feature/demo", "origin", head,
+        base_ref="refs/remotes/origin/main", base_oid=head, delete_remote=False)
+
+    assert result == 0
+    assert not git(clone, "branch", "--list", "feature/demo").stdout.strip()
+    assert config.read_bytes() == prefix + sentinel
+    assert not git(clone, "for-each-ref", "refs/synthesis-retirement/").stdout.strip()
+
+
+def test_native_base_pin_cleanup_cannot_delete_a_changed_pin(tmp_path, monkeypatch):
+    clone, worktree, head = stale_upstream_worktree(tmp_path)
+    git(clone, "worktree", "remove", str(worktree))
+    seed = git(clone, "rev-parse", f"{head}~1").stdout.strip()
+    original_run = MODULE.run
+    changed = []
+
+    def replace_before_pin_cleanup(repository, *arguments, **kwargs):
+        if arguments[:2] == ("update-ref", "-d") and arguments[2].startswith("refs/synthesis-retirement/"):
+            git(clone, "update-ref", arguments[2], seed, head)
+            changed.append(arguments[2])
+        return original_run(repository, *arguments, **kwargs)
+
+    monkeypatch.setattr(MODULE, "run", replace_before_pin_cleanup)
+    result = MODULE.cleanup_branch(clone, "feature/demo", "origin", head,
+        base_ref="refs/remotes/origin/main", base_oid=head, delete_remote=False)
+
+    assert result == 2
+    assert len(changed) == 1
+    assert git(clone, "rev-parse", changed[0]).stdout.strip() == seed

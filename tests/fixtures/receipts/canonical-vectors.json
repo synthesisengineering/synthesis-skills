@@ -1,0 +1,80 @@
+[
+  {
+    "canonical": "{\"a\":{\"x\":{},\"y\":[]},\"z\":[3,{\"a\":null,\"b\":false}]}",
+    "name": "nested-order",
+    "sha256": "31c1a188cc13f97760b30976f222a1f5798799c7f45944e7b16894a648a34b98",
+    "value": {
+      "a": {
+        "x": {},
+        "y": []
+      },
+      "z": [
+        3,
+        {
+          "a": null,
+          "b": false
+        }
+      ]
+    }
+  },
+  {
+    "canonical": "[null,true,false,0,-1,9007199254740993]",
+    "name": "scalars",
+    "sha256": "0c5672df38e8fe63d876dd7c9953e62ea9829345e87ae33a0d7c42812df8ae0c",
+    "value": [
+      null,
+      true,
+      false,
+      0,
+      -1,
+      9007199254740993
+    ]
+  },
+  {
+    "canonical": "[-0.0,1.0,1e-07,1e-06,1e+20,1e+21,1.2345678901234567]",
+    "name": "float-boundaries",
+    "sha256": "1dca8cbccbdeb1b0dd6532039e9fe70cca818b3ec5d0ffc254fce7a3efb4922c",
+    "value": [
+      -0.0,
+      1.0,
+      1e-07,
+      1e-06,
+      1e+20,
+      1e+21,
+      1.2345678901234567
+    ]
+  },
+  {
+    "canonical": "{\"s\":\"\\u00e9\\ud83d\\ude00/\\\"\\\\\\b\\f\\n\\r\\t\\u0000\\u001f\"}",
+    "name": "escapes",
+    "sha256": "5d834a9435407c37a121c281fc242aebfae510a518071a00dc16d20a80085c20",
+    "value": {
+      "s": "\u00e9\ud83d\ude00/\"\\\b\f\n\r\t\u0000\u001f"
+    }
+  },
+  {
+    "canonical": "{\"Z\":1,\"a\":2,\"\\u00e9\":3,\"\\ud83d\\ude00\":4}",
+    "name": "unicode-key-order",
+    "sha256": "ec6c40ad546c213a5d06d51f1fa13c183692cf976bc8ed9db7caf1f409d2a489",
+    "value": {
+      "Z": 1,
+      "a": 2,
+      "\u00e9": 3,
+      "\ud83d\ude00": 4
+    }
+  },
+  {
+    "canonical": "[{},[],\"\",[2,1]]",
+    "name": "empty-and-sequence",
+    "sha256": "ba6fa123ec7abde8d0924bc78907c6004b3e2ffaef779f6840c3e757cbd67402",
+    "value": [
+      {},
+      [],
+      "",
+      [
+        2,
+        1
+      ]
+    ]
+  }
+]

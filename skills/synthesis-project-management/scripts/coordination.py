@@ -24,6 +24,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
+from board_grammar import board_schema, parse_cells, parse_table_rows
 from pointer_lock import locked_pointer
 import claim_scope
 from peer_addressing import (
@@ -582,18 +583,6 @@ def claims_context(claim: str) -> bool:
     return any(pattern in normalized for pattern in CONTEXT_RESERVED_PATTERNS)
 
 
-def parse_cells(line: str) -> list[str] | None:
-    if not line.startswith("|"):
-        return None
-    cells = [value.strip() for value in line.split("|")[1:-1]]
-    if not cells:
-        return None
-    first = plain(cells[0])
-    if first in {"id", "session uuid"} or set(first) == {"-"}:
-        return None
-    return cells
-
-
 def session_from_cells(cells: list[str]) -> Session:
     if len(cells) == len(V4_COLUMNS):
         raw_ref = plain(cells[6])
@@ -717,31 +706,11 @@ def find_session(sessions: list[Session], selector: str) -> Session | None:
     return matches[0] if matches else None
 
 
-def rows(text: str) -> list[Session]:
-    declared = board_schema(text)
-    if declared is not None and declared > SCHEMA_VERSION:
-        # Version skew between a shared board and the engines reading it is
-        # permanent, not a transition: a release reaches sessions at different
-        # times. A stale engine must never rewrite a newer board, and the one
-        # useful thing it can say is which engine to run instead.
-        raise ValueError(
-            f"board declares schema v{declared}, newer than this engine's "
-            f"v{SCHEMA_VERSION}; {engine_remedy(__file__)}"
-        )
-    result: list[Session] = []
-    in_table = False
-    for line in text.splitlines():
-        if line.strip() == "## Active sessions":
-            in_table = True
-            continue
-        if in_table and line.startswith("## "):
-            break
-        if not in_table:
-            continue
-        cells = parse_cells(line)
-        if cells is not None:
-            result.append(session_from_cells(cells))
-    return result
+def rows(text: str, *, strict: bool = False) -> list[Session]:
+    return [
+        session_from_cells(list(row.values()))
+        for row in parse_table_rows(text, strict=strict)
+    ]
 
 
 def active(session: Session) -> bool:
@@ -765,12 +734,6 @@ def stale(session: Session, minutes: int) -> bool:
     return now - heartbeat > timedelta(minutes=minutes)
 
 
-def board_schema(text: str) -> int | None:
-    """The schema version a board declares in its header, or None."""
-    match = re.search(r"(?m)^Schema:\s*v(\d+)\s*$", text)
-    return int(match.group(1)) if match else None
-
-
 def replace_table(
     text: str, sessions: list[Session], *, force_schema: int | None = None
 ) -> str:
@@ -780,11 +743,17 @@ def replace_table(
     force_schema — older clients on other machines parse the shared board, so
     an implicit rewrite here would fail them closed mid-flight. Client refs
     are dropped on a v3 emission and re-registered on the next claim after
-    migration.
+    migration. Declared v1/v2 boards require explicit migration because this
+    serializer emits the identity-bearing v3/v4 formats.
     """
-    sessions = ensure_identities(sessions)
     declared = board_schema(text)
     effective = force_schema or declared or SCHEMA_VERSION
+    if effective not in {3, 4}:
+        raise ValueError(
+            "board serialization requires schema v3 or v4; migrate the board "
+            "explicitly before mutating its sessions"
+        )
+    sessions = ensure_identities(sessions)
     columns = TABLE_COLUMNS if effective >= 4 else V3_COLUMNS
     rendered = [table_header(columns)]
     rendered.extend(
@@ -799,9 +768,9 @@ def replace_table(
     if not pattern.search(text):
         raise ValueError("board lacks Active sessions and Messages sections")
     updated = pattern.sub(lambda match: match.group(1) + "\n" + block + "\n\n", text)
-    if re.search(r"(?m)^Schema:\s*v\d+\s*$", updated):
+    if re.search(r"(?m)^Schema:[ \t]*v\d+[ \t]*$", updated):
         return re.sub(
-            r"(?m)^Schema:\s*v\d+\s*$",
+            r"(?m)^Schema:[ \t]*v\d+[ \t]*$",
             f"Schema: v{effective}",
             updated,
             count=1,

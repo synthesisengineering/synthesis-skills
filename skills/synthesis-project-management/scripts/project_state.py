@@ -22,6 +22,7 @@ import sys
 import uuid
 from typing import Any, Iterable
 
+from board_grammar import parse_table_rows
 from plan_reference import PlanReference, resolve_plan_target
 
 STATE_FILE = "CURRENT_STATE.json"
@@ -341,23 +342,10 @@ def _parse_board_rows(path: Path) -> list[dict[str, str]]:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise ProjectStateError(f"coordination board unreadable: {exc}") from exc
-    lines = text.splitlines()
-    header: list[str] | None = None
-    rows: list[dict[str, str]] = []
-    for line in lines:
-        if not line.startswith("|"):
-            continue
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if header is None and "session uuid" in {cell.lower() for cell in cells}:
-            header = [cell.lower() for cell in cells]
-            continue
-        if header is None or all(set(cell) <= {"-", ":"} for cell in cells):
-            continue
-        if len(cells) == len(header):
-            rows.append(dict(zip(header, cells)))
-    if header is None:
-        raise ProjectStateError("coordination board has no active-session table")
-    return rows
+    try:
+        return parse_table_rows(text)
+    except ValueError as exc:
+        raise ProjectStateError(f"coordination board invalid: {exc}") from exc
 
 
 def _refresh_coordination_board(path: Path) -> str | None:

@@ -73,6 +73,7 @@ COORDINATION_ENGINE_FILES = (
     "coordination.py",
     "claim_scope.py",
     "coordination_schema.py",
+    "board_grammar.py",
     "pointer_lock.py",
     "peer_addressing.py",
 )
