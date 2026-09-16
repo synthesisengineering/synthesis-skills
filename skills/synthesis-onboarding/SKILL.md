@@ -98,6 +98,14 @@ the desired state and observation history under the synthesis home first.
 targets it invokes the audited copy capability; otherwise it routes through
 the same bootstrap and stable CLI.
 
+A failed native plugin acquisition or verification fails the installation; it
+does not select direct copies automatically. The engine preserves the selected
+profile, release policy and reviewed source, and never invokes the compatibility
+bootstrap from inside its installation transaction. Explicit direct-copy mode
+uses the verified source and only the selected clients' skill roots. Copies do
+not establish native lifecycle-hook readiness; missing required hooks remain
+non-green and must be reported separately.
+
 ## Profiles and visible layers
 
 `references/release-capabilities.json` is the public capability source.

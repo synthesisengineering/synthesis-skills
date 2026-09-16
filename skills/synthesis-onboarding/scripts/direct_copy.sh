@@ -9,14 +9,76 @@
 
 set -e
 
+safe_directory_path() {
+    # This capability's target-list and skill-list transport uses shell words.
+    # Refuse ambiguous paths before either traversal or mutation.
+    case "$1" in
+        ""|/|*[[:space:]]*|*"*"*|*"?"*|*"["*|*"]"*|*/../*|*/..|*/./*|*/.)
+            echo "ERROR: unsupported direct-copy path: $1" >&2; return 1 ;;
+        /*) ;;
+        *) echo "ERROR: direct-copy path must be absolute: $1" >&2; return 1 ;;
+    esac
+    SAFE_PARENT="$1"
+    while [ "$SAFE_PARENT" != / ]; do
+        if [ -L "$SAFE_PARENT" ]; then
+            # Only the canonical macOS aliases are system-owned exceptions.
+            case "$SAFE_PARENT" in
+                /tmp|/var)
+                    [ "$(CDPATH= cd -P "$SAFE_PARENT" && pwd -P)" = "/private$SAFE_PARENT" ] || {
+                        echo "ERROR: symbolic-link direct-copy boundary: $1" >&2; return 1;
+                    } ;;
+                *) echo "ERROR: symbolic-link direct-copy boundary: $1" >&2; return 1 ;;
+            esac
+        elif [ -e "$SAFE_PARENT" ] && [ ! -d "$SAFE_PARENT" ]; then
+            echo "ERROR: direct-copy boundary is not a directory: $SAFE_PARENT" >&2
+            return 1
+        fi
+        SAFE_PARENT=$(dirname "$SAFE_PARENT")
+    done
+}
+
+safe_skill_tree() {
+    safe_directory_path "$1"
+    [ -d "$1" ] || return 0
+    UNSAFE_ENTRY=$(find "$1" ! -type d ! -type f -print -quit)
+    if [ -n "$UNSAFE_ENTRY" ]; then
+        echo "ERROR: symbolic-link or non-regular direct-copy entry: $UNSAFE_ENTRY" >&2
+        return 1
+    fi
+}
+
+canonical_directory_path() {
+    CANONICAL_PARENT="$1"
+    CANONICAL_SUFFIX=""
+    while [ ! -d "$CANONICAL_PARENT" ]; do
+        CANONICAL_SUFFIX="/$(basename "$CANONICAL_PARENT")$CANONICAL_SUFFIX"
+        CANONICAL_PARENT=$(dirname "$CANONICAL_PARENT")
+    done
+    CANONICAL_BASE=$(CDPATH= cd -P "$CANONICAL_PARENT" && pwd -P)
+    printf '%s%s\n' "${CANONICAL_BASE%/}" "$CANONICAL_SUFFIX"
+}
+
+refuse_path_overlap() {
+    OVERLAP_LEFT=$(canonical_directory_path "$1")
+    OVERLAP_RIGHT=$(canonical_directory_path "$2")
+    case "$OVERLAP_LEFT/" in "$OVERLAP_RIGHT/"*)
+        echo "ERROR: overlapping direct-copy source/target/backup roots: $1 and $2" >&2; return 1 ;;
+    esac
+    case "$OVERLAP_RIGHT/" in "$OVERLAP_LEFT/"*)
+        echo "ERROR: overlapping direct-copy source/target/backup roots: $1 and $2" >&2; return 1 ;;
+    esac
+}
+
 REPO_URL="https://github.com/synthesisengineering/synthesis-skills.git"
 REPO_NAME="synthesis-skills"
 USER_HOME="${SYNTHESIS_SKILLS_HOME:-$HOME}"
+safe_directory_path "$USER_HOME"
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" 2>/dev/null && pwd || true)
 SCRIPT_ROOT=$(CDPATH= cd "$SCRIPT_DIR/../../.." 2>/dev/null && pwd || true)
 SCRIPT_SKILLS_DIR="${SCRIPT_ROOT}/skills"
 SOURCE_MODE="remote"
 if [ -n "${SYNTHESIS_SKILLS_SOURCE_DIR:-}" ]; then
+    safe_directory_path "$SYNTHESIS_SKILLS_SOURCE_DIR"
     CACHE_DIR=$(cd "$SYNTHESIS_SKILLS_SOURCE_DIR" && pwd)
     SOURCE_MODE="local"
 else
@@ -25,6 +87,13 @@ fi
 # Backups live BESIDE the cache, not inside it: the cache dir is deleted on
 # reclone and on uninstall, and backups must survive both.
 BACKUP_ROOT="${XDG_CACHE_HOME:-$USER_HOME/.cache}/synthesis-skills-backups"
+safe_directory_path "$CACHE_DIR"
+safe_skill_tree "$BACKUP_ROOT"
+refuse_path_overlap "$CACHE_DIR" "$BACKUP_ROOT"
+case "${SYNTHESIS_SKILLS_TARGETS:-}" in
+    *"*"*|*"?"*|*"["*|*"]"*)
+        echo "ERROR: direct-copy target list contains shell wildcards" >&2; exit 1 ;;
+esac
 BACKUP_KEEP_RUNS=10
 SOURCE_REPO="${SYNTHESIS_SKILLS_SOURCE_REPO:-github.com/synthesisengineering/synthesis-skills}"
 SOURCE_TYPE="${SYNTHESIS_SKILLS_SOURCE_TYPE:-public}"
@@ -181,16 +250,57 @@ retire_direct_copies() {
     done
 }
 
+cleanup_target_selected() {
+    # An explicit destination list is an exact mutation boundary, including
+    # custom roots. Native plugins outside it confer no cleanup authority.
+    [ -n "${SYNTHESIS_SKILLS_TARGETS:-}" ] || return 0
+    for SELECTED_TARGET in $SYNTHESIS_SKILLS_TARGETS; do
+        [ "$SELECTED_TARGET" = "$1" ] && return 0
+    done
+    return 1
+}
+
+validate_copy_scope() {
+    safe_skill_tree "$1"
+    # Validate every source skill name while it is still one quoted path.
+    list_skills "$1" | while IFS= read -r SCOPE_SKILL; do
+        safe_directory_path "$SCOPE_SKILL" || exit 1
+    done
+    for SCOPE_TARGET in $(detect_targets); do
+        safe_directory_path "$SCOPE_TARGET"
+        refuse_path_overlap "$CACHE_DIR" "$SCOPE_TARGET"
+        refuse_path_overlap "$BACKUP_ROOT" "$SCOPE_TARGET"
+        for SCOPE_SKILL in $(list_skills "$1"); do
+            safe_skill_tree "$SCOPE_TARGET/$(basename "$SCOPE_SKILL")"
+        done
+    done
+    # Native-plugin retirement may touch default destinations excluded from
+    # automatic copying. Explicit destination lists constrain it exactly.
+    for SCOPE_TARGET in "$USER_HOME/.claude/skills" "$USER_HOME/.agents/skills" "$USER_HOME/.codex/skills"; do
+        cleanup_target_selected "$SCOPE_TARGET" || continue
+        safe_directory_path "$SCOPE_TARGET"
+        refuse_path_overlap "$CACHE_DIR" "$SCOPE_TARGET"
+        refuse_path_overlap "$BACKUP_ROOT" "$SCOPE_TARGET"
+        for SCOPE_SKILL in $(list_skills "$1"); do
+            safe_skill_tree "$SCOPE_TARGET/$(basename "$SCOPE_SKILL")"
+        done
+    done
+}
+
 retire_plugin_fallbacks() {
     # Native public plugins do not contain organization skills. Never retire
     # those copies, especially in a runtime outside the selected target set.
     [ "$SOURCE_TYPE" = "public" ] || return 0
-    if claude_plugin_installed; then
+    if cleanup_target_selected "$USER_HOME/.claude/skills" && claude_plugin_installed; then
         retire_direct_copies "$USER_HOME/.claude/skills"
     fi
-    if codex_plugin_installed; then
-        retire_direct_copies "$USER_HOME/.agents/skills"
-        retire_direct_copies "$USER_HOME/.codex/skills"
+    if { cleanup_target_selected "$USER_HOME/.agents/skills" || cleanup_target_selected "$USER_HOME/.codex/skills"; } && codex_plugin_installed; then
+        if cleanup_target_selected "$USER_HOME/.agents/skills"; then
+            retire_direct_copies "$USER_HOME/.agents/skills"
+        fi
+        if cleanup_target_selected "$USER_HOME/.codex/skills"; then
+            retire_direct_copies "$USER_HOME/.codex/skills"
+        fi
     fi
 }
 
@@ -294,6 +404,7 @@ do_install() {
         git clone --quiet "$REPO_URL" "$CACHE_DIR"
     fi
 
+    validate_copy_scope "$SKILLS_DIR"
     COMMIT=$(get_source_commit)
     RUN_STAMP=$(date -u +%Y%m%dT%H%M%SZ)
     BACKUP_DIR="${BACKUP_ROOT}/${RUN_STAMP}"
@@ -569,10 +680,11 @@ do_status() {
         return 1
     fi
 
+    validate_copy_scope "$STATUS_SKILLS_DIR"
     TARGETS=$(detect_targets)
     STATUS_FAILURES=0
 
-    if [ "$SOURCE_TYPE" = "public" ] && claude_plugin_installed; then
+    if [ "$SOURCE_TYPE" = "public" ] && cleanup_target_selected "$USER_HOME/.claude/skills" && claude_plugin_installed; then
         for skill_dir in $(list_skills "$STATUS_SKILLS_DIR"); do
             skill_name=$(basename "$skill_dir")
             if [ -d "$USER_HOME/.claude/skills/$skill_name" ]; then
@@ -581,8 +693,9 @@ do_status() {
             fi
         done
     fi
-    if [ "$SOURCE_TYPE" = "public" ] && codex_plugin_installed; then
+    if [ "$SOURCE_TYPE" = "public" ] && { cleanup_target_selected "$USER_HOME/.agents/skills" || cleanup_target_selected "$USER_HOME/.codex/skills"; } && codex_plugin_installed; then
         for target in "$USER_HOME/.agents/skills" "$USER_HOME/.codex/skills"; do
+            cleanup_target_selected "$target" || continue
             for skill_dir in $(list_skills "$STATUS_SKILLS_DIR"); do
                 skill_name=$(basename "$skill_dir")
                 if [ -d "$target/$skill_name" ]; then

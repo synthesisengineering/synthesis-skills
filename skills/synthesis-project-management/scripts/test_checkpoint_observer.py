@@ -176,7 +176,7 @@ def test_clean_native_observer_has_no_checkpoint_authority(observer: SimpleNames
 
     def guarded_git(project: Path, *arguments: str):
         calls.append(arguments)
-        assert arguments[0] in {"ls-files", "status"}
+        assert arguments[0] in {"rev-parse", "ls-files", "status"}
         return original(project, *arguments)
 
     monkeypatch.setattr(state, "_observer_git", guarded_git)

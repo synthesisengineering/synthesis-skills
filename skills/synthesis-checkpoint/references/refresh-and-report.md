@@ -78,8 +78,12 @@ native identity, checking exact-session pending edit
 attribution and verifying a clean project Git subtree. It issues no checkpoint
 receipt and does not establish successful recovery, past read-only behavior or
 permission to execute project work. A clean project whose semantic state is
-stale can still be reported as stale. Pending edits or unverifiable evidence
-remain `UNKNOWN` or `FAIL`; a claimed record owner still follows normal closure.
+stale can still be reported as stale. A retained source-only manifest can finish
+as observer non-applicability after its exact local receipt, Git identity and
+committed-clean file evidence are verified in full. Attribution remains retained;
+this does not grant checkpoint acceptance, publication permission or new ownership.
+Uncommitted work, context-publication obligations or unverifiable evidence remain
+`UNKNOWN` or `FAIL`; a claimed record owner still follows normal closure.
 
 Checkpoint failures explain the unmet requirement on stderr. If verified Claude calls
 Stop again with `stop_hook_active=true` and the requirement is still unresolved,

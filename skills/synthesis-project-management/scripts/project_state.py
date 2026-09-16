@@ -139,7 +139,7 @@ def _index_entry(text: str, project_id: str) -> str:
     return text[start:end]
 
 
-def checkpoint_applicability(project: Path) -> tuple[str, list[str]]:
+def checkpoint_applicability(project: Path, *, git_runner=None) -> tuple[str, list[str]]:
     """Determine structured adoption without issuing a receipt or health verdict.
 
     Absence alone is insufficient: current index entries, complete local Git
@@ -148,16 +148,17 @@ def checkpoint_applicability(project: Path) -> tuple[str, list[str]]:
     receipt-only; CLI and lifecycle callers handle NOT_APPLICABLE explicitly.
     """
     project = Path(project).absolute()
+    git = git_runner or _run
     if project.parent.name != "projects" or not project.is_dir():
         raise ProjectStateError("checkpoint requires an existing registered project directory")
-    repo = _repository_root(project)
+    repo = Path(git(project, "rev-parse", "--show-toplevel").stdout.strip()).resolve()
     if project.parent != repo / "projects":
         raise ProjectStateError("project registry is not at the verified repository root")
     index = project.parent / "index.yaml"
     for path in (project, project.parent, index):
         if path.is_symlink():
             raise ProjectStateError("checkpoint project or registry crosses an unsafe symlink")
-    tracked = _run(repo, "ls-files", "--error-unmatch", "--", ":(literal)projects/index.yaml")
+    tracked = git(repo, "ls-files", "--error-unmatch", "--", ":(literal)projects/index.yaml")
     if not tracked.stdout.strip():
         raise ProjectStateError("checkpoint project registry is not tracked")
     try:
@@ -179,17 +180,17 @@ def checkpoint_applicability(project: Path) -> tuple[str, list[str]]:
     relative = str(state_path.relative_to(repo))
     if "<!-- synthesis-current-state:" in context.read_text(encoding="utf-8"):
         return "REQUIRED", ["compiled project context records structured-state adoption"]
-    for worktree, _head, _branch in _worktrees(repo):
+    for worktree, _head, _branch in _worktrees(repo, git_runner=git):
         candidate = worktree / relative
         if candidate.exists() or candidate.is_symlink():
             return "REQUIRED", ["a registered checkout retains structured state"]
-        indexed = _run(worktree, "ls-files", "--stage", "--", f":(literal){relative}")
+        indexed = git(worktree, "ls-files", "--stage", "--", f":(literal){relative}")
         if indexed.stdout.strip():
             return "REQUIRED", ["Git index records structured-state adoption"]
-    historical = _run(repo, "log", "--all", "--reflog", "-1", "--format=%H", "--", f":(literal){relative}")
+    historical = git(repo, "log", "--all", "--reflog", "-1", "--format=%H", "--", f":(literal){relative}")
     if historical.stdout.strip():
         return "REQUIRED", ["Git history records structured-state adoption"]
-    shallow = _run(repo, "rev-parse", "--is-shallow-repository").stdout.strip()
+    shallow = git(repo, "rev-parse", "--is-shallow-repository").stdout.strip()
     if shallow != "false":
         raise ProjectStateError("complete local adoption history cannot be verified")
     return "NOT_APPLICABLE", ["registered project has no structured-state adoption evidence; no checkpoint receipt issued and no recovery/state-health PASS implied"]
@@ -213,8 +214,8 @@ def _latest_session_date(project: Path) -> str | None:
     return max(dates) if dates else None
 
 
-def _worktrees(repo: Path) -> list[tuple[Path, str, str | None]]:
-    text = _run(repo, "worktree", "list", "--porcelain").stdout
+def _worktrees(repo: Path, *, git_runner=None) -> list[tuple[Path, str, str | None]]:
+    text = (git_runner or _run)(repo, "worktree", "list", "--porcelain").stdout
     records: list[tuple[Path, str, str | None]] = []
     for block in text.strip().split("\n\n") if text.strip() else []:
         values: dict[str, str] = {}
@@ -1361,10 +1362,63 @@ def _observer_native_identity(payload: dict[str, Any]) -> tuple[str, str]:
 
 
 def _observer_git(project: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+    # Keep configured trust (including safe.directory), but never inherit a
+    # caller-selected index, object store, worktree, or injected -c parameters.
+    config_environment = {"GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM"}
+    environment = {key: value for key, value in os.environ.items()
+                   if not key.startswith("GIT_") or key in config_environment}
+    environment.update(GIT_OPTIONAL_LOCKS="0", GIT_NO_REPLACE_OBJECTS="1", GIT_NO_LAZY_FETCH="1",
+                       GIT_ALLOW_PROTOCOL="", GIT_TERMINAL_PROMPT="0", LC_ALL="C")
+    command = ["git", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-C", str(project)]
+    if arguments and arguments[0] == "status":
+        # Status can invoke a configured clean/process filter even with
+        # optional locks disabled. The observer must never run those programs.
+        filters = subprocess.run(command + ["config", "--null", "--name-only", "--get-regexp",
+                                            r"^filter\..*\.(clean|smudge|process)$"],
+                                 capture_output=True, text=True, env=environment, timeout=15)
+        if filters.returncode not in {0, 1}:
+            raise ProjectStateError("observer Git filter configuration is unverifiable")
+        for prefix in sorted({key.rsplit(".", 1)[0] for key in filters.stdout.split("\0") if key}):
+            for field, value in (("clean", ""), ("smudge", ""), ("process", ""), ("required", "false")):
+                command.extend(["-c", f"{prefix}.{field}={value}"])
     return subprocess.run(
-        ["git", "-C", str(project), *arguments], capture_output=True, text=True,
-        env={**os.environ, "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C"}, timeout=15,
+        command + list(arguments), capture_output=True, text=True, env=environment, timeout=15,
     )
+
+
+def _observer_checked_git(project: Path, *arguments: str) -> str:
+    return _observer_git_runner(project, *arguments).stdout.rstrip("\n")
+
+
+def _observer_git_runner(project: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+    done = _observer_git(project, *arguments)
+    if done.returncode:
+        raise ProjectStateError("observer Git evidence is unavailable")
+    return done
+
+
+def _observer_registry_adoption(repo: Path, project_id: str | None = None) -> bool:
+    """A rewritten registry cannot erase adoption; ambiguous history blocks."""
+    try:
+        from project_recipient import registry_entries
+    except (ImportError, SyntaxError) as exc:
+        raise ProjectStateError("observer project registry reader is unavailable") from exc
+    revisions = _observer_checked_git(repo, "log", "--all", "--reflog", "--max-count=33",
+                                      "--format=%H", "--diff-filter=AM", "--",
+                                      ":(literal)projects/index.yaml").splitlines()
+    for revision in dict.fromkeys(revisions):
+        previous = _observer_checked_git(repo, "show", f"{revision}:projects/index.yaml")
+        try:
+            entries = registry_entries(previous)
+        except ValueError:
+            continue
+        if project_id is None or project_id in entries:
+            return True
+    if len(revisions) >= 33:
+        raise ProjectStateError("observer registry adoption exceeds bounded history verification")
+    if _observer_checked_git(repo, "rev-parse", "--is-shallow-repository") != "false":
+        raise ProjectStateError("observer registry adoption history is incomplete")
+    return False
 
 
 def _observer_synthesis_evidence(project: Path) -> bool:
@@ -1403,33 +1457,179 @@ def _observer_synthesis_evidence(project: Path) -> bool:
     if project.parent != repo / "projects":
         return False
     relative = str((project / STATE_FILE).relative_to(repo))
-    if _run(repo, "ls-files", "--stage", "--", f":(literal){relative}").stdout.strip():
+    if _observer_checked_git(repo, "ls-files", "--stage", "--", f":(literal){relative}").strip():
         return True
-    if _run(repo, "log", "--all", "--reflog", "-1", "--format=%H", "--", f":(literal){relative}").stdout.strip():
+    if _observer_checked_git(repo, "log", "--all", "--reflog", "-1", "--format=%H", "--", f":(literal){relative}").strip():
         return True
     # A deleted registry still identifies an ordinary Synthesis project. Read
     # the last retained registry blob, never infer registration from its name.
-    revision = _run(repo, "log", "--all", "--reflog", "-1", "--diff-filter=AM", "--format=%H",
-        "--", ":(literal)projects/index.yaml").stdout.strip()
-    if revision:
-        previous = _run(repo, "show", f"{revision}:projects/index.yaml")
-        return registered(previous.stdout)
-    return False
+    return _observer_registry_adoption(repo, project.name)
 
 
 def _observer_project(cwd: Path) -> Path | None:
     for candidate in (cwd, *cwd.parents):
         if (candidate / STATE_FILE).exists() or (candidate / STATE_FILE).is_symlink():
             try:
-                checkpoint_applicability(candidate)
+                checkpoint_applicability(candidate, git_runner=_observer_git_runner)
             except (OSError, ProjectStateError) as exc:
                 raise ProjectStateError(f"observer project Git state or applicability could not be verified: {exc}") from exc
             return candidate
         if candidate.parent.name == "projects" and _observer_synthesis_evidence(candidate):
-            applicability, _issues = checkpoint_applicability(candidate)
+            applicability, _issues = checkpoint_applicability(candidate, git_runner=_observer_git_runner)
             if applicability == "REQUIRED":
                 return candidate
     return None
+
+
+def _observer_local_path(raw: Any) -> Path:
+    if not isinstance(raw, str) or not Path(raw).is_absolute():
+        raise ProjectStateError("local handoff evidence requires absolute paths")
+    path = Path(raw)
+    try:
+        unsafe = str(path) != raw or path.resolve(strict=False) != path or any(part.is_symlink() for part in (path, *path.parents))
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ProjectStateError("local handoff path is unverifiable") from exc
+    if unsafe:
+        raise ProjectStateError("local handoff evidence crosses an unsafe path")
+    return path
+
+
+def _observer_local_file(path: Path) -> tuple[bytes, tuple[int, ...]]:
+    """Read a regular file without trusting a replaced path or changed contents."""
+    _observer_local_path(str(path))
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as handle:
+        before = os.fstat(handle.fileno())
+        if not stat.S_ISREG(before.st_mode):
+            raise ProjectStateError("local handoff evidence is not a regular file")
+        raw = handle.read()
+        after = os.fstat(handle.fileno())
+    signature = lambda value: (value.st_dev, value.st_ino, value.st_mode, value.st_size,
+                               value.st_mtime_ns, value.st_ctime_ns)
+    if signature(before) != signature(after) or signature(after) != signature(path.lstat()):
+        raise ProjectStateError("local handoff evidence changed during verification")
+    return raw, signature(after)
+
+
+def _observer_local_json(path: Path) -> tuple[dict[str, Any], tuple[bytes, tuple[int, ...]]]:
+    snapshot = _observer_local_file(path)
+
+    def unique_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON field: {key}")
+            result[key] = value
+        return result
+
+    try:
+        data = json.loads(snapshot[0], object_pairs_hook=unique_pairs)
+    except (ValueError, UnicodeError) as exc:
+        raise ProjectStateError(f"invalid local handoff JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ProjectStateError("local handoff JSON must be an object")
+    return data, snapshot
+
+
+def _observer_local_source_snapshot(repo: Path, result: dict[str, Any]) -> dict[str, Any]:
+    """Prove each attributed file equals HEAD, even when Git status hides it."""
+    def git(*arguments: str) -> str:
+        return _observer_checked_git(repo, *arguments)
+
+    if git("rev-parse", "--show-toplevel") != str(repo):
+        raise ProjectStateError("local handoff repository identity changed")
+    branch, head = git("branch", "--show-current"), git("rev-parse", "HEAD")
+    if not branch or branch != result.get("branch") or head != result.get("head"):
+        raise ProjectStateError("local handoff branch or HEAD changed")
+    snapshots: dict[str, Any] = {}
+    for entry in result["file_evidence"]:
+        path = _observer_local_path(entry["path"])
+        if not path.is_relative_to(repo) or path == repo:
+            raise ProjectStateError("local handoff file is outside its repository")
+        parent = path.parent
+        while not parent.exists() and parent != repo:
+            parent = parent.parent
+        identity = _observer_git(parent, "rev-parse", "--show-toplevel")
+        if identity.returncode or identity.stdout.rstrip("\n") != str(repo):
+            raise ProjectStateError("local handoff file repository identity changed")
+        # Attribution alone cannot turn structured project records into source.
+        if _observer_project(path.parent) is not None:
+            raise ProjectStateError("local handoff contains structured project records")
+        relative = path.relative_to(repo).as_posix()
+        if relative == "projects/index.yaml" and _observer_registry_adoption(repo):
+            raise ProjectStateError("local handoff contains an adopted project registry")
+        literal = f":(top,literal){relative}"
+        tree = git("ls-tree", "-z", "HEAD", "--", literal)
+        index = git("ls-files", "--stage", "-z", "--", literal)
+        if entry.get("state") == "deleted-or-missing":
+            if (entry != {"path": str(path), "state": "deleted-or-missing"}
+                    or path.exists() or tree or index
+                    or not git("log", "-1", "--format=%H", "--diff-filter=D", "HEAD", "--", literal)):
+                raise ProjectStateError("local handoff absence is not a committed deletion")
+            snapshots[str(path)] = entry
+            continue
+        if entry.get("state") != "present":
+            raise ProjectStateError("local handoff source lacks committed file evidence")
+        raw, signature = _observer_local_file(path)
+        evidence = {"path": str(path), "state": "present", "size": len(raw),
+                    "sha256": _sha_bytes(raw), "git_mode": "100755" if signature[2] & 0o111 else "100644"}
+        if evidence != entry:
+            raise ProjectStateError("local handoff source content or mode changed")
+        fields = tree.removesuffix("\0").split("\t", 1)
+        metadata = fields[0].split()
+        if (len(fields) != 2 or fields[1] != relative or len(metadata) != 3
+                or metadata[:2] != [evidence["git_mode"], "blob"]
+                or index != f"{metadata[0]} {metadata[2]} 0\t{relative}\0"
+                or git("hash-object", "--no-filters", "--", relative) != metadata[2]):
+            raise ProjectStateError("local handoff source does not equal a committed regular file")
+        snapshots[str(path)] = (evidence, signature)
+    if git("branch", "--show-current") != branch or git("rev-parse", "HEAD") != head:
+        raise ProjectStateError("local handoff repository changed during verification")
+    return {"branch": branch, "head": head, "files": snapshots}
+
+
+def _observer_completed_local_source(payload: dict[str, Any], root: Path, manifest: Path,
+                                     attribution: dict[str, Any], snapshot: tuple) -> bool:
+    """Recognize retained local work; never retire it or issue checkpoint authority."""
+    if attribution.get("schema_version") != 2 or attribution.get("remote_paths") != []:
+        return False
+    receipt = root / "local-handoff" / manifest.name
+    _observer_local_path(str(receipt))
+    if not receipt.exists():
+        return False
+    data, receipt_snapshot = _observer_local_json(receipt)
+    if (type(data.get("schema_version")) is not int or data["schema_version"] != 1
+            or data.get("session_id") != payload["session_id"] or data.get("readiness") != "LOCAL_READY"
+            or data.get("pending_manifest") != str(manifest)
+            or data.get("pending_manifest_sha256") != _sha_bytes(snapshot[0])):
+        raise ProjectStateError("local handoff receipt does not bind this native attribution")
+    results = data.get("results")
+    if not isinstance(results, list) or not results:
+        raise ProjectStateError("local handoff receipt has no source evidence")
+    covered: list[str] = []
+    repositories: dict[Path, dict[str, Any]] = {}
+    for result in results:
+        if not isinstance(result, dict) or result.get("action") != "local-ready" or result.get("alert") is not None:
+            raise ProjectStateError("local handoff receipt contains an incomplete result")
+        repo = _observer_local_path(result.get("repo"))
+        entries = result.get("file_evidence")
+        if (repo in repositories or not isinstance(entries, list) or not entries
+                or type(result.get("files")) is not int or result["files"] != len(entries)
+                or any(not isinstance(entry, dict) or not isinstance(entry.get("path"), str) for entry in entries)):
+            raise ProjectStateError("local handoff source evidence is invalid")
+        repositories[repo] = result
+        covered.extend(entry["path"] for entry in entries)
+    if (len(set(covered)) != len(covered) or len(set(attribution["paths"])) != len(attribution["paths"])
+            or set(covered) != set(attribution["paths"])):
+        raise ProjectStateError("local handoff evidence does not cover exactly the attributed paths")
+    observed = {repo: _observer_local_source_snapshot(repo, result) for repo, result in repositories.items()}
+    # Recheck all repositories, not only the last file; neither Git status nor
+    # the receipt writer locks external source edits during this read-only proof.
+    if observed != {repo: _observer_local_source_snapshot(repo, result) for repo, result in repositories.items()}:
+        raise ProjectStateError("local handoff source changed during verification")
+    if _observer_local_file(manifest) != snapshot or _observer_local_file(receipt) != receipt_snapshot:
+        raise ProjectStateError("local handoff attribution changed during verification")
+    return True
 
 
 def _observer_pending_scope(payload: dict[str, Any], repo_guard_root: Path) -> tuple[str, list[str]] | None:
@@ -1445,12 +1645,17 @@ def _observer_pending_scope(payload: dict[str, Any], repo_guard_root: Path) -> t
         raise ProjectStateError("observer attribution directory is unreadable")
     if own.exists():
         _observer_native_identity(payload)
-        attribution = _load_json(own)
+        attribution, snapshot = _observer_local_json(own)
         if attribution.get("session_id") != native or type(attribution.get("schema_version")) is not int or attribution.get("schema_version") not in {1, 2}:
             raise ProjectStateError("exact native-session pending attribution is invalid; preserve its evidence")
         paths = attribution.get("paths")
         if not isinstance(paths, list) or not paths or any(not isinstance(path, str) or not Path(path).is_absolute() for path in paths):
             raise ProjectStateError("exact native-session pending attribution has invalid paths")
+        if _observer_completed_local_source(payload, repo_guard_root, own, attribution, snapshot):
+            return "NOT_APPLICABLE", [
+                "exact-session receipt proves committed local source retained pending publication; "
+                "manifest preserved; no checkpoint receipt issued or publication authority granted"
+            ]
         return "UNKNOWN", [
             f"native session has an outstanding attributed-edit manifest: {own}; "
             "no active coordination seat matched this native event. Preserve the manifest. "
@@ -1465,7 +1670,7 @@ def _observer_pending_scope(payload: dict[str, Any], repo_guard_root: Path) -> t
 
 def _observer_checkpoint_scope(payload: dict[str, Any], project: Path) -> tuple[str, list[str]]:
     _observer_native_identity(payload)
-    checkpoint_applicability(project)
+    checkpoint_applicability(project, git_runner=_observer_git_runner)
     dirty = _observer_git(project, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".")
     if dirty.returncode:
         raise ProjectStateError("observer project Git state could not be verified")
@@ -1493,13 +1698,14 @@ def checkpoint_hook(
         if row is None:
             root = repo_guard_root or Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis"))) / "repo-guard"
             pending_scope = _observer_pending_scope(payload, root)
-            if pending_scope is not None:
+            if pending_scope is not None and pending_scope[0] != "NOT_APPLICABLE":
                 return pending_scope
             cwd = Path(str(payload.get("cwd") or ".")).resolve()
             project = _observer_project(cwd)
             if project is not None:
-                return _observer_checkpoint_scope(payload, project)
-            return "NOT_APPLICABLE", []
+                verdict, issues = _observer_checkpoint_scope(payload, project)
+                return verdict, (pending_scope[1] if pending_scope is not None else []) + issues
+            return pending_scope or ("NOT_APPLICABLE", [])
         project = _project_from_claim(row)
         if project is None:
             return "NOT_APPLICABLE", []

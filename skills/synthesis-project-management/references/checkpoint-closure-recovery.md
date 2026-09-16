@@ -25,6 +25,25 @@ checkpoint. Their local attributed-edit receipt still applies. For adopted
 structured state, the native owner must also satisfy its state/claim-bound
 receipt. Keep each result and its applicability explicit.
 
+## Committed local source retained after claim release
+
+A source branch awaiting publication can retain its exact native manifest after
+the owner completes its checkpoint and releases the claim. The observer may
+return `NOT_APPLICABLE` only with a source-only manifest and a complete, safe,
+exact-session `LOCAL_READY` receipt whose manifest digest, repository identities,
+branches, heads, file bytes and modes still agree. Attributed files must also be
+committed and clean; the local handoff writer can record uncommitted work, so its
+readiness label alone never satisfies this condition. Changed or missing evidence
+and any context-publication obligation remain blocking. Applicable structured
+project checks still run.
+
+This result records observer non-applicability, with `checkpoint_accepted:false`
+and no project receipt. It neither certifies remote readiness nor grants new
+ownership or publication permission. The manifest and local receipt are retained.
+Do not create a replacement claim, delete attribution, or publish a gated source
+branch merely to stop repeated diagnostics. The ordinary owner checkpoint and
+authorized publication/retirement protocols keep their existing requirements.
+
 ## A removed worktree leaves attributed paths
 
 Use `retire_worktree.py` for normal removal. It records a durable intent before

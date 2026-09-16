@@ -1391,11 +1391,12 @@ class EngineTests(unittest.TestCase):
         self.assertEqual((root / "AGENTS.md").read_text(), "# User-owned instructions\n")
         self.assertTrue(any("not the managed workspace entry point" in step["detail"] for step in data["steps"]))
 
-    def test_fallback_installs_on_fresh_machine_with_client(self):
-        """Regression (2026-08-03 post-merge QA): with a client present and
-        the plugin CLI unavailable, a fresh machine must get fallback copies.
-        `install.sh status` exits 0 when the target dirs don't exist yet, so
-        the probe must also require copies to be present before skipping."""
+    def test_explicit_copy_installs_on_fresh_machine_with_client(self):
+        """Explicitly disabled native CLI uses the internal copy capability.
+
+        Empty targets are not a current installation, and repeated copy
+        requests stay idempotent without claiming native hook readiness.
+        """
         env = dict(os.environ)
         env.update(self.box.env_overrides())
         env["SYNTHESIS_CLAUDE_BIN"] = "/usr/bin/true"
