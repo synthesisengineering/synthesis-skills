@@ -54,9 +54,12 @@ from project_state import STATE_FILE, resolve_project, semantic_issues  # noqa: 
 from coordination_schema import display_id, parse_table_rows, row_identity  # noqa: E402
 from live_receipt import (  # noqa: E402
     claude_root_transcript_path,
+    client_root_transcript_path,
     latest_receipt_paths,
+    muse_sessions_root,
     receipt_event_path,
     receipt_recorded_order,
+    resolve_muse_transcript,
     transcript_binding_state,
     transcript_binds_session,
     validate_receipt_event_directory,
@@ -226,19 +229,34 @@ def client_provenance(
             ).expanduser(),
         ),
     )
-    if not transcript.is_absolute() or not transcript.is_file():
+    if transcript.is_absolute():
+        if not transcript.is_file():
+            # Absolute-but-missing is the Claude pending case; the deferred
+            # path below owns it. Never let store resolution shadow it.
+            return None
+        for client, transcript_root in candidates:
+            try:
+                transcript.resolve().relative_to(transcript_root.resolve())
+            except (OSError, ValueError):
+                continue
+            if client == "claude" and not claude_root_transcript_path(
+                transcript, transcript_root, session_id
+            ):
+                continue
+            if transcript_binds_session(transcript, client, session_id):
+                return client, f"{client}-transcript"
         return None
-    for client, transcript_root in candidates:
-        try:
-            transcript.resolve().relative_to(transcript_root.resolve())
-        except (OSError, ValueError):
-            continue
-        if client == "claude" and not claude_root_transcript_path(
-            transcript, transcript_root, session_id
-        ):
-            continue
-        if transcript_binds_session(transcript, client, session_id):
-            return client, f"{client}-transcript"
+    # Muse hook payloads carry no transcript path: resolve the date-sharded
+    # session log from the store and require the same binding evidence.
+    resolved = resolve_muse_transcript(session_id)
+    if resolved is None:
+        return None
+    if not client_root_transcript_path(
+        resolved, "muse", session_id, muse_sessions_root()
+    ):
+        return None
+    if transcript_binds_session(resolved, "muse", session_id):
+        return "muse", "muse-transcript"
     return None
 
 
@@ -293,6 +311,17 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
     version, plugin_root = plugin_identity()
     client, provenance_env = provenance
     transcript = Path(str(payload.get("transcript_path") or "")).expanduser()
+    if client == "muse" and (
+        not transcript.is_absolute() or not transcript.is_file()
+    ):
+        resolved = resolve_muse_transcript(session_id)
+        if resolved is None:
+            return False
+        transcript = resolved
+    if client == "muse" and not client_root_transcript_path(
+        transcript, "muse", session_id, muse_sessions_root()
+    ):
+        return False
     binding_state = transcript_binding_state(transcript, client, session_id)
     if binding_state != "bound" and not (
         client == "claude" and binding_state == "pending"
@@ -308,7 +337,11 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
         "client": client,
         "cwd": payload.get("cwd"),
         "source": payload.get("source"),
-        "transcript_path": payload.get("transcript_path"),
+        "transcript_path": (
+            str(transcript)
+            if client == "muse"
+            else payload.get("transcript_path")
+        ),
         "transcript_bound_at_record": transcript_bound_at_record,
         "provenance_env": provenance_env,
         "plugin_version": version,

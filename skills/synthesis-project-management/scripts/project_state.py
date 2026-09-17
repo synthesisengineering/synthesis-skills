@@ -1224,13 +1224,13 @@ def _row_for_event(
     configured = os.environ.get("SYNTHESIS_CLIENT_SESSION_REF", "").strip()
     native = payload.get("session_id")
     if (
-        configured.startswith(("cc:", "codex:"))
+        configured.startswith(("cc:", "codex:", "muse:"))
         and (not isinstance(native, str) or not native or configured.split(":", 1)[1] != native)
     ):
         raise ProjectStateError("native lifecycle identity conflicts with the configured client reference; refusing a foreign checkpoint")
     if not isinstance(native, str) or not native:
         return None
-    native_refs = {f"cc:{native}", f"codex:{native}"}
+    native_refs = {f"cc:{native}", f"codex:{native}", f"muse:{native}"}
     matches = []
     for row in rows:
         if row.get("status", "").lower() != "active":
@@ -1239,7 +1239,8 @@ def _row_for_event(
         matched = client_ref in native_refs
         if matched:
             client, verified_native = _observer_native_identity(payload)
-            matched = client_ref == f"{'cc' if client == 'claude' else 'codex'}:{verified_native}"
+            scheme = {"claude": "cc", "muse": "muse"}.get(client, "codex")
+            matched = client_ref == f"{scheme}:{verified_native}"
         if client_ref.startswith("ccd:") and board is not None:
             from peer_addressing import CLIENT_CLAUDE, read_seat, seat_path
 
@@ -1334,31 +1335,45 @@ def _observer_native_identity(payload: dict[str, Any]) -> tuple[str, str]:
     except (ValueError, TypeError, AttributeError) as exc:
         raise ProjectStateError("observer Stop requires a valid native session UUID") from exc
     raw = payload.get("transcript_path")
-    if not isinstance(raw, str) or not Path(raw).is_absolute():
-        raise ProjectStateError("observer Stop requires this native session's transcript path")
-    transcript = Path(raw)
-    if transcript.is_symlink() or not transcript.is_file():
-        raise ProjectStateError("observer native transcript is missing or unsafe")
     scripts = Path(__file__).resolve().parents[2] / "synthesis-agent-conformance" / "scripts"
     if str(scripts) not in sys.path:
         sys.path.insert(0, str(scripts))
     try:
-        from live_receipt import client_root_transcript_path, transcript_binds_session
+        from live_receipt import (
+            client_root_transcript_path,
+            muse_sessions_root,
+            resolve_muse_transcript,
+            transcript_binds_session,
+        )
     except (ImportError, SyntaxError) as exc:
         raise ProjectStateError("observer native transcript validator is unavailable") from exc
-    matches = []
-    for client, variable in (("claude", "CLAUDE_CONFIG_DIR"), ("codex", "CODEX_HOME")):
-        raw_home = os.environ.get(variable, str(Path.home() / f".{client}"))
-        if not raw_home.strip() or not Path(raw_home).expanduser().is_absolute():
-            continue
-        home = Path(raw_home).expanduser()
-        if not client_root_transcript_path(transcript, client, native, home):
-            continue
-        if transcript_binds_session(transcript, client, native):
-            matches.append(client)
-    if len(matches) != 1:
+    if isinstance(raw, str) and Path(raw).is_absolute():
+        transcript = Path(raw)
+        if transcript.is_symlink() or not transcript.is_file():
+            raise ProjectStateError("observer native transcript is missing or unsafe")
+        matches = []
+        for client, variable in (("claude", "CLAUDE_CONFIG_DIR"), ("codex", "CODEX_HOME")):
+            raw_home = os.environ.get(variable, str(Path.home() / f".{client}"))
+            if not raw_home.strip() or not Path(raw_home).expanduser().is_absolute():
+                continue
+            home = Path(raw_home).expanduser()
+            if not client_root_transcript_path(transcript, client, native, home):
+                continue
+            if transcript_binds_session(transcript, client, native):
+                matches.append(client)
+        if len(matches) != 1:
+            raise ProjectStateError("observer transcript does not unambiguously bind this native session")
+        return matches[0], native
+    # Muse payloads carry no transcript path: resolve the session log from
+    # the store and require the same unambiguous binding evidence.
+    resolved = resolve_muse_transcript(native)
+    if resolved is None:
+        raise ProjectStateError("observer Stop requires this native session's transcript path")
+    if not client_root_transcript_path(resolved, "muse", native, muse_sessions_root()):
         raise ProjectStateError("observer transcript does not unambiguously bind this native session")
-    return matches[0], native
+    if not transcript_binds_session(resolved, "muse", native):
+        raise ProjectStateError("observer transcript does not unambiguously bind this native session")
+    return "muse", native
 
 
 def _observer_git(project: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
