@@ -96,6 +96,15 @@ def main():
         verifier = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(verifier)
         os.environ.update(environment)
+        # The package bootstrap interpreter is only an entry mechanism. The
+        # installed setup pin remains authoritative when several Python families
+        # are available. Verify all source/launcher/pin bytes before re-entry,
+        # then repeat the default strict check in the pinned interpreter.
+        installed = verifier.verified_release(active, require_current_interpreter=False)
+        pinned = installed["interpreter"]["executable"]
+        if Path(pinned).absolute() != Path(sys.executable).absolute():
+            environment["SYNTHESIS_BOOTSTRAP_PYTHON"] = pinned
+            os.execve(pinned, [pinned, "-I", "-B", str(Path(__file__).resolve()), *args], environment)
         return verifier.launcher_main(active, args)
     if not acquisition:
         print("Synthesis is not configured. Run synthesis setup --profile full or --profile skills-only.", file=sys.stderr)

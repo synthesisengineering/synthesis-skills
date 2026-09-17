@@ -297,7 +297,7 @@ def test_real_package_manager_install_is_usable_without_install_scripts(tmp_path
     assert not (home / ".local/state/synthesis").exists()
 
 
-def test_real_projected_cli_bootstrap_and_doctor(modular_source, tmp_path):
+def projected_package_fixture(modular_source, tmp_path):
     source, home, environment = modular_source
     version = json.loads((source / ".claude-plugin/plugin.json").read_text())["version"]
     subprocess.run(["git", "-C", str(source), "tag", "v" + version], env=environment, check=True)
@@ -318,9 +318,31 @@ def test_real_projected_cli_bootstrap_and_doctor(modular_source, tmp_path):
     assert descriptor["projection"]["selection"]["stage_core"] is False
     assert not (generation / "skills/synthesis-article-writing/SKILL.md").exists()
     package = builder().build_package(source, tmp_path / "active-package", commit=git(source, "rev-parse", "HEAD").strip())
+    return environment, launcher, active, generation, package
+
+
+def test_real_projected_cli_bootstrap_and_doctor(modular_source, tmp_path):
+    environment, launcher, active, generation, package = projected_package_fixture(modular_source, tmp_path)
+    home = modular_source[1]
+    before = active.read_bytes()
     package_doctor = subprocess.run([str(package / "bin/synthesis"), "doctor", "--json"],
                                    cwd=home, env=environment, capture_output=True, text=True, timeout=60)
     assert package_doctor.returncode == 0, package_doctor.stdout + package_doctor.stderr
+    # Observe real package entry/re-entry without replacing its verifier or CLI.
+    # An alias may resolve to the same binary but lose a pinned venv's site paths.
+    alias = tmp_path / "alternate-python-entry"
+    alias.symlink_to(sys.executable)
+    trace = tmp_path / "interpreter-entries.jsonl"
+    driver = package / "lib/package_launcher.py"
+    driver.write_text("import json,sys\nwith open(" + repr(str(trace)) + ", 'a') as log: log.write(json.dumps(sys.executable) + '\\n')\n" + driver.read_text())
+    alias_environment = {**environment, "SYNTHESIS_BOOTSTRAP_PYTHON": str(alias)}
+    alias_doctor = subprocess.run([str(package / "bin/synthesis"), "doctor", "--json"], cwd=home,
+                                 env=alias_environment, capture_output=True, text=True, timeout=60)
+    assert alias_doctor.returncode == 0, alias_doctor.stdout + alias_doctor.stderr
+    entry = json.loads(subprocess.check_output([str(alias), "-I", "-B", "-c", "import json,sys; print(json.dumps(sys.executable))"], env=alias_environment, text=True))
+    pinned = json.loads(before)["interpreter"]["executable"]
+    expected_entries = [entry, pinned] if entry != pinned else [pinned]
+    assert [json.loads(line) for line in trace.read_text().splitlines()] == expected_entries
     assert not (generation / "hooks/hooks.json").exists()
     assert not (home / ".codex/config.toml").exists()
     assert (home / ".agents/skills/synthesis-writing-craft/SKILL.md").exists()
@@ -329,6 +351,35 @@ def test_real_projected_cli_bootstrap_and_doctor(modular_source, tmp_path):
                                  capture_output=True, text=True, timeout=60)
         assert checked.returncode == 0, checked.stdout + checked.stderr
     assert not (generation / "skills/synthesis-article-writing/SKILL.md").exists()
+    assert active.read_bytes() == before, "interpreter re-entry must not repin the installation"
+
+
+@pytest.mark.parametrize("damage", ["digest", "missing", "version", "pending", "launcher"])
+def test_package_interpreter_handoff_refuses_drift(modular_source, tmp_path, damage):
+    import hashlib
+    environment, launcher, active, generation, package = projected_package_fixture(modular_source, tmp_path)
+    descriptor = json.loads(active.read_text())
+    marker = tmp_path / "unverified-launcher-ran"
+    if damage == "digest":
+        descriptor["interpreter"]["sha256"] = "0" * 64
+    elif damage == "missing":
+        descriptor["interpreter"]["executable"] = str(tmp_path / "missing-python")
+        descriptor["interpreter"]["resolved_executable"] = str(tmp_path / "missing-python")
+    elif damage == "version":
+        descriptor["interpreter"]["version"] = "3.15.0"
+    elif damage == "pending":
+        active.with_name(active.name + ".activation-pending.json").write_text("{}")
+    else:
+        launcher.chmod(0o755)
+        launcher.write_text("#!/bin/sh\necho unverified > " + str(marker) + "\n")
+        descriptor["launcher"]["sha256"] = hashlib.sha256(launcher.read_bytes()).hexdigest()
+    active.write_text(json.dumps(descriptor))
+    before = active.read_bytes()
+    refused = subprocess.run([str(package / "bin/synthesis"), "doctor", "--json"], cwd=modular_source[1],
+                             env=environment, capture_output=True, text=True, timeout=60)
+    assert refused.returncode == 2, refused.stdout + refused.stderr
+    assert not marker.exists()
+    assert active.read_bytes() == before
 
 
 def test_real_tool_stage_bootstrap_never_activates_global_runtime(modular_source, tmp_path):

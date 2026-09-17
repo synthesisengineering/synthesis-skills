@@ -102,7 +102,8 @@ def interpreter_pin(path=None):
         raise RuntimeContractError("prescribed interpreter is unavailable: %s" % exc) from exc
 
 
-def verify_interpreter(pin):
+def verify_interpreter(pin, *, require_current=True):
+    """Validate setup ownership; executable dispatch always requires current identity."""
     if not isinstance(pin, dict) or pin.get("schema_version") != 1:
         raise RuntimeContractError("setup has not recorded an interpreter pin")
     path = pin.get("executable")
@@ -114,10 +115,12 @@ def verify_interpreter(pin):
             raise RuntimeContractError("pinned interpreter target drifted")
         if file_digest(resolved) != pin.get("sha256"):
             raise RuntimeContractError("pinned interpreter bytes drifted")
-        if resolved != Path(sys.executable).resolve():
+        current = resolved == Path(sys.executable).resolve()
+        if require_current and not current:
             raise RuntimeContractError("running interpreter differs from the setup pin")
-        version = ".".join(str(v) for v in sys.version_info[:3])
-        if version != pin.get("version") or pin.get("platform") != sys.platform:
+        version = pin.get("version")
+        if (not isinstance(version, str) or pin.get("platform") != sys.platform
+                or (current and version != ".".join(str(v) for v in sys.version_info[:3]))):
             raise RuntimeContractError("running interpreter version or platform differs from the setup pin")
         policy = pin.get("policy", "prescribed-python-v1")
         validate_python_version(version, policy=policy)
@@ -204,7 +207,7 @@ def verify_projection(root, descriptor):
     return projection["content_digest"]
 
 
-def verified_release(pointer=None):
+def verified_release(pointer=None, *, require_current_interpreter=True):
     if os.environ.get("SYNTHESIS_PUBLIC_SKILLS_SOURCE"):
         raise RuntimeContractError("canonical public source override is forbidden for installed execution")
     pointer = Path(pointer) if pointer is not None else descriptor_path()
@@ -217,12 +220,12 @@ def verified_release(pointer=None):
             fcntl.flock(handle.fileno(), fcntl.LOCK_SH)
             if pending.exists() or pending.is_symlink():
                 raise RuntimeContractError("unfinished setup activation requires recovery")
-            return _verified_release_unlocked(pointer)
+            return _verified_release_unlocked(pointer, require_current_interpreter=require_current_interpreter)
     except OSError as exc:
         raise RuntimeContractError("setup activation cannot be read safely: %s" % exc) from exc
 
 
-def _verified_release_unlocked(pointer):
+def _verified_release_unlocked(pointer, *, require_current_interpreter=True):
     try:
         if pointer.is_symlink() or not pointer.is_file():
             raise RuntimeContractError("active release descriptor must be a regular file established by setup")
@@ -260,7 +263,7 @@ def _verified_release_unlocked(pointer):
                 raise RuntimeContractError("active release manifests disagree with the descriptor")
         if tree_digest(root) != verify_projection(root, active):
             raise RuntimeContractError("active release content digest drifted")
-        executable = verify_interpreter(active.get("interpreter"))
+        executable = verify_interpreter(active.get("interpreter"), require_current=require_current_interpreter)
         verified_launcher(active, executable)
         return active
     except (OSError, ValueError, TypeError) as exc:
