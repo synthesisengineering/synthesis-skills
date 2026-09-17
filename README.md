@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Modular installation and package channels (September 2026).** Release **4.101.0**
+adds individual-skill setup, optional inert core staging, explicit activation and
+deactivation, and thin packages for Homebrew, npm and Bun. Package installation
+runs no setup scripts. [Choose an installation path](https://synthesiswork.org/download/)
+or read the [modular lifecycle contract](skills/synthesis-onboarding/references/modular-lifecycle.md).
+
 **Installer failures and completed local pauses (September 2026).** Release **4.100.3**
 stops recursive bootstrap fallback after native plugin failure and confines explicit
 skill copies to their selected destinations. The Stop observer verifies committed

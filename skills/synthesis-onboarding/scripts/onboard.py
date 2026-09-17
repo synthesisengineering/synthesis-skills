@@ -2911,6 +2911,18 @@ def phase_kernel(report, receipts, workspace, dry_run, policy_override=None):
 
 
 def phase_runtime_engines(report, receipts, answers, dry_run, no_services):
+    import owned_registrations
+    before = None if dry_run else owned_registrations.capture(HOME)
+    if before is not None:
+        owned_registrations.preflight(receipts, before)
+    try:
+        return _phase_runtime_engines(report, receipts, answers, dry_run, no_services)
+    finally:
+        if before is not None:
+            owned_registrations.record(receipts, HOME, before, service_started=not no_services and sys.platform == "darwin")
+
+
+def _phase_runtime_engines(report, receipts, answers, dry_run, no_services):
     git_hooks = source_root() / "skills" / "synthesis-git-hooks" / "scripts" / "install.sh"
     if dry_run:
         report.add("runtime-engines", CHANGED, "would install the stable git-hooks runtime")
@@ -2954,7 +2966,14 @@ def phase_runtime_engines(report, receipts, answers, dry_run, no_services):
             HOME / "Library" / "LaunchAgents" / "com.synthesis.day-end-nudge.plist",
         ]
         day_before = paths_digest(day_paths)
-        rc, out, err = run(command, timeout=300)
+        registration_ownership = receipts.data.get("runtime_registrations", {}).get("paths", {})
+        registrations = [HOME / ".local/bin/day-end", HOME / "Library/LaunchAgents/com.synthesis.day-end-nudge.plist"]
+        independent = any((path.exists() or path.is_symlink()) and str(path) not in registration_ownership for path in registrations)
+        if independent:
+            rc, out, err = 0, "", ""
+            report.add("runtime-engines", OK, "preexisting day-end registration retained under its original owner")
+        else:
+            rc, out, err = run(command, timeout=300)
         if rc == 0:
             day_after = paths_digest(day_paths)
             report.add(
@@ -4178,6 +4197,13 @@ def _remove_plugins_and_direct_copies(report, clients_wanted, dry_run):
 def uninstall(report, dry_run, clients_wanted=None):
     clients_wanted = list(clients_wanted or ["claude", "codex"])
     receipts = Receipts()
+    import owned_registrations
+    try:
+        registration_result = owned_registrations.retire(receipts, HOME, dry_run=dry_run)
+        report.add("uninstall-registrations", OK, json.dumps(registration_result, sort_keys=True))
+    except (ContractError, OSError, subprocess.SubprocessError) as exc:
+        report.add("uninstall-registrations", ERROR, str(exc))
+        return
     for path, metadata in list(receipts.data.get("org_skill_copies", {}).items()):
         if Path(path).parent in organization_skill_targets(clients_wanted):
             retire_org_copy(report, receipts, path, metadata, dry_run)
@@ -4196,17 +4222,25 @@ def uninstall(report, dry_run, clients_wanted=None):
         return
     for path_str, meta in files:
         path = Path(path_str)
-        if not path.exists():
+        if not path.exists() and not path.is_symlink():
             receipts.forget_file(path)
             continue
-        current = path.read_text(encoding="utf-8")
+        owned_link = meta.get("kind") == "init-workspace-link"
+        if path.is_symlink() != owned_link:
+            report.add("uninstall", WARN, "%s changed file type after install — left in place" % path)
+            continue
+        current = os.readlink(path) if owned_link else path.read_text(encoding="utf-8")
         if sha256_text(current) != meta.get("sha256"):
             report.add("uninstall", WARN, "%s was edited after install — left in place" % path)
             continue
         if dry_run:
             report.add("uninstall", CHANGED, "would archive and remove %s" % path)
             continue
-        shutil.copy2(path, archive_path(path))
+        archived = archive_path(path)
+        if owned_link:
+            archived.with_suffix(archived.suffix + ".link.json").write_text(json.dumps({"path": str(path), "target": current}) + "\n", encoding="utf-8")
+        else:
+            shutil.copy2(path, archived, follow_symlinks=False)
         path.unlink()
         receipts.forget_file(path)
         report.add("uninstall", CHANGED, "archived and removed %s" % path)

@@ -41,7 +41,7 @@ TRUTH_PLANES = (
     "live-loaded",
     "outcome-verified",
 )
-TRANSACTION_COMMANDS = {"setup", "enroll", "update", "repair", "workspace-ensure", "uninstall"}
+TRANSACTION_COMMANDS = {"setup", "enroll", "update", "repair", "workspace-ensure", "uninstall", "activate", "deactivate"}
 SAFE_IDENTIFIER_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -71,6 +71,7 @@ LAYER_IDS = (
 PROFILE_LAYERS = {
     "full": frozenset(LAYER_IDS) - {"organization"},
     "skills-only": frozenset({"skills", "session-context", "lifecycle"}),
+    "modular": frozenset({"skills", "lifecycle"}),
 }
 
 
@@ -547,7 +548,7 @@ def _validate_descriptor_shape(descriptor: Any) -> dict[str, Any]:
         "source_url",
         "resolved_at",
     }
-    _reject_unknown(descriptor, required, "release descriptor")
+    _reject_unknown(descriptor, required | {"projection"}, "release descriptor")
     missing = sorted(required - set(descriptor))
     if missing:
         raise ContractError("release descriptor missing: %s" % ", ".join(missing))
@@ -579,7 +580,41 @@ def _validate_descriptor_shape(descriptor: Any) -> dict[str, Any]:
     if source.scheme != "https" or not source.hostname:
         raise ContractError("release descriptor source_url must use HTTPS")
     _parse_datetime(descriptor.get("resolved_at"), "release descriptor resolved_at")
+    if "projection" in descriptor:
+        validate_projection(descriptor["projection"], descriptor["content_digest"])
     return descriptor
+
+
+def validate_projection(value: Any, source_digest: str) -> dict[str, Any]:
+    value = _require_mapping(value, "release projection")
+    if set(value) != {"schema_version", "kind", "content_digest", "source_content_digest", "selection", "files"}:
+        raise ContractError("release projection fields are invalid")
+    if type(value["schema_version"]) is not int or value["schema_version"] != 1 or value["kind"] != "modular":
+        raise ContractError("release projection kind is invalid")
+    if value["source_content_digest"] != source_digest or not HEX64_RE.fullmatch(str(value["content_digest"])):
+        raise ContractError("release projection is not bound to its verified source")
+    selection = _require_mapping(value["selection"], "projection selection")
+    if set(selection) != {"roots", "skills", "support_skills", "stage_core"}:
+        raise ContractError("projection selection fields are invalid")
+    validate_modular_selection({"roots": selection["roots"], "stage_core": selection["stage_core"]})
+    for field in ("skills", "support_skills"):
+        items = selection[field]
+        if not isinstance(items, list) or any(not isinstance(item, str) for item in items) or len(items) != len(set(items)):
+            raise ContractError("projection skill inventory is invalid")
+        for name in items:
+            safe_identifier(name, "projection skill")
+    if not set(selection["roots"]) <= set(selection["skills"]):
+        raise ContractError("projection omits a requested skill")
+    files = _require_mapping(value["files"], "projection files")
+    if not files:
+        raise ContractError("projection has no files")
+    for relative, entry in files.items():
+        safe_relative_path(relative, "projection path")
+        if not isinstance(entry, dict) or set(entry) != {"sha256", "mode"}:
+            raise ContractError("projection file evidence is invalid")
+        if not HEX64_RE.fullmatch(str(entry["sha256"])) or type(entry["mode"]) is not int or entry["mode"] not in {0o644, 0o755}:
+            raise ContractError("projection file hash or mode is invalid")
+    return value
 
 
 def validate_release_descriptor(descriptor: Any) -> dict[str, Any]:
@@ -602,6 +637,11 @@ DESCRIPTOR_FIELDS = (
 )
 
 
+def descriptor_fields(value: dict[str, Any]) -> dict[str, Any]:
+    return {**{key: value.get(key) for key in DESCRIPTOR_FIELDS},
+            **({"projection": value["projection"]} if "projection" in value else {})}
+
+
 def active_release_descriptor() -> dict[str, Any] | None:
     """Read the launcher-provided active release pointer, fail-closed.
 
@@ -622,7 +662,7 @@ def active_release_descriptor() -> dict[str, Any] | None:
     if not isinstance(value, dict):
         raise ContractError("active release descriptor must be an object")
     descriptor = validate_release_descriptor(
-        {key: value.get(key) for key in DESCRIPTOR_FIELDS}
+        descriptor_fields(value)
     )
     root_value = value.get("release_root")
     if not isinstance(root_value, str) or not root_value:
@@ -658,7 +698,7 @@ def public_source_identity(root: Path) -> dict[str, Any]:
             "public instruction source root is neither a Git checkout nor the "
             "active release: %s" % root
         )
-    verify_materialized_release(root, {key: active.get(key) for key in DESCRIPTOR_FIELDS})
+    verify_materialized_release(root, descriptor_fields(active))
     return {
         "kind": "release",
         "root": str(root.resolve()),
@@ -689,8 +729,15 @@ def verify_materialized_release(root: Path, descriptor: Any) -> None:
     if _manifest_version(Path(root)) != descriptor["version"]:
         raise ContractError("materialized release manifests do not match the descriptor")
     observed = canonical_tree_digest(Path(root))
-    if observed != descriptor["content_digest"]:
+    projection = descriptor.get("projection")
+    expected = projection["content_digest"] if projection else descriptor["content_digest"]
+    if observed != expected:
         raise ContractError("materialized release content digest does not match the descriptor")
+    if projection:
+        observed_files = {relative: {"sha256": file_digest(path), "mode": 0o755 if metadata.st_mode & stat.S_IXUSR else 0o644}
+                          for relative, metadata, path in _iter_tree(Path(root)) if stat.S_ISREG(metadata.st_mode)}
+        if observed_files != projection["files"]:
+            raise ContractError("materialized projection file membership differs")
 
 
 def legacy_launcher_bytes(active_descriptor_path: Path) -> bytes:
@@ -841,9 +888,10 @@ def default_desired_state(
     personal_configuration: dict[str, Any] | None = None,
     personal_instruction_source: dict[str, str] | None = None,
     enabled: bool = True,
+    modular: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if profile not in ("full", "skills-only"):
-        raise ContractError("profile must be full or skills-only")
+    if profile not in PROFILE_LAYERS:
+        raise ContractError("profile must be full, skills-only or modular")
     if not isinstance(clients, list) or not clients or set(clients) - {"claude", "codex"}:
         raise ContractError("clients must contain claude and/or codex")
     if channel not in ("stable", "edge"):
@@ -869,7 +917,7 @@ def default_desired_state(
             layer_id: "selected" if layer_id in selected else "declined"
             for layer_id in LAYER_IDS
         }
-    return {
+    result = {
         "schema_version": 1,
         "enabled": enabled,
         "profile": profile,
@@ -881,6 +929,21 @@ def default_desired_state(
         "layers": dict(sorted(layers.items())),
         "organizations": organization_entries,
     }
+    if modular is not None:
+        result["modular"] = validate_modular_selection(modular)
+    return result
+
+
+def validate_modular_selection(value: Any) -> dict[str, Any]:
+    value = _require_mapping(value, "modular selection")
+    if set(value) != {"roots", "stage_core"} or type(value.get("stage_core")) is not bool:
+        raise ContractError("modular selection needs roots and boolean stage_core")
+    roots = value["roots"]
+    if not isinstance(roots, list) or not roots or any(not isinstance(name, str) for name in roots) or len(roots) != len(set(roots)):
+        raise ContractError("modular roots must be a nonempty unique skill list")
+    for name in roots:
+        safe_identifier(name, "modular skill")
+    return {"roots": sorted(roots), "stage_core": value["stage_core"]}
 
 
 def validate_desired_state(value: Any) -> dict[str, Any]:
@@ -889,7 +952,7 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
     allowed = {
         "schema_version", "enabled", "profile", "clients", "release",
         "personal_workspace", "personal_configuration", "personal_instruction_source",
-        "layers", "organizations",
+        "layers", "organizations", "modular",
     }
     required = {
         "schema_version", "enabled", "profile", "clients", "release",
@@ -904,8 +967,12 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
     if not isinstance(value.get("enabled"), bool):
         raise ContractError("desired state enabled must be boolean")
     profile = value.get("profile")
-    if profile not in {"full", "skills-only"}:
+    if profile not in PROFILE_LAYERS:
         raise ContractError("desired state profile is invalid")
+    if "modular" in value:
+        validate_modular_selection(value["modular"])
+    if profile == "modular" and "modular" not in value:
+        raise ContractError("modular profile requires an explicit selection")
     clients = value.get("clients")
     if (
         not isinstance(clients, list)
@@ -937,7 +1004,7 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
         raise ContractError(
             "full desired state requires a personal workspace and configuration"
         )
-    if profile == "skills-only" and configuration is not None:
+    if profile in {"skills-only", "modular"} and configuration is not None:
         raise ContractError(
             "skills-only desired state cannot contain personal configuration"
         )
@@ -954,6 +1021,8 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
         raise ContractError("desired state organizations must be a list")
     if len(organizations) > 1:
         raise ContractError("desired state supports at most one organization")
+    if profile == "modular" and (organizations or workspace is not None or instruction_source is not None):
+        raise ContractError("modular setup does not activate workspace or organization layers")
     if instruction_source is not None and not organizations:
         raise ContractError(
             "a personal instruction source requires an organization"
@@ -1143,7 +1212,7 @@ def validate_machine_observation(value: Any) -> dict[str, Any]:
         "transaction_id", "generation", "previous_active_generation", "state",
         "command", "desired_digest", "committed_desired_digest", "release",
         *TRUTH_PLANES, "instruction_receipt", "details", "started_at",
-        "finished_at", "error",
+        "finished_at", "error", "recovery",
     }
     required = {"transaction_id", "generation", "state", "command", "desired_digest", "started_at"}
     for index, transaction_value in enumerate(transactions):
@@ -1173,6 +1242,15 @@ def validate_machine_observation(value: Any) -> dict[str, Any]:
         for field in TRUTH_PLANES + ("instruction_receipt", "details"):
             if field in transaction and not isinstance(transaction.get(field), dict):
                 raise ContractError("%s %s must be an object" % (label, field))
+        if "recovery" in transaction:
+            recovery = _require_mapping(transaction["recovery"], label + " recovery")
+            if set(recovery) != {"prior_desired", "prepared_desired"}:
+                raise ContractError("%s recovery fields are invalid" % label)
+            for candidate in recovery.values():
+                if candidate is not None:
+                    validate_desired_state(candidate)
+            if recovery["prepared_desired"] is not None and json_digest(recovery["prepared_desired"]) != transaction.get("committed_desired_digest"):
+                raise ContractError("%s prepared desired digest differs" % label)
         if "release" in transaction:
             validate_release_descriptor(transaction["release"])
         for field in ("started_at", "finished_at"):
@@ -1258,6 +1336,32 @@ class SystemState:
     def _save_observation(self, value: dict[str, Any]) -> None:
         validate_machine_observation(value)
         atomic_write_json(self.observation_path, value)
+
+    def finalize_prepared(self, transaction_id: str) -> dict[str, Any]:
+        """Finish a fully verified operation after a crash at the commit boundary.
+
+        Caller holds the state lock and verifies any resource-specific journal.
+        The prepared observation was persisted only after the operation returned.
+        """
+        observation = self.read_observation()
+        if not observation["transactions"] or observation["transactions"][-1]["transaction_id"] != transaction_id:
+            raise ContractError("prepared recovery is not the latest transaction")
+        transaction = observation["transactions"][-1]
+        recovery = transaction.get("recovery") or {}
+        prepared = recovery.get("prepared_desired")
+        if transaction["state"] != "pending" or prepared is None or json_digest(prepared) != transaction.get("committed_desired_digest"):
+            raise ContractError("transaction has no complete prepared commit")
+        if observation["generation"] != (transaction.get("previous_active_generation") or 0):
+            raise ContractError("prepared transaction generation changed")
+        current = self.read_desired()
+        if current != recovery.get("prior_desired") and current != prepared:
+            raise ContractError("desired state changed after prepared operation")
+        atomic_write_json(self.desired_path, prepared)
+        transaction["state"] = "committed"
+        transaction["finished_at"] = utcnow()
+        observation["generation"] = transaction["generation"]
+        self._save_observation(observation)
+        return transaction
 
     def legacy_migration_input(self) -> dict[str, Any] | None:
         """Return bounded legacy metadata for the first authoritative generation.
@@ -1424,6 +1528,13 @@ class SystemState:
         lock_context = contextlib.nullcontext() if already_locked else self.locked()
         with lock_context:
             observation = self.read_observation()
+            pending_prepared = [item for item in observation["transactions"] if item["state"] == "pending" and (item.get("recovery") or {}).get("prepared_desired") is not None]
+            if pending_prepared:
+                if (self.state_dir / "modular/pending.json").exists():
+                    raise ContractError("modular resources require recovery before starting a transaction")
+                for pending in pending_prepared:
+                    self.finalize_prepared(pending["transaction_id"])
+                observation = self.read_observation()
             changed_recovery = False
             for old in observation["transactions"]:
                 if old.get("state") == "pending":
@@ -1447,6 +1558,7 @@ class SystemState:
                 "command": command,
                 "desired_digest": desired_digest,
                 "started_at": utcnow(),
+                "recovery": {"prior_desired": self.read_desired(), "prepared_desired": None},
             }
             if not observation["transactions"] and not self.desired_path.exists():
                 legacy = self.legacy_migration_input()
@@ -1475,6 +1587,14 @@ class SystemState:
                     result["details"] = details
                 transaction.update(result)
                 transaction["committed_desired_digest"] = json_digest(final_desired)
+                transaction["recovery"]["prepared_desired"] = final_desired
+                modular_journal = self.state_dir / "modular/pending.json"
+                if modular_journal.exists():
+                    journal = json.loads(modular_journal.read_text())
+                    if journal.get("transaction_id") != transaction["transaction_id"]:
+                        raise ContractError("prepared operation has a foreign modular recovery journal")
+                    transaction.setdefault("details", {})["modular_receipt_digest"] = json_digest(journal["new"])
+                self._save_observation(observation)
                 atomic_write_json(self.desired_path, final_desired)
                 desired_written = True
                 transaction["state"] = "committed"

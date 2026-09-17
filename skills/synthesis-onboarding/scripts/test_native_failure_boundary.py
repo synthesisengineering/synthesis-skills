@@ -13,11 +13,136 @@ import signal
 import shutil
 import subprocess
 import sys
+import time
 
 import pytest
 
 import onboard
 from test_onboard import REPO_ROOT, Sandbox, snapshot_current_source
+
+
+def communicate_with_copy_progress(process, completed_copies, *, clock=time.monotonic):
+    """Allow real bulk copying, while keeping a 25-second no-progress bound.
+
+    A full catalog copy is materially more work than a native failure probe.
+    Only newly completed, source-bound receipts count as progress; repeated
+    subprocess activity cannot extend the wait. The entire copy remains capped.
+    """
+    started = clock()
+    idle_deadline = started + 25
+    total_deadline = started + 120
+    high_watermark = 0
+    while True:
+        remaining = min(idle_deadline, total_deadline) - clock()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(process.args, clock() - started)
+        try:
+            return process.communicate(timeout=min(1, remaining))
+        except subprocess.TimeoutExpired:
+            completed = completed_copies()
+            if completed > high_watermark:
+                high_watermark = completed
+                idle_deadline = clock() + 25
+
+
+def completed_copy_receipts(home, source_info, client):
+    source, _, commit = source_info
+    selected = ".claude" if client == "claude" else ".agents"
+    completed = 0
+    for skill in (source / "skills").glob("*/SKILL.md"):
+        receipt = home / selected / "skills" / skill.parent.name / ".source.json"
+        try:
+            record = json.loads(receipt.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(record, dict) and all(record.get(key) == value for key, value in {
+            "source_repo": "github.com/synthesisengineering/synthesis-skills",
+            "source_type": "public", "source_commit": commit,
+            "source_path": "skills/" + skill.parent.name + "/SKILL.md",
+        }.items()):
+            completed += 1
+    return completed
+
+
+class CopyClock:
+    """Deterministic process clock for the fixture watchdog's time boundaries."""
+
+    def __init__(self, completes_at=None):
+        self.now = 0
+        self.completes_at = completes_at
+        self.args = ["fixture-copy"]
+
+    def communicate(self, timeout):
+        self.now += timeout
+        if self.completes_at is not None and self.now >= self.completes_at:
+            return "completed", ""
+        raise subprocess.TimeoutExpired(self.args, timeout)
+
+
+def test_copy_watchdog_allows_slow_completed_work_without_relaxing_stall_limit():
+    process = CopyClock(completes_at=60)
+    result = communicate_with_copy_progress(
+        process, lambda: int(process.now // 10), clock=lambda: process.now,
+    )
+    assert result == ("completed", "")
+    assert process.now == 60
+
+
+def test_copy_watchdog_keeps_the_twenty_five_second_stall_boundary():
+    process = CopyClock()
+    with pytest.raises(subprocess.TimeoutExpired):
+        communicate_with_copy_progress(
+            process, lambda: int(process.now >= 10), clock=lambda: process.now,
+        )
+    assert process.now == 35
+
+
+def test_copy_watchdog_has_an_absolute_ceiling_even_with_progress():
+    process = CopyClock()
+    with pytest.raises(subprocess.TimeoutExpired):
+        communicate_with_copy_progress(
+            process, lambda: int(process.now // 10), clock=lambda: process.now,
+        )
+    assert process.now == 120
+
+
+def test_copy_watchdog_does_not_count_rewritten_receipts_as_new_progress():
+    process = CopyClock()
+    with pytest.raises(subprocess.TimeoutExpired):
+        communicate_with_copy_progress(
+            process, lambda: 1, clock=lambda: process.now,
+        )
+    assert process.now == 26
+
+
+def test_copy_progress_counts_only_completed_selected_source_receipts(tmp_path):
+    source = tmp_path / "source"
+    skill = source / "skills/synthesis-fixture/SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("Fixture source\n")
+    home = tmp_path / "home"
+    commit = "a" * 40
+    info = (source, "1.2.3", commit)
+    receipt = home / ".claude/skills/synthesis-fixture/.source.json"
+    receipt.parent.mkdir(parents=True)
+    record = {
+        "source_repo": "github.com/synthesisengineering/synthesis-skills",
+        "source_type": "public", "source_commit": commit,
+        "source_path": "skills/synthesis-fixture/SKILL.md",
+    }
+    for incomplete in ('{', '[]', 'null'):
+        receipt.write_text(incomplete)
+        assert completed_copy_receipts(home, info, "claude") == 0
+    for key in record:
+        receipt.write_text(json.dumps({**record, key: "unreviewed"}))
+        assert completed_copy_receipts(home, info, "claude") == 0
+    receipt.write_text(json.dumps(record))
+    assert completed_copy_receipts(home, info, "claude") == 1
+    assert completed_copy_receipts(home, info, "codex") == 0
+    unknown = receipt.parent.parent / "foreign-skill/.source.json"
+    unknown.parent.mkdir()
+    unknown.write_text(json.dumps(record))
+    assert completed_copy_receipts(home, info, "claude") == 1
 
 
 def fixture_git(root, *args, env):
@@ -157,9 +282,15 @@ def run_isolated(source_info, tmp_path, profile, client, *, entry="bootstrap",
                         "--no-services", "--pin", version, "--json"]
     proc = subprocess.Popen(command, env=environment, cwd=tmp_path, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, start_new_session=True)
+    started = time.monotonic()
     timed_out = False
     try:
-        stdout, stderr = proc.communicate(timeout=25)
+        if explicit_copy:
+            stdout, stderr = communicate_with_copy_progress(
+                proc, lambda: completed_copy_receipts(box.home, source_info, client),
+            )
+        else:
+            stdout, stderr = proc.communicate(timeout=25)
     except subprocess.TimeoutExpired:
         timed_out = True
         os.killpg(proc.pid, signal.SIGTERM)
@@ -169,6 +300,8 @@ def run_isolated(source_info, tmp_path, profile, client, *, entry="bootstrap",
         return json.loads(path.read_text()) if path.exists() else None
     result = {
         "returncode": proc.returncode, "timed_out": timed_out, "stdout": stdout, "stderr": stderr,
+        "elapsed_seconds": time.monotonic() - started,
+        "completed_copy_receipts": completed_copy_receipts(box.home, source_info, client),
         "active": json_file(".local/state/synthesis/active-release.json"),
         "desired": json_file(".config/synthesis/system-state.json"),
         "observations": json_file(".local/state/synthesis/observations.json"),
@@ -225,7 +358,11 @@ def test_native_success_retains_selected_profile_and_client(reviewed_source, tmp
 @pytest.mark.parametrize("profile", ["skills-only", "full"])
 def test_explicit_copy_is_bound_and_does_not_claim_native_readiness(reviewed_source, tmp_path, profile, client):
     result, box = run_isolated(reviewed_source, tmp_path, profile, client, explicit_copy=True)
-    assert not result["timed_out"]
+    assert not result["timed_out"], json.dumps({
+        "elapsed_seconds": result["elapsed_seconds"],
+        "completed_copy_receipts": result["completed_copy_receipts"],
+        "last_events": result["events"][-6:], "stderr": result["stderr"],
+    }, indent=2)
     assert result["returncode"] == 1, result["stdout"] + result["stderr"]
     assert result["active"]["channel"] == "pin"
     assert result["active"]["commit"] == reviewed_source[2]

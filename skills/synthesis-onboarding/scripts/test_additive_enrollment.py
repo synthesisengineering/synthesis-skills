@@ -780,7 +780,8 @@ def test_nested_copy_recovery_precedes_outer_enrollment_rollback(tmp_path, monke
         "layers": {**base["layers"], "organization": "selected"}}
     observation = state.read_observation()
     tx = {**observation["transactions"][-1], "transaction_id": "1" * 32, "generation": 2,
-        "command": "enroll", "desired_digest": contract.json_digest(proposed), "state": "pending"}
+        "command": "enroll", "desired_digest": contract.json_digest(proposed), "state": "pending",
+        "recovery": {"prior_desired": base, "prepared_desired": None}}
     observation["transactions"].append(tx)
     state._save_observation(observation)
     outer = EnrollmentJournal.create(state.state_dir / "enrollments", tx["transaction_id"], base,

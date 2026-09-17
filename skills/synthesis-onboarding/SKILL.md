@@ -1,6 +1,6 @@
 ---
 name: synthesis-onboarding
-description: "Install, update, repair, diagnose, and uninstall the synthesis work system through one stable public CLI. Covers immutable release acquisition, stable and edge channels, exact pins, full and skills-only profiles, tracked dual-client workspace instructions, optional declarative organization enrollment, transactional desired and observed state, plugin currency, and outcome verification. Use when asked to onboard, install synthesis, set up the ecosystem, configure a knowledge workspace, update or repair an installation, enroll an organization, verify an install, or diagnose onboarding."
+description: "Install, update, repair, diagnose, and uninstall the synthesis work system through one stable public CLI. Covers immutable release acquisition, stable and edge channels, exact pins, full, skills-only and modular profiles, tracked dual-client workspace instructions, optional declarative organization enrollment, transactional desired and observed state, plugin currency, and outcome verification. Use when asked to onboard, install synthesis, set up the ecosystem, configure a knowledge workspace, update or repair an installation, enroll an organization, verify an install, or diagnose onboarding."
 license: "CC0-1.0"
 depends_on: []
 metadata:
@@ -34,8 +34,9 @@ curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skil
 After bootstrap, use the installed public command:
 
 ```bash
-synthesis setup [--profile full|skills-only] [--clients claude,codex]
+synthesis setup [--profile full|skills-only|modular] [--clients claude,codex]
                 [--channel stable|edge] [--pin X.Y.Z]
+                [--skill NAME ...] [--no-dormant-core]
                 [--answers PATH] [--org-repo URL | --invite PATH]
                 [--personal-instruction-source PATH]
                 [--adopt-workspace-instructions]
@@ -44,6 +45,9 @@ synthesis enroll --org-repo URL | --invite PATH
                  [--personal-instruction-source PATH]
                  [--adopt-workspace-instructions]
                  [--clear-personal-instruction-source]
+synthesis stage-core --for-tool slopcheck|console|ownwords [--no-dormant-core]
+synthesis activate [--profile full|skills-only] [--answers PATH] [--no-services]
+synthesis deactivate
 synthesis update
 synthesis repair
 synthesis status [--json]
@@ -116,6 +120,13 @@ non-green and must be reported separately.
   knowledge bases, and lifecycle. Organization enrollment is conditional.
 - `skills-only` selects skills, session context, and lifecycle. Additive
   organization enrollment is available without selecting any personal layers.
+- `modular` selects named skill entrypoints and their declared dependencies.
+  Required executable support remains in a verified isolated payload. No native
+  plugin, lifecycle hook, service, instruction kernel or workspace is activated.
+  A fresh client must load the chosen skill before live availability is claimed.
+
+See [modular lifecycle](references/modular-lifecycle.md) for staging costs,
+activation, deactivation, ownership, recovery and truth-plane behavior.
 
 Each selected layer ends as verified or non-green. A declined layer is not
 silently reported as installed merely because plugin source contains its code.

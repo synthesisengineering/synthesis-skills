@@ -1,0 +1,59 @@
+name: Distribution acceptance
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  packages:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ['3.12', '3.13', '3.14']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@v2
+      - run: python -m pip install pytest jsonschema pyyaml
+      - run: python -B -m pytest skills/synthesis-onboarding/scripts/test_distribution.py -q
+      - run: sh -n packages/launcher.sh onboard.sh
+
+  arch-package:
+    # Prepared recipe only. AUR publication is explicitly deferred; this
+    # optional manual check is not a current shipping gate.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - run: pacman -Syu --noconfirm git python nodejs npm python-pytest python-jsonschema python-yaml
+      - uses: actions/checkout@v4
+      - name: Prepare reviewed candidate artifact
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          python -B packages/check_arch.py --source "$GITHUB_WORKSPACE" --output /tmp/arch-package-candidate
+          useradd --create-home package-builder
+          chown -R package-builder:package-builder /tmp/arch-package-candidate
+      - name: Build and inspect package as an unprivileged user
+        run: |
+          cd /tmp/arch-package-candidate/adapters/aur
+          runuser -u package-builder -- makepkg --noconfirm
+          runuser -u package-builder -- makepkg --printsrcinfo > .SRCINFO
+          pacman -U --noconfirm ./*.pkg.tar.zst
+          synthesis --version
+          synthesis --help
+          test ! -e /root/.synthesis
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-package-evidence
+          path: /tmp/arch-package-candidate/adapters/aur/

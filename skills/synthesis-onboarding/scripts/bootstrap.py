@@ -22,6 +22,7 @@ from system_contract import (
     validate_release_descriptor,
     release_descriptor_from_checkout,
     verify_materialized_release,
+    descriptor_fields,
 )
 
 
@@ -43,12 +44,15 @@ def _tracked_files(source: Path) -> list[str]:
     return sorted(files)
 
 
-def _copy_regular_tree(source: Path, destination: Path) -> None:
+def _copy_regular_tree(source: Path, destination: Path, selected: list[str] | None = None, *, materialized=False) -> None:
     """Copy exactly the Git-tracked release tree, excluding test/build residue."""
     source = source.resolve()
     destination.mkdir(parents=True, exist_ok=False)
     verified_directories = {source}
-    for relative_text in _tracked_files(source):
+    tracked = sorted(p.relative_to(source).as_posix() for p in source.rglob("*") if p.is_file()) if materialized else _tracked_files(source)
+    if selected is not None and (not selected or set(selected) - set(tracked)):
+        raise ContractError("projection contains files outside the verified release")
+    for relative_text in (tracked if selected is None else sorted(set(selected))):
         relative = Path(relative_text)
         if relative.is_absolute() or ".." in relative.parts:
             raise ContractError("tracked release path is unsafe: %s" % relative_text)
@@ -106,17 +110,20 @@ def materialize_release(
     channel: str,
     ref: str,
     source_url: str,
+    projection_files: list[str] | None = None,
+    selection: dict | None = None,
+    source_descriptor: dict | None = None,
 ) -> tuple[Path, dict]:
-    descriptor = release_descriptor_from_checkout(
-        checkout,
-        channel=channel,
-        ref=ref,
-        source_url=source_url,
-    )
+    descriptor = source_descriptor or release_descriptor_from_checkout(checkout, channel=channel, ref=ref, source_url=source_url)
+    if source_descriptor is not None:
+        validate_release_descriptor(source_descriptor)
+        if source_descriptor.get("projection"):
+            raise ContractError("cached full activation requires the complete staged release")
+        verify_materialized_release(checkout, source_descriptor)
     releases_dir = Path(releases_dir)
     releases_dir.mkdir(parents=True, exist_ok=True)
     generation = releases_dir / descriptor["content_digest"]
-    if generation.exists():
+    if projection_files is None and generation.exists():
         if not generation.is_dir() or generation.is_symlink():
             raise ContractError("immutable generation path is not a real directory")
         verify_materialized_release(generation, descriptor)
@@ -126,7 +133,17 @@ def materialize_release(
     staging = Path(tempfile.mkdtemp(prefix=".release-stage-", dir=releases_dir))
     try:
         staging.rmdir()
-        _copy_regular_tree(Path(checkout), staging)
+        _copy_regular_tree(Path(checkout), staging, projection_files, materialized=source_descriptor is not None)
+        if projection_files is not None:
+            descriptor["projection"] = {
+                "schema_version": 1, "kind": "modular",
+                "content_digest": release_runtime.tree_digest(staging),
+                "source_content_digest": descriptor["content_digest"], "selection": selection,
+                "files": {relative: {"sha256": release_runtime.file_digest(staging / relative),
+                                     "mode": 0o755 if (staging / relative).stat().st_mode & stat.S_IXUSR else 0o644}
+                          for relative in sorted(set(projection_files))},
+            }
+            generation = releases_dir / descriptor["projection"]["content_digest"]
         verify_materialized_release(staging, descriptor)
         try:
             os.replace(staging, generation)
@@ -143,9 +160,37 @@ def materialize_release(
     return generation, descriptor
 
 
+def _projection_for_arguments(checkout: Path, cli_args: list[str]):
+    """Selection comes from the release's own parser and dependency resolver."""
+    import synthesis_cli
+    parsed = synthesis_cli.build_parser().parse_args(cli_args)
+    command = getattr(parsed, "command", None)
+    if command in {"update", "repair"}:
+        from system_contract import SystemState
+        desired = SystemState().read_desired()
+        if not desired or desired.get("profile") != "modular":
+            return None, None
+        roots = desired["modular"]["roots"]
+        stage_core = desired["modular"]["stage_core"]
+    elif command == "setup" and getattr(parsed, "profile", None) == "modular":
+        roots = getattr(parsed, "skill", None) or []
+        stage_core = not getattr(parsed, "no_dormant_core", False)
+    else:
+        return None, None
+    import modular
+    manifest = modular.resolve_selection(checkout, roots, stage_core=stage_core)
+    files = set(modular.runtime_files(checkout)) | set(manifest["files"])
+    if stage_core:
+        files.update(manifest["optional_core_files"])
+    selection = {key: manifest[key] for key in ("roots", "skills", "support_skills")}
+    selection["stage_core"] = stage_core
+    return sorted(files), selection
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkout", required=True, type=Path)
+    parser.add_argument("--source-descriptor", type=Path, help="verified staged tool-core receipt for offline activation")
     parser.add_argument("--releases-dir", required=True, type=Path)
     parser.add_argument("--launcher", required=True, type=Path)
     parser.add_argument("--active-descriptor", required=True, type=Path)
@@ -209,32 +254,63 @@ def main(argv: list[str] | None = None) -> int:
     if cli_args[:1] == ["--"]:
         cli_args = cli_args[1:]
     try:
+        # Bind the checkout before importing its parser or selection resolver.
+        # A package's source-commit check is an additional acquisition boundary.
+        source_descriptor = None
+        if args.source_descriptor:
+            if args.source_descriptor.is_symlink() or not args.source_descriptor.is_file():
+                raise ContractError("staged core receipt must be a regular file")
+            source_descriptor = json.loads(args.source_descriptor.read_text())["release_descriptor"]
+            validate_release_descriptor(source_descriptor)
+            verify_materialized_release(args.checkout, source_descriptor)
+            if (source_descriptor.get("projection") or source_descriptor["channel"] != args.channel
+                    or source_descriptor["ref"] != args.ref or source_descriptor["source_url"] != args.source_url
+                    or source_descriptor["commit"] != os.environ.get("SYNTHESIS_ONBOARD_EXPECTED_COMMIT")):
+                raise ContractError("staged core does not match its package source binding")
+        else:
+            release_descriptor_from_checkout(args.checkout, channel=args.channel,
+                                             ref=args.ref, source_url=args.source_url)
         _validate_cli_arguments(args.checkout, cli_args)
-    except ContractError as exc:
+    except (ContractError, ValueError, KeyError, OSError) as exc:
         print("Synthesis bootstrap refused: %s" % exc, file=sys.stderr)
         return 2
+    if cli_args[:1] == ["stage-core"]:
+        # Explicit standalone-tool setup owns only an inert per-tool payload.
+        # Do not activate or replace the global CLI/runtime/desired profile.
+        import modular
+        import synthesis_cli
+        parsed = synthesis_cli.build_parser().parse_args(cli_args)
+        try:
+            result = modular.stage_tool_core(args.checkout, parsed.for_tool,
+                stage_core=not parsed.no_dormant_core,
+                home=Path(os.environ.get("SYNTHESIS_HOME", str(Path.home()))))
+        except (ContractError, OSError) as exc:
+            print("Synthesis core staging refused: %s" % exc, file=sys.stderr)
+            return 2
+        print(json.dumps(result, indent=2))
+        return 0
     try:
+        projection_files, selection = _projection_for_arguments(args.checkout, cli_args)
         generation, descriptor = materialize_release(
             args.checkout,
             args.releases_dir,
             channel=args.channel,
             ref=args.ref,
             source_url=args.source_url,
+            projection_files=projection_files, selection=selection,
+            source_descriptor=source_descriptor,
         )
         active_path = Path(args.active_descriptor)
         if args.channel != "pin" and active_path.is_file() and not active_path.is_symlink():
             try:
                 current = json.loads(active_path.read_text(encoding="utf-8"))
                 current_descriptor = validate_release_descriptor(
-                    {key: current.get(key) for key in (
-                        "schema_version", "version", "channel", "ref", "commit", "tree",
-                        "content_digest", "digest_algorithm", "tree_policy", "source_url",
-                        "resolved_at",
-                    )}
+                    descriptor_fields(current)
                 )
                 current_root = Path(current["release_root"])
                 if (
                     current_descriptor["channel"] == descriptor["channel"]
+                    and current_descriptor.get("projection") == descriptor.get("projection")
                     and current_descriptor["ref"] == descriptor["ref"]
                     and tuple(map(int, current_descriptor["version"].split(".")))
                     > tuple(map(int, descriptor["version"].split(".")))

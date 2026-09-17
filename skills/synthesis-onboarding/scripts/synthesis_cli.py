@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import onboard
+import modular
 import organization
 import release_runtime
 from reload_guidance import RECORDED_SESSION_DETAIL, RECORDED_SESSION_SCOPE, recovery_instruction
@@ -24,6 +25,7 @@ from enrollment import (EnrollmentJournal, recover_enrollments, require_settled_
                         engine_lock, engine_state_root, recover_copy_transactions)
 from system_contract import (
     DESCRIPTOR_FIELDS,
+    descriptor_fields,
     LAUNCHER_MARK,
     TRUTH_PLANES,
     ContractError,
@@ -49,6 +51,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
     "setup",
     "enroll",
+    "stage-core",
+    "activate",
+    "deactivate",
     "update",
     "repair",
     "status",
@@ -88,7 +93,9 @@ def build_parser() -> argparse.ArgumentParser:
     execute.add_argument("arguments", nargs=argparse.REMAINDER)
 
     setup = commands.add_parser("setup", help="converge a full or skills-only installation")
-    setup.add_argument("--profile", choices=["full", "skills-only"], default="full")
+    setup.add_argument("--profile", choices=["full", "skills-only", "modular"], default="full")
+    setup.add_argument("--skill", action="append", help="modular root skill; repeat to select more")
+    setup.add_argument("--no-dormant-core", action="store_true", help="omit optional broader ecosystem bytes")
     setup.add_argument("--clients")
     setup.add_argument("--channel", choices=["stable", "edge"])
     setup.add_argument("--pin", help="exact X.Y.Z release pin")
@@ -113,6 +120,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="archive and replace an existing unreceipted workspace instruction pair",
     )
     _common_output(setup)
+
+    stage = commands.add_parser("stage-core", help="explicitly stage inert ecosystem assets for a standalone tool")
+    stage.add_argument("--for-tool", choices=sorted(modular.TOOLS), required=True)
+    stage.add_argument("--no-dormant-core", action="store_true")
+    stage.add_argument("--pin", help="exact release pin for source acquisition")
+    stage.add_argument("--channel", choices=["stable", "edge"])
+    _common_output(stage)
+
+    activate = commands.add_parser("activate", help="activate the broader ecosystem from a saved modular selection")
+    activate.add_argument("--profile", choices=["full", "skills-only"], default="full")
+    activate.add_argument("--answers", type=Path)
+    activate.add_argument("--no-services", action="store_true")
+    _common_output(activate)
+    deactivate = commands.add_parser("deactivate", help="remove owned broader integration and restore saved modular selection")
+    _common_output(deactivate)
 
     enroll = commands.add_parser("enroll", help="add an organization without reinitializing personal layers")
     org_source = enroll.add_mutually_exclusive_group(required=True)
@@ -267,7 +289,7 @@ def _current_planes(
         if not isinstance(recorded, dict):
             recorded = None
     if active is not None:
-        active_release = {key: active.get(key) for key in DESCRIPTOR_FIELDS}
+        active_release = descriptor_fields(active)
         if recorded and recorded.get("content_digest") != active_release.get("content_digest"):
             planes["resolved"] = {
                 "status": "changed",
@@ -597,22 +619,7 @@ def _planes(
     active_release = _active_release()
     release = None
     if active_release:
-        release = {
-            key: active_release.get(key)
-            for key in (
-                "schema_version",
-                "version",
-                "channel",
-                "ref",
-                "commit",
-                "tree",
-                "content_digest",
-                "digest_algorithm",
-                "tree_policy",
-                "source_url",
-                "resolved_at",
-            )
-        }
+        release = descriptor_fields(active_release)
     source = {
         "status": "verified" if release else "development-source",
         "root": str(
@@ -957,6 +964,13 @@ def _render(payload: dict[str, Any], as_json: bool) -> None:
                 print("  - %s" % path)
     elif "desired" in payload and "observed" in payload:
         _render_status(payload)
+    elif "modular" in payload and "planes" in payload:
+        print("Synthesis modular installation: %s" % payload["status"])
+        print("  Selected skills: %s" % ", ".join(payload["modular"]["skills"]))
+        print("  Dormant core: %s (%s optional bytes)" % (payload["modular"]["core_state"], payload["modular"]["optional_core_bytes"]))
+        for name in TRUTH_PLANES:
+            print("  %s: %s" % (name, _plane_summary(name, payload["planes"][name])))
+        print("Next action: %s" % payload["next_action"])
     else:
         print(json.dumps(payload, indent=2, sort_keys=True))
 
@@ -1150,6 +1164,67 @@ def _legacy_plugin_only_desired(state: SystemState) -> dict[str, Any]:
     )
 
 
+def _deactivate(state, engine_runner, args):
+    with state.locked():
+        current = state.read_desired()
+        if not current or current["profile"] == "modular" or not current.get("enabled", True):
+            raise ContractError("deactivation requires an active broader profile")
+        if not current.get("modular"):
+            if not modular.tool_receipts(state):
+                raise ContractError("deactivation requires a saved modular selection or tool staging receipt")
+            disabled = {**current, "enabled": False}
+            def remove_tool_activation(tx):
+                code, details = _execute_engine(engine_runner, ["uninstall", "--clients", ",".join(current["clients"])])
+                if code or not details or details.get("uninstall_verified") is not True:
+                    raise ContractError("broader integration removal was not verified")
+                return _planes(disabled, "deactivate", removal_verified=True)
+            def restore_tool_activation(_error):
+                code, _ = _execute_engine(engine_runner, _engine_args(current, "repair", argparse.Namespace(answers=None, no_services=True), desired_state_path=state.desired_path))
+                if code:
+                    raise EngineFailure(code)
+            return state.run_transaction("deactivate", disabled, remove_tool_activation, rollback=restore_tool_activation, already_locked=True)
+        saved = modular.receipt(state)
+        if not saved or saved["selection"] != current["modular"]:
+            raise ContractError("saved modular selection does not match desired state")
+        modular.verify_payload(Path(saved["payload"]), saved["inventory"])
+        desired = default_desired_state("modular", current["clients"], current["release"]["channel"],
+                                        current["release"].get("version_pin"), modular=current["modular"])
+        started = False
+        def operation(tx):
+            nonlocal started
+            started = True
+            code, details = _execute_engine(engine_runner, ["uninstall", "--clients", ",".join(current["clients"])])
+            if code or not details or details.get("uninstall_verified") is not True:
+                raise ContractError("broader integration removal was not verified; preserved files require review")
+            bindings = {str(state.home / (".claude" if client == "claude" else ".agents") / "skills" / name):
+                        str(Path(saved["payload"]) / "skills" / name) for client in desired["clients"] for name in saved["skills"]}
+            restored = {**saved, "bindings": bindings}
+            modular.reconcile_bindings(state, restored, tx)
+            return modular.planes(desired, restored)
+        def rollback(_error):
+            modular.recover(state, rollback=True)
+            if started:
+                code, _ = _execute_engine(engine_runner, _engine_args(current, "repair", argparse.Namespace(answers=None, no_services=True), desired_state_path=state.desired_path))
+                if code:
+                    raise EngineFailure(code)
+        result = state.run_transaction("deactivate", desired, operation, rollback=rollback, already_locked=True)
+        modular.finish(state)
+        return result
+
+
+def _recover_interrupted_modular_engine(state, engine_runner, prior, transaction):
+    if not prior or state.read_desired() != prior:
+        raise ContractError("interrupted engine recovery requires unchanged prior desired state")
+    if prior["profile"] == "modular":
+        code, details = _execute_engine(engine_runner, ["uninstall", "--clients", ",".join(prior["clients"])])
+        if code or not details or details.get("uninstall_verified") is not True:
+            raise ContractError("interrupted activation removal could not be verified")
+    else:
+        code, _ = _execute_engine(engine_runner, _engine_args(prior, "repair", argparse.Namespace(answers=None, no_services=True), desired_state_path=state.desired_path))
+        if code:
+            raise ContractError("interrupted deactivation restoration failed")
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -1165,10 +1240,96 @@ def main(
         lambda engine_args: _quiet_engine_runner(engine_args, verbose=args.verbose)
     )
     try:
-        if args.command in {"setup", "enroll", "update", "repair", "workspace", "uninstall"}:
+        if args.command in {"setup", "activate", "deactivate", "enroll", "update", "repair", "workspace", "uninstall"}:
             with state.locked(), engine_lock(engine_state_root(state.home)):
                 recover_copy_transactions(engine_state_root(state.home), state.home)
                 recover_enrollments(state)
+                modular.recover(state, rollback_engine=lambda prior, tx: _recover_interrupted_modular_engine(state, engine_runner, prior, tx))
+                observation = state.read_observation()
+                for pending in observation["transactions"]:
+                    if pending["state"] == "pending" and (pending.get("recovery") or {}).get("prepared_desired") is not None:
+                        state.finalize_prepared(pending["transaction_id"])
+        if args.command == "stage-core":
+            active = _active_release()
+            if active and active.get("projection") and not args.no_dormant_core:
+                channel = args.channel or (active["channel"] if active["channel"] in {"stable", "edge"} else "stable")
+                pin = args.pin or (active["version"] if active["channel"] == "pin" else None)
+                return _run_release_bootstrap(argv, active, channel, pin)
+            _render(modular.stage_tool_core(REPO_ROOT, args.for_tool, not args.no_dormant_core, state.home), args.json)
+            return 0
+        current = state.read_desired()
+        tool_activation = False
+        activating = args.command == "activate"
+        if activating:
+            tool_activation = bool(modular.tool_receipts(state)) and (not current or not current.get("enabled", True))
+            if not tool_activation and (not current or current["profile"] != "modular" or not current.get("enabled", True)):
+                raise ContractError("activation requires a modular selection or explicit tool staging choice")
+            activation_clients = current["clients"] if current else ["claude", "codex"]
+            activation_policy = current["release"] if current else {"channel": "stable", "version_pin": None}
+            active = _active_release()
+            if tool_activation and not current and active:
+                activation_policy = {"channel": active["channel"] if active["channel"] in {"stable", "edge"} else "stable",
+                                     "version_pin": active["version"] if active["channel"] == "pin" else None}
+            if active and active.get("projection"):
+                return _run_release_bootstrap(argv, active, activation_policy["channel"], activation_policy.get("version_pin"))
+            options = ["setup", "--profile", args.profile, "--clients", ",".join(activation_clients)]
+            options += ["--channel", activation_policy["channel"]]
+            if activation_policy.get("version_pin"):
+                options += ["--pin", activation_policy["version_pin"]]
+            if args.answers:
+                options += ["--answers", str(args.answers)]
+            if args.no_services:
+                options += ["--no-services"]
+            if args.json:
+                options += ["--json"]
+            if args.verbose:
+                options += ["--verbose"]
+            args = build_parser().parse_args(options)
+        if args.command == "deactivate":
+            transaction = _deactivate(state, engine_runner, args)
+            _render(transaction, args.json)
+            return 0
+        if args.command == "setup" and args.profile == "modular":
+            if args.org_repo or args.invite or args.answers or args.personal_instruction_source or args.clear_personal_instruction_source or args.adopt_workspace_instructions:
+                raise ContractError("modular setup accepts skill selection, clients and release policy only")
+            active = _active_release()
+            policy = {"channel": args.channel or "stable", "version_pin": args.pin}
+            if active and (not _active_matches_policy(active, {"release": policy}) or
+                           (not args.no_dormant_core and active.get("projection") and not active["projection"]["selection"]["stage_core"]) or
+                           any(not (REPO_ROOT / "skills" / name / "SKILL.md").is_file() for name in args.skill or [])):
+                if os.environ.get("SYNTHESIS_BOOTSTRAP_RESOLVED") == "1":
+                    raise ContractError("selected release does not contain the requested skill closure")
+                return _run_release_bootstrap(argv, active, policy["channel"], policy["version_pin"])
+            result = modular.setup(state, REPO_ROOT, args.skill or [], _clients(args.clients or "claude,codex"),
+                                   not args.no_dormant_core, policy)
+            _render(result, args.json)
+            return 0
+        if args.command == "setup" and (args.skill or args.no_dormant_core):
+            raise ContractError("--skill and --no-dormant-core require --profile modular")
+        if current and current["profile"] == "modular" and not activating:
+            if args.command in {"status", "doctor"}:
+                report = modular.inspect(state)
+                _render(report, args.json)
+                return 0 if report["status"] == "PASS" else 1
+            if args.command in {"update", "repair"}:
+                if not current.get("enabled", True):
+                    raise ContractError("modular selection is disabled; run synthesis setup")
+                if args.command == "update":
+                    transferred = _bootstrap_update(argv, state)
+                    if transferred is not None:
+                        return transferred
+                selection = current["modular"]
+                result = modular.setup(state, REPO_ROOT, selection["roots"], current["clients"], selection["stage_core"], current["release"], args.command)
+                _render(result, args.json)
+                return 0
+            if args.command == "uninstall":
+                if args.purge:
+                    raise ContractError("modular uninstall preserves its archive and shared caches; purge is not supported for selected skills")
+                result = modular.disable(state)
+                _render(result, args.json)
+                return 0
+            if args.command in {"setup", "enroll", "workspace", "outcome"}:
+                raise ContractError("use synthesis activate before enabling broader ecosystem layers")
         if args.command == "enroll":
             try:
                 transaction = _enroll(args, argv, state, engine_runner)
@@ -1297,6 +1458,8 @@ def main(
                 engine_args[1:1] = ["--profile", args.profile]
                 if manifest_path:
                     engine_args.extend(["--manifest", str(manifest_path)])
+                if activating and not tool_activation:
+                    modular.suspend(state, _transaction)
                 engine_mutation_started = True
                 code, engine_details = _execute_engine(engine_runner, engine_args)
                 if code:
@@ -1327,6 +1490,8 @@ def main(
                             "personal_instruction_source"
                         ),
                     )
+                if activating and not tool_activation:
+                    final_desired["modular"] = previous_desired["modular"]
                 if invite:
                     consume_invite(invite, state, already_locked=True)
                 result = _planes(final_desired, "setup")
@@ -1336,7 +1501,17 @@ def main(
                 return result
 
             def setup_rollback(_error: BaseException) -> None:
-                if previous_desired is None or not engine_mutation_started:
+                if not engine_mutation_started:
+                    if activating:
+                        modular.restore(state)
+                    return
+                if previous_desired is None and not activating:
+                    return
+                if activating:
+                    rollback_code, rollback_details = _execute_engine(engine_runner, ["uninstall", "--clients", ",".join(activation_clients)])
+                    if rollback_code or not rollback_details or rollback_details.get("uninstall_verified") is not True:
+                        raise ContractError("activation rollback could not verify removal of broader integration")
+                    modular.restore(state)
                     return
                 if previous_desired.get("enabled", True):
                     rollback_args = _engine_args(
@@ -1365,7 +1540,7 @@ def main(
 
             try:
                 transaction = state.run_transaction(
-                    "setup", request, setup_operation, rollback=setup_rollback
+                    "activate" if activating else "setup", request, setup_operation, rollback=setup_rollback
                 )
             except RebootstrapRequired as exc:
                 active = _active_release()
@@ -1374,6 +1549,9 @@ def main(
                 return _run_release_bootstrap(
                     argv, active, exc.channel, exc.version_pin
                 )
+            if activating:
+                with state.locked():
+                    modular.finish(state, transaction["transaction_id"])
             _render(transaction, args.json)
             return 0
 

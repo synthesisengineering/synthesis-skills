@@ -8,7 +8,29 @@
   "properties": {
     "schema_version": {"const": 1},
     "enabled": {"type": "boolean"},
-    "profile": {"enum": ["full", "skills-only"]},
+    "profile": {"enum": ["full", "skills-only", "modular"]},
+    "modular": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "roots",
+        "stage_core"
+      ],
+      "properties": {
+        "roots": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+          }
+        },
+        "stage_core": {
+          "type": "boolean"
+        }
+      }
+    },
     "clients": {
       "type": "array",
       "minItems": 1,
@@ -173,6 +195,74 @@
       "then": {
         "properties": {
           "organizations": {"minItems": 1}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "modular"
+          }
+        },
+        "required": [
+          "profile"
+        ]
+      },
+      "then": {
+        "required": [
+          "modular"
+        ],
+        "properties": {
+          "personal_workspace": {
+            "type": "null"
+          },
+          "personal_configuration": {
+            "type": "null"
+          },
+          "personal_instruction_source": {
+            "type": "null"
+          },
+          "organizations": {
+            "maxItems": 0
+          },
+          "layers": {
+            "properties": {
+              "skills": {
+                "const": "selected"
+              },
+              "session-context": {
+                "const": "declined"
+              },
+              "hooks-gates": {
+                "const": "declined"
+              },
+              "agent-kernel": {
+                "const": "declined"
+              },
+              "runtime-engines": {
+                "const": "declined"
+              },
+              "coordination": {
+                "const": "declined"
+              },
+              "doctors-conformance": {
+                "const": "declined"
+              },
+              "personal-policy": {
+                "const": "declined"
+              },
+              "organization": {
+                "const": "declined"
+              },
+              "knowledge-bases": {
+                "const": "declined"
+              },
+              "lifecycle": {
+                "const": "selected"
+              }
+            }
+          }
         }
       }
     }

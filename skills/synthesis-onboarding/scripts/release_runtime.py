@@ -53,11 +53,21 @@ def file_digest(path):
 
 
 def selected_interpreter():
+    if os.environ.get("SYNTHESIS_RUNTIME_POLICY") == "packaged-python-v1":
+        return str(Path(sys.executable).absolute())
     return MAC_PYTHON if sys.platform == "darwin" else str(Path(sys.executable).absolute())
 
 
-def validate_python_version(version, *, platform=None):
+def validate_python_version(version, *, platform=None, policy="prescribed-python-v1"):
     platform = sys.platform if platform is None else platform
+    if policy == "packaged-python-v1":
+        if platform not in {"darwin", "linux"}:
+            raise RuntimeContractError("package execution supports macOS and Linux")
+        if not re.fullmatch(r"3\.(12|13|14)\.[0-9]+", version):
+            raise RuntimeContractError("package execution requires validated Python 3.12, 3.13 or 3.14")
+        return
+    if policy != "prescribed-python-v1":
+        raise RuntimeContractError("unknown interpreter policy")
     if platform == "darwin" and version != "3.12.3":
         raise RuntimeContractError("macOS execution requires the prescribed python.org 3.12.3 interpreter")
     if not re.fullmatch(r"3\.12\.[0-9]+", version):
@@ -65,6 +75,7 @@ def validate_python_version(version, *, platform=None):
 
 
 def interpreter_pin(path=None):
+    policy = os.environ.get("SYNTHESIS_RUNTIME_POLICY", "prescribed-python-v1")
     path = str(path or selected_interpreter())
     if not Path(path).is_absolute() or any(c.isspace() for c in path):
         raise RuntimeContractError("interpreter must have an absolute executable path without whitespace")
@@ -73,23 +84,26 @@ def interpreter_pin(path=None):
         if not resolved.is_file() or not os.access(resolved, os.X_OK):
             raise RuntimeContractError("pinned interpreter is not executable")
         if resolved == Path(sys.executable).resolve():
+            if sys.version_info.releaselevel != "final":
+                raise RuntimeContractError("execution requires a final Python release")
             version = ".".join(str(v) for v in sys.version_info[:3])
         else:
-            result = subprocess.run([path, "-I", "-B", "-c", "import sys; print('.'.join(map(str, sys.version_info[:3])))"],
+            result = subprocess.run([path, "-I", "-B", "-c", "import sys; print('.'.join(map(str, sys.version_info[:3]))); sys.exit(0 if sys.version_info.releaselevel == 'final' else 1)"],
                 capture_output=True, text=True, check=False, timeout=10)
             if result.returncode:
                 raise RuntimeContractError("prescribed interpreter could not report its version")
             version = result.stdout.strip()
-        validate_python_version(version)
-        if sys.platform == "darwin" and path != MAC_PYTHON:
+        validate_python_version(version, policy=policy)
+        if policy == "prescribed-python-v1" and sys.platform == "darwin" and path != MAC_PYTHON:
             raise RuntimeContractError("macOS interpreter must use the prescribed python.org 3.12.3 framework path")
-        return {"schema_version": 1, "executable": path, "resolved_executable": str(resolved),
+        return {"schema_version": 1, "policy": policy, "executable": path, "resolved_executable": str(resolved),
                 "version": version, "sha256": file_digest(resolved), "platform": sys.platform}
     except (OSError, subprocess.SubprocessError) as exc:
         raise RuntimeContractError("prescribed interpreter is unavailable: %s" % exc) from exc
 
 
-def verify_interpreter(pin):
+def verify_interpreter(pin, *, require_current=True):
+    """Validate setup ownership; executable dispatch always requires current identity."""
     if not isinstance(pin, dict) or pin.get("schema_version") != 1:
         raise RuntimeContractError("setup has not recorded an interpreter pin")
     path = pin.get("executable")
@@ -101,13 +115,16 @@ def verify_interpreter(pin):
             raise RuntimeContractError("pinned interpreter target drifted")
         if file_digest(resolved) != pin.get("sha256"):
             raise RuntimeContractError("pinned interpreter bytes drifted")
-        if resolved != Path(sys.executable).resolve():
+        current = resolved == Path(sys.executable).resolve()
+        if require_current and not current:
             raise RuntimeContractError("running interpreter differs from the setup pin")
-        version = ".".join(str(v) for v in sys.version_info[:3])
-        if version != pin.get("version") or pin.get("platform") != sys.platform:
+        version = pin.get("version")
+        if (not isinstance(version, str) or pin.get("platform") != sys.platform
+                or (current and version != ".".join(str(v) for v in sys.version_info[:3]))):
             raise RuntimeContractError("running interpreter version or platform differs from the setup pin")
-        validate_python_version(version)
-        if sys.platform == "darwin" and path != MAC_PYTHON:
+        policy = pin.get("policy", "prescribed-python-v1")
+        validate_python_version(version, policy=policy)
+        if policy == "prescribed-python-v1" and sys.platform == "darwin" and path != MAC_PYTHON:
             raise RuntimeContractError("macOS execution requires the prescribed python.org 3.12.3 framework path")
         return path
     except OSError as exc:
@@ -154,7 +171,43 @@ def descriptor_path(home=None):
     return state / "synthesis/active-release.json"
 
 
-def verified_release(pointer=None):
+def verify_projection(root, descriptor):
+    """Verify a reduced payload without weakening its original source binding."""
+    projection = descriptor.get("projection")
+    if projection is None:
+        return descriptor["content_digest"]
+    fields = {"schema_version", "kind", "content_digest", "source_content_digest", "selection", "files"}
+    if not isinstance(projection, dict) or set(projection) != fields or type(projection["schema_version"]) is not int or projection["schema_version"] != 1 or projection["kind"] != "modular":
+        raise RuntimeContractError("release projection shape is invalid")
+    if projection["source_content_digest"] != descriptor["content_digest"]:
+        raise RuntimeContractError("projection differs from its verified source binding")
+    if not re.fullmatch(r"[0-9a-f]{64}", str(projection["content_digest"])):
+        raise RuntimeContractError("projection digest is invalid")
+    selected = projection["selection"]
+    if not isinstance(selected, dict) or set(selected) != {"roots", "skills", "support_skills", "stage_core"} or type(selected["stage_core"]) is not bool:
+        raise RuntimeContractError("projection selection is invalid")
+    for key in ("roots", "skills", "support_skills"):
+        values = selected[key]
+        if not isinstance(values, list) or any(not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", value) for value in values) or len(values) != len(set(values)):
+            raise RuntimeContractError("projection skill list is invalid")
+    if not selected["roots"] or not set(selected["roots"]) <= set(selected["skills"]):
+        raise RuntimeContractError("projection omits requested skills")
+    records = projection["files"]
+    if not isinstance(records, dict) or not records:
+        raise RuntimeContractError("projection file inventory is invalid")
+    observed = {}
+    # tree_digest rejects symlinks and special objects before this walk.
+    if tree_digest(root) != projection["content_digest"]:
+        raise RuntimeContractError("projection content digest drifted")
+    for path in Path(root).rglob("*"):
+        if path.is_file():
+            observed[path.relative_to(root).as_posix()] = {"sha256": file_digest(path), "mode": 0o755 if path.stat().st_mode & stat.S_IXUSR else 0o644}
+    if observed != records:
+        raise RuntimeContractError("projection file membership or bytes drifted")
+    return projection["content_digest"]
+
+
+def verified_release(pointer=None, *, require_current_interpreter=True):
     if os.environ.get("SYNTHESIS_PUBLIC_SKILLS_SOURCE"):
         raise RuntimeContractError("canonical public source override is forbidden for installed execution")
     pointer = Path(pointer) if pointer is not None else descriptor_path()
@@ -167,12 +220,12 @@ def verified_release(pointer=None):
             fcntl.flock(handle.fileno(), fcntl.LOCK_SH)
             if pending.exists() or pending.is_symlink():
                 raise RuntimeContractError("unfinished setup activation requires recovery")
-            return _verified_release_unlocked(pointer)
+            return _verified_release_unlocked(pointer, require_current_interpreter=require_current_interpreter)
     except OSError as exc:
         raise RuntimeContractError("setup activation cannot be read safely: %s" % exc) from exc
 
 
-def _verified_release_unlocked(pointer):
+def _verified_release_unlocked(pointer, *, require_current_interpreter=True):
     try:
         if pointer.is_symlink() or not pointer.is_file():
             raise RuntimeContractError("active release descriptor must be a regular file established by setup")
@@ -208,9 +261,9 @@ def _verified_release_unlocked(pointer):
             manifest = json.loads((root / ("." + client + "-plugin") / "plugin.json").read_text())
             if manifest.get("version") != active.get("version") or manifest.get("name") != "synthesis-skills":
                 raise RuntimeContractError("active release manifests disagree with the descriptor")
-        if tree_digest(root) != active["content_digest"]:
+        if tree_digest(root) != verify_projection(root, active):
             raise RuntimeContractError("active release content digest drifted")
-        executable = verify_interpreter(active.get("interpreter"))
+        executable = verify_interpreter(active.get("interpreter"), require_current=require_current_interpreter)
         verified_launcher(active, executable)
         return active
     except (OSError, ValueError, TypeError) as exc:

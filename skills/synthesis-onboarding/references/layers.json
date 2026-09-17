@@ -23,6 +23,13 @@
         "session-context",
         "lifecycle"
       ]
+    },
+    "modular": {
+      "description": "Expose only selected skills and their declared dependencies. Lifecycle CLI and executable support remain available without activating hooks, services, instructions or workspaces.",
+      "selected": [
+        "skills",
+        "lifecycle"
+      ]
     }
   },
   "layers": [

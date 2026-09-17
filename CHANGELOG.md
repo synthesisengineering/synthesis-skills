@@ -4,6 +4,20 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.101.0] - 2026-09-16
+
+Install an individual skill with its executable dependencies, optionally stage an
+inert core, and explicitly activate or deactivate the full system. Selection and
+registration receipts preserve edited and independently owned user files. Doctor
+and repair report the desired, resolved, installed, provenance, live and outcome
+planes without treating dormant assets as active integrations.
+
+Thin Homebrew, npm and Bun packages acquire one verified release through the
+existing bootstrap. Package installation runs no setup scripts. Standalone tools
+can explicitly stage the same inert core; declining it performs no acquisition.
+Package-managed Python 3.12–3.14 runtimes retain interpreter and source integrity
+checks. Distribution metadata drives the shared downloads interface.
+
 ## [4.100.3] - 2026-09-16
 
 Native plugin failures stop installation without reentering the bootstrap

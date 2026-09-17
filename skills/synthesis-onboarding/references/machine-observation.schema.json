@@ -25,9 +25,17 @@
           "transaction_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
           "generation": {"type": "integer", "minimum": 1},
           "state": {"enum": ["pending", "committed", "aborted"]},
-          "command": {"enum": ["setup", "enroll", "update", "repair", "workspace-ensure", "uninstall"]},
+          "command": {"enum": ["setup", "enroll", "update", "repair", "workspace-ensure", "uninstall", "activate", "deactivate"]},
           "desired_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
           "committed_desired_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "recovery": {
+            "type": "object", "additionalProperties": false,
+            "required": ["prior_desired", "prepared_desired"],
+            "properties": {
+              "prior_desired": {"anyOf": [{"$ref": "system-state.schema.json"}, {"type": "null"}]},
+              "prepared_desired": {"anyOf": [{"$ref": "system-state.schema.json"}, {"type": "null"}]}
+            }
+          },
           "release": {"$ref": "release-descriptor.schema.json"},
           "previous_active_generation": {"type": ["integer", "null"], "minimum": 1},
           "desired": {"type": "object"},
