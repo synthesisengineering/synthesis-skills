@@ -441,6 +441,11 @@ def test_publisher_activates_cli_through_public_release_verifier(
     # The repository fixture is already tagged at its manifest version.
     test_home = tmp_path.parent / (tmp_path.name + "-home")
     monkeypatch.setenv("SYNTHESIS_HOME", str(test_home))
+    for name, relative in {
+        "XDG_CONFIG_HOME": ".config", "XDG_STATE_HOME": ".local/state",
+        "XDG_CACHE_HOME": ".cache", "XDG_DATA_HOME": ".local/share",
+    }.items():
+        monkeypatch.setenv(name, str(test_home / relative))
     result = release.Result()
     assert release.activate_published_cli(repo, version, result, dry_run=False)
     launcher = test_home / ".local" / "bin" / "synthesis"

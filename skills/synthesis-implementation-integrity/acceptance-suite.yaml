@@ -302,6 +302,138 @@ changed_surfaces:
   - copy-watchdog-has-an-absolute-ceiling-even-with-progress
   - copy-watchdog-does-not-count-rewritten-receipts-as-new-progress
   - copy-progress-counts-only-completed-selected-source-receipts
+- path: skills/synthesis-agent-conformance/SKILL.md
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/references/yaml-runtime.md
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/scripts/conformance.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-preserves-ambient-module-and-refuses-object-tags
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-owned-yaml-executes-verified-bytes-after-file-change
+  - conformance-owned-yaml-owned-yaml-ignores-generated-bytecode-without-loading-it
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/scripts/test_yaml_runtime.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-preserves-ambient-module-and-refuses-object-tags
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-owned-yaml-executes-verified-bytes-after-file-change
+  - conformance-owned-yaml-owned-yaml-ignores-generated-bytecode-without-loading-it
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/scripts/yaml_runtime.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-preserves-ambient-module-and-refuses-object-tags
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-owned-yaml-executes-verified-bytes-after-file-change
+  - conformance-owned-yaml-owned-yaml-ignores-generated-bytecode-without-loading-it
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/LICENSE
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/manifest.json
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/__init__.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/composer.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/constructor.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/cyaml.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/dumper.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/emitter.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/error.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/events.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/loader.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/nodes.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/parser.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/reader.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/representer.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/resolver.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/scanner.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/serializer.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-agent-conformance/vendor/pyyaml/yaml/tokens.py
+  cases:
+  - conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  - conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  - conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+- path: skills/synthesis-skills-manager/scripts/test_release.py
+  cases:
+  - publisher-activation-fixture-owns-xdg-state
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -664,3 +796,46 @@ cases:
   expected_status: pass
   fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_copy_progress_counts_only_completed_selected_source_receipts
   motivating_defect: Only completed source-bound selected skill receipts may extend the fixture progress deadline.
+
+- id: conformance-owned-yaml-clean-python-source-conformance-needs-no-site-packages
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_yaml_runtime.py::test_clean_python_source_conformance_needs_no_site_packages
+  motivating_defect: Advertised conformance must run on a clean pinned Python using verified release-owned dependency bytes,
+    preserve ambient modules and refuse payload drift.
+- id: conformance-owned-yaml-owned-yaml-preserves-ambient-module-and-refuses-object-tags
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_yaml_runtime.py::test_owned_yaml_preserves_ambient_module_and_refuses_object_tags
+  motivating_defect: Advertised conformance must run on a clean pinned Python using verified release-owned dependency bytes,
+    preserve ambient modules and refuse payload drift.
+- id: conformance-owned-yaml-owned-yaml-refuses-unverified-payload
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_yaml_runtime.py::test_owned_yaml_refuses_unverified_payload
+  motivating_defect: Advertised conformance must run on a clean pinned Python using verified release-owned dependency bytes,
+    preserve ambient modules and refuse payload drift.
+- id: conformance-owned-yaml-owned-yaml-executes-verified-bytes-after-file-change
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_yaml_runtime.py::test_owned_yaml_executes_verified_bytes_after_file_change
+  motivating_defect: Advertised conformance must run on a clean pinned Python using verified release-owned dependency bytes,
+    preserve ambient modules and refuse payload drift.
+- id: conformance-owned-yaml-owned-yaml-ignores-generated-bytecode-without-loading-it
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_yaml_runtime.py::test_owned_yaml_ignores_generated_bytecode_without_loading_it
+  motivating_defect: Advertised conformance must run on a clean pinned Python using verified release-owned dependency bytes,
+    preserve ambient modules and refuse payload drift.
+- id: conformance-owned-yaml-projected-conformance-keeps-owned-yaml-dependency
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_yaml_runtime.py::test_projected_conformance_keeps_owned_yaml_dependency
+  motivating_defect: Advertised conformance must run on a clean pinned Python using verified release-owned dependency bytes,
+    preserve ambient modules and refuse payload drift.
+- id: publisher-activation-fixture-owns-xdg-state
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_publisher_activates_cli_through_public_release_verifier
+  motivating_defect: The physical CLI activation fixture must bind its XDG roots to its own home rather than inherit the runner
+    state path.

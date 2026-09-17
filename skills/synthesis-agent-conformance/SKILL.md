@@ -54,6 +54,11 @@ remain non-green; diagnostic rendering does not rewrite history to resolve them.
 
 ## Workflow
 
+The source plane uses release-owned pure-Python PyYAML 6.0.3. It requires no
+global `pip` installation and does not import the caller's `yaml` package.
+Missing or altered bundled dependency files fail `source.yaml-runtime`.
+See [dependency provenance and runtime boundaries](references/yaml-runtime.md).
+
 ### 1. Inventory
 
 Run:

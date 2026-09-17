@@ -27,16 +27,18 @@ except ImportError:  # Python 3.9/3.10 compatibility
     except ImportError:  # pragma: no cover - exercised with Apple Python 3.9
         tomllib = None  # type: ignore[assignment]
 
-try:
-    import yaml
-except ImportError:  # pragma: no cover - exercised by dependency health checks
-    yaml = None
-
-
 SCRIPT_PATH = Path(__file__).resolve()
 SCRIPTS_DIR = SCRIPT_PATH.parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
+from yaml_runtime import DependencyError, load_yaml
+
+try:
+    yaml = load_yaml()
+    YAML_RUNTIME_DETAIL = "Release-owned pure-Python PyYAML " + yaml.__version__
+except (DependencyError, OSError, ValueError, ImportError) as exc:
+    yaml = None
+    YAML_RUNTIME_DETAIL = "Release-owned PyYAML verification failed: " + str(exc)
 PROJECT_MANAGEMENT_SCRIPTS_DIR = (
     SCRIPT_PATH.parents[2] / "synthesis-project-management" / "scripts"
 )
@@ -352,7 +354,7 @@ def source_checks(source_root: Path) -> list[Check]:
         checks,
         "source.yaml-runtime",
         yaml is not None,
-        "PyYAML available" if yaml is not None else "PyYAML is required for full frontmatter validation",
+        YAML_RUNTIME_DETAIL,
     )
 
     skill_dirs = sorted(path.parent for path in skills_root.glob("*/SKILL.md"))
