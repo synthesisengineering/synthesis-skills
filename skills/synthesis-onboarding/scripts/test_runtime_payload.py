@@ -868,3 +868,74 @@ def test_new_helper_never_overwrites_an_unowned_local_file(pre_claim_bundle):
     with pytest.raises(ContractError):
         claim_bundle_plan(machine)
     assert snapshot(machine.home) == before
+
+
+@pytest.mark.parametrize("existing_config", [False, True], ids=["new-config", "existing-config"])
+def test_actual_immutable_git_hooks_installer_reconciles_runtime_modes(tmp_path, existing_config):
+    """Execute the real installer from readonly bytes, then prove runtime admission."""
+    source = Path(runtime.__file__).resolve().parents[3]
+    fixture = tmp_path / "readonly-source"
+    fixture.mkdir()
+    installer_relative = "skills/synthesis-git-hooks/scripts/install.sh"
+    template_relative = "skills/synthesis-git-hooks/scripts/git-hook-config.example.yaml"
+    relatives = set(SOURCE_FILES["git-hooks"]) | {installer_relative, template_relative}
+    for relative in relatives:
+        original, target = source / relative, fixture / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(original.read_bytes())
+        target.chmod(0o755 if original.stat().st_mode & 0o111 else 0o644)
+    home = tmp_path / "home"
+    home.mkdir()
+    environment = {key: os.environ[key] for key in ("PATH", "LANG", "LC_ALL", "TERM") if key in os.environ}
+    environment.update(
+        HOME=str(home), GIT_CONFIG_GLOBAL=str(home / ".gitconfig"), GIT_CONFIG_NOSYSTEM="1",
+        GIT_TERMINAL_PROMPT="0", GIT_AUTHOR_NAME="Fixture", GIT_COMMITTER_NAME="Fixture",
+        GIT_AUTHOR_EMAIL="fixture@example.invalid", GIT_COMMITTER_EMAIL="fixture@example.invalid",
+        PYTHONDONTWRITEBYTECODE="1", XDG_CONFIG_HOME=str(home / ".config"),
+        XDG_CACHE_HOME=str(home / ".cache"), XDG_DATA_HOME=str(home / ".local/share"),
+        XDG_STATE_HOME=str(home / ".local/state"), CODEX_HOME=str(home / ".codex"),
+        CLAUDE_CONFIG_DIR=str(home / ".claude"), SYNTHESIS_HOME=str(home),
+    )
+    for command in (["git", "init", "-q"], ["git", "add", "."], ["git", "commit", "-qm", "Fixture"]):
+        subprocess.run(command, cwd=fixture, env=environment, check=True, capture_output=True)
+    # Match the managed release cache: Git executable bits stay unchanged,
+    # while every tracked payload loses write permission.
+    for relative in relatives:
+        path = fixture / relative
+        path.chmod(path.stat().st_mode & 0o555)
+    source_before = {relative: ((fixture / relative).read_bytes(), (fixture / relative).stat().st_mode & 0o777)
+                     for relative in relatives}
+    config = home / ".synthesis/git-hook-config.yaml"
+    if existing_config:
+        config.parent.mkdir(parents=True)
+        config.write_bytes((fixture / template_relative).read_bytes() + b"\n# User-owned policy remains unchanged.\n")
+        config.chmod(0o600)
+        config_before = config.read_bytes(), config.stat().st_mode & 0o777
+    else:
+        config_before = (fixture / template_relative).read_bytes(), 0o644
+    state = home / ".local/state/synthesis"
+    receipts = Receipts(state / "receipts.json")
+    for _ in range(2):
+        result = subprocess.run(["bash", str(fixture / installer_relative)], cwd=home,
+                                env=environment, capture_output=True, text=True, timeout=60)
+        assert result.returncode == 0, result.stdout + result.stderr
+        observed = {target: oct((home / target).stat().st_mode & 0o777)
+                    for target, _ in SOURCE_FILES["git-hooks"].values()}
+        expected = {target: oct(mode) for target, mode in SOURCE_FILES["git-hooks"].values()}
+        assert observed == expected
+        assert (config.read_bytes(), config.stat().st_mode & 0o777) == config_before
+        assert {relative: ((fixture / relative).read_bytes(), (fixture / relative).stat().st_mode & 0o777)
+                for relative in relatives} == source_before
+        assert all((home / target).read_bytes() == (fixture / relative).read_bytes()
+                   for relative, (target, _) in SOURCE_FILES["git-hooks"].items())
+        plan = runtime.plan(fixture, home, state, {"git-hooks"}, receipts.data)
+        runtime.apply(plan, receipts)
+        assert all(row["status"] == "current" for row in runtime.verify(
+            runtime.plan(fixture, home, state, {"git-hooks"}, receipts.data)))
+    # Immutable SOURCE modes must not become permission to accept edited
+    # destination modes: receipt/provenance admission remains fail-closed.
+    (home / ".synthesis/git-hooks/pre-commit").chmod(0o555)
+    before_refusal = snapshot(home)
+    with pytest.raises(ContractError, match="unowned|modified|provenance"):
+        runtime.plan(fixture, home, state, {"git-hooks"}, receipts.data)
+    assert snapshot(home) == before_refusal

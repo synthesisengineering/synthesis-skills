@@ -198,10 +198,10 @@
   "distribution": {
     "schema_version": 1,
     "bootstrap": {
-      "url": "https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/v4.101.0/onboard.sh",
-      "release": "4.101.0",
+      "url": "https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/v4.101.1/onboard.sh",
+      "release": "4.101.1",
       "sha256": "4199dea8389fe401d8e1f27622875daf3bf1e5961c6a28194128a39037721261",
-      "source_url": "https://github.com/synthesisengineering/synthesis-skills/blob/v4.101.0/onboard.sh",
+      "source_url": "https://github.com/synthesisengineering/synthesis-skills/blob/v4.101.1/onboard.sh",
       "short_url": "https://synthesisengineering.org/onboard.sh",
       "short_url_verified": false
     },

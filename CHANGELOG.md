@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.101.1] - 2026-09-17
+
+Full setup gives copied Git-hook runtime files the writable modes required by
+reconciliation, including when the released source is read-only. New policy
+files remain editable; existing policy content and permissions are preserved.
+Physical installer fixtures cover repeated setup and reject changed destination
+modes without weakening source or ownership checks.
+
 ## [4.101.0] - 2026-09-16
 
 Install an individual skill with its executable dependencies, optionally stage an
