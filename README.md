@@ -11,6 +11,11 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Full setup from immutable releases (September 2026).** Release **4.101.1**
+sets the required modes on copied Git-hook runtimes, so full setup can reconcile
+files installed from read-only release caches. Existing policy files retain
+their content and permissions; newly seeded policy files remain editable.
+
 **Modular installation and package channels (September 2026).** Release **4.101.0**
 adds individual-skill setup, optional inert core staging, explicit activation and
 deactivation, and thin packages for Homebrew, npm and Bun. Package installation

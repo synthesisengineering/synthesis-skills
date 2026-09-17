@@ -57,7 +57,8 @@ cp -f "$COORDINATION_SOURCE/peer_addressing.py" "$TARGET_DIR/peer_addressing.py"
 printf '%s\n' "$SCRIPT_DIR" > "$TARGET_DIR/source-path"
 cp -f "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85" \
     "$TARGET_REFERENCES/session-words-v1.txt.zlib.b85"
-chmod +x \
+# Source generations are read-only; installed runtime modes are independent.
+chmod 755 \
     "$TARGET_DIR/pre-commit" \
     "$TARGET_DIR/commit-msg" \
     "$TARGET_DIR/_load_config.py" \
@@ -68,7 +69,7 @@ chmod +x \
     "$TARGET_DIR/coordination_archive.py" \
     "$TARGET_DIR/pointer_lock.py" \
     "$TARGET_DIR/peer_addressing.py"
-chmod 644 "$TARGET_DIR/source-path"
+chmod 644 "$TARGET_DIR/source-path" "$TARGET_REFERENCES/session-words-v1.txt.zlib.b85"
 
 if [ -f "$CONFIG_PATH" ]; then
     echo "→ Config already exists at $CONFIG_PATH — not overwriting."
@@ -76,6 +77,7 @@ if [ -f "$CONFIG_PATH" ]; then
 else
     echo "→ Seeding initial config at $CONFIG_PATH from template"
     cp "$SCRIPT_DIR/git-hook-config.example.yaml" "$CONFIG_PATH"
+    chmod 644 "$CONFIG_PATH"
     echo ""
     echo "  ⚠️  Edit $CONFIG_PATH and replace 'YOUR-PERSONAL-ORG' in"
     echo "      'personal_remote_patterns' with your actual GitHub user/org."

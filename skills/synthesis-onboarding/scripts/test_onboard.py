@@ -143,9 +143,14 @@ class Sandbox:
     def env_overrides(self):
         return {
             "HOME": str(self.home),
+            "SYNTHESIS_HOME": str(self.home),
             "XDG_CONFIG_HOME": str(self.home / ".config"),
             "XDG_STATE_HOME": str(self.home / ".local" / "state"),
             "XDG_DATA_HOME": str(self.home / ".local" / "share"),
+            "XDG_CACHE_HOME": str(self.home / ".cache"),
+            "SYNTHESIS_INSTALL_BIN_DIR": str(self.home / ".local" / "bin"),
+            "CODEX_HOME": str(self.home / ".codex"),
+            "CLAUDE_CONFIG_DIR": str(self.home / ".claude"),
             "SYNTHESIS_ONBOARD_HOME": str(self.home),
             "SYNTHESIS_ONBOARD_STATE_DIR": str(self.home / ".synthesis" / "onboarding"),
             "SYNTHESIS_WORKSPACES_ROOT": str(self.home / "workspaces"),
@@ -363,6 +368,65 @@ class Sandbox:
     @property
     def ws_agents(self):
         return self.home / "workspaces" / "exampleco" / "AGENTS.md"
+
+
+class SandboxIsolationTests(unittest.TestCase):
+    def test_sandbox_binds_inherited_state_and_client_roots(self):
+        with tempfile.TemporaryDirectory(prefix="onboard-foreign-roots-") as temporary:
+            foreign = Path(temporary).resolve()
+            keys = ("HOME", "SYNTHESIS_HOME", "SYNTHESIS_ONBOARD_HOME",
+                    "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
+                    "SYNTHESIS_INSTALL_BIN_DIR", "CODEX_HOME", "CLAUDE_CONFIG_DIR")
+            inherited = {key: str(foreign / key) for key in keys}
+            for path in inherited.values():
+                Path(path).mkdir()
+                (Path(path) / "retained.txt").write_text("foreign fixture data\n")
+            before = {str(p.relative_to(foreign)): p.read_bytes()
+                      for p in foreign.rglob("*") if p.is_file()}
+            with patch.dict(os.environ, inherited):
+                box = Sandbox()
+                try:
+                    env = {**os.environ, **box.env_overrides()}
+                    code = """
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import onboard
+from system_contract import SystemState
+state = SystemState()
+print(json.dumps({
+    'home': str(state.home), 'engine_home': str(onboard.HOME),
+    'config': str(state.config_dir), 'state': str(state.state_dir),
+    'cache': str(state.cache_dir), 'launcher': str(state.launcher_path),
+    'data': os.environ['XDG_DATA_HOME'], 'codex': os.environ['CODEX_HOME'],
+    'claude': os.environ['CLAUDE_CONFIG_DIR'],
+    'targets': list(map(str, onboard.organization_skill_targets(['claude', 'codex']))),
+}))
+"""
+                    actual = json.loads(sh([sys.executable, "-B", "-c", code, str(SCRIPTS)], env=env))
+                    self.assertEqual(actual, {
+                        "home": str(box.home), "engine_home": str(box.home),
+                        "config": str(box.home / ".config/synthesis"),
+                        "state": str(box.home / ".local/state/synthesis"),
+                        "cache": str(box.home / ".cache/synthesis"),
+                        "launcher": str(box.home / ".local/bin/synthesis"),
+                        "data": str(box.home / ".local/share"),
+                        "codex": str(box.home / ".codex"), "claude": str(box.home / ".claude"),
+                        "targets": [str(box.home / root / "skills") for root in (".claude", ".agents")],
+                    })
+                    # Exercise the real state writer only after proving its destinations.
+                    writer = """
+import sys
+sys.path.insert(0, sys.argv[1])
+from system_contract import SystemState, default_desired_state
+SystemState().run_transaction('setup', default_desired_state('skills-only', ['codex'], 'stable'), lambda tx: {})
+"""
+                    sh([sys.executable, "-B", "-c", writer, str(SCRIPTS)], env=env)
+                    self.assertTrue((box.home / ".config/synthesis/system-state.json").is_file())
+                    self.assertTrue((box.home / ".local/state/synthesis/observations.json").is_file())
+                    self.assertEqual({str(p.relative_to(foreign)): p.read_bytes()
+                                      for p in foreign.rglob("*") if p.is_file()}, before)
+                finally:
+                    box.cleanup()
 
 
 class ParserTests(unittest.TestCase):
