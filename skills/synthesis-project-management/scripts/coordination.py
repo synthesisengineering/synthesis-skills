@@ -32,6 +32,7 @@ from pointer_lock import locked_pointer
 import claim_scope
 from peer_addressing import (
     CLIENT_CODEX,
+    CLIENT_MUSE,
     SelfIdentity,
     all_seats,
     delivery_lanes,
@@ -132,6 +133,13 @@ def self_identity(requested_ref: str = "") -> SelfIdentity:
         return SelfIdentity(
             client=CLIENT_CODEX,
             harness_session_id=requested_ref[len("codex:"):],
+            explicit_ref=requested_ref,
+            pid=identity.pid,
+        )
+    if requested_ref.startswith("muse:") and identity.client != CLIENT_MUSE:
+        return SelfIdentity(
+            client=CLIENT_MUSE,
+            harness_session_id=requested_ref[len("muse:"):],
             explicit_ref=requested_ref,
             pid=identity.pid,
         )

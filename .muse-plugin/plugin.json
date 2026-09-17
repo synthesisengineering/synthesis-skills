@@ -264,7 +264,28 @@
       }
     ],
     "commands": [],
-    "hooks": [],
+    "hooks": [
+      {
+        "id": "synthesis-session-start",
+        "event": "SessionStart",
+        "command": [
+          "sh",
+          ".muse-plugin/hooks/synthesis-session-start.sh"
+        ],
+        "timeoutMs": 30000,
+        "statusMessage": "Loading verified synthesis project context"
+      },
+      {
+        "id": "synthesis-session-stop",
+        "event": "Stop",
+        "command": [
+          "sh",
+          ".muse-plugin/hooks/synthesis-session-stop.sh"
+        ],
+        "timeoutMs": 30000,
+        "statusMessage": "Binding durable project state to this lifecycle event"
+      }
+    ],
     "mcpServers": [],
     "reminders": []
   }

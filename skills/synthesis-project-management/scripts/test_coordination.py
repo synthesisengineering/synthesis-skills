@@ -2665,3 +2665,10 @@ def test_nonrepo_scope_exception_never_hides_unresolved_metadata_identity(metada
         (area / ".git").write_text("gitdir: /missing-fixture-git\n")
     with pytest.raises(scope_module().ClaimIdentityError):
         scope_module().claim_conflicts(str(root / "projects/index.yaml"), str(area))
+
+
+def test_self_identity_honors_requested_muse_ref_without_shell_identity() -> None:
+    identity = MODULE.self_identity("muse:0c0c-3d3d")
+    assert identity.client == "muse"
+    assert identity.harness_session_id == "0c0c-3d3d"
+    assert identity.sender_key == "muse:0c0c-3d3d"

@@ -46,6 +46,7 @@ DEFAULT_REGISTRY = Path.home() / ".claude" / "sessions"
 
 CLIENT_CLAUDE = "claude-code"
 CLIENT_CODEX = "codex"
+CLIENT_MUSE = "muse"
 
 UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
@@ -169,6 +170,13 @@ def detect_self(environ: dict[str, str] | None = None) -> SelfIdentity:
             explicit_ref=explicit,
             pid=pid,
         )
+    if explicit.startswith("muse:"):
+        return SelfIdentity(
+            client=CLIENT_MUSE,
+            harness_session_id=explicit[len("muse:"):],
+            explicit_ref=explicit,
+            pid=pid,
+        )
     if harness or env.get("CLAUDECODE"):
         return SelfIdentity(
             client=CLIENT_CLAUDE,
@@ -187,7 +195,10 @@ def identity_from_hook(payload: dict, environ: dict[str, str] | None = None) -> 
 
     A hook runs inside the client process tree with the same environment as
     the shells, plus a payload whose ``session_id`` is authoritative: for
-    Claude Code it is the harness session id, for Codex the thread id."""
+    Claude Code it is the harness session id, for Codex the thread id. A Muse
+    hook wrapper exports ``SYNTHESIS_HOOK_CLIENT=muse`` because Muse payloads
+    carry no client marker; without it the Codex default below would
+    misattribute the session."""
     env = os.environ if environ is None else environ
     session_id = str(payload.get("session_id") or "").strip()
     base = detect_self(env)
@@ -198,6 +209,13 @@ def identity_from_hook(payload: dict, environ: dict[str, str] | None = None) -> 
             client=CLIENT_CLAUDE,
             harness_session_id=session_id,
             host_session_id=base.host_session_id,
+            pid=base.pid,
+        )
+    if env.get("SYNTHESIS_HOOK_CLIENT", "").strip().lower() == "muse":
+        return SelfIdentity(
+            client=CLIENT_MUSE,
+            harness_session_id=session_id,
+            explicit_ref=f"muse:{session_id}",
             pid=base.pid,
         )
     return SelfIdentity(

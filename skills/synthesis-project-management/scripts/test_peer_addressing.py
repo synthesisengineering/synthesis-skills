@@ -107,6 +107,23 @@ def test_hook_payload_session_id_is_authoritative_for_the_sender_key() -> None:
     assert codex.sender_key == "codex:0a0a-1b1b"
 
 
+def test_muse_identity_comes_from_the_exported_ref() -> None:
+    identity = PA.detect_self({"SYNTHESIS_CLIENT_SESSION_REF": "muse:0b0b-2c2c"})
+    assert identity.client == PA.CLIENT_MUSE
+    assert identity.harness_session_id == "0b0b-2c2c"
+    assert identity.sender_key == "muse:0b0b-2c2c"
+    assert identity.primary_ref == "muse:0b0b-2c2c"
+
+
+def test_muse_hook_payload_is_not_misattributed_to_codex() -> None:
+    env = {"SYNTHESIS_HOOK_CLIENT": "muse"}
+    muse = PA.identity_from_hook({"session_id": "0b0b-2c2c"}, env)
+    assert muse.client == PA.CLIENT_MUSE
+    assert muse.sender_key == "muse:0b0b-2c2c"
+    absent = PA.identity_from_hook({"session_id": "0b0b-2c2c"}, {})
+    assert absent.sender_key == "codex:0b0b-2c2c"
+
+
 # --- seats ----------------------------------------------------------------------------------
 
 def test_claim_writes_a_seat_release_removes_it(tmp_path, monkeypatch) -> None:
