@@ -1,0 +1,271 @@
+{
+  "schemaVersion": 1,
+  "name": "synthesis-skills",
+  "displayName": "Synthesis Skills",
+  "version": "4.101.1",
+  "description": "Synthesis engineering workflows for durable human-agent work across Muse, Claude Code, Codex, and other Agent Skills runtimes.",
+  "compat": {
+    "source": "native",
+    "manifestDir": ".muse-plugin"
+  },
+  "capabilities": {
+    "skills": [
+      {
+        "id": "synthesis-absence-coordination",
+        "path": "skills/synthesis-absence-coordination/SKILL.md"
+      },
+      {
+        "id": "synthesis-adversarial-review",
+        "path": "skills/synthesis-adversarial-review/SKILL.md"
+      },
+      {
+        "id": "synthesis-agent-conformance",
+        "path": "skills/synthesis-agent-conformance/SKILL.md"
+      },
+      {
+        "id": "synthesis-agent-correspondence",
+        "path": "skills/synthesis-agent-correspondence/SKILL.md"
+      },
+      {
+        "id": "synthesis-anti-shortcuts",
+        "path": "skills/synthesis-anti-shortcuts/SKILL.md"
+      },
+      {
+        "id": "synthesis-article-refresh",
+        "path": "skills/synthesis-article-refresh/SKILL.md"
+      },
+      {
+        "id": "synthesis-article-writing",
+        "path": "skills/synthesis-article-writing/SKILL.md"
+      },
+      {
+        "id": "synthesis-autopilot",
+        "path": "skills/synthesis-autopilot/SKILL.md"
+      },
+      {
+        "id": "synthesis-bitbucket",
+        "path": "skills/synthesis-bitbucket/SKILL.md"
+      },
+      {
+        "id": "synthesis-catchup-ledger",
+        "path": "skills/synthesis-catchup-ledger/SKILL.md"
+      },
+      {
+        "id": "synthesis-checkpoint",
+        "path": "skills/synthesis-checkpoint/SKILL.md"
+      },
+      {
+        "id": "synthesis-chief-of-staff",
+        "path": "skills/synthesis-chief-of-staff/SKILL.md"
+      },
+      {
+        "id": "synthesis-clean-text",
+        "path": "skills/synthesis-clean-text/SKILL.md"
+      },
+      {
+        "id": "synthesis-code-audit",
+        "path": "skills/synthesis-code-audit/SKILL.md"
+      },
+      {
+        "id": "synthesis-code-integration",
+        "path": "skills/synthesis-code-integration/SKILL.md"
+      },
+      {
+        "id": "synthesis-code-planning",
+        "path": "skills/synthesis-code-planning/SKILL.md"
+      },
+      {
+        "id": "synthesis-codebase-review",
+        "path": "skills/synthesis-codebase-review/SKILL.md"
+      },
+      {
+        "id": "synthesis-concise-messaging",
+        "path": "skills/synthesis-concise-messaging/SKILL.md"
+      },
+      {
+        "id": "synthesis-content-distribution",
+        "path": "skills/synthesis-content-distribution/SKILL.md"
+      },
+      {
+        "id": "synthesis-content-framing",
+        "path": "skills/synthesis-content-framing/SKILL.md"
+      },
+      {
+        "id": "synthesis-content-quality",
+        "path": "skills/synthesis-content-quality/SKILL.md"
+      },
+      {
+        "id": "synthesis-context-lifecycle",
+        "path": "skills/synthesis-context-lifecycle/SKILL.md"
+      },
+      {
+        "id": "synthesis-creative-writer",
+        "path": "skills/synthesis-creative-writer/SKILL.md"
+      },
+      {
+        "id": "synthesis-daily-rituals",
+        "path": "skills/synthesis-daily-rituals/SKILL.md"
+      },
+      {
+        "id": "synthesis-decision-packet",
+        "path": "skills/synthesis-decision-packet/SKILL.md"
+      },
+      {
+        "id": "synthesis-disclosure-policy",
+        "path": "skills/synthesis-disclosure-policy/SKILL.md"
+      },
+      {
+        "id": "synthesis-executive-communication",
+        "path": "skills/synthesis-executive-communication/SKILL.md"
+      },
+      {
+        "id": "synthesis-fact-checking",
+        "path": "skills/synthesis-fact-checking/SKILL.md"
+      },
+      {
+        "id": "synthesis-git-hooks",
+        "path": "skills/synthesis-git-hooks/SKILL.md"
+      },
+      {
+        "id": "synthesis-grounding-discipline",
+        "path": "skills/synthesis-grounding-discipline/SKILL.md"
+      },
+      {
+        "id": "synthesis-implementation-integrity",
+        "path": "skills/synthesis-implementation-integrity/SKILL.md"
+      },
+      {
+        "id": "synthesis-inbox-cleanup",
+        "path": "skills/synthesis-inbox-cleanup/SKILL.md"
+      },
+      {
+        "id": "synthesis-kb-edit",
+        "path": "skills/synthesis-kb-edit/SKILL.md"
+      },
+      {
+        "id": "synthesis-knowledge-capture",
+        "path": "skills/synthesis-knowledge-capture/SKILL.md"
+      },
+      {
+        "id": "synthesis-link-research",
+        "path": "skills/synthesis-link-research/SKILL.md"
+      },
+      {
+        "id": "synthesis-llm-setup",
+        "path": "skills/synthesis-llm-setup/SKILL.md"
+      },
+      {
+        "id": "synthesis-local-model-runtime",
+        "path": "skills/synthesis-local-model-runtime/SKILL.md"
+      },
+      {
+        "id": "synthesis-mac-sync",
+        "path": "skills/synthesis-mac-sync/SKILL.md"
+      },
+      {
+        "id": "synthesis-meeting-transcripts",
+        "path": "skills/synthesis-meeting-transcripts/SKILL.md"
+      },
+      {
+        "id": "synthesis-message-guard",
+        "path": "skills/synthesis-message-guard/SKILL.md"
+      },
+      {
+        "id": "synthesis-model-tiers",
+        "path": "skills/synthesis-model-tiers/SKILL.md"
+      },
+      {
+        "id": "synthesis-okf",
+        "path": "skills/synthesis-okf/SKILL.md"
+      },
+      {
+        "id": "synthesis-onboarding",
+        "path": "skills/synthesis-onboarding/SKILL.md"
+      },
+      {
+        "id": "synthesis-pr-review",
+        "path": "skills/synthesis-pr-review/SKILL.md"
+      },
+      {
+        "id": "synthesis-preflight",
+        "path": "skills/synthesis-preflight/SKILL.md"
+      },
+      {
+        "id": "synthesis-preplan",
+        "path": "skills/synthesis-preplan/SKILL.md"
+      },
+      {
+        "id": "synthesis-project-management",
+        "path": "skills/synthesis-project-management/SKILL.md"
+      },
+      {
+        "id": "synthesis-promotion-gate",
+        "path": "skills/synthesis-promotion-gate/SKILL.md"
+      },
+      {
+        "id": "synthesis-quick-answers",
+        "path": "skills/synthesis-quick-answers/SKILL.md"
+      },
+      {
+        "id": "synthesis-reader-briefing",
+        "path": "skills/synthesis-reader-briefing/SKILL.md"
+      },
+      {
+        "id": "synthesis-repo-guard",
+        "path": "skills/synthesis-repo-guard/SKILL.md"
+      },
+      {
+        "id": "synthesis-response-merger",
+        "path": "skills/synthesis-response-merger/SKILL.md"
+      },
+      {
+        "id": "synthesis-review-triage",
+        "path": "skills/synthesis-review-triage/SKILL.md"
+      },
+      {
+        "id": "synthesis-skill-router",
+        "path": "skills/synthesis-skill-router/SKILL.md"
+      },
+      {
+        "id": "synthesis-skills-manager",
+        "path": "skills/synthesis-skills-manager/SKILL.md"
+      },
+      {
+        "id": "synthesis-slack-sync",
+        "path": "skills/synthesis-slack-sync/SKILL.md"
+      },
+      {
+        "id": "synthesis-technical-advisor",
+        "path": "skills/synthesis-technical-advisor/SKILL.md"
+      },
+      {
+        "id": "synthesis-text-provenance",
+        "path": "skills/synthesis-text-provenance/SKILL.md"
+      },
+      {
+        "id": "synthesis-thinking-framework",
+        "path": "skills/synthesis-thinking-framework/SKILL.md"
+      },
+      {
+        "id": "synthesis-tree-of-thought",
+        "path": "skills/synthesis-tree-of-thought/SKILL.md"
+      },
+      {
+        "id": "synthesis-voice-profiler",
+        "path": "skills/synthesis-voice-profiler/SKILL.md"
+      },
+      {
+        "id": "synthesis-writing-craft",
+        "path": "skills/synthesis-writing-craft/SKILL.md"
+      },
+      {
+        "id": "synthesis-writing-pitfalls",
+        "path": "skills/synthesis-writing-pitfalls/SKILL.md"
+      }
+    ],
+    "commands": [],
+    "hooks": [],
+    "mcpServers": [],
+    "reminders": []
+  }
+}
