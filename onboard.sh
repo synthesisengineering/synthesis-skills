@@ -24,6 +24,8 @@ BOOTSTRAP_REL="skills/synthesis-onboarding/scripts/bootstrap.py"
 CHANNEL="${SYNTHESIS_ONBOARD_CHANNEL:-stable}"
 VERSION_PIN="${SYNTHESIS_ONBOARD_VERSION_PIN:-}"
 PREVIOUS=""
+SELECTED_PROFILE=""
+OMIT_DORMANT=0
 
 for ARG in "$@"; do
   if [ "$PREVIOUS" = "channel" ]; then
@@ -36,11 +38,19 @@ for ARG in "$@"; do
     PREVIOUS=""
     continue
   fi
+  if [ "$PREVIOUS" = "profile" ]; then
+    SELECTED_PROFILE="$ARG"
+    PREVIOUS=""
+    continue
+  fi
   case "$ARG" in
     --channel) PREVIOUS="channel" ;;
     --channel=*) CHANNEL=${ARG#--channel=} ;;
     --pin) PREVIOUS="pin" ;;
     --pin=*) VERSION_PIN=${ARG#--pin=} ;;
+    --profile) PREVIOUS="profile" ;;
+    --profile=*) SELECTED_PROFILE=${ARG#--profile=} ;;
+    --no-dormant-core) OMIT_DORMANT=1 ;;
   esac
 done
 if [ -n "$PREVIOUS" ]; then
@@ -81,18 +91,47 @@ if ! command -v git >/dev/null 2>&1; then
   echo "On macOS, install the command-line developer tools, then run this command again." >&2
   exit 2
 fi
-if [ "$(/usr/bin/uname -s)" = "Darwin" ]; then
-  SYNTHESIS_BOOTSTRAP_PYTHON="/Library/Frameworks/Python.framework/Versions/3.12/bin/python3"
-else
-  SYNTHESIS_BOOTSTRAP_PYTHON=$(command -v python3 || true)
+if [ -z "${SYNTHESIS_BOOTSTRAP_PYTHON:-}" ]; then
+  SYNTHESIS_BOOTSTRAP_PYTHON=""
+  for CANDIDATE in python3.12 python3.13 python3.14 python3; do
+    if command -v "$CANDIDATE" >/dev/null 2>&1 && "$CANDIDATE" -I -B -c 'import sys; raise SystemExit(0 if sys.version_info[:2] in ((3,12),(3,13),(3,14)) else 1)' >/dev/null 2>&1; then
+      SYNTHESIS_BOOTSTRAP_PYTHON=$(command -v "$CANDIDATE")
+      break
+    fi
+  done
 fi
 if [ -z "$SYNTHESIS_BOOTSTRAP_PYTHON" ] || [ ! -x "$SYNTHESIS_BOOTSTRAP_PYTHON" ]; then
-  echo "The prescribed Python interpreter is unavailable." >&2
-  echo "macOS requires python.org Python 3.12.3; other platforms require Python 3.12." >&2
+  echo "A supported Python interpreter is unavailable; install Python 3.12, 3.13 or 3.14." >&2
+  exit 2
+fi
+case "$SYNTHESIS_BOOTSTRAP_PYTHON" in /*) ;; *) echo "Bootstrap Python must be an absolute executable path." >&2; exit 2 ;; esac
+SYNTHESIS_RUNTIME_POLICY=packaged-python-v1
+export SYNTHESIS_RUNTIME_POLICY
+if ! "$SYNTHESIS_BOOTSTRAP_PYTHON" -I -B -c 'import sys; raise SystemExit(0 if sys.version_info[:2] in ((3,12),(3,13),(3,14)) and sys.version_info.releaselevel == "final" else 1)'; then
+  echo "Bootstrap requires a final Python 3.12, 3.13 or 3.14 release." >&2
   exit 2
 fi
 
 SYNTHESIS_HOME_DIR="${SYNTHESIS_HOME:-$HOME}"
+case "${1:-}" in
+  update|repair)
+    SAVED_SELECTION=$("$SYNTHESIS_BOOTSTRAP_PYTHON" -I -B - "${XDG_CONFIG_HOME:-$SYNTHESIS_HOME_DIR/.config}/synthesis/system-state.json" <<'PY'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+if path.is_symlink():
+    raise SystemExit('Saved selection must be a regular file.')
+if path.exists():
+    value = json.loads(path.read_text())
+    if value.get('profile') == 'modular' and value.get('modular', {}).get('stage_core') is False:
+        print('modular-opt-out')
+PY
+    )
+    if [ "$SAVED_SELECTION" = "modular-opt-out" ]; then
+      SELECTED_PROFILE=modular
+      OMIT_DORMANT=1
+    fi
+    ;;
+esac
 CACHE_ROOT="${SYNTHESIS_ONBOARD_CACHE_DIR:-${XDG_CACHE_HOME:-$SYNTHESIS_HOME_DIR/.cache}/synthesis}"
 STATE_ROOT="${XDG_STATE_HOME:-$SYNTHESIS_HOME_DIR/.local/state}/synthesis"
 BIN_ROOT="${SYNTHESIS_INSTALL_BIN_DIR:-$SYNTHESIS_HOME_DIR/.local/bin}"
@@ -101,6 +140,7 @@ ACTIVE_DESCRIPTOR="$STATE_ROOT/active-release.json"
 LAUNCHER="$BIN_ROOT/synthesis"
 CHECKOUT=""
 MIRROR=""
+TRANSIENT_ACQUISITION=""
 
 cleanup() {
   if [ -n "$MIRROR" ] && [ -n "$CHECKOUT" ] && [ -e "$CHECKOUT/.git" ]; then
@@ -108,6 +148,17 @@ cleanup() {
   fi
   if [ -n "${CHECKOUT_PARENT:-}" ] && [ -d "$CHECKOUT_PARENT" ]; then
     rmdir "$CHECKOUT_PARENT" >/dev/null 2>&1 || true
+  fi
+  if [ -n "$TRANSIENT_ACQUISITION" ]; then
+    "$SYNTHESIS_BOOTSTRAP_PYTHON" -I -B - "$TRANSIENT_ACQUISITION" "$$" <<'PY'
+import pathlib, shutil, sys
+root = pathlib.Path(sys.argv[1])
+marker = root / '.synthesis-acquisition-owner'
+if (not root.is_absolute() or root.is_symlink() or not root.name.startswith('synthesis-acquisition.')
+        or not marker.is_file() or marker.is_symlink() or marker.read_text().strip() != sys.argv[2]):
+    raise SystemExit('Transient acquisition ownership is invalid; preserving it.')
+shutil.rmtree(root)
+PY
   fi
 }
 trap cleanup EXIT INT TERM
@@ -119,7 +170,13 @@ if [ -n "${SYNTHESIS_ONBOARD_SOURCE_DIR:-}" ]; then
     exit 2
   fi
 else
-  MIRROR="$CACHE_ROOT/acquisition/synthesis-skills.git"
+  ACQUISITION_ROOT="$CACHE_ROOT/acquisition"
+  if { [ "$SELECTED_PROFILE" = "modular" ] || [ "${1:-}" = "stage-core" ]; } && [ "$OMIT_DORMANT" -eq 1 ]; then
+    TRANSIENT_ACQUISITION=$(mktemp -d "${TMPDIR:-/tmp}/synthesis-acquisition.XXXXXX")
+    printf '%s\n' "$$" > "$TRANSIENT_ACQUISITION/.synthesis-acquisition-owner"
+    ACQUISITION_ROOT="$TRANSIENT_ACQUISITION"
+  fi
+  MIRROR="$ACQUISITION_ROOT/synthesis-skills.git"
   mkdir -p "$(dirname "$MIRROR")" "$RELEASES_DIR" "$STATE_ROOT" "$BIN_ROOT"
   if [ -e "$MIRROR" ]; then
     if [ ! -d "$MIRROR" ] || ! git --git-dir="$MIRROR" rev-parse --is-bare-repository >/dev/null 2>&1; then
@@ -152,9 +209,16 @@ else
     echo "Warning: using an explicitly accepted cached immutable release for $SOURCE_REF." >&2
   fi
   RESOLVED_COMMIT=$(git --git-dir="$MIRROR" rev-parse --verify "$RESOLVED_REF^{commit}")
-  CHECKOUT_PARENT=$(mktemp -d "$CACHE_ROOT/acquisition/checkout.XXXXXX")
+  CHECKOUT_PARENT=$(mktemp -d "$ACQUISITION_ROOT/checkout.XXXXXX")
   CHECKOUT="$CHECKOUT_PARENT/source"
   git --git-dir="$MIRROR" worktree add --detach "$CHECKOUT" "$RESOLVED_COMMIT" >/dev/null
+fi
+
+if [ -n "${SYNTHESIS_ONBOARD_EXPECTED_COMMIT:-}" ]; then
+  if [ "$(git -C "$CHECKOUT" rev-parse --verify 'HEAD^{commit}')" != "$SYNTHESIS_ONBOARD_EXPECTED_COMMIT" ]; then
+    echo "Acquired release differs from the package's immutable source commit." >&2
+    exit 1
+  fi
 fi
 
 if [ "$#" -eq 0 ]; then

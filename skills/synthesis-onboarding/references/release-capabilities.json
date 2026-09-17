@@ -7,6 +7,9 @@
     "commands": [
       "setup",
       "enroll",
+      "stage-core",
+      "activate",
+      "deactivate",
       "update",
       "repair",
       "status",
@@ -16,11 +19,18 @@
       "uninstall"
     ]
   },
-  "modalities": ["agent", "terminal"],
+  "modalities": [
+    "agent",
+    "terminal"
+  ],
   "profiles": {
     "full": {
       "primary": true,
-      "bootstrap_arguments": ["setup", "--profile", "full"],
+      "bootstrap_arguments": [
+        "setup",
+        "--profile",
+        "full"
+      ],
       "selected_layers": [
         "skills",
         "session-context",
@@ -33,27 +43,70 @@
         "knowledge-bases",
         "lifecycle"
       ],
-      "conditional_layers": ["organization"]
+      "conditional_layers": [
+        "organization"
+      ]
     },
     "skills-only": {
       "primary": false,
-      "bootstrap_arguments": ["setup", "--profile", "skills-only"],
-      "selected_layers": ["skills", "session-context", "lifecycle"],
-      "conditional_layers": ["organization"]
+      "bootstrap_arguments": [
+        "setup",
+        "--profile",
+        "skills-only"
+      ],
+      "selected_layers": [
+        "skills",
+        "session-context",
+        "lifecycle"
+      ],
+      "conditional_layers": [
+        "organization"
+      ]
+    },
+    "modular": {
+      "primary": false,
+      "bootstrap_arguments": [
+        "setup",
+        "--profile",
+        "modular"
+      ],
+      "conditional_layers": [],
+      "selected_layers": [
+        "skills",
+        "lifecycle"
+      ]
     }
   },
   "release_policy": {
     "default_channel": "stable",
-    "channels": {"stable": "stable", "edge": "main"},
+    "channels": {
+      "stable": "stable",
+      "edge": "main"
+    },
     "exact_pin_format": "vX.Y.Z",
     "automatic_updates": false,
-    "trust": ["authenticated-https", "immutable-tag", "commit", "git-tree", "sha256-tree-v1"]
+    "trust": [
+      "authenticated-https",
+      "immutable-tag",
+      "commit",
+      "git-tree",
+      "sha256-tree-v1"
+    ]
   },
   "platforms": {
-    "supported": ["macos", "linux", "wsl"],
-    "unsupported": ["windows-native"]
+    "supported": [
+      "macos",
+      "linux",
+      "wsl"
+    ],
+    "unsupported": [
+      "windows-native"
+    ]
   },
-  "clients": ["claude", "codex"],
+  "clients": [
+    "claude",
+    "codex"
+  ],
   "truth_planes": [
     "desired",
     "resolved",
@@ -63,17 +116,61 @@
     "outcome-verified"
   ],
   "layers": [
-    {"id": "skills", "title": "Skills", "description": "Portable synthesis methods loaded through a native plugin or direct-copy fallback."},
-    {"id": "session-context", "title": "Session context", "description": "SessionStart time, project, coordination, and lifecycle evidence."},
-    {"id": "hooks-gates", "title": "Hooks and gates", "description": "Commit-boundary and pre-send controls running from stable local paths."},
-    {"id": "agent-kernel", "title": "Agent kernel", "description": "One Git-tracked instruction source exposed to both supported clients."},
-    {"id": "runtime-engines", "title": "Runtime engines", "description": "Durable local engines and launchers under the synthesis state root."},
-    {"id": "coordination", "title": "Coordination", "description": "Lease-aware session claims, messages, and handoff machinery."},
-    {"id": "doctors-conformance", "title": "Doctors and conformance", "description": "Health checks that distinguish defects from unverifiable state."},
-    {"id": "personal-policy", "title": "Personal policy", "description": "User-authored preferences, guard patterns, and routing policy."},
-    {"id": "organization", "title": "Organization", "description": "Optional declarative organization configuration and knowledge access."},
-    {"id": "knowledge-bases", "title": "Knowledge bases", "description": "Git-backed personal and optional organization knowledge repositories."},
-    {"id": "lifecycle", "title": "Lifecycle", "description": "Release policy, update notice, reconciliation, and receipts."}
+    {
+      "id": "skills",
+      "title": "Skills",
+      "description": "Portable synthesis methods loaded through a native plugin or direct-copy fallback."
+    },
+    {
+      "id": "session-context",
+      "title": "Session context",
+      "description": "SessionStart time, project, coordination, and lifecycle evidence."
+    },
+    {
+      "id": "hooks-gates",
+      "title": "Hooks and gates",
+      "description": "Commit-boundary and pre-send controls running from stable local paths."
+    },
+    {
+      "id": "agent-kernel",
+      "title": "Agent kernel",
+      "description": "One Git-tracked instruction source exposed to both supported clients."
+    },
+    {
+      "id": "runtime-engines",
+      "title": "Runtime engines",
+      "description": "Durable local engines and launchers under the synthesis state root."
+    },
+    {
+      "id": "coordination",
+      "title": "Coordination",
+      "description": "Lease-aware session claims, messages, and handoff machinery."
+    },
+    {
+      "id": "doctors-conformance",
+      "title": "Doctors and conformance",
+      "description": "Health checks that distinguish defects from unverifiable state."
+    },
+    {
+      "id": "personal-policy",
+      "title": "Personal policy",
+      "description": "User-authored preferences, guard patterns, and routing policy."
+    },
+    {
+      "id": "organization",
+      "title": "Organization",
+      "description": "Optional declarative organization configuration and knowledge access."
+    },
+    {
+      "id": "knowledge-bases",
+      "title": "Knowledge bases",
+      "description": "Git-backed personal and optional organization knowledge repositories."
+    },
+    {
+      "id": "lifecycle",
+      "title": "Lifecycle",
+      "description": "Release policy, update notice, reconciliation, and receipts."
+    }
   ],
   "manifest_schema_version": 2,
   "state_schema_version": 1,
@@ -82,7 +179,11 @@
   "instruction_sources_schema_version": 1,
   "instruction_source": "ai-knowledge-{workspace}/.agents/workspace-AGENTS.md",
   "organization_instruction_graph": {
-    "roles": ["public", "organization", "personal"],
+    "roles": [
+      "public",
+      "organization",
+      "personal"
+    ],
     "personal_role": "optional-user-local-desired-state",
     "existing_output_adoption": "explicit-archive-first"
   },
@@ -93,5 +194,219 @@
       "capability": "workspace-read",
       "source_class": "personal-knowledge"
     }
-  ]
+  ],
+  "distribution": {
+    "schema_version": 1,
+    "bootstrap": {
+      "url": "https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/v4.101.0/onboard.sh",
+      "release": "4.101.0",
+      "sha256": "4199dea8389fe401d8e1f27622875daf3bf1e5961c6a28194128a39037721261",
+      "source_url": "https://github.com/synthesisengineering/synthesis-skills/blob/v4.101.0/onboard.sh",
+      "short_url": "https://synthesisengineering.org/onboard.sh",
+      "short_url_verified": false
+    },
+    "channels": {
+      "brew": {
+        "status": "pending",
+        "package": "synthesisengineering/tap/synthesis",
+        "install": [
+          "brew install synthesisengineering/tap/synthesis",
+          "synthesis setup --profile {profile}"
+        ],
+        "platforms": [
+          "macos",
+          "linux"
+        ],
+        "evidence_url": null
+      },
+      "npm": {
+        "status": "pending",
+        "package": "@synthesiswork/synthesis",
+        "install": [
+          "npm install -g @synthesiswork/synthesis",
+          "synthesis setup --profile {profile}"
+        ],
+        "platforms": [
+          "macos",
+          "linux",
+          "wsl"
+        ],
+        "evidence_url": null
+      },
+      "bun": {
+        "status": "pending",
+        "package": "@synthesiswork/synthesis",
+        "install": [
+          "bun add -g @synthesiswork/synthesis",
+          "synthesis setup --profile {profile}"
+        ],
+        "platforms": [
+          "macos",
+          "linux",
+          "wsl"
+        ],
+        "evidence_url": null
+      }
+    },
+    "deferred_channels": {
+      "paru": {
+        "reason": "AUR account registration is temporarily closed; excluded by user direction from this release.",
+        "status": "deferred"
+      }
+    },
+    "official_npm_scopes": [
+      "@synthesiswork"
+    ],
+    "modular": {
+      "status": "pending",
+      "release": null,
+      "inventory_source": "skills/synthesis-onboarding/references/components.json",
+      "skills": [
+        "synthesis-absence-coordination",
+        "synthesis-adversarial-review",
+        "synthesis-agent-conformance",
+        "synthesis-agent-correspondence",
+        "synthesis-anti-shortcuts",
+        "synthesis-article-refresh",
+        "synthesis-article-writing",
+        "synthesis-autopilot",
+        "synthesis-bitbucket",
+        "synthesis-catchup-ledger",
+        "synthesis-checkpoint",
+        "synthesis-chief-of-staff",
+        "synthesis-clean-text",
+        "synthesis-code-audit",
+        "synthesis-code-integration",
+        "synthesis-code-planning",
+        "synthesis-codebase-review",
+        "synthesis-concise-messaging",
+        "synthesis-content-distribution",
+        "synthesis-content-framing",
+        "synthesis-content-quality",
+        "synthesis-context-lifecycle",
+        "synthesis-creative-writer",
+        "synthesis-daily-rituals",
+        "synthesis-decision-packet",
+        "synthesis-disclosure-policy",
+        "synthesis-executive-communication",
+        "synthesis-fact-checking",
+        "synthesis-git-hooks",
+        "synthesis-grounding-discipline",
+        "synthesis-implementation-integrity",
+        "synthesis-inbox-cleanup",
+        "synthesis-kb-edit",
+        "synthesis-knowledge-capture",
+        "synthesis-link-research",
+        "synthesis-llm-setup",
+        "synthesis-local-model-runtime",
+        "synthesis-mac-sync",
+        "synthesis-meeting-transcripts",
+        "synthesis-message-guard",
+        "synthesis-model-tiers",
+        "synthesis-okf",
+        "synthesis-onboarding",
+        "synthesis-pr-review",
+        "synthesis-preflight",
+        "synthesis-preplan",
+        "synthesis-project-management",
+        "synthesis-promotion-gate",
+        "synthesis-quick-answers",
+        "synthesis-reader-briefing",
+        "synthesis-repo-guard",
+        "synthesis-response-merger",
+        "synthesis-review-triage",
+        "synthesis-skill-router",
+        "synthesis-skills-manager",
+        "synthesis-slack-sync",
+        "synthesis-technical-advisor",
+        "synthesis-text-provenance",
+        "synthesis-thinking-framework",
+        "synthesis-tree-of-thought",
+        "synthesis-voice-profiler",
+        "synthesis-writing-craft",
+        "synthesis-writing-pitfalls"
+      ],
+      "default_skill": "synthesis-absence-coordination"
+    },
+    "components": {
+      "slopcheck": {
+        "repository": "https://github.com/synthesisengineering/synthesis-slopcheck",
+        "binary": "slopcheck",
+        "core_staging": {
+          "supported": true,
+          "opt_out_argument": "--no-dormant-core"
+        },
+        "channels": {
+          "curl": {
+            "status": "pending"
+          },
+          "brew": {
+            "status": "pending"
+          },
+          "npm": {
+            "status": "pending"
+          },
+          "bun": {
+            "status": "pending"
+          },
+          "source": {
+            "status": "pending"
+          }
+        }
+      },
+      "console": {
+        "repository": "https://github.com/synthesisengineering/synthesis-console",
+        "binary": "synthesis-console",
+        "core_staging": {
+          "supported": true,
+          "opt_out_argument": "--no-dormant-core"
+        },
+        "channels": {
+          "curl": {
+            "status": "pending"
+          },
+          "brew": {
+            "status": "pending"
+          },
+          "npm": {
+            "status": "pending"
+          },
+          "bun": {
+            "status": "pending"
+          },
+          "source": {
+            "status": "pending"
+          }
+        }
+      },
+      "ownwords": {
+        "repository": "https://github.com/synthesiswriting/ownwords",
+        "binary": "ownwords",
+        "core_staging": {
+          "supported": true,
+          "opt_out_argument": "--no-dormant-core"
+        },
+        "channels": {
+          "curl": {
+            "status": "pending"
+          },
+          "brew": {
+            "status": "pending"
+          },
+          "npm": {
+            "status": "pending"
+          },
+          "bun": {
+            "status": "pending"
+          },
+          "source": {
+            "status": "pending"
+          }
+        }
+      }
+    },
+    "official_npm_packages": [
+      "ownwords"
+    ]
+  }
 }

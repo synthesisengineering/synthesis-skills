@@ -5,9 +5,37 @@
   "type": "object",
   "additionalProperties": false,
   "oneOf": [
-    {"properties": {"channel": {"const": "stable"}, "ref": {"const": "stable"}}},
-    {"properties": {"channel": {"const": "edge"}, "ref": {"const": "main"}}},
-    {"properties": {"channel": {"const": "pin"}, "ref": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"}}}
+    {
+      "properties": {
+        "channel": {
+          "const": "stable"
+        },
+        "ref": {
+          "const": "stable"
+        }
+      }
+    },
+    {
+      "properties": {
+        "channel": {
+          "const": "edge"
+        },
+        "ref": {
+          "const": "main"
+        }
+      }
+    },
+    {
+      "properties": {
+        "channel": {
+          "const": "pin"
+        },
+        "ref": {
+          "type": "string",
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+        }
+      }
+    }
   ],
   "required": [
     "schema_version",
@@ -23,16 +51,140 @@
     "resolved_at"
   ],
   "properties": {
-    "schema_version": {"const": 1},
-    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
-    "channel": {"enum": ["stable", "edge", "pin"]},
-    "ref": {"type": "string", "pattern": "^(stable|main|v[0-9]+\\.[0-9]+\\.[0-9]+)$"},
-    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-    "tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-    "content_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "digest_algorithm": {"const": "sha256-tree-v1"},
-    "tree_policy": {"const": "regular-files-and-directories-no-links-v1"},
-    "source_url": {"type": "string", "pattern": "^https://"},
-    "resolved_at": {"type": "string", "format": "date-time"}
+    "schema_version": {
+      "const": 1
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "channel": {
+      "enum": [
+        "stable",
+        "edge",
+        "pin"
+      ]
+    },
+    "ref": {
+      "type": "string",
+      "pattern": "^(stable|main|v[0-9]+\\.[0-9]+\\.[0-9]+)$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "tree": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "content_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "digest_algorithm": {
+      "const": "sha256-tree-v1"
+    },
+    "tree_policy": {
+      "const": "regular-files-and-directories-no-links-v1"
+    },
+    "source_url": {
+      "type": "string",
+      "pattern": "^https://"
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "content_digest",
+        "source_content_digest",
+        "selection",
+        "files"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "modular"
+        },
+        "content_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "source_content_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "selection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "roots",
+            "skills",
+            "support_skills",
+            "stage_core"
+          ],
+          "properties": {
+            "roots": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              }
+            },
+            "skills": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              }
+            },
+            "support_skills": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              }
+            },
+            "stage_core": {
+              "type": "boolean"
+            }
+          }
+        },
+        "files": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sha256",
+              "mode"
+            ],
+            "properties": {
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "mode": {
+                "enum": [
+                  420,
+                  493
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }

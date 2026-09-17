@@ -86,5 +86,15 @@
       "path": "skills/synthesis-inbox-cleanup/scripts/install.sh",
       "layer": "runtime-engines"
     }
-  ]
+  ],
+  "modular": {
+    "selection_metadata": "SKILL.md depends_on",
+    "executable_support": "canonical sibling scripts and their source-verified support closure",
+    "discovery": "selected skill directory symlinks only",
+    "dormant_core": "optional release payload outside client discovery roots",
+    "staging_opt_out": "--no-dormant-core",
+    "activation": "synthesis activate --profile full|skills-only",
+    "deactivation": "synthesis deactivate",
+    "tool_staging": "synthesis stage-core --for-tool slopcheck|console|ownwords"
+  }
 }

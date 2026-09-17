@@ -1,12 +1,29 @@
 # Verified public execution and interpreter pin
 
 Setup establishes one active materialized release and one absolute interpreter.
-On macOS the prescribed interpreter is python.org Python 3.12.3 at
+The existing prescribed runtime uses python.org Python 3.12.3 on macOS at
 `/Library/Frameworks/Python.framework/Versions/3.12/bin/python3`; other supported
-platforms use the CI-validated Python 3.12 family. Setup records the absolute
+platforms use the CI-validated Python 3.12 family. Package and public bootstrap
+setup instead selects the explicit `packaged-python-v1` policy: Python 3.12,
+3.13 or 3.14 on macOS/Linux. The distribution CI matrix exercises each family;
+package managers may supply their own absolute interpreter. Setup records the
+policy alongside the absolute
 executable, its resolved target, binary SHA-256, exact version and platform in
 the active release descriptor. An ambient `python3` on `PATH` is not an installed
 execution authority.
+
+The policy is frozen in the setup receipt. Runtime verification never changes
+policy based on a later environment variable or PATH. Exact executable target,
+version and binary hash still must match; unknown policies, prerelease Python
+versions and unsupported families refuse.
+
+Modular opt-out materializes a reduced immutable generation. Its projection
+records an exact file/hash/mode inventory and projection digest while retaining
+the original full release's Git commit, tree and verified content digest.
+Execution verifies both projection membership and source binding. A newly
+created acquisition mirror is temporary for `--no-dormant-core`; existing shared
+releases and caches are preserved. A projected generation cannot implicitly
+enable skills or services omitted from its verified selection.
 
 The managed `synthesis` launcher has that absolute interpreter in its shebang
 and disables bytecode writes. It contains the standalone, standard-library-only
