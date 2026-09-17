@@ -2672,3 +2672,14 @@ def test_self_identity_honors_requested_muse_ref_without_shell_identity() -> Non
     assert identity.client == "muse"
     assert identity.harness_session_id == "0c0c-3d3d"
     assert identity.sender_key == "muse:0c0c-3d3d"
+
+
+def test_usage_errors_carry_failed_banner_not_an_echo(capsys) -> None:
+    with pytest.raises(SystemExit) as failure:
+        MODULE.parser().parse_args(
+            ["message", "--from", "s-x", "--message", "hello world"]
+        )
+    assert failure.value.code == 2
+    banner = capsys.readouterr().err
+    assert "FAILED" in banner
+    assert "no board write occurred" in banner
