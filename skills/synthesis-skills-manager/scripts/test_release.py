@@ -1827,3 +1827,34 @@ def test_acceptance_expectation_covers_both_rename_paths_and_literal_names(tmp_p
     expected, detail = release.acceptance_expectation(repository, base, "fixture-rename")
     assert expected is not None, detail
     assert expected["changed_paths"] == sorted(["production.py", target])
+
+
+def test_muse_bundle_manifest_agrees_with_siblings_and_resolves() -> None:
+    repository = Path(__file__).resolve().parents[3]
+    manifests = {}
+    for directory in (".claude-plugin", ".codex-plugin", ".muse-plugin"):
+        payload = json.loads(
+            (repository / directory / "plugin.json").read_text(encoding="utf-8")
+        )
+        manifests[directory] = payload
+    versions = {payload.get("version") for payload in manifests.values()}
+    assert len(versions) == 1, versions
+    names = {payload.get("name") for payload in manifests.values()}
+    assert names == {"synthesis-skills"}, names
+    muse = manifests[".muse-plugin"]
+    assert muse.get("compat", {}).get("manifestDir") == ".muse-plugin"
+    skills = muse["capabilities"]["skills"]
+    assert len(skills) > 0
+    for entry in skills:
+        target = repository / entry["path"]
+        assert target.is_file(), entry["path"]
+    hooks = muse["capabilities"]["hooks"]
+    assert {hook["event"] for hook in hooks} == {"SessionStart", "Stop"}
+    for hook in hooks:
+        command = hook["command"]
+        assert command[0] == "sh", hook["id"]
+        script = repository / command[1]
+        assert script.is_file(), hook["id"]
+        assert os.access(script, os.X_OK), hook["id"]
+        body = script.read_text(encoding="utf-8")
+        assert "SYNTHESIS_HOOK_CLIENT=muse" in body, hook["id"]

@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Muse adapter spike (September 2026).** Release **4.102.0** ships a native
+`.muse-plugin` bundle with SessionStart/Stop lifecycle hooks, `muse:` peer
+identity, and transcript binding against Muse's session store. Coordination
+CLI usage errors now fail with an unmistakable FAILED banner instead of
+echoing the caller's own input back as a false confirmation.
+
 **Full setup from immutable releases (September 2026).** Release **4.101.1**
 sets the required modes on copied Git-hook runtimes, so full setup can reconcile
 files installed from read-only release caches. Existing policy files retain
