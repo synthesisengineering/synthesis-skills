@@ -2683,3 +2683,28 @@ def test_usage_errors_carry_failed_banner_not_an_echo(capsys) -> None:
     banner = capsys.readouterr().err
     assert "FAILED" in banner
     assert "no board write occurred" in banner
+
+
+def test_every_subcommand_parser_inherits_the_fail_closed_class() -> None:
+    import argparse
+
+    top = MODULE.parser()
+    subparsers_actions = [
+        action
+        for action in top._actions
+        if isinstance(action, argparse._SubParsersAction)
+    ]
+    assert len(subparsers_actions) == 1
+    choices = subparsers_actions[0].choices
+    assert len(choices) >= 14
+    for name, subparser in choices.items():
+        assert isinstance(subparser, MODULE._FailClosedParser), name
+
+
+def test_failed_claim_usage_cannot_read_as_a_granted_lock(capsys) -> None:
+    with pytest.raises(SystemExit) as failure:
+        MODULE.parser().parse_args(["claim", "--agent", "some-agent"])
+    assert failure.value.code == 2
+    banner = capsys.readouterr().err
+    assert "claim FAILED" in banner
+    assert "no board write occurred" in banner
