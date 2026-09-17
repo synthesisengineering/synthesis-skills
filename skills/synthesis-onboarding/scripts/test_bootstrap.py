@@ -22,6 +22,28 @@ import system_contract  # noqa: E402
 from test_system_contract import git, release_repo  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def isolated_bootstrap_home(tmp_path, monkeypatch):
+    """A release fixture must never consume the invoking machine's selection."""
+    for name in tuple(os.environ):
+        if name.startswith(("SYNTHESIS_", "XDG_", "GIT_")) or name in {
+            "CODEX_HOME", "CLAUDE_CONFIG_DIR", "PYTHONPATH",
+        }:
+            monkeypatch.delenv(name, raising=False)
+    home = tmp_path / "home"
+    home.mkdir()
+    for name, value in {
+        "HOME": home, "SYNTHESIS_HOME": home,
+        "XDG_CONFIG_HOME": home / ".config", "XDG_STATE_HOME": home / ".local/state",
+        "XDG_CACHE_HOME": home / ".cache", "XDG_DATA_HOME": home / ".local/share",
+        "CODEX_HOME": home / ".codex", "CLAUDE_CONFIG_DIR": home / ".claude",
+        "SYNTHESIS_BOOTSTRAP_PYTHON": sys.executable,
+        "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }.items():
+        monkeypatch.setenv(name, str(value))
+
+
 def test_verified_cli_can_use_org_ssh_without_enabling_local_transports(tmp_path, monkeypatch):
     checkout = release_repo(tmp_path)
     calls = []
@@ -181,14 +203,24 @@ def test_floating_bootstrap_honors_an_explicit_channel_change(
     assert selected["ref"] == "main"
 
 
+@pytest.mark.parametrize("saved_profile", [None, "modular"])
 def test_onboard_handoff_consumes_resolution_policy_before_update_cli(
     tmp_path: Path,
+    saved_profile,
 ) -> None:
     checkout = release_repo(tmp_path / "source")
     fixture_scripts = checkout / "skills" / "synthesis-onboarding" / "scripts"
-    shutil.copyfile(SCRIPTS / "bootstrap.py", fixture_scripts / "bootstrap.py")
-    shutil.copyfile(SCRIPTS / "system_contract.py", fixture_scripts / "system_contract.py")
-    shutil.copyfile(SCRIPTS / "release_runtime.py", fixture_scripts / "release_runtime.py")
+    # Use the real runtime dependency closure, including modular update support.
+    # Only the terminal CLI is a recorder; parser-to-projection execution is real.
+    import modular
+    for relative in modular.runtime_files(REPO_ROOT):
+        if relative in {".claude-plugin/plugin.json", ".codex-plugin/plugin.json"}:
+            continue  # Keep this fixture's deliberately separate release identity.
+        target = checkout / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(REPO_ROOT / relative, target)
+        target.chmod((REPO_ROOT / relative).stat().st_mode & 0o777)
+    shutil.copytree(REPO_ROOT / "skills/synthesis-writing-craft", checkout / "skills/synthesis-writing-craft")
     marker = tmp_path / "cli-argv.json"
     (fixture_scripts / "synthesis_cli.py").write_text(
         "import argparse, json, os, sys\n"
@@ -222,6 +254,13 @@ def test_onboard_handoff_consumes_resolution_policy_before_update_cli(
             "SYNTHESIS_TEST_CLI_MARKER": str(marker),
         }
     )
+    if saved_profile:
+        state = system_contract.SystemState(tmp_path / "home")
+        state.config_dir.mkdir(parents=True)
+        state.desired_path.write_text(json.dumps(system_contract.default_desired_state(
+            profile=saved_profile, channel="stable", clients=["codex"],
+            modular={"roots": ["synthesis-writing-craft"], "stage_core": False},
+        )))
     completed = subprocess.run(
         ["sh", str(REPO_ROOT / "onboard.sh"), "update"],
         env=environment,
@@ -232,6 +271,13 @@ def test_onboard_handoff_consumes_resolution_policy_before_update_cli(
     )
     assert completed.returncode == 0, completed.stderr
     assert json.loads(marker.read_text(encoding="utf-8")) == ["update"]
+    active = json.loads((tmp_path / "state/synthesis/active-release.json").read_text())
+    if saved_profile:
+        assert active["projection"]["selection"]["roots"] == ["synthesis-writing-craft"]
+        assert active["projection"]["selection"]["stage_core"] is False
+        assert (Path(active["release_root"]) / "skills/synthesis-onboarding/scripts/modular.py").is_file()
+    else:
+        assert "projection" not in active
 
 
 def test_existing_corrupt_generation_is_rejected(tmp_path: Path) -> None:

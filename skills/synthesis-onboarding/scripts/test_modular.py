@@ -17,8 +17,14 @@ from test_onboard import REPO_ROOT, snapshot_current_source
 def modular_source(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
-    environment = {key: value for key, value in os.environ.items() if not key.startswith(("GIT_", "SYNTHESIS_"))}
-    environment.update(HOME=str(home), GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1",
+    environment = {key: value for key, value in os.environ.items()
+                   if not key.startswith(("GIT_", "SYNTHESIS_", "XDG_"))
+                   and key not in {"CODEX_HOME", "CLAUDE_CONFIG_DIR"}}
+    environment.update(HOME=str(home), SYNTHESIS_HOME=str(home),
+                       XDG_CONFIG_HOME=str(home / ".config"), XDG_STATE_HOME=str(home / ".local/state"),
+                       XDG_CACHE_HOME=str(home / ".cache"), XDG_DATA_HOME=str(home / ".local/share"),
+                       CODEX_HOME=str(home / ".codex"), CLAUDE_CONFIG_DIR=str(home / ".claude"),
+                       GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1",
                        GIT_AUTHOR_NAME="Fixture", GIT_COMMITTER_NAME="Fixture",
                        GIT_AUTHOR_EMAIL="fixture@example.invalid", GIT_COMMITTER_EMAIL="fixture@example.invalid",
                        PYTHONDONTWRITEBYTECODE="1")
@@ -29,6 +35,30 @@ def modular_source(tmp_path, monkeypatch):
 
 def no_engine(_arguments):
     raise AssertionError("modular installation must not initialize native plugins or full-system layers")
+
+
+def test_modular_subprocess_preserves_inherited_foreign_roots(tmp_path, monkeypatch):
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    for key in ("XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME",
+                "CODEX_HOME", "CLAUDE_CONFIG_DIR"):
+        root = foreign / key
+        root.mkdir()
+        (root / "retained.txt").write_text("foreign fixture data\n")
+        monkeypatch.setenv(key, str(root))
+    before = {p.relative_to(foreign): p.read_bytes() for p in foreign.rglob("*") if p.is_file()}
+    source, home, environment = modular_source.__wrapped__(tmp_path, monkeypatch)
+    result = subprocess.run(
+        [sys.executable, "-B", str(source / "skills/synthesis-onboarding/scripts/synthesis_cli.py"),
+         "setup", "--profile", "modular", "--skill", "synthesis-writing-craft", "--clients", "claude,codex",
+         "--no-dormant-core", "--json"],
+        cwd=home, env=environment, capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert SystemState(home).read_desired()["profile"] == "modular"
+    assert {p.relative_to(foreign): p.read_bytes() for p in foreign.rglob("*") if p.is_file()} == before
+    for parent in (home / ".claude/skills", home / ".agents/skills"):
+        assert (parent / "synthesis-writing-craft/SKILL.md").is_file()
 
 
 def test_modular_setup_installs_only_selected_skill_entrypoints(modular_source):
@@ -204,7 +234,9 @@ def test_real_cli_modular_full_deactivate_round_trip_preserves_user_data():
         client = box.fake_client()
         box.seed_currency()
         answers = box.answers()
-        environment = {key: value for key, value in os.environ.items() if not key.startswith(("GIT_", "SYNTHESIS_"))}
+        environment = {key: value for key, value in os.environ.items()
+                       if not key.startswith(("GIT_", "SYNTHESIS_", "XDG_"))
+                       and key not in {"CODEX_HOME", "CLAUDE_CONFIG_DIR"}}
         environment.update(box.env_overrides())
         environment.update(SYNTHESIS_HOME=str(box.home), SYNTHESIS_CLAUDE_BIN=str(client),
                            SYNTHESIS_CODEX_BIN=str(client), SYNTHESIS_ONBOARD_NO_SERVICES="1",
@@ -513,7 +545,9 @@ def test_real_activation_crash_recovers_engine_and_modular_state(boundary):
     try:
         box.isolate_public_source()
         client = box.fake_client(); box.seed_currency(); answers = box.answers()
-        environment = {key: value for key, value in os.environ.items() if not key.startswith(('GIT_', 'SYNTHESIS_'))}
+        environment = {key: value for key, value in os.environ.items()
+                       if not key.startswith(("GIT_", "SYNTHESIS_", "XDG_"))
+                       and key not in {"CODEX_HOME", "CLAUDE_CONFIG_DIR"}}
         environment.update(box.env_overrides())
         environment.update(SYNTHESIS_HOME=str(box.home), SYNTHESIS_CLAUDE_BIN=str(client), SYNTHESIS_CODEX_BIN=str(client),
                            SYNTHESIS_ONBOARD_NO_SERVICES='1', PYTHONDONTWRITEBYTECODE='1', PATH='/usr/bin:/bin:/usr/sbin:/sbin')

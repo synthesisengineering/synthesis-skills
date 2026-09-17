@@ -241,6 +241,11 @@ changed_surfaces:
 - path: skills/synthesis-onboarding/scripts/test_additive_enrollment.py
   cases:
   - nested-copy-before-enrollment-rollback
+- path: skills/synthesis-onboarding/scripts/test_bootstrap.py
+  cases:
+  - bootstrap-org-ssh-handoff
+  - bootstrap-floating-release-retention
+  - bootstrap-saved-selection-update-handoff
 - path: skills/synthesis-onboarding/scripts/test_distribution.py
   cases:
   - distribution-cached-activation-is-bound-to-package-source
@@ -288,6 +293,15 @@ changed_surfaces:
   - modular-installed-optout-to-staged-transfers-to-complete-release
   - modular-actual-managed-launcher-adds-dormant-core-after-prior-optout
   - modular-real-activation-crash-recovers-engine-and-modular-state
+  - modular-subprocess-foreign-root-isolation
+- path: skills/synthesis-onboarding/scripts/test_native_failure_boundary.py
+  cases:
+  - explicit-copy-source-bound-readiness
+  - copy-watchdog-allows-slow-completed-work-without-relaxing-stall-limit
+  - copy-watchdog-keeps-the-twenty-five-second-stall-boundary
+  - copy-watchdog-has-an-absolute-ceiling-even-with-progress
+  - copy-watchdog-does-not-count-rewritten-receipts-as-new-progress
+  - copy-progress-counts-only-completed-selected-source-receipts
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -595,3 +609,58 @@ cases:
   motivating_defect: A package selected under another supported Python must re-enter only the independently verified
     saved interpreter; digest, version, missing interpreter, pending activation and launcher drift must fail without
     executing altered code or changing evidence.
+- id: bootstrap-org-ssh-handoff
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_bootstrap.py::test_verified_cli_can_use_org_ssh_without_enabling_local_transports
+  motivating_defect: Bootstrap fixtures must isolate inherited runtime selection while preserving the intended organization
+    transport policy.
+- id: bootstrap-floating-release-retention
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_bootstrap.py::test_floating_bootstrap_keeps_a_verified_newer_active_release
+  motivating_defect: Fixture configuration must not replace the verified newer release with an unrelated ambient
+    modular selection.
+- id: bootstrap-saved-selection-update-handoff
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_bootstrap.py::test_onboard_handoff_consumes_resolution_policy_before_update_cli
+  motivating_defect: The physical update fixture must include the runtime dependency closure and preserve saved
+    modular selection before CLI dispatch.
+- id: modular-subprocess-foreign-root-isolation
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_modular.py::test_modular_subprocess_preserves_inherited_foreign_roots
+  motivating_defect: Real modular subprocesses in acceptance fixtures must not write through inherited XDG or client
+    configuration roots.
+- id: explicit-copy-source-bound-readiness
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_explicit_copy_is_bound_and_does_not_claim_native_readiness
+  motivating_defect: Physical direct-copy fixture work must finish under a bounded progress-aware deadline while
+    preserving source binding and truthful native-readiness refusal.
+- id: copy-watchdog-allows-slow-completed-work-without-relaxing-stall-limit
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_copy_watchdog_allows_slow_completed_work_without_relaxing_stall_limit
+  motivating_defect: Slow but demonstrably progressing physical copies need a bounded completion opportunity.
+- id: copy-watchdog-keeps-the-twenty-five-second-stall-boundary
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_copy_watchdog_keeps_the_twenty_five_second_stall_boundary
+  motivating_defect: A copy that makes no progress must still stop at the original stall boundary.
+- id: copy-watchdog-has-an-absolute-ceiling-even-with-progress
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_copy_watchdog_has_an_absolute_ceiling_even_with_progress
+  motivating_defect: Continuing progress must not permit an unbounded fixture process.
+- id: copy-watchdog-does-not-count-rewritten-receipts-as-new-progress
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_copy_watchdog_does_not_count_rewritten_receipts_as_new_progress
+  motivating_defect: Repeated receipt rewriting must not extend the fixture deadline.
+- id: copy-progress-counts-only-completed-selected-source-receipts
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_copy_progress_counts_only_completed_selected_source_receipts
+  motivating_defect: Only completed source-bound selected skill receipts may extend the fixture progress deadline.
