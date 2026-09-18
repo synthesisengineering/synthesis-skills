@@ -3138,3 +3138,79 @@ def test_mismatched_identity_keeps_generic_refusal(
     err = capsys.readouterr().err
     assert "does not own the target session seat" in err
     assert "SYNTHESIS_CLIENT_SESSION_REF" not in err
+
+
+def test_overlap_refusal_annotates_both_sessions(tmp_path: Path, capsys) -> None:
+    # Annotation intake Part 1: a bare id tells the operator nothing about
+    # where to go. Refusal diagnostics name project + agent beside each id.
+    board = tmp_path / "active-sessions.md"
+    first = claim_args(
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="repo/shared/**",
+    )
+    second = claim_args(
+        board,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/repo-b @ feature/b",
+        area="repo/shared/file.md",
+    )
+    assert MODULE.command_claim(first) == 0
+    [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
+    capsys.readouterr()
+
+    assert MODULE.command_claim(second) == 10
+    err = capsys.readouterr().err
+    assert f"{holder.compact_id} (project-a · A)" in err
+    assert "(project-b · B)" in err
+
+
+def test_duplicate_owner_refusal_annotates_both_sessions(
+    tmp_path: Path, capsys
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="shared-project",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/a/**",
+        )
+    ) == 0
+    capsys.readouterr()
+    newcomer = claim_args(
+        board,
+        session_id="B",
+        project="shared-project",
+        workspace="/tmp/repo-b @ feature/b",
+        area="repo/b/**",
+    )
+    assert MODULE.command_claim(newcomer) == 10
+    err = capsys.readouterr().err
+    assert err.count("(shared-project · ") == 2
+
+
+def test_annotation_degrades_to_bare_id_without_project_or_agent(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+        )
+    ) == 0
+    [row] = MODULE.rows(board.read_text(encoding="utf-8"))
+    assert MODULE._tag(row) == f"{row.compact_id} (project-a · A)"
+    assert MODULE._tag(MODULE.Session(
+        session_uuid="", compact_id="s-x", speakable_id="", legacy_id="",
+        agent="", machine="", project="", started="", heartbeat="", mode="",
+        workspaces=[], goal="", claims=[], context_role="", status="active",
+    )) == "s-x"
