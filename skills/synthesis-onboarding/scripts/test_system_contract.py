@@ -473,6 +473,49 @@ def test_live_load_binds_client_root_to_the_release_content_digest(tmp_path: Pat
         state.record_live_load(receipt=receipt)
 
 
+def test_live_load_validates_muse_store_bound_sessions(tmp_path: Path) -> None:
+    source_receipt = live_receipt(tmp_path, "codex")
+    source = Path(source_receipt["plugin_root"])
+    state = system_contract.SystemState(tmp_path)
+    desired = system_contract.default_desired_state("skills-only", ["codex"], "stable")
+    state.run_transaction(
+        "setup",
+        desired,
+        lambda _tx: {
+            "release": release_record(source),
+            "source-provenance": {"status": "verified", "root": str(source)},
+        },
+    )
+    session_id = str(uuid.uuid4())
+    log = (
+        tmp_path / ".local" / "share" / "muse" / "sessions"
+        / "2026" / "09" / "17" / session_id / "session.jsonl"
+    )
+    log.parent.mkdir(parents=True)
+    log.write_text(
+        json.dumps({"stream": {"kind": "session", "id": session_id}}) + "\n",
+        encoding="utf-8",
+    )
+    muse = dict(
+        source_receipt,
+        client="muse",
+        provenance_env="muse-transcript",
+        session_id=session_id,
+        receipt_event_id=str(uuid.uuid4()),
+        transcript_path=str(log),
+    )
+    # Validation accepts the muse receipt; recording declines it because no
+    # desired state can target muse yet. Desired-state targeting is a later
+    # milestone; this spike only opens the validation gate.
+    assert state.record_live_load(receipt=muse) is False
+    foreign = dict(muse, client="slack", provenance_env="slack-transcript")
+    with pytest.raises(system_contract.ContractError, match="unsupported"):
+        state.record_live_load(receipt=foreign)
+    unbound = dict(muse, transcript_bound_at_record=False)
+    with pytest.raises(system_contract.ContractError, match="transcript-bound"):
+        state.record_live_load(receipt=unbound)
+
+
 def test_first_generation_records_bounded_legacy_migration_input(tmp_path: Path) -> None:
     legacy = tmp_path / ".synthesis" / "onboarding" / "receipts.json"
     legacy.parent.mkdir(parents=True)

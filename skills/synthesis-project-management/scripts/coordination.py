@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import hashlib
+from typing import NoReturn
 import fcntl
 import json
 import math
@@ -32,6 +33,7 @@ from pointer_lock import locked_pointer
 import claim_scope
 from peer_addressing import (
     CLIENT_CODEX,
+    CLIENT_MUSE,
     SelfIdentity,
     all_seats,
     delivery_lanes,
@@ -132,6 +134,13 @@ def self_identity(requested_ref: str = "") -> SelfIdentity:
         return SelfIdentity(
             client=CLIENT_CODEX,
             harness_session_id=requested_ref[len("codex:"):],
+            explicit_ref=requested_ref,
+            pid=identity.pid,
+        )
+    if requested_ref.startswith("muse:") and identity.client != CLIENT_MUSE:
+        return SelfIdentity(
+            client=CLIENT_MUSE,
+            harness_session_id=requested_ref[len("muse:"):],
             explicit_ref=requested_ref,
             pid=identity.pid,
         )
@@ -2651,8 +2660,27 @@ def command_archive(args) -> int:
     return 0
 
 
+class _FailClosedParser(argparse.ArgumentParser):
+    """Usage errors must never resemble success receipts.
+
+    A wrong flag used to exit 2 with argparse's default echo of the offending
+    arguments — whose last lines quote the caller's own message text and read
+    as a confirmation. Five board sends were lost to exactly that. Every
+    usage failure now carries an unmistakable FAILED banner; nothing is
+    written before argument parsing succeeds.
+    """
+
+    def error(self, message: str) -> NoReturn:
+        self.print_usage(sys.stderr)
+        self.exit(
+            2,
+            f"{self.prog} FAILED: {message}\n"
+            "Nothing was changed; no board write occurred.\n",
+        )
+
+
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description=__doc__)
+    result = _FailClosedParser(description=__doc__)
     result.add_argument("--board", type=Path, default=DEFAULT_BOARD)
     commands = result.add_subparsers(dest="command", required=True)
     archive = commands.add_parser("archive", help="Archive released rows older than 30 days and their closed addressed messages through lease CAS")

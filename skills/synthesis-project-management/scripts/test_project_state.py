@@ -864,3 +864,27 @@ def test_project_state_reliability_release_contract_is_coherent() -> None:
         assert match, f"{skill} declares no semantic version"
         declared = tuple(int(part) for part in match.groups())
         assert declared >= floor, f"{skill} {declared} is below the reliability floor {floor}"
+
+
+def test_observer_stop_resolves_muse_session_from_store_without_transcript_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_id = "019fff79-5858-7993-a329-b301bccf5d01"
+    log = (
+        tmp_path / "muse-sessions" / "2026" / "09" / "17"
+        / session_id / "session.jsonl"
+    )
+    log.parent.mkdir(parents=True)
+    log.write_text(
+        json.dumps({"stream": {"kind": "session", "id": session_id}}) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MUSE_SESSIONS_DIR", str(tmp_path / "muse-sessions"))
+    assert state._observer_native_identity({"session_id": session_id}) == (
+        "muse",
+        session_id,
+    )
+    with pytest.raises(state.ProjectStateError, match="transcript path"):
+        state._observer_native_identity(
+            {"session_id": "019fff79-5858-7993-a329-b301bccf5d02"}
+        )

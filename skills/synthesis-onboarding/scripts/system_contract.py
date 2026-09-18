@@ -1817,7 +1817,7 @@ class SystemState:
         plugin_version = receipt.get("plugin_version")
         plugin_root = receipt.get("plugin_root")
         recorded_at = receipt.get("recorded_at")
-        if client not in {"claude", "codex"}:
+        if client not in {"claude", "codex", "muse"}:
             raise ContractError("live-load receipt client is unsupported")
         if receipt.get("receipt_schema") != 2 or receipt.get("hook_event_name") != "SessionStart":
             raise ContractError("live-load receipt is not a SessionStart event")
@@ -1876,10 +1876,16 @@ class SystemState:
         # and conformance. History length is not a provenance failure, and a
         # UUID quoted in ordinary message text is not session metadata.
         validator = _live_receipt_validator()
-        transcript_root = Path(os.environ.get(
-            "CODEX_HOME" if client == "codex" else "CLAUDE_CONFIG_DIR",
-            str(self.home / (".codex" if client == "codex" else ".claude")),
-        )).expanduser()
+        if client == "codex":
+            var, default = "CODEX_HOME", self.home / ".codex"
+        elif client == "muse":
+            var, default = (
+                "MUSE_SESSIONS_DIR",
+                self.home / ".local" / "share" / "muse" / "sessions",
+            )
+        else:
+            var, default = "CLAUDE_CONFIG_DIR", self.home / ".claude"
+        transcript_root = Path(os.environ.get(var, str(default))).expanduser()
         if not validator.client_root_transcript_path(transcript, client, str(session_id), transcript_root):
             raise ContractError("live-load transcript is not a canonical client root-session path")
         binding = validator.transcript_binding_state(transcript, client, str(session_id))

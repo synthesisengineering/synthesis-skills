@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -15,8 +16,9 @@ MAX_BINDING_LINES = 1_000
 TRANSCRIPT_READ_CHARS = 64 * 1024
 MAX_PROJECTED_STRING_CHARS = 512
 MAX_TRANSCRIPT_JSON_DEPTH = 128
-RECEIPT_CLIENTS = {"claude", "codex"}
+RECEIPT_CLIENTS = {"claude", "codex", "muse"}
 
+_ASCII_DIGITS = re.compile(r"[0-9]+")
 _STRING_SPECIAL = re.compile(r'["\\\x00-\x1f]')
 _HORIZONTAL_SPACE = re.compile(r"[ \t\r]+")
 _DIGITS = re.compile(r"[0-9]+")
@@ -25,6 +27,7 @@ _ROOT_PROJECTION = {
     "type": True,
     "sessionId": True,
     "payload": {"id": True, "session_id": True},
+    "stream": {"id": True, "kind": True},
 }
 
 
@@ -461,9 +464,107 @@ def client_root_transcript_path(
         candidate.resolve(strict=False).relative_to(root.resolve())
     except (OSError, ValueError):
         return False
-    return client != "claude" or claude_root_transcript_path(
-        candidate, root, session_id
+    if client == "claude":
+        return claude_root_transcript_path(candidate, root, session_id)
+    if client == "muse":
+        return muse_root_transcript_path(candidate, root, session_id)
+    return True
+
+
+def muse_sessions_root() -> Path:
+    """The Muse session store, honoring the test override."""
+    override = os.environ.get("MUSE_SESSIONS_DIR", "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".local" / "share" / "muse" / "sessions"
+
+
+def muse_root_transcript_path(
+    transcript: Path, transcript_root: Path, session_id: str
+) -> bool:
+    """Validate the Muse date-sharded session-log shape.
+
+    Muse keeps ``sessions/YYYY/MM/DD/<uuid>/session.jsonl``. The directory
+    name must equal the claimed session id and the filename must be exactly
+    ``session.jsonl``; containment and symlink checks stay with the caller.
+    """
+    try:
+        uuid.UUID(session_id)
+    except (ValueError, TypeError, AttributeError):
+        return False
+    try:
+        relative = transcript.expanduser().absolute().relative_to(
+            transcript_root.expanduser().absolute()
+        )
+    except (OSError, ValueError):
+        return False
+    parts = relative.parts
+    return (
+        len(parts) == 5
+        and all(_ASCII_DIGITS.fullmatch(part) for part in parts[0:3])
+        and parts[3] == session_id
+        and parts[4] == "session.jsonl"
     )
+
+
+def resolve_muse_transcript(session_id: str) -> Path | None:
+    """Locate a Muse session log by session id, or None.
+
+    Muse hook payloads carry no transcript path, so the date shard must be
+    searched. The walk is fixed-depth (year/month/day), skips symlinks, and
+    requires exactly one match: zero means no evidence, several means the
+    evidence is ambiguous and must not be used.
+    """
+    try:
+        uuid.UUID(session_id)
+    except (ValueError, TypeError, AttributeError):
+        return None
+    root = muse_sessions_root()
+    try:
+        if not root.is_dir() or root.is_symlink():
+            return None
+    except OSError:
+        return None
+    matches: list[Path] = []
+    try:
+        for year in root.iterdir():
+            if not _shard_dir(year):
+                continue
+            for month in year.iterdir():
+                if not _shard_dir(month):
+                    continue
+                for day in month.iterdir():
+                    if not _shard_dir(day):
+                        continue
+                    session_dir = day / session_id
+                    try:
+                        if session_dir.is_symlink() or not session_dir.is_dir():
+                            continue
+                    except OSError:
+                        continue
+                    candidate = session_dir / "session.jsonl"
+                    try:
+                        if candidate.is_file() and not candidate.is_symlink():
+                            matches.append(candidate)
+                    except OSError:
+                        continue
+                    if len(matches) > 1:
+                        return None
+    except OSError:
+        return None
+    return matches[0] if len(matches) == 1 else None
+
+
+def _shard_dir(path: Path) -> bool:
+    """A date-shard level: ASCII digits, a real directory, never a link."""
+    try:
+        return (
+            _ASCII_DIGITS.fullmatch(path.name) is not None
+            and path.is_dir()
+            and not path.is_symlink()
+        )
+    except OSError:
+        return False
 
 
 def transcript_binding_state(
@@ -509,6 +610,13 @@ def transcript_binding_state(
                         declared = (metadata.get("id"), metadata.get("session_id"))
                 elif client == "claude":
                     declared = (payload.get("sessionId"),)
+                elif client == "muse":
+                    stream = payload.get("stream")
+                    declared = (
+                        (stream.get("id"),)
+                        if isinstance(stream, dict)
+                        else ()
+                    )
                 for value in declared:
                     if value is None or value == "":
                         continue

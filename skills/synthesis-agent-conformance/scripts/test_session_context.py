@@ -736,6 +736,184 @@ def test_live_receipt_preserves_empty_claude_transcript_until_binding(
     assert recorded["transcript_bound_at_record"] is False
 
 
+def _muse_store(tmp_path: Path, session_id: str, *, declared: str | None = None) -> Path:
+    store = tmp_path / "muse-sessions"
+    log = store / "2026" / "09" / "17" / session_id / "session.jsonl"
+    log.parent.mkdir(parents=True)
+    log.write_text(
+        json.dumps({"stream": {"kind": "session", "id": declared or session_id}}) + "\n",
+        encoding="utf-8",
+    )
+    return store
+
+
+def test_muse_payload_without_transcript_path_records_bound_receipt(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "live" / "public-sessionstart.json"
+    session_id = "019fff79-5858-7993-a329-b301bccf5d99"
+    store = _muse_store(tmp_path, session_id)
+    monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
+    payload = {
+        "hook_event_name": "SessionStart",
+        "session_id": session_id,
+        "source": "startup",
+        "cwd": "/tmp/muse-hook-probe",
+        "transcript_path": None,
+    }
+
+    assert MODULE.record_live_receipt(payload, receipt)
+
+    recorded = json.loads(receipt.read_text(encoding="utf-8"))
+    assert recorded["client"] == "muse"
+    assert recorded["provenance_env"] == "muse-transcript"
+    assert recorded["transcript_bound_at_record"] is True
+    assert recorded["transcript_path"] == str(
+        store / "2026" / "09" / "17" / session_id / "session.jsonl"
+    )
+
+
+def test_muse_payload_without_store_evidence_records_nothing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "live" / "public-sessionstart.json"
+    store = tmp_path / "muse-sessions"
+    store.mkdir()
+    monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
+
+    assert MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": "019fff79-5858-7993-a329-b301bccf5daa",
+            "source": "startup",
+            "transcript_path": None,
+        },
+        receipt,
+    ) is False
+    assert not receipt.exists()
+
+
+def test_muse_payload_with_conflicting_log_records_nothing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "live" / "public-sessionstart.json"
+    session_id = "019fff79-5858-7993-a329-b301bccf5dbb"
+    store = _muse_store(
+        tmp_path, session_id, declared="019fff79-5858-7993-a329-b301bccf5dcc"
+    )
+    monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
+
+    assert MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "source": "startup",
+            "transcript_path": None,
+        },
+        receipt,
+    ) is False
+    assert not receipt.exists()
+
+
+def test_muse_store_with_two_date_shards_for_one_session_is_ambiguous(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "live" / "public-sessionstart.json"
+    session_id = "019fff79-5858-7993-a329-b301bccf5ddd"
+    store = _muse_store(tmp_path, session_id)
+    second = store / "2026" / "09" / "18" / session_id / "session.jsonl"
+    second.parent.mkdir(parents=True)
+    second.write_text(
+        json.dumps({"stream": {"kind": "session", "id": session_id}}) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
+
+    assert MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "source": "startup",
+            "transcript_path": None,
+        },
+        receipt,
+    ) is False
+    assert not receipt.exists()
+
+
+def test_muse_store_ignores_non_digit_shards_and_symlinked_session_dirs(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "live" / "public-sessionstart.json"
+    session_id = "019fff79-5858-7993-a329-b301bccf5dee"
+    store = _muse_store(tmp_path, session_id)
+    decoy = store / "latest" / "09" / "17" / session_id / "session.jsonl"
+    decoy.parent.mkdir(parents=True)
+    decoy.write_text(
+        json.dumps({"stream": {"kind": "session", "id": session_id}}) + "\n",
+        encoding="utf-8",
+    )
+    target = store / "2026" / "09" / "19"
+    target.mkdir(parents=True)
+    link = target / session_id
+    try:
+        link.symlink_to(store / "2026" / "09" / "17" / session_id, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks unavailable")
+    monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
+
+    assert MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "source": "startup",
+            "transcript_path": None,
+        },
+        receipt,
+    )
+    recorded = json.loads(receipt.read_text(encoding="utf-8"))
+    assert recorded["client"] == "muse"
+
+
+def test_muse_message_text_uuid_is_not_binding_evidence(
+    tmp_path: Path, monkeypatch
+) -> None:
+    receipt = tmp_path / "live" / "public-sessionstart.json"
+    session_id = "019fff79-5858-7993-a329-b301bccf5dff"
+    store = tmp_path / "muse-sessions"
+    log = store / "2026" / "09" / "17" / session_id / "session.jsonl"
+    log.parent.mkdir(parents=True)
+    log.write_text(
+        json.dumps({"message": f"resuming {session_id} now", "stream": "oops"}) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
+
+    assert MODULE.record_live_receipt(
+        {
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "source": "startup",
+            "transcript_path": None,
+        },
+        receipt,
+    ) is False
+    assert not receipt.exists()
+
+
+def test_claude_pending_transcript_is_never_shadowed_by_the_muse_store(
+    tmp_path: Path, monkeypatch
+) -> None:
+    session_id = "019fff79-5858-7993-a329-b301bccf5e00"
+    store = _muse_store(tmp_path, session_id)
+    monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
+    missing = tmp_path / ".claude" / "projects" / "w" / f"{session_id}.jsonl"
+
+    assert MODULE.client_provenance(
+        {"session_id": session_id, "transcript_path": str(missing)}, session_id
+    ) is None
+
+
 def test_same_claude_session_retains_pending_and_bound_events(
     tmp_path: Path, monkeypatch
 ) -> None:

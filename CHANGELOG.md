@@ -4,6 +4,18 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.102.0] - 2026-09-17
+
+Muse joins as a third client. A native `.muse-plugin` bundle ships the skill
+catalog with SessionStart/Stop lifecycle hooks, `muse:` peer identity works
+across coordination and project state, and transcript binding resolves Muse's
+date-sharded session store. Muse live-load receipts validate; desired-state
+targeting for Muse remains a later milestone.
+
+CLI usage errors can no longer read as success. Every coordination subcommand
+failure now carries an unmistakable FAILED banner instead of echoing the
+caller's own arguments back at them.
+
 ## [4.101.1] - 2026-09-17
 
 Full setup gives copied Git-hook runtime files the writable modes required by
