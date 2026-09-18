@@ -96,6 +96,10 @@ CATEGORIES = {
         "Using 'pre-existing' / 'out of scope' / 'not introduced by this change' "
         "to avoid fixing problems in code being actively modified."
     ),
+    "effort_rationale": (
+        "Deciding a recommendation by implementation cost when the user has "
+        "removed cost from the decision set."
+    ),
 }
 
 
@@ -607,6 +611,36 @@ EMBEDDED_PHRASES = [
         "rationale": "YAGNI applied to user-raised concerns is dismissal in costume.",
         "replacement": "Solve the user-raised concern; YAGNI is about speculative future features.",
         "case_ref": "case-studies.md#patterns-across-the-cases",
+    },
+
+    # -- effort_rationale --
+    {
+        "id": "er_fraction_of_cost",
+        "phrase": r"fraction of (the|its|their) (cost|effort)",
+        "match": "regex",
+        "category": "effort_rationale",
+        "exempt_when": [
+            r'"fraction of',
+            r"'fraction of",
+            r"the phrase fraction",
+        ],
+        "rationale": "Cost comparison presented as the deciding pro when the user optimizes for best.",
+        "replacement": "Decide on the merits; state cost separately as information, never as the reason.",
+        "case_ref": "case-studies.md#case-7",
+    },
+    {
+        "id": "er_cheaper_option",
+        "phrase": r"cheaper (option|alternative|to build|path)",
+        "match": "regex",
+        "category": "effort_rationale",
+        "exempt_when": [
+            r'"cheaper',
+            r"'cheaper",
+            r"the phrase cheaper",
+        ],
+        "rationale": "Cheapness scored as virtue without the user's constraint set.",
+        "replacement": "Only 'cheaper with merits equal' survives; then cheapness is a tiebreak, not the reason.",
+        "case_ref": "case-studies.md#case-7",
     },
 ]
 

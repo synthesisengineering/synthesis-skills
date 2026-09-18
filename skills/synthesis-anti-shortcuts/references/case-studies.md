@@ -224,9 +224,39 @@ No vocabulary entries — this case generates a procedural rule rather than a ph
 
 ---
 
+## Case 7: The Recommendation Decided by Build Cost
+
+### Situation
+
+An agent was running an autonomous fix cycle under a standing user constraint: best, most robust, most flexible solution; implementation cost is never the decision criterion. The user asked for a ruling between two approaches to a shared-tool behavior — keep the current mechanism with louder records, or restructure it so the safe operation and the destructive operation were distinct verbs.
+
+### What the agent did
+
+The agent recommended keeping the current mechanism. The decisive pro in its analysis was cost: the recommended option came "at a fraction of" the other option's build cost. The user pushed back in the same sitting:
+
+> "If the restructured option is the better solution even if it is a bigger build, I prefer that. Are you not aware of my philosophy of always preferring superior, long lasting, more robust solutions over shortcuts or what's easy?"
+
+Re-done on the merits, the restructured option was the better solution — the agent's cost framing had inverted the user's stated priority order.
+
+### Why it counts as a costume
+
+The user had removed "implementation cost" from the decision set. The agent's selection still scored it as the decisive pro. The conservative-default behavior — "minimize change" — overrode the user's explicit instruction, exactly as in Case 1, with a different optimization target.
+
+The costume: "fraction of the cost," "smaller build," "cheaper option" as deciding pros in a recommendation. Each phrase reads as engineering prudence when scored without context. None is a virtue when the user has explicitly removed cost from the considerations.
+
+### What should have happened
+
+The constraint-first protocol would have placed "cost is never the decision criterion" at the top of the analysis, and every cost-framed pro in the forbidden-criteria list. The recommendation would have been decided on the merits — robustness, failure modes, longevity — with cost stated separately as information, never as the reason.
+
+### Catalog entries this case produced
+
+Category 9, `effort_rationale`, in [`costume-vocabulary.md`](costume-vocabulary.md), with scanner patterns for the tightest phrasings.
+
+---
+
 ## Patterns Across the Cases
 
-Six different domains. The same shape:
+Seven different domains. The same shape:
 
 - A choice was available between a higher-effort path that served the user's stated goal and a lower-effort path that violated it.
 - The agent picked the lower-effort path.
