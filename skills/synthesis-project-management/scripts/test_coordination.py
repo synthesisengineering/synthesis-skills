@@ -9,7 +9,7 @@ import subprocess
 import sys
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -2708,3 +2708,287 @@ def test_failed_claim_usage_cannot_read_as_a_granted_lock(capsys) -> None:
     banner = capsys.readouterr().err
     assert "claim FAILED" in banner
     assert "no board write occurred" in banner
+
+
+DOWNGRADE_STALE_HEARTBEAT = "2020-01-01T00:00:00+00:00"
+
+
+def age_session_heartbeat(board: Path, compact_id: str, heartbeat: str) -> None:
+    """Rewrite one v4 row's heartbeat cell, verifying started is untouched."""
+    text = board.read_text(encoding="utf-8")
+    target = next(s for s in MODULE.rows(text) if s.compact_id == compact_id)
+    current = target.heartbeat
+    lines = text.splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        if compact_id not in line:
+            continue
+        assert line.count(current) >= 1
+        # started precedes heartbeat, so the last occurrence is the heartbeat.
+        head, sep, tail = line.rpartition(current)
+        assert sep
+        lines[index] = head + heartbeat + tail
+        break
+    else:
+        raise AssertionError(f"no row for {compact_id}")
+    board.write_text("".join(lines), encoding="utf-8")
+    aged = next(
+        s
+        for s in MODULE.rows(board.read_text(encoding="utf-8"))
+        if s.compact_id == compact_id
+    )
+    assert aged.heartbeat == heartbeat
+    assert aged.started == target.started
+
+
+def test_claim_through_stale_area_overlap_is_granted_with_downgrade_record(
+    tmp_path: Path, capsys
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+        )
+    ) == 0
+    [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
+    age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
+
+    newcomer = claim_args(
+        board,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/repo-b @ feature/b",
+        area="repo/shared/file.md",
+    )
+    assert MODULE.command_claim(newcomer) == 0
+    out = capsys.readouterr().out
+    assert "advisory" in out.lower()
+    assert holder.compact_id in out
+    bus = board.read_text(encoding="utf-8")
+    assert "DOWNGRADE NOTICE" in bus
+    assert holder.compact_id in bus
+
+
+def test_fresh_area_overlap_is_still_refused(tmp_path: Path) -> None:
+    board = tmp_path / "active-sessions.md"
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+        )
+    ) == 0
+    newcomer = claim_args(
+        board,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/repo-b @ feature/b",
+        area="repo/shared/file.md",
+    )
+    assert MODULE.command_claim(newcomer) == 10
+
+
+def test_stale_workspace_sharing_is_granted_through_advisory(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/shared @ feature/a",
+            area="repo/backend/**",
+        )
+    ) == 0
+    [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
+    age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
+    newcomer = claim_args(
+        board,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/shared @ feature/b",
+        area="repo/frontend/**",
+    )
+    assert MODULE.command_claim(newcomer) == 0
+
+
+def test_duplicate_owner_is_still_refused_when_existing_owner_is_stale(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="shared-project",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/a/**",
+        )
+    ) == 0
+    [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
+    age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
+    newcomer = claim_args(
+        board,
+        session_id="B",
+        project="shared-project",
+        workspace="/tmp/repo-b @ feature/b",
+        area="repo/b/**",
+    )
+    assert MODULE.command_claim(newcomer) == 10
+
+
+def test_undated_heartbeat_keeps_blocking(tmp_path: Path) -> None:
+    board = tmp_path / "active-sessions.md"
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+        )
+    ) == 0
+    [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
+    age_session_heartbeat(board, holder.compact_id, "not-a-date")
+    newcomer = claim_args(
+        board,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/repo-b @ feature/b",
+        area="repo/shared/file.md",
+    )
+    assert MODULE.command_claim(newcomer) == 10
+
+
+def test_revival_heartbeat_is_refused_when_claim_was_granted_through(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:revival-a")
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+        )
+    ) == 0
+    [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
+    age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:revival-b")
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="B",
+            project="project-b",
+            workspace="/tmp/repo-b @ feature/b",
+            area="repo/shared/file.md",
+        )
+    ) == 0
+    capsys.readouterr()
+
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:revival-a")
+    assert MODULE.command_heartbeat(args(board, id="A")) == 10
+    err = capsys.readouterr().err
+    [newcomer] = [
+        s for s in MODULE.rows(board.read_text(encoding="utf-8")) if s.legacy_id == "B"
+    ]
+    assert newcomer.compact_id in err
+    assert "narrow" in err.lower()
+    revived = next(
+        s
+        for s in MODULE.rows(board.read_text(encoding="utf-8"))
+        if s.compact_id == holder.compact_id
+    )
+    assert revived.heartbeat == DOWNGRADE_STALE_HEARTBEAT
+
+
+def test_revival_heartbeat_is_accepted_without_collision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:revival-a")
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+        )
+    ) == 0
+    [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
+    age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
+
+    assert MODULE.command_heartbeat(args(board, id="A")) == 0
+    newcomer = claim_args(
+        board,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/repo-b @ feature/b",
+        area="repo/shared/file.md",
+    )
+    assert MODULE.command_claim(newcomer) == 10
+
+
+def test_downgrade_boundary_follows_the_two_day_threshold(
+    tmp_path: Path,
+) -> None:
+    just_old = (
+        datetime.now(timezone.utc) - timedelta(days=2, seconds=60)
+    ).isoformat()
+    just_fresh = (
+        datetime.now(timezone.utc) - timedelta(days=2) + timedelta(seconds=60)
+    ).isoformat()
+    for heartbeat, expected in ((just_old, 0), (just_fresh, 10)):
+        board = tmp_path / f"active-{expected}.md"
+        assert MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+            )
+        ) == 0
+        [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
+        age_session_heartbeat(board, holder.compact_id, heartbeat)
+        newcomer = claim_args(
+            board,
+            session_id="B",
+            project="project-b",
+            workspace="/tmp/repo-b @ feature/b",
+            area="repo/shared/file.md",
+        )
+        assert MODULE.command_claim(newcomer) == expected
+
+
+def test_stale_marks_advisory_rows(tmp_path: Path, capsys) -> None:
+    board = tmp_path / "active-sessions.md"
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+        )
+    ) == 0
+    [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
+    age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
+
+    command = args(board, threshold=1.0, limit=10, all=True, json=False)
+    assert MODULE.command_stale(command) == 0
+    assert "ADVISORY" in capsys.readouterr().out
+
+    command = args(board, threshold=1.0, limit=10, all=True, json=True)
+    assert MODULE.command_stale(command) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["shown"][0]["advisory"] is True

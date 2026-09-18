@@ -327,10 +327,10 @@ Rules:
    reaches the addressed seat at its next prompt: unresolvable means bus.
 8. **Heartbeat, narrow and release explicitly.** At checkpoints and task/phase
    changes, refresh the heartbeat, review scope and promptly release completed areas.
-   Paused sessions narrow or release their claims. Stale active rows still block;
-   elapsed time never transfers ownership. `coordination.py stale` reports quiet claims.
-   Session IDs are addresses: own-seat mutations require that seat; administrative
-   release requires explicit operator authorization and its recorded reason.
+   Quiet past the stale threshold, a row is ADVISORY: no blocking, grants on the
+   bus; heartbeat to re-assert, narrowing first on collision. `stale` reports quiet
+   claims. Session IDs are addresses: own-seat mutations require that seat; admin
+   release needs explicit authorization and recorded reason.
 9. **Advisory does not mean optional.** The filesystem cannot stop every tool,
    so the protocol and checkpoint hooks make the shared obligation visible.
 
