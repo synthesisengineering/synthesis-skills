@@ -3042,3 +3042,99 @@ def test_stale_marks_advisory_rows(tmp_path: Path, capsys) -> None:
     assert MODULE.command_stale(command) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["shown"][0]["advisory"] is True
+
+
+def _claim_with_client_ref(board: Path, *, client_ref: str, **kwargs):
+    command = claim_args(board, **kwargs)
+    command.client_ref = client_ref
+    return command
+
+
+def test_empty_seat_falls_back_to_matching_board_ref(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Defect 6 remainder (the s-tgy2 class): a seat that proves nothing must
+    # not block the proof the row carries. Exotic-scheme --client-ref still
+    # mints such a seat (muse:/codex: refs populate it since the spike).
+    board = tmp_path / "active-sessions.md"
+    assert MODULE.command_claim(
+        _claim_with_client_ref(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+            client_ref="custom:holder",
+        )
+    ) == 0
+    [row] = MODULE.rows(board.read_text(encoding="utf-8"))
+    assert row.client_ref == "custom:holder"
+    seat = MODULE.read_seat(board, row.session_uuid)
+    assert seat is not None
+    assert not seat.harness_session_id and not seat.host_session_id
+
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "custom:holder")
+    assert MODULE.command_heartbeat(args(board, id="A")) == 0
+
+
+def test_empty_seat_still_refuses_wrong_and_missing_refs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    assert MODULE.command_claim(
+        _claim_with_client_ref(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+            client_ref="custom:holder",
+        )
+    ) == 0
+
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "custom:intruder")
+    assert MODULE.command_heartbeat(args(board, id="A")) == 10
+    monkeypatch.delenv("SYNTHESIS_CLIENT_SESSION_REF", raising=False)
+    assert MODULE.command_heartbeat(args(board, id="A")) == 10
+
+
+def test_identityless_caller_gets_export_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner")
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+        )
+    ) == 0
+    monkeypatch.delenv("SYNTHESIS_CLIENT_SESSION_REF", raising=False)
+
+    assert MODULE.command_heartbeat(args(board, id="A")) == 10
+    assert "SYNTHESIS_CLIENT_SESSION_REF" in capsys.readouterr().err
+
+
+def test_mismatched_identity_keeps_generic_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner")
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+        )
+    ) == 0
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:intruder")
+
+    assert MODULE.command_heartbeat(args(board, id="A")) == 10
+    err = capsys.readouterr().err
+    assert "does not own the target session seat" in err
+    assert "SYNTHESIS_CLIENT_SESSION_REF" not in err

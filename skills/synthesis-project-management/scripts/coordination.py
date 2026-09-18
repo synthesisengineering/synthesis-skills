@@ -1808,8 +1808,7 @@ def command_claim(args) -> int:
                 )
             if not _caller_owns_session(args.board, existing_self):
                 raise RuntimeError(
-                    "caller identity does not own the target session seat; "
-                    "omit --session to allocate a new identity"
+                    seat_ownership_error("omit --session to allocate a new identity")
                 )
         identity = (
             existing_self.identity
@@ -1975,9 +1974,7 @@ def command_heartbeat(args) -> int:
         if not active(session):
             raise RuntimeError(f"session is not active: {args.id}")
         if not _caller_owns_session(args.board, session):
-            raise RuntimeError(
-                "caller identity does not own the target session seat"
-            )
+            raise RuntimeError(seat_ownership_error())
         before = set(validate_sessions(current))
         session.heartbeat = timestamp()
         after = set(validate_sessions(current))
@@ -2023,6 +2020,28 @@ def command_heartbeat(args) -> int:
     return 0
 
 
+def seat_ownership_error(extra: str = "") -> str:
+    """Refusal message for a failed seat-ownership check.
+
+    The mismatch wording is byte-stable; a caller with no identity handles at
+    all additionally gets the export hint, since that failure is always an
+    environment omission rather than a wrong seat.
+    """
+    message = "caller identity does not own the target session seat"
+    caller = detect_self()
+    if not (
+        caller.harness_session_id or caller.host_session_id or caller.explicit_ref
+    ):
+        message += (
+            "; this process exports no client identity "
+            "(export SYNTHESIS_CLIENT_SESSION_REF=<scheme>:<id> to identify "
+            "this session)"
+        )
+    if extra:
+        message += f"; {extra}"
+    return message
+
+
 def _caller_owns_session(board: Path, session: Session) -> bool:
     """Whether the running client identity owns this board session.
 
@@ -2031,7 +2050,9 @@ def _caller_owns_session(board: Path, session: Session) -> bool:
     that id. Every mutation of an existing row therefore binds to the exact
     harness identity recorded at claim time whenever a seat exists. The host
     delivery id is used only for a legacy seat that has no exact harness
-    identity.
+    identity. A seat that carries neither proves nothing either way, so it
+    falls through to the row's own ref instead of failing closed on an empty
+    sidecar (defect 6: the s-tgy2 class).
     """
     caller = detect_self()
     seat = read_seat(board, session.session_uuid)
@@ -2051,10 +2072,9 @@ def _caller_owns_session(board: Path, session: Session) -> bool:
                 caller.host_session_id
                 and caller.host_session_id == seat.host_session_id
             )
-        return False
 
-    # Rows created before seat registration remain mutable by their exact board
-    # client ref. Truly legacy rows have neither identity surface, so a bare
+    # Rows without a proving seat remain mutable by their exact board client
+    # ref. Truly legacy rows have neither identity surface, so a bare
     # selector cannot establish authority and must fail closed.
     if session.client_ref:
         try:
@@ -2108,8 +2128,9 @@ def command_release(args) -> int:
             raise RuntimeError(f"session not found: {args.id}")
         if not administrative and not _caller_owns_session(args.board, session):
             raise RuntimeError(
-                "caller identity does not own the target session seat; "
-                "cross-session release requires --administrative and --reason"
+                seat_ownership_error(
+                    "cross-session release requires --administrative and --reason"
+                )
             )
         session.status = "released"
         session.heartbeat = timestamp()
