@@ -746,6 +746,34 @@ def stale(session: Session, minutes: int) -> bool:
     return now - heartbeat > timedelta(minutes=minutes)
 
 
+def downgraded(session: Session) -> bool:
+    """Whether this active row's claims are advisory rather than blocking.
+
+    Rajiv's 2026-09-18 ruling on defect 1: a claim downgrades automatically on
+    heartbeat age, with a loud record. The trigger is heartbeat age ONLY —
+    never a snapshot change (defect 4's caution). Report and enforcement share
+    STALE_CLAIM_DEFAULT_DAYS deliberately, so `stale` output names exactly the
+    advisory set. An undated heartbeat can prove nothing either way, so it
+    keeps blocking: unknown age never auto-downgrades.
+    """
+    if not active(session):
+        return False
+    if parse_time(session.heartbeat) is None:
+        return False
+    return stale(session, STALE_CLAIM_DEFAULT_DAYS * 24 * 60)
+
+
+def heartbeat_age_days(session: Session) -> float | None:
+    """Parseable heartbeat age in days, or None when undated."""
+    beat = parse_time(session.heartbeat)
+    if beat is None:
+        return None
+    now = datetime.now().astimezone()
+    if beat.tzinfo is None:
+        beat = beat.replace(tzinfo=now.tzinfo)
+    return (now - beat).total_seconds() / 86400.0
+
+
 def replace_table(
     text: str, sessions: list[Session], *, force_schema: int | None = None
 ) -> str:
@@ -1250,17 +1278,24 @@ def _check_staged_board_snapshot(board: Path) -> str | None:
         return content
 
 
-def validate_sessions(sessions: list[Session]) -> list[str]:
+def validate_sessions(
+    sessions: list[Session],
+    notices: list[dict[str, object]] | None = None,
+) -> list[str]:
     scopes = claim_scope.ClaimScopeResolver()
     claims = [(claim, tuple(session.workspaces)) for session in sessions if active(session) for claim in session.claims]
     try:
         with scopes.snapshot(claims):
-            return _validate_sessions(sessions, scopes)
+            return _validate_sessions(sessions, scopes, notices=notices)
     except claim_scope.ClaimIdentityError as exc:
         return [f"unverifiable claim identity snapshot: {exc}"]
 
 
-def _validate_sessions(sessions: list[Session], scopes) -> list[str]:
+def _validate_sessions(
+    sessions: list[Session],
+    scopes,
+    notices: list[dict[str, object]] | None = None,
+) -> list[str]:
     problems: list[str] = []
     seen_selectors: dict[tuple[str, object], str] = {}
     for session in sessions:
@@ -1303,6 +1338,10 @@ def _validate_sessions(sessions: list[Session], scopes) -> list[str]:
                         f"session {left.label} is a contributor but claims context: {claim}"
                     )
         for right in live[index + 1 :]:
+            left_advisory = downgraded(left)
+            right_advisory = downgraded(right)
+            advisory_pair = left_advisory or right_advisory
+            area_details: list[str] = []
             for left_claim in left.claims:
                 for right_claim in right.claims:
                     try:
@@ -1312,19 +1351,49 @@ def _validate_sessions(sessions: list[Session], scopes) -> list[str]:
                         problems.append(f"{left.label} / {right.label}: unverifiable claim scope: {exc}")
                         continue
                     if conflict:
-                        problems.append(
-                            f"{left.label}:{left_claim} overlaps "
-                            f"{right.label}:{right_claim}"
-                        )
+                        if advisory_pair:
+                            area_details.append(
+                                f"{left_claim} overlaps {right_claim}"
+                            )
+                        else:
+                            problems.append(
+                                f"{left.label}:{left_claim} overlaps "
+                                f"{right.label}:{right_claim}"
+                            )
+            workspace_details: list[str] = []
             for left_workspace in left.workspaces:
                 for right_workspace in right.workspaces:
                     if workspace_conflict(left_workspace, right_workspace):
-                        problems.append(
-                            f"{left.label} and {right.label} share workspace or branch: "
-                            f"{left_workspace} / {right_workspace}. Use an isolated "
-                            "worktree with a distinct branch and claim that exact "
-                            "workspace before writing"
-                        )
+                        if advisory_pair:
+                            workspace_details.append(
+                                f"{left_workspace} / {right_workspace}"
+                            )
+                        else:
+                            problems.append(
+                                f"{left.label} and {right.label} share workspace or branch: "
+                                f"{left_workspace} / {right_workspace}. Use an isolated "
+                                "worktree with a distinct branch and claim that exact "
+                                "workspace before writing"
+                            )
+            if (
+                advisory_pair
+                and notices is not None
+                and (area_details or workspace_details)
+            ):
+                advisory_sides = [
+                    session.compact_id
+                    for session, is_advisory in ((left, left_advisory), (right, right_advisory))
+                    if is_advisory
+                ]
+                notices.append(
+                    {
+                        "left": left.compact_id,
+                        "right": right.compact_id,
+                        "advisory": advisory_sides,
+                        "areas": area_details,
+                        "workspaces": workspace_details,
+                    }
+                )
             if (
                 left.project not in {"", "unknown", "none"}
                 and left.project == right.project
@@ -1627,6 +1696,50 @@ def command_check_staged(args) -> int:
     return 0
 
 
+def append_bus_block(content: str, block: str) -> str:
+    """Insert a bus entry before the Protocol boundary, fail-closed."""
+    marker = re.search(
+        r"(?m)^---[ \t]*\n\n## Protocol(?:[^\n]*)?$",
+        content,
+    )
+    if not marker:
+        raise RuntimeError("board lacks Protocol boundary")
+    return content[: marker.start()] + block + content[marker.start() :]
+
+
+def downgrade_notice_block(
+    stale_session: Session,
+    granted_compact_id: str,
+    areas: list[str],
+    workspaces: list[str],
+) -> str:
+    """The loud record for an automatic downgrade grant-through.
+
+    Addressed to the downgraded seat so its owner meets it in the inbox;
+    durable on the bus for every peer.
+    """
+    age = heartbeat_age_days(stale_session)
+    age_text = f"{age:.1f}d" if age is not None else "unknown age"
+    lines = [
+        f"### → {stale_session.compact_id}, from {granted_compact_id} — {timestamp()}",
+        "",
+        "DOWNGRADE NOTICE: "
+        f"{granted_compact_id} was granted through your advisory claim "
+        f"(heartbeat quiet {age_text}; threshold "
+        f"{STALE_CLAIM_DEFAULT_DAYS:g}d).",
+    ]
+    for detail in areas:
+        lines.append(f"  areas: {detail}")
+    for detail in workspaces:
+        lines.append(f"  workspaces: {detail}")
+    lines.append(
+        "Your row stays active but no longer blocks overlapping claims. "
+        "To re-assert, heartbeat; if your areas now collide with a live "
+        "claim, the heartbeat names it — narrow or release first."
+    )
+    return "\n".join(lines) + "\n\n"
+
+
 def command_claim(args) -> int:
     requested = [sanitize(area) for area in args.area]
     workspaces = [sanitize(workspace) for workspace in args.workspace]
@@ -1733,10 +1846,56 @@ def command_claim(args) -> int:
         ]
         if existing_self is None:
             prospective.append(replacement)
-        problems = validate_sessions(prospective)
+        downgrade_notices: list[dict[str, object]] = []
+        problems = validate_sessions(prospective, notices=downgrade_notices)
         if problems:
             raise RuntimeError("; ".join(problems))
-        return replace_table(content, prospective)
+        granted: list[dict[str, object]] = []
+        for notice in downgrade_notices:
+            advisory = notice.get("advisory", [])
+            sides = (notice.get("left"), notice.get("right"))
+            if (
+                len(advisory) != 1
+                or identity.compact_id not in sides
+                or identity.compact_id in advisory
+            ):
+                continue
+            stale_id = advisory[0]
+            stale_session = next(
+                (
+                    session
+                    for session in current
+                    if session.compact_id == stale_id
+                ),
+                None,
+            )
+            if stale_session is None:
+                continue
+            granted.append(
+                {
+                    "stale": stale_id,
+                    "age_days": heartbeat_age_days(stale_session),
+                    "areas": notice.get("areas", []),
+                    "workspaces": notice.get("workspaces", []),
+                }
+            )
+        claimed["downgrades"] = granted
+        updated = replace_table(content, prospective)
+        by_compact = {s.compact_id: s for s in current}
+        for record in granted:
+            stale_session = by_compact.get(record["stale"])
+            if stale_session is None:
+                continue
+            updated = append_bus_block(
+                updated,
+                downgrade_notice_block(
+                    stale_session,
+                    identity.compact_id,
+                    list(record.get("areas", [])),
+                    list(record.get("workspaces", [])),
+                ),
+            )
+        return updated
 
     try:
         locked_update(args.board, operation)
@@ -1749,6 +1908,18 @@ def command_claim(args) -> int:
         f"Claimed {', '.join(requested)} for session {identity.compact_id} "
         f"({identity.speakable_id}; uuid={identity.session_uuid}{legacy})."
     )
+    for record in claimed.get("downgrades", []):
+        age = record.get("age_days")
+        age_text = f"{age:.1f}d" if isinstance(age, float) else "unknown age"
+        what = "; ".join(
+            [*(f"areas: {d}" for d in record.get("areas", [])),
+             *(f"workspaces: {d}" for d in record.get("workspaces", []))]
+        )
+        print(
+            f"NOTICE: granted through advisory claim {record.get('stale')} "
+            f"(quiet {age_text}; {what}). "
+            "Downgrade record appended to the board bus."
+        )
     seat = write_seat(
         args.board,
         session_uuid=identity.session_uuid,
@@ -1791,7 +1962,24 @@ def command_heartbeat(args) -> int:
             raise RuntimeError(
                 "caller identity does not own the target session seat"
             )
+        before = set(validate_sessions(current))
         session.heartbeat = timestamp()
+        after = set(validate_sessions(current))
+        # Only newly introduced problems refuse: pre-existing board issues are
+        # not this heartbeat's fault. Snapshot-flavored problems are excluded
+        # from the diff — that signal is recorded as unreliable (defect 4) and
+        # must never strand a live seat's revival on its own.
+        introduced = sorted(
+            problem
+            for problem in (after - before)
+            if "unverifiable claim identity snapshot" not in problem
+        )
+        if introduced:
+            raise RuntimeError(
+                "heartbeat would re-assert blocking claims that now collide "
+                "with a live session: " + "; ".join(introduced) + ". Narrow "
+                "or release the overlapping areas first, then heartbeat again."
+            )
         updated["identity"] = session.identity
         return replace_table(content, current)
 
@@ -2535,6 +2723,7 @@ def command_stale(args) -> int:
                 "project": s.project,
                 "heartbeat": s.heartbeat,
                 "age_days": round(age, 2),
+                "advisory": downgraded(s),
                 "evidence": note,
                 "worktree_gone": gone,
                 "claims": s.claims,
@@ -2550,20 +2739,23 @@ def command_stale(args) -> int:
 
     print(f"Coordination review: {len(stale)} of {live} active session(s) have "
           f"been quiet for more than {args.threshold:g} day(s).")
-    print("A dead session's row keeps blocking every overlapping claim, so these "
-          "cost real work.")
-    print("Releasing one is YOUR call — elapsed time is not proof, and no agent "
-          "should decide it.\n")
+    print(f"Rows quiet past {STALE_CLAIM_DEFAULT_DAYS:g}d are ADVISORY: they no "
+          "longer block overlapping claims, and grants through them are "
+          "recorded on the bus. Releasing a row stays YOUR call — advisory "
+          "is not proof of death, and no agent releases another seat.\n")
     for age, session, note, gone in shown:
         flag = "LIKELY GONE" if gone else "unverified"
-        print(f"  {session.compact_id}  [{flag}]  quiet {age:.1f}d")
+        advisory = downgraded(session)
+        state = "ADVISORY" if advisory else "blocking"
+        print(f"  {session.compact_id}  [{flag}]  quiet {age:.1f}d  [{state}]")
         print(f"    agent:    {session.agent} on {session.machine}")
         print(f"    project:  {session.project}")
         print(f"    evidence: {note}")
         if session.claims:
             head = session.claims[0]
             extra = f" (+{len(session.claims) - 1} more)" if len(session.claims) > 1 else ""
-            print(f"    blocks:   {head}{extra}")
+            label = "holds:    " if advisory else "blocks:   "
+            print(f"    {label}{head}{extra}")
         print(f"    release:  coordination.py release --id {session.compact_id}\n")
     if len(stale) > len(shown):
         print(f"  ...and {len(stale) - len(shown)} more; --all shows every one.")
@@ -2825,7 +3017,8 @@ def parser() -> argparse.ArgumentParser:
     stale = commands.add_parser(
         "stale",
         help="Report active claims whose heartbeat has gone quiet. Reports "
-        "only; releasing a claim stays the user's decision.",
+        "only; rows past the default threshold are advisory automatically, "
+        "and releasing a claim stays the user's decision.",
     )
     stale.add_argument("--threshold", type=float,
                        default=STALE_CLAIM_DEFAULT_DAYS,
