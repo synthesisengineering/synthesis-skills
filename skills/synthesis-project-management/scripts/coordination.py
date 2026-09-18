@@ -1360,26 +1360,13 @@ def _validate_sessions(
                                 f"{left.label}:{left_claim} overlaps "
                                 f"{right.label}:{right_claim}"
                             )
-            workspace_details: list[str] = []
-            for left_workspace in left.workspaces:
-                for right_workspace in right.workspaces:
-                    if workspace_conflict(left_workspace, right_workspace):
-                        if advisory_pair:
-                            workspace_details.append(
-                                f"{left_workspace} / {right_workspace}"
-                            )
-                        else:
-                            problems.append(
-                                f"{left.label} and {right.label} share workspace or branch: "
-                                f"{left_workspace} / {right_workspace}. Use an isolated "
-                                "worktree with a distinct branch and claim that exact "
-                                "workspace before writing"
-                            )
-            if (
-                advisory_pair
-                and notices is not None
-                and (area_details or workspace_details)
-            ):
+            # No workspace-pair refusal: Rajiv's 2026-09-18 decided change
+            # dissolved the exclusive checkout lock. Same-checkout seats with
+            # disjoint areas share freely; check-staged (which sees only
+            # `commit -o` paths, probe 2026-09-18) fails closed on anything
+            # co-staged outside the committing seat's claim. Sharing earns a
+            # claim-time banner naming the discipline, never a bus record.
+            if advisory_pair and notices is not None and area_details:
                 advisory_sides = [
                     session.compact_id
                     for session, is_advisory in ((left, left_advisory), (right, right_advisory))
@@ -1391,7 +1378,6 @@ def _validate_sessions(
                         "right": right.compact_id,
                         "advisory": advisory_sides,
                         "areas": area_details,
-                        "workspaces": workspace_details,
                     }
                 )
             if (
@@ -1711,7 +1697,6 @@ def downgrade_notice_block(
     stale_session: Session,
     granted_compact_id: str,
     areas: list[str],
-    workspaces: list[str],
 ) -> str:
     """The loud record for an automatic downgrade grant-through.
 
@@ -1730,8 +1715,6 @@ def downgrade_notice_block(
     ]
     for detail in areas:
         lines.append(f"  areas: {detail}")
-    for detail in workspaces:
-        lines.append(f"  workspaces: {detail}")
     lines.append(
         "Your row stays active but no longer blocks overlapping claims. "
         "To re-assert, heartbeat; if your areas now collide with a live "
@@ -1876,10 +1859,20 @@ def command_claim(args) -> int:
                     "stale": stale_id,
                     "age_days": heartbeat_age_days(stale_session),
                     "areas": notice.get("areas", []),
-                    "workspaces": notice.get("workspaces", []),
                 }
             )
         claimed["downgrades"] = granted
+        sharers: dict[str, str] = {}
+        for session in current:
+            if not active(session) or session.session_uuid == identity.session_uuid:
+                continue
+            if any(
+                workspace_conflict(workspace, other)
+                for workspace in workspaces
+                for other in session.workspaces
+            ):
+                sharers[session.compact_id] = session.project
+        claimed["sharers"] = sharers
         updated = replace_table(content, prospective)
         by_compact = {s.compact_id: s for s in current}
         for record in granted:
@@ -1892,7 +1885,6 @@ def command_claim(args) -> int:
                     stale_session,
                     identity.compact_id,
                     list(record.get("areas", [])),
-                    list(record.get("workspaces", [])),
                 ),
             )
         return updated
@@ -1911,14 +1903,18 @@ def command_claim(args) -> int:
     for record in claimed.get("downgrades", []):
         age = record.get("age_days")
         age_text = f"{age:.1f}d" if isinstance(age, float) else "unknown age"
-        what = "; ".join(
-            [*(f"areas: {d}" for d in record.get("areas", [])),
-             *(f"workspaces: {d}" for d in record.get("workspaces", []))]
-        )
+        what = "; ".join(f"areas: {d}" for d in record.get("areas", []))
         print(
             f"NOTICE: granted through advisory claim {record.get('stale')} "
             f"(quiet {age_text}; {what}). "
             "Downgrade record appended to the board bus."
+        )
+    for compact_id, project in claimed.get("sharers", {}).items():
+        print(
+            f"NOTICE: sharing a checkout with {compact_id} ({project}). "
+            "Same-checkout seats must keep claimed areas disjoint and commit "
+            "only their own paths (git commit -o <paths>); the commit gate "
+            "refuses anything co-staged outside your claim."
         )
     seat = write_seat(
         args.board,

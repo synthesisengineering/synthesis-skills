@@ -648,8 +648,15 @@ def test_contributor_cannot_claim_canonical_context(tmp_path: Path) -> None:
     assert not board.exists()
 
 
-def test_same_worktree_is_refused_even_for_nonoverlapping_projects(
-    tmp_path: Path,
+# Rajiv's 2026-09-18 ruling made the path-lock redesign a decided change: the
+# exclusive workspace-pair lock is removed and disjoint-area sharing is granted
+# with a loud notice. These two tests previously pinned the refusal; they now
+# pin the grant. check-staged + commit -o carry the safety (probe 2026-09-18:
+# the hook sees only -o paths, so co-staged foreign files never sweep).
+
+
+def test_same_worktree_is_shared_with_loud_notice_for_disjoint_areas(
+    tmp_path: Path, capsys
 ) -> None:
     board = tmp_path / "active-sessions.md"
     first = claim_args(
@@ -668,10 +675,17 @@ def test_same_worktree_is_refused_even_for_nonoverlapping_projects(
     )
 
     assert MODULE.command_claim(first) == 0
-    assert MODULE.command_claim(second) == 10
+    [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
+    capsys.readouterr()
+    assert MODULE.command_claim(second) == 0
+    out = capsys.readouterr().out
+    assert "sharing" in out.lower()
+    assert holder.compact_id in out
 
 
-def test_same_repo_branch_is_refused_across_worktrees(tmp_path: Path) -> None:
+def test_same_repo_branch_is_shared_across_worktrees(
+    tmp_path: Path, capsys
+) -> None:
     board = tmp_path / "active-sessions.md"
     first = claim_args(
         board,
@@ -689,7 +703,32 @@ def test_same_repo_branch_is_refused_across_worktrees(tmp_path: Path) -> None:
     )
 
     assert MODULE.command_claim(first) == 0
-    assert MODULE.command_claim(second) == 10
+    capsys.readouterr()
+    assert MODULE.command_claim(second) == 0
+    assert "sharing" in capsys.readouterr().out.lower()
+
+
+def test_shared_checkout_with_overlapping_areas_is_still_refused(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/shared @ feature/a",
+            area="repo/shared/**",
+        )
+    ) == 0
+    newcomer = claim_args(
+        board,
+        session_id="B",
+        project="project-b",
+        workspace="/tmp/shared @ feature/b",
+        area="repo/shared/file.md",
+    )
+    assert MODULE.command_claim(newcomer) == 10
 
 
 def test_v1_board_migrates_without_losing_messages(tmp_path: Path) -> None:
@@ -1613,9 +1652,12 @@ def test_r4_unregistered_worktree_is_refused(
     assert "claim" in payload["remediation"]
 
 
-def test_r4_workspace_conflict_names_isolated_worktree_remedy(
+def test_r4_workspace_sharing_names_commit_discipline_remedy(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # Decided change 2026-09-18: sharing is granted, and the remedy moved from
+    # "use an isolated worktree" to the sharing discipline (disjoint areas +
+    # commit only your own paths). Same areas, same worktree as the old test.
     board = tmp_path / "active-sessions.md"
     first = claim_args(
         board,
@@ -1632,14 +1674,16 @@ def test_r4_workspace_conflict_names_isolated_worktree_remedy(
         area="/tmp/two/**",
     )
     assert MODULE.command_claim(first) == 0
+    [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
     capsys.readouterr()
 
-    assert MODULE.command_claim(second) == 10
-    error = capsys.readouterr().err
+    assert MODULE.command_claim(second) == 0
+    out = capsys.readouterr().out
 
-    assert "isolated worktree" in error
-    assert "distinct branch" in error
-    assert "claim" in error
+    assert "sharing" in out.lower()
+    assert holder.compact_id in out
+    assert "commit -o" in out
+    assert "disjoint" in out.lower()
 
 
 def test_r4_missing_board_is_unverifiable(
@@ -2793,9 +2837,11 @@ def test_fresh_area_overlap_is_still_refused(tmp_path: Path) -> None:
     assert MODULE.command_claim(newcomer) == 10
 
 
-def test_stale_workspace_sharing_is_granted_through_advisory(
-    tmp_path: Path,
+def test_workspace_sharing_needs_no_downgrade_notice(
+    tmp_path: Path, capsys
 ) -> None:
+    # Defect 2 dissolved the workspace lock, so sharing is legal on its own:
+    # it earns a sharing banner, never a DOWNGRADE NOTICE (disjoint areas).
     board = tmp_path / "active-sessions.md"
     assert MODULE.command_claim(
         claim_args(
@@ -2808,6 +2854,7 @@ def test_stale_workspace_sharing_is_granted_through_advisory(
     ) == 0
     [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
     age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
+    capsys.readouterr()
     newcomer = claim_args(
         board,
         session_id="B",
@@ -2816,6 +2863,9 @@ def test_stale_workspace_sharing_is_granted_through_advisory(
         area="repo/frontend/**",
     )
     assert MODULE.command_claim(newcomer) == 0
+    out = capsys.readouterr().out
+    assert "sharing" in out.lower()
+    assert "DOWNGRADE NOTICE" not in board.read_text(encoding="utf-8")
 
 
 def test_duplicate_owner_is_still_refused_when_existing_owner_is_stale(

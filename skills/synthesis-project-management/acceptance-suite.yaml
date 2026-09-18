@@ -44,8 +44,8 @@ cases:
     motivating_defect: engagement-session-claim-did-not-bind-the-committing-worktree-and-branch
   - id: conflict-remedy
     control_class: diagnostic
-    fixture: scripts/test_coordination.py::test_r4_workspace_conflict_names_isolated_worktree_remedy
-    motivating_defect: engagement-workspace-conflict-refusal-omitted-the-required-remedy
+    fixture: scripts/test_coordination.py::test_r4_workspace_sharing_names_commit_discipline_remedy
+    motivating_defect: engagement-workspace-sharing-banner-must-name-the-commit-discipline
   - id: missing-board
     control_class: enforced-gate
     fixture: scripts/test_coordination.py::test_r4_missing_board_is_unverifiable

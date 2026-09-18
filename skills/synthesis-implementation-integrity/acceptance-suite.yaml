@@ -1,8 +1,8 @@
 schema: 2
-suite: stale-claim-downgrade
+suite: path-lock-redesign
 membership: closed
-production_entry_point: coordination.py grants area and workspace claims through
-  heartbeat-quiet rows as advisory, with each grant recorded loudly on the bus
+production_entry_point: coordination.py shares one checkout across seats with
+  disjoint claimed areas, granting with a loud banner instead of refusing
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and both-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
@@ -18,22 +18,28 @@ changed_surfaces:
   - manifest-validates
 - path: skills/synthesis-project-management/SKILL.md
   cases:
-  - stale-claim-downgrade
+  - path-lock-redesign
+- path: skills/synthesis-project-management/acceptance-suite.yaml
+  cases:
+  - path-lock-redesign
+- path: skills/synthesis-project-management/references/parallel-agent-protocol.md
+  cases:
+  - path-lock-redesign
 - path: skills/synthesis-project-management/scripts/coordination.py
   cases:
-  - stale-claim-downgrade
+  - path-lock-redesign
 - path: skills/synthesis-project-management/scripts/test_coordination.py
   cases:
-  - stale-claim-downgrade
+  - path-lock-redesign
 cases:
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: stale-claim-downgrade
+- id: path-lock-redesign
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_claim_through_stale_area_overlap_is_granted_with_downgrade_record
-  motivating_defect: Heartbeat-quiet rows must downgrade to advisory automatically with
-    a loud record instead of blocking live work forever.
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_same_worktree_is_shared_with_loud_notice_for_disjoint_areas
+  motivating_defect: Identical path-plus-branch pairs must share with a loud banner
+    when claimed areas are disjoint instead of forcing a full worktree per seat.
