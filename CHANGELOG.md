@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.103.0] - 2026-09-18
+
+Coordination hardening from the September operations review. Heartbeat-quiet
+claims now downgrade to advisory automatically with a loud bus record instead
+of blocking live work; identical path-plus-branch pairs share one checkout
+with a banner when claimed areas are disjoint; board validation retries once
+before reporting snapshot failure; empty seats resolve to their matching
+board ref with a hint for identityless callers; and refusal diagnostics
+annotate both session ids as project-and-agent addresses.
+
 ## [4.102.1] - 2026-09-18
 
 The Muse lifecycle hooks no longer write Python bytecode into the installed
