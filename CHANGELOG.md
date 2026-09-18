@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.102.1] - 2026-09-18
+
+The Muse lifecycle hooks no longer write Python bytecode into the installed
+package. Muse verifies the cached bundle against its lock record, so the
+first hook fire's fresh `__pycache__` entries invalidated the install and
+blocked all capabilities. Both wrappers now export
+`PYTHONDONTWRITEBYTECODE=1`, pinned by the bundle coherence test.
+
 ## [4.102.0] - 2026-09-17
 
 Muse joins as a third client. A native `.muse-plugin` bundle ships the skill

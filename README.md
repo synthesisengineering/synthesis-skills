@@ -11,6 +11,10 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Muse hooks keep the install valid (September 2026).** Release **4.102.1**
+stops the lifecycle hooks from writing bytecode into the digest-pinned
+package, which had invalidated the install on its first fire.
+
 **Muse adapter spike (September 2026).** Release **4.102.0** ships a native
 `.muse-plugin` bundle with SessionStart/Stop lifecycle hooks, `muse:` peer
 identity, and transcript binding against Muse's session store. Coordination
