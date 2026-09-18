@@ -1858,3 +1858,6 @@ def test_muse_bundle_manifest_agrees_with_siblings_and_resolves() -> None:
         assert os.access(script, os.X_OK), hook["id"]
         body = script.read_text(encoding="utf-8")
         assert "SYNTHESIS_HOOK_CLIENT=muse" in body, hook["id"]
+        # The installed package is digest-pinned: a hook that lets Python
+        # write __pycache__ invalidates the install on its first fire.
+        assert "PYTHONDONTWRITEBYTECODE=1" in body, hook["id"]

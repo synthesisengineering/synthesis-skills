@@ -1,19 +1,17 @@
 schema: 2
-suite: muse-adapter-spike-4-102-0
+suite: muse-hook-no-bytecode-4-102-1
 membership: closed
-production_entry_point: .muse-plugin lifecycle hooks bind Muse sessions to project state; the coordination
-  CLI fails closed on usage errors; live-load validation accepts muse receipts
+production_entry_point: .muse-plugin lifecycle hooks execute the shipped scripts without writing
+  into the digest-pinned installed package
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and both-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real parsers, validators and manifest checks in disposable
-  directories. They do not establish installed-client reload, live Muse hook execution against a
-  real session store, new-release publication, or deployment approval. No Muse install exists yet;
-  installing the shipped bundle is a human trust step outside this release. Those remain separate
-  release acceptance checks.
+unverified_remainder: Fixtures execute the real validators and manifest checks in disposable
+  directories. They do not establish installed-client reload, live Muse hook execution,
+  new-release publication, or deployment approval. Those remain separate release checks.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -36,48 +34,9 @@ changed_surfaces:
 - path: README.md
   cases:
   - release-version-metadata
-- path: skills/synthesis-agent-conformance/scripts/live_receipt.py
-  cases:
-  - muse-transcript-binding
-- path: skills/synthesis-agent-conformance/scripts/session_context.py
-  cases:
-  - muse-transcript-binding
-- path: skills/synthesis-agent-conformance/scripts/test_session_context.py
-  cases:
-  - muse-transcript-binding
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-onboarding/scripts/system_contract.py
-  cases:
-  - muse-live-load-validation
-- path: skills/synthesis-onboarding/scripts/test_system_contract.py
-  cases:
-  - muse-live-load-validation
-- path: skills/synthesis-project-management/scripts/coordination.py
-  cases:
-  - fail-closed-usage-errors
-  - fail-closed-parser-inheritance
-  - fail-closed-claim-banner
-  - muse-requested-ref-identity
-- path: skills/synthesis-project-management/scripts/peer_addressing.py
-  cases:
-  - muse-peer-identity
-- path: skills/synthesis-project-management/scripts/project_state.py
-  cases:
-  - muse-observer-stop-resolution
-- path: skills/synthesis-project-management/scripts/test_coordination.py
-  cases:
-  - fail-closed-usage-errors
-  - fail-closed-parser-inheritance
-  - fail-closed-claim-banner
-  - muse-requested-ref-identity
-- path: skills/synthesis-project-management/scripts/test_peer_addressing.py
-  cases:
-  - muse-peer-identity
-- path: skills/synthesis-project-management/scripts/test_project_state.py
-  cases:
-  - muse-observer-stop-resolution
 - path: skills/synthesis-skills-manager/scripts/test_release.py
   cases:
   - muse-bundle-resolves
@@ -97,53 +56,6 @@ cases:
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_bundle_manifest_agrees_with_siblings_and_resolves
-  motivating_defect: The shipped Muse bundle must version-match its siblings and every skill path and
-    hook command it declares must resolve to a real file, with hooks executable and client-marked.
-- id: muse-transcript-binding
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_muse_payload_without_transcript_path_records_bound_receipt
-  motivating_defect: Muse hook payloads carry no transcript path, so the session log must resolve from
-    the date-sharded store and bind before any receipt records.
-- id: muse-live-load-validation
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_live_load_validates_muse_store_bound_sessions
-  motivating_defect: Live-load validation must accept store-bound muse receipts and still refuse foreign
-    clients and unbound transcripts.
-- id: fail-closed-usage-errors
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_usage_errors_carry_failed_banner_not_an_echo
-  motivating_defect: A wrong flag used to echo the caller's own text and read as a success confirmation;
-    five board sends were lost to exactly that. Usage failures must banner FAILED.
-- id: fail-closed-parser-inheritance
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_every_subcommand_parser_inherits_the_fail_closed_class
-  motivating_defect: The banner only holds if every subcommand parser inherits the fail-closed class;
-    subparser parser_class propagation is a CPython implementation detail that must be pinned, not trusted.
-- id: fail-closed-claim-banner
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_failed_claim_usage_cannot_read_as_a_granted_lock
-  motivating_defect: A failed claim that reads as success is worse than a failed message, because
-    a session could write through another seat's area believing it held a lock.
-- id: muse-peer-identity
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_muse_hook_payload_is_not_misattributed_to_codex
-  motivating_defect: Muse payloads carry no client marker, so hook identity must come from the exported
-    wrapper marker instead of defaulting to Codex.
-- id: muse-requested-ref-identity
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_self_identity_honors_requested_muse_ref_without_shell_identity
-  motivating_defect: Shells without exported identity must still resolve an explicitly requested muse ref
-    to the Muse client instead of an unkeyed explicit ref.
-- id: muse-observer-stop-resolution
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_observer_stop_resolves_muse_session_from_store_without_transcript_path
-  motivating_defect: Observer Stop for a Muse session must resolve the session log from the store and
-    require the same unambiguous binding evidence, refusing when no evidence exists.
+  motivating_defect: The shipped Muse bundle must version-match its siblings, every declared path must
+    resolve, and the hooks must neither misidentify the client nor write bytecode into the
+    digest-pinned package.
