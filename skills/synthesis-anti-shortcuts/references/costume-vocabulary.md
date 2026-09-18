@@ -354,3 +354,41 @@ Legitimate when the action is genuinely reserved to the user - credentials, cons
 approval only they can give. A shortcut when it arrives before any alternative was explored, or
 without naming the specific change that would remove the need next time.
 
+---
+
+## Category 9: `effort_rationale`
+
+A recommendation between options is decided by implementation cost - build size, effort, cheapness -
+when the user has explicitly removed cost from the decision set ("best, most robust solution; no
+shortcuts"). The shortcut is letting the conservative default (minimize change) override the user's
+stated priority order. Cost may be stated as information; it must never be the reason. See
+[Case 7](case-studies.md#case-7-the-recommendation-decided-by-build-cost).
+
+**The constraint that makes it a costume:** "best solution," "no shortcuts," or any framing where
+merits (robustness, longevity, failure modes) decide and cost does not.
+
+### `fraction of the cost` / `fraction of the effort`
+
+Why it is a shortcut: cost comparison presented as the deciding pro. Reads as prudence; behaves as
+priority inversion when the user optimizes for best.
+
+Replacement framing: decide on the merits first, then state cost separately ("B is the better
+solution; it costs roughly 2x to build").
+
+### `smaller build` / `bigger build` as the deciding factor
+
+Why it is a shortcut: build size standing in for the decision when robustness or longevity should.
+"Even if it is a bigger build, I prefer the better solution" is the user's standing answer to this
+framing.
+
+Replacement framing: name what makes the option better or worse on the merits. If build size truly
+blocks (a deadline, a freeze window), name that constraint explicitly - a real constraint is not a
+costume.
+
+### `cheaper option` / `cheaper to build`
+
+Why it is a shortcut: cheapness as virtue, scored without the user's constraint set.
+
+Replacement framing: "cheaper and worse on the merits" vs "cheaper with merits equal" - only the
+second survives constraint-first filtering, and then cheapness is a tiebreak, not the reason.
+
