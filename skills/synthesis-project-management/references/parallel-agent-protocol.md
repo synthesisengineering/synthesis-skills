@@ -207,8 +207,9 @@ Different projects may run at the same time. Each session:
 1. reads the coordination board and its own project context;
 2. registers a unique UUIDv7 session identity, machine, project id, worktree/branch pair,
    context role, and source-area claims;
-3. uses an isolated worktree when another live session touches the same
-   repository;
+3. shares a checkout with another live session only with disjoint claimed
+   areas (the claim-time banner names who is already there), else uses an
+   isolated worktree; sharing seats commit only their own paths;
 4. heartbeats at checkpoints; and
 5. updates project state, leaves attributed local evidence, and releases its claims before pausing; remote publication belongs to explicit handoff or day-end.
 
@@ -222,11 +223,31 @@ Same-project parallelism uses a single-writer/multiple-contributor model:
 
 - one root session is the **context owner**;
 - other root sessions are **contributors**;
-- implementation claims and worktrees never overlap;
+- implementation claims never overlap (worktrees may be shared when the
+  claims on them are disjoint);
 - contributors do not edit `CONTEXT.md`, `REFERENCE.md`, `sessions/`, the
   controlling plan, or `projects/index.yaml`; and
 - every contributor writes a session-specific artifact under
   `resources/artifacts/contributions/<compact-session-id>.md`.
+
+### Advisory claims and shared checkouts
+
+A row quiet past the stale threshold is ADVISORY automatically: its areas no
+longer block, and each grant through one is recorded on the bus as a DOWNGRADE
+NOTICE addressed to the quiet seat. Advisory is not release — the row stays
+active, duplicate-owner exclusivity still holds, undated heartbeats keep
+blocking, and no agent releases another seat. A revived seat heartbeats to
+re-assert; if its areas now collide with a live claim, the heartbeat is refused
+with the collision named, and the seat narrows or releases first. Paused
+sessions narrow or release explicitly rather than leaning on the threshold.
+
+Same-checkout sharing is granted with a banner naming the seats already there.
+Sharing seats inspect the index before every commit and commit only their own
+paths: `git commit -o <paths>` scopes the pre-commit hook to just those paths
+(probed 2026-09-18), so co-staged foreign files never sweep, while a bare
+`git commit` fails closed on them. Push races on a shared branch serialize on
+pull, git-natively. Mixed absolute/relative spellings of one path still
+conflict everywhere area overlap is computed.
 
 The contribution artifact records:
 

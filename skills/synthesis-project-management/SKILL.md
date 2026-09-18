@@ -308,9 +308,9 @@ Rules:
    See [claim scope over the task lifecycle](references/parallel-agent-protocol.md#claim-scope-over-the-task-lifecycle).
 3. **Do not write through overlap.** If a claim conflicts, stop writes in that
    area and use the message log or the user to sequence work.
-4. **Isolate git state.** Independent root sessions never write through the
-   same worktree, index, or branch. Different projects may proceed in parallel
-   only from isolated worktrees when they touch the same repository.
+4. **Share checkouts only with disjoint areas.** Same worktree/branch is allowed
+   when claimed areas are disjoint (banner names who is there); same-file work
+   needs isolated worktrees, and sharing seats commit only their own paths.
 5. **One context owner.** A project has one `owner` session for `CONTEXT.md`,
    `REFERENCE.md`, `sessions/`, its controlling plan, and `projects/index.yaml`.
    Same-project `contributor` sessions claim non-overlapping implementation
@@ -335,10 +335,10 @@ Rules:
    so the protocol and checkpoint hooks make the shared obligation visible.
 
 The script uses an OS file lock, verified backups, and atomic replacement,
-and refuses overlapping areas, shared worktrees or branches, duplicate
-context owners, and contributor claims on canonical context; mixed
-absolute/relative spellings of one path still conflict. Cross-machine
-simultaneity requires the git-backed lease (compare-and-swap on a shared
+and refuses overlapping areas, duplicate context owners, and contributor claims
+on canonical context. Sharing one checkout with disjoint areas is granted with
+a banner. Cross-machine simultaneity requires the git-backed lease
+(compare-and-swap on a shared
 remote, fail-closed when unreachable); retire merged worktrees with
 `scripts/retire_worktree.py`, never by hand. Board file shape:
 [references/active-sessions-template.md](references/active-sessions-template.md).
