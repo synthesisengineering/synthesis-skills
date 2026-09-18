@@ -221,8 +221,7 @@ def test_comparison_snapshot_refuses_mid_batch_identity_changes(checkouts, tmp_p
             assert not resolver.conflicts(left, right)
 
 
-def test_board_validation_cannot_swallow_snapshot_failure(checkouts, tmp_path, monkeypatch):
-    import coordination
+def _snapshot_validation_fixture(coordination, checkouts, tmp_path, monkeypatch):
     root, sibling = checkouts
     config = tmp_path / "global.conf"
     config.write_text("[fixture]\n\tvalue = one\n")
@@ -233,13 +232,45 @@ def test_board_validation_cannot_swallow_snapshot_failure(checkouts, tmp_path, m
             heartbeat="2026-01-01T00:00:00Z", mode="active", workspaces=[], goal="fixture",
             claims=[claim], context_role="none", status="active")
     sessions = [session("fixture-a", str(root / "projects" / "one")), session("fixture-b", str(sibling / "projects" / "two"))]
+    return sessions, config
+
+
+def test_board_validation_cannot_swallow_persistent_snapshot_failure(checkouts, tmp_path, monkeypatch):
+    # Defect 4 changed the semantics this test pins: a mid-check change that
+    # SETTLES is revalidated clean (see the settle test below). Genuinely
+    # unstable ground — a change on EVERY attempt — must still report. The
+    # mutation therefore toggles to a fresh value per call instead of once.
+    import coordination
+    sessions, config = _snapshot_validation_fixture(
+        coordination, checkouts, tmp_path, monkeypatch)
     original = coordination.claim_scope.ClaimScopeResolver.conflicts
+    state = {"calls": 0}
     def changing(self, *args, **kwargs):
         result = original(self, *args, **kwargs)
-        config.write_text("[fixture]\n\tvalue = two\n")
+        state["calls"] += 1
+        config.write_text(f"[fixture]\n\tvalue = v{state['calls']}\n")
         return result
     monkeypatch.setattr(coordination.claim_scope.ClaimScopeResolver, "conflicts", changing)
     assert any("snapshot" in problem for problem in coordination.validate_sessions(sessions))
+
+
+def test_board_validation_accepts_settled_mid_check_change(checkouts, tmp_path, monkeypatch):
+    # The defect-4 case: a peer write lands mid-validation (attempt 1 trips),
+    # the world is then stable, and the retry revalidates clean. A healthy
+    # advance must not report as corruption.
+    import coordination
+    sessions, config = _snapshot_validation_fixture(
+        coordination, checkouts, tmp_path, monkeypatch)
+    original = coordination.claim_scope.ClaimScopeResolver.conflicts
+    state = {"mutated": False}
+    def changing_once(self, *args, **kwargs):
+        result = original(self, *args, **kwargs)
+        if not state["mutated"]:
+            state["mutated"] = True
+            config.write_text("[fixture]\n\tvalue = two\n")
+        return result
+    monkeypatch.setattr(coordination.claim_scope.ClaimScopeResolver, "conflicts", changing_once)
+    assert coordination.validate_sessions(sessions) == []
 
 
 def test_nested_repository_is_never_absorbed_by_cached_ancestor(checkouts):

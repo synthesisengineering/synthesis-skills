@@ -1278,17 +1278,37 @@ def _check_staged_board_snapshot(board: Path) -> str | None:
         return content
 
 
+def _validate_with_snapshot(
+    sessions: list[Session],
+    notices: list[dict[str, object]] | None,
+) -> list[str]:
+    scopes = claim_scope.ClaimScopeResolver()
+    claims = [(claim, tuple(session.workspaces)) for session in sessions if active(session) for claim in session.claims]
+    with scopes.snapshot(claims):
+        return _validate_sessions(sessions, scopes, notices=notices)
+
+
 def validate_sessions(
     sessions: list[Session],
     notices: list[dict[str, object]] | None = None,
 ) -> list[str]:
-    scopes = claim_scope.ClaimScopeResolver()
-    claims = [(claim, tuple(session.workspaces)) for session in sessions if active(session) for claim in session.claims]
     try:
-        with scopes.snapshot(claims):
-            return _validate_sessions(sessions, scopes, notices=notices)
-    except claim_scope.ClaimIdentityError as exc:
-        return [f"unverifiable claim identity snapshot: {exc}"]
+        collected: list[dict[str, object]] = []
+        problems = _validate_with_snapshot(sessions, collected)
+    except claim_scope.ClaimIdentityError:
+        # One retry from fresh observations: a peer write landing mid-check
+        # (a healthy-board advance) invalidates the first attempt without
+        # invalidating the verdict. Genuinely unstable ground trips the retry
+        # too and still reports. Notices stay per-attempt so a failed attempt
+        # never leaks half a record into a granted claim.
+        collected = []
+        try:
+            problems = _validate_with_snapshot(sessions, collected)
+        except claim_scope.ClaimIdentityError as exc:
+            return [f"unverifiable claim identity snapshot: {exc}"]
+    if notices is not None:
+        notices.extend(collected)
+    return problems
 
 
 def _validate_sessions(
