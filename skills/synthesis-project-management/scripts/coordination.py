@@ -1311,33 +1311,45 @@ def validate_sessions(
     return problems
 
 
+def _tag(session: Session) -> str:
+    """Session id with its project + agent, for operator-facing diagnostics.
+
+    A bare id tells the operator nothing about where to go; the tag points at
+    the project and harness. Degrades to the bare id unless the row carries
+    both, so annotation never breaks the diagnostic it rides on.
+    """
+    if not session.project or not session.agent:
+        return session.label
+    return f"{session.label} ({session.project} · {session.agent})"
+
+
 def _validate_sessions(
     sessions: list[Session],
     scopes,
     notices: list[dict[str, object]] | None = None,
 ) -> list[str]:
     problems: list[str] = []
-    seen_selectors: dict[tuple[str, object], str] = {}
+    seen_selectors: dict[tuple[str, object], Session] = {}
     for session in sessions:
         if session.session_uuid:
             for issue in validate_identity(session.identity):
-                problems.append(f"session {session.label}: {issue}")
+                problems.append(f"session {_tag(session)}: {issue}")
         for normalized in identity_lookup_keys(session.identity):
             previous = seen_selectors.get(normalized)
             if previous is not None:
                 problems.append(
                     f"duplicate or ambiguous session selector: {normalized[1]} "
-                    f"({previous}, {session.label})"
+                    f"({_tag(previous)}, {_tag(session)})"
                 )
             else:
-                seen_selectors[normalized] = session.label
+                seen_selectors[normalized] = session
         if session.context_role not in {"owner", "contributor", "none"}:
             problems.append(
-                f"session {session.label} has invalid context role: "
+                f"session {_tag(session)} has invalid context role: "
                 f"{session.context_role}"
             )
     live = [session for session in sessions if active(session)]
-    seen_refs: dict[str, str] = {}
+    seen_refs: dict[str, Session] = {}
     for session in live:
         if not session.client_ref:
             continue
@@ -1345,17 +1357,17 @@ def _validate_sessions(
         if previous is not None:
             problems.append(
                 f"duplicate active client session ref {session.client_ref} "
-                f"({previous}, {session.label}); release the stale row or "
+                f"({_tag(previous)}, {_tag(session)}); release the stale row or "
                 "re-claim with --session to update the existing one"
             )
         else:
-            seen_refs[session.client_ref] = session.label
+            seen_refs[session.client_ref] = session
     for index, left in enumerate(live):
         if left.context_role == "contributor":
             for claim in left.claims:
                 if claims_context(claim):
                     problems.append(
-                        f"session {left.label} is a contributor but claims context: {claim}"
+                        f"session {_tag(left)} is a contributor but claims context: {claim}"
                     )
         for right in live[index + 1 :]:
             left_advisory = downgraded(left)
@@ -1368,7 +1380,7 @@ def _validate_sessions(
                         conflict = scopes.conflicts(left_claim, right_claim,
                             left_workspaces=left.workspaces, right_workspaces=right.workspaces)
                     except claim_scope.ClaimIdentityError as exc:
-                        problems.append(f"{left.label} / {right.label}: unverifiable claim scope: {exc}")
+                        problems.append(f"{_tag(left)} / {_tag(right)}: unverifiable claim scope: {exc}")
                         continue
                     if conflict:
                         if advisory_pair:
@@ -1377,8 +1389,8 @@ def _validate_sessions(
                             )
                         else:
                             problems.append(
-                                f"{left.label}:{left_claim} overlaps "
-                                f"{right.label}:{right_claim}"
+                                f"{_tag(left)}:{left_claim} overlaps "
+                                f"{_tag(right)}:{right_claim}"
                             )
             # No workspace-pair refusal: Rajiv's 2026-09-18 decided change
             # dissolved the exclusive checkout lock. Same-checkout seats with
@@ -1407,7 +1419,7 @@ def _validate_sessions(
                 and right.context_role == "owner"
             ):
                 problems.append(
-                    f"{left.label} and {right.label} both own context for {left.project}"
+                    f"{_tag(left)} and {_tag(right)} both own context for {left.project}"
                 )
     return problems
 

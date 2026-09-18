@@ -98,6 +98,11 @@ the day after the resolver shipped) share one shape: an agent chose a
 target by a display name at the moment of sending. The protocol removes
 that moment.
 
+When naming a session id to the principal — status, refusal relay, or ask —
+annotate it as `id (project · harness)` from the live board row. A bare id
+tells them nothing about where to go; tool diagnostics already render this
+form, and prose must match it.
+
 1. **Resolve first.** `coordination.py resolve --to <project|session|ref>`
    returns exactly one target (exit 0), prints the exact invocation per
    lane, and writes a **delivery receipt** under
@@ -323,16 +328,19 @@ A pause is a coordination event:
 3. message any affected session; and
 4. release or narrow the claim.
 
-Heartbeats make abandoned sessions visible, but a stale timestamp never
-transfers ownership automatically. Another session may take over only after the
-user or the owning session explicitly releases or reassigns the claim.
+Heartbeats make abandoned sessions visible. A stale timestamp downgrades the
+row to ADVISORY automatically — its areas stop blocking, with each grant
+through recorded on the bus — but full release still needs explicit action:
+another session takes over ownership only after the user or the owning session
+explicitly releases or reassigns the claim.
 
 ### Administrative release
 
 When a session is genuinely gone — a crashed client, a closed laptop, a chat
-that will never resume — its `active` row keeps blocking overlapping claims
-by design. The release decision belongs to the user, not to elapsed time and
-not to another agent's judgment. The user (or a session acting on the user's
+that will never resume — its `active` row is advisory (non-blocking), but only
+removal frees owner exclusivity and keeps the board truthful. The release
+decision belongs to the user, not to elapsed time and not to another agent's
+judgment. The user (or a session acting on the user's
 explicit direction, recorded in that session's log) runs:
 
 ```bash
