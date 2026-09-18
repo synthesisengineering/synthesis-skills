@@ -11,6 +11,11 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Coordination hardening (September 2026).** Release **4.103.0** ships five
+fixes from the September operations review: automatic advisory downgrade for
+quiet claims, checkout sharing with a loud banner, snapshot retry, empty-seat
+board-ref fallback, and annotated session ids in refusals.
+
 **Muse hooks keep the install valid (September 2026).** Release **4.102.1**
 stops the lifecycle hooks from writing bytecode into the digest-pinned
 package, which had invalidated the install on its first fire.
