@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.107.0] - 2026-09-19
+
+Explicit read-only diagnostics. A `--local` flag threads through all
+17 conformance CLI routes: read-only routes refuse loudly, observer
+routes skip fetch-backed legs with reasons, and scan deactivates
+instead of mutating. Coordination gains a passive lease cache so
+observers read the board without fetching, the catalog honors
+force_reload, and the orphan sweep cron runs fetch-free. Six new
+acceptance controls pin the read-only contract.
+
 ## [4.106.0] - 2026-09-19
 
 Coordination defect follow-throughs. The commit gate re-syncs vendored
