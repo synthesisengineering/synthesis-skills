@@ -65,10 +65,22 @@ expansion was accepted without overlap. Do not reserve speculative future work,
 adjacent projects, or whole repositories merely because they might become
 useful later. An intended expansion is not write authority.
 
+Re-claiming merges by default: a `claim --id` call unions the named areas
+and workspaces with what the row already holds, and names what it retained
+and added. Omission never shrinks a claim — a re-claim written from a
+compacted context cannot silently drop the areas it forgot to restate.
+Shrinking is the explicit `narrow` verb, which names each area or
+workspace to release, refuses targets the row does not hold, and prints
+the released and retained sets. The rare full reset is `claim --replace`,
+which sets the row to exactly the call and names every drop loudly.
+Never re-claim a subset expecting the rest to fall away; that was the
+pre-ruling-B replace trap.
+
 At each task or phase change and each normal execution checkpoint, compare the
-held areas with what remains to do. Narrow the claim as areas finish, and
-release completed areas promptly after their required closure is complete;
-keep only the paths still needed for actual work or its unfinished checkpoint.
+held areas with what remains to do. Narrow the claim as areas finish (via
+the `narrow` verb, never by re-claiming a subset), and release completed
+areas promptly after their required closure is complete; keep only the paths
+still needed for actual work or its unfinished checkpoint.
 At a pause or task completion, release or narrow the remaining claim explicitly.
 A read-only refresh reports any recommended scope change without mutating claims.
 

@@ -48,6 +48,7 @@ def claim_args(
     workspace: str,
     area: str,
     context_role: str = "owner",
+    replace: bool = False,
 ):
     return args(
         board,
@@ -60,6 +61,16 @@ def claim_args(
         workspace=[workspace],
         area=[area],
         context_role=context_role,
+        replace=replace,
+    )
+
+
+def narrow_args(board: Path, *, session_id: str, area=None, workspace=None):
+    return args(
+        board,
+        id=session_id,
+        area=list(area or []),
+        workspace=list(workspace or []),
     )
 
 
@@ -3214,3 +3225,247 @@ def test_annotation_degrades_to_bare_id_without_project_or_agent(
         agent="", machine="", project="", started="", heartbeat="", mode="",
         workspaces=[], goal="", claims=[], context_role="", status="active",
     )) == "s-x"
+
+
+# --- merge by default, narrow verb (ruling B) --------------------------------
+
+
+def _claims_of(board: Path):
+    [row] = MODULE.rows(board.read_text(encoding="utf-8"))
+    return row
+
+
+def test_reclaim_merges_areas_by_default(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ruling B: a re-claim grows the held set; omission never shrinks it."""
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
+    first = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+    )
+    assert MODULE.command_claim(first) == 0
+    second = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/b.md",
+    )
+    capsys.readouterr()
+    assert MODULE.command_claim(second) == 0
+    out = capsys.readouterr().out
+    assert _claims_of(board).claims == ["scope/a.md", "scope/b.md"]
+    assert "merge retained 1 area(s)" in out
+    assert "merge added 1 new area(s)" in out
+
+
+def test_reclaim_merges_workspaces_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
+    first = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+    )
+    assert MODULE.command_claim(first) == 0
+    second = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-b @ feature/b", area="scope/a.md",
+    )
+    assert MODULE.command_claim(second) == 0
+    row = _claims_of(board)
+    assert row.claims == ["scope/a.md"]
+    assert row.workspaces == ["/tmp/repo-a @ feature/a", "/tmp/repo-b @ feature/b"]
+
+
+def test_reclaim_dedupes_and_keeps_first_seen_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
+    first = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+    )
+    assert MODULE.command_claim(first) == 0
+    row = _claims_of(board)
+    MODULE.command_claim(args(
+        board, id=row.compact_id, agent="A", machine="machine-A",
+        project="project-a", mode="autonomous", goal="goal-A",
+        workspace=["/tmp/repo-a @ feature/a"],
+        area=["scope/a.md", "scope/b.md", "scope/a.md"],
+        context_role="owner",
+    ))
+    assert _claims_of(board).claims == ["scope/a.md", "scope/b.md"]
+
+
+def test_reclaim_identical_scope_reports_heartbeat(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
+    first = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+    )
+    assert MODULE.command_claim(first) == 0
+    capsys.readouterr()
+    assert MODULE.command_claim(claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+    )) == 0
+    assert "already held exactly this scope" in capsys.readouterr().out
+    assert _claims_of(board).claims == ["scope/a.md"]
+
+
+def test_claim_replace_resets_scope_and_names_drops(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
+    first = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+    )
+    assert MODULE.command_claim(first) == 0
+    second = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/b.md",
+    )
+    assert MODULE.command_claim(second) == 0
+    assert _claims_of(board).claims == ["scope/a.md", "scope/b.md"]
+    capsys.readouterr()
+    reset = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/c.md", replace=True,
+    )
+    assert MODULE.command_claim(reset) == 0
+    out = capsys.readouterr().out
+    assert _claims_of(board).claims == ["scope/c.md"]
+    assert "--replace dropped 2 area(s)" in out
+    assert "scope/a.md" in out and "scope/b.md" in out
+
+
+def test_narrow_releases_named_areas_and_reports(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
+    first = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+    )
+    assert MODULE.command_claim(first) == 0
+    row = _claims_of(board)
+    MODULE.command_claim(args(
+        board, id=row.compact_id, agent="A", machine="machine-A",
+        project="project-a", mode="autonomous", goal="goal-A",
+        workspace=["/tmp/repo-a @ feature/a"],
+        area=["scope/b.md", "scope/c.md"],
+        context_role="owner",
+    ))
+    assert _claims_of(board).claims == ["scope/a.md", "scope/b.md", "scope/c.md"]
+    capsys.readouterr()
+    assert MODULE.command_narrow(narrow_args(
+        board, session_id=row.compact_id, area=["scope/b.md"],
+    )) == 0
+    out = capsys.readouterr().out
+    assert _claims_of(board).claims == ["scope/a.md", "scope/c.md"]
+    assert "Released 1 area(s): scope/b.md" in out
+    assert "Retained 2 area(s)" in out
+
+
+def test_narrow_releases_named_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
+    first = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+    )
+    assert MODULE.command_claim(first) == 0
+    row = _claims_of(board)
+    MODULE.command_claim(args(
+        board, id=row.compact_id, agent="A", machine="machine-A",
+        project="project-a", mode="autonomous", goal="goal-A",
+        workspace=["/tmp/repo-a @ feature/a", "/tmp/repo-b @ feature/b"],
+        area=["scope/a.md"],
+        context_role="owner",
+    ))
+    assert MODULE.command_narrow(narrow_args(
+        board, session_id=row.compact_id,
+        workspace=["/tmp/repo-a @ feature/a"],
+    )) == 0
+    assert _claims_of(board).workspaces == ["/tmp/repo-b @ feature/b"]
+
+
+def test_narrow_refuses_unheld_target_and_changes_nothing(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
+    first = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+    )
+    assert MODULE.command_claim(first) == 0
+    row = _claims_of(board)
+    assert MODULE.command_narrow(narrow_args(
+        board, session_id=row.compact_id, area=["scope/typo.md"],
+    )) == 10
+    assert _claims_of(board).claims == ["scope/a.md"]
+    assert "scope/typo.md" in capsys.readouterr().err
+
+
+def test_narrow_refuses_without_target(tmp_path: Path) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    first = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+    )
+    assert MODULE.command_claim(first) == 0
+    row = _claims_of(board)
+    assert MODULE.command_narrow(
+        narrow_args(board, session_id=row.compact_id)
+    ) == 10
+    assert _claims_of(board).claims == ["scope/a.md"]
+
+
+def test_narrow_refuses_unknown_session(tmp_path: Path) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    first = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+    )
+    assert MODULE.command_claim(first) == 0
+    assert MODULE.command_narrow(
+        narrow_args(board, session_id="s-nonexistent", area=["scope/a.md"])
+    ) == 10
+
+
+def test_narrow_refuses_foreign_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-a")
+    monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local-shared")
+    first = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/worktree-a @ feature/a", area="scope/a.md",
+    )
+    assert MODULE.command_claim(first) == 0
+    [before] = MODULE.rows(board.read_text(encoding="utf-8"))
+
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-b")
+    assert MODULE.command_narrow(narrow_args(
+        board, session_id=before.compact_id, area=["scope/a.md"],
+    )) == 10
+    [after] = MODULE.rows(board.read_text(encoding="utf-8"))
+    assert after.claims == before.claims
+
+
+def test_narrow_to_empty_is_allowed_and_recoverable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A parked seat keeps identity and heartbeat; merge re-adds trivially."""
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
+    first = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+    )
+    assert MODULE.command_claim(first) == 0
+    row = _claims_of(board)
+    assert MODULE.command_narrow(narrow_args(
+        board, session_id=row.compact_id, area=["scope/a.md"],
+    )) == 0
+    assert _claims_of(board).claims == []
+    assert MODULE.command_claim(claim_args(
+        board, session_id=row.compact_id, project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/b.md",
+    )) == 0
+    assert _claims_of(board).claims == ["scope/b.md"]

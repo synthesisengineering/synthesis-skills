@@ -6,6 +6,17 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v2.38.0 — Email sync runs off a mailbox manifest; blind accounts fail the ritual
+
+v2.38.0 (2026-09-18): the email step sweeps `.agents/mailboxes.yaml`
+([mailbox manifest](mailbox-manifest.md)) instead of one designated
+account — the Smurl class of failure was seven emails over four weeks in
+an iCloud mailbox no ritual read. `scripts/mailboxes.py plan` enumerates
+the due accounts; `report` judges each SWEPT / BLIND / UNREACHABLE /
+DEFERRED from the watermark store and exits non-zero on any BLIND
+account. UNREACHABLE (defer reason starting `unreachable:`) passes loud:
+an attempted failure is information, silence is a lie.
+
 ## v2.37.0 — The weekly-review query answers for one workspace; `advance --through` takes the epoch `window` prints
 
 v2.37.0 (2026-09-14): `ritual_state.py query weekly-review --workspace <W>`
