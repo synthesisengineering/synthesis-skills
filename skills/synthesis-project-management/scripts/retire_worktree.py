@@ -17,7 +17,9 @@ directory, and refuses every unsafe state:
 - the worktree must be completely clean (tracked and untracked);
 - the checked-out HEAD must be an ancestor of the verification base
   (default: the remote's fetched main) — by default after a fresh fetch, so
-  "merged" means merged on the REMOTE, not in a stale local ref;
+  "merged" means merged on the REMOTE, not in a stale local ref; a
+  squash-merge has no shared commits, so an identical tree is accepted as
+  the secondary proof, named loudly in the output;
 - the main worktree is fast-forwarded to the verified base when it tracks
   the base branch (defect 3: "landed" must mean the operator's checkout
   too, not just origin) — retirement refuses when the advance is unsafe
@@ -296,13 +298,16 @@ def matching_retirement_intent(
 
 def delete_local_branch(
     repository: Path, branch: str, expected_head: str, *,
-    base_ref: str, base_oid: str,
+    base_ref: str, base_oid: str, force: bool = False,
 ) -> None:
     """Use native safe deletion against an immutable, command-selected upstream.
 
     Git owns checked-out-branch refusal and config cleanup. The preflight checks
     are observations, not global serialization of arbitrary concurrent Git.
     The lifecycle lock serializes this helper only; it cannot lock git switch.
+    Callers pass force only after content_verdict proved an identical tree on
+    the remote; a squash-merge has no shared commits, so native -d would refuse
+    content that is already verified present.
     """
     local_ref = f"refs/heads/{branch}"
     config_result = run(repository, "rev-parse", "--path-format=absolute", "--git-path", "config")
@@ -361,9 +366,12 @@ def delete_local_branch(
         if (upstream.returncode != 0 or upstream.stdout.strip() != pinned_ref
                 or pinned.returncode != 0 or pinned.stdout.strip() != base_oid):
             raise ValueError("native branch deletion does not resolve to the pinned verification base")
-        deleted = run(repository, *options, "branch", "-d", "--", branch)
+        verb = "-D" if force else "-d"
+        deleted = run(repository, *options, "branch", verb, "--", branch)
         if deleted.returncode != 0:
             raise ValueError(f"native branch deletion against {base_ref} at {base_oid} refused: " + deleted.stderr.strip())
+        if force:
+            print(f"Deleted squash-merged branch {branch} by verified identical tree against {base_ref}")
         remaining = run(repository, "config", "--local", "--get-regexp",
                         r"^branch\." + re.escape(branch) + r"\.")
         if remaining.returncode != 1:
@@ -372,6 +380,25 @@ def delete_local_branch(
         removed = run(repository, "update-ref", "-d", pinned_ref, base_oid)
         if removed.returncode != 0:
             raise ValueError("temporary retirement base cleanup refused; ref may have changed: " + pinned_ref)
+
+
+def content_verdict(
+    repository: Path, head: str, base_oid: str
+) -> tuple[bool, str]:
+    """Return (verified, method) for retirement content.
+
+    Ancestry is the primary proof that the content reached the remote. A
+    squash-merge lands identical content under a new commit, so an identical
+    tree is the secondary proof. Anything else is unverified. Callers print
+    the method so the record names which proof authorized the retirement.
+    """
+    ancestry = run(repository, "merge-base", "--is-ancestor", head, base_oid)
+    if ancestry.returncode == 0:
+        return True, "ancestry"
+    identical = run(repository, "diff", "--quiet", head, base_oid, "--")
+    if identical.returncode == 0:
+        return True, "identical-tree"
+    return False, ""
 
 
 def cleanup_branch(
@@ -401,18 +428,20 @@ def cleanup_branch(
     base_check = run(repository, "rev-parse", "--verify", f"{base_oid}^{{commit}}")
     if base_check.returncode != 0 or base_check.stdout.strip() != base_oid:
         return fail(f"retirement intent base {base_ref} has no canonical commit")
-    ancestry = run(repository, "merge-base", "--is-ancestor", expected_head, base_oid)
-    if ancestry.returncode != 0:
+    verified, method = content_verdict(repository, expected_head, base_oid)
+    if not verified:
         return fail(
             f"verified retirement head {expected_head} is not contained in "
-            f"pinned base {base_ref} at {base_oid}; no branch was deleted"
-            + (f": {ancestry.stderr.strip()}" if ancestry.stderr.strip() else "")
+            f"pinned base {base_ref} at {base_oid}, and its tree differs; "
+            "no branch was deleted"
         )
+    print(f"Verified branch content by {method} against {base_ref} at {base_oid[:12]}")
 
     try:
         with lifecycle_lock():
             delete_local_branch(repository, branch, expected_head,
-                base_ref=base_ref, base_oid=base_oid)
+                base_ref=base_ref, base_oid=base_oid,
+                force=(method == "identical-tree"))
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         return fail(f"local branch cleanup failed; remote branch was not touched: {exc}")
     print(f"Retired local branch {branch} and its config against {base_ref} at {base_oid}")
@@ -728,12 +757,14 @@ def main() -> int:
     if head_result.returncode != 0 or not head_result.stdout.strip():
         return fail(head_result.stderr.strip() or "worktree HEAD is unavailable")
     head = head_result.stdout.strip()
-    ancestry = run(repository, "merge-base", "--is-ancestor", head, base_oid)
-    if ancestry.returncode != 0:
+    verified, method = content_verdict(repository, head, base_oid)
+    if not verified:
         return fail(
-            f"worktree HEAD {head} is not fully contained in {base}; its commits "
-            "have not been verified on the remote"
+            f"worktree HEAD {head} is not fully contained in {base}, and its "
+            "tree differs from the base; its commits have not been verified "
+            "on the remote"
         )
+    print(f"Verified retirement content by {method}: {head[:12]} against {base} at {base_oid[:12]}")
 
     refusal = fast_forward_main_worktree(
         repository, entries, main_worktree, args.remote, base, base_oid

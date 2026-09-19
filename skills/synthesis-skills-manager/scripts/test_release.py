@@ -617,6 +617,106 @@ def test_repository_ci_fetches_authoritative_base_history() -> None:
     assert checkout["with"]["fetch-depth"] == 0
 
 
+def squash_release_repo(tmp_path: Path) -> tuple[Path, str]:
+    """main with a base commit plus a single-parent head (a squash landing)."""
+    repository = tmp_path / "squash-repo"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repository)], check=True)
+    for key, value in (
+        ("user.name", "Squash Fixture"),
+        ("user.email", "squash@example.invalid"),
+        ("core.hooksPath", "/dev/null"),
+    ):
+        subprocess.run(
+            ["git", "-C", str(repository), "config", key, value], check=True
+        )
+    (repository / "bump.txt").write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repository), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "commit", "-qm", "base"], check=True
+    )
+    base = subprocess.run(
+        ["git", "-C", str(repository), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    (repository / "bump.txt").write_text("head\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repository), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "commit", "-qm", "squash"], check=True
+    )
+    return repository, base
+
+
+def test_acceptance_change_base_uses_parent_for_squash_commit_on_main(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository, base = squash_release_repo(tmp_path)
+    monkeypatch.delenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", raising=False)
+
+    resolved, detail = release.acceptance_change_base(repository)
+
+    assert resolved == base
+    assert "single-parent" in detail
+
+
+def test_acceptance_change_base_keeps_merge_base_for_feature_branches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository, _ = squash_release_repo(tmp_path)
+    monkeypatch.delenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", raising=False)
+    subprocess.run(
+        ["git", "-C", str(repository), "checkout", "-qb", "feature/x"], check=True
+    )
+    (repository / "bump.txt").write_text("branch\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repository), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "commit", "-qm", "branch"], check=True
+    )
+
+    resolved, _ = release.acceptance_change_base(repository)
+
+    # No origin/main exists here; the branch path must fail, never silently
+    # resolve to the single parent (that would shrink the change universe to
+    # one commit).
+    assert resolved is None
+
+
+def test_acceptance_change_base_uses_first_parent_for_merge_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository, _ = squash_release_repo(tmp_path)
+    monkeypatch.delenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", raising=False)
+    pre_merge = subprocess.run(
+        ["git", "-C", str(repository), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "-C", str(repository), "checkout", "-qb", "feature/y"], check=True
+    )
+    (repository / "side.txt").write_text("side\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repository), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "commit", "-qm", "side"], check=True
+    )
+    subprocess.run(
+        ["git", "-C", str(repository), "checkout", "-q", "main"], check=True
+    )
+    subprocess.run(
+        ["git", "-C", str(repository), "merge", "--quiet", "--no-ff",
+         "--no-edit", "feature/y"],
+        check=True,
+    )
+
+    resolved, detail = release.acceptance_change_base(repository)
+
+    assert resolved == pre_merge
+    assert detail == "merge first parent"
+
+
 # AGENT HEURISTIC: these fixtures preserve the direct reviewer's concrete D4
 # counterexample. A receipt that expires before publish is not release authority.
 def accepted_publish_fixture(tmp_path: Path) -> tuple[Path, object]:

@@ -98,6 +98,19 @@ def commit_and_merge(clone: Path, worktree: Path, branch: str = "feature/demo") 
     git(clone, "push", "--quiet", "origin", "main")
 
 
+def commit_and_squash_merge(
+    clone: Path, worktree: Path, branch: str = "feature/demo"
+) -> None:
+    """Land the branch via squash: identical tree, no shared commits."""
+    (worktree / "change.txt").write_text("change\n", encoding="utf-8")
+    git(worktree, "add", "change.txt")
+    git(worktree, "commit", "--quiet", "-m", "change")
+    git(worktree, "push", "--quiet", "-u", "origin", branch)
+    git(clone, "merge", "--quiet", "--squash", branch)
+    git(clone, "commit", "--quiet", "-m", f"squash {branch}")
+    git(clone, "push", "--quiet", "origin", "main")
+
+
 def test_retires_merged_worktree_and_branches(tmp_path: Path) -> None:
     remote, clone = build_repo(tmp_path)
     worktree = add_feature_worktree(tmp_path, clone)
@@ -116,6 +129,41 @@ def test_retires_merged_worktree_and_branches(tmp_path: Path) -> None:
     assert not branches.strip()
     remote_heads = git(clone, "ls-remote", "--heads", "origin", "feature/demo").stdout
     assert not remote_heads.strip()
+
+
+def test_retires_squash_merged_worktree_by_identical_tree(tmp_path: Path) -> None:
+    remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    commit_and_squash_merge(clone, worktree)
+
+    result = retire(
+        "--repository",
+        str(clone),
+        "--worktree",
+        str(worktree),
+        "--delete-remote",
+    )
+    assert result.returncode == 0, result.stderr
+    assert "identical-tree" in result.stdout
+    assert not worktree.exists()
+    branches = git(clone, "branch", "--list", "feature/demo").stdout
+    assert not branches.strip()
+    remote_heads = git(clone, "ls-remote", "--heads", "origin", "feature/demo").stdout
+    assert not remote_heads.strip()
+
+
+def test_refuses_squash_merged_worktree_with_extra_commits(tmp_path: Path) -> None:
+    remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    commit_and_squash_merge(clone, worktree)
+    (worktree / "extra.txt").write_text("after squash\n", encoding="utf-8")
+    git(worktree, "add", "extra.txt")
+    git(worktree, "commit", "--quiet", "-m", "after squash")
+
+    result = retire("--repository", str(clone), "--worktree", str(worktree))
+    assert result.returncode == 2
+    assert "not fully contained" in result.stderr
+    assert worktree.exists()
 
 
 def stale_upstream_worktree(tmp_path: Path) -> tuple[Path, Path, str]:
