@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.106.0] - 2026-09-19
+
+Coordination defect follow-throughs. The commit gate re-syncs vendored
+hooks on every plugin update so claim-time and commit-time stop
+disagreeing; the doctor reports blocking versus advisory severity
+honestly with drift/installer parity coverage; unverifiable-scope
+errors name the dead path; and every ritual sweep reports
+BLIND/UNREACHABLE states with coverage denominators.
+
 ## [4.105.0] - 2026-09-19
 
 Squash-merge landings work end to end. Worktree retirement accepts an
