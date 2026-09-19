@@ -788,6 +788,88 @@ class PluginTests(unittest.TestCase):
         self.assertIn("not installed", detail)
         runner.assert_not_called()
 
+    def test_hooks_resync_skips_when_never_installed(self):
+        report = onboard.Report(as_json=True)
+        with tempfile.TemporaryDirectory(prefix="onboard-hooks-") as root:
+            with patch.object(onboard, "HOME", Path(root)), patch.object(
+                onboard, "run"
+            ) as runner:
+                onboard.resync_git_hooks(report, dry_run=False)
+
+        runner.assert_not_called()
+        self.assertEqual(report.steps[0]["status"], onboard.SKIP)
+        self.assertIn("setup owns first install", report.steps[0]["detail"])
+
+    def test_hooks_resync_reports_ok_when_installer_changes_nothing(self):
+        report = onboard.Report(as_json=True)
+        with tempfile.TemporaryDirectory(prefix="onboard-hooks-") as root:
+            home = Path(root)
+            engine = home / ".synthesis" / "git-hooks"
+            engine.mkdir(parents=True)
+            (engine / "pre-commit").write_text("#!/bin/bash\n", encoding="utf-8")
+            with patch.object(onboard, "HOME", home), patch.object(
+                onboard, "run", return_value=(0, "", "")
+            ) as runner:
+                onboard.resync_git_hooks(report, dry_run=False)
+
+        self.assertEqual(runner.call_count, 1)
+        self.assertEqual(
+            runner.call_args_list[0].args[0][:2],
+            ["bash", str(onboard.source_root() / "skills" / "synthesis-git-hooks" / "scripts" / "install.sh")],
+        )
+        self.assertEqual(report.steps[0]["status"], onboard.OK)
+
+    def test_hooks_resync_reports_changed_when_installer_writes(self):
+        report = onboard.Report(as_json=True)
+        with tempfile.TemporaryDirectory(prefix="onboard-hooks-") as root:
+            home = Path(root)
+            engine = home / ".synthesis" / "git-hooks"
+            engine.mkdir(parents=True)
+            (engine / "pre-commit").write_text("#!/bin/bash\n", encoding="utf-8")
+
+            def reinstall(command, timeout):
+                (engine / "coordination.py").write_text("# fresh\n", encoding="utf-8")
+                return (0, "", "")
+
+            with patch.object(onboard, "HOME", home), patch.object(
+                onboard, "run", side_effect=reinstall
+            ):
+                onboard.resync_git_hooks(report, dry_run=False)
+
+        self.assertEqual(report.steps[0]["status"], onboard.CHANGED)
+
+    def test_hooks_resync_skips_when_source_lacks_the_installer(self):
+        report = onboard.Report(as_json=True)
+        with tempfile.TemporaryDirectory(prefix="onboard-hooks-") as root:
+            home = Path(root)
+            engine = home / ".synthesis" / "git-hooks"
+            engine.mkdir(parents=True)
+            (engine / "pre-commit").write_text("#!/bin/bash\n", encoding="utf-8")
+            with tempfile.TemporaryDirectory(prefix="onboard-src-") as src, \
+                    patch.object(onboard, "HOME", home), \
+                    patch.object(onboard, "source_root", return_value=Path(src)), \
+                    patch.object(onboard, "run") as runner:
+                onboard.resync_git_hooks(report, dry_run=False)
+
+        runner.assert_not_called()
+        self.assertEqual(report.steps[0]["status"], onboard.SKIP)
+        self.assertIn("nothing to re-sync from", report.steps[0]["detail"])
+
+    def test_hooks_resync_errors_when_installer_fails(self):
+        report = onboard.Report(as_json=True)
+        with tempfile.TemporaryDirectory(prefix="onboard-hooks-") as root:
+            home = Path(root)
+            engine = home / ".synthesis" / "git-hooks"
+            engine.mkdir(parents=True)
+            (engine / "pre-commit").write_text("#!/bin/bash\n", encoding="utf-8")
+            with patch.object(onboard, "HOME", home), patch.object(
+                onboard, "run", return_value=(1, "", "doctor found problems")
+            ):
+                onboard.resync_git_hooks(report, dry_run=False)
+
+        self.assertEqual(report.steps[0]["status"], onboard.ERROR)
+        self.assertIn("doctor found problems", report.steps[0]["hint"])
+
     def test_codex_history_sync_refuses_a_dangling_guardian_symlink(self):
         with tempfile.TemporaryDirectory(prefix="onboard-history-") as root:
             home = Path(root)
