@@ -11,6 +11,11 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Explicit read-only diagnostics (September 2026).** Release **4.107.0**
+adds `--local` across all 17 conformance routes, a passive lease cache
+for fetch-free board reads, and acceptance controls pinning the
+read-only contract.
+
 **Coordination defect follow-throughs (September 2026).** Release **4.106.0**
 re-syncs the commit gate on every update, splits doctor severity into
 blocking versus advisory, names dead paths in scope errors, and gives
