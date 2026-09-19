@@ -72,7 +72,7 @@ cases:
   expected_status: pass
   fixture: ../synthesis-agent-conformance/scripts/test_local_mode.py::test_local_leaves_fetch_head_and_board_untouched
   motivating_defect: Flag threading claims mean nothing unless the
-    bytes provably do not move: no FETCH_HEAD, no mirror delta.
+    bytes provably do not move, with no FETCH_HEAD or mirror delta.
 - id: local-no-reload
   control_class: acceptance-test
   expected_status: pass
