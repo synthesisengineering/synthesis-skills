@@ -678,13 +678,18 @@ def canonical_retirement_commits(
         raise ValueError(head_error or "verified retirement head does not resolve")
     if base_rc != 0 or not canonical_base:
         raise ValueError(base_error or "pinned retirement base does not resolve")
-    ancestry_rc, _, ancestry_error = git(
+    ancestry_rc, _, _ = git(
         repository, "merge-base", "--is-ancestor", canonical_head, canonical_base
     )
     if ancestry_rc != 0:
-        raise ValueError(
-            ancestry_error or "retired head is not contained in the pinned remote base"
+        identical_rc, _, _ = git(
+            repository, "diff", "--quiet", canonical_head, canonical_base, "--"
         )
+        if identical_rc != 0:
+            raise ValueError(
+                "retired head is not contained in the pinned remote base "
+                "and its tree differs"
+            )
     return canonical_head, canonical_base
 
 

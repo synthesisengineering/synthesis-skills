@@ -223,9 +223,13 @@ def acceptance_change_base(repo: Path) -> tuple[str | None, str]:
         if base:
             return base, "feature branch merge-base with origin/main"
         return None, merge_detail
+    if branch == "main" and parents:
+        fields = parents.split()
+        if len(fields) == 2:
+            return fields[1], "single-parent release commit; parent is the release boundary"
     return None, detail or branch_detail or (
         "set SYNTHESIS_ACCEPTANCE_CHANGE_BASE, use a feature branch with origin/main, "
-        "or run from the resulting merge commit"
+        "or run from the release commit on main"
     )
 
 
