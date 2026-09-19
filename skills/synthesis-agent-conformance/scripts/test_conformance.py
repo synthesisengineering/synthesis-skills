@@ -469,7 +469,7 @@ def test_activate_and_handoff(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         MODULE,
         "load_and_validate",
-        lambda pointer, board: (
+        lambda pointer, board, refresh_lease=True: (
             json.loads(pointer.read_text(encoding="utf-8")),
             original_validate(
                 json.loads(pointer.read_text(encoding="utf-8")),
@@ -1935,7 +1935,7 @@ def test_catalog_checks_enforce_installed_content_parity(
     monkeypatch.setattr(
         MODULE,
         "codex_skill_catalog_audit",
-        lambda source_root, home=None: {
+        lambda source_root, home=None, reload=True: {
             "status": "PASS",
             "discovered_skill_count": 1,
             "skill_count": 1,

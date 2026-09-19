@@ -218,7 +218,9 @@ def normalized_audit(
     }
 
 
-def audit(cwd: Path, *, home: Path | None = None) -> dict[str, object]:
+def audit(
+    cwd: Path, *, home: Path | None = None, reload: bool = True
+) -> dict[str, object]:
     binary = resolve_client_binary("codex")
     if binary is None:
         return {
@@ -232,7 +234,7 @@ def audit(cwd: Path, *, home: Path | None = None) -> dict[str, object]:
         result = query(
             binary,
             "skills/list",
-            {"cwds": [str(cwd.resolve())], "forceReload": True},
+            {"cwds": [str(cwd.resolve())], "forceReload": reload},
             title="Synthesis Skill Catalog Audit",
         )
         source_skills = Path(__file__).resolve().parents[2]

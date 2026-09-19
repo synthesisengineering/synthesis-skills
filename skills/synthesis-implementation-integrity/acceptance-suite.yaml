@@ -1,44 +1,96 @@
 schema: 2
-suite: defect-followthrough-release-4-106-0
+suite: readonly-001-local-boundary
 membership: closed
-production_entry_point: All three client manifests and the top changelog
-  identify 4.106.0, shipping commit-gate resync, honest doctor severity,
-  dead-path naming, and denominator-carrying sweeps
+production_entry_point: Every conformance route honors --local (no network
+  fetch, no board or lease refresh, no pointer writes); activate refuses
+  showing the exact write; lease-cache publication cannot resurrect a
+  stale board
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real validators and manifest checks in disposable
-  directories. They do not establish installed-client reload, live cross-client delivery,
-  new-release publication, or deployment approval. Those remain separate release checks.
+unverified_remainder: Fixtures execute the real conformance routes, resolver,
+  lease paths, and catalog audit against disposable repos, boards, and
+  leases. They do not establish installed-client reload, live lease
+  publication, new-release publication, or deployment approval. Those
+  remain separate release checks.
 changed_surfaces:
-- path: .claude-plugin/plugin.json
+- path: skills/synthesis-agent-conformance/SKILL.md
   cases:
-  - release-version-metadata
-- path: .codex-plugin/plugin.json
+  - local-refusal
+- path: skills/synthesis-agent-conformance/scripts/codex_skill_catalog.py
   cases:
-  - release-version-metadata
-- path: .muse-plugin/plugin.json
+  - local-no-reload
+- path: skills/synthesis-agent-conformance/scripts/conformance.py
   cases:
-  - release-version-metadata
-- path: CHANGELOG.md
+  - local-refusal
+  - local-refresh-off
+  - local-skip-reasons
+  - local-untouched
+  - local-no-reload
+- path: skills/synthesis-agent-conformance/scripts/test_conformance.py
   cases:
-  - release-version-metadata
-- path: README.md
+  - local-refusal
+- path: skills/synthesis-agent-conformance/scripts/test_local_mode.py
   cases:
-  - release-version-metadata
+  - local-refusal
+  - local-refresh-off
+  - local-skip-reasons
+  - local-untouched
+  - local-no-reload
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
+- path: skills/synthesis-project-management/scripts/test_coordination.py
+  cases:
+  - cache-hit
+  - cache-race
 cases:
-- id: release-version-metadata
+- id: local-refusal
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
-  motivating_defect: All client manifests and the top changelog identify the same release while retained
-    release contracts remain valid.
+  fixture: ../synthesis-agent-conformance/scripts/test_local_mode.py::test_local_activate_refuses_before_lock_and_write
+  motivating_defect: activate wrote the project pointer from inside a
+    diagnosis; under local mode the write must refuse before lock,
+    refresh, or bytes move, naming the exact unwritten change.
+- id: local-refresh-off
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_local_mode.py::test_local_recovery_threads_fetch_and_refresh_flags
+  motivating_defect: Recovery resolved with fetch and board refresh
+    hardcoded on, so read-only diagnostics mutated remotes and mirrors.
+- id: local-skip-reasons
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_local_mode.py::test_local_coordination_skips_semantic_doctor
+  motivating_defect: Lease-sync verification fetched from the network
+    invisibly; under local mode it must skip loudly with the mirror age.
+- id: local-untouched
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_local_mode.py::test_local_leaves_fetch_head_and_board_untouched
+  motivating_defect: Flag threading claims mean nothing unless the
+    bytes provably do not move, with no FETCH_HEAD or mirror delta.
+- id: local-no-reload
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_local_mode.py::test_local_catalog_disables_force_reload
+  motivating_defect: The catalog leg requested a server rescan on every
+    run; under local mode it must query without asking for reload.
+- id: cache-hit
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_passive_cache_hit_skips_fetch_and_dies_on_mutation
+  motivating_defect: The passive observer needs a fetch-free read, but a
+    stamp that survives a mutation would serve stale authority.
+- id: cache-race
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_cached_refresh_cannot_resurrect_stale_board
+  motivating_defect: The pre-fix check-then-act order restored a stale
+    board after a same-machine release; the lock must serialize the race.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
