@@ -6,6 +6,21 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v2.39.0 — Every sweep names its denominator; BLIND vs UNREACHABLE everywhere
+
+v2.39.0 (2026-09-19): the coverage-state vocabulary from the mailbox
+manifest spreads to the other sweeps. The code-sync report puts every
+declared repo in exactly one of synced / decision / BLIND / UNREACHABLE
+and closes with the denominator — "not scanned" once hid seven repos
+on branches with no upstream and 39 invisible commits for weeks. The
+PR queue carries the same two states per unscanned repo (unsupported
+origin or missing remote is BLIND, our defect; missing clone, CLI,
+or API is UNREACHABLE, the world's). The deadline sweep reports
+obligations and scanned sources, not bare due counts. The doctor
+step reads the new blocking/advisory severities: blocking problems
+refuse commits, advisory conditions (drift, unwired hooks) degrade
+protection while commits proceed.
+
 ## v2.38.0 — Email sync runs off a mailbox manifest; blind accounts fail the ritual
 
 v2.38.0 (2026-09-18): the email step sweeps `.agents/mailboxes.yaml`
