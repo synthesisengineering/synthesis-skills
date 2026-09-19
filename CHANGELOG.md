@@ -4,6 +4,18 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.104.0] - 2026-09-18
+
+The release train now installs and verifies all three clients: the new
+Muse stage exports a versioned local bundle, syncs it into the recorded
+source, updates, and verifies reported version, on-disk manifests, and
+loaded bytes. Coordination claims merge by default with an explicit
+`narrow` verb and a loud `--replace` full reset; worktree retirement
+fast-forwards the main checkout to the verified base; the anti-shortcuts
+scanner flags cost-decided recommendations; the ritual email step sweeps
+a mailbox manifest with blind/unreachable states; and saved transcripts
+get a commitment-extraction scan.
+
 ## [4.103.0] - 2026-09-18
 
 Coordination hardening from the September operations review. Heartbeat-quiet

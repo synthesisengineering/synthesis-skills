@@ -11,6 +11,12 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Three-client releases (September 2026).** Release **4.104.0** brings
+Muse into the release train alongside Claude and Codex, makes
+coordination claims merge by default with an explicit narrow verb,
+advances the main checkout on worktree retirement, and adds ritual
+mailbox manifests plus transcript commitment scans.
+
 **Coordination hardening (September 2026).** Release **4.103.0** ships five
 fixes from the September operations review: automatic advisory downgrade for
 quiet claims, checkout sharing with a loud banner, snapshot retry, empty-seat

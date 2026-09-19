@@ -1,101 +1,46 @@
 schema: 2
-suite: claim-merge-ritual-s5
+suite: three-client-release-4-104-0
 membership: closed
-production_entry_point: coordination.py claim merges by default with an
-  explicit narrow verb; the ritual email step sweeps a mailbox manifest
-  with blind/unreachable states; saved transcripts get a commitment scan
+production_entry_point: All three client manifests and the top changelog
+  identify 4.104.0, shipping the Muse release stage, claim merge-by-default,
+  the retirement main-advance gate, and the ritual mailbox and commitment work
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real coordination engine,
-  mailbox planner, and commitment scanner against disposable boards,
-  stores, and transcripts. They do not establish installed-client
-  reload, live hook pickup, new-release publication, or deployment
-  approval. Those remain separate release checks.
+unverified_remainder: Fixtures execute the real validators and manifest checks in disposable
+  directories. They do not establish installed-client reload, live cross-client delivery,
+  new-release publication, or deployment approval. Those remain separate release checks.
 changed_surfaces:
-- path: skills/synthesis-daily-rituals/SKILL.md
+- path: .claude-plugin/plugin.json
   cases:
-  - mailbox-blind
-- path: skills/synthesis-daily-rituals/references/mailbox-manifest.md
+  - release-version-metadata
+- path: .codex-plugin/plugin.json
   cases:
-  - mailbox-blind
-- path: skills/synthesis-daily-rituals/references/version-history.md
+  - release-version-metadata
+- path: .muse-plugin/plugin.json
   cases:
-  - mailbox-blind
-- path: skills/synthesis-daily-rituals/scripts/mailboxes.py
+  - release-version-metadata
+- path: CHANGELOG.md
   cases:
-  - mailbox-blind
-- path: skills/synthesis-daily-rituals/scripts/test_mailboxes.py
+  - release-version-metadata
+- path: README.md
   cases:
-  - mailbox-blind
+  - release-version-metadata
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-meeting-transcripts/SKILL.md
-  cases:
-  - transcript-version
-- path: skills/synthesis-meeting-transcripts/extract_commitments.py
-  cases:
-  - commitments-scan
-- path: skills/synthesis-meeting-transcripts/test_extract_commitments.py
-  cases:
-  - commitments-scan
-- path: skills/synthesis-meeting-transcripts/test_version_parity.py
-  cases:
-  - transcript-version
-- path: skills/synthesis-meeting-transcripts/transcript_primary.py
-  cases:
-  - transcript-version
-- path: skills/synthesis-meeting-transcripts/verify_transcripts.py
-  cases:
-  - transcript-version
-- path: skills/synthesis-project-management/references/parallel-agent-protocol.md
-  cases:
-  - claim-merge-union
-- path: skills/synthesis-project-management/scripts/coordination.py
-  cases:
-  - claim-merge-union
-  - claim-narrow
-- path: skills/synthesis-project-management/scripts/test_coordination.py
-  cases:
-  - claim-merge-union
-  - claim-narrow
 cases:
+- id: release-version-metadata
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
+  motivating_defect: All client manifests and the top changelog identify the same release while retained
+    release contracts remain valid.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: claim-merge-union
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_reclaim_merges_areas_by_default
-  motivating_defect: Re-claims from compacted contexts silently dropped
-    areas by omission; merge-by-default grows, never shrinks.
-- id: claim-narrow
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_narrow_releases_named_areas_and_reports
-  motivating_defect: Shrinking must name its target and print a loud
-    record, refusing targets the row does not hold.
-- id: mailbox-blind
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_mailboxes.py::test_unswept_due_accounts_are_blind_and_fail
-  motivating_defect: Undeclared mailboxes rotted unread; due accounts
-    neither swept nor deferred must fail the ritual loudly.
-- id: commitments-scan
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-meeting-transcripts/test_extract_commitments.py::test_plaud_timestamp_is_captured
-  motivating_defect: Filed transcripts were never read for obligations;
-    commitment shapes surface timestamped for confirmation.
-- id: transcript-version
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-meeting-transcripts/test_version_parity.py::test_executable_components_match_the_skill_version
-  motivating_defect: Every executable component must report the skill's
-    own version, including the new scanner.
