@@ -1091,3 +1091,81 @@ def test_native_base_pin_cleanup_cannot_delete_a_changed_pin(tmp_path, monkeypat
     assert result == 2
     assert len(changed) == 1
     assert git(clone, "rev-parse", changed[0]).stdout.strip() == seed
+
+
+def behind_main_clone(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """A merged feature whose main checkout sits one merge behind origin."""
+    remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    commit_and_merge(clone, worktree)
+    git(clone, "reset", "--quiet", "--hard", "HEAD~1")
+    return remote, clone, worktree
+
+
+def test_retirement_advances_behind_main_worktree(tmp_path: Path) -> None:
+    """Defect 3: retirement lands the main checkout too, not just origin."""
+    remote, clone, worktree = behind_main_clone(tmp_path)
+    behind = git(clone, "rev-parse", "HEAD").stdout.strip()
+    base = git(clone, "rev-parse", "origin/main").stdout.strip()
+    assert behind != base
+
+    result = retire("--repository", str(clone), "--worktree", str(worktree))
+
+    assert result.returncode == 0, result.stderr
+    assert "Advanced main worktree" in result.stdout
+    assert git(clone, "rev-parse", "HEAD").stdout.strip() == base
+    assert not worktree.exists()
+
+
+def test_retirement_refuses_dirty_main_worktree(tmp_path: Path) -> None:
+    remote, clone, worktree = behind_main_clone(tmp_path)
+    (clone / "uncommitted.txt").write_text("work in progress\n", encoding="utf-8")
+
+    result = retire("--repository", str(clone), "--worktree", str(worktree))
+
+    assert result.returncode == 2
+    assert "uncommitted changes" in result.stderr
+    assert worktree.exists()
+    assert (clone / "uncommitted.txt").is_file()
+
+
+def test_retirement_refuses_ahead_main_worktree(tmp_path: Path) -> None:
+    remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    commit_and_merge(clone, worktree)
+    (clone / "local-only.txt").write_text("unpushed\n", encoding="utf-8")
+    git(clone, "add", "local-only.txt")
+    git(clone, "commit", "--quiet", "-m", "local only")
+
+    result = retire("--repository", str(clone), "--worktree", str(worktree))
+
+    assert result.returncode == 2
+    assert "ahead of" in result.stderr
+    assert worktree.exists()
+
+
+def test_retirement_refuses_diverged_main_worktree(tmp_path: Path) -> None:
+    remote, clone, worktree = behind_main_clone(tmp_path)
+    (clone / "diverged.txt").write_text("other line\n", encoding="utf-8")
+    git(clone, "add", "diverged.txt")
+    git(clone, "commit", "--quiet", "-m", "diverged")
+
+    result = retire("--repository", str(clone), "--worktree", str(worktree))
+
+    assert result.returncode == 2
+    assert "cannot fast-forward" in result.stderr
+    assert worktree.exists()
+
+
+def test_retirement_leaves_main_on_other_branch_alone(tmp_path: Path) -> None:
+    remote, clone, worktree = behind_main_clone(tmp_path)
+    git(clone, "checkout", "--quiet", "-b", "other-work")
+    before = git(clone, "rev-parse", "HEAD").stdout.strip()
+
+    result = retire("--repository", str(clone), "--worktree", str(worktree))
+
+    assert result.returncode == 0, result.stderr
+    assert "leaving it alone" in result.stdout
+    assert git(clone, "rev-parse", "HEAD").stdout.strip() == before
+    assert git(clone, "branch", "--show-current").stdout.strip() == "other-work"
+    assert not worktree.exists()

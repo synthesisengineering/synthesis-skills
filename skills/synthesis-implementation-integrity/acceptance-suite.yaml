@@ -1,70 +1,55 @@
 schema: 2
-suite: muse-release-stage
+suite: defect3-main-advance
 membership: closed
-production_entry_point: release.py stages a versioned local bundle, syncs it
-  into Muse's recorded source path, updates the install, and verifies
-  reported version, on-disk manifests, and loaded bytes
+production_entry_point: retire_worktree.py fast-forwards the main worktree
+  to the verified base before removing anything, refusing on dirty,
+  diverged, or ahead checkouts
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real stage against fake binaries
-  and disposable directories. They do not establish installed-client reload,
+unverified_remainder: Fixtures execute the real helper against disposable
+  git remotes and clones. They do not establish installed-client reload,
   live hook pickup, new-release publication, or deployment approval. Those
   remain separate release checks.
 changed_surfaces:
-- path: skills/synthesis-agent-conformance/scripts/client_binaries.py
-  cases:
-  - muse-binary-resolves
-- path: skills/synthesis-agent-conformance/scripts/test_client_binaries.py
-  cases:
-  - muse-binary-resolves
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-skills-manager/SKILL.md
+- path: skills/synthesis-project-management/scripts/retire_worktree.py
   cases:
-  - muse-release-refresh
-- path: skills/synthesis-skills-manager/scripts/release.py
+  - defect3-main-advance
+  - defect3-dirty-refusal
+  - defect3-diverged-refusal
+- path: skills/synthesis-project-management/scripts/test_retire_worktree.py
   cases:
-  - muse-release-refresh
-  - muse-release-verify
-  - muse-release-drift
-- path: skills/synthesis-skills-manager/scripts/test_release.py
-  cases:
-  - muse-release-refresh
-  - muse-release-verify
-  - muse-release-drift
+  - defect3-main-advance
+  - defect3-dirty-refusal
+  - defect3-diverged-refusal
 cases:
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: muse-binary-resolves
+- id: defect3-main-advance
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_client_binaries.py::test_muse_env_override_wins_over_path
-  motivating_defect: Muse support must resolve through the same override
-    contract as the other clients, or hermetic checks cannot pin or hide it.
-- id: muse-release-refresh
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retirement_advances_behind_main_worktree
+  motivating_defect: A branch verified on the remote while the operator's
+    main checkout sits behind leaves the next session reading stale files;
+    retirement must advance the main checkout itself.
+- id: defect3-dirty-refusal
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_refresh_syncs_recorded_source_then_updates
-  motivating_defect: Muse refuses install-from-new-path over an existing
-    record, so refresh must sync the staged export into the recorded path
-    and update from it.
-- id: muse-release-verify
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retirement_refuses_dirty_main_worktree
+  motivating_defect: The advance must never touch a dirty tree; retirement
+    refuses with remediation and removes nothing.
+- id: defect3-diverged-refusal
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_deep_verify_checks_loaded_bytes_not_the_bundle
-  motivating_defect: A fresh staged bundle must not vouch for stale loaded
-    bytes; the content leg has to compare what the client loads.
-- id: muse-release-drift
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_refresh_replaces_complete_bundle_on_content_drift
-  motivating_defect: Same-version commits move bytes without moving the
-    label, so bundle reuse must compare content, not the version string.
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retirement_refuses_diverged_main_worktree
+  motivating_defect: A diverged main checkout cannot fast-forward; retirement
+    refuses rather than merging or resetting the operator's work.
