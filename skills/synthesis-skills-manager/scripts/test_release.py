@@ -28,8 +28,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import release  # noqa: E402
 
 
-def write_manifests(repo: Path, claude: str | None, codex: str | None) -> None:
-    for directory, version in ((".claude-plugin", claude), (".codex-plugin", codex)):
+def write_manifests(repo: Path, claude: str | None, codex: str | None, muse: str | None) -> None:
+    for directory, version in ((".claude-plugin", claude), (".codex-plugin", codex), (".muse-plugin", muse)):
         target = repo / directory
         target.mkdir(parents=True, exist_ok=True)
         payload = {"name": release.PLUGIN_NAME}
@@ -40,7 +40,7 @@ def write_manifests(repo: Path, claude: str | None, codex: str | None) -> None:
 
 @pytest.fixture()
 def repo(tmp_path: Path) -> Path:
-    write_manifests(tmp_path, "9.9.9", "9.9.9")
+    write_manifests(tmp_path, "9.9.9", "9.9.9", "9.9.9")
     (tmp_path / "CHANGELOG.md").write_text(
         "# Changelog\n\n## [9.9.9] - 2026-01-01\n\n### Added\n\n- thing\n", encoding="utf-8"
     )
@@ -76,14 +76,14 @@ def test_source_version_agrees(repo: Path) -> None:
 
 
 def test_source_version_fails_closed_when_manifests_disagree(repo: Path) -> None:
-    write_manifests(repo, "9.9.9", "9.9.8")
+    write_manifests(repo, "9.9.9", "9.9.8", "9.9.9")
     version, detail = release.source_version(repo)
     assert version is None
     assert "9.9.8" in detail
 
 
 def test_source_version_fails_closed_when_a_manifest_lacks_a_version(repo: Path) -> None:
-    write_manifests(repo, "9.9.9", None)
+    write_manifests(repo, "9.9.9", None, "9.9.9")
     version, _ = release.source_version(repo)
     assert version is None
 
@@ -419,7 +419,7 @@ def test_release_establishes_required_launcher_before_exposing_new_hooks(repo, m
     monkeypatch.setattr(release, "deep_verify", lambda *args, **kwargs: True)
     monkeypatch.setattr(release, "refresh_stable_path", lambda *args, **kwargs: True)
     assert release.main(["--repo-root", str(repo), "--install-only"]) == (0 if activation_ok else 1)
-    assert observations == ([("claude", True), ("codex", True)] if activation_ok else [])
+    assert observations == ([("claude", True), ("codex", True), ("muse", True)] if activation_ok else [])
 
 
 def test_publisher_activates_cli_through_public_release_verifier(
@@ -1120,7 +1120,7 @@ def test_recovery_digest_rejects_special_objects(tmp_path: Path) -> None:
 
 
 def commit_release(repo: Path, version: str, marker: str) -> None:
-    write_manifests(repo, version, version)
+    write_manifests(repo, version, version, version)
     skill = repo / "skills" / "example" / "SKILL.md"
     skill.parent.mkdir(parents=True, exist_ok=True)
     skill.write_text(f"version: {version}\n{marker}\n", encoding="utf-8")
@@ -1186,7 +1186,7 @@ def commit_release(repo: Path, version: str, marker: str) -> None:
 
 
 def seed_complete_cache_root(root: Path, version: str) -> None:
-    write_manifests(root, version, version)
+    write_manifests(root, version, version, version)
     target = root / "skills" / "synthesis-autopilot" / "scripts" / "autopilot_gate.py"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("print('gate')\n", encoding="utf-8")
@@ -1779,7 +1779,7 @@ def test_main_refuses_a_non_checkout(tmp_path: Path) -> None:
 
 
 def test_main_aborts_on_manifest_disagreement(repo: Path) -> None:
-    write_manifests(repo, "9.9.9", "9.9.8")
+    write_manifests(repo, "9.9.9", "9.9.8", "9.9.9")
     assert release.main(["--repo-root", str(repo), "--check-only"]) == 2
 
 
@@ -1861,3 +1861,295 @@ def test_muse_bundle_manifest_agrees_with_siblings_and_resolves() -> None:
         # The installed package is digest-pinned: a hook that lets Python
         # write __pycache__ invalidates the install on its first fire.
         assert "PYTHONDONTWRITEBYTECODE=1" in body, hook["id"]
+
+
+# --- muse release stage ------------------------------------------------------
+
+
+def _write_muse_bundle(
+    root: Path,
+    version: str,
+    *,
+    skill_ok: bool = True,
+    hook: str = "ok",
+    name: str = "synthesis-skills",
+) -> Path:
+    """Seed a Muse bundle tree. ``hook`` is one of absent/ok/missing/non-executable."""
+    manifest_dir = root / ".muse-plugin"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    skill_rel = "skills/demo/SKILL.md"
+    if skill_ok:
+        skill = root / skill_rel
+        skill.parent.mkdir(parents=True, exist_ok=True)
+        skill.write_text("# demo\n", encoding="utf-8")
+    hooks: list[dict] = []
+    if hook != "absent":
+        script = root / "hooks" / "muse" / "demo.sh"
+        if hook != "missing":
+            script.parent.mkdir(parents=True, exist_ok=True)
+            script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            if hook == "ok":
+                script.chmod(script.stat().st_mode | 0o111)
+        hooks = [{"id": "demo", "event": "SessionStart", "command": ["sh", "hooks/muse/demo.sh"]}]
+    (manifest_dir / "plugin.json").write_text(
+        json.dumps({
+            "name": name,
+            "version": version,
+            "capabilities": {"skills": [{"id": "demo", "path": skill_rel}], "hooks": hooks},
+        }),
+        encoding="utf-8",
+    )
+    return root
+
+
+def _muse_list_payload(
+    *,
+    version: str = "9.9.9",
+    enabled: bool = True,
+    cache_path: str = "/cache/muse/package",
+    plugin_id: str = "synthesis-skills",
+) -> str:
+    return json.dumps({"plugins": [{
+        "record": {"id": plugin_id, "version": version, "enabled": enabled, "cache_path": cache_path},
+    }]})
+
+
+def _fake_muse_binary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: str, exit_code: int = 0
+) -> Path:
+    script = tmp_path / "bin" / "muse"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text(f"#!/bin/sh\necho '{payload}'\nexit {exit_code}\n", encoding="utf-8")
+    script.chmod(script.stat().st_mode | 0o111)
+    monkeypatch.setattr(release, "resolve_client_binary", lambda name: str(script))
+    return script
+
+
+def test_source_version_fails_closed_when_only_muse_disagrees(repo: Path) -> None:
+    write_manifests(repo, "9.9.9", "9.9.9", "9.9.8")
+    version, detail = release.source_version(repo)
+    assert version is None
+    assert "9.9.8" in detail
+
+
+def test_source_version_fails_closed_when_muse_lacks_a_version(repo: Path) -> None:
+    write_manifests(repo, "9.9.9", "9.9.9", None)
+    version, _ = release.source_version(repo)
+    assert version is None
+
+
+def test_muse_manifest_joins_the_release_gate() -> None:
+    assert ".muse-plugin/plugin.json" in release.MANIFESTS
+    assert len(release.MANIFESTS) == 3
+
+
+def test_muse_reported_version_parses_list_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload())
+    assert release.client_reported_version("muse") == ("9.9.9", "/cache/muse/package")
+
+
+def test_muse_reported_version_ignores_disabled_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(enabled=False))
+    assert release.client_reported_version("muse") == (None, None)
+
+
+def test_muse_reported_version_ignores_foreign_plugin_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(plugin_id="other-plugin"))
+    assert release.client_reported_version("muse") == (None, None)
+
+
+def test_muse_reported_version_none_on_malformed_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_muse_binary(tmp_path, monkeypatch, "not json at all")
+    assert release.client_reported_version("muse") == (None, None)
+
+
+def test_muse_reported_version_none_when_command_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(), exit_code=1)
+    assert release.client_reported_version("muse") == (None, None)
+
+
+def test_muse_refresh_dry_run_stages_bundle_then_installs(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(release, "resolve_client_binary", lambda name: "/fake/muse")
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
+    result = release.Result()
+    assert release.refresh_client("muse", result, dry_run=True, repo=repo) is True
+    names = [s.name for s in result.steps]
+    assert "install.muse.bundle" in names
+    assert "install.muse.install" in names
+    assert names.index("install.muse.bundle") < names.index("install.muse.install")
+    bundle_detail = next(s.detail for s in result.steps if s.name == "install.muse.bundle")
+    assert "v9.9.9" in bundle_detail
+    install_detail = next(s.detail for s in result.steps if s.name == "install.muse.install")
+    assert "plugins install" in install_detail
+    assert not (tmp_path / "bundles").exists()
+
+
+def test_muse_refresh_fails_closed_without_binary(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(release, "resolve_client_binary", lambda name: None)
+    result = release.Result()
+    assert release.refresh_client("muse", result, dry_run=True) is False
+    assert result.failed
+
+
+def test_muse_refresh_fails_closed_without_repo(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(release, "resolve_client_binary", lambda name: "/fake/muse")
+    result = release.Result()
+    assert release.refresh_client("muse", result, dry_run=True) is False
+    names = {s.name: s.ok for s in result.steps}
+    assert names["install.muse"] is False
+
+
+def test_muse_refresh_fails_closed_when_manifests_disagree(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_manifests(repo, "9.9.9", "9.9.9", "9.9.8")
+    monkeypatch.setattr(release, "resolve_client_binary", lambda name: "/fake/muse")
+    result = release.Result()
+    assert release.refresh_client("muse", result, dry_run=True, repo=repo) is False
+    assert result.failed
+
+
+def test_muse_refresh_materializes_bundle_and_installs(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_muse_binary(tmp_path, monkeypatch, "{}")
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
+
+    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
+        _write_muse_bundle(destination, version)
+        return {"seeded"}
+
+    monkeypatch.setattr(release, "_export_release_tag", fake_export)
+    result = release.Result()
+    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is True
+    bundle = tmp_path / "bundles" / "v9.9.9"
+    assert (bundle / ".muse-plugin" / "plugin.json").is_file()
+    names = {s.name: s.ok for s in result.steps}
+    assert names["install.muse.bundle"] is True
+    assert names["install.muse.install"] is True
+
+
+def test_muse_refresh_reuses_complete_bundle(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_muse_binary(tmp_path, monkeypatch, "{}")
+    bundles = tmp_path / "bundles"
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
+
+    def exploding_export(*args: object, **kwargs: object) -> set[str]:
+        raise AssertionError("complete bundle must be reused, not re-exported")
+
+    monkeypatch.setattr(release, "_export_release_tag", exploding_export)
+    result = release.Result()
+    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is True
+    names = [s.name for s in result.steps]
+    assert "install.muse.bundle-replace" not in names
+
+
+def test_muse_refresh_replaces_incomplete_bundle(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_muse_binary(tmp_path, monkeypatch, "{}")
+    bundles = tmp_path / "bundles"
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    _write_muse_bundle(bundles / "v9.9.9", "9.9.8")
+
+    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
+        _write_muse_bundle(destination, version)
+        return {"seeded"}
+
+    monkeypatch.setattr(release, "_export_release_tag", fake_export)
+    result = release.Result()
+    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is True
+    names = [s.name for s in result.steps]
+    assert "install.muse.bundle-replace" in names
+    ok, _ = release._muse_bundle_completeness(bundles / "v9.9.9", "9.9.9")
+    assert ok is True
+
+
+def test_muse_refresh_fails_closed_when_install_command_fails(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_muse_binary(tmp_path, monkeypatch, "boom", exit_code=1)
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
+
+    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
+        _write_muse_bundle(destination, version)
+        return {"seeded"}
+
+    monkeypatch.setattr(release, "_export_release_tag", fake_export)
+    result = release.Result()
+    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is False
+    names = {s.name: s.ok for s in result.steps}
+    assert names["install.muse.bundle"] is True
+    assert names["install.muse.install"] is False
+
+
+def test_muse_bundle_completeness_rejects_structural_gaps(tmp_path: Path) -> None:
+    ok, detail = release._muse_bundle_completeness(tmp_path / "absent", "9.9.9")
+    assert ok is False
+    bad_version = _write_muse_bundle(tmp_path / "bad-version", "9.9.8")
+    ok, detail = release._muse_bundle_completeness(bad_version, "9.9.9")
+    assert ok is False and "9.9.8" in detail
+    bad_name = _write_muse_bundle(tmp_path / "bad-name", "9.9.9", name="other")
+    ok, _ = release._muse_bundle_completeness(bad_name, "9.9.9")
+    assert ok is False
+    missing_skill = _write_muse_bundle(tmp_path / "missing-skill", "9.9.9", skill_ok=False)
+    ok, detail = release._muse_bundle_completeness(missing_skill, "9.9.9")
+    assert ok is False and "skills/demo/SKILL.md" in detail
+    missing_hook = _write_muse_bundle(tmp_path / "missing-hook", "9.9.9", hook="missing")
+    ok, _ = release._muse_bundle_completeness(missing_hook, "9.9.9")
+    assert ok is False
+    dark_hook = _write_muse_bundle(tmp_path / "dark-hook", "9.9.9", hook="non-executable")
+    ok, _ = release._muse_bundle_completeness(dark_hook, "9.9.9")
+    assert ok is False
+    good = _write_muse_bundle(tmp_path / "good", "9.9.9")
+    ok, detail = release._muse_bundle_completeness(good, "9.9.9")
+    assert ok is True and "1 skills" in detail
+
+
+def test_muse_deep_verify_passes_when_report_disk_and_content_agree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "bundle" / "v4.30.1"
+    source = tmp_path / "source"
+    (root / ".muse-plugin").mkdir(parents=True)
+    (root / ".muse-plugin" / "plugin.json").write_text(
+        json.dumps({"version": "4.30.1"}), encoding="utf-8"
+    )
+    _seed_content(source, root)
+    monkeypatch.setattr(release, "client_reported_version", lambda client: ("4.30.1", str(root)))
+    monkeypatch.setattr(release, "installed_root", lambda client, version: root)
+    result = release.Result()
+    assert release.deep_verify("muse", "4.30.1", result, repo=source) is True
+
+
+def test_muse_deep_verify_reads_the_muse_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The on-disk leg must consult .muse-plugin, not a sibling manifest."""
+    root = tmp_path / "bundle" / "v4.30.1"
+    (root / ".codex-plugin").mkdir(parents=True)
+    (root / ".codex-plugin" / "plugin.json").write_text(
+        json.dumps({"version": "4.30.1"}), encoding="utf-8"
+    )
+    monkeypatch.setattr(release, "client_reported_version", lambda client: ("4.30.1", str(root)))
+    monkeypatch.setattr(release, "installed_root", lambda client, version: tmp_path / "absent")
+    result = release.Result()
+    assert release.deep_verify("muse", "4.30.1", result) is False
+    names = {s.name: s.ok for s in result.steps}
+    assert names["verify.muse.reported"] is True
+    assert names["verify.muse.on-disk"] is False
