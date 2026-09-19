@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.105.0] - 2026-09-19
+
+Squash-merge landings work end to end. Worktree retirement accepts an
+identical tree as proof the content reached the remote — through the
+reconciler pin and native branch deletion — naming the proof loudly;
+the release gate resolves the acceptance change-base to the parent of
+a single-parent release commit while keeping the feature-branch
+merge-base path first.
+
 ## [4.104.0] - 2026-09-18
 
 The release train now installs and verifies all three clients: the new

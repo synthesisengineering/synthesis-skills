@@ -11,6 +11,11 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Squash-merge gates (September 2026).** Release **4.105.0** lets
+squash-merged branches retire by identical-tree proof and lets the
+release gate resolve the change-base from single-parent release
+commits.
+
 **Three-client releases (September 2026).** Release **4.104.0** brings
 Muse into the release train alongside Claude and Codex, makes
 coordination claims merge by default with an explicit narrow verb,
