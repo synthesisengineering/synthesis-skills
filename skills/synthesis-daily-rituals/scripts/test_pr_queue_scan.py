@@ -105,17 +105,18 @@ def test_declared_target_prefers_the_manifest_over_the_working_copy(tmp_path):
     """A PR queue is a remote fact: a declared repo with no clone is still scannable."""
     entry = {"remotes": {"origin": "https://github.com/owner/repo.git"}}
     assert mod.declared_target(entry, tmp_path / "does-not-exist") == (
-        ("github.com", "owner", "repo"), None)
+        ("github.com", "owner", "repo"), None, None)
     entry = {"remotes": {"origin": "git@bitbucket.org:team/repo.git"}}
     assert mod.declared_target(entry, tmp_path / "does-not-exist") == (
-        ("bitbucket.org", "team", "repo"), None)
+        ("bitbucket.org", "team", "repo"), None, None)
 
 
 def test_declared_target_names_an_unsupported_manifest_origin(tmp_path):
     entry = {"remotes": {"origin": "git@gitlab.com:team/repo.git"}}
-    target, reason = mod.declared_target(entry, tmp_path)
+    target, reason, state = mod.declared_target(entry, tmp_path)
     assert target is None
     assert reason == "origin git@gitlab.com:team/repo.git is on neither github.com nor bitbucket.org"
+    assert state == "BLIND"
 
 
 def test_declared_target_falls_back_to_git_when_manifest_is_silent(monkeypatch, tmp_path):
@@ -123,22 +124,24 @@ def test_declared_target_falls_back_to_git_when_manifest_is_silent(monkeypatch, 
     monkeypatch.setattr(mod.subprocess, "run",
                         lambda *a, **k: type("R", (), {
                             "returncode": 0, "stdout": "git@github.com:o/r.git"})())
-    assert mod.declared_target({}, tmp_path) == (("github.com", "o", "r"), None)
+    assert mod.declared_target({}, tmp_path) == (("github.com", "o", "r"), None, None)
 
 
 def test_declared_target_names_a_missing_clone(tmp_path):
-    target, reason = mod.declared_target({}, tmp_path / "nope")
+    target, reason, state = mod.declared_target({}, tmp_path / "nope")
     assert target is None
     assert reason == "no origin declared in the manifest, and no local clone at %s" % (tmp_path / "nope")
+    assert state == "UNREACHABLE"
 
 
 def test_declared_target_names_an_unsupported_working_copy_origin(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.subprocess, "run",
                         lambda *a, **k: type("R", (), {
                             "returncode": 0, "stdout": "git@gitlab.com:o/r.git\n"})())
-    target, reason = mod.declared_target({}, tmp_path)
+    target, reason, state = mod.declared_target({}, tmp_path)
     assert target is None
     assert reason == "origin git@gitlab.com:o/r.git of %s is on neither github.com nor bitbucket.org" % tmp_path
+    assert state == "BLIND"
 
 
 def test_repo_path_resolves_manifest_paths_against_the_workspace_root(monkeypatch, tmp_path):
@@ -277,6 +280,26 @@ def test_unscannable_repos_are_named_not_silently_dropped(monkeypatch, tmp_path)
         "origin git@gitlab.com:team/repo.git is on neither github.com nor bitbucket.org")
 
 
+def test_unscanned_repos_carry_a_coverage_state(monkeypatch, tmp_path):
+    """BLIND (our declaration is wrong: fix it) vs UNREACHABLE (the world
+    is wrong: missing clone, CLI, API) — the state says who acts."""
+    _no_cli(monkeypatch)
+    (tmp_path / "present").mkdir()
+    repos = [
+        {"name": "present", "path": str(tmp_path / "present")},
+        {"name": "absent", "path": str(tmp_path / "nope")},
+        {"name": "elsewhere", "remotes": {"origin": "git@gitlab.com:team/repo.git"}},
+    ]
+    monkeypatch.setattr(mod.subprocess, "run",
+                        lambda *a, **k: type("R", (), {
+                            "returncode": 0, "stdout": "https://git.internal.example/t/r.git"})())
+
+    result = mod.scan(repos, "ws", "me", NOW)
+
+    states = {u["repo"]: u["state"] for u in result["unscanned"]}
+    assert states == {"present": "BLIND", "absent": "UNREACHABLE", "elsewhere": "BLIND"}
+
+
 def test_scan_sorts_oldest_first(monkeypatch, tmp_path):
     _no_cli(monkeypatch)
 
@@ -391,7 +414,8 @@ def test_scan_reports_a_bitbucket_404_as_unscanned_not_empty(monkeypatch):
     assert result["scanned"] == []
     assert result["found"] == []
     assert result["unscanned"] == [
-        {"repo": "gone", "reason": "Error: HTTP 404 Not Found: repository team/gone"}]
+        {"repo": "gone", "reason": "Error: HTTP 404 Not Found: repository team/gone",
+         "state": "UNREACHABLE"}]
 
 
 def test_scan_marks_bitbucket_repos_unscanned_when_bkt_is_missing(monkeypatch):
@@ -401,7 +425,8 @@ def test_scan_marks_bitbucket_repos_unscanned_when_bkt_is_missing(monkeypatch):
     result = mod.scan(
         [{"name": "csa", "remotes": {"origin": "git@bitbucket.org:team/csa.git"}}], "ws", None, NOW)
     assert result["scanned"] == []
-    assert result["unscanned"] == [{"repo": "csa", "reason": "bkt CLI not installed"}]
+    assert result["unscanned"] == [{"repo": "csa", "reason": "bkt CLI not installed",
+                                     "state": "UNREACHABLE"}]
 
 
 def test_scan_marks_bitbucket_repos_unscanned_when_bkt_is_unauthenticated(monkeypatch):
@@ -411,7 +436,8 @@ def test_scan_marks_bitbucket_repos_unscanned_when_bkt_is_unauthenticated(monkey
     _inject_bkt_runner(monkeypatch, run)
     result = mod.scan(
         [{"name": "csa", "remotes": {"origin": "git@bitbucket.org:team/csa.git"}}], "ws", None, NOW)
-    assert result["unscanned"] == [{"repo": "csa", "reason": "bkt api /user failed: Error: not logged in"}]
+    assert result["unscanned"] == [{"repo": "csa", "reason": "bkt api /user failed: Error: not logged in",
+                                     "state": "UNREACHABLE"}]
 
 
 def test_scan_marks_github_repos_unscanned_when_gh_is_missing_and_still_scans_bitbucket(monkeypatch):
@@ -428,7 +454,8 @@ def test_scan_marks_github_repos_unscanned_when_gh_is_missing_and_still_scans_bi
         [{"name": "gh-repo", "remotes": {"origin": "https://github.com/o/gh-repo.git"}},
          {"name": "bb-repo", "remotes": {"origin": "git@bitbucket.org:team/bb-repo.git"}}], "ws", None, NOW)
     assert result["scanned"] == ["bb-repo"]
-    assert result["unscanned"] == [{"repo": "gh-repo", "reason": "gh CLI not installed"}]
+    assert result["unscanned"] == [{"repo": "gh-repo", "reason": "gh CLI not installed",
+                                     "state": "UNREACHABLE"}]
     assert [i["number"] for i in result["found"]] == [5]
     assert result["login"] is None
 
@@ -464,7 +491,7 @@ repos:
     monkeypatch.setattr(mod.shutil, "which", lambda _: None)
     assert mod.main() == 0
     out = capsys.readouterr().out
-    assert "0 repo(s) scanned, 1 not scanned" in out
+    assert "0 repo(s) scanned, 0 blind, 1 unreachable (of 1 declared)" in out
     assert "NOT SCANNED" in out
     assert "alpha" in out and "gh CLI not installed" in out
 
@@ -506,7 +533,7 @@ repos:
     monkeypatch.setattr(mod.sys, "argv", ["pr_queue_scan.py", "--repos-yaml", str(p), "--login", "me"])
     assert mod.main() == 0
     out = capsys.readouterr().out
-    assert "2 repo(s) scanned, 0 not scanned" in out
+    assert "2 repo(s) scanned, 0 blind, 0 unreachable (of 2 declared)" in out
     assert "Waiting on your review (1)" in out
     # main() reads the real clock, so the age is computed the same way it is.
     age = mod.age_days(created, datetime.datetime.now(datetime.timezone.utc))

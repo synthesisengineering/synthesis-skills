@@ -1123,8 +1123,18 @@ def resolve_source_dir(
 
 
 def run_doctor(config_path: Path) -> int:
-    """Self-check the whole protection chain. Exit 0 = healthy."""
+    """Self-check the whole protection chain. Exit 0 = healthy.
+
+    Two severities, because the old single list lied: drift and an
+    unwired hooksPath do NOT block commits (pre-commit never checks
+    them), so reporting them under "commits will be blocked" trained
+    readers to disbelieve the doctor. Blocking problems refuse commits
+    fail-closed at the boundary; advisories degrade or remove
+    protection while commits proceed. Both exit non-zero — a monitor
+    must fire on either — but the summary names which is which.
+    """
     problems: List[str] = []
+    advisories: List[str] = []
     infos: List[str] = []
 
     infos.append(f"sidecar version: {SIDECAR_VERSION}")
@@ -1201,15 +1211,31 @@ def run_doctor(config_path: Path) -> int:
         for name in ENGINE_FILES:
             f = hp_dir / name
             if not f.exists():
-                problems.append(f"hooksPath missing {name}: {f}")
+                # A missing entry-point hook means the gate never runs:
+                # commits proceed unscanned (advisory alarm, not a
+                # boundary refusal). A missing sidecar or runtime file
+                # means the running gate fails closed: blocking.
+                if name in ("pre-commit", "commit-msg"):
+                    advisories.append(
+                        f"hooksPath missing {name}: {f} — commits proceed "
+                        "without this gate"
+                    )
+                else:
+                    problems.append(f"hooksPath missing {name}: {f}")
             elif name in ("pre-commit", "commit-msg") and not os.access(f, os.X_OK):
-                problems.append(f"{f} is not executable")
+                # Git silently skips non-executable hooks: same shape as
+                # missing, commits proceed unprotected.
+                advisories.append(
+                    f"{f} is not executable — git skips it, commits "
+                    "proceed without this gate"
+                )
         asset = installed_coordination_asset(hp_dir)
         if not asset.is_file():
             problems.append(f"coordination runtime missing asset: {asset}")
     else:
-        problems.append(
-            "core.hooksPath is not set globally — the engine is not wired in"
+        advisories.append(
+            "core.hooksPath is not set globally — the engine is not "
+            "wired in, commits proceed unscanned"
         )
 
     # 4. Drift: installed engine vs skill source. See resolve_source_dir for
@@ -1217,7 +1243,9 @@ def run_doctor(config_path: Path) -> int:
     # install locations) — never a hardcoded checkout path.
     src_dir, src_problem = resolve_source_dir(hp_dir)
     if src_problem:
-        problems.append(src_problem)
+        # The drift check cannot run; pre-commit enforces nothing
+        # about drift either way, so this degrades monitoring only.
+        advisories.append(src_problem)
     elif src_dir is None:
         infos.append(
             "skill source not found (drift check skipped) — set "
@@ -1229,9 +1257,11 @@ def run_doctor(config_path: Path) -> int:
             src, inst = source_engine_path(src_dir, name), hp_dir / name
             if inst.exists() and src.read_bytes() != inst.read_bytes():
                 drift_found = True
-                problems.append(
+                advisories.append(
                     f"DRIFT: installed {name} differs from skill source "
-                    f"({inst} vs {src}) — reinstall or sync back"
+                    f"({inst} vs {src}) — the commit gate runs the "
+                    "installed copy until reinstalled; reinstall or "
+                    "sync back"
                 )
         source_asset = source_coordination_asset(src_dir)
         installed_asset = installed_coordination_asset(hp_dir)
@@ -1240,9 +1270,11 @@ def run_doctor(config_path: Path) -> int:
             and source_asset.read_bytes() != installed_asset.read_bytes()
         ):
             drift_found = True
-            problems.append(
+            advisories.append(
                 "DRIFT: installed coordination asset differs from skill source "
-                f"({installed_asset} vs {source_asset}) — reinstall or sync back"
+                f"({installed_asset} vs {source_asset}) — the commit gate "
+                "runs the installed copy until reinstalled; reinstall or "
+                "sync back"
             )
         if not drift_found:
             infos.append(
@@ -1264,7 +1296,10 @@ def run_doctor(config_path: Path) -> int:
                 "for public-surface repos"
             )
             for pattern in stale:
-                problems.append(
+                # The scan path never checks staleness: a stale
+                # allowance subtracts nothing and blocks nothing. The
+                # doctor is the only layer that sees it.
+                advisories.append(
                     "ledger allowance matches no tier_1_strict_only "
                     f"pattern (stale or typo): {pattern!r}"
                 )
@@ -1299,11 +1334,22 @@ def run_doctor(config_path: Path) -> int:
         print(f"  ok  {line}")
     for line in problems:
         print(f"  !!  {line}")
-    if problems:
-        print(
-            f"UNHEALTHY: {len(problems)} problem(s). Commits will be blocked "
-            "until fixed (fail closed)."
+    for line in advisories:
+        print(f"  ?!  {line}")
+    if problems or advisories:
+        blocking = (
+            f"{len(problems)} blocking problem(s) "
+            "(commits refuse fail-closed until fixed)"
+            if problems
+            else ""
         )
+        degraded = (
+            f"{len(advisories)} advisory condition(s) "
+            "(protection degraded; commits proceed — see above)"
+            if advisories
+            else ""
+        )
+        print(f"UNHEALTHY: {' + '.join(p for p in (blocking, degraded) if p)}.")
         return 1
     print("HEALTHY: policy engine fully operational.")
     return 0

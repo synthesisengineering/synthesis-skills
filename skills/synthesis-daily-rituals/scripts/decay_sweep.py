@@ -245,6 +245,7 @@ def collect(roots: list[tuple[Path, str]], as_of: date) -> dict:
             result["sources"] = [{"path": e["path"], "line": e["line"]} for e in history]
             report["due"].append(result)
     report["due"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
+    report["total_obligations"] = len(grouped)
     report["status"] = "BLOCKED" if report["gaps"] else "REVIEW" if report["due"] else "CLEAR"
     return report
 
@@ -266,7 +267,16 @@ def main(argv=None) -> int:
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
-        print(f"Deadline sweep: {report['status']} — {len(report['due'])} due; {len(report['gaps'])} gaps")
+        # Coverage denominators, not bare counts: "3 past due" once hid the
+        # shape of the sweep the same way bare checklists did.
+        print(
+            f"Deadline sweep: {report['status']} — {len(report['due'])} due of "
+            f"{report.get('total_obligations', '?')} tracked obligations across "
+            f"{len(report.get('scanned', []))} scanned sources "
+            f"({len(report.get('excluded', []))} excluded, "
+            f"{len(report.get('future_files', []))} future); "
+            f"{len(report['gaps'])} gaps"
+        )
         for row in report["due"]:
             print(f"{row['due_date']} {row['title']} ({row['path']}:{row['line']})")
         for row in report["gaps"]:

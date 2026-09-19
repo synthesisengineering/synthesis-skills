@@ -2922,6 +2922,57 @@ def phase_runtime_engines(report, receipts, answers, dry_run, no_services):
             owned_registrations.record(receipts, HOME, before, service_started=not no_services and sys.platform == "darwin")
 
 
+def resync_git_hooks(report, dry_run):
+    """Re-run the git-hooks installer on update/repair when hooks exist.
+
+    Plugin refresh replaces the skill source but never touched the
+    vendored commit-gate copy, so every upgrade silently skewed
+    claim-time (fresh source) from commit-time (stale vendor) until a
+    human reran install.sh — the shape that stranded a pre-advisory
+    coordination.py in the gate. First install stays with setup/init
+    (an absent gate is a choice, not skew); this only refreshes what
+    the user already installed. Idempotent: install.sh rewrites
+    byte-identical files and doctor-verifies, reported OK.
+    """
+    engine = HOME / ".synthesis" / "git-hooks" / "pre-commit"
+    if not engine.is_file():
+        report.add(
+            "runtime-engines", SKIP,
+            "git-hooks runtime not installed; setup owns first install",
+        )
+        return
+    git_hooks = source_root() / "skills" / "synthesis-git-hooks" / "scripts" / "install.sh"
+    if not git_hooks.is_file():
+        # Nothing to sync from (staged/partial source): the doctor stays
+        # the authority that flags drift. First install still hard-fails
+        # on a missing installer in the setup phase; update must not.
+        report.add(
+            "runtime-engines", SKIP,
+            "git-hooks installer not in this source; nothing to re-sync from",
+        )
+        return
+    if dry_run:
+        report.add("runtime-engines", CHANGED, "would re-sync the git-hooks runtime")
+        return
+    watched = [
+        HOME / ".synthesis" / "git-hooks",
+        HOME / ".synthesis" / "references" / "session-words-v1.txt.zlib.b85",
+        HOME / ".synthesis" / "git-hook-config.yaml",
+    ]
+    before = paths_digest(watched)
+    rc, out, err = run(["bash", str(git_hooks)], timeout=600)
+    if rc == 0:
+        after = paths_digest(watched)
+        report.add(
+            "runtime-engines",
+            OK if before == after else CHANGED,
+            "git-hooks runtime is current and doctor-verified",
+        )
+    else:
+        report.add("runtime-engines", ERROR, "git-hooks runtime re-sync failed",
+                   hint=(err or out).strip()[-600:])
+
+
 def _phase_runtime_engines(report, receipts, answers, dry_run, no_services):
     git_hooks = source_root() / "skills" / "synthesis-git-hooks" / "scripts" / "install.sh"
     if dry_run:
@@ -4584,6 +4635,18 @@ def _main_unlocked(argv=None):
         report.add("ecosystem", SKIP, "public plugin disabled by manifest")
     if report.exit_code():
         return finish(report, args, report.exit_code())
+    whole_system_repairs = (
+        args.command == "repair"
+        and desired_state is not None
+        and desired_state["profile"] == "full"
+    )
+    if args.command in ("update", "repair") and not whole_system_repairs:
+        # Update never runs the whole-system phases; non-full repair
+        # doesn't either. Full-profile repair reaches runtime-engines
+        # below, so resyncing here as well would install twice.
+        resync_git_hooks(report, args.dry_run)
+        if report.exit_code():
+            return finish(report, args, report.exit_code())
     if manifest:
         phase_org_skills(report, manifest, receipts, args.dry_run, clients_wanted, journal)
         if report.exit_code():

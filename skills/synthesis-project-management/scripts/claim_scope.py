@@ -325,7 +325,19 @@ class ClaimScopeResolver:
             except (OSError, subprocess.SubprocessError) as exc:
                 raise ClaimIdentityError("metadata claim Git identity is unavailable") from exc
             if done.returncode:
-                raise _NoVerifiedCheckout("metadata claim has no verified Git checkout")
+                # Name the path: a pair-level "unverifiable claim scope"
+                # with no path cost a live session an hour of binary
+                # search across 40+ areas to find its dead ones. The key
+                # differs from the pattern when the literal prefix is
+                # gone and discovery walked up to a surviving ancestor.
+                if key == pattern:
+                    raise _NoVerifiedCheckout(
+                        f"metadata claim has no verified Git checkout: {pattern}"
+                    )
+                raise _NoVerifiedCheckout(
+                    "metadata claim has no verified Git checkout: "
+                    f"{pattern} (nearest existing ancestor {key} is not in a repository)"
+                )
             return done.stdout
         # Git owns identity semantics, including worktree config, conditional
         # includes and environment config. Neither an exact prefix nor an

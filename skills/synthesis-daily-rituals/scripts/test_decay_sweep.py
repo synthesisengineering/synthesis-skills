@@ -34,6 +34,18 @@ def item(ident="obligation-1", due="2026-09-08", reason="(event date)"):
     return f"### Item\n**Decay ID:** {ident}\n**Decays:** {due} {reason}\n"
 
 
+def test_report_carries_coverage_denominators(tmp_path):
+    """Bare counts hide sweep shape: the report names total obligations and
+    scanned sources so "1 due" reads against its denominator."""
+    root = tmp_path / "plans"
+    plan(root, "2026-09-07", item("past-due", "2026-09-07") + item("open", "2026-09-20"))
+    code, report = run(root)
+    assert code == 0
+    assert report["total_obligations"] == 2
+    assert len(report["due"]) == 1
+    assert len(report["scanned"]) == 1
+
+
 def test_older_target_dates_survive_today_without_retagging(tmp_path):
     root = tmp_path / "plans"
     shutil.copytree(FIXTURE, root)

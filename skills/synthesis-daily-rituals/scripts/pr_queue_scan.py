@@ -138,34 +138,37 @@ def remote_target(url: str) -> tuple[str, str, str] | None:
 UNSUPPORTED = "is on neither github.com nor bitbucket.org"
 
 
-def declared_target(entry: dict, repo_dir: Path) -> tuple[tuple[str, str, str] | None, str | None]:
-    """Resolve (host, owner, name), preferring the manifest over the working copy. (target, reason).
+def declared_target(entry: dict, repo_dir: Path) -> tuple[tuple[str, str, str] | None, str | None, str | None]:
+    """Resolve (host, owner, name), preferring the manifest over the working copy.
 
-    A pull-request queue is a fact about the REMOTE, not about the local disk,
-    so a declared repo with no local clone is still scannable. The manifest
-    already records `remotes.origin`; git is only consulted when it does not.
-    The reason names what was actually found, so an unsupported origin and a
-    missing clone read differently.
+    Returns (target, reason, state): target on success, else a reason and a
+    coverage state in the sweep vocabulary — BLIND when our side is wrong
+    (declaration points at an unsupported host, clone lacks the remote:
+    fixable by us), UNREACHABLE when the world is wrong (no clone, git
+    unreadable: environmental). The reason names what was actually found,
+    so an unsupported origin and a missing clone read differently.
     """
     declared = ((entry.get("remotes") or {}) or {}).get("origin")
     if declared:
         target = remote_target(str(declared))
-        return (target, None) if target else (None, "origin %s %s" % (declared, UNSUPPORTED))
+        if target:
+            return target, None, None
+        return None, "origin %s %s" % (declared, UNSUPPORTED), "BLIND"
     if not repo_dir.exists():
-        return None, "no origin declared in the manifest, and no local clone at %s" % repo_dir
+        return None, "no origin declared in the manifest, and no local clone at %s" % repo_dir, "UNREACHABLE"
     try:
         out = subprocess.run(
             ["git", "-C", str(repo_dir), "remote", "get-url", "origin"],
             capture_output=True, text=True, timeout=10,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        return None, "no origin declared in the manifest, and git could not read %s: %s" % (repo_dir, exc)
+        return None, "no origin declared in the manifest, and git could not read %s: %s" % (repo_dir, exc), "UNREACHABLE"
     if out.returncode != 0:
-        return None, "no origin declared in the manifest, and %s has no origin remote" % repo_dir
+        return None, "no origin declared in the manifest, and %s has no origin remote" % repo_dir, "BLIND"
     target = remote_target(out.stdout)
     if target:
-        return target, None
-    return None, "origin %s of %s %s" % (out.stdout.strip(), repo_dir, UNSUPPORTED)
+        return target, None, None
+    return None, "origin %s of %s %s" % (out.stdout.strip(), repo_dir, UNSUPPORTED), "BLIND"
 
 
 def age_days(iso: str, now: datetime.datetime) -> int:
@@ -309,21 +312,22 @@ def scan(repos: list[dict], workspace: str, login: str | None, now: datetime.dat
     for entry in repos:
         name = str(entry.get("name", "?"))
         rdir = repo_path(entry, workspace)
-        target, reason = declared_target(entry, rdir)
+        target, reason, state = declared_target(entry, rdir)
         if not target:
-            unscanned.append({"repo": name, "reason": reason})
+            unscanned.append({"repo": name, "reason": reason, "state": state})
             continue
         host, owner, repo = target
         who, reason = credential(host)
         if who is None:
-            unscanned.append({"repo": name, "reason": reason})
+            unscanned.append({"repo": name, "reason": reason, "state": "UNREACHABLE"})
             continue
         if host == "github.com":
             items, err = query_repo("%s/%s" % (owner, repo), who, now)
         else:
             items, err = query_bitbucket_repo(owner, repo, who, now)
         if err:
-            unscanned.append({"repo": name, "reason": err})
+            # Attempted, transport/API failed: environmental, named loud.
+            unscanned.append({"repo": name, "reason": err, "state": "UNREACHABLE"})
             continue
         scanned.append(name)
         found.extend(items)
@@ -367,8 +371,11 @@ def main() -> int:
         ("in-your-repo", "Open in your repos, nobody else asked to review"),
     ]
 
-    print("PR queue — %d repo(s) scanned, %d not scanned" %
-          (len(result["scanned"]), len(result["unscanned"])))
+    blind = sum(1 for u in result["unscanned"] if u.get("state") == "BLIND")
+    unreach = len(result["unscanned"]) - blind
+    print("PR queue — %d repo(s) scanned, %d blind, %d unreachable (of %d declared)" %
+          (len(result["scanned"]), blind, unreach,
+           len(result["scanned"]) + len(result["unscanned"])))
     shown = 0
     for kind, label in buckets:
         rows = [i for i in hits if i["kind"] == kind]
@@ -383,9 +390,11 @@ def main() -> int:
         print("\n  Nothing in the queue for you across the repos actually scanned.")
     if result["unscanned"]:
         # Named, never silent: an unscanned repo is not an empty queue.
+        # BLIND is our defect (fix the declaration); UNREACHABLE is the
+        # world's (missing clone, CLI, or API) — the state says who acts.
         print("\n  NOT SCANNED — these are unknown, not clean:")
         for u in result["unscanned"]:
-            print("    %-28s %s" % (u["repo"], u["reason"]))
+            print("    %-28s [%s] %s" % (u["repo"], u.get("state", "?"), u["reason"]))
     return 0
 
 

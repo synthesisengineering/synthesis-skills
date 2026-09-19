@@ -791,6 +791,64 @@ def test_doctor_detects_drift_end_to_end(tmp_path: Path) -> None:
     assert "DRIFT: installed pre-commit" in drifted.stdout
 
 
+def test_doctor_reports_drift_as_advisory_not_blocking(tmp_path: Path) -> None:
+    """Drift degrades the gate (it runs the stale copy) but blocks nothing:
+    pre-commit never checks drift, so the summary must not claim commits
+    refuse. Exit stays non-zero so monitors still fire."""
+    installed, source, environment = doctor_harness(tmp_path)
+    (source / "coordination.py").write_bytes(b"# newer source\n")
+
+    drifted = doctor(installed, environment, tmp_path)
+
+    assert drifted.returncode == 1, drifted.stdout + drifted.stderr
+    assert "?!  DRIFT: installed coordination.py" in drifted.stdout
+    assert "1 advisory condition(s)" in drifted.stdout
+    assert "commits proceed" in drifted.stdout
+    assert "blocking problem" not in drifted.stdout
+    assert "Commits will be blocked" not in drifted.stdout
+
+
+def test_doctor_names_blocking_problems_honestly(tmp_path: Path) -> None:
+    """A config failure refuses commits fail-closed at the boundary; the
+    summary must say exactly that, with the advisory count alongside when
+    both severities are present."""
+    installed, source, environment = doctor_harness(tmp_path)
+    config = Path(environment["SYNTHESIS_GIT_HOOK_CONFIG"])
+    config.write_text("tier_0_always: [unclosed\n", encoding="utf-8")
+    (source / "pre-commit").write_bytes(b"#!/bin/bash\n# hotfixed\n")
+
+    completed = doctor(installed, environment, tmp_path)
+
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "1 blocking problem(s) (commits refuse fail-closed until fixed)" in completed.stdout
+    assert "1 advisory condition(s)" in completed.stdout
+
+
+def test_installer_and_drift_check_cover_the_same_files() -> None:
+    """install.sh copies the engine; the doctor's drift check must compare
+    exactly that set. A file the installer copies but the doctor never
+    compares can skew silently — the shape that stranded a pre-advisory
+    coordination.py in the commit gate."""
+    import re
+
+    installer = (SCRIPT_DIR / "install.sh").read_text(encoding="utf-8")
+    copied = set()
+    for match in re.finditer(r"cp -f \"([^\"]+)\" \"\$TARGET", installer):
+        copied.add(Path(match.group(1)).name)
+    copied.discard("git-hook-config.example.yaml")  # seeded, not drifted
+    assert copied, "installer parses to an empty copy set"
+    assert set(SIDECAR.ENGINE_FILES) == copied, (
+        f"drift list {sorted(SIDECAR.ENGINE_FILES)} != "
+        f"installer copies {sorted(copied)}"
+    )
+    # The coordination asset travels to TARGET_REFERENCES (not TARGET_DIR)
+    # and is drift-checked by its own block; both sides must name it.
+    assert SIDECAR.COORDINATION_ASSET in installer
+    assert "installed coordination asset differs" in (
+        SCRIPT_DIR / "_load_config.py"
+    ).read_text(encoding="utf-8")
+
+
 def test_r4_configured_hook_blocks_outside_claim(tmp_path: Path) -> None:
     root, environment = repository(tmp_path)
     engine = tmp_path / "engine"

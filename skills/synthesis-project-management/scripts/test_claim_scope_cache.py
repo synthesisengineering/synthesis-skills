@@ -1,5 +1,6 @@
 """Discovery reuse is transaction-local and respects Git administrative changes."""
 from pathlib import Path
+import re
 import subprocess
 
 import pytest
@@ -23,6 +24,22 @@ def checkouts(tmp_path):
         for name in ("one", "two", "three"):
             (checkout / "projects" / name).mkdir(parents=True)
     return root, sibling
+
+
+def test_unverified_checkout_names_the_dead_path(tmp_path):
+    """A retired worktree's claimed area must name itself in the refusal.
+
+    Pair-level "unverifiable claim scope" with no path cost a live
+    session an hour of binary search across 40+ areas to find its dead
+    ones; the nearest-ancestor note explains where discovery walked.
+    """
+    pattern = str(tmp_path / "retired-wt" / "projects" / "x")
+    resolver = claim_scope.ClaimScopeResolver()
+    with pytest.raises(
+        claim_scope.ClaimIdentityError, match=re.escape(pattern)
+    ) as excinfo:
+        resolver._identity(pattern)
+    assert "nearest existing ancestor" in str(excinfo.value)
 
 
 def test_discovery_reprobes_new_scopes_and_reuses_one_listing_per_configuration(checkouts, monkeypatch):
