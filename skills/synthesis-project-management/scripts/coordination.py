@@ -20,7 +20,7 @@ import platform
 import sys
 import tempfile
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -1822,6 +1822,54 @@ def command_claim(args) -> int:
                 raise RuntimeError(
                     seat_ownership_error("omit --session to allocate a new identity")
                 )
+        full_reset = bool(getattr(args, "replace", False))
+        if existing_self is not None and not full_reset:
+            # Merge by default (ruling B): a re-claim grows the held set,
+            # never shrinks it by omission. Agents thinking incrementally
+            # re-claim what is in front of them; replace turned every such
+            # call into silent lock loss, and compaction guarantees dropped
+            # areas across phases. Narrowing is the explicit `narrow` verb.
+            effective_areas = list(existing_self.claims)
+            effective_areas.extend(
+                area for area in requested if area not in effective_areas
+            )
+            effective_workspaces = list(existing_self.workspaces)
+            effective_workspaces.extend(
+                workspace
+                for workspace in workspaces
+                if workspace not in effective_workspaces
+            )
+            claimed["merged"] = True
+            claimed["retained_areas"] = [
+                area for area in existing_self.claims if area not in requested
+            ]
+            claimed["added_areas"] = [
+                area for area in requested if area not in existing_self.claims
+            ]
+            claimed["retained_workspaces"] = [
+                workspace
+                for workspace in existing_self.workspaces
+                if workspace not in workspaces
+            ]
+            claimed["added_workspaces"] = [
+                workspace
+                for workspace in workspaces
+                if workspace not in existing_self.workspaces
+            ]
+        else:
+            if existing_self is not None:
+                claimed["replaced"] = True
+                claimed["dropped_areas"] = [
+                    area for area in existing_self.claims if area not in requested
+                ]
+                claimed["dropped_workspaces"] = [
+                    workspace
+                    for workspace in existing_self.workspaces
+                    if workspace not in workspaces
+                ]
+            effective_areas, effective_workspaces = requested, workspaces
+        claimed["areas"] = effective_areas
+        claimed["workspaces"] = effective_workspaces
         identity = (
             existing_self.identity
             if existing_self is not None
@@ -1845,9 +1893,9 @@ def command_claim(args) -> int:
             started=existing_self.started if existing_self else now,
             heartbeat=now,
             mode=args.mode,
-            workspaces=workspaces,
+            workspaces=effective_workspaces,
             goal=args.goal,
-            claims=requested,
+            claims=effective_areas,
             context_role=args.context_role,
             status="active",
         )
@@ -1899,7 +1947,7 @@ def command_claim(args) -> int:
                 continue
             if any(
                 workspace_conflict(workspace, other)
-                for workspace in workspaces
+                for workspace in effective_workspaces
                 for other in session.workspaces
             ):
                 sharers[session.compact_id] = session.project
@@ -1928,9 +1976,50 @@ def command_claim(args) -> int:
     identity = claimed["identity"]
     legacy = f"; legacy={identity.legacy_id}" if identity.legacy_id else ""
     print(
-        f"Claimed {', '.join(requested)} for session {identity.compact_id} "
+        f"Claimed {', '.join(claimed['areas'])} for session {identity.compact_id} "
         f"({identity.speakable_id}; uuid={identity.session_uuid}{legacy})."
     )
+    if claimed.get("merged"):
+        retained_areas = claimed["retained_areas"]
+        added_areas = claimed["added_areas"]
+        retained_workspaces = claimed["retained_workspaces"]
+        added_workspaces = claimed["added_workspaces"]
+        if retained_areas:
+            print(
+                f"NOTICE: merge retained {len(retained_areas)} area(s) not named "
+                f"in this call: {', '.join(retained_areas)}. Narrow explicitly "
+                "with the narrow verb."
+            )
+        if added_areas:
+            print(
+                f"NOTICE: merge added {len(added_areas)} new area(s): "
+                f"{', '.join(added_areas)}."
+            )
+        if retained_workspaces:
+            print(
+                f"NOTICE: merge retained {len(retained_workspaces)} workspace(s) "
+                f"not named in this call: {', '.join(retained_workspaces)}."
+            )
+        if added_workspaces:
+            print(
+                f"NOTICE: merge added {len(added_workspaces)} new workspace(s): "
+                f"{', '.join(added_workspaces)}."
+            )
+        if not (retained_areas or added_areas or retained_workspaces or added_workspaces):
+            print("NOTICE: already held exactly this scope; heartbeat updated.")
+    if claimed.get("replaced"):
+        dropped_areas = claimed["dropped_areas"]
+        dropped_workspaces = claimed["dropped_workspaces"]
+        if dropped_areas:
+            print(
+                f"NOTICE: --replace dropped {len(dropped_areas)} area(s): "
+                f"{', '.join(dropped_areas)}."
+            )
+        if dropped_workspaces:
+            print(
+                f"NOTICE: --replace dropped {len(dropped_workspaces)} workspace(s): "
+                f"{', '.join(dropped_workspaces)}."
+            )
     for record in claimed.get("downgrades", []):
         age = record.get("age_days")
         age_text = f"{age:.1f}d" if isinstance(age, float) else "unknown age"
@@ -1972,6 +2061,130 @@ def command_claim(args) -> int:
             )
         else:
             print(f"Registered client session ref {requested_ref}.")
+    return 0
+
+
+def command_narrow(args) -> int:
+    """Release exactly the named areas/workspaces from one owned row.
+
+    The deliberate counterpart to merge-by-default: claim only grows, so
+    shrinking is a verb that names its target and prints a loud record.
+    Every named target must be currently held — a typo that matches
+    nothing is refused rather than silently doing nothing.
+    """
+    drop_areas = [sanitize(area) for area in (getattr(args, "area", None) or [])]
+    drop_workspaces = [
+        sanitize(workspace) for workspace in (getattr(args, "workspace", None) or [])
+    ]
+    if not drop_areas and not drop_workspaces:
+        print(
+            "coordination narrow refused: name at least one --area or "
+            "--workspace to release",
+            file=sys.stderr,
+        )
+        return 10
+    narrowed: dict[str, object] = {}
+
+    def operation(content: str) -> str:
+        current = ensure_identities(rows(content))
+        now = timestamp()
+        session = find_session(current, args.id)
+        if session is None:
+            raise RuntimeError(
+                "session selector was not found; narrow mutates a live row, "
+                "it never allocates one"
+            )
+        if not active(session):
+            raise RuntimeError("session identity is terminal and cannot be narrowed")
+        if not _caller_owns_session(args.board, session):
+            raise RuntimeError(
+                seat_ownership_error("only the owning session narrows its own row")
+            )
+        held_areas = list(session.claims)
+        held_workspaces = list(session.workspaces)
+        unknown_areas = [area for area in drop_areas if area not in held_areas]
+        if unknown_areas:
+            raise RuntimeError(
+                "narrow target is not held by this session: "
+                + ", ".join(unknown_areas)
+            )
+        unknown_workspaces = [
+            workspace for workspace in drop_workspaces if workspace not in held_workspaces
+        ]
+        if unknown_workspaces:
+            raise RuntimeError(
+                "narrow target is not held by this session: "
+                + ", ".join(unknown_workspaces)
+            )
+        narrowed_row = replace(
+            session,
+            claims=[area for area in held_areas if area not in drop_areas],
+            workspaces=[
+                workspace
+                for workspace in held_workspaces
+                if workspace not in drop_workspaces
+            ],
+            heartbeat=now,
+        )
+        prospective = [
+            narrowed_row if s.session_uuid == session.session_uuid else s
+            for s in current
+        ]
+        problems = validate_sessions(prospective)
+        if problems:
+            raise RuntimeError("; ".join(problems))
+        narrowed["identity"] = session.identity
+        narrowed["released_areas"] = [
+            area for area in held_areas if area in drop_areas
+        ]
+        narrowed["retained_areas"] = [
+            area for area in held_areas if area not in drop_areas
+        ]
+        narrowed["released_workspaces"] = [
+            workspace for workspace in held_workspaces if workspace in drop_workspaces
+        ]
+        narrowed["retained_workspaces"] = [
+            workspace for workspace in held_workspaces if workspace not in drop_workspaces
+        ]
+        return replace_table(content, prospective)
+
+    try:
+        locked_update(args.board, operation)
+    except RuntimeError as exc:
+        print(f"coordination narrow refused: {exc}", file=sys.stderr)
+        return 10
+    identity = narrowed["identity"]
+    released_areas = narrowed["released_areas"]
+    retained_areas = narrowed["retained_areas"]
+    released_workspaces = narrowed["released_workspaces"]
+    retained_workspaces = narrowed["retained_workspaces"]
+    print(
+        f"Narrowed session {identity.compact_id} "
+        f"({identity.speakable_id}; uuid={identity.session_uuid})."
+    )
+    if released_areas:
+        print(
+            f"Released {len(released_areas)} area(s): {', '.join(released_areas)}."
+        )
+    if released_workspaces:
+        print(
+            f"Released {len(released_workspaces)} workspace(s): "
+            f"{', '.join(released_workspaces)}."
+        )
+    print(
+        f"Retained {len(retained_areas)} area(s)"
+        + (f": {', '.join(retained_areas)}" if retained_areas else " (none)")
+        + "."
+    )
+    print(
+        f"Retained {len(retained_workspaces)} workspace(s)"
+        + (
+            f": {', '.join(retained_workspaces)}"
+            if retained_workspaces
+            else " (none)"
+        )
+        + "."
+    )
     return 0
 
 
@@ -2982,6 +3195,15 @@ def parser() -> argparse.ArgumentParser:
     )
     claim.add_argument("--area", action="append", required=True)
     claim.add_argument(
+        "--replace",
+        action="store_true",
+        help=(
+            "Reset this session's areas and workspaces to exactly this call "
+            "instead of merging (the rare full reset; drops are named loudly, "
+            "and narrowing belongs to the narrow verb)."
+        ),
+    )
+    claim.add_argument(
         "--context-role",
         choices=("owner", "contributor", "none"),
         required=True,
@@ -2995,6 +3217,16 @@ def parser() -> argparse.ArgumentParser:
             "when omitted."
         ),
     )
+    narrow = commands.add_parser(
+        "narrow",
+        help=(
+            "Release exactly the named areas/workspaces from one owned row; "
+            "claim only grows, so shrinking names its target loudly."
+        ),
+    )
+    narrow.add_argument("--id", "--session", dest="id", required=True)
+    narrow.add_argument("--area", action="append", default=[])
+    narrow.add_argument("--workspace", action="append", default=[])
     heartbeat = commands.add_parser("heartbeat")
     heartbeat.add_argument("--id", "--session", dest="id", required=True)
     release = commands.add_parser("release")
@@ -3089,6 +3321,7 @@ COMMANDS = {
     "status": command_status,
     "check-staged": command_check_staged,
     "claim": command_claim,
+    "narrow": command_narrow,
     "heartbeat": command_heartbeat,
     "release": command_release,
     "message": command_message,

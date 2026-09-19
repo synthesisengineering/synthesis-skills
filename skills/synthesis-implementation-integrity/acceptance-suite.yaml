@@ -1,55 +1,101 @@
 schema: 2
-suite: defect3-main-advance
+suite: claim-merge-ritual-s5
 membership: closed
-production_entry_point: retire_worktree.py fast-forwards the main worktree
-  to the verified base before removing anything, refusing on dirty,
-  diverged, or ahead checkouts
+production_entry_point: coordination.py claim merges by default with an
+  explicit narrow verb; the ritual email step sweeps a mailbox manifest
+  with blind/unreachable states; saved transcripts get a commitment scan
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real helper against disposable
-  git remotes and clones. They do not establish installed-client reload,
-  live hook pickup, new-release publication, or deployment approval. Those
-  remain separate release checks.
+unverified_remainder: Fixtures execute the real coordination engine,
+  mailbox planner, and commitment scanner against disposable boards,
+  stores, and transcripts. They do not establish installed-client
+  reload, live hook pickup, new-release publication, or deployment
+  approval. Those remain separate release checks.
 changed_surfaces:
+- path: skills/synthesis-daily-rituals/SKILL.md
+  cases:
+  - mailbox-blind
+- path: skills/synthesis-daily-rituals/references/mailbox-manifest.md
+  cases:
+  - mailbox-blind
+- path: skills/synthesis-daily-rituals/references/version-history.md
+  cases:
+  - mailbox-blind
+- path: skills/synthesis-daily-rituals/scripts/mailboxes.py
+  cases:
+  - mailbox-blind
+- path: skills/synthesis-daily-rituals/scripts/test_mailboxes.py
+  cases:
+  - mailbox-blind
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-project-management/scripts/retire_worktree.py
+- path: skills/synthesis-meeting-transcripts/SKILL.md
   cases:
-  - defect3-main-advance
-  - defect3-dirty-refusal
-  - defect3-diverged-refusal
-- path: skills/synthesis-project-management/scripts/test_retire_worktree.py
+  - transcript-version
+- path: skills/synthesis-meeting-transcripts/extract_commitments.py
   cases:
-  - defect3-main-advance
-  - defect3-dirty-refusal
-  - defect3-diverged-refusal
+  - commitments-scan
+- path: skills/synthesis-meeting-transcripts/test_extract_commitments.py
+  cases:
+  - commitments-scan
+- path: skills/synthesis-meeting-transcripts/test_version_parity.py
+  cases:
+  - transcript-version
+- path: skills/synthesis-meeting-transcripts/transcript_primary.py
+  cases:
+  - transcript-version
+- path: skills/synthesis-meeting-transcripts/verify_transcripts.py
+  cases:
+  - transcript-version
+- path: skills/synthesis-project-management/references/parallel-agent-protocol.md
+  cases:
+  - claim-merge-union
+- path: skills/synthesis-project-management/scripts/coordination.py
+  cases:
+  - claim-merge-union
+  - claim-narrow
+- path: skills/synthesis-project-management/scripts/test_coordination.py
+  cases:
+  - claim-merge-union
+  - claim-narrow
 cases:
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: defect3-main-advance
+- id: claim-merge-union
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retirement_advances_behind_main_worktree
-  motivating_defect: A branch verified on the remote while the operator's
-    main checkout sits behind leaves the next session reading stale files;
-    retirement must advance the main checkout itself.
-- id: defect3-dirty-refusal
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_reclaim_merges_areas_by_default
+  motivating_defect: Re-claims from compacted contexts silently dropped
+    areas by omission; merge-by-default grows, never shrinks.
+- id: claim-narrow
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retirement_refuses_dirty_main_worktree
-  motivating_defect: The advance must never touch a dirty tree; retirement
-    refuses with remediation and removes nothing.
-- id: defect3-diverged-refusal
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_narrow_releases_named_areas_and_reports
+  motivating_defect: Shrinking must name its target and print a loud
+    record, refusing targets the row does not hold.
+- id: mailbox-blind
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retirement_refuses_diverged_main_worktree
-  motivating_defect: A diverged main checkout cannot fast-forward; retirement
-    refuses rather than merging or resetting the operator's work.
+  fixture: ../synthesis-daily-rituals/scripts/test_mailboxes.py::test_unswept_due_accounts_are_blind_and_fail
+  motivating_defect: Undeclared mailboxes rotted unread; due accounts
+    neither swept nor deferred must fail the ritual loudly.
+- id: commitments-scan
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_extract_commitments.py::test_plaud_timestamp_is_captured
+  motivating_defect: Filed transcripts were never read for obligations;
+    commitment shapes surface timestamped for confirmation.
+- id: transcript-version
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_version_parity.py::test_executable_components_match_the_skill_version
+  motivating_defect: Every executable component must report the skill's
+    own version, including the new scanner.

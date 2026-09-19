@@ -5,10 +5,20 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "0.9.0"
+  version: "0.10.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
+
+## v0.10.0 — Saved transcripts get read for obligations
+
+v0.10.0 (2026-09-18) closes the §5b gap: verification proved fidelity
+while nothing asked whether anything was owed — Rajiv's "Oh of course"
+to Paul Smurl's celebration of life sat in a filed transcript no one
+read for obligations. New Step 4.7 runs `extract_commitments.py` over
+the saved
+file and presents every timestamped candidate for principal
+confirmation in the same turn. Candidates only; nothing auto-creates.
 
 ## v0.9.0 — The declared set gets an execution path
 
@@ -470,6 +480,23 @@ The receipt expires when the file's bytes change. It does not verify semantic
 fidelity, speaker identity beyond the stored labels, capture completeness
 outside the artifact, or whether a later consumer cites the verified message
 honestly; those limits remain in every result.
+
+### Step 4.7: Extract candidate commitments (v0.10.0)
+
+Verification proves the transcript is faithful; nothing yet asks whether
+anything in it is owed. Run the scanner over the saved file:
+
+```bash
+python3 <synthesis-meeting-transcripts-root>/extract_commitments.py \
+    {saved-file} [--speaker "{principal}"]
+```
+
+It flags first-person commitment shapes (`I'll`, `I will`, `of course`,
+`let me`, `send me`, `I promise`, `by <date>`) with timestamps and
+speakers. Present every candidate for the principal to confirm **in the
+same turn as the filing** — timestamp, speaker, quote. The scanner never
+creates tasks, files, or calendar entries, and neither do you on its
+output alone: an unconfirmed candidate is not an obligation.
 
 ### Step 5: Update indices (optional)
 

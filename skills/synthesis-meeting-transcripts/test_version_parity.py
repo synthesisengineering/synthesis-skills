@@ -31,3 +31,4 @@ def test_executable_components_match_the_skill_version() -> None:
     skill = _frontmatter_version()
     assert _script_version("verify_transcripts.py") == skill
     assert _script_version("transcript_primary.py") == skill
+    assert _script_version("extract_commitments.py") == skill
