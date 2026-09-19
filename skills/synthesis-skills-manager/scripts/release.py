@@ -486,16 +486,10 @@ def client_reported_version(client: str) -> tuple[str | None, str | None]:
                 return str(item.get("version") or "") or None, item.get("installPath")
         return None, None
     if client == "muse":
-        items = data.get("plugins", []) if isinstance(data, dict) else []
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            record = item.get("record") or {}
-            if not isinstance(record, dict):
-                continue
-            if record.get("id") == PLUGIN_NAME and record.get("enabled", True):
-                return str(record.get("version") or "") or None, record.get("cache_path")
-        return None, None
+        record = _muse_record_from_list(data)
+        if record is None or not record.get("enabled", True):
+            return None, None
+        return str(record.get("version") or "") or None, record.get("cache_path")
     installed = data.get("installed", []) if isinstance(data, dict) else []
     for item in installed:
         if not isinstance(item, dict):
@@ -504,6 +498,37 @@ def client_reported_version(client: str) -> tuple[str | None, str | None]:
             source = item.get("source") or {}
             return str(item.get("version") or "") or None, source.get("path")
     return None, None
+
+
+def _muse_install_record(binary: str) -> dict | None:
+    """Return Muse's install record for this plugin, or None when absent.
+
+    Muse refuses ``plugins install`` from a new path while a record exists
+    ("already installed from a different source"), so refresh branches on
+    record existence: a present record is synced in place and updated, a
+    missing record is installed fresh. Existence — not enabled state —
+    decides, because a disabled record still blocks a fresh install.
+    """
+    result = run([binary, "plugins", "list", "--json"], timeout=180)
+    if result.returncode != 0:
+        return None
+    try:
+        data = json.loads(_first_json(result.stdout + "\n" + result.stderr))
+    except (ValueError, TypeError):
+        return None
+    return _muse_record_from_list(data)
+
+
+def _muse_record_from_list(data: object) -> dict | None:
+    """Extract this plugin's install record from a parsed list document."""
+    items = data.get("plugins", []) if isinstance(data, dict) else []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        record = item.get("record") or {}
+        if isinstance(record, dict) and record.get("id") == PLUGIN_NAME:
+            return record
+    return None
 
 
 def _first_json(text: str) -> str:
@@ -1163,6 +1188,12 @@ def deep_verify(client: str, expected: str, result: Result,
     candidates = [installed_root(client, expected)]
     if load_path:
         candidates.append(Path(load_path))
+    if client == "muse" and load_path:
+        # Muse's conventional root is the staged bundle, but the content
+        # leg must check the bytes the client actually loads: the reported
+        # cache path first, so a failed install cannot hide behind a fresh
+        # bundle the client never picked up.
+        candidates = [Path(load_path), installed_root(client, expected)]
     seen: list[str] = []
     ok_disk = False
     for candidate in candidates:
@@ -1270,6 +1301,34 @@ def _materialize_muse_bundle(
     return destination if ok else None
 
 
+def _sync_muse_recorded_source(
+    recorded: Path, staged: Path, version: str, result: Result, dry_run: bool
+) -> bool:
+    """Copy the versioned export over the bundle path Muse's record points at.
+
+    The record pins its source path, so a new versioned directory alone is
+    not installable — the staged tree must be synced into place before
+    ``plugins update`` re-caches from it. The versioned export is left
+    untouched as the retry source if the copy is interrupted.
+    """
+    if recorded == staged:
+        return result.add("install.muse.sync", True, "recorded source already stages this version")
+    if dry_run:
+        return result.add("install.muse.sync", True, f"dry-run: sync {staged} into {recorded}")
+    if recorded.is_symlink():
+        return result.add("install.muse.sync", False, f"recorded source is a symlink: {recorded}")
+    try:
+        if recorded.exists():
+            if not recorded.is_dir():
+                return result.add("install.muse.sync", False, f"recorded source is not a directory: {recorded}")
+            shutil.rmtree(recorded)
+        shutil.copytree(staged, recorded)
+    except OSError as exc:
+        return result.add("install.muse.sync", False, str(exc))
+    ok, detail = _muse_bundle_completeness(recorded, version)
+    return result.add("install.muse.sync", ok, detail if ok else f"synced tree incomplete: {detail}")
+
+
 def refresh_client(
     client: str, result: Result, dry_run: bool, repo: Path | None = None
 ) -> bool:
@@ -1286,7 +1345,20 @@ def refresh_client(
         bundle = _materialize_muse_bundle(repo, version, result, dry_run)
         if bundle is None:
             return False
-        commands = [[binary, "plugins", "install", str(bundle), "--json"]]
+        try:
+            record = _muse_install_record(binary)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return result.add("install.muse.record", False, f"could not read install record: {exc}")
+        source_path = ((record.get("source") or {}) if record else {}).get("path")
+        if record is None or not source_path:
+            commands = [[binary, "plugins", "install", str(bundle), "--json"]]
+        else:
+            recorded = Path(str(source_path))
+            if not recorded.is_absolute():
+                return result.add("install.muse.record", False, f"recorded source is not absolute: {source_path}")
+            if not _sync_muse_recorded_source(recorded, bundle, version, result, dry_run):
+                return False
+            commands = [[binary, "plugins", "update", PLUGIN_NAME, "--json"]]
     elif client == "claude":
         commands = [
             [binary, "plugin", "marketplace", "update", MARKETPLACE],

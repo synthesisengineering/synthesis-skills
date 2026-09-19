@@ -1908,10 +1908,12 @@ def _muse_list_payload(
     enabled: bool = True,
     cache_path: str = "/cache/muse/package",
     plugin_id: str = "synthesis-skills",
+    source_path: str | None = "/recorded/bundle",
 ) -> str:
-    return json.dumps({"plugins": [{
-        "record": {"id": plugin_id, "version": version, "enabled": enabled, "cache_path": cache_path},
-    }]})
+    record: dict = {"id": plugin_id, "version": version, "enabled": enabled, "cache_path": cache_path}
+    if source_path is not None:
+        record["source"] = {"path": source_path}
+    return json.dumps({"plugins": [{"record": record}]})
 
 
 def _fake_muse_binary(
@@ -1978,21 +1980,36 @@ def test_muse_reported_version_none_when_command_fails(
     assert release.client_reported_version("muse") == (None, None)
 
 
-def test_muse_refresh_dry_run_stages_bundle_then_installs(
+def test_muse_refresh_dry_run_syncs_then_updates_when_recorded(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(release, "resolve_client_binary", lambda name: "/fake/muse")
+    recorded = tmp_path / "recorded"
+    recorded.mkdir()
+    _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(source_path=str(recorded)))
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
     result = release.Result()
     assert release.refresh_client("muse", result, dry_run=True, repo=repo) is True
     names = [s.name for s in result.steps]
-    assert "install.muse.bundle" in names
-    assert "install.muse.install" in names
-    assert names.index("install.muse.bundle") < names.index("install.muse.install")
+    assert names.index("install.muse.bundle") < names.index("install.muse.sync")
+    assert names.index("install.muse.sync") < names.index("install.muse.update")
     bundle_detail = next(s.detail for s in result.steps if s.name == "install.muse.bundle")
     assert "v9.9.9" in bundle_detail
-    install_detail = next(s.detail for s in result.steps if s.name == "install.muse.install")
-    assert "plugins install" in install_detail
+    update_detail = next(s.detail for s in result.steps if s.name == "install.muse.update")
+    assert "plugins update" in update_detail
+    assert not (tmp_path / "bundles").exists()
+    assert list(recorded.iterdir()) == []
+
+
+def test_muse_refresh_dry_run_installs_fresh_when_no_record(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_muse_binary(tmp_path, monkeypatch, "{}")
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
+    result = release.Result()
+    assert release.refresh_client("muse", result, dry_run=True, repo=repo) is True
+    names = [s.name for s in result.steps]
+    assert "install.muse.install" in names
+    assert "install.muse.sync" not in names
     assert not (tmp_path / "bundles").exists()
 
 
@@ -2153,3 +2170,128 @@ def test_muse_deep_verify_reads_the_muse_manifest(
     names = {s.name: s.ok for s in result.steps}
     assert names["verify.muse.reported"] is True
     assert names["verify.muse.on-disk"] is False
+
+
+def test_muse_refresh_syncs_recorded_source_then_updates(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Muse refuses install-from-new-path over an existing record, so the
+    stage syncs the staged export into the recorded path and updates."""
+    recorded = tmp_path / "recorded"
+    _write_muse_bundle(recorded, "9.9.8")
+    _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(source_path=str(recorded)))
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
+
+    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
+        _write_muse_bundle(destination, version)
+        return {"seeded"}
+
+    monkeypatch.setattr(release, "_export_release_tag", fake_export)
+    result = release.Result()
+    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is True
+    names = {s.name: s.ok for s in result.steps}
+    assert names["install.muse.sync"] is True
+    assert names["install.muse.update"] is True
+    ok, _ = release._muse_bundle_completeness(recorded, "9.9.9")
+    assert ok is True
+
+
+def test_muse_refresh_skips_sync_when_recorded_matches_staged(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundles = tmp_path / "bundles"
+    _fake_muse_binary(
+        tmp_path, monkeypatch, _muse_list_payload(source_path=str(bundles / "v9.9.9"))
+    )
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+
+    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
+        _write_muse_bundle(destination, version)
+        return {"seeded"}
+
+    monkeypatch.setattr(release, "_export_release_tag", fake_export)
+    result = release.Result()
+    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is True
+    sync_detail = next(s.detail for s in result.steps if s.name == "install.muse.sync")
+    assert "already stages" in sync_detail
+
+
+def test_muse_refresh_refuses_symlinked_recorded_source(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    recorded = tmp_path / "recorded"
+    recorded.symlink_to(target)
+    _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(source_path=str(recorded)))
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
+
+    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
+        _write_muse_bundle(destination, version)
+        return {"seeded"}
+
+    monkeypatch.setattr(release, "_export_release_tag", fake_export)
+    result = release.Result()
+    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is False
+    names = {s.name: s.ok for s in result.steps}
+    assert names["install.muse.sync"] is False
+    assert target.is_dir() and recorded.is_symlink()
+
+
+def test_muse_refresh_refuses_relative_recorded_source(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(source_path="relative/bundle"))
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
+
+    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
+        _write_muse_bundle(destination, version)
+        return {"seeded"}
+
+    monkeypatch.setattr(release, "_export_release_tag", fake_export)
+    result = release.Result()
+    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is False
+    names = {s.name: s.ok for s in result.steps}
+    assert names["install.muse.record"] is False
+
+
+def test_muse_refresh_fails_closed_when_record_is_unreadable(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(release, "resolve_client_binary", lambda name: str(tmp_path / "missing" / "muse"))
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
+
+    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
+        _write_muse_bundle(destination, version)
+        return {"seeded"}
+
+    monkeypatch.setattr(release, "_export_release_tag", fake_export)
+    result = release.Result()
+    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is False
+    names = {s.name: s.ok for s in result.steps}
+    assert names["install.muse.record"] is False
+
+
+def test_muse_deep_verify_checks_loaded_bytes_not_the_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fresh staged bundle must not vouch for stale loaded bytes: the
+    content leg compares the reported cache path first."""
+    bundle = tmp_path / "bundles" / "v4.30.1"
+    loaded = tmp_path / "cache" / "package"
+    source = tmp_path / "source"
+    for root in (bundle, loaded):
+        (root / ".muse-plugin").mkdir(parents=True)
+        (root / ".muse-plugin" / "plugin.json").write_text(
+            json.dumps({"version": "4.30.1"}), encoding="utf-8"
+        )
+    _seed_content(source, bundle)
+    _seed_content(source, loaded, drift=True)
+    monkeypatch.setattr(release, "client_reported_version", lambda client: ("4.30.1", str(loaded)))
+    monkeypatch.setattr(release, "installed_root", lambda client, version: bundle)
+    result = release.Result()
+    assert release.deep_verify("muse", "4.30.1", result, repo=source) is False
+    names = {s.name: s.ok for s in result.steps}
+    assert names["verify.muse.reported"] is True
+    assert names["verify.muse.on-disk"] is True
+    assert names["verify.muse.content"] is False
