@@ -1284,8 +1284,15 @@ def _materialize_muse_bundle(
     if destination.exists() or destination.is_symlink():
         ok, detail = _muse_bundle_completeness(destination, version)
         if ok:
-            result.add("install.muse.bundle", True, f"reusing complete bundle at {destination}")
-            return destination
+            # Version labels do not move across same-version commits, so a
+            # structurally complete bundle is only reusable when its bytes
+            # still equal the source tree — otherwise a re-run would
+            # reinstall stale content under a matching version.
+            content_ok, content_detail = content_digest_report(repo, destination)
+            if content_ok:
+                result.add("install.muse.bundle", True, f"reusing complete bundle at {destination}")
+                return destination
+            detail = f"bundle content drifted from source ({content_detail})"
         result.add("install.muse.bundle-replace", True, f"replacing incomplete bundle ({detail})")
         if destination.is_symlink() or destination.is_file():
             destination.unlink()

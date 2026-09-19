@@ -2065,6 +2065,9 @@ def test_muse_refresh_reuses_complete_bundle(
     bundles = tmp_path / "bundles"
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
     _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
+    skill = repo / "skills" / "demo" / "SKILL.md"
+    skill.parent.mkdir(parents=True, exist_ok=True)
+    skill.write_text("# demo\n", encoding="utf-8")
 
     def exploding_export(*args: object, **kwargs: object) -> set[str]:
         raise AssertionError("complete bundle must be reused, not re-exported")
@@ -2074,6 +2077,32 @@ def test_muse_refresh_reuses_complete_bundle(
     assert release.refresh_client("muse", result, dry_run=False, repo=repo) is True
     names = [s.name for s in result.steps]
     assert "install.muse.bundle-replace" not in names
+
+
+def test_muse_refresh_replaces_complete_bundle_on_content_drift(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same-version commits move bytes without moving the label: a
+    structurally complete bundle whose content drifted must be replaced."""
+    _fake_muse_binary(tmp_path, monkeypatch, "{}")
+    bundles = tmp_path / "bundles"
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
+    skill = repo / "skills" / "demo" / "SKILL.md"
+    skill.parent.mkdir(parents=True, exist_ok=True)
+    skill.write_text("# demo revised\n", encoding="utf-8")
+
+    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
+        _write_muse_bundle(destination, version)
+        staged = destination / "skills" / "demo" / "SKILL.md"
+        staged.write_text("# demo revised\n", encoding="utf-8")
+        return {"seeded"}
+
+    monkeypatch.setattr(release, "_export_release_tag", fake_export)
+    result = release.Result()
+    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is True
+    names = [s.name for s in result.steps]
+    assert "install.muse.bundle-replace" in names
 
 
 def test_muse_refresh_replaces_incomplete_bundle(
