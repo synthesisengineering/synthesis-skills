@@ -1,110 +1,44 @@
 schema: 2
-suite: coordination-defect-followthroughs
+suite: defect-followthrough-release-4-106-0
 membership: closed
-production_entry_point: The commit gate stays in sync with skill upgrades
-  (update re-syncs installed git-hooks); the doctor reports blocking vs
-  advisory severities honestly; unverifiable-scope errors name the dead
-  path; every ritual sweep reports BLIND/UNREACHABLE with denominators
+production_entry_point: All three client manifests and the top changelog
+  identify 4.106.0, shipping commit-gate resync, honest doctor severity,
+  dead-path naming, and denominator-carrying sweeps
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real doctor, installer-coupling,
-  scope resolver, and sweep scanners against disposable boards, homes,
-  checkouts, and manifests. They do not establish installed-client reload,
-  live lease publication, new-release publication, or deployment approval.
-  Those remain separate release checks.
+unverified_remainder: Fixtures execute the real validators and manifest checks in disposable
+  directories. They do not establish installed-client reload, live cross-client delivery,
+  new-release publication, or deployment approval. Those remain separate release checks.
 changed_surfaces:
-- path: skills/synthesis-daily-rituals/SKILL.md
+- path: .claude-plugin/plugin.json
   cases:
-  - pr-queue-states
-- path: skills/synthesis-daily-rituals/references/version-history.md
+  - release-version-metadata
+- path: .codex-plugin/plugin.json
   cases:
-  - pr-queue-states
-- path: skills/synthesis-daily-rituals/scripts/decay_sweep.py
+  - release-version-metadata
+- path: .muse-plugin/plugin.json
   cases:
-  - decay-denominators
-- path: skills/synthesis-daily-rituals/scripts/pr_queue_scan.py
+  - release-version-metadata
+- path: CHANGELOG.md
   cases:
-  - pr-queue-states
-- path: skills/synthesis-daily-rituals/scripts/test_decay_sweep.py
+  - release-version-metadata
+- path: README.md
   cases:
-  - decay-denominators
-- path: skills/synthesis-daily-rituals/scripts/test_pr_queue_scan.py
-  cases:
-  - pr-queue-states
-- path: skills/synthesis-git-hooks/scripts/_load_config.py
-  cases:
-  - doctor-severity
-  - doctor-blocking
-- path: skills/synthesis-git-hooks/scripts/test_pre_commit.py
-  cases:
-  - doctor-severity
-  - doctor-blocking
-  - installer-parity
+  - release-version-metadata
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-onboarding/scripts/onboard.py
-  cases:
-  - hooks-resync
-- path: skills/synthesis-onboarding/scripts/test_onboard.py
-  cases:
-  - hooks-resync
-- path: skills/synthesis-project-management/scripts/claim_scope.py
-  cases:
-  - dead-path-naming
-- path: skills/synthesis-project-management/scripts/test_claim_scope_cache.py
-  cases:
-  - dead-path-naming
 cases:
-- id: doctor-severity
+- id: release-version-metadata
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_doctor_reports_drift_as_advisory_not_blocking
-  motivating_defect: Drift and unwired hooks degrade the gate while commits
-    proceed; the old summary claimed commits block, training readers to
-    disbelieve the doctor.
-- id: doctor-blocking
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_doctor_names_blocking_problems_honestly
-  motivating_defect: Config failures refuse commits fail-closed; the summary
-    must name that severity distinctly from advisory conditions.
-- id: installer-parity
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_installer_and_drift_check_cover_the_same_files
-  motivating_defect: A file the installer copies but the drift check never
-    compares can skew silently — the shape that stranded a pre-advisory
-    coordination.py in the commit gate.
-- id: hooks-resync
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_onboard.py::PluginTests::test_hooks_resync_reports_ok_when_installer_changes_nothing
-  motivating_defect: Plugin refresh replaced skill source without re-syncing
-    the vendored gate, so claim-time and commit-time disagreed until a
-    human reran install.sh.
-- id: dead-path-naming
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_unverified_checkout_names_the_dead_path
-  motivating_defect: Pair-level unverifiable-scope errors with no path cost
-    a live session an hour of binary search across 40+ areas.
-- id: pr-queue-states
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_pr_queue_scan.py::test_unscanned_repos_carry_a_coverage_state
-  motivating_defect: One "not scanned" bucket hid whether the declaration
-    was wrong (BLIND, fix it) or the world was (UNREACHABLE, named loud).
-- id: decay-denominators
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_decay_sweep.py::test_report_carries_coverage_denominators
-  motivating_defect: Bare due counts hid sweep shape; the report names
-    total obligations and scanned sources.
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
+  motivating_defect: All client manifests and the top changelog identify the same release while retained
+    release contracts remain valid.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass

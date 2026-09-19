@@ -11,6 +11,11 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Coordination defect follow-throughs (September 2026).** Release **4.106.0**
+re-syncs the commit gate on every update, splits doctor severity into
+blocking versus advisory, names dead paths in scope errors, and gives
+every ritual sweep blind/unreachable states with denominators.
+
 **Squash-merge gates (September 2026).** Release **4.105.0** lets
 squash-merged branches retire by identical-tree proof and lets the
 release gate resolve the change-base from single-parent release
