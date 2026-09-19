@@ -18,6 +18,11 @@ directory, and refuses every unsafe state:
 - the checked-out HEAD must be an ancestor of the verification base
   (default: the remote's fetched main) — by default after a fresh fetch, so
   "merged" means merged on the REMOTE, not in a stale local ref;
+- the main worktree is fast-forwarded to the verified base when it tracks
+  the base branch (defect 3: "landed" must mean the operator's checkout
+  too, not just origin) — retirement refuses when the advance is unsafe
+  (dirty, diverged, or ahead checkout) and leaves a checkout on another
+  branch alone with a loud note;
 - local branch deletion checks the recorded head and delegates checked-out and
   ancestry protection to native Git, using a pinned remote base as its upstream;
 - the remote branch is deleted only when --delete-remote is passed.
@@ -498,6 +503,80 @@ def resume_retirement(
     )
 
 
+def fast_forward_main_worktree(
+    repository: Path,
+    entries: list[dict[str, str]],
+    main_worktree: Path,
+    remote: str,
+    base: str,
+    base_oid: str,
+) -> str | None:
+    """Fast-forward the main worktree to the verified base, or refuse.
+
+    Defect 3 ("landed" means origin, not the operator's checkout): a branch
+    verified on the remote while the operator's main checkout sits behind
+    leaves the next session reading stale files — 23 commits behind in the
+    motivating incident, after an explicit warning. Retirement is the
+    landing path, so it advances the main checkout itself: purely
+    fast-forward to the already-verified base commit, never touching a
+    dirty tree, and never moving a checkout that is not on the base
+    branch. Returns None when the main worktree is current (or was
+    advanced, or legitimately tracks another branch), else a refusal
+    message. Nothing is removed before this passes.
+    """
+    main_entry = next(
+        (
+            entry
+            for entry in entries
+            if Path(entry["worktree"]).resolve() == main_worktree
+        ),
+        None,
+    )
+    if main_entry is None:
+        return f"main worktree {main_worktree} is not listed; cannot verify it is current"
+    current = run(main_worktree, "rev-parse", "HEAD")
+    if current.returncode != 0 or not current.stdout.strip():
+        return f"main worktree HEAD is unavailable: {main_worktree}"
+    if current.stdout.strip() == base_oid:
+        print(f"Main worktree {main_worktree} is already at {base} ({base_oid[:12]})")
+        return None
+    remote_prefix = f"refs/remotes/{remote}/"
+    expected_branch = f"refs/heads/{base[len(remote_prefix):]}" if base.startswith(remote_prefix) else ""
+    if not expected_branch or main_entry.get("branch", "") != expected_branch:
+        print(
+            f"Main worktree {main_worktree} is on "
+            f"{main_entry.get('branch') or 'detached HEAD'}, not {expected_branch or base}; "
+            "leaving it alone — advance it yourself"
+        )
+        return None
+    status = run(main_worktree, "status", "--porcelain")
+    if status.returncode != 0:
+        return f"status failed in the main worktree: {main_worktree}"
+    if status.stdout.strip():
+        return (
+            f"main worktree {main_worktree} has uncommitted changes; commit, "
+            "stash, or inspect before retiring:"
+            f"\n{status.stdout.strip()}"
+        )
+    merged = run(main_worktree, "merge", "--ff-only", base_oid)
+    landed = run(main_worktree, "rev-parse", "HEAD")
+    if merged.returncode == 0 and landed.returncode == 0 and landed.stdout.strip() == base_oid:
+        print(f"Advanced main worktree {main_worktree} to {base} ({base_oid[:12]})")
+        return None
+    ahead = run(repository, "merge-base", "--is-ancestor", base_oid, current.stdout.strip())
+    if ahead.returncode == 0:
+        return (
+            f"main worktree {main_worktree} is ahead of {base} at {base_oid[:12]}; "
+            "push its commits or inspect before retiring"
+        )
+    detail = merged.stderr.strip().splitlines()
+    return (
+        f"main worktree {main_worktree} cannot fast-forward to {base} at "
+        f"{base_oid[:12]}; rebase, reset, or inspect before retiring"
+        + (f": {detail[-1]}" if detail else "")
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -655,6 +734,12 @@ def main() -> int:
             f"worktree HEAD {head} is not fully contained in {base}; its commits "
             "have not been verified on the remote"
         )
+
+    refusal = fast_forward_main_worktree(
+        repository, entries, main_worktree, args.remote, base, base_oid
+    )
+    if refusal is not None:
+        return fail(refusal)
 
     try:
         with lifecycle_lock() as lock_fd:
