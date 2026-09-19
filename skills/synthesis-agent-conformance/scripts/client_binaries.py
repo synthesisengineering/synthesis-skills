@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Locate installed Claude Code and Codex CLI binaries.
+"""Locate installed Claude Code, Codex, and Muse CLI binaries.
 
-Cross-client verification must run from either client's shell, from cron, or
+Cross-client verification must run from any client's shell, from cron, or
 from CI. Each client's own shell puts its binary on PATH, but the other
-client's shell usually does not — the Codex CLI ships inside the ChatGPT
+clients' shells usually do not — the Codex CLI ships inside the ChatGPT
 desktop app on macOS and is injected only into Codex-managed shells. Checks
 that spawn a client binary therefore resolve it in this order:
 
-1. An explicit environment override (``SYNTHESIS_CODEX_BIN`` or
-   ``SYNTHESIS_CLAUDE_BIN``). A set override is authoritative: an empty
+1. An explicit environment override (``SYNTHESIS_CODEX_BIN``,
+   ``SYNTHESIS_CLAUDE_BIN``, or ``SYNTHESIS_MUSE_BIN``). A set override is authoritative: an empty
    value means "treat the client as absent" (used by hermetic tests), and a
    value that does not point at an executable file resolves to nothing
    rather than falling through, so a misconfigured override fails closed
@@ -31,6 +31,7 @@ from pathlib import Path
 ENV_OVERRIDES = {
     "claude": "SYNTHESIS_CLAUDE_BIN",
     "codex": "SYNTHESIS_CODEX_BIN",
+    "muse": "SYNTHESIS_MUSE_BIN",
 }
 
 WELL_KNOWN_LOCATIONS = {
@@ -45,6 +46,11 @@ WELL_KNOWN_LOCATIONS = {
         "/usr/local/bin/codex",
         "/Applications/ChatGPT.app/Contents/Resources/codex",
     ),
+    "muse": (
+        "~/.local/bin/muse",
+        "/opt/homebrew/bin/muse",
+        "/usr/local/bin/muse",
+    ),
 }
 
 
@@ -53,7 +59,7 @@ def _executable(path: Path) -> bool:
 
 
 def resolve_client_binary(name: str) -> str | None:
-    """Return an executable path for ``name`` (``claude`` or ``codex``)."""
+    """Return an executable path for ``name`` (``claude``, ``codex``, or ``muse``)."""
     override_key = ENV_OVERRIDES.get(name, "")
     if override_key and override_key in os.environ:
         override = os.environ[override_key]

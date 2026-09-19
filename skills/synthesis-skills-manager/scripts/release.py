@@ -10,7 +10,7 @@ running clients silently behind their own source.
 This script makes that state unreachable by sequencing the whole operation
 behind one command that fails closed:
 
-    preflight -> required checks -> publish -> install both clients -> verify
+    preflight -> required checks -> publish -> install all three clients -> verify
 
 The verification step is deliberately paranoid, for a reason learned the hard
 way: **a client's own version report is not sufficient evidence.** A client can
@@ -67,7 +67,7 @@ except ImportError:  # pragma: no cover - resolved at runtime in the repo
         import shutil
 
         override = os.environ.get(
-            {"claude": "SYNTHESIS_CLAUDE_BIN", "codex": "SYNTHESIS_CODEX_BIN"}.get(name, "")
+            {"claude": "SYNTHESIS_CLAUDE_BIN", "codex": "SYNTHESIS_CODEX_BIN", "muse": "SYNTHESIS_MUSE_BIN"}.get(name, "")
         )
         if override is not None and override != "":
             return override if Path(override).is_file() else None
@@ -84,7 +84,7 @@ from system_contract import ContractError, activate_cli, atomic_write_json
 
 PLUGIN_NAME = "synthesis-skills"
 MARKETPLACE = "synthesis-engineering"
-MANIFESTS = (".claude-plugin/plugin.json", ".codex-plugin/plugin.json")
+MANIFESTS = (".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".muse-plugin/plugin.json")
 ACCEPTANCE_MANIFEST = Path(
     "skills/synthesis-implementation-integrity/acceptance-suite.yaml"
 )
@@ -466,7 +466,11 @@ def client_reported_version(client: str) -> tuple[str | None, str | None]:
     binary = resolve_client_binary(client)
     if not binary:
         return None, None
-    result = run([binary, "plugin", "list", "--json"], timeout=180)
+    if client == "muse":
+        command = [binary, "plugins", "list", "--json"]
+    else:
+        command = [binary, "plugin", "list", "--json"]
+    result = run(command, timeout=180)
     if result.returncode != 0:
         return None, None
     try:
@@ -481,6 +485,11 @@ def client_reported_version(client: str) -> tuple[str | None, str | None]:
             if str(item.get("id", "")).startswith(f"{PLUGIN_NAME}@") and item.get("enabled", True):
                 return str(item.get("version") or "") or None, item.get("installPath")
         return None, None
+    if client == "muse":
+        record = _muse_record_from_list(data)
+        if record is None or not record.get("enabled", True):
+            return None, None
+        return str(record.get("version") or "") or None, record.get("cache_path")
     installed = data.get("installed", []) if isinstance(data, dict) else []
     for item in installed:
         if not isinstance(item, dict):
@@ -489,6 +498,37 @@ def client_reported_version(client: str) -> tuple[str | None, str | None]:
             source = item.get("source") or {}
             return str(item.get("version") or "") or None, source.get("path")
     return None, None
+
+
+def _muse_install_record(binary: str) -> dict | None:
+    """Return Muse's install record for this plugin, or None when absent.
+
+    Muse refuses ``plugins install`` from a new path while a record exists
+    ("already installed from a different source"), so refresh branches on
+    record existence: a present record is synced in place and updated, a
+    missing record is installed fresh. Existence — not enabled state —
+    decides, because a disabled record still blocks a fresh install.
+    """
+    result = run([binary, "plugins", "list", "--json"], timeout=180)
+    if result.returncode != 0:
+        return None
+    try:
+        data = json.loads(_first_json(result.stdout + "\n" + result.stderr))
+    except (ValueError, TypeError):
+        return None
+    return _muse_record_from_list(data)
+
+
+def _muse_record_from_list(data: object) -> dict | None:
+    """Extract this plugin's install record from a parsed list document."""
+    items = data.get("plugins", []) if isinstance(data, dict) else []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        record = item.get("record") or {}
+        if isinstance(record, dict) and record.get("id") == PLUGIN_NAME:
+            return record
+    return None
 
 
 def _first_json(text: str) -> str:
@@ -514,7 +554,15 @@ def _first_json(text: str) -> str:
 
 
 def installed_root(client: str, version: str) -> Path:
-    """The conventional pinned install root both clients use."""
+    """The conventional pinned install root each client uses.
+
+    Muse's installed bytes live under a content-addressed cache path that
+    changes with every release, so its conventional root is the
+    synthesis-owned bundle the install refreshes from — the load path the
+    CLI reports covers the cache side.
+    """
+    if client == "muse":
+        return muse_bundle_dir(version)
     base = Path.home() / (".claude" if client == "claude" else ".codex")
     return base / "plugins" / "cache" / MARKETPLACE / PLUGIN_NAME / version
 
@@ -522,6 +570,25 @@ def installed_root(client: str, version: str) -> Path:
 def plugin_cache_parent(client: str) -> Path:
     """Return the directory containing this plugin's versioned cache roots."""
     return installed_root(client, "0.0.0").parent
+
+
+MUSE_BUNDLE_ROOT = Path(
+    os.environ.get(
+        "SYNTHESIS_MUSE_BUNDLE_ROOT",
+        str(Path.home() / ".cache" / "synthesis" / "muse-bundle"),
+    )
+)
+
+
+def muse_bundle_dir(version: str) -> Path:
+    """The version-stamped local bundle Muse installs refresh from.
+
+    Muse installs synthesis-skills from a local bundle rather than a git
+    marketplace snapshot, so the release stages the versioned tree here and
+    installs from it; ``muse plugins install`` over the existing record is
+    idempotent and re-caches from the bundle path.
+    """
+    return MUSE_BUNDLE_ROOT / f"v{version}"
 
 
 STABLE_ROOT = Path(
@@ -537,7 +604,7 @@ def stable_path() -> Path:
     personal workspace's own day-start commands pinned a release twenty
     versions behind. The stable path is synthesis-owned, outside the
     client-owned caches (which the clients replace on their own schedule),
-    and is repointed atomically only after both clients verified a version.
+    and is repointed atomically only after all three clients verified a version.
     """
     return STABLE_ROOT / PLUGIN_NAME / "current"
 
@@ -1112,10 +1179,21 @@ def deep_verify(client: str, expected: str, result: Result,
         f"cli reports {reported or 'nothing'} (expected {expected})",
     )
 
-    manifest_name = ".claude-plugin" if client == "claude" else ".codex-plugin"
+    if client == "muse":
+        manifest_name = ".muse-plugin"
+    elif client == "claude":
+        manifest_name = ".claude-plugin"
+    else:
+        manifest_name = ".codex-plugin"
     candidates = [installed_root(client, expected)]
     if load_path:
         candidates.append(Path(load_path))
+    if client == "muse" and load_path:
+        # Muse's conventional root is the staged bundle, but the content
+        # leg must check the bytes the client actually loads: the reported
+        # cache path first, so a failed install cannot hide behind a fresh
+        # bundle the client never picked up.
+        candidates = [Path(load_path), installed_root(client, expected)]
     seen: list[str] = []
     ok_disk = False
     for candidate in candidates:
@@ -1145,6 +1223,119 @@ def deep_verify(client: str, expected: str, result: Result,
     return ok_reported and ok_disk and ok_content
 
 
+def _muse_bundle_completeness(root: Path, version: str) -> tuple[bool, str]:
+    """Validate a staged Muse bundle before installing from it.
+
+    Mirrors the repository's own .muse-plugin contract: the manifest must
+    report the release version, every declared skill path must resolve to a
+    file, and every hook script must exist and be executable. Byte equality
+    with the source tree is deep_verify's job; this gate only refuses to
+    install a structurally incomplete bundle.
+    """
+    if not root.is_dir() or root.is_symlink():
+        return False, "bundle is absent, not a directory, or a symlink"
+    try:
+        manifest = json.loads(
+            (root / ".muse-plugin" / "plugin.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        return False, f"bundle manifest unreadable: {exc}"
+    if not isinstance(manifest, dict):
+        return False, "bundle manifest is not an object"
+    if manifest.get("version") != version:
+        return False, f"bundle manifest reports {manifest.get('version')!r} (expected {version})"
+    if manifest.get("name") != PLUGIN_NAME:
+        return False, f"bundle manifest names {manifest.get('name')!r} (expected {PLUGIN_NAME})"
+    capabilities = manifest.get("capabilities") or {}
+    if not isinstance(capabilities, dict):
+        return False, "bundle manifest capabilities is not an object"
+    skills = capabilities.get("skills") or []
+    if not skills:
+        return False, "bundle manifest declares no skills"
+    for entry in skills:
+        path = entry.get("path") if isinstance(entry, dict) else None
+        if not path or not (root / str(path)).is_file():
+            return False, f"bundle skill missing: {path!r}"
+    for hook in capabilities.get("hooks") or []:
+        if not isinstance(hook, dict):
+            return False, "bundle hook entry is not an object"
+        command = hook.get("command") or []
+        script = root / str(command[1]) if len(command) > 1 else None
+        if script is None or not script.is_file():
+            return False, f"bundle hook script missing: {hook.get('id')}"
+        if not os.access(script, os.X_OK):
+            return False, f"bundle hook script not executable: {hook.get('id')}"
+    return True, f"bundle stages {len(skills)} skills for {version}"
+
+
+def _materialize_muse_bundle(
+    repo: Path, version: str, result: Result, dry_run: bool
+) -> Path | None:
+    """Export the release tree to the version-stamped Muse bundle directory.
+
+    Re-runs are idempotent: a present bundle that already stages this
+    version is reused, anything else is removed and re-exported from the
+    source tree so a stale or partial directory can never be installed.
+    """
+    destination = muse_bundle_dir(version)
+    if dry_run:
+        result.add("install.muse.bundle", True, f"dry-run: stage bundle at {destination}")
+        return destination
+    if destination.exists() or destination.is_symlink():
+        ok, detail = _muse_bundle_completeness(destination, version)
+        if ok:
+            # Version labels do not move across same-version commits, so a
+            # structurally complete bundle is only reusable when its bytes
+            # still equal the source tree — otherwise a re-run would
+            # reinstall stale content under a matching version.
+            content_ok, content_detail = content_digest_report(repo, destination)
+            if content_ok:
+                result.add("install.muse.bundle", True, f"reusing complete bundle at {destination}")
+                return destination
+            detail = f"bundle content drifted from source ({content_detail})"
+        result.add("install.muse.bundle-replace", True, f"replacing incomplete bundle ({detail})")
+        if destination.is_symlink() or destination.is_file():
+            destination.unlink()
+        else:
+            shutil.rmtree(destination)
+    try:
+        _export_release_tag(repo, version, destination, current_version=version)
+    except OSError as exc:
+        result.add("install.muse.bundle", False, str(exc))
+        return None
+    ok, detail = _muse_bundle_completeness(destination, version)
+    result.add("install.muse.bundle", ok, detail)
+    return destination if ok else None
+
+
+def _sync_muse_recorded_source(
+    recorded: Path, staged: Path, version: str, result: Result, dry_run: bool
+) -> bool:
+    """Copy the versioned export over the bundle path Muse's record points at.
+
+    The record pins its source path, so a new versioned directory alone is
+    not installable — the staged tree must be synced into place before
+    ``plugins update`` re-caches from it. The versioned export is left
+    untouched as the retry source if the copy is interrupted.
+    """
+    if recorded == staged:
+        return result.add("install.muse.sync", True, "recorded source already stages this version")
+    if dry_run:
+        return result.add("install.muse.sync", True, f"dry-run: sync {staged} into {recorded}")
+    if recorded.is_symlink():
+        return result.add("install.muse.sync", False, f"recorded source is a symlink: {recorded}")
+    try:
+        if recorded.exists():
+            if not recorded.is_dir():
+                return result.add("install.muse.sync", False, f"recorded source is not a directory: {recorded}")
+            shutil.rmtree(recorded)
+        shutil.copytree(staged, recorded)
+    except OSError as exc:
+        return result.add("install.muse.sync", False, str(exc))
+    ok, detail = _muse_bundle_completeness(recorded, version)
+    return result.add("install.muse.sync", ok, detail if ok else f"synced tree incomplete: {detail}")
+
+
 def refresh_client(
     client: str, result: Result, dry_run: bool, repo: Path | None = None
 ) -> bool:
@@ -1152,7 +1343,30 @@ def refresh_client(
     binary = resolve_client_binary(client)
     if not binary:
         return result.add(f"install.{client}", False, "client binary not found")
-    if client == "claude":
+    if client == "muse":
+        if repo is None:
+            return result.add("install.muse", False, "no source repo supplied to stage the bundle from")
+        version, detail = source_version(repo)
+        if version is None:
+            return result.add("install.muse", False, f"source manifests disagree: {detail}")
+        bundle = _materialize_muse_bundle(repo, version, result, dry_run)
+        if bundle is None:
+            return False
+        try:
+            record = _muse_install_record(binary)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return result.add("install.muse.record", False, f"could not read install record: {exc}")
+        source_path = ((record.get("source") or {}) if record else {}).get("path")
+        if record is None or not source_path:
+            commands = [[binary, "plugins", "install", str(bundle), "--json"]]
+        else:
+            recorded = Path(str(source_path))
+            if not recorded.is_absolute():
+                return result.add("install.muse.record", False, f"recorded source is not absolute: {source_path}")
+            if not _sync_muse_recorded_source(recorded, bundle, version, result, dry_run):
+                return False
+            commands = [[binary, "plugins", "update", PLUGIN_NAME, "--json"]]
+    elif client == "claude":
         commands = [
             [binary, "plugin", "marketplace", "update", MARKETPLACE],
             [binary, "plugin", "update", f"{PLUGIN_NAME}@{MARKETPLACE}"],
@@ -1594,7 +1808,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     # New plugin hooks call exec-public, so establish their verified execution
-    # prerequisite before either client can load the new hook definitions.
+    # prerequisite before any client can load the new hook definitions.
     if not activate_published_cli(repo, version, result, args.dry_run):
         print(
             f"\nRELEASE INCOMPLETE for {version}: the public synthesis CLI "
@@ -1602,7 +1816,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    for client in ("claude", "codex"):
+    for client in ("claude", "codex", "muse"):
         refresh_client(client, result, args.dry_run, repo=repo)
 
     install_codex_cache_guardian(repo, result, args.dry_run)
@@ -1612,7 +1826,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     verified = all(deep_verify(client, version, result, repo=repo)
-                   for client in ("claude", "codex"))
+                   for client in ("claude", "codex", "muse"))
     if not verified or result.failed:
         print(
             f"\nRELEASE INCOMPLETE for {version}: "
@@ -1626,7 +1840,7 @@ def main(argv: list[str] | None = None) -> int:
             "repointed at the verified install — re-run with --install-only."
         )
         return 1
-    print(f"\nRELEASED {version}: published, installed, and verified on both clients.")
+    print(f"\nRELEASED {version}: published, installed, and verified on all three clients.")
     return 0
 
 

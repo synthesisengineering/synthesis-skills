@@ -71,3 +71,26 @@ def test_missing_binary_detail_names_override() -> None:
 def test_unknown_client_has_no_well_known_locations(monkeypatch) -> None:
     monkeypatch.setattr(MODULE.shutil, "which", lambda name: None)
     assert MODULE.resolve_client_binary("unknown-client") is None
+
+
+def test_muse_env_override_wins_over_path(tmp_path: Path, monkeypatch) -> None:
+    override = fake_binary(tmp_path / "custom" / "muse")
+    monkeypatch.setenv("SYNTHESIS_MUSE_BIN", str(override))
+    monkeypatch.setattr(MODULE.shutil, "which", lambda name: "/elsewhere/muse")
+    assert MODULE.resolve_client_binary("muse") == str(override)
+
+
+def test_muse_env_override_set_but_empty_means_absent(monkeypatch) -> None:
+    monkeypatch.setenv("SYNTHESIS_MUSE_BIN", "")
+    monkeypatch.setattr(MODULE.shutil, "which", lambda name: "/elsewhere/muse")
+    assert MODULE.resolve_client_binary("muse") is None
+
+
+def test_muse_well_known_locations_configured() -> None:
+    assert "~/.local/bin/muse" in MODULE.WELL_KNOWN_LOCATIONS["muse"]
+
+
+def test_missing_binary_detail_names_muse_override() -> None:
+    detail = MODULE.missing_binary_detail("muse")
+    assert "SYNTHESIS_MUSE_BIN" in detail
+    assert "muse" in detail

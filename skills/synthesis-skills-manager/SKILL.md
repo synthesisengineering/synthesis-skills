@@ -233,7 +233,7 @@ When installing a skill that has a Configuration section:
 User: "Install all my synthesis skills"
 
 1. Add the public repository as a marketplace in Claude and Codex.
-2. Install and enable the `synthesis-skills` plugin in both clients.
+2. Install and enable the `synthesis-skills` plugin in all three clients.
 3. Install personal skills to `~/.claude/skills/` and `~/.agents/skills/`.
 4. Install shared project skills to `.claude/skills/` and `.agents/skills/`.
 5. Write `.source.json` for every copied private/shared skill.
@@ -305,9 +305,9 @@ python3 .../release.py --install-only  # refresh + verify clients (new machine, 
 
 The sequence, each stage gating the next:
 
-**preflight → required checks → publish → install both clients → verify → activate public CLI**
+**preflight → required checks → publish → install all three clients → verify → activate public CLI**
 
-- **Preflight** refuses to proceed unless both plugin manifests agree, the
+- **Preflight** refuses to proceed unless all three plugin manifests agree, the
   newest CHANGELOG entry matches them, and the tree is clean. It also refuses
   to run against an installed cache mistaken for the source checkout.
 - **Acceptance consumption** derives the base-to-head change universe from
@@ -330,7 +330,7 @@ The sequence, each stage gating the next:
   `plugin add`, because Codex installs *from* its git marketplace snapshot —
   skipping the upgrade installs the previous release while appearing to
   succeed. Before that destructive Codex refresh, the publisher snapshots every
-  real versioned cache root retained by either client into a durable recovery archive.
+  real versioned cache root retained by any client into a durable recovery archive.
   Immutable release tags supply authoritative tracked bytes. For releases that
   predate immutable tags, a peer-client or prior archive root is accepted only
   after its manifests, complete hook target set, and skill tree validate. Known
@@ -370,7 +370,7 @@ The sequence, each stage gating the next:
   atomically switches the managed `synthesis` launcher and active descriptor.
   The release manager also writes the same immutable descriptor into the release
   descriptor store, so the launcher cannot silently follow a mutable checkout or
-  disagree with the release that both clients verified. User-selected desired
+  disagree with the release that all three clients verified. User-selected desired
   state remains owned by `synthesis setup` and later reconciliation commands.
 
 ### Why a client's own version report is not sufficient evidence
