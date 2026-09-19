@@ -109,6 +109,15 @@ Use `--json` for a machine-readable report. Each check carries a plane and one
 of PASS, FAIL, WARN, UNKNOWN, or UNSUPPORTED. A required UNKNOWN fails the
 aggregate command; "not tested" cannot become parity.
 
+Use `--local` when the diagnosis itself must not change anything: no
+network fetch, no board or lease refresh, no pointer writes. Routes
+that need fresh evidence skip those subchecks with reasons (non-required
+UNKNOWN naming the unverifiable evidence and the mirror's age);
+`activate` refuses and shows the exact write it would have made;
+`--readiness remote` cannot combine with `--local`. Explicit
+`--report-file` output still writes: it is user-directed, not a
+surprise write.
+
 ### 2. Repair from source
 
 - Edit source repositories, never installed skill or plugin caches.

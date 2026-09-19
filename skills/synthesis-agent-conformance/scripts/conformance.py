@@ -235,6 +235,26 @@ def file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _file_mtime_text(path: Path) -> str:
+    """Best-effort mtime for staleness copy; never raises."""
+    try:
+        stamp = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    except OSError:
+        return "unknown"
+    return stamp.isoformat(timespec="seconds")
+
+
+def _last_fetch_text(project: Path) -> str:
+    """When this repo last fetched, from FETCH_HEAD; never raises."""
+    git_dir = run(["git", "-C", str(project), "rev-parse", "--absolute-git-dir"])
+    if git_dir.returncode != 0 or not git_dir.stdout.strip():
+        return "unknown (not a git checkout)"
+    fetch_head = Path(git_dir.stdout.strip()) / "FETCH_HEAD"
+    if not fetch_head.is_file():
+        return "never fetched"
+    return _file_mtime_text(fetch_head)
+
+
 def atomic_json_write(destination: Path, payload: dict[str, object]) -> None:
     """Durably replace a JSON report without shared fixed-temp collisions."""
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -814,7 +834,7 @@ def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
     return checks
 
 
-def runtime_checks() -> list[Check]:
+def runtime_checks(*, local: bool = False) -> list[Check]:
     checks: list[Check] = []
     ok, detail = plugin_inventory("claude")
     add(checks, "runtime.claude-plugin", ok, detail)
@@ -829,6 +849,23 @@ def runtime_checks() -> list[Check]:
         not duplicates,
         ", ".join(duplicates) or "none",
     )
+
+    if local:
+        add(
+            checks,
+            "runtime.codex-provider",
+            None,
+            "skipped: local mode cannot verify reachability without network",
+            required=False,
+        )
+        add(
+            checks,
+            "runtime.codex-websocket",
+            None,
+            "skipped: local mode cannot verify reachability without network",
+            required=False,
+        )
+        return checks
 
     codex_binary = resolve_client_binary("codex")
     if not codex_binary:
@@ -1275,7 +1312,9 @@ def _plugin_cache_path(
     return candidate if candidate.is_dir() else None
 
 
-def catalog_checks(source_root: Path, home: Path | None = None) -> list[Check]:
+def catalog_checks(
+    source_root: Path, home: Path | None = None, *, local: bool = False
+) -> list[Check]:
     """Check source/install parity and Codex's resolved prompt catalog budget."""
     checks: list[Check] = []
     home = home or None
@@ -1334,7 +1373,7 @@ def catalog_checks(source_root: Path, home: Path | None = None) -> list[Check]:
                 f"version={source_version}; source={len(skills)} installed={installed_count}; "
                 f"source_digest={source_digest}; installed_digest={installed_digest}; {cache}",
             )
-    runtime = codex_skill_catalog_audit(source_root, home=home)
+    runtime = codex_skill_catalog_audit(source_root, home=home, reload=not local)
     runtime_status = str(runtime.get("status") or "UNKNOWN")
     runtime_detail = (
         f"discovered={runtime.get('discovered_skill_count', 0)}; "
@@ -1510,7 +1549,9 @@ def instruction_checks(repo_root: Path) -> list[Check]:
     return checks
 
 
-def coordination_checks(board: Path, *, required: bool = True) -> list[Check]:
+def coordination_checks(
+    board: Path, *, required: bool = True, local: bool = False
+) -> list[Check]:
     checks: list[Check] = []
     if not board.is_file():
         add(
@@ -1572,6 +1613,16 @@ def coordination_checks(board: Path, *, required: bool = True) -> list[Check]:
             False,
             f"missing helper: {COORDINATION_HELPER}",
             required=required,
+        )
+        return checks
+    if local:
+        add(
+            checks,
+            "coordination.semantic-doctor",
+            None,
+            "skipped: local mode cannot verify lease sync without network; "
+            f"mirror mtime {_file_mtime_text(board)}",
+            required=False,
         )
         return checks
     doctor = run(
@@ -1644,6 +1695,7 @@ def activate(
     *,
     owner_session: str | None = None,
     coordination_board: Path = DEFAULT_COORDINATION_BOARD,
+    local: bool = False,
 ) -> list[Check]:
     summary, checks = project_summary(project)
     if any(not check.ok and check.required for check in checks):
@@ -1679,6 +1731,16 @@ def activate(
         )
         return checks
     owner = owner_state["session_uuid"]
+    if local:
+        add(
+            checks,
+            "handoff.pointer-would-write",
+            False,
+            f"local mode refuses pointer write: {pointer} "
+            f"(owner={owner} worktree={worktree} branch={branch} "
+            f"commit={commit} lease={lease})",
+        )
+        return checks
     payload = {
         **summary,
         "activated_at": datetime.now(timezone.utc).isoformat(),
@@ -1811,6 +1873,8 @@ def handoff_checks(
 def project_state_recovery_checks(
     project: Path,
     coordination_board: Path = DEFAULT_COORDINATION_BOARD,
+    *,
+    local: bool = False,
 ) -> list[Check]:
     """Report causal incoming recovery separately from other continuity gates."""
     checks: list[Check] = []
@@ -1824,8 +1888,8 @@ def project_state_recovery_checks(
         ),
         coordination_board=coordination_board if coordination_board.is_file() else None,
         pointer=DEFAULT_ACTIVE_PROJECT,
-        fetch=True,
-        refresh_coordination=coordination_board.is_file(),
+        fetch=not local,
+        refresh_coordination=not local and coordination_board.is_file(),
     )
     acceptable = report.status in {"PASS", "LOCAL_RECOVERABLE"}
     detail = (
@@ -1834,6 +1898,12 @@ def project_state_recovery_checks(
     )
     if report.issues:
         detail += "; " + "; ".join(report.issues)
+    if local:
+        detail += (
+            "; local mode: remote refs as of last fetch "
+            f"{_last_fetch_text(project)}; board mirror as of "
+            f"{_file_mtime_text(coordination_board)}"
+        )
     add(
         checks,
         "continuity.project-state-recovery",
@@ -2162,6 +2232,8 @@ def pointer_checks(
     pointer: Path,
     coordination_board: Path = DEFAULT_COORDINATION_BOARD,
     require_pointer: bool = True,
+    *,
+    local: bool = False,
 ) -> list[Check]:
     """Validate pointer content, ownership, and checkout identity.
 
@@ -2229,7 +2301,9 @@ def pointer_checks(
         bool(owner and owner != "unclaimed"),
         f"owner_session={owner or 'missing'}; owner_lease={payload.get('owner_lease')}",
     )
-    _, lease_issues = load_and_validate(pointer, coordination_board)
+    _, lease_issues = load_and_validate(
+        pointer, coordination_board, refresh_lease=not local
+    )
     add(
         checks,
         "pointer.lease-and-freshness",
@@ -2513,6 +2587,15 @@ def parser() -> argparse.ArgumentParser:
         type=Path,
         help="Atomically write the same structured result rendered to stdout.",
     )
+    result.add_argument(
+        "--local",
+        action="store_true",
+        help=(
+            "Use only on-disk evidence: no network fetch, no board or lease "
+            "refresh, no pointer writes. Subchecks that need fresh evidence "
+            "are skipped with reasons; activate refuses."
+        ),
+    )
     return result
 
 
@@ -2531,7 +2614,7 @@ def main() -> int:
     if args.command in {"parity", "all"}:
         checks.extend(parity_checks(args.source_root.resolve()))
     if args.command in {"runtime", "all"}:
-        checks.extend(runtime_checks())
+        checks.extend(runtime_checks(local=args.local))
     if args.command in {"hook-definition", "all"}:
         checks.extend(hook_definition_checks(args.source_root.resolve()))
     if args.command in {"hook-trust", "all"}:
@@ -2550,7 +2633,7 @@ def main() -> int:
             )
         )
     if args.command in {"catalog", "all"}:
-        checks.extend(catalog_checks(args.source_root.resolve()))
+        checks.extend(catalog_checks(args.source_root.resolve(), local=args.local))
     if args.command in {"instructions", "all"}:
         if not args.repo_root:
             raise SystemExit("--repo-root is required")
@@ -2570,16 +2653,26 @@ def main() -> int:
         checks.extend(surface_checks(args.source_root.resolve()))
     if args.command == "coordination":
         checks.extend(
-            coordination_checks(args.coordination_board.expanduser(), required=True)
+            coordination_checks(
+                args.coordination_board.expanduser(),
+                required=True,
+                local=args.local,
+            )
         )
     elif args.command == "all":
         checks.extend(
-            coordination_checks(args.coordination_board.expanduser(), required=False)
+            coordination_checks(
+                args.coordination_board.expanduser(),
+                required=False,
+                local=args.local,
+            )
         )
     if args.command in {"pointer", "handoff", "continuity", "all"} and args.project:
         checks.extend(
             project_state_recovery_checks(
-                args.project.resolve(), args.coordination_board.expanduser()
+                args.project.resolve(),
+                args.coordination_board.expanduser(),
+                local=args.local,
             )
         )
     if args.command == "activate":
@@ -2591,6 +2684,7 @@ def main() -> int:
                 args.active_project_file.expanduser(),
                 owner_session=args.session_id,
                 coordination_board=args.coordination_board.expanduser(),
+                local=args.local,
             )
         )
     if args.command in {"pointer", "all"}:
@@ -2602,6 +2696,7 @@ def main() -> int:
                 args.active_project_file.expanduser(),
                 args.coordination_board.expanduser(),
                 require_pointer=args.command == "pointer",
+                local=args.local,
             )
         )
     if args.command == "handoff":
@@ -2617,6 +2712,12 @@ def main() -> int:
     if args.command == "continuity":
         if not args.project:
             raise SystemExit("--project is required")
+        if args.local and args.readiness == "remote":
+            raise SystemExit(
+                "--readiness remote requires a network fetch and cannot "
+                "combine with --local; published state is unverifiable "
+                "from on-disk evidence alone"
+            )
         summary, project_checks = project_summary(args.project.resolve())
         checks.extend(project_checks)
         parity, detail = stopped_payload_parity(
