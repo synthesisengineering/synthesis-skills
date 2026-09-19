@@ -1,77 +1,46 @@
 schema: 2
-suite: squash-merge-gates
+suite: squash-gates-release-4-105-0
 membership: closed
-production_entry_point: retire_worktree.py accepts an identical tree as proof
-  squash-merged content reached the remote, and release.py resolves the
-  acceptance change-base to the parent of a single-parent release commit
+production_entry_point: All three client manifests and the top changelog
+  identify 4.105.0, shipping identical-tree worktree retirement and the
+  single-parent release change-base
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real helpers against disposable
-  git repositories and clones. They do not establish installed-client reload,
-  live hook pickup, new-release publication, or deployment approval. Those
-  remain separate release checks.
+unverified_remainder: Fixtures execute the real validators and manifest checks in disposable
+  directories. They do not establish installed-client reload, live cross-client delivery,
+  new-release publication, or deployment approval. Those remain separate release checks.
 changed_surfaces:
+- path: .claude-plugin/plugin.json
+  cases:
+  - release-version-metadata
+- path: .codex-plugin/plugin.json
+  cases:
+  - release-version-metadata
+- path: .muse-plugin/plugin.json
+  cases:
+  - release-version-metadata
+- path: CHANGELOG.md
+  cases:
+  - release-version-metadata
+- path: README.md
+  cases:
+  - release-version-metadata
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-project-management/scripts/retire_worktree.py
-  cases:
-  - squash-retire
-  - squash-retire-refusal
-- path: skills/synthesis-project-management/scripts/test_retire_worktree.py
-  cases:
-  - squash-retire
-  - squash-retire-refusal
-- path: skills/synthesis-repo-guard/checkpoint_sync.py
-  cases:
-  - squash-retire
-- path: skills/synthesis-skills-manager/scripts/release.py
-  cases:
-  - squash-change-base
-  - squash-branch-ordering
-  - squash-merge-first-parent
-- path: skills/synthesis-skills-manager/scripts/test_release.py
-  cases:
-  - squash-change-base
-  - squash-branch-ordering
-  - squash-merge-first-parent
 cases:
+- id: release-version-metadata
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
+  motivating_defect: All client manifests and the top changelog identify the same release while retained
+    release contracts remain valid.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: squash-retire
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retires_squash_merged_worktree_by_identical_tree
-  motivating_defect: A squash-merge lands identical content under new commits,
-    so ancestry-only retirement refuses every squash-merged branch and pushes
-    operators back to hand retirement.
-- id: squash-retire-refusal
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_refuses_squash_merged_worktree_with_extra_commits
-  motivating_defect: The identical-tree proof must not weaken the gate; a
-    squash-merged branch with further diverged commits still refuses.
-- id: squash-change-base
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_acceptance_change_base_uses_parent_for_squash_commit_on_main
-  motivating_defect: A squash-merge release commit on main has one parent, so
-    the merge-only change-base resolver fails the release boundary.
-- id: squash-branch-ordering
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_acceptance_change_base_keeps_merge_base_for_feature_branches
-  motivating_defect: The single-parent fallback must never swallow feature
-    branches, where the merge-base with origin/main is the change universe.
-- id: squash-merge-first-parent
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_acceptance_change_base_uses_first_parent_for_merge_commit
-  motivating_defect: True merge release commits keep resolving to the first parent.
