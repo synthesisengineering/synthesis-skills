@@ -3512,6 +3512,11 @@ def _coordination_probe():
         root / "peer_addressing.py",
         root / "fleet_identity.py",
         root / "fleet_paths.py",
+        root / "fleet_bootstrap.py",
+        root / "fleet_doctor.py",
+        root / "fleet_handoff.py",
+        root / "fleet_logical.py",
+        root / "fleet_subscriptions.py",
     ]
     if not all(path.is_file() for path in required):
         return False, "stable coordination runtime is missing"

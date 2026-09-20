@@ -1050,6 +1050,11 @@ def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
         "peer_addressing.py",
         "fleet_identity.py",
         "fleet_paths.py",
+        "fleet_bootstrap.py",
+        "fleet_doctor.py",
+        "fleet_handoff.py",
+        "fleet_logical.py",
+        "fleet_subscriptions.py",
         "source-path",
     }
     assert (

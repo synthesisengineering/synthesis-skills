@@ -1,131 +1,149 @@
 schema: 2
-suite: fleet-core-identity-board-park
+suite: fleet-handoff-machine-sync
 membership: closed
-production_entry_point: Every fleet machine carries an enrolled identity;
-  the v5 board tags claims by machine with pid demoted to a same-machine
-  hint; parked sessions freeze claims with challenge and grace instead
-  of dying; portable configs expand home on read
+production_entry_point: Handoff moves work across Macs through a REMOTE_READY
+  source gate, sealed ticketed offers, and a harness-neutral resume contract;
+  logical repo identity spans checkout paths; the fleet doctor gates
+  reachability, freshness, coherence, seals, and divergence; workspace
+  subscriptions bind commits to machines; bootstrap provisions a new Mac
+  idempotently; synthesis-machine-sync documents enroll, sync, leave,
+  and handoff
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures run the real identity, board, park, and
-  path modules against disposable boards and tmp homes. Live two-machine
-  exclusion, installed-client reload, new-release publication, and
-  deployment approval remain separate release checks.
+unverified_remainder: Fixtures run the real handoff, board, doctor,
+  subscription, and bootstrap modules against disposable boards, lease
+  remotes, git checkouts, and homes. Live two-Mac handoff, installed-client
+  reload, new-release publication, and deployment approval remain separate
+  release checks.
 changed_surfaces:
-- path: skills/synthesis-agent-conformance/scripts/conformance.py
+- path: .muse-plugin/plugin.json
   cases:
-  - paths-portable
-- path: skills/synthesis-checkpoint/scripts/refresh.py
-  cases:
-  - paths-portable
-- path: skills/synthesis-checkpoint/scripts/test_refresh.py
-  cases:
-  - paths-portable
-- path: skills/synthesis-daily-rituals/references/ritual-worker-contract.md
-  cases:
-  - paths-portable
-- path: skills/synthesis-daily-rituals/scripts/ritual_workers.py
-  cases:
-  - paths-portable
-- path: skills/synthesis-daily-rituals/scripts/test_ritual_workers.py
-  cases:
-  - paths-portable
+  - machine-sync-registration
 - path: skills/synthesis-git-hooks/scripts/_load_config.py
   cases:
-  - paths-portable
+  - deployed-bundles
 - path: skills/synthesis-git-hooks/scripts/install.sh
   cases:
-  - paths-portable
+  - deployed-bundles
+- path: skills/synthesis-git-hooks/scripts/pre-commit
+  cases:
+  - subscriptions
 - path: skills/synthesis-git-hooks/scripts/test_pre_commit.py
   cases:
-  - paths-portable
+  - deployed-bundles
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
+- path: skills/synthesis-machine-sync/SKILL.md
+  cases:
+  - machine-sync-registration
+- path: skills/synthesis-machine-sync/agents/openai.yaml
+  cases:
+  - machine-sync-registration
+- path: skills/synthesis-onboarding/references/components.json
+  cases:
+  - machine-sync-registration
 - path: skills/synthesis-onboarding/scripts/onboard.py
   cases:
-  - machine-identity
+  - deployed-bundles
 - path: skills/synthesis-onboarding/scripts/runtime_payload.py
   cases:
-  - machine-identity
+  - deployed-bundles
 - path: skills/synthesis-onboarding/scripts/test_runtime_integration.py
   cases:
-  - machine-identity
+  - deployed-bundles
 - path: skills/synthesis-onboarding/scripts/test_runtime_payload.py
   cases:
-  - machine-identity
-- path: skills/synthesis-project-management/references/active-sessions-template.md
-  cases:
-  - board-v5
-- path: skills/synthesis-project-management/scripts/board_grammar.py
-  cases:
-  - board-v5
+  - deployed-bundles
 - path: skills/synthesis-project-management/scripts/coordination.py
   cases:
-  - board-v5
-  - parked
-- path: skills/synthesis-project-management/scripts/coordination_schema.py
+  - board-plane
+  - fleet-doctor
+  - subscriptions
+- path: skills/synthesis-project-management/scripts/fleet_bootstrap.py
   cases:
-  - board-v5
-- path: skills/synthesis-project-management/scripts/fleet_identity.py
+  - bootstrap
+- path: skills/synthesis-project-management/scripts/fleet_doctor.py
   cases:
-  - machine-identity
-- path: skills/synthesis-project-management/scripts/fleet_paths.py
+  - fleet-doctor
+- path: skills/synthesis-project-management/scripts/fleet_handoff.py
   cases:
-  - paths-portable
-- path: skills/synthesis-project-management/scripts/peer_addressing.py
+  - handoff-sealed-loop
+- path: skills/synthesis-project-management/scripts/fleet_logical.py
   cases:
-  - board-v5
-- path: skills/synthesis-project-management/scripts/test_board_grammar.py
+  - board-plane
+- path: skills/synthesis-project-management/scripts/fleet_subscriptions.py
   cases:
-  - board-v5
+  - subscriptions
 - path: skills/synthesis-project-management/scripts/test_coordination.py
   cases:
-  - parked
-- path: skills/synthesis-project-management/scripts/test_diagnostic_inbox.py
+  - subscriptions
+- path: skills/synthesis-project-management/scripts/test_fleet_board_plane.py
   cases:
-  - board-v5
-- path: skills/synthesis-project-management/scripts/test_fleet_board_v5.py
+  - board-plane
+- path: skills/synthesis-project-management/scripts/test_fleet_bootstrap.py
   cases:
-  - board-v5
-- path: skills/synthesis-project-management/scripts/test_fleet_identity.py
+  - bootstrap
+- path: skills/synthesis-project-management/scripts/test_fleet_doctor.py
   cases:
-  - machine-identity
-- path: skills/synthesis-project-management/scripts/test_fleet_park.py
+  - fleet-doctor
+- path: skills/synthesis-project-management/scripts/test_fleet_handoff.py
   cases:
-  - parked
-- path: skills/synthesis-project-management/scripts/test_fleet_paths.py
+  - handoff-sealed-loop
+- path: skills/synthesis-project-management/scripts/test_fleet_subscriptions.py
   cases:
-  - paths-portable
+  - subscriptions
 cases:
-- id: machine-identity
+- id: handoff-sealed-loop
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_fleet_identity.py::test_mint_writes_uuid4_mode_0600
-  motivating_defect: Machines had names but no enrolled identity; mint
-    must write one UUID4 once and never transport the file.
-- id: board-v5
+  fixture: ../synthesis-project-management/scripts/test_fleet_handoff.py::test_sealed_handoff_loop_is_harness_neutral_fleet_ac_11
+  motivating_defect: Work moved across Macs by memory and copy-paste; the
+    sealed loop must gate, offer, park, verify, claim, accept, and receipt
+    identically for every destination lane.
+- id: board-plane
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_fleet_board_v5.py::test_template_declares_v5_with_machine_label_column
-  motivating_defect: Claims carried hostnames with pid liveness; v5
-    must tag machine-id and demote pid to a same-machine hint.
-- id: parked
+  fixture: ../synthesis-project-management/scripts/test_fleet_board_plane.py::test_concurrent_cross_mac_claims_name_the_winner_fleet_ac_04
+  motivating_defect: Concurrent cross-Mac claims could lose silently or
+    blame paths; exactly one must land and the loser must see the
+    winner's machine label and compact id.
+- id: fleet-doctor
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_fleet_park.py::test_bag_laptop_drill_fleet_ac_07
-  motivating_defect: A bagged laptop looked dead; parked must freeze
-    claims with challenge and grace instead of killing them.
-- id: paths-portable
+  fixture: ../synthesis-project-management/scripts/test_fleet_doctor.py::test_divergence_scan_catches_a_split_checkout
+  motivating_defect: Split checkouts became push races; the doctor must
+    catch divergence naming the repo and pass again once reunited.
+- id: subscriptions
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_fleet_paths.py::test_expand_home_covers_tilde_and_dollar_home
-  motivating_defect: Absolute home paths pinned configs to one Mac;
-    portable configs must expand home on read and fail loudly otherwise.
+  fixture: ../synthesis-project-management/scripts/test_fleet_subscriptions.py::test_unsubscribed_paths_refuse_naming_machine_and_subscription
+  motivating_defect: Any Mac could commit anywhere; the gate must refuse
+    unsubscribed areas naming the machine and the needed subscription,
+    with a logged explicit escape.
+- id: bootstrap
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_fleet_bootstrap.py::test_full_bootstrap_then_safe_reran_noop
+  motivating_defect: New-Mac setup was manual and unrepeatable; bootstrap
+    must mint, clone, install, enroll, and verify once, then rerun as a
+    no-op with receipts.
+- id: machine-sync-registration
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_onboard.py::WholeSystemTests::test_every_hard_stop_has_a_real_scaffold
+  motivating_defect: A skill outside the component catalog never installs;
+    the machine-sync skill must be cataloged, manifested, and scaffold-clean.
+- id: deployed-bundles
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_installer_copies_coordination_runtime
+  motivating_defect: A gate runtime missing its fleet modules fails closed
+    on every commit; the installer must carry the whole engine universe.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass

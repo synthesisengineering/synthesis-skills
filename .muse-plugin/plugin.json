@@ -167,6 +167,10 @@
         "path": "skills/synthesis-mac-sync/SKILL.md"
       },
       {
+        "id": "synthesis-machine-sync",
+        "path": "skills/synthesis-machine-sync/SKILL.md"
+      },
+      {
         "id": "synthesis-meeting-transcripts",
         "path": "skills/synthesis-meeting-transcripts/SKILL.md"
       },

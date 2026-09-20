@@ -37,6 +37,7 @@ from board_grammar import (
 from pointer_lock import locked_pointer
 import claim_scope
 import fleet_identity
+import fleet_subscriptions
 from peer_addressing import (
     CLIENT_CODEX,
     CLIENT_MUSE,
@@ -569,6 +570,35 @@ def _append_override_message(
     return content[: marker.start()] + body + content[marker.start() :]
 
 
+def _append_subscription_override_message(
+    content: str,
+    session: Session,
+    machine_id: str,
+    machine_label: str,
+    repository: Path,
+    branch: str,
+    staged_tree: str,
+    staged_paths: list[str],
+    reason: str,
+) -> str:
+    marker = re.search(
+        r"(?m)^---[ \t]*\n\n## Protocol(?:[^\n]*)?$",
+        content,
+    )
+    if marker is None:
+        raise RuntimeError("board lacks Protocol boundary")
+    body = (
+        f"### recorded-subscription-override — {timestamp()}\n\n"
+        f"Session: {session.session_uuid}\n\n"
+        f"Machine: {sanitize(machine_label)} ({machine_id})\n\n"
+        f"Repository: {repository} @ {sanitize(branch)}\n\n"
+        f"Staged tree: {staged_tree}\n\n"
+        f"Unsubscribed paths: {', '.join(sanitize(path) for path in staged_paths)}\n\n"
+        f"Reason: {sanitize(reason)}\n\n"
+    )
+    return content[: marker.start()] + body + content[marker.start() :]
+
+
 def _check_staged_receipt(
     *,
     board: Path,
@@ -581,6 +611,7 @@ def _check_staged_receipt(
     enforcement_outcome: str,
     outside_paths: list[str],
     override_reason: str | None = None,
+    subscription_override: dict | None = None,
 ) -> dict:
     receipt = {
         "schema": "coordination-check-staged-v1",
@@ -606,6 +637,8 @@ def _check_staged_receipt(
     }
     if override_reason is not None:
         receipt["override_reason"] = override_reason
+    if subscription_override is not None:
+        receipt["subscription_override"] = subscription_override
     canonical = json.dumps(receipt, sort_keys=True, separators=(",", ":"))
     receipt["binding_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return receipt
@@ -1867,9 +1900,16 @@ def _validate_sessions(
                                 f"{left_claim} overlaps {right_claim}"
                             )
                         else:
+                            # FLEET-AC-04: a cross-Mac loser must see WHO holds
+                            # the scope — the winner's (machine_label,
+                            # compact_id) — not just the colliding paths.
                             problems.append(
                                 f"{_tag(left)}:{left_claim} overlaps "
-                                f"{_tag(right)}:{right_claim}"
+                                f"{_tag(right)}:{right_claim} "
+                                f"(holders: {left.machine_display}/"
+                                f"{left.compact_id}, "
+                                f"{right.machine_display}/"
+                                f"{right.compact_id})"
                             )
             # No workspace-pair refusal: Rajiv's 2026-09-18 decided change
             # dissolved the exclusive checkout lock. Same-checkout seats with
@@ -2077,6 +2117,109 @@ def command_check_staged(args) -> int:
         _emit_check_staged(args, payload)
         return 0
 
+    # Fleet workspace subscriptions: the machine itself must subscribe to
+    # the staged areas, independent of the session's claim. Unenrolled
+    # fleets (no registry) pass; everything else fails closed.
+    subscription_override_reason = sanitize(
+        str(getattr(args, "override_subscription", None) or "")
+    )
+    try:
+        subscription_machine, subscription_label = local_machine_identity()
+        subscription_decision = fleet_subscriptions.decide(
+            machine_id=subscription_machine,
+            machine_label=subscription_label,
+            repository=repository,
+            staged_paths=staged_paths,
+        )
+    except fleet_subscriptions.FleetSubscriptionError as exc:
+        payload = _check_staged_payload(
+            args,
+            "unverifiable-subscriptions",
+            selector_source=selector_source,
+            detail=str(exc),
+            remediation=CHECK_STAGED_REMEDIATION,
+        )
+        _emit_check_staged(args, payload)
+        return 10
+    subscription_override_record: dict | None = None
+    if not subscription_decision.allowed and not subscription_override_reason:
+        payload = _check_staged_payload(
+            args,
+            "refused-unsubscribed-workspace",
+            selector_source=selector_source,
+            outside_paths=list(subscription_decision.unsubscribed),
+            detail=subscription_decision.refusal_detail(),
+            remediation=CHECK_STAGED_REMEDIATION,
+        )
+        _emit_check_staged(args, payload)
+        return 10
+    if not subscription_decision.allowed:
+        subscription_state: dict[str, object] = {}
+
+        def record_subscription_override(content: str) -> str:
+            current = rows(content)
+            problems = validate_sessions(current)
+            if problems:
+                raise RuntimeError("; ".join(problems))
+            current_session = find_session(current, selector)
+            if current_session is None or not active(current_session):
+                raise RuntimeError("selected session is missing or inactive")
+            if not current_session.session_uuid:
+                raise RuntimeError("selected session has no UUID identity")
+            current_paths, current_tree = _staged_inventory(repository)
+            if current_paths != staged_paths or current_tree != staged_tree:
+                raise RuntimeError(
+                    "Git index changed before the subscription override "
+                    "could be recorded"
+                )
+            current_decision = fleet_subscriptions.decide(
+                machine_id=subscription_machine,
+                machine_label=subscription_label,
+                repository=repository,
+                staged_paths=current_paths,
+            )
+            subscription_state["unsubscribed"] = list(
+                current_decision.unsubscribed
+            )
+            if current_decision.allowed:
+                subscription_state["recorded"] = False
+                return content
+            subscription_state["recorded"] = True
+            return _append_subscription_override_message(
+                content,
+                current_session,
+                subscription_machine,
+                subscription_label,
+                repository,
+                branch,
+                current_tree,
+                list(current_decision.unsubscribed),
+                subscription_override_reason,
+            )
+
+        try:
+            locked_update(args.board, record_subscription_override, require_fence=True)
+            board_text = args.board.read_text(encoding="utf-8")
+        except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
+            payload = _check_staged_payload(
+                args,
+                "refused-subscription-override-revalidation",
+                selector_source=selector_source,
+                outside_paths=list(subscription_decision.unsubscribed),
+                detail=str(exc),
+                remediation=CHECK_STAGED_REMEDIATION,
+            )
+            _emit_check_staged(args, payload)
+            return 10
+        if subscription_state.get("recorded"):
+            subscription_override_record = {
+                "reason": subscription_override_reason,
+                "paths": list(subscription_state["unsubscribed"]),
+            }
+        refreshed = find_session(rows(board_text), selector)
+        if refreshed is not None:
+            session = refreshed
+
     outside_paths = _outside_claim(session, repository, staged_paths)
     override_reason = sanitize(str(args.override_reason or ""))
     if outside_paths and not override_reason:
@@ -2162,6 +2305,7 @@ def command_check_staged(args) -> int:
             enforcement_outcome=outcome,
             outside_paths=outside_paths if recorded else [],
             override_reason=override_reason if recorded else None,
+            subscription_override=subscription_override_record,
         )
         payload = _check_staged_payload(
             args,
@@ -2188,6 +2332,7 @@ def command_check_staged(args) -> int:
         staged_paths=staged_paths,
         enforcement_outcome="passed-inside-claim",
         outside_paths=[],
+        subscription_override=subscription_override_record,
     )
     payload = _check_staged_payload(
         args,
@@ -3750,11 +3895,13 @@ def command_park(args) -> int:
 
 
 def command_fleet_doctor(args) -> int:
+    import fleet_doctor
     import fleet_paths
 
     root = getattr(args, "synthesis_root", None) or (
         Path.home() / ".synthesis"
     )
+    failures = 0
     try:
         hits = fleet_paths.check_synced_root(Path(root))
     except fleet_paths.FleetPathsError as exc:
@@ -3762,9 +3909,29 @@ def command_fleet_doctor(args) -> int:
         return 1
     if hits:
         print(fleet_paths.format_gate_report(hits), file=sys.stderr)
+        failures += 1
+    else:
+        print(fleet_paths.format_gate_report(hits))
+    artifacts = getattr(args, "artifacts_dir", None)
+    if artifacts is None:
+        artifacts = Path(root) / "fleet" / "handoffs"
+    try:
+        checks = fleet_doctor.run_all(
+            board=args.board,
+            artifacts_dir=artifacts,
+            repos=getattr(args, "repos", None),
+            machine_id=getattr(args, "machine_id", None),
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(f"FAIL fleet-doctor: {exc}", file=sys.stderr)
         return 1
-    print(fleet_paths.format_gate_report(hits))
-    return 0
+    for check in checks:
+        if check.ok:
+            print(str(check))
+        else:
+            print(str(check), file=sys.stderr)
+            failures += 1
+    return 1 if failures else 0
 
 
 def command_lease_disable(args) -> int:
@@ -4085,6 +4252,14 @@ def parser() -> argparse.ArgumentParser:
             "allowing staged paths outside the claim."
         ),
     )
+    check_staged.add_argument(
+        "--override-subscription",
+        help=(
+            "Explicit accountability reason to record on the board before "
+            "allowing staged paths outside this machine's workspace "
+            "subscriptions."
+        ),
+    )
     check_staged.add_argument("--json", action="store_true")
     claim = commands.add_parser("claim")
     claim.add_argument(
@@ -4296,8 +4471,9 @@ def parser() -> argparse.ArgumentParser:
     fleet_doctor = commands.add_parser(
         "fleet-doctor",
         help=(
-            "Fail closed on unexpanded absolute home paths in the "
-            "fleet-synced path-bearing files."
+            "Run the fleet health gate: synced-path normalization, lease "
+            "reachability and freshness, workset consistency, parked "
+            "coherence, sealed artifacts, and workset divergence."
         ),
     )
     fleet_doctor.add_argument(
@@ -4305,6 +4481,24 @@ def parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="~/.synthesis root to scan (default: the real one).",
+    )
+    fleet_doctor.add_argument(
+        "--artifacts-dir",
+        type=Path,
+        default=None,
+        help="Handoff artifacts directory (default: <synthesis-root>/fleet/handoffs).",
+    )
+    fleet_doctor.add_argument(
+        "--repo",
+        dest="repos",
+        action="append",
+        default=None,
+        help="Workset checkout to divergence-scan (repeatable; default: this machine's claimed workspaces).",
+    )
+    fleet_doctor.add_argument(
+        "--machine-id",
+        default=None,
+        help="Machine whose workspaces to scan (default: this Mac's enrolled id).",
     )
     stale = commands.add_parser(
         "stale",
