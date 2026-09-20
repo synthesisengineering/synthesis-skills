@@ -16,6 +16,7 @@
       "doctor",
       "workspace ensure",
       "outcome verify",
+      "fleet join",
       "uninstall"
     ]
   },

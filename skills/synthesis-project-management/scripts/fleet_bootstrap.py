@@ -7,24 +7,37 @@ the skill set, enroll the machine, verify the doctor. Every step writes a
 receipt under ``<home>/.synthesis/fleet/receipts/``; a safe rerun re-verifies
 current state and reports ``noop`` instead of redoing work.
 
-Usage::
+Humans should not invoke this script directly. The supported path is the
+one-command wrapper, which discovers or asks for what it needs::
+
+    synthesis fleet join
+
+Direct usage (agents and tests only)::
 
     python3 fleet_bootstrap.py --home /Users/example --source-root ~/workspaces/example/synthesis-skills \\
         --label my-mac --role secondary --repos-manifest fleet-repos.json \\
-        --fleet-registry ~/workspaces/personal/fleet/machines.json
+        --fleet-registry ~/workspaces/personal/fleet/machines.json \\
+        --kb-repo ~/workspaces/personal
 
 ``--repos-manifest`` is JSON: ``{"schema_version": 1, "repos":
 [{"remote": "<url>", "path": "~/workspaces/<name>", "branch": "main"}]}``.
 ``branch`` is optional. Paths may be ``~``-rooted (expanded against
 ``--home``, never the invoking process's home) or absolute.
+``--kb-repo`` is the knowledge working copy that carries the shared
+``fleet/machines.json``; the final step publishes this Mac's enrollment
+there so the rest of the fleet converges. Without it the enrollment
+stays on this Mac and the run warns.
 """
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
+import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -39,12 +52,14 @@ STEP_REPOS = "clone-repos"
 STEP_INSTALL = "install-runtime"
 STEP_ENROLL = "enroll-machine"
 STEP_DOCTOR = "verify-doctor"
+STEP_PUBLISH = "publish-registry"
 
 STATUS_DONE = "done"
 STATUS_NOOP = "noop"
 STATUS_FAIL = "fail"
 
 GIT_TIMEOUT_SECONDS = 120
+EXIT_INTERRUPTED = 130
 
 
 class FleetBootstrapError(ValueError):
@@ -147,6 +162,44 @@ def parse_repos_manifest(path: Path | None, home: Path) -> list[dict]:
     return parsed
 
 
+def preflight(
+    home: Path,
+    role: str,
+    fleet_registry: Path | None,
+) -> list[str]:
+    """Fail fast before any cloning: return every blocking problem found."""
+    problems: list[str] = []
+    if shutil.which("git") is None:
+        problems.append(
+            "git is not on PATH; install the Xcode Command Line Tools "
+            "(xcode-select --install), then rerun the same command"
+        )
+    if not Path(home).expanduser().is_dir():
+        problems.append(f"home {home} does not exist or is not a directory")
+    if role == "secondary":
+        if fleet_registry is None:
+            problems.append(
+                "secondary enrollment needs the synced fleet registry "
+                "(--fleet-registry from the personal KB); refusing to found "
+                "a second fleet"
+            )
+        elif not Path(fleet_registry).is_file():
+            problems.append(f"synced fleet registry not found: {fleet_registry}")
+        else:
+            try:
+                document = json.loads(
+                    Path(fleet_registry).read_text(encoding="utf-8")
+                )
+            except (OSError, ValueError) as exc:
+                problems.append(
+                    f"synced fleet registry unusable: {exc}"
+                )
+            else:
+                for issue in _identity.validate_registry(document):
+                    problems.append(f"synced fleet registry invalid: {issue}")
+    return problems
+
+
 def write_receipt(home: Path, result: StepResult, machine_id: str) -> Path:
     directory = receipts_dir_for(home)
     directory.mkdir(parents=True, exist_ok=True)
@@ -184,8 +237,18 @@ def step_identity(home: Path) -> StepResult:
     )
 
 
-def step_repos(home: Path, repos: list[dict], *, git_runner=None) -> StepResult:
-    """Clone subscribed repos; existing checkouts verify, never clobber."""
+def step_repos(
+    home: Path,
+    repos: list[dict],
+    *,
+    git_runner=None,
+    progress: Callable[[str], None] | None = None,
+) -> StepResult:
+    """Clone subscribed repos; existing checkouts verify, never clobber.
+
+    ``progress`` receives one narrating line per repo as work lands, so a
+    long clone stretch never looks hung.
+    """
     runner = git_runner or _run_git
     if not repos:
         return StepResult(
@@ -193,8 +256,10 @@ def step_repos(home: Path, repos: list[dict], *, git_runner=None) -> StepResult:
         )
     cloned: list[str] = []
     verified: list[str] = []
-    for entry in repos:
+    total = len(repos)
+    for position, entry in enumerate(repos, start=1):
         target = Path(entry["path"])
+        tag = f"[{position}/{total}]"
         if target.exists() and not target.is_dir():
             return StepResult(
                 STEP_REPOS,
@@ -222,6 +287,8 @@ def step_repos(home: Path, repos: list[dict], *, git_runner=None) -> StepResult:
                     f"subscribed {entry['remote']}; refusing to clobber",
                 )
             verified.append(str(target))
+            if progress is not None:
+                progress(f"{tag} verified {target} (already cloned)")
             continue
         if target.exists():
             return StepResult(
@@ -230,6 +297,8 @@ def step_repos(home: Path, repos: list[dict], *, git_runner=None) -> StepResult:
                 f"{target}: exists but is not a git checkout; refusing to clobber",
             )
         target.parent.mkdir(parents=True, exist_ok=True)
+        if progress is not None:
+            progress(f"{tag} cloning {entry['remote']} -> {target}")
         clone_args = ["clone", "--quiet", entry["remote"], str(target)]
         if entry["branch"]:
             clone_args = [
@@ -249,6 +318,8 @@ def step_repos(home: Path, repos: list[dict], *, git_runner=None) -> StepResult:
                 f"{target}: clone failed: {completed.stderr.strip()}",
             )
         cloned.append(str(target))
+        if progress is not None:
+            progress(f"{tag} cloned {target}")
     detail = (
         f"cloned {len(cloned)}: {', '.join(cloned)}"
         if cloned
@@ -384,6 +455,24 @@ def step_enroll(
             STATUS_NOOP,
             f"machine {label} ({machine_id}) already enrolled as {role}",
         )
+    if role == "primary":
+        holders = [
+            other_id
+            for other_id, other in registry["machines"].items()
+            if isinstance(other, dict)
+            and other.get("retired_at") is None
+            and other.get("role") == "primary"
+            and other_id != machine_id
+        ]
+        if holders:
+            holder = registry["machines"][holders[0]]
+            return StepResult(
+                STEP_ENROLL,
+                STATUS_FAIL,
+                f"fleet already has primary {holder.get('label')} "
+                f"({holders[0]}); join as --role secondary instead of "
+                "founding a second fleet",
+            )
     try:
         _identity.enroll_self(
             label=label, role=role, directory=directory
@@ -431,6 +520,217 @@ def step_doctor(home: Path, machine_id: str, *, doctor_runner=None) -> StepResul
     )
 
 
+def _git_tail(completed) -> str:
+    text = (completed.stderr or completed.stdout or "").strip().splitlines()
+    return text[-1] if text else "no output"
+
+
+def step_publish(
+    home: Path,
+    machine_id: str,
+    *,
+    label: str,
+    role: str,
+    kb_repo: Path,
+    git_runner=None,
+    progress: Callable[[str], None] | None = None,
+) -> StepResult:
+    """Upsert this Mac's enrollment into the shared KB registry and push.
+
+    The merge is one-directional and safe: the shared copy wins for every
+    other machine (this Mac's synced copy may be stale); only this Mac's
+    own freshly enrolled entry overlays. A rerun after a failed push
+    pushes the already-written commit instead of duplicating it.
+    """
+    runner = git_runner or _run_git
+    repo = Path(kb_repo).expanduser()
+    shared = repo / "fleet" / "machines.json"
+    if not repo.is_dir():
+        return StepResult(
+            STEP_PUBLISH, STATUS_FAIL, f"KB working copy not found: {repo}"
+        )
+    try:
+        top = runner(["rev-parse", "--show-toplevel"], repo)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return StepResult(
+            STEP_PUBLISH, STATUS_FAIL, f"{repo}: git failed: {exc}"
+        )
+    if top.returncode != 0:
+        return StepResult(
+            STEP_PUBLISH, STATUS_FAIL,
+            f"{repo} is not a git checkout; refusing to publish there",
+        )
+    try:
+        dirty = runner(
+            ["status", "--porcelain", "--", "fleet/machines.json"], repo
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return StepResult(
+            STEP_PUBLISH, STATUS_FAIL, f"{repo}: git failed: {exc}"
+        )
+    if dirty.returncode == 0 and dirty.stdout.strip():
+        return StepResult(
+            STEP_PUBLISH,
+            STATUS_FAIL,
+            f"{shared} has uncommitted changes; commit or stash them, "
+            "then rerun the same command",
+        )
+    if progress is not None:
+        progress(f"fetching the latest shared registry from {repo}")
+    try:
+        pulled = runner(["pull", "--ff-only", "--quiet"], repo)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return StepResult(
+            STEP_PUBLISH, STATUS_FAIL, f"{repo}: git pull failed: {exc}"
+        )
+    if pulled.returncode != 0:
+        return StepResult(
+            STEP_PUBLISH,
+            STATUS_FAIL,
+            f"{repo}: git pull --ff-only failed: {_git_tail(pulled)}; "
+            "fetch the latest KB and rerun the same command",
+        )
+    directory = fleet_dir_for(home)
+    try:
+        local = _identity.read_registry(directory)
+    except _identity.FleetIdentityError as exc:
+        return StepResult(STEP_PUBLISH, STATUS_FAIL, str(exc))
+    own = local["machines"].get(machine_id)
+    if not isinstance(own, dict):
+        return StepResult(
+            STEP_PUBLISH,
+            STATUS_FAIL,
+            "local registry has no entry for this machine; enroll step first",
+        )
+    if shared.is_file():
+        try:
+            document = json.loads(shared.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return StepResult(
+                STEP_PUBLISH, STATUS_FAIL,
+                f"shared registry unreadable: {exc}",
+            )
+        problems = _identity.validate_registry(document)
+        if problems:
+            return StepResult(
+                STEP_PUBLISH, STATUS_FAIL,
+                "shared registry invalid: " + "; ".join(problems),
+            )
+    else:
+        document = {"schema_version": 1, "machines": {}}
+    merged = copy.deepcopy(document)
+    merged["machines"][machine_id] = copy.deepcopy(own)
+    if _identity.validate_registry(merged):
+        return StepResult(
+            STEP_PUBLISH, STATUS_FAIL,
+            "merged registry invalid: "
+            + "; ".join(_identity.validate_registry(merged)),
+        )
+    committed = False
+    if merged != document:
+        (repo / "fleet").mkdir(parents=True, exist_ok=True)
+        staging = shared.with_suffix(".json.tmp")
+        try:
+            staging.write_text(
+                json.dumps(merged, indent=2) + "\n", encoding="utf-8"
+            )
+            os.replace(staging, shared)
+        except OSError as exc:
+            return StepResult(
+                STEP_PUBLISH, STATUS_FAIL,
+                f"shared registry unwritable: {exc}",
+            )
+        try:
+            name = runner(["config", "user.name"], repo)
+            email = runner(["config", "user.email"], repo)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return StepResult(
+                STEP_PUBLISH, STATUS_FAIL, f"{repo}: git failed: {exc}"
+            )
+        identity: list[str] = []
+        if not name.stdout.strip() or not email.stdout.strip():
+            identity = [
+                "-c", f"user.name={label.strip()}",
+                "-c", f"user.email={machine_id[:8]}@fleet.local",
+            ]
+        try:
+            added = runner(["add", "fleet/machines.json"], repo)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return StepResult(
+                STEP_PUBLISH, STATUS_FAIL, f"{repo}: git add failed: {exc}"
+            )
+        if added.returncode != 0:
+            return StepResult(
+                STEP_PUBLISH, STATUS_FAIL,
+                f"{repo}: git add failed: {_git_tail(added)}",
+            )
+        if progress is not None:
+            progress(f"committing this Mac's enrollment in {repo}")
+        try:
+            made = runner(
+                [*identity, "commit", "--quiet", "-m",
+                 f"fleet: enroll {label.strip()} as {role}"],
+                repo,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return StepResult(
+                STEP_PUBLISH, STATUS_FAIL, f"{repo}: git commit failed: {exc}"
+            )
+        if made.returncode != 0:
+            return StepResult(
+                STEP_PUBLISH, STATUS_FAIL,
+                f"{repo}: git commit failed: {_git_tail(made)}",
+            )
+        committed = True
+    if progress is not None:
+        progress(f"pushing the shared registry from {repo}")
+    try:
+        pushed = runner(["push", "--quiet"], repo)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return StepResult(
+            STEP_PUBLISH, STATUS_FAIL, f"{repo}: git push failed: {exc}"
+        )
+    if pushed.returncode != 0:
+        return StepResult(
+            STEP_PUBLISH,
+            STATUS_FAIL,
+            f"{repo}: git push failed: {_git_tail(pushed)}; check the "
+            "network and remote auth, then rerun the same command",
+        )
+    count = len(merged["machines"])
+    if not committed:
+        return StepResult(
+            STEP_PUBLISH, STATUS_NOOP,
+            f"registry already published ({count} machine(s))",
+        )
+    return StepResult(
+        STEP_PUBLISH, STATUS_DONE,
+        f"published {label.strip()} ({machine_id}) to the shared "
+        f"registry ({count} machine(s))",
+    )
+
+
+def _record(
+    home: Path, machine_id: str, result: StepResult
+) -> StepResult | None:
+    """Write one step receipt immediately; an error step when that fails."""
+    try:
+        write_receipt(home, result, machine_id)
+    except OSError as exc:
+        return StepResult(
+            "write-receipt", STATUS_FAIL, f"receipt failed: {exc}"
+        )
+    return None
+
+
+def _report(machine_id: str, results: list[StepResult]) -> dict:
+    return {
+        "machine_id": machine_id,
+        "steps": [asdict(result) for result in results],
+        "ok": all(result.status != STATUS_FAIL for result in results),
+    }
+
+
 def bootstrap(
     *,
     home: Path,
@@ -439,11 +739,19 @@ def bootstrap(
     role: str,
     repos: list[dict] | None = None,
     fleet_registry: Path | None = None,
+    kb_repo: Path | None = None,
     git_runner=None,
     install_runner=None,
     doctor_runner=None,
+    progress: Callable[[str], None] | None = None,
 ) -> dict:
-    """Run every bootstrap step in order; stop at the first failure."""
+    """Run every bootstrap step in order; stop at the first failure.
+
+    Each step receipt lands before the next step starts, so an
+    interrupted run keeps evidence for everything it finished. The
+    publish phase runs only when ``kb_repo`` names the knowledge
+    working copy that carries the shared registry.
+    """
     home = Path(home).expanduser()
     results: list[StepResult] = []
     machine_id = ""
@@ -452,51 +760,64 @@ def bootstrap(
     except _identity.FleetIdentityError:
         machine_id = ""
 
+    def run_step(result: StepResult) -> dict | None:
+        results.append(result)
+        error = _record(home, machine_id, result)
+        if error is not None:
+            results.append(error)
+            _record(home, machine_id, error)
+            return _report(machine_id, results)
+        if result.status == STATUS_FAIL:
+            return _report(machine_id, results)
+        return None
+
     results.append(step_identity(home))
-    if results[-1].status == STATUS_FAIL:
-        return _finish(home, machine_id, results)
     try:
         machine_id = _identity.read_machine_id(fleet_dir_for(home)) or machine_id
     except _identity.FleetIdentityError:
         pass
-
-    results.append(step_repos(home, repos or [], git_runner=git_runner))
+    error = _record(home, machine_id, results[-1])
+    if error is not None:
+        results.append(error)
+        return _report(machine_id, results)
     if results[-1].status == STATUS_FAIL:
-        return _finish(home, machine_id, results)
+        return _report(machine_id, results)
 
-    results.append(
+    stopped = run_step(
+        step_repos(home, repos or [], git_runner=git_runner, progress=progress)
+    )
+    if stopped is not None:
+        return stopped
+
+    stopped = run_step(
         step_install(home, Path(source_root), install_runner=install_runner)
     )
-    if results[-1].status == STATUS_FAIL:
-        return _finish(home, machine_id, results)
+    if stopped is not None:
+        return stopped
 
-    results.append(
+    stopped = run_step(
         step_enroll(home, label=label, role=role, fleet_registry=fleet_registry)
     )
-    if results[-1].status == STATUS_FAIL:
-        return _finish(home, machine_id, results)
+    if stopped is not None:
+        return stopped
 
-    results.append(
+    stopped = run_step(
         step_doctor(home, machine_id, doctor_runner=doctor_runner)
     )
-    return _finish(home, machine_id, results)
+    if stopped is not None:
+        return stopped
 
-
-def _finish(home: Path, machine_id: str, results: list[StepResult]) -> dict:
-    for result in results:
-        try:
-            write_receipt(home, result, machine_id)
-        except OSError as exc:
-            results.append(
-                StepResult("write-receipt", STATUS_FAIL, f"receipt failed: {exc}")
+    if kb_repo is not None:
+        stopped = run_step(
+            step_publish(
+                home, machine_id, label=label, role=role,
+                kb_repo=kb_repo, git_runner=git_runner, progress=progress,
             )
-            break
-    report = {
-        "machine_id": machine_id,
-        "steps": [asdict(result) for result in results],
-        "ok": all(result.status != STATUS_FAIL for result in results),
-    }
-    return report
+        )
+        if stopped is not None:
+            return stopped
+
+    return _report(machine_id, results)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -513,20 +834,52 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Synced machines.json from the personal KB (required for secondary).",
     )
+    parser.add_argument(
+        "--kb-repo",
+        type=Path,
+        default=None,
+        help="Knowledge working copy carrying fleet/machines.json; the "
+        "final step publishes this Mac's enrollment there.",
+    )
     args = parser.parse_args(argv)
     try:
         repos = parse_repos_manifest(args.repos_manifest, args.home)
     except FleetBootstrapError as exc:
         print(f"FAIL bootstrap: {exc}", file=sys.stderr)
         return 1
-    report = bootstrap(
-        home=args.home,
-        source_root=args.source_root,
-        label=args.label,
-        role=args.role,
-        repos=repos,
-        fleet_registry=args.fleet_registry,
-    )
+    problems = preflight(args.home, args.role, args.fleet_registry)
+    if problems:
+        for problem in problems:
+            print(f"FAIL bootstrap: {problem}", file=sys.stderr)
+        return 1
+    if args.kb_repo is None:
+        print(
+            "WARN bootstrap: no --kb-repo; this Mac's enrollment stays "
+            "local until it is published to the shared registry",
+            file=sys.stderr,
+        )
+
+    def progress(line: str) -> None:
+        print(line, flush=True)
+
+    try:
+        report = bootstrap(
+            home=args.home,
+            source_root=args.source_root,
+            label=args.label,
+            role=args.role,
+            repos=repos,
+            fleet_registry=args.fleet_registry,
+            kb_repo=args.kb_repo,
+            progress=progress,
+        )
+    except KeyboardInterrupt:
+        print(
+            "INTERRUPTED bootstrap: rerun the same command to resume; "
+            "finished steps are kept",
+            file=sys.stderr,
+        )
+        return EXIT_INTERRUPTED
     for step in report["steps"]:
         print(f"{step['status'].upper()} bootstrap-{step['step']}: {step['detail']}")
         if step["receipt"]:
