@@ -40,6 +40,7 @@
     "synthesis-llm-setup",
     "synthesis-local-model-runtime",
     "synthesis-mac-sync",
+    "synthesis-machine-sync",
     "synthesis-meeting-transcripts",
     "synthesis-message-guard",
     "synthesis-model-tiers",

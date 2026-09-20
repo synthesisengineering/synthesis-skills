@@ -2402,7 +2402,7 @@ def test_every_command_notes_a_newer_installed_engine(tmp_path):
     relative = Path("skills") / "synthesis-project-management" / "scripts"
     older = cache / "4.80.0" / relative
     older.mkdir(parents=True)
-    for name in ("coordination.py", "claim_scope.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py"):
+    for name in ("coordination.py", "claim_scope.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_subscriptions.py"):
         (older / name).write_bytes((MODULE_PATH.parent / name).read_bytes())
     newer = cache / "4.81.0" / relative
     newer.mkdir(parents=True)

@@ -160,6 +160,9 @@ case "${COORDINATION_CHECK_STAGED:-}" in
         if [ -n "${SYNTHESIS_COORDINATION_OVERRIDE_REASON:-}" ]; then
             COORDINATION_ARGS+=(--override-reason "$SYNTHESIS_COORDINATION_OVERRIDE_REASON")
         fi
+        if [ -n "${SYNTHESIS_COORDINATION_SUBSCRIPTION_OVERRIDE:-}" ]; then
+            COORDINATION_ARGS+=(--override-subscription "$SYNTHESIS_COORDINATION_SUBSCRIPTION_OVERRIDE")
+        fi
         # AGENT HEURISTIC: the plan requires a receipt consumer but does not
         # prescribe its transport. Parse the JSON in-process, require its
         # boundary fields, and recompute the binding digest before continuing.

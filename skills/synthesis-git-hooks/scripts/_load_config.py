@@ -86,6 +86,11 @@ COORDINATION_ENGINE_FILES = (
     "peer_addressing.py",
     "fleet_identity.py",
     "fleet_paths.py",
+    "fleet_bootstrap.py",
+    "fleet_doctor.py",
+    "fleet_handoff.py",
+    "fleet_logical.py",
+    "fleet_subscriptions.py",
 )
 ENGINE_FILES = CORE_ENGINE_FILES + COORDINATION_ENGINE_FILES
 COORDINATION_ASSET = "session-words-v1.txt.zlib.b85"
