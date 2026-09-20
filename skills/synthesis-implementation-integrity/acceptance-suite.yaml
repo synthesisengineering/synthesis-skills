@@ -45,6 +45,18 @@ changed_surfaces:
   - prep-reader-profiles
   - prep-forum-disclosure
   - prep-basis-honesty
+- path: skills/synthesis-onboarding/references/release-capabilities.json
+  cases:
+  - fleet-sync-command
+- path: skills/synthesis-onboarding/scripts/fleet_sync.py
+  cases:
+  - fleet-sync-command
+- path: skills/synthesis-onboarding/scripts/synthesis_cli.py
+  cases:
+  - fleet-sync-command
+- path: skills/synthesis-onboarding/scripts/test_fleet_sync.py
+  cases:
+  - fleet-sync-command
 - path: skills/synthesis-preplan/SKILL.md
   cases:
   - preplan-credit
@@ -57,6 +69,12 @@ changed_surfaces:
 - path: skills/synthesis-project-management/scripts/project_format.py
   cases:
   - retention-default
+- path: skills/synthesis-project-management/scripts/project_state.py
+  cases:
+  - stale-seat-containment
+- path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
+  cases:
+  - stale-seat-containment
 - path: skills/synthesis-project-management/scripts/test_project_format.py
   cases:
   - retention-default
@@ -102,3 +120,16 @@ cases:
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
+- id: fleet-sync-command
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_fleet_sync.py::test_sync_full_run_current
+  motivating_defect: A second Mac must come fully current from one
+    command; the full-run fixture proves update, repos, heartbeat, and
+    doctor pass together on a current machine.
+- id: stale-seat-containment
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_stale_seat_row_is_skipped_without_blocking_unrelated_checkpoint
+  motivating_defect: One stale pre-migration seat used to abort the
+    checkpoint match for every session; the row must be skipped, not fatal.
