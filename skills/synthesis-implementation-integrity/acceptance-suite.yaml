@@ -1,86 +1,131 @@
 schema: 2
-suite: fleet-secrets-provider
+suite: fleet-core-identity-board-park
 membership: closed
-production_entry_point: Fleet secrets materialize from 1Password through
-  one provider interface with a validated manifest, enforced file
-  permissions, and fail-closed doctors; no secret value ever touches git
+production_entry_point: Every fleet machine carries an enrolled identity;
+  the v5 board tags claims by machine with pid demoted to a same-machine
+  hint; parked sessions freeze claims with challenge and grace instead
+  of dying; portable configs expand home on read
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures use fake refs and a stubbed op CLI only.
-  Live vault access, installed-client reload, new-release publication,
-  and deployment approval remain separate release checks.
+unverified_remainder: Fixtures run the real identity, board, park, and
+  path modules against disposable boards and tmp homes. Live two-machine
+  exclusion, installed-client reload, new-release publication, and
+  deployment approval remain separate release checks.
 changed_surfaces:
-- path: .muse-plugin/plugin.json
+- path: skills/synthesis-agent-conformance/scripts/conformance.py
   cases:
-  - manifest-validates
-- path: skills/synthesis-fleet-secrets/SKILL.md
+  - paths-portable
+- path: skills/synthesis-checkpoint/scripts/refresh.py
   cases:
-  - provider
-- path: skills/synthesis-fleet-secrets/agents/openai.yaml
+  - paths-portable
+- path: skills/synthesis-checkpoint/scripts/test_refresh.py
   cases:
-  - provider
-- path: skills/synthesis-fleet-secrets/references/enrollment-age-sops.md
+  - paths-portable
+- path: skills/synthesis-daily-rituals/references/ritual-worker-contract.md
   cases:
-  - provider
-- path: skills/synthesis-fleet-secrets/scripts/materialize.py
+  - paths-portable
+- path: skills/synthesis-daily-rituals/scripts/ritual_workers.py
   cases:
-  - materialize
-- path: skills/synthesis-fleet-secrets/scripts/secrets_doctor.py
+  - paths-portable
+- path: skills/synthesis-daily-rituals/scripts/test_ritual_workers.py
   cases:
-  - doctor
-- path: skills/synthesis-fleet-secrets/scripts/secrets_manifest.py
+  - paths-portable
+- path: skills/synthesis-git-hooks/scripts/_load_config.py
   cases:
-  - manifest-schema
-- path: skills/synthesis-fleet-secrets/scripts/secrets_provider.py
+  - paths-portable
+- path: skills/synthesis-git-hooks/scripts/install.sh
   cases:
-  - provider
-- path: skills/synthesis-fleet-secrets/scripts/test_materialize.py
+  - paths-portable
+- path: skills/synthesis-git-hooks/scripts/test_pre_commit.py
   cases:
-  - materialize
-- path: skills/synthesis-fleet-secrets/scripts/test_secrets_doctor.py
-  cases:
-  - doctor
-- path: skills/synthesis-fleet-secrets/scripts/test_secrets_manifest.py
-  cases:
-  - manifest-schema
-- path: skills/synthesis-fleet-secrets/scripts/test_secrets_provider.py
-  cases:
-  - provider
+  - paths-portable
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-onboarding/references/components.json
+- path: skills/synthesis-onboarding/scripts/onboard.py
   cases:
-  - manifest-validates
+  - machine-identity
+- path: skills/synthesis-onboarding/scripts/runtime_payload.py
+  cases:
+  - machine-identity
+- path: skills/synthesis-onboarding/scripts/test_runtime_integration.py
+  cases:
+  - machine-identity
+- path: skills/synthesis-onboarding/scripts/test_runtime_payload.py
+  cases:
+  - machine-identity
+- path: skills/synthesis-project-management/references/active-sessions-template.md
+  cases:
+  - board-v5
+- path: skills/synthesis-project-management/scripts/board_grammar.py
+  cases:
+  - board-v5
+- path: skills/synthesis-project-management/scripts/coordination.py
+  cases:
+  - board-v5
+  - parked
+- path: skills/synthesis-project-management/scripts/coordination_schema.py
+  cases:
+  - board-v5
+- path: skills/synthesis-project-management/scripts/fleet_identity.py
+  cases:
+  - machine-identity
+- path: skills/synthesis-project-management/scripts/fleet_paths.py
+  cases:
+  - paths-portable
+- path: skills/synthesis-project-management/scripts/peer_addressing.py
+  cases:
+  - board-v5
+- path: skills/synthesis-project-management/scripts/test_board_grammar.py
+  cases:
+  - board-v5
+- path: skills/synthesis-project-management/scripts/test_coordination.py
+  cases:
+  - parked
+- path: skills/synthesis-project-management/scripts/test_diagnostic_inbox.py
+  cases:
+  - board-v5
+- path: skills/synthesis-project-management/scripts/test_fleet_board_v5.py
+  cases:
+  - board-v5
+- path: skills/synthesis-project-management/scripts/test_fleet_identity.py
+  cases:
+  - machine-identity
+- path: skills/synthesis-project-management/scripts/test_fleet_park.py
+  cases:
+  - parked
+- path: skills/synthesis-project-management/scripts/test_fleet_paths.py
+  cases:
+  - paths-portable
 cases:
-- id: provider
+- id: machine-identity
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-fleet-secrets/scripts/test_secrets_provider.py::test_provider_never_logs_values
-  motivating_defect: Secrets rode file sync with no interface; the
-    provider must fetch by ref and fail closed without ever logging a value.
-- id: manifest-schema
+  fixture: ../synthesis-project-management/scripts/test_fleet_identity.py::test_mint_writes_uuid4_mode_0600
+  motivating_defect: Machines had names but no enrolled identity; mint
+    must write one UUID4 once and never transport the file.
+- id: board-v5
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-fleet-secrets/scripts/test_secrets_manifest.py::test_rejects_unknown_entry_key_value
-  motivating_defect: A manifest carrying values would commit secrets to
-    git; the schema must refuse values and enforce owner-only modes.
-- id: materialize
+  fixture: ../synthesis-project-management/scripts/test_fleet_board_v5.py::test_template_declares_v5_with_machine_label_column
+  motivating_defect: Claims carried hostnames with pid liveness; v5
+    must tag machine-id and demote pid to a same-machine hint.
+- id: parked
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-fleet-secrets/scripts/test_materialize.py::test_dry_run_writes_nothing_and_fetches_nothing
-  motivating_defect: Materialization must write atomically with verified
-    permissions, backing up before overwrite, and preview without fetching.
-- id: doctor
+  fixture: ../synthesis-project-management/scripts/test_fleet_park.py::test_bag_laptop_drill_fleet_ac_07
+  motivating_defect: A bagged laptop looked dead; parked must freeze
+    claims with challenge and grace instead of killing them.
+- id: paths-portable
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-fleet-secrets/scripts/test_secrets_doctor.py::test_values_absent_ok_when_manifest_carries_only_refs
-  motivating_defect: Doctors must verify backend, manifest, and
-    permissions while keeping values out of every output.
+  fixture: ../synthesis-project-management/scripts/test_fleet_paths.py::test_expand_home_covers_tilde_and_dollar_home
+  motivating_defect: Absolute home paths pinned configs to one Mac;
+    portable configs must expand home on read and fail loudly otherwise.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
