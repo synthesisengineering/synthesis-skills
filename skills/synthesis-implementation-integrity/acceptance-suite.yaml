@@ -1,45 +1,86 @@
 schema: 2
-suite: succession-section3-roles-release-4-108-0
+suite: fleet-secrets-provider
 membership: closed
-production_entry_point: All three client manifests and the top changelog
-  identify 4.108.0, shipping dead-seat claim succession, the §3 shared
-  time-block layer with overlap service, and the review skill's
-  three-role protocol
+production_entry_point: Fleet secrets materialize from 1Password through
+  one provider interface with a validated manifest, enforced file
+  permissions, and fail-closed doctors; no secret value ever touches git
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real validators and manifest checks in disposable
-  directories. They do not establish installed-client reload, live cross-client delivery,
-  new-release publication, or deployment approval. Those remain separate release checks.
+unverified_remainder: Fixtures use fake refs and a stubbed op CLI only.
+  Live vault access, installed-client reload, new-release publication,
+  and deployment approval remain separate release checks.
 changed_surfaces:
-- path: .claude-plugin/plugin.json
-  cases:
-  - release-version-metadata
-- path: .codex-plugin/plugin.json
-  cases:
-  - release-version-metadata
 - path: .muse-plugin/plugin.json
   cases:
-  - release-version-metadata
-- path: CHANGELOG.md
+  - manifest-validates
+- path: skills/synthesis-fleet-secrets/SKILL.md
   cases:
-  - release-version-metadata
-- path: README.md
+  - provider
+- path: skills/synthesis-fleet-secrets/agents/openai.yaml
   cases:
-  - release-version-metadata
+  - provider
+- path: skills/synthesis-fleet-secrets/references/enrollment-age-sops.md
+  cases:
+  - provider
+- path: skills/synthesis-fleet-secrets/scripts/materialize.py
+  cases:
+  - materialize
+- path: skills/synthesis-fleet-secrets/scripts/secrets_doctor.py
+  cases:
+  - doctor
+- path: skills/synthesis-fleet-secrets/scripts/secrets_manifest.py
+  cases:
+  - manifest-schema
+- path: skills/synthesis-fleet-secrets/scripts/secrets_provider.py
+  cases:
+  - provider
+- path: skills/synthesis-fleet-secrets/scripts/test_materialize.py
+  cases:
+  - materialize
+- path: skills/synthesis-fleet-secrets/scripts/test_secrets_doctor.py
+  cases:
+  - doctor
+- path: skills/synthesis-fleet-secrets/scripts/test_secrets_manifest.py
+  cases:
+  - manifest-schema
+- path: skills/synthesis-fleet-secrets/scripts/test_secrets_provider.py
+  cases:
+  - provider
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
+- path: skills/synthesis-onboarding/references/components.json
+  cases:
+  - manifest-validates
 cases:
-- id: release-version-metadata
+- id: provider
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
-  motivating_defect: All client manifests and the top changelog identify the same release while retained
-    release contracts remain valid.
+  fixture: ../synthesis-fleet-secrets/scripts/test_secrets_provider.py::test_provider_never_logs_values
+  motivating_defect: Secrets rode file sync with no interface; the
+    provider must fetch by ref and fail closed without ever logging a value.
+- id: manifest-schema
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-fleet-secrets/scripts/test_secrets_manifest.py::test_rejects_unknown_entry_key_value
+  motivating_defect: A manifest carrying values would commit secrets to
+    git; the schema must refuse values and enforce owner-only modes.
+- id: materialize
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-fleet-secrets/scripts/test_materialize.py::test_dry_run_writes_nothing_and_fetches_nothing
+  motivating_defect: Materialization must write atomically with verified
+    permissions, backing up before overwrite, and preview without fetching.
+- id: doctor
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-fleet-secrets/scripts/test_secrets_doctor.py::test_values_absent_ok_when_manifest_carries_only_refs
+  motivating_defect: Doctors must verify backend, manifest, and
+    permissions while keeping values out of every output.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
