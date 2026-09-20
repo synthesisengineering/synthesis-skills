@@ -11,7 +11,7 @@ license: "CC0-1.0"
 user-invocable: true
 depends_on: ["synthesis-code-audit"]
 metadata:
-  author: "Emil Peñaló"
+  author: "Emil Peñalo"
   version: "1.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -291,6 +291,6 @@ In every soft-fail case, name what's missing in one sentence so the user knows t
 
 ## Acknowledgments
 
-This skill was proposed by [Emil Peñaló](https://github.com/EPenaloColon)
+This skill was proposed by [Emil Peñalo](https://github.com/EPenaloColon)
 ([issue #4](https://github.com/synthesisengineering/synthesis-skills/issues/4)),
 whose proposal shaped the decision-locking loop it runs.
