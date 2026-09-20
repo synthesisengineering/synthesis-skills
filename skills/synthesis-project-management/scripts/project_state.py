@@ -1247,15 +1247,21 @@ def _row_for_event(
             row_uuid = row.get("session uuid", "")
             try:
                 uuid.UUID(row_uuid)
-            except (ValueError, TypeError, AttributeError) as exc:
-                raise ProjectStateError("Desktop checkpoint claim has no valid coordination UUID") from exc
+            except (ValueError, TypeError, AttributeError):
+                # A malformed row cannot bind this event, but it must not
+                # abort matching for the remaining rows.
+                continue
             path = seat_path(board, row_uuid)
             if path.is_symlink() or path.parent.is_symlink():
                 raise ProjectStateError("Desktop checkpoint identity evidence crosses an unsafe symlink")
             try:
                 seat = read_seat(board, row.get("session uuid", ""), strict=True)
-            except (OSError, ValueError) as exc:
-                raise ProjectStateError("Desktop checkpoint identity evidence is invalid") from exc
+            except (OSError, ValueError):
+                # An unverifiable seat disqualifies its own row only. One
+                # stale seat (e.g. pre-migration schema) must never fail the
+                # checkpoint for unrelated sessions. The row cannot match, so
+                # this stays fail-closed per row.
+                continue
             if seat is not None and seat.harness_session_id == native:
                 client, verified_native = _observer_native_identity(payload)
                 matched = (

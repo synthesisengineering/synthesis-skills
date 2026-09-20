@@ -18,6 +18,7 @@
       "outcome verify",
       "fleet join",
       "onboard",
+      "sync",
       "uninstall"
     ]
   },

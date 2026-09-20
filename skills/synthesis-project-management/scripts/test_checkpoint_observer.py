@@ -447,6 +447,57 @@ def test_desktop_claim_mapping_never_accepts_unbound_authority(observer: SimpleN
     assert_no_receipt(observer)
 
 
+STALE = "018f0000-0000-7000-8000-000000000003"
+
+
+def _write_stale_v1_seat(board_path: Path, session_uuid: str, compact_id: str) -> None:
+    """Mimic a pre-migration schema-1 seat: valid fields, old schema."""
+    path = peer_addressing.seat_path(board_path, session_uuid)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "session_uuid": session_uuid,
+        "compact_id": compact_id,
+        "client": "claude-code",
+        "machine": "fixture-hostname",
+        "harness_session_id": "dead-session-not-the-event-native-id",
+        "host_session_id": "local_stale",
+        "pid": 999999001,
+        "cwd": "/tmp/fixture",
+        "updated_at": "2026-09-17T14:50:57+00:00",
+        "schema": 1,
+    }), encoding="utf-8")
+
+
+def test_stale_seat_row_is_skipped_without_blocking_unrelated_checkpoint(observer: SimpleNamespace) -> None:
+    # Regression: a stale schema-1 seat on one active ccd: row used to abort
+    # the whole checkpoint match, failing unrelated sessions (2026-09-20).
+    stale_identity = identity_from_uuid(STALE)
+    owner_identity = identity_from_uuid(FOREIGN)
+    board(observer.board, [(STALE, stale_identity.compact_id, "alpha", str(observer.repo)),
+                           (FOREIGN, owner_identity.compact_id, "alpha", str(observer.repo))])
+    observer.board.write_text(observer.board.read_text()
+                              .replace(f"tool:{STALE}", "ccd:local_stale")
+                              .replace(f"tool:{FOREIGN}", "ccd:local_fixture"))
+    _write_stale_v1_seat(observer.board, STALE, stale_identity.compact_id)
+    peer_addressing.write_seat(
+        observer.board, session_uuid=FOREIGN, compact_id=owner_identity.compact_id, machine="machine",
+        identity=peer_addressing.SelfIdentity(client="claude-code", harness_session_id=NATIVE,
+                                             host_session_id="local_fixture"),
+    )
+    assert inspect(observer) == ("PASS", [])
+    assert json.loads(next(observer.receipts.glob("*.json")).read_text())["session_id"] == FOREIGN
+
+
+def test_lone_stale_seat_grants_no_checkpoint_authority(observer: SimpleNamespace) -> None:
+    stale_identity = identity_from_uuid(STALE)
+    board(observer.board, [(STALE, stale_identity.compact_id, "alpha", str(observer.repo))])
+    observer.board.write_text(observer.board.read_text().replace(f"tool:{STALE}", "ccd:local_stale"))
+    _write_stale_v1_seat(observer.board, STALE, stale_identity.compact_id)
+    verdict, _issues = inspect(observer)
+    assert verdict in {"NOT_APPLICABLE", "FAIL"}
+    assert_no_receipt(observer)
+
+
 def test_payload_task_ids_do_not_select_foreign_claim(observer: SimpleNamespace) -> None:
     board(observer.board, [(FOREIGN, "s-abcd-efgh-jkmn", "alpha", str(observer.repo))])
     observer.board.write_text(observer.board.read_text().replace(f"tool:{FOREIGN}", f"cc:{FOREIGN}"))

@@ -62,6 +62,7 @@ CLI_COMMANDS = (
     "outcome verify",
     "fleet join",
     "onboard",
+    "sync",
     "uninstall",
 )
 
@@ -183,6 +184,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     onboard_cmd = commands.add_parser("onboard", help="the one smart entry: detect, recommend, ask, and act")
     _common_output(onboard_cmd)
+
+    sync_cmd = commands.add_parser("sync", help="bring this enrolled Mac fully current: update, pull repos, heartbeat, verify, repair")
+    sync_cmd.add_argument("--kb", help="personal knowledge repo path (discovered when omitted)")
+    sync_cmd.add_argument("--workspace", help="workspace name (derived from the manifest when omitted)")
+    _common_output(sync_cmd)
 
     uninstall = commands.add_parser("uninstall", help="archive and remove generated resources")
     uninstall.add_argument(
@@ -1715,6 +1721,15 @@ def main(
             import onboard_flow
 
             return onboard_flow.onboard(args, release_root=REPO_ROOT)
+
+        if args.command == "sync":
+            import fleet_sync
+
+            try:
+                return fleet_sync.sync(args, release_root=REPO_ROOT)
+            except fleet_sync.FleetSyncError as exc:
+                print(f"fleet sync failed: {exc}", file=sys.stderr)
+                return 2
 
         if args.command == "status":
             promoted, promotion_note = _promote_live_receipts(state)
