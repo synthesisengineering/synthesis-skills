@@ -59,6 +59,20 @@ def test_probe_reports_v1_layout(source_root: Path) -> None:
     assert probe(source_root, "demo-project")["format_version"] == "v1"
 
 
+def test_probe_reports_v2_marker(source_root: Path) -> None:
+    (source_root / "projects" / "demo-project" / ".synthesis-project.yaml").write_text(
+        "format_version: 2\n", encoding="utf-8"
+    )
+    assert probe(source_root, "demo-project")["format_version"] == "v2"
+
+
+def test_probe_reports_unknown_marker(source_root: Path) -> None:
+    (source_root / "projects" / "demo-project" / ".synthesis-project.yaml").write_text(
+        "format_version: 99\n", encoding="utf-8"
+    )
+    assert probe(source_root, "demo-project")["format_version"] == "unknown"
+
+
 def test_probe_reports_partial_layout(source_root: Path, tmp_path: Path) -> None:
     del tmp_path
     (source_root / "projects" / "demo-project" / "REFERENCE.md").unlink()

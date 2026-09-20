@@ -28,8 +28,8 @@ import yaml
 
 ENGINE_VERSION = "1.0.0"
 
-# v1 layout: CONTEXT.md + REFERENCE.md + sessions/. Phase F extends this
-# table as new format versions ship; unknown layouts report "unknown".
+# v1 layout: CONTEXT.md + REFERENCE.md + sessions/. v2 adds the
+# .synthesis-project.yaml marker; unrecognized markers report "unknown".
 FORMAT_V1 = ("CONTEXT.md", "REFERENCE.md", "sessions")
 
 
@@ -44,8 +44,17 @@ def load_index(source_root: Path) -> list[dict]:
 
 
 def format_version(project_dir: Path) -> str:
+    # Mirrors synthesis-project-management project_format.detect, which is
+    # authoritative. Kept local so the probe stays dependency-free.
     if not project_dir.is_dir():
         return "missing"
+    marker = project_dir / ".synthesis-project.yaml"
+    if marker.is_file():
+        try:
+            data = yaml.safe_load(marker.read_text(encoding="utf-8")) or {}
+        except (OSError, ValueError):
+            return "unknown"
+        return "v2" if data.get("format_version") == 2 else "unknown"
     present = [(project_dir / name).exists() for name in FORMAT_V1]
     if all(present):
         return "v1"

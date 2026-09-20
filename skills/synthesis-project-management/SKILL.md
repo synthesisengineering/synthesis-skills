@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.15.0"
+  version: "2.16.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -76,10 +76,13 @@ ai-knowledge-{workspace}/
     ├── index.yaml               # Single index for ALL projects (status field, not folders)
     │
     ├── {project-id}/            # Project folders (flat structure)
+    │   ├── .synthesis-project.yaml  # Format marker (v2+): version, id, migration record
     │   ├── CONTEXT.md           # Working memory — active state (budget: ≤150 lines)
     │   ├── REFERENCE.md         # Semantic memory — stable facts (updated in place)
+    │   ├── CURRENT_STATE.json   # Machine-readable resume state (v2+, schema v1)
     │   ├── sessions/            # Episodic memory — archived session logs
-    │   │   └── YYYY-MM.md       #   Monthly files
+    │   │   ├── YYYY-MM.md       #   Monthly files
+    │   │   └── INDEX.md         #   Generated per-period manifest (v2+)
     │   ├── README.md            # Static documentation (optional)
     │   └── resources/           # Project data and artifacts (optional)
     │       ├── in/              # Inputs
@@ -102,6 +105,26 @@ ai-knowledge-{workspace}/
 | **Date-prefixed lesson files** | Enables time-based discovery. `ls -t` shows recent. No index needed. |
 | **No templates folder** | Agents examine existing examples and adapt. Templates are a pre-AI pattern. |
 | **No patterns.md** | Patterns are lessons with `type: pattern` in front matter. One folder to search. |
+
+### Format versions (v2.16.0)
+
+Projects carry a format version so the system can evolve without
+breaking old projects. v1 is the unmarked layout (CONTEXT.md,
+REFERENCE.md, sessions/). v2 adds three files and nothing else: the
+`.synthesis-project.yaml` marker, the required `CURRENT_STATE.json`
+resume state (schema v1: goal, status, open_loops, last_session,
+last_brief), and the generated `sessions/INDEX.md` manifest.
+
+Rules for every version, present and future:
+
+- New versions are strictly additive. Old readers keep working.
+- Detection is mechanical: `scripts/project_format.py detect`.
+- Migration is pull-based, on resume: inform the principal in one
+  line, run `project_format.py migrate`, verify, then resume work.
+  Never migrate under a live foreign claim.
+- Migration adds files only; downgrade is deleting them.
+- Writers refresh the state file and index at session close; never
+  hand-edit `<!-- generated -->` sections.
 
 ---
 
