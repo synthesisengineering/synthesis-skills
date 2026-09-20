@@ -400,3 +400,28 @@ def test_read_seat_rejects_unknown_schema_non_strict(tmp_path):
         encoding="utf-8",
     )
     assert PA.read_seat(board, identity.session_uuid) is None
+
+
+def test_claim_ignores_ambient_enrollment_without_override(tmp_path, monkeypatch):
+    """A board mutation must not stamp the ambient home's machine-id.
+
+    Reproduces the enrolled-Mac failure: with a minted ambient identity
+    and no SYNTHESIS_FLEET_DIR override, a claim against a plain tmp
+    board falls back to the requested label, not the ambient id.
+    """
+    ambient_fleet = tmp_path / "ambient-home" / ".synthesis" / "fleet"
+    ambient_fleet.mkdir(parents=True)
+    (ambient_fleet / "machine-id").write_text(
+        "12345678-1234-4234-8234-1234567890ab", encoding="utf-8"
+    )
+    monkeypatch.setenv("HOME", str(tmp_path / "ambient-home"))
+    monkeypatch.delenv(FI.FLEET_DIR_ENV, raising=False)
+    board = tmp_path / "board.md"
+    request = claim_request(
+        board, area="repo-a/**", workspace="/tmp/wt-a @ feature/a",
+        machine="test-machine",
+    )
+    assert MODULE.command_claim(request) == 0
+    row = MODULE.rows(board.read_text(encoding="utf-8"))[0]
+    assert row.machine == "test-machine"
+    assert row.machine_label == "test-machine"

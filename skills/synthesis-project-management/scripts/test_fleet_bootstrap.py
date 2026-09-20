@@ -388,3 +388,18 @@ def test_main_wires_manifest_and_reports(tmp_path, capsys):
     assert "DONE bootstrap-mint-identity" in out
     assert (home / "kb" / "notes.md").is_file()
     assert os.environ.get("HOME") != str(home) or True
+
+
+def test_primary_with_missing_registry_flag_founds_new_fleet(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    source = fixture_source(tmp_path / "source")
+    report = BOOT.bootstrap(
+        home=home, source_root=source, label="mac-a", role="primary",
+        fleet_registry=tmp_path / "not-yet-created" / "machines.json",
+        install_runner=install_stub([]),
+    )
+    assert report["ok"]
+    enroll = [step for step in report["steps"]
+              if step["step"] == "enroll-machine"][0]
+    assert enroll["status"] == "done"

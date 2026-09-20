@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import fnmatch
 import hashlib
 from typing import NoReturn
@@ -1721,27 +1722,48 @@ def require_fresh_board(board: Path) -> dict:
     return result
 
 
+@contextlib.contextmanager
+def _board_scoped_fleet_dir(board: Path):
+    """Scope machine-identity reads to the board under mutation.
+
+    Without this, a mutation against any board (a test's tmp board, an
+    alternate home) reads the ambient home's fleet enrollment and stamps
+    the wrong machine-id on rows and seats. An explicit SYNTHESIS_FLEET_DIR
+    override keeps winning — tests simulating enrollment set it.
+    """
+    if os.environ.get(fleet_identity.FLEET_DIR_ENV, "").strip():
+        yield
+        return
+    scoped = str(fleet_identity.fleet_dir_for_board(board))
+    os.environ[fleet_identity.FLEET_DIR_ENV] = scoped
+    try:
+        yield
+    finally:
+        del os.environ[fleet_identity.FLEET_DIR_ENV]
+
+
 def locked_update(board: Path, operation, *, require_fence: bool = False) -> None:
     board.parent.mkdir(parents=True, exist_ok=True)
     lock_path = board.parent / ".active-sessions.lock"
     with lock_path.open("a+", encoding="utf-8") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         config = lease_configuration(board)
-        if config is not None:
-            lease_update(board, config, operation, require_fence=require_fence)
-            return
-        content = board.read_text(encoding="utf-8") if board.exists() else template()
-        ensure_writable_schema(content)
-        declared = declared_lease(content)
-        if declared is not None:
-            raise RuntimeError(
-                f"board declares a coordination lease ({declared}) but "
-                f"{board.parent / LEASE_CONFIG_NAME} is missing on this "
-                "machine; copy the lease configuration here, or run "
-                "'lease-disable --local-only' only if the lease is being "
-                "retired everywhere"
-            )
-        write_board(board, operation(content))
+        with _board_scoped_fleet_dir(board):
+            if config is not None:
+                lease_update(board, config, operation, require_fence=require_fence)
+                return
+            content = board.read_text(encoding="utf-8") if board.exists() else template()
+            ensure_writable_schema(content)
+            declared = declared_lease(content)
+            if declared is not None:
+                raise RuntimeError(
+                    f"board declares a coordination lease ({declared}) but "
+                    f"{board.parent / LEASE_CONFIG_NAME} is missing on this "
+                    "machine; copy the lease configuration here, or run "
+                    "'lease-disable --local-only' only if the lease is being "
+                    "retired everywhere"
+                )
+            write_board(board, operation(content))
 
 
 def _check_staged_board_snapshot(board: Path) -> str | None:
@@ -2743,9 +2765,10 @@ def command_claim(args) -> int:
             f"a parked row ({what}). Do not delete its worktrees or push over "
             "its branches."
         )
-    claim_machine, claim_label = resolve_claim_machine(
-        getattr(args, "machine", "") or ""
-    )
+    with _board_scoped_fleet_dir(args.board):
+        claim_machine, claim_label = resolve_claim_machine(
+            getattr(args, "machine", "") or ""
+        )
     seat = write_seat(
         args.board,
         session_uuid=identity.session_uuid,
@@ -2987,9 +3010,10 @@ def command_succeed(args) -> int:
     print("Succession record appended to the board bus.")
     if remove_seat(args.board, predecessor_identity.session_uuid):
         print("Seat removed.")
-    successor_machine, successor_label = resolve_claim_machine(
-        getattr(args, "machine", "") or ""
-    )
+    with _board_scoped_fleet_dir(args.board):
+        successor_machine, successor_label = resolve_claim_machine(
+            getattr(args, "machine", "") or ""
+        )
     seat = write_seat(
         args.board,
         session_uuid=identity.session_uuid,

@@ -1,45 +1,54 @@
 schema: 2
-suite: fleet-release-4-109-0
+suite: fleet-identity-isolation
 membership: closed
-production_entry_point: All three client manifests and the top changelog
-  identify 4.109.0, shipping multi-Mac fleet support (identity, v5
-  board, parked sessions, sealed handoffs, subscriptions, vault-backed
-  secrets, bootstrap) with public guides
+production_entry_point: Board mutations read the machine identity that
+  belongs to the board under mutation, never the ambient home's
+  enrollment; primary enrollment founds a fleet even when the registry
+  flag points at a not-yet-created file
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real validators and manifest checks in disposable
-  directories. They do not establish installed-client reload, live cross-client delivery,
-  new-release publication, or deployment approval. Those remain separate release checks.
+unverified_remainder: Fixtures run the real claim and bootstrap paths
+  against disposable boards and homes. Live two-machine exclusion,
+  installed-client reload, new-release publication, and deployment
+  approval remain separate release checks.
 changed_surfaces:
-- path: .claude-plugin/plugin.json
-  cases:
-  - release-version-metadata
-- path: .codex-plugin/plugin.json
-  cases:
-  - release-version-metadata
-- path: .muse-plugin/plugin.json
-  cases:
-  - release-version-metadata
-- path: CHANGELOG.md
-  cases:
-  - release-version-metadata
-- path: README.md
-  cases:
-  - release-version-metadata
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
+- path: skills/synthesis-project-management/scripts/coordination.py
+  cases:
+  - identity-isolation
+- path: skills/synthesis-project-management/scripts/fleet_bootstrap.py
+  cases:
+  - enroll-founding
+- path: skills/synthesis-project-management/scripts/fleet_identity.py
+  cases:
+  - identity-isolation
+- path: skills/synthesis-project-management/scripts/test_fleet_board_v5.py
+  cases:
+  - identity-isolation
+- path: skills/synthesis-project-management/scripts/test_fleet_bootstrap.py
+  cases:
+  - enroll-founding
 cases:
-- id: release-version-metadata
+- id: identity-isolation
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
-  motivating_defect: All client manifests and the top changelog identify the same release while retained
-    release contracts remain valid.
+  fixture: ../synthesis-project-management/scripts/test_fleet_board_v5.py::test_claim_ignores_ambient_enrollment_without_override
+  motivating_defect: Mutations against any board stamped the ambient
+    home's machine-id; identity reads must scope to the board under
+    mutation unless explicitly overridden.
+- id: enroll-founding
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_fleet_bootstrap.py::test_primary_with_missing_registry_flag_founds_new_fleet
+  motivating_defect: A primary pointing --fleet-registry at a
+    not-yet-created file failed instead of founding; only a missing
+    file for a secondary must fail closed.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass

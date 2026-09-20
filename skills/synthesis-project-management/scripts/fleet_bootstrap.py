@@ -344,7 +344,11 @@ def step_enroll(
             STEP_ENROLL, STATUS_FAIL, "no machine-id minted; identity step first"
         )
     registry_path = _identity.registry_path(directory)
-    if not registry_path.is_file() and fleet_registry is not None:
+    if (
+        not registry_path.is_file()
+        and fleet_registry is not None
+        and Path(fleet_registry).is_file()
+    ):
         try:
             document = json.loads(
                 Path(fleet_registry).read_text(encoding="utf-8")
