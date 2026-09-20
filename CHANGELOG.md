@@ -4,6 +4,13 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.116.0] - 2026-09-20
+
+Meeting-prep onboarding. `prep_init.py` scaffolds the principal file
+and reader-profile templates (non-interactive, refusing to
+overwrite), so a new user goes from install to first interview in
+one command.
+
 ## [4.115.0] - 2026-09-20
 
 Dogfood corrections. The v2 resume state moves to its own
