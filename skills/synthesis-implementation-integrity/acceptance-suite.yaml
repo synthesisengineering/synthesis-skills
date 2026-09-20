@@ -1,21 +1,21 @@
 schema: 2
-suite: seat-heartbeat-4-117-0
+suite: rulings-4-118-0
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.117.0, shipping the single clock read for the board row
-  and the seat record across claim, succeed, and heartbeat, with the
-  fleet setup guide leading with the one-command onboard
+  identify 4.118.0, shipping meeting-prep 1.1.0 (register samples,
+  reader-profile convention, disclosure default), year-default
+  archive retention, and the preplan proposer credit
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real claim and join
-  registration checks in disposable directories. They do not establish
-  installed-client reload, live cross-client delivery, new-release
-  publication, or deployment approval. Those remain separate release
-  checks.
+unverified_remainder: Fixtures execute the real archive default,
+  reader scaffolding, disclosure lint, and manifest checks in
+  disposable directories. They do not establish installed-client
+  reload, live cross-client delivery, new-release publication, or
+  deployment approval. Those remain separate release checks.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -32,18 +32,34 @@ changed_surfaces:
 - path: README.md
   cases:
   - release-version-metadata
-- path: docs/fleet-setup.md
-  cases:
-  - fleet-docs-join
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-project-management/scripts/coordination.py
+- path: skills/synthesis-meeting-prep/SKILL.md
   cases:
-  - seat-heartbeat-single-read
-- path: skills/synthesis-project-management/scripts/test_fleet_board_v5.py
+  - prep-reader-profiles
+  - prep-forum-disclosure
+  - prep-basis-honesty
+- path: skills/synthesis-meeting-prep/references/requirements.md
   cases:
-  - seat-heartbeat-single-read
+  - prep-reader-profiles
+  - prep-forum-disclosure
+  - prep-basis-honesty
+- path: skills/synthesis-preplan/SKILL.md
+  cases:
+  - preplan-credit
+- path: skills/synthesis-preplan/scripts/test_acknowledgments.py
+  cases:
+  - preplan-credit
+- path: skills/synthesis-project-management/references/project-formats.md
+  cases:
+  - retention-default
+- path: skills/synthesis-project-management/scripts/project_format.py
+  cases:
+  - retention-default
+- path: skills/synthesis-project-management/scripts/test_project_format.py
+  cases:
+  - retention-default
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -51,20 +67,36 @@ cases:
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
   motivating_defect: All client manifests and the top changelog identify the same release while retained
     release contracts remain valid.
-- id: seat-heartbeat-single-read
+- id: preplan-credit
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_fleet_board_v5.py::test_claim_seat_reuses_row_heartbeat
-  motivating_defect: A command that reads the wall clock once for the
-    row and again for the seat disagrees with itself across a second
-    boundary; one stamp must serve both writes.
-- id: fleet-docs-join
+  fixture: ../synthesis-preplan/scripts/test_acknowledgments.py::test_acknowledgments_credit_the_proposer
+  motivating_defect: A public credit given and then silently lost in a
+    later edit breaks trust with the contributor; the pin keeps it.
+- id: retention-default
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_fleet_join.py::test_cli_registers_fleet_join
-  motivating_defect: The setup guide's one-command and flag-free join
-    path must name a registered stable command or help and gates
-    drift from the docs.
+  fixture: ../synthesis-project-management/scripts/test_project_format.py::test_cli_archive_defaults_to_year_retention
+  motivating_defect: An archiver with no default never runs on its
+    own; the year default must hold without the flag.
+- id: prep-reader-profiles
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-prep/scripts/test_prep_init.py::test_add_reader_writes_profile
+  motivating_defect: The per-person profile convention must exist in
+    the scaffolder, not just in prose, or nobody adopts it.
+- id: prep-forum-disclosure
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-prep/scripts/test_prep_lint.py::test_namedrop_opener_flagged_in_forum
+  motivating_defect: The upward-vs-forum disclosure line must be
+    mechanically enforced where it can be, not merely advised.
+- id: prep-basis-honesty
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-prep/scripts/test_prep_lint.py::test_missing_basis_flagged
+  motivating_defect: R13's fallback — say so in the pack when no
+    sample exists — rides on the basis check refusing silent gaps.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
