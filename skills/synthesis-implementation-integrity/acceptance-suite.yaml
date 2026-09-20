@@ -1,45 +1,92 @@
 schema: 2
-suite: readonly-001-release-4-107-0
+suite: section3-ownership-visibility
 membership: closed
-production_entry_point: All three client manifests and the top changelog
-  identify 4.107.0, shipping explicit read-only diagnostics (--local
-  across all conformance routes, passive lease cache, fetch-free
-  orphan sweep)
+production_entry_point: Owned items record once with owner stamps; a shared
+  time-block layer carries real-title blocks across workspaces; one overlap
+  pass reports cross-owner collisions; no calendar writes anywhere
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real validators and manifest checks in disposable
-  directories. They do not establish installed-client reload, live cross-client delivery,
-  new-release publication, or deployment approval. Those remain separate release checks.
+unverified_remainder: Fixtures execute the real overlap script, routing
+  reference checks, and stamp CLI against fixture layers. They do not
+  establish live calendar reads, installed-client reload, new-release
+  publication, or deployment approval. Those remain separate release checks.
 changed_surfaces:
-- path: .claude-plugin/plugin.json
+- path: skills/synthesis-chief-of-staff/SKILL.md
   cases:
-  - release-version-metadata
-- path: .codex-plugin/plugin.json
+  - overlap-service
+- path: skills/synthesis-chief-of-staff/scripts/fixtures/time-blocks-invalid.json
   cases:
-  - release-version-metadata
-- path: .muse-plugin/plugin.json
+  - overlap-service
+- path: skills/synthesis-chief-of-staff/scripts/fixtures/time-blocks-same-owner.json
   cases:
-  - release-version-metadata
-- path: CHANGELOG.md
+  - overlap-service
+- path: skills/synthesis-chief-of-staff/scripts/fixtures/time-blocks-touching.json
   cases:
-  - release-version-metadata
-- path: README.md
+  - overlap-service
+- path: skills/synthesis-chief-of-staff/scripts/fixtures/time-blocks-two-owners.json
   cases:
-  - release-version-metadata
+  - overlap-service
+- path: skills/synthesis-chief-of-staff/scripts/overlap.py
+  cases:
+  - overlap-service
+- path: skills/synthesis-chief-of-staff/scripts/test_overlap.py
+  cases:
+  - overlap-service
+- path: skills/synthesis-daily-rituals/SKILL.md
+  cases:
+  - ownership-routing
+- path: skills/synthesis-daily-rituals/references/ownership-routing.md
+  cases:
+  - ownership-routing
+- path: skills/synthesis-daily-rituals/references/version-history.md
+  cases:
+  - ownership-routing
+- path: skills/synthesis-daily-rituals/scripts/test_ownership_routing.py
+  cases:
+  - ownership-routing
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
+- path: skills/synthesis-meeting-transcripts/SKILL.md
+  cases:
+  - owner-stamp
+- path: skills/synthesis-meeting-transcripts/extract_commitments.py
+  cases:
+  - owner-stamp
+- path: skills/synthesis-meeting-transcripts/test_extract_commitments.py
+  cases:
+  - owner-stamp
+- path: skills/synthesis-meeting-transcripts/transcript_primary.py
+  cases:
+  - owner-stamp
+- path: skills/synthesis-meeting-transcripts/verify_transcripts.py
+  cases:
+  - owner-stamp
 cases:
-- id: release-version-metadata
+- id: overlap-service
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
-  motivating_defect: All client manifests and the top changelog identify the same release while retained
-    release contracts remain valid.
+  fixture: ../synthesis-chief-of-staff/scripts/test_overlap.py::test_validate_accepts_well_formed_layer
+  motivating_defect: Cross-workspace collisions were checked by hand or not
+    at all; the overlap service must report cross-owner pairs from the
+    shared layer deterministically, reading without writing.
+- id: ownership-routing
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_ownership_routing.py::test_layer_path_contract_matches_overlap_script
+  motivating_defect: Owned items double-surfaced across seats; triage must
+    route by rule, stamp owner and rule, publish blocks, and fail closed
+    to candidates.
+- id: owner-stamp
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_extract_commitments.py::test_stamp_prints_owner_lines
+  motivating_defect: Confirmed commitments carried no ownership; the stamp
+    must print owner lines and refuse blank owners and unknown rules.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass

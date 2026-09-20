@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.39.0"
+  version: "2.40.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -51,7 +51,7 @@ Applies whenever a workers registry exists (default `~/.synthesis/ritual/workers
 - **Each `active` worker executes its workspace's own checklist steps** (the syncs, the repo pass, the workspace-side triage below). **The default mode is an attended session rooted in that workspace**, run when the principal is working there, on that workspace's own schedule; a desk-dispatched subagent is the opt-in alternative for closing everything from one place. Either way the worker ends by writing the contract artifact to its registered `artifact_dir` — that write IS the worker's completion.
 - **The principal is the dispatcher; the desk never triggers a worker.** No session can start work in another. The desk reports which workspaces are owed and the human opens the session that owes one. Attempts to dispatch by messaging sessions failed twice for the same structural reason — the target must already be open and attended — while the file-based path delivered both times. Contract: "The principal is the dispatcher."
 - **Workspaces close on independent schedules.** Artifacts carry timestamps and `run_type` so the desk folds newest-per-workspace at any pass and refolds as later fragments land. Closing one workspace in the evening and another the next morning is normal operation.
-- **The desk folds, never re-derives.** At every desk pass (day-start, mid-day, day-end) read the newest artifact per (workspace, run_type) for today, reconcile across workspaces — cross-workspace calendar and commitment conflicts are visible only here and are the desk's explicit responsibility — and produce the one brief.
+- **The desk folds, never re-derives.** At every desk pass (day-start, mid-day, day-end) read the newest artifact per (workspace, run_type) for today, reconcile across workspaces — cross-workspace calendar and commitment conflicts are visible only here and are the desk's explicit responsibility, discharged through the overlap service (v2.40.0) — and produce the one brief.
 - **The coverage line is mandatory and comes first** in every brief: each registered workspace as folded (run_type + finish time), **pending**, or **not scheduled** (`on-demand`/`dormant` per the registry). A registered-active workspace with no fresh artifact is reported *not covered* — never reconstructed from stale artifacts or desk guesswork.
 - **Context isolation is the point.** The desk does not load a workspace's channels, repos, or transcripts inline; workers do not see each other or the combined picture. Reconciliation belongs to the desk alone (the parallel-dispatch rule from synthesis-project-management, applied to the day itself).
 - **Storage separates; presentation converges (v2.24.0).** The plan the desk writes is a SHELL: person-scoped content plus pointers to each workspace's fragment (= its artifact). Workspace content is never copied into the person-side repository, so deleting a workspace's folders erases its data. Contract section: "Plan storage separation."
@@ -153,6 +153,8 @@ Inbox cleanup is a chief-of-staff duty, and its reach follows the seat that invo
 - [ ] For each potential action item: check the thread for replies, check CONTEXT.md for prior completion, check session logs. Only flag as open if ALL sources confirm it's unresolved.
 - [ ] Note new action items, status changes on waiting items, and signals worth responding to.
 - [ ] Remove or mark completed any CONTEXT.md items that Slack evidence shows are resolved.
+- [ ] **Ownership vs visibility triage (v2.40.0).** Route every intake item by the [routing rules](references/ownership-routing.md) in order — manifest owner, deletion-unit test, movable-item seat — and stamp it `owner:`/`owner_rule:`. An item no rule claims becomes a CANDIDATE for the principal in this same turn: never double-recorded, never dropped.
+- [ ] **Publish owned blocks; call the overlap service (v2.40.0).** Publish this seat's owned commitments to the shared time-block layer (real titles, hand-entered blocks for unreachable accounts), validate the layer, and run `overlap.py overlaps` for the look-ahead window. Report overlaps with the movable side named, and the layer's denominator — which seats published fresh, which are stale or missing — because "no overlaps" without it is not a result.
 
 ### 5. PR Review Queue
 

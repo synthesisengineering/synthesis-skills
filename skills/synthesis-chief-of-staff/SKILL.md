@@ -5,12 +5,17 @@ license: "CC0-1.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.0"
+  version: "1.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Chief of Staff
+
+**Version 1.3.0** (2026-09-20) adds the shared time-block layer and the
+`scripts/overlap.py` cross-owner overlap service (§3): scheduling checks
+consume every seat's published blocks, not just the seat's own reachable
+accounts. Nothing here writes to a calendar.
 
 **Version 1.2.0** (2026-09-01) ships
 `preferences.example.json` and a guided `synthesis-onboarding init` interview.
@@ -71,7 +76,14 @@ principal's time move for this, and if so, on what terms?"
 1. **Read the principal's calendar FIRST.** No scheduling sentence is written
    before the actual calendar for the window is fetched. An agent with
    calendar access that asks the counterpart for their availability has the
-   relationship backwards.
+   relationship backwards. Since v1.3.0 the check consumes the shared
+   time-block layer (`coordination/time-blocks.json` in the personal repo,
+   via `scripts/overlap.py overlaps` for the window) instead of only the
+   seat's own reachable accounts: the layer carries every seat's owned
+   blocks with real titles, including hand-entered blocks for accounts
+   beyond the agent's reach. A window the layer does not cover is an
+   unanswered question, not a free window — name the missing seat before
+   proposing anything inside it.
 2. **Propose, never solicit.** Offer 2–3 concrete windows from the
    principal's calendar that already respect protected hours, buffer rules,
    and prep time — or route through the principal's human assistant per
