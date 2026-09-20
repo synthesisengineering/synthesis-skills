@@ -288,3 +288,9 @@ In every soft-fail case, name what's missing in one sentence so the user knows t
 - **Reverse leans freely when pushed back on with a real argument.** Depth mode often exposes flaws in the initial framing. Reconsider honestly rather than defending the original lean.
 - **The commit-by-commit workflow lives at [references/commit-by-commit.md](references/commit-by-commit.md).** The handoff template references it; don't duplicate the rules inside the handoff.
 - **State the execution lane before touching a file.** The single-commit lane at [references/single-commit.md](references/single-commit.md) owns the routing test. Naming the lane and its reason is Step 2's job; inheriting one silently is what that artifact exists to prevent.
+
+## Acknowledgments
+
+This skill was proposed by [Emil Peñaló](https://github.com/EPenaloColon)
+([issue #4](https://github.com/synthesisengineering/synthesis-skills/issues/4)),
+whose proposal shaped the decision-locking loop it runs.
