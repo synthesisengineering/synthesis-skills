@@ -1,21 +1,21 @@
 schema: 2
-suite: project-format-v2-4-113-0
+suite: session-archiver-4-114-0
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.113.0, shipping versioned project formats (v1/v2) with
-  the project_format detect/migrate/verify engine, the v2.16.0
-  project-management format contract, and resume-probe v2 reporting
+  identify 4.114.0, shipping the session archiver (v2-only moves to
+  sessions/archive/ with newest-period protection and a live+archived
+  index) in project_format with its reference contract
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real detector, migration,
-  probe, and manifest checks in disposable directories. They do not
-  establish installed-client reload, live cross-client delivery,
-  new-release publication, or deployment approval. Those remain
-  separate release checks.
+unverified_remainder: Fixtures execute the real archiver, detector,
+  and manifest checks in disposable directories. They do not establish
+  installed-client reload, live cross-client delivery, new-release
+  publication, or deployment approval. Those remain separate release
+  checks.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -35,24 +35,15 @@ changed_surfaces:
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-project-management/SKILL.md
-  cases:
-  - format-migrate
 - path: skills/synthesis-project-management/references/project-formats.md
   cases:
-  - format-migrate
+  - format-archive
 - path: skills/synthesis-project-management/scripts/project_format.py
   cases:
-  - format-migrate
+  - format-archive
 - path: skills/synthesis-project-management/scripts/test_project_format.py
   cases:
-  - format-migrate
-- path: skills/synthesis-project-resume/scripts/resume_probe.py
-  cases:
-  - resume-probe-v2
-- path: skills/synthesis-project-resume/scripts/test_resume_probe.py
-  cases:
-  - resume-probe-v2
+  - format-archive
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -60,19 +51,13 @@ cases:
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
   motivating_defect: All client manifests and the top changelog identify the same release while retained
     release contracts remain valid.
-- id: format-migrate
+- id: format-archive
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_format.py::test_migrate_apply_adds_and_verifies
-  motivating_defect: Format evolution without a mechanical migration
-    strands old projects or breaks them mid-upgrade; the engine must
-    add, verify, keep existing files, and roll back on failure.
-- id: resume-probe-v2
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-resume/scripts/test_resume_probe.py::test_probe_reports_v2_marker
-  motivating_defect: Resume cannot upgrade what it cannot see; the
-    probe must report v2 and unknown markers, not just v1 layouts.
+  fixture: ../synthesis-project-management/scripts/test_project_format.py::test_archive_moves_old_periods_not_newest
+  motivating_defect: Unbounded session growth buries resume context;
+    the archiver must move only old periods, protect the newest, and
+    keep the index covering both live and archived files.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
