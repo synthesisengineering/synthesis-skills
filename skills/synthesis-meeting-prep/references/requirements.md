@@ -141,7 +141,18 @@ A small per-person file — relationship, technical depth, what they
 care about, what they have already been told, what landed last time —
 prevents entire classes of failure. The skill maintains these
 profiles and consults them before drafting; the debrief updates them
-after.
+after. Convention (adopted 2026-09-20): one file per person at
+`~/.synthesis/meeting-prep/readers/<id>.md`, scaffolded by
+`prep_init.py add-reader`, keyed by a stable short id the principal
+chooses.
+
+## R13 — Register samples ground the draft (adopted 2026-09-20)
+
+Before drafting, the skill reads 2–3 samples of the principal's own
+recent writing to a comparable reader. Register cannot be inferred
+from a role title; without samples the draft drifts toward generic
+consultant voice. If no comparable sample exists, the pack says so
+in one line rather than faking the register.
 
 ## Factor inventory
 
@@ -173,7 +184,9 @@ dropped rather than filled. The default 1:1 shape:
 
 1. Length target per meeting type?
 2. During-meeting capture: live notes surface, or paper?
-3. Register samples: require 2–3 samples of the principal's own
-   recent writing to a comparable reader before drafting?
-4. Reader profiles: confirm the per-person file convention?
-5. Disclosure line: confirm R9's upward-vs-forum default?
+
+## Resolved (2026-09-20 rulings)
+
+- Register samples: adopted as R13 — 2–3 samples before drafting.
+- Reader profiles: per-person file convention confirmed (R12).
+- Disclosure line: R9's upward-and-1:1 default confirmed.

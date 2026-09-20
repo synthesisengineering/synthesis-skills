@@ -54,9 +54,11 @@ For every meeting, in order:
 1. **Gather.** Pull the knowledge factors (inventory §4): workspace
    OKF base, prior transcripts with these participants, comms since,
    tickets/commits/deliverables, docs and decks, reader profiles,
-   the principal's writing samples to a comparable reader, external
-   research for new faces, and re-verified numbers. Record the basis
-   (R10) as you go — source, date, what it contributed.
+   2–3 samples of the principal's own writing to a comparable
+   reader (R13 — required; if none exists, say so in the pack),
+   external research for new faces, and re-verified numbers.
+   Record the basis (R10) as you go — source, date, what it
+   contributed.
 2. **Model.** Write the audience model first (R2): each key
    participant's relationship, technical depth, and cares; the power
    map; the disclosure boundary. Then weigh the factor inventory and
