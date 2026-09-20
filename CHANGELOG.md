@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.115.0] - 2026-09-20
+
+Dogfood corrections. The v2 resume state moves to its own
+`RESUME_STATE.json` — `CURRENT_STATE.json` stays the operational
+handoff shape owned by `project_state.py`, which migration never
+touches. Session detection (probe, migration skeleton, console
+recency) ignores the generated `sessions/INDEX.md`.
+
 ## [4.114.0] - 2026-09-20
 
 Session archiver. `project_format.py archive` moves old session

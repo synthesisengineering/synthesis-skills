@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+**Dogfood corrections (September 2026).** Release **4.115.0** gives
+the v2 resume state its own file and keeps the generated index out
+of session detection.
+
 **Session archiver (September 2026).** Release **4.114.0** archives
 old session periods with the newest always protected.
 
