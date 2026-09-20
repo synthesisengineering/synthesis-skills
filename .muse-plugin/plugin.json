@@ -123,6 +123,10 @@
         "path": "skills/synthesis-fact-checking/SKILL.md"
       },
       {
+        "id": "synthesis-fleet-secrets",
+        "path": "skills/synthesis-fleet-secrets/SKILL.md"
+      },
+      {
         "id": "synthesis-git-hooks",
         "path": "skills/synthesis-git-hooks/SKILL.md"
       },
