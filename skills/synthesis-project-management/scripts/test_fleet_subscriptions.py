@@ -264,7 +264,7 @@ def test_subscription_patterns_expand_home_and_repo_relative(tmp_path):
         f"{root}/docs/**", root, "claimed/inside.md"
     )
     assert SUBS.pattern_authorizes_path(
-        "~/workspaces/kb/**",
+        "~/workspaces/personal/**",
         root,
         "claimed/inside.md",
     ) is False

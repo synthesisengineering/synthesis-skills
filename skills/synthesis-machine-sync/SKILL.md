@@ -44,10 +44,10 @@ Clean-install path only — never copy one Mac's state onto another:
 
 ```bash
 python3 skills/synthesis-project-management/scripts/fleet_bootstrap.py \
-  --home ~ --source-root ~/workspaces/me/synthesis-skills \
+  --home ~ --source-root ~/workspaces/example/synthesis-skills \
   --label my-new-mac --role secondary \
   --repos-manifest fleet-repos.json \
-  --fleet-registry ~/workspaces/kb/fleet/machines.json
+  --fleet-registry ~/workspaces/personal/fleet/machines.json
 ```
 
 The bootstrap mints identity, clones subscribed repos, installs the hooks

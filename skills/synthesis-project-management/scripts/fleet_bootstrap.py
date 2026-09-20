@@ -9,9 +9,9 @@ current state and reports ``noop`` instead of redoing work.
 
 Usage::
 
-    python3 fleet_bootstrap.py --home /Users/example --source-root ~/workspaces/me/synthesis-skills \\
+    python3 fleet_bootstrap.py --home /Users/example --source-root ~/workspaces/example/synthesis-skills \\
         --label my-mac --role secondary --repos-manifest fleet-repos.json \\
-        --fleet-registry ~/workspaces/kb/fleet/machines.json
+        --fleet-registry ~/workspaces/personal/fleet/machines.json
 
 ``--repos-manifest`` is JSON: ``{"schema_version": 1, "repos":
 [{"remote": "<url>", "path": "~/workspaces/<name>", "branch": "main"}]}``.

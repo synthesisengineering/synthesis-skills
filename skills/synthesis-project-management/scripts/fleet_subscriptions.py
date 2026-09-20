@@ -11,7 +11,7 @@ overrides the fleet dir in tests and enrollment)::
 
     {"schema_version": 1,
      "subscriptions": {"<machine-id>": {"label": "mac-a",
-                                        "areas": ["~/workspaces/kb/**"]}}}
+                                        "areas": ["~/workspaces/personal/**"]}}}
 
 Enforcement applies once the registry exists. A missing registry means the
 fleet has not enrolled subscriptions yet (single-machine legacy) and the
