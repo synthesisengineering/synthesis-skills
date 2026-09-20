@@ -12,8 +12,10 @@ exclusion through the lease; sessions park instead of dying when a lid
 closes; sealed handoffs move work between Macs with a harness-neutral
 resume contract; workspace subscriptions enforce the per-Mac split;
 secrets materialize from 1Password with an age/SOPS seam; and a new
-machine joins through one idempotent bootstrap. Public setup, handoff,
-and operations guides ship with the release.
+machine joins through one idempotent bootstrap. Board mutations scope
+machine identity to the board under mutation, so enrolled Macs never
+stamp the wrong identity. Public setup, handoff, and operations guides
+ship with the release.
 
 ## [4.108.0] - 2026-09-19
 
