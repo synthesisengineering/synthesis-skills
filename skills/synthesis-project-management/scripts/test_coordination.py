@@ -3603,3 +3603,315 @@ def test_cached_refresh_cannot_resurrect_stale_board(
         )
     else:
         assert local == {"A": "active"}, "instrument failed to reproduce the old bug"
+
+
+def succeed_args(
+    board: Path,
+    *,
+    from_id: str,
+    session_id: str | None = None,
+    agent: str = "B",
+    machine: str = "machine-B",
+    mode: str = "autonomous",
+    goal: str = "goal-B",
+    client_ref: str | None = None,
+):
+    values: dict[str, object] = {
+        "predecessor": from_id,
+        "id": session_id,
+        "agent": agent,
+        "machine": machine,
+        "mode": mode,
+        "goal": goal,
+    }
+    if client_ref is not None:
+        values["client_ref"] = client_ref
+    return args(board, **values)
+
+
+def test_succeed_allocates_successor_holding_dead_seat_scope(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-dead")
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+        )
+    ) == 0
+    [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
+    age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
+    assert MODULE.read_seat(board, holder.session_uuid) is not None
+
+    assert MODULE.command_succeed(
+        succeed_args(board, from_id=holder.compact_id, client_ref="codex:successor-b")
+    ) == 0
+    out = capsys.readouterr().out
+    assert "succeed" in out.lower() or "SUCCESSION" in out
+    assert holder.compact_id in out
+
+    sessions = MODULE.rows(board.read_text(encoding="utf-8"))
+    dead = next(s for s in sessions if s.compact_id == holder.compact_id)
+    assert dead.status == "released"
+    live = [s for s in sessions if MODULE.active(s)]
+    assert len(live) == 1
+    [successor] = live
+    assert successor.compact_id != holder.compact_id
+    assert successor.project == "project-a"
+    assert successor.context_role == "owner"
+    assert successor.claims == ["repo/shared/**"]
+    assert successor.workspaces == ["/tmp/repo-a @ feature/a"]
+    assert successor.agent == "B"
+    assert successor.client_ref == "codex:successor-b"
+    assert MODULE.parse_time(successor.heartbeat) is not None
+    assert MODULE.read_seat(board, holder.session_uuid) is None
+    assert MODULE.read_seat(board, successor.session_uuid) is not None
+    bus = board.read_text(encoding="utf-8")
+    assert "SUCCESSION NOTICE" in bus
+    assert holder.compact_id in bus
+    assert successor.compact_id in bus
+    # The notice reports the quiet interval that authorized the transfer,
+    # not the release stamp written by the transfer itself.
+    assert "threshold 2d" in bus
+    assert "quiet 0.0d" not in bus
+    assert MODULE.validate_sessions(sessions) == []
+
+
+def test_succeed_merges_dead_areas_into_owned_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-dead")
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/dead.md",
+        )
+    ) == 0
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-heir")
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="B",
+            project="project-b",
+            workspace="/tmp/repo-b @ feature/b",
+            area="repo/other/held.md",
+        )
+    ) == 0
+    sessions = MODULE.rows(board.read_text(encoding="utf-8"))
+    holder = next(s for s in sessions if s.legacy_id == "A")
+    heir = next(s for s in sessions if s.legacy_id == "B")
+    age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
+
+    assert MODULE.command_succeed(
+        succeed_args(board, from_id="A", session_id="B")
+    ) == 0
+    sessions = MODULE.rows(board.read_text(encoding="utf-8"))
+    dead = next(s for s in sessions if s.compact_id == holder.compact_id)
+    assert dead.status == "released"
+    grown = next(s for s in sessions if s.compact_id == heir.compact_id)
+    # Plain paths: a multi-glob cell does not survive board read-back
+    # (board-grammar bold stripping), a pre-existing quirk shared with
+    # claim merge, not succession.
+    assert grown.claims == ["repo/other/held.md", "repo/shared/dead.md"]
+    assert grown.workspaces == [
+        "/tmp/repo-b @ feature/b",
+        "/tmp/repo-a @ feature/a",
+    ]
+    assert grown.project == "project-b"
+    assert "SUCCESSION NOTICE" in board.read_text(encoding="utf-8")
+    assert MODULE.validate_sessions(sessions) == []
+
+
+def test_succeed_refuses_live_seat_and_duplicate_live_owners_still_refuse(
+    tmp_path: Path, capsys
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="shared-project",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/a/**",
+        )
+    ) == 0
+    [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
+
+    assert MODULE.command_succeed(succeed_args(board, from_id="A")) == 10
+    err = capsys.readouterr().err
+    assert "live" in err.lower()
+
+    newcomer = claim_args(
+        board,
+        session_id="B",
+        project="shared-project",
+        workspace="/tmp/repo-b @ feature/b",
+        area="repo/b/**",
+    )
+    assert MODULE.command_claim(newcomer) == 10
+
+    sessions = MODULE.rows(board.read_text(encoding="utf-8"))
+    assert [s.status for s in sessions] == ["active"]
+    assert sessions[0].compact_id == holder.compact_id
+    assert "SUCCESSION NOTICE" not in board.read_text(encoding="utf-8")
+
+
+def test_succeed_refuses_undated_heartbeat(tmp_path: Path, capsys) -> None:
+    board = tmp_path / "active-sessions.md"
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+        )
+    ) == 0
+    [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
+    age_session_heartbeat(board, holder.compact_id, "not-a-date")
+
+    assert MODULE.command_succeed(succeed_args(board, from_id="A")) == 10
+    err = capsys.readouterr().err
+    assert "undated" in err.lower()
+    sessions = MODULE.rows(board.read_text(encoding="utf-8"))
+    assert [s.status for s in sessions] == ["active"]
+    assert "SUCCESSION NOTICE" not in board.read_text(encoding="utf-8")
+
+
+def test_succeed_refuses_when_scope_collides_with_third_live_seat(
+    tmp_path: Path, capsys
+) -> None:
+    board = tmp_path / "active-sessions.md"
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+        )
+    ) == 0
+    [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
+    age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="C",
+            project="project-c",
+            workspace="/tmp/repo-c @ feature/c",
+            area="repo/shared/file.md",
+        )
+    ) == 0
+    capsys.readouterr()
+
+    assert MODULE.command_succeed(succeed_args(board, from_id="A")) == 10
+    err = capsys.readouterr().err
+    assert "overlap" in err.lower()
+    sessions = MODULE.rows(board.read_text(encoding="utf-8"))
+    assert sorted(s.status for s in sessions) == ["active", "active"]
+    assert "SUCCESSION NOTICE" not in board.read_text(encoding="utf-8")
+    assert MODULE.validate_sessions(sessions) == []
+
+
+def test_succeed_refuses_unowned_successor_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-dead")
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+        )
+    ) == 0
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-other")
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="B",
+            project="project-b",
+            workspace="/tmp/repo-b @ feature/b",
+            area="repo/other/**",
+        )
+    ) == 0
+    [holder] = [
+        s for s in MODULE.rows(board.read_text(encoding="utf-8")) if s.legacy_id == "A"
+    ]
+    age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
+
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-intruder")
+    assert MODULE.command_succeed(
+        succeed_args(board, from_id="A", session_id="B")
+    ) == 10
+    sessions = MODULE.rows(board.read_text(encoding="utf-8"))
+    assert sorted(s.status for s in sessions) == ["active", "active"]
+    assert "SUCCESSION NOTICE" not in board.read_text(encoding="utf-8")
+
+
+def test_concurrent_succeed_has_single_winner(tmp_path: Path) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    assert MODULE.command_claim(
+        claim_args(
+            board,
+            session_id="A",
+            project="project-a",
+            workspace="/tmp/repo-a @ feature/a",
+            area="repo/shared/**",
+        )
+    ) == 0
+    [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
+    age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
+
+    barrier = threading.Barrier(2)
+    results: list[int] = []
+
+    def attempt(tag: str) -> None:
+        barrier.wait(timeout=10)
+        results.append(
+            MODULE.command_succeed(
+                succeed_args(
+                    board,
+                    from_id=holder.compact_id,
+                    agent=f"heir-{tag}",
+                    goal=f"goal-{tag}",
+                    client_ref=f"codex:race-{tag}",
+                )
+            )
+        )
+
+    threads = [
+        threading.Thread(target=attempt, args=(tag,), name=f"succeed-{tag}")
+        for tag in ("one", "two")
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(30)
+    assert not any(thread.is_alive() for thread in threads)
+    assert sorted(results) == [0, 10]
+
+    sessions = MODULE.rows(board.read_text(encoding="utf-8"))
+    dead = next(s for s in sessions if s.compact_id == holder.compact_id)
+    assert dead.status == "released"
+    holders = [
+        s
+        for s in sessions
+        if MODULE.active(s) and "repo/shared/**" in s.claims
+    ]
+    assert len(holders) == 1
+    assert board.read_text(encoding="utf-8").count("SUCCESSION NOTICE") == 1
+    assert MODULE.validate_sessions(sessions) == []

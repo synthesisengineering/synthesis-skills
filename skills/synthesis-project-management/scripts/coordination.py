@@ -763,6 +763,18 @@ def downgraded(session: Session) -> bool:
     return stale(session, STALE_CLAIM_DEFAULT_DAYS * 24 * 60)
 
 
+def dead(session: Session) -> bool:
+    """Whether this row is a dead seat eligible for succession.
+
+    Death is heartbeat age past the same threshold that makes a claim
+    advisory — one rule for quiet seats, shared deliberately, so `stale`
+    output names exactly the succession candidates. An undated heartbeat
+    proves nothing either way, so it is never dead: unknown age fails
+    closed and keeps blocking.
+    """
+    return active(session) and downgraded(session)
+
+
 def heartbeat_age_days(session: Session) -> float | None:
     """Parseable heartbeat age in days, or None when undated."""
     beat = parse_time(session.heartbeat)
@@ -1755,6 +1767,37 @@ def downgrade_notice_block(
     return "\n".join(lines) + "\n\n"
 
 
+def succession_notice_block(
+    dead_session: Session,
+    successor_compact_id: str,
+) -> str:
+    """The loud record for a succession transfer.
+
+    Addressed to the dead seat so a revived owner meets it in the inbox;
+    durable on the bus for every peer. The transfer needs no
+    administrative release — death past the shared threshold is the
+    authority — so the record carries the full scope that moved.
+    """
+    age = heartbeat_age_days(dead_session)
+    age_text = f"{age:.1f}d" if age is not None else "unknown age"
+    lines = [
+        f"### → {dead_session.compact_id}, from {successor_compact_id} — {timestamp()}",
+        "",
+        "SUCCESSION NOTICE: "
+        f"{successor_compact_id} succeeded your claim "
+        f"(heartbeat quiet {age_text}; threshold "
+        f"{STALE_CLAIM_DEFAULT_DAYS:g}d).",
+        f"  areas: {', '.join(dead_session.claims) or '(none)'}",
+        f"  workspaces: {', '.join(dead_session.workspaces) or '(none)'}",
+    ]
+    lines.append(
+        "Your row is released; the successor now holds the scope above. "
+        "To re-assert, re-claim; if your areas now collide with a live "
+        "claim, the claim names it — narrow or release first."
+    )
+    return "\n".join(lines) + "\n\n"
+
+
 def command_claim(args) -> int:
     requested = [sanitize(area) for area in args.area]
     workspaces = [sanitize(workspace) for workspace in args.workspace]
@@ -2061,6 +2104,227 @@ def command_claim(args) -> int:
             )
         else:
             print(f"Registered client session ref {requested_ref}.")
+    return 0
+
+
+def command_succeed(args) -> int:
+    """Transfer a dead seat's scope to a successor atomically.
+
+    The defect-1 follow-through: a dead seat's areas no longer need
+    administrative release to move. The predecessor row is released and
+    its scope lands on the successor row inside one locked update, so no
+    window exists where the areas are unheld or double-held. Death is
+    heartbeat age past the shared stale threshold — a live seat refuses,
+    an undated heartbeat refuses, and a scope that would collide with a
+    third live seat refuses with nothing changed.
+
+    With --session the dead seat's areas and workspaces merge into that
+    owned row (which keeps its own project and context role); without it
+    a new row steps into the dead seat's full scope — project, context
+    role, areas, and workspaces.
+    """
+    try:
+        requested_ref = (
+            normalize_client_ref(args.client_ref)
+            if getattr(args, "client_ref", None)
+            else detect_client_ref()
+        )
+    except ValueError as exc:
+        print(f"coordination succeed refused: {exc}", file=sys.stderr)
+        return 10
+    predecessor_selector = args.predecessor
+    successor_selector = getattr(args, "id", None)
+
+    succeeded: dict[str, object] = {}
+
+    def operation(content: str) -> str:
+        current = ensure_identities(rows(content))
+        predecessor = find_session(current, predecessor_selector)
+        if predecessor is None:
+            raise RuntimeError(f"session not found: {predecessor_selector}")
+        if not active(predecessor):
+            raise RuntimeError(
+                f"session {predecessor.label} is not active "
+                f"(status {predecessor.status}); succession takes only "
+                "active dead seats"
+            )
+        if not dead(predecessor):
+            if parse_time(predecessor.heartbeat) is None:
+                raise RuntimeError(
+                    f"session {_tag(predecessor)} has an undated heartbeat, "
+                    "which proves nothing either way; succession refuses "
+                    "rather than guessing death — release it "
+                    "administratively with operator direction"
+                )
+            raise RuntimeError(
+                f"session {_tag(predecessor)} is live (heartbeat "
+                f"{predecessor.heartbeat}); succession takes only dead "
+                f"seats quiet past {STALE_CLAIM_DEFAULT_DAYS:g}d"
+            )
+        existing_self = (
+            find_session(current, successor_selector) if successor_selector else None
+        )
+        if successor_selector and existing_self is None:
+            raise RuntimeError(
+                "successor session selector was not found; succeed merges "
+                "into a live owned row, it never allocates one under "
+                "--session — omit --session to step into the dead seat's "
+                "scope as a new row"
+            )
+        if existing_self is not None:
+            if existing_self.session_uuid == predecessor.session_uuid:
+                raise RuntimeError(
+                    "successor and predecessor are the same session; a seat "
+                    "cannot succeed itself"
+                )
+            if not active(existing_self):
+                raise RuntimeError(
+                    "successor session identity is terminal and cannot grow"
+                )
+            if not _caller_owns_session(args.board, existing_self):
+                raise RuntimeError(
+                    seat_ownership_error(
+                        "succeed merges only into a row this session owns; "
+                        "omit --session to step into the dead seat's scope "
+                        "as a new row"
+                    )
+                )
+        if existing_self is None and requested_ref:
+            holders = [
+                session
+                for session in current
+                if active(session) and session.client_ref == requested_ref
+            ]
+            if holders:
+                raise RuntimeError(
+                    f"this client session already holds an active row "
+                    f"({holders[0].label}); pass --session to merge the "
+                    "dead seat's scope into it"
+                )
+        if existing_self is None:
+            missing = [
+                name
+                for name in ("agent", "mode", "goal")
+                if not getattr(args, name, "")
+            ]
+            if missing:
+                raise RuntimeError(
+                    "succeed without --session allocates a new row, which "
+                    "needs " + ", ".join(f"--{name}" for name in missing)
+                )
+        now = timestamp()
+        if existing_self is not None:
+            effective_areas = list(existing_self.claims)
+            effective_areas.extend(
+                area for area in predecessor.claims if area not in effective_areas
+            )
+            effective_workspaces = list(existing_self.workspaces)
+            effective_workspaces.extend(
+                workspace
+                for workspace in predecessor.workspaces
+                if workspace not in effective_workspaces
+            )
+            succeeded["merged"] = True
+            succeeded["retained_areas"] = [
+                area
+                for area in existing_self.claims
+                if area not in predecessor.claims
+            ]
+            succeeded["added_areas"] = [
+                area
+                for area in predecessor.claims
+                if area not in existing_self.claims
+            ]
+            identity = existing_self.identity
+            replacement = replace(
+                existing_self,
+                claims=effective_areas,
+                workspaces=effective_workspaces,
+                heartbeat=now,
+            )
+            prospective = [
+                replacement
+                if session.session_uuid == existing_self.session_uuid
+                else session
+                for session in current
+            ]
+        else:
+            identity = new_identity(
+                (session.identity for session in current),
+                legacy_id="",
+            )
+            replacement = Session(
+                session_uuid=identity.session_uuid,
+                compact_id=identity.compact_id,
+                speakable_id=identity.speakable_id,
+                legacy_id=identity.legacy_id,
+                agent=args.agent,
+                machine=args.machine,
+                client_ref=requested_ref,
+                project=predecessor.project,
+                started=now,
+                heartbeat=now,
+                mode=args.mode,
+                workspaces=list(predecessor.workspaces),
+                goal=args.goal,
+                claims=list(predecessor.claims),
+                context_role=predecessor.context_role,
+                status="active",
+            )
+            prospective = [*current, replacement]
+        # The notice is rendered before the release mutation: it reports the
+        # quiet interval that authorized the transfer, not the fresh stamp.
+        notice = succession_notice_block(predecessor, identity.compact_id)
+        predecessor.status = "released"
+        predecessor.heartbeat = now
+        problems = validate_sessions(prospective)
+        if problems:
+            raise RuntimeError("; ".join(problems))
+        succeeded["identity"] = identity
+        succeeded["predecessor"] = predecessor.identity
+        succeeded["areas"] = list(replacement.claims)
+        updated = replace_table(content, prospective)
+        return append_bus_block(updated, notice)
+
+    try:
+        locked_update(args.board, operation)
+    except RuntimeError as exc:
+        print(f"coordination succeed refused: {exc}", file=sys.stderr)
+        return 10
+    identity = succeeded["identity"]
+    predecessor_identity = succeeded["predecessor"]
+    print(
+        f"Succeeded {predecessor_identity.compact_id}: "
+        f"{identity.compact_id} now holds "
+        f"{', '.join(succeeded['areas'])}."
+    )
+    if succeeded.get("merged"):
+        retained = succeeded["retained_areas"]
+        added = succeeded["added_areas"]
+        if added:
+            print(
+                f"NOTICE: merged {len(added)} area(s) from "
+                f"{predecessor_identity.compact_id}: {', '.join(added)}."
+            )
+        if retained:
+            print(
+                f"NOTICE: retained {len(retained)} already-held area(s): "
+                f"{', '.join(retained)}."
+            )
+    print("Succession record appended to the board bus.")
+    if remove_seat(args.board, predecessor_identity.session_uuid):
+        print("Seat removed.")
+    seat = write_seat(
+        args.board,
+        session_uuid=identity.session_uuid,
+        compact_id=identity.compact_id,
+        machine=args.machine,
+        identity=self_identity(requested_ref),
+    )
+    if seat is not None:
+        print(f"Seat recorded at {seat} (delivery handles for peer resolution).")
+    if requested_ref:
+        print(f"Registered client session ref {requested_ref}.")
     return 0
 
 
@@ -3217,6 +3481,58 @@ def parser() -> argparse.ArgumentParser:
             "when omitted."
         ),
     )
+    succeed = commands.add_parser(
+        "succeed",
+        help=(
+            "Atomically transfer a dead seat's scope to a successor row and "
+            "release the dead row; live seats refuse."
+        ),
+    )
+    succeed.add_argument(
+        "--from",
+        dest="predecessor",
+        required=True,
+        help=(
+            "Selector for the dead seat to succeed: UUID, compact, "
+            "speakable, or legacy id. The seat must be quiet past the "
+            "stale threshold with a dated heartbeat."
+        ),
+    )
+    succeed.add_argument(
+        "--id",
+        "--session",
+        dest="id",
+        help=(
+            "Own live row to merge the dead seat's areas and workspaces "
+            "into (it keeps its own project and context role). Omit to "
+            "step into the dead seat's full scope as a new row."
+        ),
+    )
+    succeed.add_argument(
+        "--agent",
+        default="",
+        help="Successor agent name (required when allocating a new row).",
+    )
+    succeed.add_argument("--machine", default=socket.gethostname())
+    succeed.add_argument(
+        "--mode",
+        default="",
+        help="Successor mode (required when allocating a new row).",
+    )
+    succeed.add_argument(
+        "--goal",
+        default="",
+        help="Successor goal (required when allocating a new row).",
+    )
+    succeed.add_argument(
+        "--client-ref",
+        help=(
+            "Client-native delivery handle for the successor row, "
+            "scheme-prefixed (ccd:local_..., codex:...). Auto-detected "
+            "from SYNTHESIS_CLIENT_SESSION_REF or "
+            "CLAUDE_CODE_HOST_SESSION_ID when omitted."
+        ),
+    )
     narrow = commands.add_parser(
         "narrow",
         help=(
@@ -3321,6 +3637,7 @@ COMMANDS = {
     "status": command_status,
     "check-staged": command_check_staged,
     "claim": command_claim,
+    "succeed": command_succeed,
     "narrow": command_narrow,
     "heartbeat": command_heartbeat,
     "release": command_release,

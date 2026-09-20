@@ -253,7 +253,7 @@ A row quiet past the stale threshold is ADVISORY automatically: its areas no
 longer block, and each grant through one is recorded on the bus as a DOWNGRADE
 NOTICE addressed to the quiet seat. Advisory is not release — the row stays
 active, duplicate-owner exclusivity still holds, undated heartbeats keep
-blocking, and no agent releases another seat. A revived seat heartbeats to
+blocking, and no agent releases another live seat. A revived seat heartbeats to
 re-assert; if its areas now collide with a live claim, the heartbeat is refused
 with the collision named, and the seat narrows or releases first. Paused
 sessions narrow or release explicitly rather than leaning on the threshold.
@@ -265,6 +265,35 @@ paths: `git commit -o <paths>` scopes the pre-commit hook to just those paths
 `git commit` fails closed on them. Push races on a shared branch serialize on
 pull, git-natively. Mixed absolute/relative spellings of one path still
 conflict everywhere area overlap is computed.
+
+### Claim succession
+
+A dead seat — active, with a dated heartbeat quiet past the stale threshold —
+transfers without administrative release. The `succeed` verb releases the dead
+row and lands its scope on the successor row inside one locked update, so the
+areas are never unheld or double-held, and appends a SUCCESSION NOTICE to the
+bus addressed to the dead seat. Death is the authority, and the notice is the
+loud record; `stale` output names exactly the succession candidates.
+
+```bash
+# Step into the dead seat's full scope as a new row (project, context
+# role, areas, workspaces):
+python3 <root>/scripts/coordination.py succeed --from <dead-id> \
+  --agent <agent> --mode <mode> --goal <goal>
+
+# Or merge the dead seat's areas and workspaces into an owned row
+# (which keeps its own project and context role):
+python3 <root>/scripts/coordination.py succeed --from <dead-id> \
+  --session <own-id>
+```
+
+Succession refuses rather than guesses: a live seat refuses (duplicate-owner
+exclusivity still holds between live seats), an undated heartbeat refuses, a
+`--session` the caller does not own refuses, and a scope that would collide
+with a third live seat refuses with nothing changed. Concurrent successions
+of one dead seat serialize on the board lock — exactly one wins. A revived
+owner re-claims; if its areas now collide with a live claim, the claim names
+the collision.
 
 The contribution artifact records:
 
@@ -342,15 +371,16 @@ A pause is a coordination event:
 
 Heartbeats make abandoned sessions visible. A stale timestamp downgrades the
 row to ADVISORY automatically — its areas stop blocking, with each grant
-through recorded on the bus — but full release still needs explicit action:
-another session takes over ownership only after the user or the owning session
-explicitly releases or reassigns the claim.
+through recorded on the bus. A dead seat's scope transfers through claim
+succession (above), which releases the dead row as part of the transfer; only
+seats succession cannot judge — live, or undated — still need explicit action.
 
 ### Administrative release
 
 When a session is genuinely gone — a crashed client, a closed laptop, a chat
-that will never resume — its `active` row is advisory (non-blocking), but only
-removal frees owner exclusivity and keeps the board truthful. The release
+that will never resume — but its seat is not dead by the heartbeat rule (a
+recent stamp, or an undated one succession refuses to guess about), only
+removal frees owner exclusivity and keeps the board truthful. That release
 decision belongs to the user, not to elapsed time and not to another agent's
 judgment. The user (or a session acting on the user's
 explicit direction, recorded in that session's log) runs:
