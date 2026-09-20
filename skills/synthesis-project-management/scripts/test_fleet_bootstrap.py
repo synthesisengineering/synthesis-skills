@@ -403,3 +403,311 @@ def test_primary_with_missing_registry_flag_founds_new_fleet(tmp_path):
     enroll = [step for step in report["steps"]
               if step["step"] == "enroll-machine"][0]
     assert enroll["status"] == "done"
+
+
+def plain_git_runner(args, cwd):
+    return subprocess.run(
+        ["git", "-c", "core.hooksPath=/dev/null", *args],
+        cwd=str(cwd) if cwd is not None else None,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+
+def seed_kb_origin(path: Path) -> str:
+    subprocess.run(
+        ["git", "init", "--bare", "--quiet", str(path)],
+        check=True,
+        capture_output=True,
+    )
+    work = path.parent / "seed-kb-work"
+    subprocess.run(
+        ["git", "init", "-b", "main", "--quiet", str(work)],
+        check=True,
+        capture_output=True,
+    )
+    git("config", "user.name", "Test", cwd=work)
+    git("config", "user.email", "test@example.com", cwd=work)
+    (work / "fleet").mkdir(parents=True)
+    primary_registry(work / "fleet" / "machines.json")
+    git("add", "fleet/machines.json", cwd=work)
+    git("commit", "--quiet", "-m", "seed fleet", cwd=work)
+    git("remote", "add", "origin", str(path), cwd=work)
+    git("push", "--quiet", "origin", "main", cwd=work)
+    subprocess.run(
+        ["git", "--git-dir", str(path), "symbolic-ref", "HEAD",
+         "refs/heads/main"],
+        check=True,
+        capture_output=True,
+    )
+    return str(path)
+
+
+def clone_kb(origin: str, target: Path) -> Path:
+    completed = plain_git_runner(
+        ["clone", "--quiet", origin, str(target)], None
+    )
+    assert completed.returncode == 0, completed.stderr
+    return target
+
+
+def test_preflight_fails_fast_before_any_cloning(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    synced = primary_registry(tmp_path / "machines.json")
+    assert BOOT.preflight(home, "secondary", synced) == []
+
+    monkeypatch.setattr(BOOT.shutil, "which", lambda _name: None)
+    problems = BOOT.preflight(home, "secondary", synced)
+    assert any("xcode-select --install" in problem for problem in problems)
+    monkeypatch.undo()
+
+    problems = BOOT.preflight(tmp_path / "no-home", "primary", None)
+    assert any("does not exist" in problem for problem in problems)
+
+    problems = BOOT.preflight(home, "secondary", None)
+    assert any("--fleet-registry" in problem for problem in problems)
+
+    problems = BOOT.preflight(
+        home, "secondary", tmp_path / "absent.json"
+    )
+    assert any("not found" in problem for problem in problems)
+
+    broken = tmp_path / "broken.json"
+    broken.write_text('{"schema_version": 1}', encoding="utf-8")
+    problems = BOOT.preflight(home, "secondary", broken)
+    assert any("invalid" in problem for problem in problems)
+
+
+def test_step_repos_narrates_progress(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    remote_url = seed_origin(tmp_path / "origin.git")
+    target = home / "workspaces" / "kb"
+    lines: list[str] = []
+    result = BOOT.step_repos(
+        home, [{"remote": remote_url, "path": str(target), "branch": ""}],
+        progress=lines.append,
+    )
+    assert result.status == "done"
+    assert lines == [
+        f"[1/1] cloning {remote_url} -> {target}",
+        f"[1/1] cloned {target}",
+    ]
+    again = BOOT.step_repos(
+        home, [{"remote": remote_url, "path": str(target), "branch": ""}],
+        progress=lines.append,
+    )
+    assert again.status == "noop"
+    assert lines[-1] == f"[1/1] verified {target} (already cloned)"
+
+
+def test_main_interrupted_reports_resume_and_130(tmp_path, capsys):
+    import unittest.mock as mock
+
+    home = tmp_path / "home"
+    home.mkdir()
+    with mock.patch.object(
+        BOOT, "bootstrap", side_effect=KeyboardInterrupt
+    ):
+        code = BOOT.main(
+            ["--home", str(home), "--source-root", str(tmp_path),
+             "--label", "mac-b", "--role", "primary"]
+        )
+    assert code == BOOT.EXIT_INTERRUPTED == 130
+    err = capsys.readouterr().err
+    assert "INTERRUPTED bootstrap" in err
+    assert "rerun the same command to resume" in err
+
+
+def test_interrupted_bootstrap_keeps_finished_receipts(tmp_path):
+    import pytest as _pytest
+
+    home = tmp_path / "home"
+    home.mkdir()
+    source = fixture_source(tmp_path / "source")
+
+    def raising_installer(script: Path, home_dir: Path):
+        raise KeyboardInterrupt
+
+    with _pytest.raises(KeyboardInterrupt):
+        BOOT.bootstrap(
+            home=home, source_root=source, label="mac-a",
+            role="primary", install_runner=raising_installer,
+        )
+    receipts = home / ".synthesis" / "fleet" / "receipts"
+    assert (receipts / "bootstrap-mint-identity.json").is_file()
+    assert (receipts / "bootstrap-clone-repos.json").is_file()
+
+
+def enroll_local(
+    home: Path, label: str, role: str, synced: Path | None = None
+) -> str:
+    directory = home / ".synthesis" / "fleet"
+    machine_id = FI.mint_machine_id(directory)
+    if synced is not None:
+        FI.write_registry(
+            json.loads(Path(synced).read_text(encoding="utf-8")), directory
+        )
+    FI.enroll_self(label=label, role=role, directory=directory)
+    return machine_id
+
+
+def test_publish_upserts_own_entry_and_pushes(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    origin = seed_kb_origin(tmp_path / "kb.git")
+    kb = clone_kb(origin, tmp_path / "kb")
+    machine_id = enroll_local(
+        home, "mac-b", "secondary", kb / "fleet" / "machines.json"
+    )
+
+    lines: list[str] = []
+    result = BOOT.step_publish(
+        home, machine_id, label="mac-b", role="secondary", kb_repo=kb,
+        git_runner=plain_git_runner, progress=lines.append,
+    )
+    assert result.status == "done", result.detail
+    assert lines, "publish narrates fetch, commit, and push"
+
+    shared = json.loads((kb / "fleet" / "machines.json").read_text())
+    assert shared["machines"][machine_id]["label"] == "mac-b"
+    assert len(shared["machines"]) == 2, "shared primary is preserved"
+
+    pushed = subprocess.run(
+        ["git", "--git-dir", origin, "show", "HEAD:fleet/machines.json"],
+        capture_output=True, text=True, check=True,
+    )
+    assert machine_id in pushed.stdout, "enrollment reached the remote"
+
+    again = BOOT.step_publish(
+        home, machine_id, label="mac-b", role="secondary", kb_repo=kb,
+        git_runner=plain_git_runner,
+    )
+    assert again.status == "noop"
+    assert "already published" in again.detail
+
+
+def test_publish_without_identity_uses_machine_identity(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    origin = seed_kb_origin(tmp_path / "kb.git")
+    kb = clone_kb(origin, tmp_path / "kb")
+    machine_id = enroll_local(
+        home, "mac-b", "secondary", kb / "fleet" / "machines.json"
+    )
+
+    result = BOOT.step_publish(
+        home, machine_id, label="mac-b", role="secondary", kb_repo=kb,
+        git_runner=plain_git_runner,
+    )
+    assert result.status == "done", result.detail
+    author = subprocess.run(
+        ["git", "-c", "core.hooksPath=/dev/null", "log", "-1",
+         "--format=%an %ae", "HEAD"],
+        cwd=str(kb), capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    assert author == f"mac-b {machine_id[:8]}@fleet.local"
+
+
+def test_publish_refuses_dirty_shared_registry(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    origin = seed_kb_origin(tmp_path / "kb.git")
+    kb = clone_kb(origin, tmp_path / "kb")
+    machine_id = enroll_local(
+        home, "mac-b", "secondary", kb / "fleet" / "machines.json"
+    )
+
+    shared = kb / "fleet" / "machines.json"
+    shared.write_text(shared.read_text() + "\n", encoding="utf-8")
+    result = BOOT.step_publish(
+        home, machine_id, label="mac-b", role="secondary", kb_repo=kb,
+        git_runner=plain_git_runner,
+    )
+    assert result.status == "fail"
+    assert "uncommitted changes" in result.detail
+
+
+def test_publish_push_failure_names_remedy(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    origin = seed_kb_origin(tmp_path / "kb.git")
+    kb = clone_kb(origin, tmp_path / "kb")
+    git("remote", "set-url", "--push", "origin",
+        str(tmp_path / "gone.git"), cwd=kb)
+    machine_id = enroll_local(
+        home, "mac-b", "secondary", kb / "fleet" / "machines.json"
+    )
+
+    result = BOOT.step_publish(
+        home, machine_id, label="mac-b", role="secondary", kb_repo=kb,
+        git_runner=plain_git_runner,
+    )
+    assert result.status == "fail"
+    assert "push failed" in result.detail
+    assert "rerun the same command" in result.detail
+
+
+def test_second_primary_refused_with_clear_redirect(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    source = fixture_source(tmp_path / "source")
+    synced = primary_registry(tmp_path / "machines.json")
+    report = BOOT.bootstrap(
+        home=home, source_root=source, label="mac-b", role="primary",
+        fleet_registry=synced, install_runner=install_stub([]),
+    )
+    assert not report["ok"]
+    enroll = [step for step in report["steps"]
+              if step["step"] == "enroll-machine"][0]
+    assert enroll["status"] == "fail"
+    assert "already has primary mac-a" in enroll["detail"]
+    assert "--role secondary" in enroll["detail"]
+
+
+def test_bootstrap_with_kb_repo_publishes_then_reruns_noop(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    source = fixture_source(tmp_path / "source")
+    origin = seed_kb_origin(tmp_path / "kb.git")
+    kb = clone_kb(origin, tmp_path / "kb")
+    remote_url = seed_origin(tmp_path / "origin.git")
+    manifest = tmp_path / "repos.json"
+    manifest.write_text(
+        json.dumps(
+            {"schema_version": 1,
+             "repos": [{"remote": remote_url,
+                        "path": "~/workspaces/kb",
+                        "branch": "main"}]}
+        ),
+        encoding="utf-8",
+    )
+    repos = BOOT.parse_repos_manifest(manifest, home)
+    synced = kb / "fleet" / "machines.json"
+
+    report = BOOT.bootstrap(
+        home=home, source_root=source, label="mac-b", role="secondary",
+        repos=repos, fleet_registry=synced, kb_repo=kb,
+        git_runner=plain_git_runner, install_runner=install_stub([]),
+    )
+    assert report["ok"], report["steps"]
+    assert [step["step"] for step in report["steps"]] == [
+        "mint-identity", "clone-repos", "install-runtime", "enroll-machine",
+        "verify-doctor", "publish-registry",
+    ]
+    assert [step["status"] for step in report["steps"]] == ["done"] * 6
+    assert (
+        home / ".synthesis" / "fleet" / "receipts"
+        / "bootstrap-publish-registry.json"
+    ).is_file()
+
+    again = BOOT.bootstrap(
+        home=home, source_root=source, label="mac-b", role="secondary",
+        repos=repos, fleet_registry=synced, kb_repo=kb,
+        git_runner=plain_git_runner, install_runner=install_stub([]),
+    )
+    assert again["ok"]
+    assert [step["status"] for step in again["steps"]] == ["noop"] * 6

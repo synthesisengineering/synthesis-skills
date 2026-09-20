@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.5.0"
+  version: "2.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -54,6 +54,8 @@ synthesis status [--json]
 synthesis doctor [--json]
 synthesis workspace ensure --name NAME [--remote URL]
 synthesis outcome verify --task TASK --workspace PATH --source-class CLASS
+synthesis fleet join [--kb URL-or-PATH] [--label NAME]
+                [--role primary|secondary] [--workspace NAME]
 synthesis uninstall [--purge]
 ```
 
@@ -301,6 +303,20 @@ schema-1 manifest is refused before any mutation with a message naming the
 migration section of that guide; the public source baseline for the rendered
 instruction pair comes from the digest-verified installed release, so
 enrollment works from the installed CLI, not only from a source checkout.
+
+## Fleet enrollment
+
+`synthesis fleet join` enrolls a new Mac with no required flags: it finds
+the knowledge repo through GitHub discovery (running sign-in when needed)
+or asks for it once, derives home, label, workspace, and manifest, founds
+a new fleet when the repo holds none and otherwise joins as a secondary,
+narrates every repo as it lands, and publishes the enrollment back to the
+shared registry so the fleet converges. A rerun after any failure or
+interrupt resumes; finished steps report `noop`. The flags `--kb`,
+`--label`, `--role`, and `--workspace` override the interactive answers
+for scripted runs. A contradicting explicit role fails closed: secondary
+without a fleet, primary against one. Non-interactive use without `--kb`
+is refused with the flag named, never left hanging on input.
 
 ## Doctor and truth planes
 

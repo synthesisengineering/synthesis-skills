@@ -40,21 +40,27 @@ materialize to each Mac.
 
 ## Enroll a new Mac
 
-Clean-install path only — never copy one Mac's state onto another:
+Clean-install path only — never copy one Mac's state onto another. One
+command with no flags; it finds the knowledge repo over GitHub sign-in
+(running it when needed) or asks for it, derives home, label, skill
+source, workspace, and manifest, asks which workspace only when several
+match, founds a new fleet when the repo holds none and otherwise joins
+as a secondary, narrates every repo as it lands, and publishes the
+enrollment back on success:
 
 ```bash
-python3 skills/synthesis-project-management/scripts/fleet_bootstrap.py \
-  --home ~ --source-root ~/workspaces/example/synthesis-skills \
-  --label my-new-mac --role secondary \
-  --repos-manifest fleet-repos.json \
-  --fleet-registry ~/workspaces/personal/fleet/machines.json
+synthesis fleet join
 ```
 
-The bootstrap mints identity, clones subscribed repos, installs the hooks
-runtime plus the skill set, enrolls the machine, and verifies the doctor.
-Every step writes a receipt under `~/.synthesis/fleet/receipts/`; a rerun
-re-verifies and reports `noop` instead of redoing work. A primary founds
-the registry and omits `--fleet-registry`.
+The join mints identity, clones subscribed repos, installs the hooks
+runtime plus the skill set, enrolls the machine, verifies the doctor, and
+publishes the enrollment to the shared registry. Every step writes a
+receipt under `~/.synthesis/fleet/receipts/`; a rerun after any failure
+or interrupt resumes safely and reports `noop` for finished steps. The
+flags `--kb`, `--label`, `--role`, and `--workspace` override the
+interactive answers for scripted runs. The underlying
+`fleet_bootstrap.py` script is an agent-and-test entry point; humans use
+`synthesis fleet join`.
 
 ## Sync (fetch shared state)
 

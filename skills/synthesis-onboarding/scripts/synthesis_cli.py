@@ -46,7 +46,7 @@ from system_contract import (
 )
 
 
-ENGINE_VERSION = "2.5.0"
+ENGINE_VERSION = "2.6.0"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
     "setup",
@@ -60,6 +60,7 @@ CLI_COMMANDS = (
     "doctor",
     "workspace ensure",
     "outcome verify",
+    "fleet join",
     "uninstall",
 )
 
@@ -169,6 +170,15 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--workspace", required=True, type=Path)
     verify.add_argument("--source-class", required=True)
     _common_output(verify)
+
+    fleet = commands.add_parser("fleet", help="enroll this Mac in a personal fleet")
+    fleet_commands = fleet.add_subparsers(dest="fleet_command", required=True)
+    join = fleet_commands.add_parser("join", help="join this Mac to the fleet in one step")
+    join.add_argument("--kb", help="personal knowledge repo: local path or remote URL (discovered or asked when omitted)")
+    join.add_argument("--label", help="machine label (default: this Mac's hostname)")
+    join.add_argument("--role", choices=("primary", "secondary"), help="found as primary or join as secondary (derived from the knowledge repo when omitted)")
+    join.add_argument("--workspace", help="workspace name (derived or asked when omitted)")
+    _common_output(join)
 
     uninstall = commands.add_parser("uninstall", help="archive and remove generated resources")
     uninstall.add_argument(
@@ -1689,6 +1699,13 @@ def main(
                 recorded = state.record_outcome(receipt, already_locked=True)
             _render(recorded, args.json)
             return 0
+
+        if args.command == "fleet":
+            if args.fleet_command == "join":
+                import fleet_join
+
+                return fleet_join.join(args, release_root=REPO_ROOT)
+            raise AssertionError("unhandled fleet command")
 
         if args.command == "status":
             promoted, promotion_note = _promote_live_receipts(state)
