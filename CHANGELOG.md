@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.108.0] - 2026-09-19
+
+Dead-seat claim succession, the shared calendar layer, and review-role
+protocol. A `succeed` verb transfers a dead seat's areas atomically
+while duplicate live owners still refuse; the board parser preserves
+path globs. The §3 shared time-block layer plus overlap service give
+every seat mechanical cross-workspace collision detection with no
+calendar writes. The review skill adopts the adjudicator role and the
+repairer-may-not-edit-reproducer rule.
+
 ## [4.107.0] - 2026-09-19
 
 Explicit read-only diagnostics. A `--local` flag threads through all

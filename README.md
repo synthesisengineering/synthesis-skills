@@ -11,6 +11,11 @@ the [runtime integration contract](docs/runtime-integration.md), and the
 
 ## What's new
 
+**Succession, shared calendar, review roles (September 2026).** Release **4.108.0**
+adds atomic dead-seat claim succession, the §3 shared time-block layer with
+a tested overlap service, and the review skill's adjudicator role with the
+reproducer separation rule.
+
 **Explicit read-only diagnostics (September 2026).** Release **4.107.0**
 adds `--local` across all 17 conformance routes, a passive lease cache
 for fetch-free board reads, and acceptance controls pinning the
