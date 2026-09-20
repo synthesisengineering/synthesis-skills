@@ -1,18 +1,18 @@
 schema: 2
-suite: prep-onboarding-4-116-0
+suite: seat-heartbeat-4-117-0
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.116.0, shipping the meeting-prep configuration
-  scaffolder (principal init plus reader templates, refusing to
-  overwrite) with its skill documentation
+  identify 4.117.0, shipping the single clock read for the board row
+  and the seat record across claim, succeed, and heartbeat, with the
+  fleet setup guide leading with the one-command onboard
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real scaffolder and
-  manifest checks in disposable directories. They do not establish
+unverified_remainder: Fixtures execute the real claim and join
+  registration checks in disposable directories. They do not establish
   installed-client reload, live cross-client delivery, new-release
   publication, or deployment approval. Those remain separate release
   checks.
@@ -32,18 +32,18 @@ changed_surfaces:
 - path: README.md
   cases:
   - release-version-metadata
+- path: docs/fleet-setup.md
+  cases:
+  - fleet-docs-join
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-meeting-prep/SKILL.md
+- path: skills/synthesis-project-management/scripts/coordination.py
   cases:
-  - prep-scaffold
-- path: skills/synthesis-meeting-prep/scripts/prep_init.py
+  - seat-heartbeat-single-read
+- path: skills/synthesis-project-management/scripts/test_fleet_board_v5.py
   cases:
-  - prep-scaffold
-- path: skills/synthesis-meeting-prep/scripts/test_prep_init.py
-  cases:
-  - prep-scaffold
+  - seat-heartbeat-single-read
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -51,13 +51,20 @@ cases:
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
   motivating_defect: All client manifests and the top changelog identify the same release while retained
     release contracts remain valid.
-- id: prep-scaffold
+- id: seat-heartbeat-single-read
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-meeting-prep/scripts/test_prep_init.py::test_init_creates_principal_and_template
-  motivating_defect: A skill whose first-run configuration is a blank
-    page never gets adopted; the scaffolder must create valid
-    principal and reader files and refuse to clobber them.
+  fixture: ../synthesis-project-management/scripts/test_fleet_board_v5.py::test_claim_seat_reuses_row_heartbeat
+  motivating_defect: A command that reads the wall clock once for the
+    row and again for the seat disagrees with itself across a second
+    boundary; one stamp must serve both writes.
+- id: fleet-docs-join
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_fleet_join.py::test_cli_registers_fleet_join
+  motivating_defect: The setup guide's one-command and flag-free join
+    path must name a registered stable command or help and gates
+    drift from the docs.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
