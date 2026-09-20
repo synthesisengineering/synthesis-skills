@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.119.0] - 2026-09-20
+
+Fleet sync and checkpoint containment. New `synthesis sync` brings an
+enrolled Mac fully current in one step (update, repo reconciliation,
+heartbeat, doctor-gated repair). The desktop checkpoint match now
+disqualifies only the row with an unverifiable seat instead of failing
+every session.
+
 ## [4.118.0] - 2026-09-20
 
 Rulings release. Meeting-prep 1.1.0 adopts register samples (R13),

@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+**Fleet sync (September 2026).** Release **4.119.0** adds
+`synthesis sync` for one-command second-Mac catch-up, and contains
+stale-seat checkpoint failures to their own row.
+
 **Rulings release (September 2026).** Release **4.118.0** ships
 meeting-prep 1.1.0 (register samples, reader profiles, disclosure
 default), year-default archive retention, and a preplan credit.
