@@ -38,6 +38,9 @@ changed_surfaces:
 - path: skills/synthesis-project-management/SKILL.md
   cases:
   - format-migrate
+- path: skills/synthesis-project-management/references/project-formats.md
+  cases:
+  - format-migrate
 - path: skills/synthesis-project-management/scripts/project_format.py
   cases:
   - format-migrate
