@@ -15,15 +15,20 @@ Everything in v1, plus exactly three files:
 ```
 {project-id}/
 ├── .synthesis-project.yaml  # format_version, id, migration record
-├── CURRENT_STATE.json       # resume state, schema v1 (below)
+├── RESUME_STATE.json        # resume state, schema v1 (below)
 └── sessions/INDEX.md        # generated per-period manifest
 ```
 
-`CURRENT_STATE.json` schema v1 keys: `schema` (1), `goal`,
+`RESUME_STATE.json` schema v1 keys: `schema` (1), `goal`,
 `status`, `open_loops[]` ({id, text, owner, since}), `last_session`
 (period), `last_brief` (one paragraph), `updated_at`. Fresh
 migrations write a skeleton labeled `"skeleton": true` with
 `unverified` loops; the next real session verifies and overwrites.
+
+`CURRENT_STATE.json` is a different file with a different owner:
+the operational handoff shape managed by `project_state.py`.
+Migration never touches it; resume reads both (resume state first,
+operational state second).
 
 ## Engine
 

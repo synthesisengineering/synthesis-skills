@@ -58,7 +58,7 @@ def test_migrate_check_writes_nothing(v1_project: Path) -> None:
     assert report["from"] == 1 and report["to"] == 2
     assert not report["verified"]
     assert not (v1_project / ".synthesis-project.yaml").exists()
-    assert not (v1_project / "CURRENT_STATE.json").exists()
+    assert not (v1_project / "RESUME_STATE.json").exists()
 
 
 def test_migrate_apply_adds_and_verifies(v1_project: Path) -> None:
@@ -66,7 +66,7 @@ def test_migrate_apply_adds_and_verifies(v1_project: Path) -> None:
     assert report["verified"] is True
     assert report["added"] == [
         ".synthesis-project.yaml",
-        "CURRENT_STATE.json",
+        "RESUME_STATE.json",
         "sessions/INDEX.md",
     ]
     assert detect(v1_project) == "v2"
@@ -75,7 +75,7 @@ def test_migrate_apply_adds_and_verifies(v1_project: Path) -> None:
     )
     assert marker["format_version"] == 2
     assert marker["migrated_from"] == 1
-    state = json.loads((v1_project / "CURRENT_STATE.json").read_text(encoding="utf-8"))
+    state = json.loads((v1_project / "RESUME_STATE.json").read_text(encoding="utf-8"))
     assert state["goal"] == "Prove v2."
     assert state["status"] == "active"
     assert state["skeleton"] is True
@@ -84,6 +84,16 @@ def test_migrate_apply_adds_and_verifies(v1_project: Path) -> None:
     assert state["open_loops"][0]["unverified"] is True
     index = (v1_project / "sessions" / "INDEX.md").read_text(encoding="utf-8")
     assert "2026-09-19 session" in index
+
+
+def test_skeleton_ignores_generated_index(v1_project: Path) -> None:
+    (v1_project / "sessions" / "INDEX.md").write_text("# index\n", encoding="utf-8")
+    report = migrate(v1_project, apply=True)
+    assert report["verified"] is True
+    state = json.loads(
+        (v1_project / "RESUME_STATE.json").read_text(encoding="utf-8")
+    )
+    assert state["last_session"] == "2026-09"
 
 
 def test_migrate_leaves_existing_bytes_untouched(v1_project: Path) -> None:
@@ -101,16 +111,16 @@ def test_migrate_keeps_existing_valid_state(v1_project: Path) -> None:
         "schema": 1, "goal": "hand-written", "status": "active",
         "open_loops": [], "last_session": None,
     }
-    state_path = v1_project / "CURRENT_STATE.json"
+    state_path = v1_project / "RESUME_STATE.json"
     state_path.write_text(json.dumps(kept), encoding="utf-8")
     report = migrate(v1_project, apply=True)
     assert report["verified"] is True
-    assert report["kept"] == ["CURRENT_STATE.json"]
+    assert report["kept"] == ["RESUME_STATE.json"]
     assert json.loads(state_path.read_text(encoding="utf-8")) == kept
 
 
 def test_migrate_fails_closed_on_invalid_kept_state(v1_project: Path) -> None:
-    state_path = v1_project / "CURRENT_STATE.json"
+    state_path = v1_project / "RESUME_STATE.json"
     state_path.write_text('{"schema": 99}', encoding="utf-8")
     report = migrate(v1_project, apply=True)
     assert report["verified"] is False
@@ -138,7 +148,7 @@ def test_migrate_refuses_non_v1(tmp_path: Path) -> None:
 
 def test_validate_state_accepts_skeleton(v1_project: Path) -> None:
     migrate(v1_project, apply=True)
-    state = json.loads((v1_project / "CURRENT_STATE.json").read_text(encoding="utf-8"))
+    state = json.loads((v1_project / "RESUME_STATE.json").read_text(encoding="utf-8"))
     assert validate_state(state) == []
 
 

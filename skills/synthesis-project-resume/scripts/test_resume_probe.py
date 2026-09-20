@@ -55,6 +55,13 @@ def test_probe_reports_newest_session(source_root: Path) -> None:
     assert doc["session_mtime"] is not None
 
 
+def test_probe_ignores_generated_index(source_root: Path) -> None:
+    index = source_root / "projects" / "demo-project" / "sessions" / "INDEX.md"
+    index.write_text("# index\n", encoding="utf-8")
+    doc = probe(source_root, "demo-project")
+    assert doc["newest_session"] == "2026-09"
+
+
 def test_probe_reports_v1_layout(source_root: Path) -> None:
     assert probe(source_root, "demo-project")["format_version"] == "v1"
 

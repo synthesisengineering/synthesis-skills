@@ -61,9 +61,11 @@ False continuity corrupts; false caution costs one question.
 
 1. Pull the knowledge repo (fast-forward only; divergence is
    reported, never force-resolved).
-2. Read the index entry, `CONTEXT.md`, `REFERENCE.md`, the two most
-   recent session files, and any `CURRENT_STATE.json` or handoff
-   queue entries — in that order.
+2. Read the index entry, `RESUME_STATE.json` (v2; verify the
+   skeleton when present), `CURRENT_STATE.json` (operational
+   handoff, when present), `CONTEXT.md`, `REFERENCE.md`, the two
+   most recent session files, and any handoff queue entries — in
+   that order.
 3. Run `scripts/resume_probe.py` for the machine-readable status
    (newest session, cross-machine changes, format version).
 4. Check the coordination board for live foreign claims on the

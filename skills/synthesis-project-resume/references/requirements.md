@@ -42,7 +42,8 @@ No harness-specific session APIs.
 
 A fresh resume reads, in order: the source's `projects/index.yaml`
 entry, `CONTEXT.md`, `REFERENCE.md`, the two most recent session
-files, and any `CURRENT_STATE.json` / handoff queue entries. It pulls
+files, `RESUME_STATE.json` (v2 resume state), `CURRENT_STATE.json`
+(operational handoff), and any handoff queue entries. It pulls
 the knowledge repo first so "full context" includes work done on
 other Macs. It states what it loaded and the newest item's date —
 never claims context it did not read.

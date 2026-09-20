@@ -65,7 +65,9 @@ def newest_session(project_dir: Path) -> tuple[str | None, str | None]:
     sessions_dir = project_dir / "sessions"
     if not sessions_dir.is_dir():
         return None, None
-    files = sorted(sessions_dir.glob("*.md"))
+    files = sorted(
+        p for p in sessions_dir.glob("*.md") if p.name != "INDEX.md"
+    )
     if not files:
         return None, None
     newest = max(files, key=lambda p: p.stat().st_mtime)

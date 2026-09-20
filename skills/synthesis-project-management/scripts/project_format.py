@@ -34,7 +34,9 @@ except ImportError:
 ENGINE_VERSION = "1.0.0"
 CURRENT_FORMAT = 2
 MARKER_NAME = ".synthesis-project.yaml"
-STATE_NAME = "CURRENT_STATE.json"
+# Deliberately NOT CURRENT_STATE.json: that file is owned by project_state.py
+# (operational handoff shape). The resume state is a separate concern.
+STATE_NAME = "RESUME_STATE.json"
 INDEX_NAME = "INDEX.md"
 STATE_SCHEMA = 1
 
@@ -71,7 +73,9 @@ def _newest_period_file(project_dir: Path) -> Path | None:
     sessions = project_dir / "sessions"
     if not sessions.is_dir():
         return None
-    files = sorted(sessions.glob("*.md"))
+    files = sorted(
+        p for p in sessions.glob("*.md") if p.name != INDEX_NAME
+    )
     if not files:
         return None
     return max(files, key=lambda p: p.stat().st_mtime)
