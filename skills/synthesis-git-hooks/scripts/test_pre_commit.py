@@ -1048,6 +1048,8 @@ def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
         "coordination_archive.py",
         "pointer_lock.py",
         "peer_addressing.py",
+        "fleet_identity.py",
+        "fleet_paths.py",
         "source-path",
     }
     assert (
@@ -1135,6 +1137,38 @@ def test_r4_config_sidecar_emits_board_gate(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "COORDINATION_CHECK_STAGED=1" in completed.stdout
     assert f"COORDINATION_BOARD={shlex.quote(str(board))}" in completed.stdout
+
+
+def test_config_sidecar_expands_home_spelled_board_path(tmp_path: Path) -> None:
+    """Fleet ~-normalization: persisted ~/ and $HOME/ board paths expand."""
+    for spelling in (
+        "~/.synthesis/coordination/active-sessions.md",
+        "$HOME/.synthesis/coordination/active-sessions.md",
+    ):
+        config = tmp_path / "policy.yaml"
+        policy(config)
+        config.write_text(
+            config.read_text(encoding="utf-8")
+            + f"coordination_board: '{spelling}'\n",
+            encoding="utf-8",
+        )
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(SIDECAR_PATH),
+                "--config",
+                str(config),
+                "--emit-shell-vars",
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**os.environ, "HOME": str(tmp_path)},
+        )
+        expected = str(tmp_path / ".synthesis" / "coordination" / "active-sessions.md")
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert f"COORDINATION_BOARD={shlex.quote(expected)}" in completed.stdout
 
 
 # ─── required repo-local delegate (fail closed) ──────────────────────────

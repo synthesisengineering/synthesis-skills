@@ -1576,12 +1576,12 @@ def coordination_checks(
             heading,
             required=required,
         )
-    # v3 remains a valid declared schema during the staged v4 migration: the
-    # board upgrades only via an explicit `coordination.py migrate`, after
-    # every machine's client is current.
+    # v3 and v4 remain valid declared schemas during the staged v5 migration:
+    # the board upgrades only via an explicit `coordination.py migrate`,
+    # after every machine's client is current.
     schema_ok = any(
         f"Schema: v{version}" in text
-        for version in (COORDINATION_SCHEMA_VERSION, 3)
+        for version in (COORDINATION_SCHEMA_VERSION, 4, 3)
     )
     table_ok = schema_ok and all(
         column in text

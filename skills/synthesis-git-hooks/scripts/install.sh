@@ -32,6 +32,8 @@ for source in \
     "$COORDINATION_SOURCE/coordination_archive.py" \
     "$COORDINATION_SOURCE/pointer_lock.py" \
     "$COORDINATION_SOURCE/peer_addressing.py" \
+    "$COORDINATION_SOURCE/fleet_identity.py" \
+    "$COORDINATION_SOURCE/fleet_paths.py" \
     "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85"; do
     [ -f "$source" ] || {
         echo "✖ Required synthesis-project-management dependency missing: $source" >&2
@@ -54,6 +56,8 @@ cp -f "$COORDINATION_SOURCE/board_grammar.py" "$TARGET_DIR/board_grammar.py"
 cp -f "$COORDINATION_SOURCE/coordination_archive.py" "$TARGET_DIR/coordination_archive.py"
 cp -f "$COORDINATION_SOURCE/pointer_lock.py" "$TARGET_DIR/pointer_lock.py"
 cp -f "$COORDINATION_SOURCE/peer_addressing.py" "$TARGET_DIR/peer_addressing.py"
+cp -f "$COORDINATION_SOURCE/fleet_identity.py" "$TARGET_DIR/fleet_identity.py"
+cp -f "$COORDINATION_SOURCE/fleet_paths.py" "$TARGET_DIR/fleet_paths.py"
 printf '%s\n' "$SCRIPT_DIR" > "$TARGET_DIR/source-path"
 cp -f "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85" \
     "$TARGET_REFERENCES/session-words-v1.txt.zlib.b85"
@@ -68,7 +72,9 @@ chmod 755 \
     "$TARGET_DIR/board_grammar.py" \
     "$TARGET_DIR/coordination_archive.py" \
     "$TARGET_DIR/pointer_lock.py" \
-    "$TARGET_DIR/peer_addressing.py"
+    "$TARGET_DIR/peer_addressing.py" \
+    "$TARGET_DIR/fleet_identity.py" \
+    "$TARGET_DIR/fleet_paths.py"
 chmod 644 "$TARGET_DIR/source-path" "$TARGET_REFERENCES/session-words-v1.txt.zlib.b85"
 
 if [ -f "$CONFIG_PATH" ]; then

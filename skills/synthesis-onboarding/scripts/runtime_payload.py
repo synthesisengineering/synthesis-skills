@@ -109,7 +109,7 @@ def _specs(home, state_dir, components):
         for name in ("pre-commit", "commit-msg", "_load_config.py"):
             result.append(("git-hooks", "skills/synthesis-git-hooks/scripts/" + name,
                            home / ".synthesis/git-hooks" / name, 0o755))
-        for name in ("coordination.py", "claim_scope.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py"):
+        for name in ("coordination.py", "claim_scope.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py"):
             result.append(("git-hooks", "skills/synthesis-project-management/scripts/" + name,
                            home / ".synthesis/git-hooks" / name, 0o755))
         result.append(("git-hooks", "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85",

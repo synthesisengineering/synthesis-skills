@@ -138,12 +138,16 @@ desk_seat: <project-id>              # the seat that owns the ritual home
 workers:
   <workspace-id>:
     status: active                   # active | on-demand | dormant
-    artifact_dir: <absolute path to that workspace's ritual-workers/>
+    artifact_dir: <that workspace's ritual-workers/, `~`-rooted; expanded at load>
     seat: <project-id>
 ```
 
 `active` workers appear in every coverage line. `on-demand` workers appear only on days
 they run. `dormant` workers are skipped entirely and never counted against coverage.
+
+Persist `artifact_dir` `~`-rooted (never a literal `/Users/<name>/…` path): the
+registry syncs across the fleet, and the loader expands `~`/`$HOME` per Mac.
+The fleet doctor fails on unexpanded absolute home paths in this file.
 
 ## Plan storage separation — fragments and the shell (added 2026-08-17; schema unchanged)
 

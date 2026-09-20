@@ -81,7 +81,12 @@ def campaign(path: Path, *, required: bool = False) -> dict | None:
         raise RefreshError("campaign recipient is invalid")
     if "recipient_index" in value:
         index = value["recipient_index"]
-        if not isinstance(index, str) or not index or any(ord(c) < 32 for c in index) or not Path(index).is_absolute():
+        if (
+            not isinstance(index, str)
+            or not index
+            or any(ord(c) < 32 for c in index)
+            or not Path(os.path.expandvars(os.path.expanduser(index))).is_absolute()
+        ):
             raise RefreshError("campaign recipient_index must be an absolute registry path")
     checks = value["checks"]
     if not isinstance(checks, list) or not checks or any(not isinstance(c, str) or c not in CHECKS for c in checks) or len(set(checks)) != len(checks):
@@ -413,6 +418,7 @@ def feedback(report: dict, selected_campaign: dict | None, board: Path) -> dict:
         # checking: the same campaign may now name a transferred recipient.
         # This changes only the destination, never the inspected source project.
         index = selected_campaign.get("recipient_index") or report["checks"].get("project_status", {}).get("registry") or report["project_registry"]
+        index = os.path.expandvars(os.path.expanduser(index))
         try:
             recipient, route = coordination.report_recipient(coordination.rows(content), selected_campaign["recipient"], Path(index))
         except ValueError as exc:
