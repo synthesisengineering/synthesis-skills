@@ -6,46 +6,49 @@ through compare-and-swap, every Mac keeps its own machine identity, and
 no file copy sits in any write path.
 
 This guide enrolls a second Mac end to end. The protocol reference is
-the `synthesis-machine-sync` skill; the bootstrap CLI below is
-authoritative and every flag here exists in its implementation.
+the `synthesis-machine-sync` skill.
 
-## Before you start
+## The one command
 
-On the new Mac you need:
+On the new Mac itself, paste one command. It detects the machine's
+state, interviews where needed, installs, and enrolls — no scenario
+flags:
 
-- A checkout of `synthesis-skills` (the bootstrap verifies it carries
-  the component catalog, the machine-sync skill, and the hooks
-  installer before it does anything).
-- Network access to your git remotes and to the leased coordination
-  board remote.
-- A repos manifest: JSON naming what to clone, `~`-rooted paths
-  expanded against the new Mac's home:
-
-```json
-{
-  "schema_version": 1,
-  "repos": [
-    {"remote": "https://github.com/example/notes.git", "path": "~/workspaces/notes", "branch": "main"}
-  ]
-}
+```bash
+curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh
 ```
 
-`branch` is optional. Paths may be `~`-rooted or absolute.
+The installer asks what it cannot discover (the Mac's label when the
+hostname is taken, the fleet registry location) and refuses to guess
+at identity: a taken label is offered its first free variant, never
+enrolled as a duplicate. Renaming the Mac later offers a clean
+relabel. Re-running the command on an enrolled Mac verifies and
+reports `noop`.
 
-- For a secondary Mac: the synced copy of the fleet registry
-  (`machines.json`) from the personal knowledge repo, already cloned
-  onto the new Mac. A secondary enrolls against that synced copy and
-  refuses to found a second fleet. A primary founds the registry and
-  omits `--fleet-registry`.
-- For secrets: the `op` CLI (see "Sign in on each Mac" below).
+For secrets afterward: the `op` CLI (see "Sign in on each Mac"
+below). Clean-install path only: never copy one Mac's
+`~/.synthesis` state, seats, spools, or transcript caches onto
+another. Per-machine state stays per-machine; shared state arrives
+only through its remote.
 
-Clean-install path only: never copy one Mac's `~/.synthesis` state,
-seats, spools, or transcript caches onto another. Per-machine state
-stays per-machine; shared state arrives only through its remote.
+## Enroll from an installed checkout
 
-## Enroll
+When the Mac already carries `synthesis-skills` (or you prefer the
+CLI to the pipe), one flag-free command does the same enrollment:
 
-Run the bootstrap on the new Mac itself:
+```bash
+synthesis fleet join
+```
+
+Discovery finds the knowledge repo and registry; the role comes from
+shared state; progress and enrollment publish-back are automatic.
+Run `synthesis onboard` instead for the full menu (install, upgrade,
+fleet join, workspaces, components, verify and repair).
+
+## Manual bootstrap (advanced)
+
+The raw bootstrap behind both commands above, for scripted or
+air-gapped installs. Every flag here exists in its implementation:
 
 ```bash
 python3 skills/synthesis-project-management/scripts/fleet_bootstrap.py \
@@ -63,6 +66,23 @@ python3 skills/synthesis-project-management/scripts/fleet_bootstrap.py \
 | `--role` | `primary` (founds the registry) or `secondary` (required). |
 | `--repos-manifest` | Repos-manifest JSON (optional; no manifest means nothing to clone). |
 | `--fleet-registry` | Synced `machines.json` from the personal knowledge repo (required for `secondary`). |
+
+The manifest is JSON naming what to clone, `~`-rooted paths expanded
+against `--home`:
+
+```json
+{
+  "schema_version": 1,
+  "repos": [
+    {"remote": "https://github.com/example/notes.git", "path": "~/workspaces/notes", "branch": "main"}
+  ]
+}
+```
+
+`branch` is optional; paths may be `~`-rooted or absolute. A primary
+founds the registry and omits `--fleet-registry`; a secondary
+enrolls against the synced `machines.json` and refuses to found a
+second fleet.
 
 The bootstrap runs five steps in order and stops at the first failure:
 
