@@ -231,3 +231,17 @@ def test_cli_detect_and_migrate(v1_project: Path) -> None:
     )
     assert json.loads(apply.stdout)["verified"] is True
     assert detect(v1_project) == "v2"
+
+
+def test_cli_archive_defaults_to_year_retention(v2_project: Path) -> None:
+    script = Path(__file__).resolve().parent / "project_format.py"
+    defaulted = subprocess.run(
+        [sys.executable, str(script), "archive", "--check", str(v2_project)],
+        capture_output=True, text=True, check=True,
+    )
+    explicit = subprocess.run(
+        [sys.executable, str(script), "archive", "--check",
+         "--older-than-days", "365", str(v2_project)],
+        capture_output=True, text=True, check=True,
+    )
+    assert json.loads(defaulted.stdout) == json.loads(explicit.stdout)

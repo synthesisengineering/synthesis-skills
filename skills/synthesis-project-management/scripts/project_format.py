@@ -10,7 +10,7 @@ by re-reading everything written.
 Usage:
     project_format.py detect <project-dir>
     project_format.py migrate [--check] [--goal TEXT] [--status TEXT] <project-dir>
-    project_format.py archive --older-than-days N [--check] <project-dir>
+    project_format.py archive [--older-than-days N] [--check] <project-dir>
 
 Exit 0 with a JSON report on stdout. Exit 2 on unreadable input.
 The full contract lives in the Phase F design doc and the
@@ -38,6 +38,8 @@ MARKER_NAME = ".synthesis-project.yaml"
 # (operational handoff shape). The resume state is a separate concern.
 STATE_NAME = "RESUME_STATE.json"
 INDEX_NAME = "INDEX.md"
+# Session-archive retention: a year of live history unless told otherwise.
+DEFAULT_RETENTION_DAYS = 365
 STATE_SCHEMA = 1
 
 V1_LAYOUT = ("CONTEXT.md", "REFERENCE.md", "sessions")
@@ -316,7 +318,12 @@ def main(argv: list[str] | None = None) -> int:
     p_migrate.add_argument("--status", default="unknown")
     p_archive = sub.add_parser("archive", help="archive old session periods (v2 only)")
     p_archive.add_argument("project_dir")
-    p_archive.add_argument("--older-than-days", type=int, required=True)
+    p_archive.add_argument(
+        "--older-than-days",
+        type=int,
+        default=DEFAULT_RETENTION_DAYS,
+        help=f"archive periods older than this many days (default: {DEFAULT_RETENTION_DAYS})",
+    )
     p_archive.add_argument("--check", action="store_true", help="report only; write nothing")
     args = parser.parse_args(argv)
     try:
