@@ -11,7 +11,9 @@ fleet state, recommends the best path, and interviews through a single
 menu (fresh install, upgrade, fleet join, workspaces, components,
 verify and repair). Enrollment resolves taken labels, offers relabels
 on rename, merges concurrent publishes, lands clones atomically, and
-fails closed with remedies. Onboarding engine 2.7.0.
+fails closed with remedies. Onboarding engine 2.7.0. New open-source
+skill `synthesis-meeting-prep` v1.0.0: chief-of-staff meeting prep and
+debrief packs with a mechanical prep linter.
 
 ## [4.110.0] - 2026-09-20
 

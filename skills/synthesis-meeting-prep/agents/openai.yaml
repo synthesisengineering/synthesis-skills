@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Meeting Prep"
+  short_description: "Draft chief-of-staff meeting prep and debrief packs"
+  default_prompt: "Use $synthesis-meeting-prep to prepare for or debrief this meeting."
+
+policy:
+  allow_implicit_invocation: false
