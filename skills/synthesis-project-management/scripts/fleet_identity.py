@@ -41,6 +41,21 @@ def fleet_dir() -> Path:
     return Path.home() / ".synthesis" / "fleet"
 
 
+def fleet_dir_for_board(board: Path) -> Path:
+    """The fleet directory belonging to a board, for mutation scoping.
+
+    A board mutation must read the machine identity that belongs to the
+    board it mutates — never the ambient home's enrollment. The live
+    layout keeps ``coordination/active-sessions.md`` next to ``fleet/``;
+    any other layout (tests, alternate homes) scopes to a ``fleet/``
+    sibling of the board file, which is simply unenrolled when absent.
+    """
+    parent = Path(board).expanduser().parent
+    if parent.name == "coordination":
+        return parent.parent / "fleet"
+    return parent / "fleet"
+
+
 def machine_id_path(directory: Path | None = None) -> Path:
     return (directory or fleet_dir()) / MACHINE_ID_NAME
 
