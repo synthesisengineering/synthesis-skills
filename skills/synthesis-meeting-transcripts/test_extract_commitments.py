@@ -109,3 +109,40 @@ def test_json_shape(tmp_path: Path, capsys) -> None:
     [candidate] = payload["candidates"]
     assert candidate["timestamp"] == "11:59:18"
     assert set(candidate) == {"timestamp", "speaker", "shape", "quote"}
+
+
+def test_stamp_prints_owner_lines(capsys) -> None:
+    assert SCAN.main(["--stamp", "--owner", "personal", "--owner-rule", "2"]) == 0
+    out = capsys.readouterr().out
+    assert "owner: personal" in out
+    assert "owner_rule: 2" in out
+
+
+def test_stamp_accepts_candidate_confirmed(capsys) -> None:
+    assert (
+        SCAN.main(["--stamp", "--owner", "work", "--owner-rule", "candidate-confirmed"])
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "owner_rule: candidate-confirmed" in out
+
+
+def test_stamp_json_shape(capsys) -> None:
+    assert (
+        SCAN.main(["--stamp", "--owner", "work", "--owner-rule", "1", "--json"]) == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"owner": "work", "owner_rule": "1"}
+
+
+def test_stamp_rejects_bad_rule() -> None:
+    assert SCAN.main(["--stamp", "--owner", "work", "--owner-rule", "7"]) == 2
+
+
+def test_stamp_rejects_empty_owner() -> None:
+    assert SCAN.main(["--stamp", "--owner", "  ", "--owner-rule", "1"]) == 2
+
+
+def test_stamp_needs_owner_and_rule() -> None:
+    assert SCAN.main(["--stamp", "--owner", "work"]) == 2
+    assert SCAN.main(["--stamp", "--owner-rule", "1"]) == 2

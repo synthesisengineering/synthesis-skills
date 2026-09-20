@@ -5,10 +5,17 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "0.10.0"
+  version: "0.11.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
+
+## v0.11.0 — Confirmed commitments carry their owning workspace
+
+v0.11.0 (2026-09-20) wires §3 ownership into filing: new Step 4.8 stamps
+each principal-confirmed commitment `owner:`/`owner_rule:` via
+`extract_commitments.py --stamp`, routed by the daily-rituals ownership
+rules. Other seats record nothing — not even a pointer.
 
 ## v0.10.0 — Saved transcripts get read for obligations
 
@@ -497,6 +504,22 @@ speakers. Present every candidate for the principal to confirm **in the
 same turn as the filing** — timestamp, speaker, quote. The scanner never
 creates tasks, files, or calendar entries, and neither do you on its
 output alone: an unconfirmed candidate is not an obligation.
+
+### Step 4.8: Stamp confirmed commitments with their owner (v0.11.0)
+
+A confirmed commitment belongs to exactly one workspace (§3). Route it
+by the daily-rituals ownership rules — manifest owner, deletion-unit
+test, movable-item seat — and record the stamp with the item:
+
+```bash
+python3 <synthesis-meeting-transcripts-root>/extract_commitments.py \
+    --stamp --owner "{workspace}" --owner-rule "{1|2|3|candidate-confirmed}"
+```
+
+`candidate-confirmed` covers the commitment no rule claimed that the
+principal placed by hand in the confirmation turn. Other seats record
+nothing for this commitment — not even a pointer. The stamp refuses a
+blank owner or an unknown rule rather than guessing either.
 
 ### Step 5: Update indices (optional)
 

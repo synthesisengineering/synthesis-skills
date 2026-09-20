@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verify_transcripts
 
-SCRIPT_VERSION = "0.10.0"
+SCRIPT_VERSION = "0.11.0"
 
 _TS_IN_BRACKET = re.compile(r"\[\s*(\d{1,2}:\d{2}(?::\d{2})?)")
 
@@ -50,6 +50,23 @@ _COMMITMENT_SHAPES = (
 )
 
 QUOTE_CHARS = 200
+
+OWNER_RULES = ("1", "2", "3", "candidate-confirmed")
+
+
+def stamp(owner: str, owner_rule: str) -> dict[str, str]:
+    """Build the §3 ownership stamp for a principal-confirmed commitment.
+
+    The scanner prints candidates; the principal confirms; this pins the
+    exact `owner:`/`owner_rule:` lines the agent records with the item so
+    a later seat sees why it landed where it did. Fail-closed: a blank
+    owner or an unknown rule is a refusal, never a guessed stamp.
+    """
+    if not owner.strip():
+        raise ValueError("owner names the owning workspace; it cannot be blank")
+    if owner_rule not in OWNER_RULES:
+        raise ValueError(f"owner_rule must be one of {', '.join(OWNER_RULES)}")
+    return {"owner": owner.strip(), "owner_rule": owner_rule}
 
 
 def _dialogue_lines(text: str) -> list[tuple[str | None, str, str]]:
@@ -108,10 +125,31 @@ def scan(text: str, *, speaker: str | None = None) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("transcript", type=Path, help="saved .md transcript file")
+    parser.add_argument("transcript", type=Path, nargs="?", help="saved .md transcript file")
     parser.add_argument("--speaker", default=None, help="only flag this speaker (substring match)")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--stamp", action="store_true", help="print an ownership stamp instead of scanning")
+    parser.add_argument("--owner", default=None, help="owning workspace for --stamp")
+    parser.add_argument("--owner-rule", default=None, help="1, 2, 3, or candidate-confirmed")
     args = parser.parse_args(argv)
+    if args.stamp:
+        if args.owner is None or args.owner_rule is None:
+            print("extract-commitments refused: --stamp needs --owner and --owner-rule", file=sys.stderr)
+            return 2
+        try:
+            stamped = stamp(args.owner, args.owner_rule)
+        except ValueError as exc:
+            print(f"extract-commitments refused: {exc}", file=sys.stderr)
+            return 2
+        if args.json:
+            print(json.dumps(stamped, indent=2, sort_keys=True))
+        else:
+            print(f"owner: {stamped['owner']}")
+            print(f"owner_rule: {stamped['owner_rule']}")
+        return 0
+    if args.transcript is None:
+        print("extract-commitments refused: a transcript file is required", file=sys.stderr)
+        return 2
     try:
         text = args.transcript.read_text(encoding="utf-8")
     except (OSError, ValueError) as exc:

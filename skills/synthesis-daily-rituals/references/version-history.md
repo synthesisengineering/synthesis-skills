@@ -6,6 +6,20 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v2.40.0 — Ownership-vs-visibility triage; the shared time-block layer
+
+v2.40.0 (2026-09-20): tasks route to exactly one workspace while calendar
+time stays visible to every seat ([ownership routing](ownership-routing.md)).
+Step 4 applies the routing rules at intake — manifest owner, deletion-unit
+test, movable-item seat — and stamps each item `owner:`/`owner_rule:`;
+whatever no rule claims becomes a same-turn CANDIDATE, never
+double-recorded and never dropped. The same step publishes the seat's
+owned blocks (real titles, hand-entered blocks for unreachable accounts)
+to `coordination/time-blocks.json` in the personal repo and calls the
+chief-of-staff `overlap.py` service for the look-ahead window; conflict
+reports name the movable side and the layer's denominator. Nothing here
+writes to a calendar — shared reads first, agent writes a later design.
+
 ## v2.39.0 — Every sweep names its denominator; BLIND vs UNREACHABLE everywhere
 
 v2.39.0 (2026-09-19): the coverage-state vocabulary from the mailbox
