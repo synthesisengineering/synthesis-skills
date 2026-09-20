@@ -4,6 +4,13 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.117.0] - 2026-09-20
+
+Seat-heartbeat stability. Claim, succeed, and heartbeat now take one
+clock read for the board row and the seat record, closing a
+second-boundary flake where the two could disagree. The fleet setup
+guide leads with the one-command onboard.
+
 ## [4.116.0] - 2026-09-20
 
 Meeting-prep onboarding. `prep_init.py` scaffolds the principal file
