@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.111.0] - 2026-09-20
+
+One command onboards any Mac. The bare installer detects install and
+fleet state, recommends the best path, and interviews through a single
+menu (fresh install, upgrade, fleet join, workspaces, components,
+verify and repair). Enrollment resolves taken labels, offers relabels
+on rename, merges concurrent publishes, lands clones atomically, and
+fails closed with remedies. Onboarding engine 2.7.0.
+
 ## [4.110.0] - 2026-09-20
 
 Flag-free fleet enrollment. `synthesis fleet join` needs zero flags:

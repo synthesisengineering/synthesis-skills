@@ -18,6 +18,12 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+**One command onboards any Mac (September 2026).** Release **4.111.0**
+makes the bare installer detect, recommend, and interview through one
+menu — install, upgrade, fleet join, workspaces, components, repair —
+with robust enrollment (label collisions, renames, concurrent
+publishes all handled).
+
 **Flag-free fleet join (September 2026).** Release **4.110.0** replaces
 the six-flag bootstrap with `synthesis fleet join`: zero required
 flags, GitHub discovery, role from shared state, live progress, and
