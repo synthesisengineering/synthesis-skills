@@ -1,25 +1,39 @@
 schema: 2
-suite: fleet-onboard-robust
+suite: fleet-release-4-111-0
 membership: closed
-production_entry_point: One bare installer command provisions any Mac
-  from download to enrolled fleet member. The onboard dispatcher
-  detects install and fleet state, recommends the best path, and
-  interviews through the controlling terminal; the join sets the Mac
-  up inline when missing, resolves taken labels, offers relabels on
-  rename, merges concurrent enrollments, lands clones atomically, and
-  fails closed with remedies on contradictions.
+production_entry_point: All three client manifests and the top changelog
+  identify 4.111.0, shipping the one-command onboard dispatcher
+  (detect, recommend, interview across install, upgrade, fleet join,
+  workspaces, components, repair) with robust enrollment (label
+  collisions, renames, concurrent publishes, atomic clones,
+  fail-closed guards) on onboarding engine 2.7.0
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures run the real dispatcher, join, bootstrap,
-  and publish paths against disposable homes, boards, and git remotes
-  with stubbed runners where the engine crosses process boundaries. A
-  live bare-Mac run, installed-client reload, new-release publication,
-  and deployment approval remain separate release checks.
+unverified_remainder: Fixtures execute the real dispatcher, join,
+  bootstrap, publish, and manifest checks in disposable directories. They
+  do not establish installed-client reload, live cross-client delivery,
+  new-release publication, or deployment approval. Those remain separate
+  release checks.
 changed_surfaces:
+- path: .claude-plugin/plugin.json
+  cases:
+  - release-version-metadata
+- path: .codex-plugin/plugin.json
+  cases:
+  - release-version-metadata
+- path: .muse-plugin/plugin.json
+  cases:
+  - release-version-metadata
+- path: CHANGELOG.md
+  cases:
+  - release-version-metadata
+- path: README.md
+  cases:
+  - release-version-metadata
 - path: onboard.sh
   cases:
   - one-command-docs
@@ -77,13 +91,12 @@ changed_surfaces:
   cases:
   - bare-default-onboards
 cases:
-- id: bare-default-onboards
+- id: release-version-metadata
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_whole_system_onboarding_release_contract_is_public_and_coherent
-  motivating_defect: The bare installer must onboard (detect, recommend,
-    interview), not merely set up; the release contract pins the new
-    default command.
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
+  motivating_defect: All client manifests and the top changelog identify the same release while retained
+    release contracts remain valid.
 - id: onboard-fresh
   control_class: acceptance-test
   expected_status: pass
@@ -114,7 +127,7 @@ cases:
 - id: rename-reconcile
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_fleet_join.py::test_reconcile_rename_offers_and_relabels
+  fixture: ../synthesis-onboarding/scripts/test_fleet_join.py::test_reconcile_rename_end_to_end_with_real_engine
   motivating_defect: A renamed Mac must be offered a relabel that
     publishes; explicit labels are never touched and ties keep the
     stable name.
@@ -163,6 +176,13 @@ cases:
   fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_engine_versions_and_skill_contract_agree
   motivating_defect: The dispatcher ships as onboarding engine 2.7.0
     with both engine markers and the skill version in agreement.
+- id: bare-default-onboards
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_whole_system_onboarding_release_contract_is_public_and_coherent
+  motivating_defect: The bare installer must onboard (detect, recommend,
+    interview), not merely set up; the release contract pins the new
+    default command.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
