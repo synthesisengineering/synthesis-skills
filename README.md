@@ -9,6 +9,13 @@ clients instead of replacing them. Read [why it exists](docs/why-synthesis-engin
 the [runtime integration contract](docs/runtime-integration.md), and the
 [contributor guide](CONTRIBUTING.md).
 
+## Fleet docs
+
+Run a personal fleet of Macs as one system: [enroll a second
+Mac](docs/fleet-setup.md), [move work between
+machines](docs/fleet-handoff.md), and [daily fleet
+care](docs/fleet-operations.md).
+
 ## What's new
 
 **Succession, shared calendar, review roles (September 2026).** Release **4.108.0**
