@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.114.0] - 2026-09-20
+
+Session archiver. `project_format.py archive` moves old session
+periods to `sessions/archive/` (v2 only, newest period always
+protected, index regenerated over live and archived alike), with
+check-mode by default and an explicit retention flag — no policy
+baked in.
+
 ## [4.113.0] - 2026-09-20
 
 Versioned project formats. Projects are now v1 (unmarked) or v2

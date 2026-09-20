@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+**Session archiver (September 2026).** Release **4.114.0** archives
+old session periods with the newest always protected.
+
 **Versioned project formats (September 2026).** Release **4.113.0**
 versions every project (v1/v2) and migrates on resume — additive,
 verified, never overwriting.
