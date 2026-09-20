@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.6.0"
+  version: "2.6.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -316,7 +316,17 @@ interrupt resumes; finished steps report `noop`. The flags `--kb`,
 `--label`, `--role`, and `--workspace` override the interactive answers
 for scripted runs. A contradicting explicit role fails closed: secondary
 without a fleet, primary against one. Non-interactive use without `--kb`
-is refused with the flag named, never left hanging on input.
+is refused with the flag named, never left hanging on input. From a bare
+machine the whole procedure is one command — the installer runs the
+guided setup first and the join continues after it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh -s -- fleet join
+```
+
+Questions reach the human through the controlling terminal when stdin is
+a pipe, so the answers work in the piped install. Only a run with no
+terminal at all refuses, naming the setup-first remedy for automation.
 
 ## Doctor and truth planes
 

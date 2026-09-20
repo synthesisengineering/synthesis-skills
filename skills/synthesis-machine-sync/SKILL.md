@@ -41,18 +41,21 @@ materialize to each Mac.
 ## Enroll a new Mac
 
 Clean-install path only — never copy one Mac's state onto another. One
-command with no flags; it finds the knowledge repo over GitHub sign-in
-(running it when needed) or asks for it, derives home, label, skill
-source, workspace, and manifest, asks which workspace only when several
-match, founds a new fleet when the repo holds none and otherwise joins
-as a secondary, narrates every repo as it lands, and publishes the
+command downloads and installs everything, then onboards by asking
+questions: it finds the knowledge repo over GitHub sign-in (running it
+when needed) or asks for it, derives home, label, skill source,
+workspace, and manifest, asks which workspace only when several match,
+founds a new fleet when the repo holds none and otherwise joins as a
+secondary, narrates every repo as it lands, and publishes the
 enrollment back on success:
 
 ```bash
-synthesis fleet join
+curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh -s -- fleet join
 ```
 
-The join mints identity, clones subscribed repos, installs the hooks
+On a Mac with no installation the same command runs the guided setup
+first (answering its questions) and the join continues after it, so
+one paste is the whole procedure from a bare machine. The join mints identity, clones subscribed repos, installs the hooks
 runtime plus the skill set, enrolls the machine, verifies the doctor, and
 publishes the enrollment to the shared registry. Every step writes a
 receipt under `~/.synthesis/fleet/receipts/`; a rerun after any failure
@@ -60,7 +63,7 @@ or interrupt resumes safely and reports `noop` for finished steps. The
 flags `--kb`, `--label`, `--role`, and `--workspace` override the
 interactive answers for scripted runs. The underlying
 `fleet_bootstrap.py` script is an agent-and-test entry point; humans use
-`synthesis fleet join`.
+the one-command installer above (or `synthesis fleet join` once set up).
 
 ## Sync (fetch shared state)
 

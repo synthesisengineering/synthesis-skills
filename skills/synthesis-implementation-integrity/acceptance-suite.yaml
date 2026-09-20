@@ -1,121 +1,76 @@
 schema: 2
-suite: fleet-release-4-110-0
+suite: fleet-join-single-command
 membership: closed
-production_entry_point: All three client manifests and the top changelog
-  identify 4.110.0, shipping flag-free fleet enrollment (zero-flag
-  synthesis fleet join with GitHub discovery, role from shared state,
-  live progress, and enrollment publish-back) on onboarding engine 2.6.0
+production_entry_point: One installer command provisions a bare Mac
+  from download to enrolled fleet member. The join runs the guided
+  setup inline when no installation exists, then discovers or asks for
+  the knowledge repo through the controlling terminal (pipe-safe),
+  derives the role, narrates every repo, and publishes the enrollment
+  back
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real join, bootstrap, publish,
-  and manifest checks in disposable directories. They do not establish
-  installed-client reload, live cross-client delivery, new-release
-  publication, or deployment approval. Those remain separate release checks.
+unverified_remainder: Fixtures run the real inline setup, prompts, and
+  join against disposable homes with stubbed runners. A live bare-Mac
+  run, installed-client reload, new-release publication, and deployment
+  approval remain separate release checks.
 changed_surfaces:
-- path: .claude-plugin/plugin.json
+- path: onboard.sh
   cases:
-  - release-version-metadata
-- path: .codex-plugin/plugin.json
-  cases:
-  - release-version-metadata
-- path: .muse-plugin/plugin.json
-  cases:
-  - release-version-metadata
-- path: CHANGELOG.md
-  cases:
-  - release-version-metadata
-- path: README.md
-  cases:
-  - release-version-metadata
+  - one-command-docs
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
 - path: skills/synthesis-machine-sync/SKILL.md
   cases:
-  - fleet-join-discovery
+  - one-command-docs
 - path: skills/synthesis-onboarding/SKILL.md
   cases:
-  - cli-registry
-- path: skills/synthesis-onboarding/references/release-capabilities.json
-  cases:
-  - cli-registry
+  - one-command-docs
 - path: skills/synthesis-onboarding/scripts/fleet_join.py
   cases:
-  - fleet-join-discovery
+  - setup-inline-join
+  - pipe-safe-prompts
 - path: skills/synthesis-onboarding/scripts/onboard.py
   cases:
   - engine-version
 - path: skills/synthesis-onboarding/scripts/synthesis_cli.py
   cases:
-  - cli-registry
+  - engine-version
 - path: skills/synthesis-onboarding/scripts/test_fleet_join.py
   cases:
-  - fleet-join-discovery
-  - fleet-join-founding
-- path: skills/synthesis-project-management/scripts/fleet_bootstrap.py
-  cases:
-  - publish-back
-  - bootstrap-preflight
-  - bootstrap-resume
-- path: skills/synthesis-project-management/scripts/test_fleet_bootstrap.py
-  cases:
-  - publish-back
+  - setup-inline-join
+  - pipe-safe-prompts
 cases:
-- id: release-version-metadata
+- id: setup-inline-join
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
-  motivating_defect: All client manifests and the top changelog identify the same release while retained
-    release contracts remain valid.
-- id: fleet-join-discovery
+  fixture: ../synthesis-onboarding/scripts/test_fleet_join.py::test_setup_absent_runs_setup_inline_then_joins
+  motivating_defect: Enrollment verified green on a machine with no
+    synthesis installation; one command must set the Mac up inline and
+    continue into the join instead of refusing or half-provisioning.
+- id: pipe-safe-prompts
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_fleet_join.py::test_join_without_kb_discovers_and_runs
-  motivating_defect: The six-flag bootstrap was unshippable over paste
-    (continuation, wrap, and marker corruption); the join must discover
-    the knowledge repo and derive every other input itself.
-- id: fleet-join-founding
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_fleet_join.py::test_join_founding_skips_clones
-  motivating_defect: Founding a fleet in a fresh knowledge repo must
-    skip cloning instead of failing on the missing manifest.
-- id: publish-back
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_fleet_bootstrap.py::test_bootstrap_with_kb_repo_publishes_then_reruns_noop
-  motivating_defect: Enrollment stayed local until a manual commit the
-    docs forgot; the bootstrap must upsert and push the shared registry
-    itself, and rerun as a no-op.
-- id: bootstrap-preflight
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_fleet_bootstrap.py::test_preflight_fails_fast_before_any_cloning
-  motivating_defect: Missing prerequisites and registries surfaced
-    after slow clones; the run must fail fast with the remedy named.
-- id: bootstrap-resume
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_fleet_bootstrap.py::test_main_interrupted_reports_resume_and_130
-  motivating_defect: A silent clone stretch drew Ctrl-C and a raw
-    traceback; interrupts must print a resume line, keep per-step
-    receipts, and exit 130.
-- id: cli-registry
+  fixture: ../synthesis-onboarding/scripts/test_fleet_join.py::test_prompts_validate_and_name_the_flag
+  motivating_defect: Questions asked through a piped stdin read script
+    bytes or EOF; prompts must use the controlling terminal so the
+    one-command install can interview.
+- id: one-command-docs
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-onboarding/scripts/test_fleet_join.py::test_cli_registers_fleet_join
-  motivating_defect: fleet join must be registered on the stable CLI
-    with capability-manifest parity, or help and gates drift.
+  motivating_defect: The documented one-command procedure must name a
+    registered stable command or help and gates drift from the docs.
 - id: engine-version
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_engine_versions_and_skill_contract_agree
-  motivating_defect: The new command ships as onboarding engine 2.6.0
-    with both engine markers and the skill version in agreement.
+  motivating_defect: The single-command join ships as onboarding engine
+    2.6.1 with both engine markers and the skill version in agreement.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass

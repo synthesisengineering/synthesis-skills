@@ -18,6 +18,7 @@ report ``noop`` instead of redoing work.
 from __future__ import annotations
 
 import json
+import shutil
 import socket
 import subprocess
 import sys
@@ -25,6 +26,10 @@ from pathlib import Path
 
 GIT_TIMEOUT_SECONDS = 300
 GH_TIMEOUT_SECONDS = 60
+ONBOARD_ONE_LINER = (
+    "curl -fsSL https://raw.githubusercontent.com/"
+    "synthesisengineering/synthesis-skills/stable/onboard.sh | sh"
+)
 
 WHERE_TO_FIND_KB = (
     "Find it under your repositories on github.com; it looks like "
@@ -57,6 +62,43 @@ def _run_gh(args: list[str]):
     )
 
 
+def _prompt_stream():
+    """stdin when it is a terminal, else the controlling terminal."""
+    if sys.stdin.isatty():
+        return sys.stdin, False
+    try:
+        return open("/dev/tty", "r", encoding="utf-8"), True
+    except OSError:
+        return None, False
+
+
+def terminal_available() -> bool:
+    """True when a question can reach a human (pipe-safe via /dev/tty)."""
+    stream, close = _prompt_stream()
+    if stream is None:
+        return False
+    if close:
+        stream.close()
+    return True
+
+
+def _read_answer(display: str, hint: str) -> str:
+    stream, close = _prompt_stream()
+    if stream is None:  # pragma: no cover - guarded by terminal_available
+        raise FleetJoinError(
+            f"cannot ask questions (not interactive); pass {hint}"
+        )
+    print(display, end="", flush=True)
+    try:
+        value = stream.readline()
+    finally:
+        if close:
+            stream.close()
+    if value == "":
+        raise FleetJoinError(f"no answer given; pass {hint}")
+    return value.strip()
+
+
 def _require_prompt(hint: str, can_prompt: bool) -> None:
     if not can_prompt:
         raise FleetJoinError(
@@ -67,10 +109,7 @@ def _require_prompt(hint: str, can_prompt: bool) -> None:
 def prompt_text(question: str, hint: str, *, can_prompt: bool) -> str:
     """Ask one free-text question; the hint names the flag alternative."""
     _require_prompt(hint, can_prompt)
-    try:
-        answer = input(f"{question}: ").strip()
-    except EOFError as exc:
-        raise FleetJoinError(f"no answer given; pass {hint}") from exc
+    answer = _read_answer(f"{question}: ", hint)
     if not answer:
         raise FleetJoinError(f"an answer is required; or pass {hint}")
     return answer
@@ -83,10 +122,7 @@ def prompt_choice(question: str, options: list[str], hint: str, *,
     print(question, flush=True)
     for position, option in enumerate(options, start=1):
         print(f"  {position}. {option}", flush=True)
-    try:
-        answer = input(f"Choice [1-{len(options)}]: ").strip()
-    except EOFError as exc:
-        raise FleetJoinError(f"no choice given; pass {hint}") from exc
+    answer = _read_answer(f"Choice [1-{len(options)}]: ", hint)
     if not answer.isdigit() or not 1 <= int(answer) <= len(options):
         raise FleetJoinError(
             f"choice must be 1-{len(options)}; or pass {hint}"
@@ -164,6 +200,79 @@ def resolve_kb_interactive(
         "Knowledge repo URL", "--kb <url-or-path>", can_prompt=can_prompt
     )
     return url, workspace or workspace_from_remote(url)
+
+
+def setup_present(home: Path) -> bool:
+    """True when `synthesis setup` has converged under this home."""
+    try:
+        import system_contract
+
+        state = system_contract.SystemState(
+            home=Path(home).expanduser()
+        )
+        return state.read_desired() is not None
+    except Exception:
+        return False
+
+
+def _run_setup_inline() -> int:
+    """Run the release's own setup with full defaults, in-process."""
+    import synthesis_cli
+
+    return synthesis_cli.main(["setup"])
+
+
+def ensure_setup(
+    home: Path,
+    *,
+    setup_check=None,
+    setup_runner=None,
+    announce=None,
+    can_prompt: bool = True,
+) -> None:
+    """Set the Mac up inline when setup never ran; fail only headless.
+
+    One command must be enough: a missing installation runs the guided
+    setup first (answering its questions), then the join continues.
+    Only a run with no terminal at all refuses, naming the setup-first
+    remedy for automation.
+    """
+    tell = announce or (lambda line: print(line, flush=True))
+    present = (
+        setup_check(home) if setup_check is not None
+        else setup_present(home)
+    )
+    if present:
+        return
+    if not can_prompt:
+        if shutil.which("synthesis") is None:
+            remedy = (
+                "run the installer first:\n"
+                f"  {ONBOARD_ONE_LINER}\n"
+                "then rerun: synthesis fleet join"
+            )
+        else:
+            remedy = (
+                "run synthesis setup first (add --answers for "
+                "automation), then rerun: synthesis fleet join"
+            )
+        raise FleetJoinError(
+            "synthesis isn't set up on this Mac yet and this run "
+            f"cannot ask questions — {remedy}"
+        )
+    tell("synthesis isn't set up yet — setting it up now (answer its "
+         "questions first, then the join continues)")
+    run = setup_runner or _run_setup_inline
+    try:
+        code = run()
+    except KeyboardInterrupt:
+        raise
+    except Exception as exc:
+        raise FleetJoinError(f"setup failed: {exc}") from exc
+    if code != 0:
+        raise FleetJoinError(
+            f"setup failed (exit {code}); fix it and rerun the same command"
+        )
 
 
 def resolve_role(
@@ -403,6 +512,8 @@ def join(
     gh_runner=None,
     auth_runner=None,
     progress=None,
+    setup_check=None,
+    setup_runner=None,
 ) -> int:
     """Run ``synthesis fleet join``; return the process exit code."""
     home = Path(home).expanduser() if home is not None else Path.home()
@@ -410,7 +521,7 @@ def join(
         release_root
     )
     as_json = bool(getattr(args, "json", False))
-    can_prompt = sys.stdin.isatty() and not as_json
+    can_prompt = terminal_available() and not as_json
 
     def announce(line: str) -> None:
         if as_json:
@@ -427,6 +538,10 @@ def join(
         )
 
     try:
+        ensure_setup(
+            home, setup_check=setup_check, setup_runner=setup_runner,
+            announce=announce, can_prompt=can_prompt,
+        )
         kb_arg = getattr(args, "kb", None)
         explicit_workspace = getattr(args, "workspace", None)
         if kb_arg:

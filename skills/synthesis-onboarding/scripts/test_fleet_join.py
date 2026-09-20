@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 import sys
@@ -214,6 +215,7 @@ def test_join_derives_everything_from_a_path(tmp_path, monkeypatch, capsys):
     code = FJ.join(
         join_args(str(kb)), release_root=tmp_path / "release",
         home=home, bootstrap=stub_engine(captured),
+        setup_check=lambda home: True,
     )
     assert code == 0
     assert captured["manifest"] == str(kb / "fleet" / "repos.demo.json")
@@ -235,6 +237,7 @@ def test_join_clones_a_remote_and_derives_the_workspace(tmp_path, capsys):
     code = FJ.join(
         join_args(f"file://{origin}"), release_root=tmp_path / "release",
         home=home, bootstrap=stub_engine(captured),
+        setup_check=lambda home: True,
     )
     assert code == 0
     expected = home / "workspaces" / "demo" / "ai-knowledge-demo"
@@ -256,6 +259,7 @@ def test_join_json_mode_and_failures(tmp_path, capsys, monkeypatch):
     code = FJ.join(
         join_args(str(kb), json=True), release_root=tmp_path / "release",
         home=home, bootstrap=stub_engine(captured),
+        setup_check=lambda home: True,
     )
     assert code == 0
     payload = json.loads(capsys.readouterr().out)
@@ -271,6 +275,7 @@ def test_join_json_mode_and_failures(tmp_path, capsys, monkeypatch):
         FJ.join(
             join_args(str(kb)), release_root=tmp_path / "release",
             home=home, bootstrap=engine,
+            setup_check=lambda home: True,
         )
 
     def raising_bootstrap(**kwargs):
@@ -281,6 +286,7 @@ def test_join_json_mode_and_failures(tmp_path, capsys, monkeypatch):
     code = FJ.join(
         join_args(str(kb)), release_root=tmp_path / "release",
         home=home, bootstrap=engine,
+        setup_check=lambda home: True,
     )
     assert code == 130
     assert "INTERRUPTED fleet join" in capsys.readouterr().err
@@ -370,26 +376,35 @@ def test_resolve_role_follows_shared_state(tmp_path, capsys):
     assert FJ.resolve_role(None, corrupt) == "secondary"
 
 
+def stream_with(monkeypatch, text):
+    monkeypatch.setattr(
+        FJ, "_prompt_stream", lambda: (io.StringIO(text), False)
+    )
+
+
 def test_prompts_validate_and_name_the_flag(monkeypatch, capsys):
-    monkeypatch.setattr("builtins.input", lambda *a: "  answer  ")
+    stream_with(monkeypatch, "  answer  \n")
     assert FJ.prompt_text("Q", "--kb <u>", can_prompt=True) == "answer"
-    monkeypatch.setattr("builtins.input", lambda *a: "2")
+    stream_with(monkeypatch, "2\n")
     assert FJ.prompt_choice("Q", ["a", "b"], "--w <n>", can_prompt=True) == "b"
-    monkeypatch.setattr("builtins.input", lambda *a: "9")
+    stream_with(monkeypatch, "9\n")
     with pytest.raises(FJ.FleetJoinError, match="choice must be"):
         FJ.prompt_choice("Q", ["a", "b"], "--w <n>", can_prompt=True)
-    monkeypatch.setattr("builtins.input", lambda *a: "   ")
+    stream_with(monkeypatch, "   \n")
     with pytest.raises(FJ.FleetJoinError, match="required"):
         FJ.prompt_text("Q", "--kb <u>", can_prompt=True)
-
-    def eof(*args):
-        raise EOFError
-
-    monkeypatch.setattr("builtins.input", eof)
+    stream_with(monkeypatch, "")
     with pytest.raises(FJ.FleetJoinError, match="no answer"):
         FJ.prompt_text("Q", "--kb <u>", can_prompt=True)
     with pytest.raises(FJ.FleetJoinError, match="not interactive"):
         FJ.prompt_text("Q", "--kb <u>", can_prompt=False)
+
+
+def test_prompt_stream_prefers_stdin_then_tty(monkeypatch):
+    monkeypatch.setattr(FJ.sys.stdin, "isatty", lambda: True)
+    stream, close = FJ._prompt_stream()
+    assert stream is FJ.sys.stdin
+    assert close is False
 
 
 def test_resolve_kb_prefers_discovery_then_asks(tmp_path, monkeypatch):
@@ -405,7 +420,7 @@ def test_resolve_kb_prefers_discovery_then_asks(tmp_path, monkeypatch):
     assert workspace == "demo"
     assert announced == [f"found knowledge repo {remote}"]
 
-    monkeypatch.setattr("builtins.input", lambda *a: "2")
+    stream_with(monkeypatch, "2\n")
     remote, _ = FJ.resolve_kb_interactive(
         None,
         gh_runner=gh_stub(urls=["https://h/u/ai-knowledge-a.git",
@@ -437,9 +452,7 @@ def test_resolve_kb_prefers_discovery_then_asks(tmp_path, monkeypatch):
     assert calls == ["login"]
     assert remote == "https://h/u/ai-knowledge-demo.git"
 
-    monkeypatch.setattr(
-        "builtins.input", lambda *a: "https://h/u/ai-knowledge-x.git"
-    )
+    stream_with(monkeypatch, "https://h/u/ai-knowledge-x.git\n")
     remote, workspace = FJ.resolve_kb_interactive(
         None, gh_runner=gh_stub(error=FileNotFoundError()),
         announce=announced.append,
@@ -477,6 +490,7 @@ def test_join_without_kb_discovers_and_runs(tmp_path, monkeypatch, capsys):
     code = FJ.join(
         join_args(), release_root=tmp_path / "release", home=home,
         bootstrap=stub_engine(captured),
+        setup_check=lambda home: True,
         gh_runner=gh_stub(urls=[f"file://{origin}"]),
     )
     assert code == 0
@@ -515,6 +529,7 @@ def test_join_founding_skips_clones(tmp_path, monkeypatch, capsys):
     code = FJ.join(
         join_args(str(kb)), release_root=tmp_path / "release", home=home,
         bootstrap=engine,
+        setup_check=lambda home: True,
     )
     assert code == 0
     assert parsed == {}
@@ -523,3 +538,66 @@ def test_join_founding_skips_clones(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "founding one as primary" in out
     assert "skipping clones" in out
+
+
+def test_setup_present_false_without_desired_state(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    assert FJ.setup_present(home) is False
+    assert FJ.setup_present(tmp_path / "no-home") is False
+
+
+def test_setup_absent_runs_setup_inline_then_joins(
+    tmp_path, monkeypatch, capsys
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    kb = seed_kb_worktree(tmp_path / "kb")
+    captured: dict = {}
+    runs: list = []
+    monkeypatch.setattr(FJ, "default_label", lambda: "test-mac")
+    monkeypatch.setattr(FJ, "terminal_available", lambda: True)
+    code = FJ.join(
+        join_args(str(kb)), release_root=tmp_path / "release", home=home,
+        bootstrap=stub_engine(captured),
+        setup_check=lambda home_dir: False,
+        setup_runner=lambda: runs.append("setup") or 0,
+    )
+    assert code == 0
+    assert runs == ["setup"]
+    assert captured["bootstrap"]["label"] == "test-mac"
+    assert "setting it up now" in capsys.readouterr().out
+
+
+def test_setup_inline_failure_fails_closed(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    kb = seed_kb_worktree(tmp_path / "kb")
+    monkeypatch.setattr(FJ, "terminal_available", lambda: True)
+    with pytest.raises(FJ.FleetJoinError, match=r"setup failed \(exit 1\)"):
+        FJ.join(
+            join_args(str(kb)), release_root=tmp_path / "release",
+            home=home, bootstrap=stub_engine({}),
+            setup_check=lambda home_dir: False,
+            setup_runner=lambda: 1,
+        )
+
+
+def test_setup_absent_headless_names_setup_first(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(FJ, "terminal_available", lambda: False)
+    monkeypatch.setattr(
+        FJ.shutil, "which", lambda _name: "/usr/local/bin/synthesis"
+    )
+    with pytest.raises(FJ.FleetJoinError, match="run synthesis setup first"):
+        FJ.join(
+            join_args(), release_root=tmp_path / "release", home=home,
+            bootstrap=stub_engine({}),
+            setup_check=lambda home_dir: False,
+        )
+    monkeypatch.setattr(FJ.shutil, "which", lambda _name: None)
+    with pytest.raises(FJ.FleetJoinError, match="onboard.sh"):
+        FJ.ensure_setup(
+            home, setup_check=lambda home_dir: False, can_prompt=False
+        )

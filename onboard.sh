@@ -5,6 +5,7 @@
 #   curl -fsSL .../onboard.sh | sh -s -- setup --profile skills-only
 #   curl -fsSL .../onboard.sh | sh -s -- setup --channel edge
 #   curl -fsSL .../onboard.sh | sh -s -- setup --pin X.Y.Z
+#   curl -fsSL .../onboard.sh | sh -s -- fleet join [--kb URL-or-PATH]
 #
 # Acquisition is mutable; execution is not. This script refreshes a bare Git
 # mirror, resolves one ref, checks out that exact object into a temporary tree,
