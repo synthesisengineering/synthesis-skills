@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.109.0] - 2026-09-19
+
+Multi-Mac fleet support. Machines enroll with minted identities and a
+registry; the v5 board tags claims by machine with cross-Mac mutual
+exclusion through the lease; sessions park instead of dying when a lid
+closes; sealed handoffs move work between Macs with a harness-neutral
+resume contract; workspace subscriptions enforce the per-Mac split;
+secrets materialize from 1Password with an age/SOPS seam; and a new
+machine joins through one idempotent bootstrap. Public setup, handoff,
+and operations guides ship with the release.
+
 ## [4.108.0] - 2026-09-19
 
 Dead-seat claim succession, the shared calendar layer, and review-role

@@ -1,60 +1,45 @@
 schema: 2
-suite: fleet-docs-public
+suite: fleet-release-4-109-0
 membership: closed
-production_entry_point: Public fleet documentation enrolls a second Mac
-  (bootstrap CLI, receipts, rerun safety, per-machine sign-in), moves work
-  between machines (park, seal, verify, claim, accept, resume), and covers
-  daily care (fleet doctor, divergence drill, subscriptions, secrets
-  rotation, leaving the fleet); every documented command and flag exists
-  in the shipped engines
+production_entry_point: All three client manifests and the top changelog
+  identify 4.109.0, shipping multi-Mac fleet support (identity, v5
+  board, parked sessions, sealed handoffs, subscriptions, vault-backed
+  secrets, bootstrap) with public guides
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real bootstrap, handoff, and
-  doctor modules in disposable homes, boards, and checkouts, pinning the
-  documented commands and flags. Prose accuracy beyond the pinned commands,
-  live two-Mac enrollment and handoff, installed-client reload, new-release
-  publication, and deployment approval remain separate checks.
+unverified_remainder: Fixtures execute the real validators and manifest checks in disposable
+  directories. They do not establish installed-client reload, live cross-client delivery,
+  new-release publication, or deployment approval. Those remain separate release checks.
 changed_surfaces:
+- path: .claude-plugin/plugin.json
+  cases:
+  - release-version-metadata
+- path: .codex-plugin/plugin.json
+  cases:
+  - release-version-metadata
+- path: .muse-plugin/plugin.json
+  cases:
+  - release-version-metadata
+- path: CHANGELOG.md
+  cases:
+  - release-version-metadata
 - path: README.md
   cases:
-  - docs-setup-commands-exist
-  - docs-handoff-loop
-  - docs-doctor-checks
-- path: docs/fleet-handoff.md
-  cases:
-  - docs-handoff-loop
-- path: docs/fleet-operations.md
-  cases:
-  - docs-doctor-checks
-- path: docs/fleet-setup.md
-  cases:
-  - docs-setup-commands-exist
+  - release-version-metadata
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
 cases:
-- id: docs-setup-commands-exist
+- id: release-version-metadata
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_fleet_bootstrap.py::test_full_bootstrap_then_safe_reran_noop
-  motivating_defect: The setup doc's bootstrap command, receipt names, and
-    rerun-noop promise must match the shipped CLI step for step.
-- id: docs-handoff-loop
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_fleet_handoff.py::test_sealed_handoff_loop_is_harness_neutral_fleet_ac_11
-  motivating_defect: The handoff doc's park, seal, verify, accept, and
-    resume sequence must match the sealed engine loop for every lane.
-- id: docs-doctor-checks
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_fleet_doctor.py::test_divergence_scan_catches_a_split_checkout
-  motivating_defect: The operations doc's doctor gate and divergence drill
-    must match the shipped checks and their failure wording.
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
+  motivating_defect: All client manifests and the top changelog identify the same release while retained
+    release contracts remain valid.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass

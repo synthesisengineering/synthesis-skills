@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+**Multi-Mac fleet (September 2026).** Release **4.109.0** enrolls a
+second Mac: machine identities, cross-Mac claim exclusion, parked
+sessions, sealed handoffs, workspace subscriptions, vault-backed
+secrets, and one idempotent bootstrap. See the fleet guides in docs/.
+
 **Succession, shared calendar, review roles (September 2026).** Release **4.108.0**
 adds atomic dead-seat claim succession, the §3 shared time-block layer with
 a tested overlap service, and the review skill's adjudicator role with the
