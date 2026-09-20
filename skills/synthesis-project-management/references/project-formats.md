@@ -33,6 +33,11 @@ migrations write a skeleton labeled `"skeleton": true` with
 - `migrate --check <dir>` → what would be added; writes nothing.
 - `migrate [--goal TEXT] [--status TEXT] <dir>` → adds the three
   files, then verifies by re-reading them.
+- `archive --older-than-days N [--check] <dir>` → moves session
+  periods older than N days to `sessions/archive/` (v2 only, never
+  the newest period) and regenerates the index, which covers both
+  live and archived periods. No default retention — the principal
+  sets the policy; rituals wire it once decided.
 
 ## Rules for every version, present and future
 

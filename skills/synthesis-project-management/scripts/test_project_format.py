@@ -12,7 +12,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from project_format import detect, migrate, validate_state  # noqa: E402
+from project_format import archive, detect, migrate, validate_state  # noqa: E402
 
 
 @pytest.fixture()
@@ -146,6 +146,61 @@ def test_validate_state_rejects_garbage() -> None:
     assert validate_state([]) != []
     assert validate_state({}) != []
     assert validate_state({"schema": 1, "goal": 1, "status": "x"}) != []
+
+
+@pytest.fixture()
+def v2_project(v1_project: Path) -> Path:
+    migrate(v1_project, apply=True)
+    return v1_project
+
+
+def test_archive_check_moves_nothing(v2_project: Path) -> None:
+    report = archive(v2_project, older_than_days=30)
+    assert report["index_updated"] is False
+    assert (v2_project / "sessions" / "2026-08.md").is_file()
+
+
+def test_archive_moves_old_periods_not_newest(v2_project: Path) -> None:
+    from datetime import date, timedelta
+
+    old = (date.today() - timedelta(days=400)).strftime("%Y-%m")
+    mid = (date.today() - timedelta(days=10)).strftime("%Y-%m")
+    # Clear the fixed-date fixture periods; use wall-clock-relative ones.
+    for stale in ("2026-08.md", "2026-09.md"):
+        (v2_project / "sessions" / stale).unlink()
+    (v2_project / "sessions" / f"{old}.md").write_text(
+        "## old session\n\nOld.\n", encoding="utf-8"
+    )
+    (v2_project / "sessions" / f"{mid}.md").write_text(
+        "## recent session\n\nNew.\n", encoding="utf-8"
+    )
+    report = archive(v2_project, older_than_days=365, apply=True)
+    assert report["moved"] == [f"{old}.md"]
+    assert report["kept"] == [f"{mid}.md"]
+    assert (v2_project / "sessions" / "archive" / f"{old}.md").is_file()
+    assert not (v2_project / "sessions" / f"{old}.md").exists()
+    assert report["index_updated"] is True
+    index = (v2_project / "sessions" / "INDEX.md").read_text(encoding="utf-8")
+    assert f"archive/{old}" in index
+    assert detect(v2_project) == "v2"
+
+
+def test_archive_never_moves_newest_alone(v2_project: Path) -> None:
+    for name in ("2026-08.md",):
+        (v2_project / "sessions" / name).unlink()
+    report = archive(v2_project, older_than_days=0, apply=True)
+    assert report["moved"] == []
+    assert report["kept"] == ["2026-09.md"]
+
+
+def test_archive_refuses_v1(v1_project: Path) -> None:
+    with pytest.raises(ValueError, match="migrate first"):
+        archive(v1_project, older_than_days=30, apply=True)
+
+
+def test_archive_rejects_negative_days(v2_project: Path) -> None:
+    with pytest.raises(ValueError):
+        archive(v2_project, older_than_days=-1)
 
 
 def test_cli_detect_and_migrate(v1_project: Path) -> None:
