@@ -140,12 +140,12 @@ def test_workspace_derivation():
     assert FJ.workspace_from_remote("git@h:u/ai-knowledge-vik") == "vik"
     assert FJ.workspace_from_remote("https://h/u/other.git") is None
     assert FJ.workspace_from_kb_path(
-        Path("/h/workspaces/acme/ai-knowledge-acme")) == "acme"
+        Path("/h/workspaces/demo/ai-knowledge-demo")) == "demo"
     assert FJ.workspace_from_kb_path(Path("/x/ai-knowledge-vik")) == "vik"
     assert FJ.workspace_from_kb_path(Path("/x/plain")) is None
     assert FJ.clone_target_for(
-        Path("/h"), "acme", "https://h/u/ai-knowledge-acme.git"
-    ) == Path("/h/workspaces/acme/ai-knowledge-acme")
+        Path("/h"), "demo", "https://h/u/ai-knowledge-demo.git"
+    ) == Path("/h/workspaces/demo/ai-knowledge-demo")
 
 
 def test_discover_manifest(tmp_path):
