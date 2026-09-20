@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.113.0] - 2026-09-20
+
+Versioned project formats. Projects are now v1 (unmarked) or v2
+(marker + machine-readable resume state + sessions index); the
+project-management skill is v2.16.0 with the format contract.
+`project_format.py` detects and pull-migrates v1 to v2 — strictly
+additive, idempotent, verified, never overwriting existing files —
+and the resume probe reports what it finds so resume upgrades stale
+projects before continuing.
+
 ## [4.112.0] - 2026-09-20
 
 Resume anywhere. New open-source skill `synthesis-project-resume`

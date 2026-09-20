@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+**Versioned project formats (September 2026).** Release **4.113.0**
+versions every project (v1/v2) and migrates on resume — additive,
+verified, never overwriting.
+
 **Resume anywhere (September 2026).** Release **4.112.0** ships the
 `synthesis-project-resume` skill: one console prompt restarts any
 project in any harness with full verified context.
