@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+**Rulings release (September 2026).** Release **4.118.0** ships
+meeting-prep 1.1.0 (register samples, reader profiles, disclosure
+default), year-default archive retention, and a preplan credit.
+
 **Seat-heartbeat stability (September 2026).** Release **4.117.0**
 reads the clock once for the board row and the seat, and the fleet
 setup guide leads with the one-command onboard.

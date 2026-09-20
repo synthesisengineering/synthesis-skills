@@ -4,6 +4,13 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.118.0] - 2026-09-20
+
+Rulings release. Meeting-prep 1.1.0 adopts register samples (R13),
+the reader-profile convention (R12), and the R9 disclosure default.
+The session archiver defaults to a year of retention. The preplan
+skill credits its proposer, Emil Peñalo.
+
 ## [4.117.0] - 2026-09-20
 
 Seat-heartbeat stability. Claim, succeed, and heartbeat now take one
