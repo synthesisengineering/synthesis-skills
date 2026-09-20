@@ -41,15 +41,16 @@ materialize to each Mac.
 ## Enroll a new Mac
 
 Clean-install path only — never copy one Mac's state onto another. One
-command with no flags; it finds the knowledge repo over GitHub sign-in
-(running it when needed) or asks for it, derives home, label, skill
-source, workspace, and manifest, asks which workspace only when several
-match, founds a new fleet when the repo holds none and otherwise joins
-as a secondary, narrates every repo as it lands, and publishes the
-enrollment back on success:
+command, the same for every scenario, downloads and installs
+everything, then onboards by asking questions: it detects what the Mac
+holds, recommends the best path, finds the knowledge repo over GitHub
+sign-in (running it when needed) or asks for it, derives home, label,
+skill source, workspace, and manifest, founds a new fleet when the
+repo holds none and otherwise joins as a secondary, narrates every
+repo as it lands, and publishes the enrollment back on success:
 
 ```bash
-synthesis fleet join
+curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh
 ```
 
 The join mints identity, clones subscribed repos, installs the hooks
@@ -60,7 +61,14 @@ or interrupt resumes safely and reports `noop` for finished steps. The
 flags `--kb`, `--label`, `--role`, and `--workspace` override the
 interactive answers for scripted runs. The underlying
 `fleet_bootstrap.py` script is an agent-and-test entry point; humans use
-`synthesis fleet join`.
+the one-command installer above (or `synthesis fleet join` once set up).
+
+Robustness: taken labels offer the first free variant; renamed Macs
+are offered a relabel (explicit labels are never touched);
+concurrent enrollments merge instead of conflicting; interrupted
+clones land atomically and reruns resume; mint races adopt the
+winner; role contradictions and foreign unpushed work fail closed
+with the remedy named.
 
 ## Sync (fetch shared state)
 

@@ -214,13 +214,17 @@ def enroll_self(
     environments: list[str] | None = None,
     directory: Path | None = None,
     now: str | None = None,
+    hostname: str | None = None,
+    label_source: str | None = None,
 ) -> dict:
     """Record this Mac's minted identity in the registry.
 
     Minting (``mint_machine_id``) always precedes enrollment: the registry
     entry keys on the local machine-id file, never on a transported value.
     Re-enrollment refreshes label, role, environments, and last_seen while
-    preserving the original enrolled_at.
+    preserving the original enrolled_at. ``hostname``/``label_source``
+    record how the label was chosen so a later rename can be offered
+    (never forced); provided values win, previous ones are preserved.
     """
     machine_id = read_machine_id(directory)
     if machine_id is None:
@@ -238,7 +242,7 @@ def enroll_self(
         raise FleetIdentityError(
             f"machine {machine_id} is retired; re-enrollment needs a fresh identity"
         )
-    document["machines"][machine_id] = {
+    entry: dict = {
         "label": label.strip(),
         "enrolled_at": (
             previous.get("enrolled_at")
@@ -250,6 +254,21 @@ def enroll_self(
         "environments": list(environments) if environments else ["default"],
         "retired_at": None,
     }
+    previous_hostname = (
+        previous.get("hostname") if isinstance(previous, dict) else None
+    )
+    previous_source = (
+        previous.get("label_source") if isinstance(previous, dict) else None
+    )
+    if hostname is not None:
+        entry["hostname"] = hostname
+    elif isinstance(previous_hostname, str) and previous_hostname:
+        entry["hostname"] = previous_hostname
+    if label_source is not None:
+        entry["label_source"] = label_source
+    elif isinstance(previous_source, str) and previous_source:
+        entry["label_source"] = previous_source
+    document["machines"][machine_id] = entry
     write_registry(document, directory)
     return document["machines"][machine_id]
 

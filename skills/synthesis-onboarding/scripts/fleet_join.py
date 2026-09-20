@@ -18,6 +18,8 @@ report ``noop`` instead of redoing work.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -25,6 +27,10 @@ from pathlib import Path
 
 GIT_TIMEOUT_SECONDS = 300
 GH_TIMEOUT_SECONDS = 60
+ONBOARD_ONE_LINER = (
+    "curl -fsSL https://raw.githubusercontent.com/"
+    "synthesisengineering/synthesis-skills/stable/onboard.sh | sh"
+)
 
 WHERE_TO_FIND_KB = (
     "Find it under your repositories on github.com; it looks like "
@@ -57,6 +63,43 @@ def _run_gh(args: list[str]):
     )
 
 
+def _prompt_stream():
+    """stdin when it is a terminal, else the controlling terminal."""
+    if sys.stdin.isatty():
+        return sys.stdin, False
+    try:
+        return open("/dev/tty", "r", encoding="utf-8"), True
+    except OSError:
+        return None, False
+
+
+def terminal_available() -> bool:
+    """True when a question can reach a human (pipe-safe via /dev/tty)."""
+    stream, close = _prompt_stream()
+    if stream is None:
+        return False
+    if close:
+        stream.close()
+    return True
+
+
+def _read_answer(display: str, hint: str) -> str:
+    stream, close = _prompt_stream()
+    if stream is None:  # pragma: no cover - guarded by terminal_available
+        raise FleetJoinError(
+            f"cannot ask questions (not interactive); pass {hint}"
+        )
+    print(display, end="", flush=True)
+    try:
+        value = stream.readline()
+    finally:
+        if close:
+            stream.close()
+    if value == "":
+        raise FleetJoinError(f"no answer given; pass {hint}")
+    return value.strip()
+
+
 def _require_prompt(hint: str, can_prompt: bool) -> None:
     if not can_prompt:
         raise FleetJoinError(
@@ -64,34 +107,64 @@ def _require_prompt(hint: str, can_prompt: bool) -> None:
         )
 
 
-def prompt_text(question: str, hint: str, *, can_prompt: bool) -> str:
+def prompt_text(
+    question: str, hint: str, *, can_prompt: bool, default: str | None = None
+) -> str:
     """Ask one free-text question; the hint names the flag alternative."""
     _require_prompt(hint, can_prompt)
-    try:
-        answer = input(f"{question}: ").strip()
-    except EOFError as exc:
-        raise FleetJoinError(f"no answer given; pass {hint}") from exc
+    suffix = f" [{default}]" if default else ""
+    answer = _read_answer(f"{question}{suffix}: ", hint)
+    if not answer and default is not None:
+        return default
     if not answer:
         raise FleetJoinError(f"an answer is required; or pass {hint}")
     return answer
 
 
-def prompt_choice(question: str, options: list[str], hint: str, *,
-                  can_prompt: bool) -> str:
-    """Ask one numbered question over ``options``; return the chosen one."""
+def prompt_choice(
+    question: str, options: list[str], hint: str, *,
+    can_prompt: bool, default: int | None = None,
+) -> str:
+    """Ask one numbered question over ``options``; return the chosen one.
+
+    ``default`` is the 1-based recommended option taken on an empty
+    answer; without it an empty answer is refused.
+    """
     _require_prompt(hint, can_prompt)
+    if default is not None and not 1 <= default <= len(options):
+        raise FleetJoinError(f"recommended choice {default} is out of range")
     print(question, flush=True)
     for position, option in enumerate(options, start=1):
-        print(f"  {position}. {option}", flush=True)
-    try:
-        answer = input(f"Choice [1-{len(options)}]: ").strip()
-    except EOFError as exc:
-        raise FleetJoinError(f"no choice given; pass {hint}") from exc
+        marker = " (recommended)" if position == default else ""
+        print(f"  {position}. {option}{marker}", flush=True)
+    if default is None:
+        display = f"Choice [1-{len(options)}]: "
+    else:
+        display = f"Choice [1-{len(options)}, recommended {default}]: "
+    answer = _read_answer(display, hint)
+    if not answer and default is not None:
+        return options[default - 1]
     if not answer.isdigit() or not 1 <= int(answer) <= len(options):
         raise FleetJoinError(
             f"choice must be 1-{len(options)}; or pass {hint}"
         )
     return options[int(answer) - 1]
+
+
+def prompt_confirm(
+    question: str, *, default: bool, can_prompt: bool, hint: str,
+) -> bool:
+    """Ask one yes/no question; the hint guides automation past it."""
+    _require_prompt(hint, can_prompt)
+    suffix = "Y/n" if default else "y/N"
+    answer = _read_answer(f"{question} [{suffix}]: ", hint)
+    if not answer:
+        return default
+    if answer.lower() in ("y", "yes"):
+        return True
+    if answer.lower() in ("n", "no"):
+        return False
+    raise FleetJoinError(f"answer y or n ({hint})")
 
 
 def gh_kb_remotes(*, gh_runner=None) -> tuple[str, list[str]]:
@@ -164,6 +237,247 @@ def resolve_kb_interactive(
         "Knowledge repo URL", "--kb <url-or-path>", can_prompt=can_prompt
     )
     return url, workspace or workspace_from_remote(url)
+
+
+def setup_present(home: Path) -> bool:
+    """True when `synthesis setup` has converged under this home."""
+    try:
+        import system_contract
+
+        state = system_contract.SystemState(
+            home=Path(home).expanduser()
+        )
+        return state.read_desired() is not None
+    except Exception:
+        return False
+
+
+def _run_setup_inline() -> int:
+    """Run the release's own setup with full defaults, in-process."""
+    import synthesis_cli
+
+    return synthesis_cli.main(["setup"])
+
+
+def ensure_setup(
+    home: Path,
+    *,
+    setup_check=None,
+    setup_runner=None,
+    announce=None,
+    can_prompt: bool = True,
+) -> None:
+    """Set the Mac up inline when setup never ran; fail only headless.
+
+    One command must be enough: a missing installation runs the guided
+    setup first (answering its questions), then the join continues.
+    Only a run with no terminal at all refuses, naming the setup-first
+    remedy for automation.
+    """
+    tell = announce or (lambda line: print(line, flush=True))
+    present = (
+        setup_check(home) if setup_check is not None
+        else setup_present(home)
+    )
+    if present:
+        return
+    if not can_prompt:
+        if shutil.which("synthesis") is None:
+            remedy = (
+                "run the installer first:\n"
+                f"  {ONBOARD_ONE_LINER}\n"
+                "then rerun: synthesis fleet join"
+            )
+        else:
+            remedy = (
+                "run synthesis setup first (add --answers for "
+                "automation), then rerun: synthesis fleet join"
+            )
+        raise FleetJoinError(
+            "synthesis isn't set up on this Mac yet and this run "
+            f"cannot ask questions — {remedy}"
+        )
+    tell("synthesis isn't set up yet — setting it up now (answer its "
+         "questions first, then the join continues)")
+    run = setup_runner or _run_setup_inline
+    try:
+        code = run()
+    except KeyboardInterrupt:
+        raise
+    except Exception as exc:
+        raise FleetJoinError(f"setup failed: {exc}") from exc
+    if code != 0:
+        raise FleetJoinError(
+            f"setup failed (exit {code}); fix it and rerun the same command"
+        )
+
+
+def live_label_holders(document: dict, label: str) -> list[str]:
+    """Live machine-ids holding ``label`` in a registry document."""
+    machines = document.get("machines", {})
+    if not isinstance(machines, dict):
+        return []
+    return [
+        machine_id
+        for machine_id, entry in machines.items()
+        if isinstance(entry, dict)
+        and entry.get("retired_at") is None
+        and entry.get("label") == label
+    ]
+
+
+def suggest_label(document: dict, label: str) -> str:
+    """First free ``label``, ``label-2``, ``label-3``, ... among live."""
+    candidate = label
+    suffix = 2
+    while live_label_holders(document, candidate):
+        candidate = f"{label}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+def local_machine_id(home: Path) -> str | None:
+    """This Mac's minted id, or None when it never minted (or is broken)."""
+    path = Path(home).expanduser() / ".synthesis" / "fleet" / "machine-id"
+    try:
+        value = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    try:
+        import uuid as uuid_module
+
+        parsed = uuid_module.UUID(value, version=4)
+    except (ValueError, AttributeError, TypeError):
+        return None
+    if str(parsed) != value.lower():
+        return None
+    return value
+
+
+def local_registry(home: Path) -> dict | None:
+    """This Mac's registry document, or None when absent/unreadable."""
+    path = Path(home).expanduser() / ".synthesis" / "fleet" / "machines.json"
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return document if isinstance(document, dict) else None
+
+
+def resolve_label(
+    document: dict | None,
+    label: str,
+    own_id: str | None,
+    *,
+    can_prompt: bool,
+) -> str:
+    """A label this Mac may enroll under; ask when it collides.
+
+    Retired holders never block (their labels are reusable). A live
+    other holder prompts for a distinct label with the first free
+    suggestion as the default; headless runs name ``--label`` instead.
+    """
+    if document is None:
+        return label
+    rivals = [
+        holder for holder in live_label_holders(document, label)
+        if holder != own_id
+    ]
+    if not rivals:
+        return label
+    suggestion = suggest_label(document, label)
+    if not can_prompt:
+        raise FleetJoinError(
+            f"label '{label}' is already held by live machine {rivals[0]}; "
+            "rerun with a distinct --label"
+        )
+    return prompt_text(
+        f"Another Mac already uses '{label}' — label for this Mac",
+        "--label NAME", can_prompt=can_prompt, default=suggestion,
+    )
+
+
+def reconcile_rename(
+    home: Path,
+    kb_dir: Path,
+    role: str,
+    engine,
+    *,
+    announce=None,
+    can_prompt: bool = True,
+    git_runner=None,
+) -> str | None:
+    """Offer a relabel when an auto-labeled Mac was renamed; a note or None.
+
+    Only auto-labeled entries with a recorded hostname participate: an
+    explicit label is the owner's words and never touched, and entries
+    without provenance predate this tracking. A contested new name
+    keeps the old label with an explanation; otherwise the human
+    decides (keeping wins ties, so DHCP flaps never churn the fleet).
+    """
+    tell = announce or (lambda line: print(line, flush=True))
+    current = default_label()
+    own_id = local_machine_id(home)
+    document = local_registry(home)
+    if own_id is None or document is None:
+        return None
+    machines = document.get("machines", {})
+    entry = machines.get(own_id) if isinstance(machines, dict) else None
+    if not isinstance(entry, dict):
+        return None
+    if entry.get("label_source") != "auto":
+        return None
+    recorded = entry.get("hostname")
+    if not recorded or recorded == current:
+        return None
+    old_label = entry.get("label", recorded)
+    rivals = [
+        holder for holder in live_label_holders(document, current)
+        if holder != own_id
+    ]
+    if rivals:
+        return (
+            f"this Mac was renamed from '{recorded}' to '{current}', but "
+            f"'{current}' is held by live machine {rivals[0]}; keeping "
+            f"the label '{old_label}'"
+        )
+    if not can_prompt:
+        return (
+            f"this Mac was renamed from '{recorded}' to '{current}'; "
+            f"keeping the label '{old_label}' (rerun with --label to change)"
+        )
+    try:
+        agreed = prompt_confirm(
+            f"This Mac was renamed from '{recorded}' to '{current}' — "
+            f"update its fleet label from '{old_label}'?",
+            default=False, can_prompt=can_prompt,
+            hint="answer n to keep the label",
+        )
+    except FleetJoinError as exc:
+        return (
+            f"rename question skipped ({exc}); keeping the label "
+            f"'{old_label}'"
+        )
+    if not agreed:
+        tell(f"keeping the fleet label '{old_label}'")
+        return None
+    relabeled = engine.step_enroll(
+        Path(home).expanduser(), label=current, role=entry.get("role", role),
+        fleet_registry=None, hostname=current, label_source="auto",
+    )
+    if relabeled.status != "done":
+        return f"relabel refused: {relabeled.detail}"
+    publish_kwargs: dict = {}
+    if git_runner is not None:
+        publish_kwargs["git_runner"] = git_runner
+    published = engine.step_publish(
+        Path(home).expanduser(), own_id, label=current,
+        role=entry.get("role", role), kb_repo=Path(kb_dir),
+        **publish_kwargs,
+    )
+    if published.status == "fail":
+        return f"relabel kept locally but not published: {published.detail}"
+    return f"fleet label updated from '{old_label}' to '{current}'"
 
 
 def resolve_role(
@@ -359,15 +673,31 @@ def ensure_kb_checkout(
     target.parent.mkdir(parents=True, exist_ok=True)
     if progress is not None:
         progress(f"cloning {kb} -> {target}")
+    staging = target.parent / f"{target.name}.partial-{os.getpid()}"
+    for leftover in target.parent.glob(f"{target.name}.partial-*"):
+        if leftover != staging:
+            shutil.rmtree(leftover, ignore_errors=True)
+    if staging.exists():
+        shutil.rmtree(staging, ignore_errors=True)
     try:
-        completed = runner(["clone", "--quiet", kb, str(target)], None)
+        completed = runner(["clone", "--quiet", kb, str(staging)], None)
     except (OSError, subprocess.SubprocessError) as exc:
+        shutil.rmtree(staging, ignore_errors=True)
         raise FleetJoinError(f"{target}: clone failed: {exc}") from exc
     if completed.returncode != 0:
+        shutil.rmtree(staging, ignore_errors=True)
         raise FleetJoinError(
             f"{target}: clone failed: {completed.stderr.strip()}; check the "
             "remote URL and auth, then rerun the same command"
         )
+    try:
+        os.rename(staging, target)
+    except OSError as exc:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise FleetJoinError(
+            f"{target}: clone landed but rename failed: {exc}; "
+            "rerun the same command"
+        ) from exc
     if progress is not None:
         progress(f"cloned {target}")
     return target, workspace
@@ -403,6 +733,8 @@ def join(
     gh_runner=None,
     auth_runner=None,
     progress=None,
+    setup_check=None,
+    setup_runner=None,
 ) -> int:
     """Run ``synthesis fleet join``; return the process exit code."""
     home = Path(home).expanduser() if home is not None else Path.home()
@@ -410,7 +742,7 @@ def join(
         release_root
     )
     as_json = bool(getattr(args, "json", False))
-    can_prompt = sys.stdin.isatty() and not as_json
+    can_prompt = terminal_available() and not as_json
 
     def announce(line: str) -> None:
         if as_json:
@@ -427,6 +759,10 @@ def join(
         )
 
     try:
+        ensure_setup(
+            home, setup_check=setup_check, setup_runner=setup_runner,
+            announce=announce, can_prompt=can_prompt,
+        )
         kb_arg = getattr(args, "kb", None)
         explicit_workspace = getattr(args, "workspace", None)
         if kb_arg:
@@ -458,7 +794,27 @@ def join(
             repos: list[dict] = []
         else:
             repos = engine.parse_repos_manifest(manifest, home)
-        label = getattr(args, "label", None) or default_label()
+        explicit = getattr(args, "label", None)
+        hostname = default_label()
+        label = (explicit or hostname).strip()
+        if not label:
+            raise FleetJoinError(
+                "machine label is empty; pass --label NAME"
+            )
+        label_source = "explicit" if explicit else "auto"
+        own_id = local_machine_id(home)
+        try:
+            shared = (
+                json.loads(registry.read_text(encoding="utf-8"))
+                if registry.is_file() else None
+            )
+        except (OSError, ValueError):
+            shared = None
+        if not isinstance(shared, dict):
+            shared = None
+        label = resolve_label(
+            shared, label, own_id, can_prompt=can_prompt
+        )
         announce(f"joining as {label} ({role})")
         problems = engine.preflight(home, role, registry)
         if problems:
@@ -471,8 +827,18 @@ def join(
             repos=repos,
             fleet_registry=registry,
             kb_repo=kb_dir,
+            hostname=hostname or None,
+            label_source=label_source,
             progress=announce,
         )
+        if report["ok"]:
+            note = reconcile_rename(
+                home, kb_dir, role, engine,
+                announce=announce, can_prompt=can_prompt,
+            )
+            if note is not None:
+                announce(f"note: {note}")
+                report = {**report, "note": note}
     except KeyboardInterrupt:
         print(
             "INTERRUPTED fleet join: rerun the same command to resume; "

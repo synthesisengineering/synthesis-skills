@@ -35,6 +35,7 @@ import copy
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 from collections.abc import Callable
@@ -140,6 +141,7 @@ def parse_repos_manifest(path: Path | None, home: Path) -> list[dict]:
     if not isinstance(repos, list):
         raise FleetBootstrapError("repos manifest repos must be a list")
     parsed = []
+    seen_paths: set[str] = set()
     for position, entry in enumerate(repos):
         if not isinstance(entry, dict):
             raise FleetBootstrapError(f"repos[{position}] must be an object")
@@ -152,10 +154,16 @@ def parse_repos_manifest(path: Path | None, home: Path) -> list[dict]:
             raise FleetBootstrapError(f"repos[{position}] needs a path")
         if branch is not None and not isinstance(branch, str):
             raise FleetBootstrapError(f"repos[{position}] branch must be a string")
+        resolved = str(expand_for_home(target, home))
+        if resolved in seen_paths:
+            raise FleetBootstrapError(
+                f"repos[{position}] lists {resolved} twice; one entry per path"
+            )
+        seen_paths.add(resolved)
         parsed.append(
             {
                 "remote": remote.strip(),
-                "path": str(expand_for_home(target, home)),
+                "path": resolved,
                 "branch": (branch or "").strip(),
             }
         )
@@ -230,8 +238,22 @@ def step_identity(home: Path) -> StepResult:
         )
     try:
         minted = _identity.mint_machine_id(directory)
-    except _identity.FleetIdentityError as exc:
-        return StepResult(STEP_IDENTITY, STATUS_FAIL, str(exc))
+    except _identity.FleetIdentityError:
+        # A concurrent run won the mint; adopt the winner's id so the
+        # rerun (and this run) converge instead of failing.
+        try:
+            minted = _identity.read_machine_id(directory)
+        except _identity.FleetIdentityError as exc:
+            return StepResult(STEP_IDENTITY, STATUS_FAIL, str(exc))
+        if minted is None:
+            return StepResult(
+                STEP_IDENTITY, STATUS_FAIL,
+                "fleet machine-id mint lost a race and no id exists; "
+                "rerun the same command",
+            )
+        return StepResult(
+            STEP_IDENTITY, STATUS_NOOP, f"machine-id already minted: {minted}"
+        )
     return StepResult(
         STEP_IDENTITY, STATUS_DONE, f"minted machine-id: {minted}"
     )
@@ -284,7 +306,9 @@ def step_repos(
                     STEP_REPOS,
                     STATUS_FAIL,
                     f"{target}: origin {origin.stdout.strip()} does not match "
-                    f"subscribed {entry['remote']}; refusing to clobber",
+                    f"subscribed {entry['remote']}; refusing to clobber — "
+                    "move it aside or fix its origin, then rerun the same "
+                    "command",
                 )
             verified.append(str(target))
             if progress is not None:
@@ -299,23 +323,42 @@ def step_repos(
         target.parent.mkdir(parents=True, exist_ok=True)
         if progress is not None:
             progress(f"{tag} cloning {entry['remote']} -> {target}")
-        clone_args = ["clone", "--quiet", entry["remote"], str(target)]
+        # Clone beside the target and rename on success: an interrupted
+        # clone leaves no half-checkout behind to block the rerun.
+        staging = target.parent / f"{target.name}.partial-{os.getpid()}"
+        for leftover in target.parent.glob(f"{target.name}.partial-*"):
+            if leftover != staging:
+                shutil.rmtree(leftover, ignore_errors=True)
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+        clone_args = ["clone", "--quiet", entry["remote"], str(staging)]
         if entry["branch"]:
             clone_args = [
                 "clone", "--quiet", "--branch", entry["branch"],
-                entry["remote"], str(target),
+                entry["remote"], str(staging),
             ]
         try:
             completed = runner(clone_args, None)
         except (OSError, subprocess.SubprocessError) as exc:
+            shutil.rmtree(staging, ignore_errors=True)
             return StepResult(
                 STEP_REPOS, STATUS_FAIL, f"{target}: clone failed: {exc}"
             )
         if completed.returncode != 0:
+            shutil.rmtree(staging, ignore_errors=True)
             return StepResult(
                 STEP_REPOS,
                 STATUS_FAIL,
                 f"{target}: clone failed: {completed.stderr.strip()}",
+            )
+        try:
+            os.rename(staging, target)
+        except OSError as exc:
+            shutil.rmtree(staging, ignore_errors=True)
+            return StepResult(
+                STEP_REPOS, STATUS_FAIL,
+                f"{target}: clone landed but rename failed: {exc}; "
+                "rerun the same command",
             )
         cloned.append(str(target))
         if progress is not None:
@@ -397,13 +440,17 @@ def step_enroll(
     label: str,
     role: str,
     fleet_registry: Path | None = None,
+    hostname: str | None = None,
+    label_source: str | None = None,
 ) -> StepResult:
     """Enroll this Mac's minted identity in the fleet registry.
 
     A primary founds the registry; a secondary installs the synced copy
     (``--fleet-registry``, from the just-cloned personal KB) before
     enrolling. A secondary with no synced copy fails closed instead of
-    founding a second, conflicting fleet.
+    founding a second, conflicting fleet. A label already held by a
+    live other machine fails closed (relabel and rerun); so does a
+    role that contradicts this Mac's own live enrollment.
     """
     directory = fleet_dir_for(home)
     try:
@@ -455,6 +502,35 @@ def step_enroll(
             STATUS_NOOP,
             f"machine {label} ({machine_id}) already enrolled as {role}",
         )
+    if (
+        isinstance(entry, dict)
+        and entry.get("retired_at") is None
+        and entry.get("role") != role
+    ):
+        return StepResult(
+            STEP_ENROLL,
+            STATUS_FAIL,
+            f"machine {label} ({machine_id}) is already enrolled as "
+            f"{entry.get('role')}; role changes are refused here — "
+            "retire this entry before re-enrolling under another role",
+        )
+    rivals = [
+        other_id
+        for other_id, other in registry["machines"].items()
+        if isinstance(other, dict)
+        and other.get("retired_at") is None
+        and other.get("label") == label.strip()
+        and other_id != machine_id
+    ]
+    if rivals:
+        rival = registry["machines"][rivals[0]]
+        return StepResult(
+            STEP_ENROLL,
+            STATUS_FAIL,
+            f"label {label.strip()} is already held by live machine "
+            f"{rival.get('label')} ({rivals[0]}); rerun with a "
+            "distinct --label so the fleet can tell its Macs apart",
+        )
     if role == "primary":
         holders = [
             other_id
@@ -475,7 +551,8 @@ def step_enroll(
             )
     try:
         _identity.enroll_self(
-            label=label, role=role, directory=directory
+            label=label, role=role, directory=directory,
+            hostname=hostname, label_source=label_source,
         )
     except _identity.FleetIdentityError as exc:
         return StepResult(STEP_ENROLL, STATUS_FAIL, str(exc))
@@ -523,6 +600,106 @@ def step_doctor(home: Path, machine_id: str, *, doctor_runner=None) -> StepResul
 def _git_tail(completed) -> str:
     text = (completed.stderr or completed.stdout or "").strip().splitlines()
     return text[-1] if text else "no output"
+
+
+def _diverged(repo: Path, pull_tail: str) -> StepResult:
+    return StepResult(
+        STEP_PUBLISH,
+        STATUS_FAIL,
+        f"{repo}: could not fast-forward onto the shared KB ({pull_tail}); "
+        f"fetch the latest KB (git -C {repo} pull --rebase), resolve any "
+        "conflicts, then rerun the same command",
+    )
+
+
+def _recover_concurrent_publish(
+    runner, repo: Path, *, label: str, role: str, pull_tail: str,
+    progress=None,
+) -> StepResult | None:
+    """Recover a failed fast-forward when safe; None means proceed.
+
+    When the only unpushed commit is this Mac's own enroll commit, the
+    recovery is mechanical: fetch, soften the commit back into the
+    index, restore the remote's registry file, and let the normal
+    union/commit/push path re-apply this Mac's entry on top. Anything
+    else (other unpushed work, missing upstream, unreadable remote
+    file) fails closed with the manual remedy.
+    """
+    try:
+        fetched = runner(["fetch", "--quiet", "origin"], repo)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return StepResult(
+            STEP_PUBLISH, STATUS_FAIL, f"{repo}: git fetch failed: {exc}"
+        )
+    if fetched.returncode != 0:
+        return StepResult(
+            STEP_PUBLISH, STATUS_FAIL,
+            f"{repo}: git fetch failed: {_git_tail(fetched)}; check the "
+            "network and rerun the same command",
+        )
+    try:
+        ahead = runner(["rev-list", "--count", "@{u}..HEAD"], repo)
+        subject = runner(["log", "-1", "--format=%s", "HEAD"], repo)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return StepResult(
+            STEP_PUBLISH, STATUS_FAIL, f"{repo}: git failed: {exc}"
+        )
+    expected = f"fleet: enroll {label.strip()} as {role}"
+    if (
+        ahead.returncode != 0
+        or ahead.stdout.strip() != "1"
+        or subject.returncode != 0
+        or subject.stdout.strip() != expected
+    ):
+        return _diverged(repo, pull_tail)
+    if progress is not None:
+        progress("another Mac published first; re-applying this Mac's "
+                 "enrollment onto the latest shared registry")
+    try:
+        reset = runner(["reset", "--soft", "--quiet", "@{u}"], repo)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return StepResult(
+            STEP_PUBLISH, STATUS_FAIL, f"{repo}: git reset failed: {exc}"
+        )
+    if reset.returncode != 0:
+        return _diverged(repo, _git_tail(reset))
+    try:
+        exists = runner(
+            ["cat-file", "-e", "@{u}:fleet/machines.json"], repo
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return StepResult(
+            STEP_PUBLISH, STATUS_FAIL, f"{repo}: git failed: {exc}"
+        )
+    shared = repo / "fleet" / "machines.json"
+    if exists.returncode != 0:
+        try:
+            shared.unlink(missing_ok=True)
+        except OSError as exc:
+            return StepResult(
+                STEP_PUBLISH, STATUS_FAIL,
+                f"shared registry unwritable: {exc}",
+            )
+        return None
+    try:
+        showed = runner(["show", "@{u}:fleet/machines.json"], repo)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return StepResult(
+            STEP_PUBLISH, STATUS_FAIL, f"{repo}: git show failed: {exc}"
+        )
+    if showed.returncode != 0:
+        return StepResult(
+            STEP_PUBLISH, STATUS_FAIL,
+            f"{repo}: remote registry unreadable: {_git_tail(showed)}; "
+            "rerun the same command",
+        )
+    try:
+        shared.write_text(showed.stdout, encoding="utf-8")
+    except OSError as exc:
+        return StepResult(
+            STEP_PUBLISH, STATUS_FAIL, f"shared registry unwritable: {exc}"
+        )
+    return None
 
 
 def step_publish(
@@ -584,12 +761,16 @@ def step_publish(
             STEP_PUBLISH, STATUS_FAIL, f"{repo}: git pull failed: {exc}"
         )
     if pulled.returncode != 0:
-        return StepResult(
-            STEP_PUBLISH,
-            STATUS_FAIL,
-            f"{repo}: git pull --ff-only failed: {_git_tail(pulled)}; "
-            "fetch the latest KB and rerun the same command",
+        # Another Mac may have published since this clone: when the only
+        # unpushed commit is this Mac's own enroll commit, rebase the
+        # registry at the data level (re-union onto the remote file)
+        # instead of dead-ending. Anything else needs human eyes.
+        recovered = _recover_concurrent_publish(
+            runner, repo, label=label, role=role,
+            pull_tail=_git_tail(pulled), progress=progress,
         )
+        if recovered is not None:
+            return recovered
     directory = fleet_dir_for(home)
     try:
         local = _identity.read_registry(directory)
@@ -740,6 +921,8 @@ def bootstrap(
     repos: list[dict] | None = None,
     fleet_registry: Path | None = None,
     kb_repo: Path | None = None,
+    hostname: str | None = None,
+    label_source: str | None = None,
     git_runner=None,
     install_runner=None,
     doctor_runner=None,
@@ -796,7 +979,10 @@ def bootstrap(
         return stopped
 
     stopped = run_step(
-        step_enroll(home, label=label, role=role, fleet_registry=fleet_registry)
+        step_enroll(
+            home, label=label, role=role, fleet_registry=fleet_registry,
+            hostname=hostname, label_source=label_source,
+        )
     )
     if stopped is not None:
         return stopped
@@ -862,15 +1048,26 @@ def main(argv: list[str] | None = None) -> int:
     def progress(line: str) -> None:
         print(line, flush=True)
 
+    label = args.label.strip()
+    if not label:
+        print("FAIL bootstrap: --label must be a non-empty string",
+              file=sys.stderr)
+        return 1
+    try:
+        hostname = socket.gethostname().split(".")[0].strip() or None
+    except OSError:
+        hostname = None
     try:
         report = bootstrap(
             home=args.home,
             source_root=args.source_root,
-            label=args.label,
+            label=label,
             role=args.role,
             repos=repos,
             fleet_registry=args.fleet_registry,
             kb_repo=args.kb_repo,
+            hostname=hostname,
+            label_source="explicit",
             progress=progress,
         )
     except KeyboardInterrupt:

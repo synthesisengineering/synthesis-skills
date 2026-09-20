@@ -233,7 +233,7 @@ def _validate_cli_arguments(checkout: Path, cli_args: list[str]) -> None:
     if not callable(build):
         raise ContractError("release CLI has no argument parser")
     try:
-        build().parse_args(cli_args or ["setup"])
+        build().parse_args(cli_args or ["onboard"])
     except SystemExit as exc:
         raise ContractError(
             "invalid command line %r (parser exit %s)" % (cli_args, exc.code)
@@ -326,7 +326,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Synthesis bootstrap refused: %s" % exc, file=sys.stderr)
         return 1
     cli = generation / "skills" / "synthesis-onboarding" / "scripts" / "synthesis_cli.py"
-    command = [sys.executable, "-B", str(cli)] + (cli_args or ["setup"])
+    command = [sys.executable, "-B", str(cli)] + (cli_args or ["onboard"])
     environment = dict(os.environ)
     environment["SYNTHESIS_ACTIVE_DESCRIPTOR"] = str(args.active_descriptor)
     environment["SYNTHESIS_BOOTSTRAP_RESOLVED"] = "1"

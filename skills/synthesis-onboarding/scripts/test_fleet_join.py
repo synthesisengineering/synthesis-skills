@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 import sys
@@ -214,6 +215,7 @@ def test_join_derives_everything_from_a_path(tmp_path, monkeypatch, capsys):
     code = FJ.join(
         join_args(str(kb)), release_root=tmp_path / "release",
         home=home, bootstrap=stub_engine(captured),
+        setup_check=lambda home: True,
     )
     assert code == 0
     assert captured["manifest"] == str(kb / "fleet" / "repos.demo.json")
@@ -235,6 +237,7 @@ def test_join_clones_a_remote_and_derives_the_workspace(tmp_path, capsys):
     code = FJ.join(
         join_args(f"file://{origin}"), release_root=tmp_path / "release",
         home=home, bootstrap=stub_engine(captured),
+        setup_check=lambda home: True,
     )
     assert code == 0
     expected = home / "workspaces" / "demo" / "ai-knowledge-demo"
@@ -256,6 +259,7 @@ def test_join_json_mode_and_failures(tmp_path, capsys, monkeypatch):
     code = FJ.join(
         join_args(str(kb), json=True), release_root=tmp_path / "release",
         home=home, bootstrap=stub_engine(captured),
+        setup_check=lambda home: True,
     )
     assert code == 0
     payload = json.loads(capsys.readouterr().out)
@@ -271,6 +275,7 @@ def test_join_json_mode_and_failures(tmp_path, capsys, monkeypatch):
         FJ.join(
             join_args(str(kb)), release_root=tmp_path / "release",
             home=home, bootstrap=engine,
+            setup_check=lambda home: True,
         )
 
     def raising_bootstrap(**kwargs):
@@ -281,6 +286,7 @@ def test_join_json_mode_and_failures(tmp_path, capsys, monkeypatch):
     code = FJ.join(
         join_args(str(kb)), release_root=tmp_path / "release",
         home=home, bootstrap=engine,
+        setup_check=lambda home: True,
     )
     assert code == 130
     assert "INTERRUPTED fleet join" in capsys.readouterr().err
@@ -370,26 +376,35 @@ def test_resolve_role_follows_shared_state(tmp_path, capsys):
     assert FJ.resolve_role(None, corrupt) == "secondary"
 
 
+def stream_with(monkeypatch, text):
+    monkeypatch.setattr(
+        FJ, "_prompt_stream", lambda: (io.StringIO(text), False)
+    )
+
+
 def test_prompts_validate_and_name_the_flag(monkeypatch, capsys):
-    monkeypatch.setattr("builtins.input", lambda *a: "  answer  ")
+    stream_with(monkeypatch, "  answer  \n")
     assert FJ.prompt_text("Q", "--kb <u>", can_prompt=True) == "answer"
-    monkeypatch.setattr("builtins.input", lambda *a: "2")
+    stream_with(monkeypatch, "2\n")
     assert FJ.prompt_choice("Q", ["a", "b"], "--w <n>", can_prompt=True) == "b"
-    monkeypatch.setattr("builtins.input", lambda *a: "9")
+    stream_with(monkeypatch, "9\n")
     with pytest.raises(FJ.FleetJoinError, match="choice must be"):
         FJ.prompt_choice("Q", ["a", "b"], "--w <n>", can_prompt=True)
-    monkeypatch.setattr("builtins.input", lambda *a: "   ")
+    stream_with(monkeypatch, "   \n")
     with pytest.raises(FJ.FleetJoinError, match="required"):
         FJ.prompt_text("Q", "--kb <u>", can_prompt=True)
-
-    def eof(*args):
-        raise EOFError
-
-    monkeypatch.setattr("builtins.input", eof)
+    stream_with(monkeypatch, "")
     with pytest.raises(FJ.FleetJoinError, match="no answer"):
         FJ.prompt_text("Q", "--kb <u>", can_prompt=True)
     with pytest.raises(FJ.FleetJoinError, match="not interactive"):
         FJ.prompt_text("Q", "--kb <u>", can_prompt=False)
+
+
+def test_prompt_stream_prefers_stdin_then_tty(monkeypatch):
+    monkeypatch.setattr(FJ.sys.stdin, "isatty", lambda: True)
+    stream, close = FJ._prompt_stream()
+    assert stream is FJ.sys.stdin
+    assert close is False
 
 
 def test_resolve_kb_prefers_discovery_then_asks(tmp_path, monkeypatch):
@@ -405,7 +420,7 @@ def test_resolve_kb_prefers_discovery_then_asks(tmp_path, monkeypatch):
     assert workspace == "demo"
     assert announced == [f"found knowledge repo {remote}"]
 
-    monkeypatch.setattr("builtins.input", lambda *a: "2")
+    stream_with(monkeypatch, "2\n")
     remote, _ = FJ.resolve_kb_interactive(
         None,
         gh_runner=gh_stub(urls=["https://h/u/ai-knowledge-a.git",
@@ -437,9 +452,7 @@ def test_resolve_kb_prefers_discovery_then_asks(tmp_path, monkeypatch):
     assert calls == ["login"]
     assert remote == "https://h/u/ai-knowledge-demo.git"
 
-    monkeypatch.setattr(
-        "builtins.input", lambda *a: "https://h/u/ai-knowledge-x.git"
-    )
+    stream_with(monkeypatch, "https://h/u/ai-knowledge-x.git\n")
     remote, workspace = FJ.resolve_kb_interactive(
         None, gh_runner=gh_stub(error=FileNotFoundError()),
         announce=announced.append,
@@ -477,6 +490,7 @@ def test_join_without_kb_discovers_and_runs(tmp_path, monkeypatch, capsys):
     code = FJ.join(
         join_args(), release_root=tmp_path / "release", home=home,
         bootstrap=stub_engine(captured),
+        setup_check=lambda home: True,
         gh_runner=gh_stub(urls=[f"file://{origin}"]),
     )
     assert code == 0
@@ -515,6 +529,7 @@ def test_join_founding_skips_clones(tmp_path, monkeypatch, capsys):
     code = FJ.join(
         join_args(str(kb)), release_root=tmp_path / "release", home=home,
         bootstrap=engine,
+        setup_check=lambda home: True,
     )
     assert code == 0
     assert parsed == {}
@@ -523,3 +538,399 @@ def test_join_founding_skips_clones(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "founding one as primary" in out
     assert "skipping clones" in out
+
+
+def test_setup_present_false_without_desired_state(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    assert FJ.setup_present(home) is False
+    assert FJ.setup_present(tmp_path / "no-home") is False
+
+
+def test_setup_absent_runs_setup_inline_then_joins(
+    tmp_path, monkeypatch, capsys
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    kb = seed_kb_worktree(tmp_path / "kb")
+    captured: dict = {}
+    runs: list = []
+    monkeypatch.setattr(FJ, "default_label", lambda: "test-mac")
+    monkeypatch.setattr(FJ, "terminal_available", lambda: True)
+    code = FJ.join(
+        join_args(str(kb)), release_root=tmp_path / "release", home=home,
+        bootstrap=stub_engine(captured),
+        setup_check=lambda home_dir: False,
+        setup_runner=lambda: runs.append("setup") or 0,
+    )
+    assert code == 0
+    assert runs == ["setup"]
+    assert captured["bootstrap"]["label"] == "test-mac"
+    assert "setting it up now" in capsys.readouterr().out
+
+
+def test_setup_inline_failure_fails_closed(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    kb = seed_kb_worktree(tmp_path / "kb")
+    monkeypatch.setattr(FJ, "terminal_available", lambda: True)
+    with pytest.raises(FJ.FleetJoinError, match=r"setup failed \(exit 1\)"):
+        FJ.join(
+            join_args(str(kb)), release_root=tmp_path / "release",
+            home=home, bootstrap=stub_engine({}),
+            setup_check=lambda home_dir: False,
+            setup_runner=lambda: 1,
+        )
+
+
+def test_setup_absent_headless_names_setup_first(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(FJ, "terminal_available", lambda: False)
+    monkeypatch.setattr(
+        FJ.shutil, "which", lambda _name: "/usr/local/bin/synthesis"
+    )
+    with pytest.raises(FJ.FleetJoinError, match="run synthesis setup first"):
+        FJ.join(
+            join_args(), release_root=tmp_path / "release", home=home,
+            bootstrap=stub_engine({}),
+            setup_check=lambda home_dir: False,
+        )
+    monkeypatch.setattr(FJ.shutil, "which", lambda _name: None)
+    with pytest.raises(FJ.FleetJoinError, match="onboard.sh"):
+        FJ.ensure_setup(
+            home, setup_check=lambda home_dir: False, can_prompt=False
+        )
+
+
+def registry_doc(*entries):
+    now = "2026-09-19T12:00:00+00:00"
+    return {
+        "schema_version": 1,
+        "machines": {
+            machine_id: {
+                "label": label, "enrolled_at": now, "last_seen": now,
+                "role": role, "environments": ["default"],
+                "retired_at": retired_at,
+                **extra,
+            }
+            for machine_id, label, role, retired_at, extra in entries
+        },
+    }
+
+
+def write_local_fleet(home: Path, machine_id: str, document: dict):
+    fleet_dir = home / ".synthesis" / "fleet"
+    fleet_dir.mkdir(parents=True, exist_ok=True)
+    (fleet_dir / "machine-id").write_text(
+        machine_id + "\n", encoding="utf-8"
+    )
+    (fleet_dir / "machines.json").write_text(
+        json.dumps(document), encoding="utf-8"
+    )
+
+
+def test_live_label_holders_and_suggestions():
+    document = registry_doc(
+        ("aaa", "mac-b", "secondary", None, {}),
+        ("bbb", "mac-b-2", "secondary", None, {}),
+        ("ccc", "mac-old", "secondary", "2026-01-01T00:00:00+00:00", {}),
+    )
+    assert FJ.live_label_holders(document, "mac-b") == ["aaa"]
+    assert FJ.live_label_holders(document, "mac-old") == []
+    assert FJ.live_label_holders({}, "mac-b") == []
+    assert FJ.suggest_label(document, "mac-b") == "mac-b-3"
+    assert FJ.suggest_label(document, "fresh") == "fresh"
+
+
+def test_local_readers_tolerate_absence_and_corruption(tmp_path):
+    assert FJ.local_machine_id(tmp_path / "no-home") is None
+    assert FJ.local_registry(tmp_path / "no-home") is None
+    home = tmp_path / "home"
+    fleet_dir = home / ".synthesis" / "fleet"
+    fleet_dir.mkdir(parents=True)
+    (fleet_dir / "machine-id").write_text("not-a-uuid\n", encoding="utf-8")
+    (fleet_dir / "machines.json").write_text("{broken\n", encoding="utf-8")
+    assert FJ.local_machine_id(home) is None
+    assert FJ.local_registry(home) is None
+
+
+def test_resolve_label_collision_prompts_with_suggestion(monkeypatch):
+    document = registry_doc(
+        ("aaa", "mac-b", "secondary", None, {}),
+        ("bbb", "mac-b-2", "secondary", None, {}),
+    )
+    assert FJ.resolve_label(None, "mac-b", None, can_prompt=True) == "mac-b"
+    assert FJ.resolve_label(
+        document, "mac-b", "aaa", can_prompt=True
+    ) == "mac-b"
+    stream_with(monkeypatch, "\n")
+    assert FJ.resolve_label(
+        document, "mac-b", "zzz", can_prompt=True
+    ) == "mac-b-3"
+    stream_with(monkeypatch, "picked\n")
+    assert FJ.resolve_label(
+        document, "mac-b", "zzz", can_prompt=True
+    ) == "picked"
+    with pytest.raises(FJ.FleetJoinError, match="--label"):
+        FJ.resolve_label(document, "mac-b", "zzz", can_prompt=False)
+
+
+def test_join_resolves_collision_before_bootstrap(
+    tmp_path, monkeypatch, capsys
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    kb = seed_kb_worktree(tmp_path / "kb")
+    rival = str(uuid.uuid4())
+    machines = kb / "fleet" / "machines.json"
+    document = json.loads(machines.read_text(encoding="utf-8"))
+    now = "2026-09-19T12:00:00+00:00"
+    document["machines"][rival] = {
+        "label": "test-mac", "enrolled_at": now, "last_seen": now,
+        "role": "secondary", "environments": ["default"],
+        "retired_at": None,
+    }
+    machines.write_text(json.dumps(document), encoding="utf-8")
+    captured: dict = {}
+    monkeypatch.setattr(FJ, "default_label", lambda: "test-mac")
+    stream_with(monkeypatch, "\n")
+    code = FJ.join(
+        join_args(str(kb)), release_root=tmp_path / "release", home=home,
+        bootstrap=stub_engine(captured),
+        setup_check=lambda home_dir: True,
+    )
+    assert code == 0
+    assert captured["bootstrap"]["label"] == "test-mac-2"
+    assert captured["bootstrap"]["label_source"] == "auto"
+
+
+def test_join_empty_label_refused(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    kb = seed_kb_worktree(tmp_path / "kb")
+    monkeypatch.setattr(FJ, "default_label", lambda: "test-mac")
+    with pytest.raises(FJ.FleetJoinError, match="empty"):
+        FJ.join(
+            join_args(str(kb), label="   "),
+            release_root=tmp_path / "release", home=home,
+            bootstrap=stub_engine({}),
+            setup_check=lambda home_dir: True,
+        )
+
+
+def seed_renamed(home: Path, *, source="auto", recorded="old-mac",
+                 label="old-mac", rival=False):
+    own_id = str(uuid.uuid4())
+    entries = [(own_id, label, "secondary", None,
+                {"hostname": recorded, "label_source": source})]
+    if rival:
+        entries.append((str(uuid.uuid4()), "new-mac", "secondary", None, {}))
+    else:
+        entries.append((str(uuid.uuid4()), "mac-a", "primary", None, {}))
+    write_local_fleet(home, own_id, registry_doc(*entries))
+    return own_id
+
+
+def test_reconcile_rename_offers_and_relabels(tmp_path, monkeypatch, capsys):
+    home = tmp_path / "home"
+    home.mkdir()
+    own_id = seed_renamed(home)
+    monkeypatch.setattr(FJ, "default_label", lambda: "new-mac")
+    stream_with(monkeypatch, "y\n")
+    calls: dict = {}
+
+    def step_enroll(home_dir, **kwargs):
+        calls["enroll"] = kwargs
+        return SimpleNamespace(status="done", detail="enrolled")
+
+    def step_publish(home_dir, machine_id, **kwargs):
+        calls["publish"] = (machine_id, kwargs)
+        return SimpleNamespace(status="done", detail="published")
+
+    engine = SimpleNamespace(step_enroll=step_enroll, step_publish=step_publish)
+    note = FJ.reconcile_rename(
+        home, tmp_path / "kb", "secondary", engine,
+        announce=print, can_prompt=True,
+    )
+    assert note == "fleet label updated from 'old-mac' to 'new-mac'"
+    assert calls["enroll"]["label"] == "new-mac"
+    assert calls["enroll"]["hostname"] == "new-mac"
+    assert calls["enroll"]["label_source"] == "auto"
+    assert calls["publish"][0] == own_id
+
+
+def test_reconcile_rename_decline_and_skip_cases(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    seed_renamed(home)
+    monkeypatch.setattr(FJ, "default_label", lambda: "new-mac")
+    stream_with(monkeypatch, "\n")
+    announced: list[str] = []
+    engine = SimpleNamespace(
+        step_enroll=lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("must not relabel")),
+        step_publish=lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("must not publish")),
+    )
+    assert FJ.reconcile_rename(
+        home, tmp_path / "kb", "secondary", engine,
+        announce=announced.append, can_prompt=True,
+    ) is None
+    assert announced == ["keeping the fleet label 'old-mac'"]
+
+    assert FJ.reconcile_rename(
+        tmp_path / "no-home", tmp_path / "kb", "secondary", engine,
+        announce=announced.append, can_prompt=True,
+    ) is None
+
+    explicit_home = tmp_path / "explicit"
+    explicit_home.mkdir()
+    seed_renamed(explicit_home, source="explicit")
+    assert FJ.reconcile_rename(
+        explicit_home, tmp_path / "kb", "secondary", engine,
+        announce=announced.append, can_prompt=True,
+    ) is None
+
+    same_home = tmp_path / "same"
+    same_home.mkdir()
+    seed_renamed(same_home, recorded="new-mac", label="new-mac")
+    assert FJ.reconcile_rename(
+        same_home, tmp_path / "kb", "secondary", engine,
+        announce=announced.append, can_prompt=True,
+    ) is None
+
+
+def test_reconcile_rename_contested_and_headless(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    seed_renamed(home, rival=True)
+    monkeypatch.setattr(FJ, "default_label", lambda: "new-mac")
+    engine = SimpleNamespace()
+    note = FJ.reconcile_rename(
+        home, tmp_path / "kb", "secondary", engine, can_prompt=True
+    )
+    assert "is held by live machine" in note
+    assert "keeping the label 'old-mac'" in note
+
+    note = FJ.reconcile_rename(
+        home, tmp_path / "kb", "secondary", engine, can_prompt=False
+    )
+    assert "keeping the label 'old-mac'" in note
+
+    free_home = tmp_path / "free"
+    free_home.mkdir()
+    seed_renamed(free_home)
+    note = FJ.reconcile_rename(
+        free_home, tmp_path / "kb", "secondary", engine, can_prompt=False
+    )
+    assert "rerun with --label" in note
+
+
+def test_reconcile_rename_reports_engine_refusals(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    seed_renamed(home)
+    monkeypatch.setattr(FJ, "default_label", lambda: "new-mac")
+    stream_with(monkeypatch, "y\n")
+
+    def refused_enroll(home_dir, **kwargs):
+        return SimpleNamespace(status="fail", detail="label taken")
+
+    engine = SimpleNamespace(
+        step_enroll=refused_enroll,
+        step_publish=lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("must not publish")),
+    )
+    note = FJ.reconcile_rename(
+        home, tmp_path / "kb", "secondary", engine, can_prompt=True
+    )
+    assert note == "relabel refused: label taken"
+
+    def dropped_publish(home_dir, machine_id, **kwargs):
+        return SimpleNamespace(status="fail", detail="push failed")
+
+    engine = SimpleNamespace(
+        step_enroll=lambda h, **k: SimpleNamespace(
+            status="done", detail="enrolled"),
+        step_publish=dropped_publish,
+    )
+    stream_with(monkeypatch, "y\n")
+    note = FJ.reconcile_rename(
+        home, tmp_path / "kb", "secondary", engine, can_prompt=True
+    )
+    assert note == "relabel kept locally but not published: push failed"
+
+
+def test_reconcile_rename_end_to_end_with_real_engine(tmp_path, monkeypatch):
+    repo_root = SCRIPTS_DIR.parent.parent.parent
+    pm_scripts = str(
+        repo_root / "skills" / "synthesis-project-management" / "scripts"
+    )
+    if pm_scripts not in sys.path:
+        sys.path.insert(0, pm_scripts)
+    import fleet_bootstrap as BOOT
+    import fleet_identity as FI
+
+    def runner(args, cwd):
+        return subprocess.run(
+            ["git", "-c", "core.hooksPath=/dev/null", *args],
+            cwd=str(cwd) if cwd is not None else None,
+            capture_output=True, text=True, timeout=120, check=False,
+        )
+
+    home = tmp_path / "home"
+    home.mkdir()
+    origin = seed_kb_origin(tmp_path / "kb.git")
+    kb = tmp_path / "kb"
+    subprocess.run(
+        ["git", "clone", "--quiet", origin, str(kb)],
+        check=True, capture_output=True,
+    )
+    directory = home / ".synthesis" / "fleet"
+    own_id = FI.mint_machine_id(directory)
+    FI.write_registry(
+        json.loads((kb / "fleet" / "machines.json").read_text()),
+        directory,
+    )
+    FI.enroll_self(
+        label="old-mac", role="secondary", directory=directory,
+        hostname="old-mac", label_source="auto",
+    )
+    first = BOOT.step_publish(
+        home, own_id, label="old-mac", role="secondary", kb_repo=kb,
+        git_runner=runner,
+    )
+    assert first.status == "done", first.detail
+
+    monkeypatch.setattr(FJ, "default_label", lambda: "new-mac")
+    stream_with(monkeypatch, "y\n")
+    note = FJ.reconcile_rename(
+        home, kb, "secondary", BOOT, announce=lambda line: None,
+        can_prompt=True, git_runner=runner,
+    )
+    assert note == "fleet label updated from 'old-mac' to 'new-mac'"
+    shared = json.loads((kb / "fleet" / "machines.json").read_text())
+    assert shared["machines"][own_id]["label"] == "new-mac"
+    assert shared["machines"][own_id]["hostname"] == "new-mac"
+    pushed = subprocess.run(
+        ["git", "--git-dir", origin, "show", "HEAD:fleet/machines.json"],
+        capture_output=True, text=True, check=True,
+    )
+    assert '"new-mac"' in pushed.stdout
+
+
+def test_join_announces_reconcile_note(tmp_path, monkeypatch, capsys):
+    home = tmp_path / "home"
+    home.mkdir()
+    seed_renamed(home, rival=True)
+    kb = seed_kb_worktree(tmp_path / "kb")
+    monkeypatch.setattr(FJ, "default_label", lambda: "new-mac")
+    captured: dict = {}
+    code = FJ.join(
+        join_args(str(kb)), release_root=tmp_path / "release", home=home,
+        bootstrap=stub_engine(captured),
+        setup_check=lambda home_dir: True,
+    )
+    assert code == 0
+    assert "note: this Mac was renamed" in capsys.readouterr().out

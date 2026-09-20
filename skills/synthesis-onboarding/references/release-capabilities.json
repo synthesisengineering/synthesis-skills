@@ -17,6 +17,7 @@
       "workspace ensure",
       "outcome verify",
       "fleet join",
+      "onboard",
       "uninstall"
     ]
   },

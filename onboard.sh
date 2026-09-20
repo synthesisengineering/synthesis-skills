@@ -2,9 +2,15 @@
 # One audited bootstrap for the synthesis work system.
 #
 #   curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh
+#
+# The bare command is the whole procedure on any Mac: it detects what
+# the machine holds, recommends the best path, and interviews for the
+# rest (fresh install, upgrade, fleet join, workspaces, components,
+# verify and repair). Explicit commands remain for automation and the
+# manual path:
+#
 #   curl -fsSL .../onboard.sh | sh -s -- setup --profile skills-only
-#   curl -fsSL .../onboard.sh | sh -s -- setup --channel edge
-#   curl -fsSL .../onboard.sh | sh -s -- setup --pin X.Y.Z
+#   curl -fsSL .../onboard.sh | sh -s -- fleet join [--kb URL-or-PATH]
 #
 # Acquisition is mutable; execution is not. This script refreshes a bare Git
 # mirror, resolves one ref, checks out that exact object into a temporary tree,
@@ -101,7 +107,14 @@ if [ -z "${SYNTHESIS_BOOTSTRAP_PYTHON:-}" ]; then
   done
 fi
 if [ -z "$SYNTHESIS_BOOTSTRAP_PYTHON" ] || [ ! -x "$SYNTHESIS_BOOTSTRAP_PYTHON" ]; then
-  echo "A supported Python interpreter is unavailable; install Python 3.12, 3.13 or 3.14." >&2
+  echo "A supported Python interpreter is unavailable; synthesis needs Python 3.12, 3.13 or 3.14." >&2
+  if command -v brew >/dev/null 2>&1; then
+    echo "Install one with Homebrew, then run this command again:" >&2
+    echo "  brew install python@3.13" >&2
+  else
+    echo "Install Homebrew (https://brew.sh), then run this command again:" >&2
+    echo "  brew install python@3.13" >&2
+  fi
   exit 2
 fi
 case "$SYNTHESIS_BOOTSTRAP_PYTHON" in /*) ;; *) echo "Bootstrap Python must be an absolute executable path." >&2; exit 2 ;; esac
@@ -222,7 +235,7 @@ if [ -n "${SYNTHESIS_ONBOARD_EXPECTED_COMMIT:-}" ]; then
 fi
 
 if [ "$#" -eq 0 ]; then
-  set -- setup
+  set -- onboard
 fi
 "$SYNTHESIS_BOOTSTRAP_PYTHON" -B "$CHECKOUT/$BOOTSTRAP_REL" \
   --checkout "$CHECKOUT" \

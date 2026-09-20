@@ -163,6 +163,28 @@ def test_enroll_preserves_enrolled_at_and_refreshes_last_seen():
     assert second["label"] == "mac-a-renamed"
 
 
+def test_enroll_records_provenance_and_reenrollment_preserves_it():
+    FI.mint_machine_id()
+    first = FI.enroll_self(
+        label="mac-a", role="primary", hostname="mac-a",
+        label_source="auto", now="2026-09-19T10:00:00+00:00",
+    )
+    assert first["hostname"] == "mac-a"
+    assert first["label_source"] == "auto"
+    second = FI.enroll_self(
+        label="mac-a", role="primary", now="2026-09-20T10:00:00+00:00"
+    )
+    assert second["hostname"] == "mac-a"
+    assert second["label_source"] == "auto"
+    third = FI.enroll_self(
+        label="mac-b", role="primary", hostname="mac-b",
+        label_source="auto", now="2026-09-21T10:00:00+00:00",
+    )
+    assert third["hostname"] == "mac-b"
+    assert third["label"] == "mac-b"
+    assert FI.validate_registry(FI.read_registry()) == []
+
+
 def test_touch_last_seen_unenrolled_is_none():
     FI.mint_machine_id()
     assert FI.touch_last_seen() is None
