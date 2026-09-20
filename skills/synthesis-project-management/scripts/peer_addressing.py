@@ -39,7 +39,8 @@ RECEIPTS_DIRNAME = "receipts"
 INBOX_DIRNAME = "inbox"
 SEND_LOG_NAME = "peer-sends.jsonl"
 RECEIPT_SCHEMA = 1
-SEAT_SCHEMA = 1
+SEAT_SCHEMA = 2
+SEAT_SCHEMA_V1 = 1
 RECEIPT_TTL_MINUTES = 20
 BROADCAST_WINDOW_MINUTES = 15
 DEFAULT_REGISTRY = Path.home() / ".claude" / "sessions"
@@ -241,6 +242,19 @@ class Seat:
     cwd: str = ""
     updated_at: str = ""
     schema: int = SEAT_SCHEMA
+    machine_label: str = ""
+    last_heartbeat: str = ""
+    status: str = "active"
+
+    @property
+    def machine_id(self) -> str:
+        """The fleet machine-id of the seat's Mac.
+
+        Schema 2 writes the machine-id here and the human name in
+        ``machine_label``. Schema 1 files carry the hostname in ``machine``;
+        readers that need a strict id must check ``schema`` first.
+        """
+        return self.machine
 
 
 def seat_path(board: Path, session_uuid: str) -> Path:
@@ -256,11 +270,16 @@ def write_seat(
     identity: SelfIdentity,
     cwd: str = "",
     now: datetime | None = None,
+    machine_label: str = "",
+    last_heartbeat: str = "",
+    status: str = "active",
 ) -> Path | None:
     """Record this session's delivery handles beside its board row.
 
-    Returns None when the session knows no handle at all (nothing to
-    register is not an error: such a session is reachable on the bus)."""
+    ``machine`` is the fleet machine-id; the human name rides in
+    ``machine_label``. Returns None when the session knows no handle at all
+    (nothing to register is not an error: such a session is reachable on
+    the bus)."""
     if not (identity.harness_session_id or identity.host_session_id or identity.explicit_ref):
         return None
     seat = Seat(
@@ -273,6 +292,9 @@ def write_seat(
         pid=identity.pid,
         cwd=cwd or os.getcwd(),
         updated_at=iso(now or utcnow()),
+        machine_label=machine_label,
+        last_heartbeat=last_heartbeat,
+        status=status,
     )
     path = seat_path(board, session_uuid)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -309,7 +331,16 @@ def _read_seat_path(path: Path, *, expected_uuid: str | None = None, strict: boo
         return None
     if strict:
         required = ("session_uuid", "compact_id", "client", "machine")
-        string_fields = (*required, "harness_session_id", "host_session_id", "cwd", "updated_at")
+        string_fields = (
+            *required,
+            "harness_session_id",
+            "host_session_id",
+            "cwd",
+            "updated_at",
+            "machine_label",
+            "last_heartbeat",
+            "status",
+        )
         if (
             type(data.get("schema")) is not int or data["schema"] != SEAT_SCHEMA
             or any(not isinstance(data.get(key), str) or not data[key] for key in required)
@@ -322,6 +353,10 @@ def _read_seat_path(path: Path, *, expected_uuid: str | None = None, strict: boo
 
         if data["compact_id"] != identity_from_uuid(data["session_uuid"]).compact_id:
             raise ValueError(f"coordination seat identity mismatch: {path}")
+    else:
+        schema_value = data.get("schema", SEAT_SCHEMA_V1)
+        if schema_value not in (SEAT_SCHEMA_V1, SEAT_SCHEMA):
+            return None
     known = {field for field in Seat.__dataclass_fields__}
     return Seat(**{key: value for key, value in data.items() if key in known})
 
@@ -403,6 +438,44 @@ def process_alive(pid: int | None) -> bool:
     return True
 
 
+def pid_consult_allowed(seat_machine_id: str, local_machine_id: str) -> bool:
+    """Whether this Mac may evaluate a seat's pid at all.
+
+    Fleet design section 1.3: pid is a local-liveness hint only ever
+    evaluated on the seat's own machine. A seat whose machine-id is not
+    this Mac MUST NOT consult pid — cross-Mac pid checks are a design
+    violation, not a degraded mode.
+    """
+    return bool(seat_machine_id) and seat_machine_id == local_machine_id
+
+
+def seat_liveness(
+    seat: Seat,
+    *,
+    local_machine_id: str,
+    now: datetime | None = None,
+    horizon_minutes: int = 30,
+    alive=process_alive,
+) -> dict:
+    """Fleet liveness for one seat: heartbeat first, pid same-machine only.
+
+    A session is live iff its status is active AND its heartbeat is fresher
+    than the horizon, regardless of machine. The pid hint runs only when
+    the seat is this Mac's own; for a foreign seat ``alive`` is never
+    consulted (FLEET-AC-01). Returns ``{"live": bool, "pid_checked": bool,
+    "pid_alive": bool | None}``.
+    """
+    moment = now or utcnow()
+    beat = parse_iso(seat.last_heartbeat) if seat.last_heartbeat else None
+    fresh = (
+        beat is not None and (moment - beat) <= timedelta(minutes=horizon_minutes)
+    )
+    live = seat.status == "active" and fresh
+    pid_checked = pid_consult_allowed(seat.machine_id, local_machine_id)
+    pid_alive = alive(seat.pid) if pid_checked else None
+    return {"live": live, "pid_checked": pid_checked, "pid_alive": pid_alive}
+
+
 def registry_entries(registry: Path | None = None) -> list[dict]:
     directory = registry_dir(registry)
     if not directory.is_dir():
@@ -465,7 +538,13 @@ def delivery_lanes(
     machine and only while live truth confirms them: the ccd lane needs the
     row's ``ccd:`` ref, the harness lane needs the registry to still map the
     seat's harness session id to a running process, the codex lane needs a
-    ``codex:`` ref. A name never appears as an address."""
+    ``codex:`` ref. A name never appears as an address.
+
+    On v5 boards ``target_machine``/``local_machine`` are fleet machine-ids;
+    on legacy rows they are hostnames. Either way the same-machine gate is
+    an exact string match, and a foreign seat never reaches the pid check
+    (FLEET-AC-01): the harness lane's ``alive`` probe runs only when the
+    gate passes."""
     machine = local_machine or socket.gethostname()
     same_machine = bool(target_machine) and target_machine == machine
     lanes: dict[str, dict] = {"bus": {"to": compact_id}}

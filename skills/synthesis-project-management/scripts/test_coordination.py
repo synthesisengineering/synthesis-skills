@@ -759,7 +759,7 @@ def test_v1_board_migrates_without_losing_messages(tmp_path: Path) -> None:
     assert MODULE.command_migrate(args(board)) == 0
     text = board.read_text(encoding="utf-8")
     migrated = MODULE.rows(text)
-    assert "Schema: v4" in text
+    assert f"Schema: v{MODULE.SCHEMA_VERSION}" in text
     assert "Keep this handoff." in text
     assert uuid.UUID(migrated[0].session_uuid).version == 7
     assert migrated[0].legacy_id == "A"
@@ -772,7 +772,9 @@ def test_v1_board_migrates_without_losing_messages(tmp_path: Path) -> None:
 def test_status_json_reports_stale_legacy_session(tmp_path: Path, capsys) -> None:
     board = tmp_path / "active-sessions.md"
     board.write_text(
-        MODULE.template().replace("Schema: v4", "Schema: v2").replace(
+        MODULE.template().replace(
+            f"Schema: v{MODULE.SCHEMA_VERSION}", "Schema: v2"
+        ).replace(
             MODULE.TABLE_HEADER,
             MODULE.table_header(MODULE.V2_COLUMNS)
             + "\n| A | Claude | unknown | unknown | yesterday | yesterday | "
@@ -2027,7 +2029,7 @@ def test_v3_board_keeps_schema_until_explicit_migrate(tmp_path, monkeypatch):
 
     assert MODULE.command_migrate(args(board)) == 0
     migrated = board.read_text(encoding="utf-8")
-    assert "Schema: v4" in migrated
+    assert f"Schema: v{MODULE.SCHEMA_VERSION}" in migrated
     assert "| client session ref |" in migrated
 
     request = seatless_claim(
@@ -2146,7 +2148,7 @@ def test_status_json_reports_client_ref_and_board_schema(
     )
     assert MODULE.command_status(status) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["board_schema"] == 4
+    assert payload["board_schema"] == MODULE.SCHEMA_VERSION
     assert payload["sessions"][0]["client_ref"] == "ccd:local_feed-beef"
 
 
@@ -2192,11 +2194,11 @@ def test_conformance_board_check_accepts_declared_v3_and_v4(tmp_path) -> None:
 
     def board_with(schema_line: str) -> Path:
         board = tmp_path / f"board-{schema_line.split('v')[-1]}.md"
-        columns = (
-            MODULE.TABLE_COLUMNS
-            if schema_line.endswith("v4")
-            else MODULE.V3_COLUMNS
-        )
+        columns = {
+            "Schema: v5": MODULE.V5_COLUMNS,
+            "Schema: v4": MODULE.V4_COLUMNS,
+            "Schema: v3": MODULE.V3_COLUMNS,
+        }.get(schema_line, MODULE.V2_COLUMNS)
         board.write_text(
             f"# Coordination\n\n{schema_line}\n\n## Active sessions\n\n"
             + MODULE.table_header(columns)
@@ -2213,6 +2215,7 @@ def test_conformance_board_check_accepts_declared_v3_and_v4(tmp_path) -> None:
             if check.name == "coordination.active-table-schema"
         )
 
+    assert schema_check(board_with("Schema: v5"))
     assert schema_check(board_with("Schema: v4"))
     assert schema_check(board_with("Schema: v3"))
     assert not schema_check(board_with("Schema: v2"))
@@ -2317,7 +2320,7 @@ def test_wider_rows_than_the_engine_knows_name_the_newer_engine(tmp_path):
     with pytest.raises(ValueError) as caught:
         MODULE.rows("\n".join(lines))
     message = str(caught.value)
-    assert f"{len(MODULE.V4_COLUMNS) + 1} columns" in message
+    assert f"{len(MODULE.V5_COLUMNS) + 1} columns" in message
     assert "written by a newer engine" in message
 
     lines[index] = "| " + " | ".join(["x"] * (len(MODULE.V1_COLUMNS) + 1)) + " |"
@@ -2372,8 +2375,9 @@ def test_version_skew_documented_on_public_surfaces():
     template = (skill_root / "references" / "active-sessions-template.md").read_text(
         encoding="utf-8"
     )
-    assert "Schema: v4" in template
+    assert f"Schema: v{MODULE.SCHEMA_VERSION}" in template
     assert "| client session ref |" in template
+    assert "| machine label |" in template
     changelog = (repo_root / "CHANGELOG.md").read_text(encoding="utf-8")
     assert "## [4.78.0]" in changelog
     assert "names the engine to run" in changelog
@@ -2398,7 +2402,7 @@ def test_every_command_notes_a_newer_installed_engine(tmp_path):
     relative = Path("skills") / "synthesis-project-management" / "scripts"
     older = cache / "4.80.0" / relative
     older.mkdir(parents=True)
-    for name in ("coordination.py", "claim_scope.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py"):
+    for name in ("coordination.py", "claim_scope.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py"):
         (older / name).write_bytes((MODULE_PATH.parent / name).read_bytes())
     newer = cache / "4.81.0" / relative
     newer.mkdir(parents=True)

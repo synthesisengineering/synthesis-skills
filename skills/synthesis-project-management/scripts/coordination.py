@@ -28,9 +28,15 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from board_grammar import board_schema, parse_cells, parse_table_rows
+from board_grammar import (
+    board_schema,
+    ensure_writable_schema,
+    parse_cells,
+    parse_table_rows,
+)
 from pointer_lock import locked_pointer
 import claim_scope
+import fleet_identity
 from peer_addressing import (
     CLIENT_CODEX,
     CLIENT_MUSE,
@@ -41,6 +47,8 @@ from peer_addressing import (
     lane_invocations,
     load_receipts,
     mark_seen,
+    parse_iso,
+    parse_messages,
     read_seat,
     remove_seat,
     render_inbox,
@@ -55,6 +63,7 @@ from coordination_schema import (
     V2_COLUMNS,
     V3_COLUMNS,
     V4_COLUMNS,
+    V5_COLUMNS,
     SessionIdentity,
     column_count_error,
     display_id,
@@ -70,7 +79,7 @@ from coordination_schema import (
 
 DEFAULT_BOARD = Path.home() / ".synthesis" / "coordination" / "active-sessions.md"
 DEFAULT_ACTIVE_PROJECT = Path.home() / ".synthesis" / "active-project.json"
-TABLE_COLUMNS = V4_COLUMNS
+TABLE_COLUMNS = V5_COLUMNS
 
 
 def table_header(columns: tuple[str, ...]) -> str:
@@ -176,6 +185,12 @@ class Session:
     context_role: str
     status: str
     client_ref: str = ""
+    machine_label: str = ""
+
+    @property
+    def machine_display(self) -> str:
+        """The human name for the row's Mac in operator-facing text."""
+        return self.machine_label or self.machine
 
     @property
     def identity(self) -> SessionIdentity:
@@ -203,6 +218,7 @@ class Session:
             self.legacy_id,
             self.agent,
             self.machine,
+            self.machine_label,
             self.client_ref or "-",
             self.project,
             self.started,
@@ -214,6 +230,11 @@ class Session:
             self.context_role,
             self.status,
         ]
+        if "machine label" not in columns:
+            # Legacy emission: old readers expect the human name in the
+            # machine column, so the label (not the machine-id) goes there.
+            values[5] = self.machine_label or self.machine
+            del values[6]
         if "client session ref" not in columns:
             del values[6]
         return values
@@ -596,6 +617,27 @@ def claims_context(claim: str) -> bool:
 
 
 def session_from_cells(cells: list[str]) -> Session:
+    if len(cells) == len(V5_COLUMNS):
+        raw_ref = plain(cells[7])
+        return Session(
+            session_uuid=plain(cells[0]),
+            compact_id=plain(cells[1]),
+            speakable_id=plain(cells[2]),
+            legacy_id=plain(cells[3]),
+            agent=plain(cells[4]),
+            machine=plain(cells[5]),
+            machine_label=plain(cells[6]),
+            client_ref="" if raw_ref == "-" else raw_ref,
+            project=plain(cells[8]),
+            started=plain(cells[9]),
+            heartbeat=plain(cells[10]),
+            mode=plain(cells[11]),
+            workspaces=split_values(cells[12]),
+            goal=plain(cells[13]),
+            claims=split_values(cells[14]),
+            context_role=plain(cells[15]).lower(),
+            status=plain(cells[16]).lower(),
+        )
     if len(cells) == len(V4_COLUMNS):
         raw_ref = plain(cells[6])
         return Session(
@@ -683,6 +725,7 @@ def with_identity(session: Session, identity: SessionIdentity) -> Session:
         agent=session.agent,
         machine=session.machine,
         client_ref=session.client_ref,
+        machine_label=session.machine_label,
         project=session.project,
         started=session.started,
         heartbeat=session.heartbeat,
@@ -786,6 +829,404 @@ def heartbeat_age_days(session: Session) -> float | None:
     return (now - beat).total_seconds() / 86400.0
 
 
+# --------------------------------------------------------------------------
+# Fleet parked state (design section 3; pure core takes an injectable clock)
+# --------------------------------------------------------------------------
+
+FLEET_LIVENESS_MINUTES = 30
+FLEET_CHALLENGE_GRACE_MINUTES = 10
+FLEET_PARKED_EXPIRY_DAYS = 7
+PARKED_STATUS = "parked"
+
+_FLEET_CHALLENGE_RE = re.compile(r"^fleet-challenge\s+target=(\S+)\s+challenger=(.+)$")
+_FLEET_PARKED_RE = re.compile(r"^fleet-parked\s+target=(\S+)\s+basis=(\S+)\s+actor=(.+)$")
+_FLEET_OVERLAPS_PARKED_RE = re.compile(
+    r"^fleet-overlaps-parked\s+new=(\S+)\s+parked=(\S+)\s+areas=(.*)$"
+)
+class FleetParkError(ValueError):
+    """A refused parked-state transition (challenge, park, resume, expiry)."""
+
+
+def fleet_heartbeat_age(session: Session, now: datetime) -> timedelta | None:
+    """Heartbeat age at ``now``, or None when the heartbeat is undated."""
+    beat = parse_time(session.heartbeat)
+    if beat is None:
+        return None
+    if beat.tzinfo is None:
+        beat = beat.replace(tzinfo=now.tzinfo or timezone.utc)
+    moment = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+    return moment - beat
+
+
+def is_parked(session: Session) -> bool:
+    return session.status == PARKED_STATUS
+
+
+def derived_fleet_status(session: Session, now: datetime) -> str:
+    """Stored status, except active rows past the horizon read as STALE.
+
+    STALE is derived, never stored: it names the rows a peer may challenge.
+    """
+    if session.status != "active":
+        return session.status
+    age = fleet_heartbeat_age(session, now)
+    if age is not None and age > timedelta(minutes=FLEET_LIVENESS_MINUTES):
+        return "stale"
+    return "active"
+
+
+def _fleet_moment(value: datetime | None) -> datetime:
+    moment = value or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=timezone.utc)
+    return moment
+
+
+def _fleet_record_line(body: str, pattern: re.Pattern) -> re.Match | None:
+    for line in body.splitlines():
+        match = pattern.match(line.strip())
+        if match:
+            return match
+    return None
+
+
+def fleet_challenges(content: str, target_compact: str) -> list[dict]:
+    """Challenge records addressed at one session, oldest first."""
+    records = []
+    for message in parse_messages(content):
+        match = _fleet_record_line(message.body, _FLEET_CHALLENGE_RE)
+        if match and match.group(1) == target_compact:
+            posted = parse_iso(message.timestamp)
+            if posted is not None:
+                records.append(
+                    {
+                        "challenger": match.group(2).strip(),
+                        "posted": posted,
+                    }
+                )
+    return sorted(records, key=lambda record: record["posted"])
+
+
+def parked_since(content: str, session: Session) -> datetime | None:
+    """When a row was parked, from the board's park record; None if unrecorded.
+
+    The park record is the parked-since truth: heartbeat predates parking by
+    definition, so it cannot substitute. Unknown parked-since fails closed.
+    """
+    latest: datetime | None = None
+    for message in parse_messages(content):
+        match = _fleet_record_line(message.body, _FLEET_PARKED_RE)
+        if match and match.group(1) == session.compact_id:
+            posted = parse_iso(message.timestamp)
+            if posted is not None and (latest is None or posted > latest):
+                latest = posted
+    return latest
+
+
+def overlaps_parked_successors(content: str, parked_compact: str) -> list[dict]:
+    """Successor claims annotated overlaps-parked against one parked row."""
+    successors = []
+    for message in parse_messages(content):
+        match = _fleet_record_line(message.body, _FLEET_OVERLAPS_PARKED_RE)
+        if match and match.group(2) == parked_compact:
+            successors.append({"new": match.group(1), "areas": match.group(3)})
+    return successors
+
+
+def challenge_block(target: Session, challenger: str, now_iso: str) -> str:
+    return (
+        f"### → {target.compact_id}, from {challenger} — {now_iso}\n\n"
+        f"fleet-challenge target={target.compact_id} challenger={challenger}\n"
+        f"Peer challenge: {challenger} needs scope held by {target.compact_id} "
+        f"({target.project}). The row's heartbeat is stale; if no heartbeat "
+        f"lands within {FLEET_CHALLENGE_GRACE_MINUTES} minutes the row may be "
+        "parked and the scope claimed with an overlaps-parked annotation.\n\n"
+    )
+
+
+def park_record_block(target: Session, basis: str, actor: str, now_iso: str) -> str:
+    return (
+        f"### → {target.compact_id}, from {actor} — {now_iso}\n\n"
+        f"fleet-parked target={target.compact_id} basis={basis} actor={actor}\n"
+        f"Row parked ({basis}): claims frozen, not freed. Overlapping claims "
+        "record overlaps-parked and must not delete this session's worktrees "
+        "or push over its branches.\n\n"
+    )
+
+
+def overlaps_parked_block(new_compact: str, parked: Session, areas: list[str]) -> str:
+    detail = "; ".join(areas) if areas else "(scope overlap)"
+    return (
+        f"### → {new_compact}, from fleet-overlap — {timestamp()}\n\n"
+        f"fleet-overlaps-parked new={new_compact} parked={parked.compact_id} "
+        f"areas={detail}\n"
+        f"overlaps-parked: {parked.compact_id} — granted through parked row "
+        f"({parked.machine_display}, last heartbeat {parked.heartbeat}). "
+        "Do not delete its worktrees or push over its branches.\n\n"
+    )
+
+
+def resume_notice_block(target: Session, successors: list[dict]) -> str:
+    if successors:
+        detail = "; ".join(
+            f"{item['new']} ({item['areas']})" for item in successors
+        )
+        note = (
+            f"overlaps-parked successors to re-validate before writing: {detail}."
+        )
+    else:
+        note = "no overlaps-parked successors recorded."
+    return (
+        f"### → {target.compact_id}, from fleet-resume — {timestamp()}\n\n"
+        f"fleet-resumed target={target.compact_id} at={target.heartbeat}\n"
+        f"Row resumed to active with claims intact. {note} Re-validate "
+        "working state (git status) before writing.\n\n"
+    )
+
+
+def post_challenge(
+    content: str,
+    selector: str,
+    *,
+    challenger: str,
+    now: datetime | None = None,
+) -> str:
+    """Post a peer challenge against a stale row; returns updated content."""
+    moment = _fleet_moment(now)
+    current = ensure_identities(rows(content))
+    session = find_session(current, selector)
+    if session is None:
+        raise FleetParkError(f"challenge target not found: {selector}")
+    if session.status != "active":
+        raise FleetParkError(
+            f"cannot challenge {session.label}: row is {session.status}, not active"
+        )
+    if derived_fleet_status(session, moment) != "stale":
+        raise FleetParkError(
+            f"cannot challenge {session.label}: heartbeat is fresh "
+            f"(last {session.heartbeat})"
+        )
+    if not challenger.strip():
+        raise FleetParkError("challenge requires a challenger label")
+    return append_bus_block(
+        content,
+        challenge_block(session, challenger.strip(), moment.isoformat(timespec="seconds")),
+    )
+
+
+def park_session(
+    content: str,
+    selector: str,
+    *,
+    basis: str,
+    actor: str,
+    now: datetime | None = None,
+) -> str:
+    """Park a row; returns updated content.
+
+    ``basis`` is ``operator`` (an operator parks explicitly), ``pid-gone``
+    (established by the caller on the row's own machine only), or
+    ``challenge`` (a peer challenge matured past the grace interval with no
+    heartbeat since). The grace rule is evaluated here so tests and commands
+    share it.
+    """
+    if basis not in {"operator", "pid-gone", "challenge"}:
+        raise FleetParkError(f"unknown park basis: {basis}")
+    if not actor.strip():
+        raise FleetParkError("parking requires an actor label")
+    moment = _fleet_moment(now)
+    current = ensure_identities(rows(content))
+    session = find_session(current, selector)
+    if session is None:
+        raise FleetParkError(f"park target not found: {selector}")
+    if session.status != "active":
+        raise FleetParkError(
+            f"cannot park {session.label}: row is {session.status}, not active"
+        )
+    if basis == "challenge":
+        if derived_fleet_status(session, moment) != "stale":
+            raise FleetParkError(
+                f"cannot park {session.label} on challenge: heartbeat is fresh"
+            )
+        mature = [
+            record
+            for record in fleet_challenges(content, session.compact_id)
+            if moment - record["posted"]
+            >= timedelta(minutes=FLEET_CHALLENGE_GRACE_MINUTES)
+        ]
+        if not mature:
+            raise FleetParkError(
+                f"cannot park {session.label} yet: no challenge has matured "
+                f"past the {FLEET_CHALLENGE_GRACE_MINUTES}-minute grace interval"
+            )
+        latest_challenge = max(record["posted"] for record in mature)
+        age = fleet_heartbeat_age(session, moment)
+        beat = (
+            moment - age
+            if age is not None
+            else parse_time(session.heartbeat)
+        )
+        if beat is not None and beat.tzinfo is None:
+            beat = beat.replace(tzinfo=timezone.utc)
+        if beat is not None and beat >= latest_challenge:
+            raise FleetParkError(
+                f"cannot park {session.label}: heartbeat landed since the challenge"
+            )
+    session.status = PARKED_STATUS
+    updated = replace_table(content, current)
+    return append_bus_block(
+        updated,
+        park_record_block(
+            session, basis, actor.strip(), moment.isoformat(timespec="seconds")
+        ),
+    )
+
+
+def resume_parked(
+    content: str,
+    selector: str,
+    *,
+    now: datetime | None = None,
+    local_machine_id: str = "",
+    local_label: str = "",
+) -> str:
+    """Resume a parked row to active; returns updated content.
+
+    Only the owning session from its own machine resumes: the row's machine
+    must match this Mac's machine-id (or, on legacy rows, its label).
+    """
+    moment = _fleet_moment(now)
+    current = ensure_identities(rows(content))
+    session = find_session(current, selector)
+    if session is None:
+        raise FleetParkError(f"resume target not found: {selector}")
+    if not is_parked(session):
+        raise FleetParkError(
+            f"cannot resume {session.label}: row is {session.status}, not parked"
+        )
+    home = {value for value in (local_machine_id, local_label) if value}
+    if not home or session.machine not in home:
+        raise FleetParkError(
+            f"cannot resume {session.label}: row belongs to machine "
+            f"{session.machine_display}, not this Mac"
+        )
+    session.status = "active"
+    session.heartbeat = moment.isoformat(timespec="seconds")
+    successors = overlaps_parked_successors(content, session.compact_id)
+    updated = replace_table(content, current)
+    return append_bus_block(updated, resume_notice_block(session, successors))
+
+
+def parked_expiry_guard(
+    content: str,
+    session: Session,
+    *,
+    now: datetime | None = None,
+    is_owner: bool,
+    administrative: bool,
+    reason: str,
+) -> None:
+    """Enforce the parked-release rule; raises FleetParkError on refusal.
+
+    The owner may always release its own parked row. Anyone else needs the
+    7-day parked expiry via ``--administrative`` with a ``parked-expiry``
+    reason; a younger row refuses with the remaining hold time.
+    """
+    if session.status != PARKED_STATUS or is_owner:
+        return
+    moment = _fleet_moment(now)
+    since = parked_since(content, session)
+    if since is None:
+        raise FleetParkError(
+            f"cannot release parked {session.label}: parked time is unrecorded; "
+            "only the owning session may release it"
+        )
+    hold = timedelta(days=FLEET_PARKED_EXPIRY_DAYS)
+    elapsed = moment - since
+    if elapsed < hold:
+        remaining = hold - elapsed
+        days = remaining.days
+        hours = remaining.seconds // 3600
+        raise FleetParkError(
+            f"cannot release parked {session.label}: {days}d {hours}h of the "
+            f"{FLEET_PARKED_EXPIRY_DAYS}-day hold remain "
+            f"(parked {since.isoformat(timespec='seconds')})"
+        )
+    if not administrative:
+        raise FleetParkError(
+            f"parked {session.label} is past its {FLEET_PARKED_EXPIRY_DAYS}-day "
+            "hold; release it with --administrative and --reason parked-expiry"
+        )
+    if "parked-expiry" not in reason:
+        raise FleetParkError(
+            "releasing an expired parked row requires --reason parked-expiry "
+            "(naming the last heartbeat and machine)"
+        )
+
+
+def parked_overlaps(
+    replacement: Session, parked_rows: list[Session]
+) -> list[tuple[Session, list[str]]]:
+    """Scope conflicts between a prospective row and parked rows.
+
+    Overlap-with-parked is a warning with provenance, never an error; this
+    collects the pairs the claim annotates with overlaps-parked.
+    """
+    resolver = claim_scope.ClaimScopeResolver()
+    claims = [(claim, tuple(replacement.workspaces)) for claim in replacement.claims]
+    for parked in parked_rows:
+        claims.extend((claim, tuple(parked.workspaces)) for claim in parked.claims)
+    hits: list[tuple[Session, list[str]]] = []
+    with resolver.snapshot(claims):
+        for parked in parked_rows:
+            areas = []
+            for mine in replacement.claims:
+                for theirs in parked.claims:
+                    try:
+                        conflict = resolver.conflicts(
+                            mine,
+                            theirs,
+                            left_workspaces=replacement.workspaces,
+                            right_workspaces=parked.workspaces,
+                        )
+                    except claim_scope.ClaimIdentityError:
+                        continue
+                    if conflict:
+                        areas.append(f"{mine} overlaps {theirs}")
+            if areas:
+                hits.append((parked, areas))
+    return hits
+
+
+def local_machine_identity() -> tuple[str, str]:
+    """This Mac's (machine-id, label) for board rows and seats.
+
+    Unenrolled Macs fall back to the hostname for both, which keeps
+    pre-enrollment local boards byte-compatible with v4 readers.
+    """
+    try:
+        machine_id = fleet_identity.read_machine_id()
+    except fleet_identity.FleetIdentityError:
+        machine_id = None
+    label = socket.gethostname()
+    if machine_id:
+        return machine_id, fleet_identity.label_for(machine_id) or label
+    return label, label
+
+
+def resolve_claim_machine(requested_label: str) -> tuple[str, str]:
+    """(machine-id, label) for a new or re-claimed row.
+
+    The explicit --machine label stays the human name; the machine column
+    carries the fleet machine-id once this Mac has minted one.
+    """
+    label = (requested_label or "").strip() or socket.gethostname()
+    machine_id, _ = local_machine_identity()
+    if machine_id == socket.gethostname():
+        return label, label
+    return machine_id, label
+
+
 def replace_table(
     text: str, sessions: list[Session], *, force_schema: int | None = None
 ) -> str:
@@ -795,18 +1236,24 @@ def replace_table(
     force_schema — older clients on other machines parse the shared board, so
     an implicit rewrite here would fail them closed mid-flight. Client refs
     are dropped on a v3 emission and re-registered on the next claim after
-    migration. Declared v1/v2 boards require explicit migration because this
-    serializer emits the identity-bearing v3/v4 formats.
+    migration; the machine label folds back into the machine column on v3/v4
+    emission. Declared v1/v2 boards require explicit migration because this
+    serializer emits the identity-bearing v3/v4/v5 formats.
     """
     declared = board_schema(text)
     effective = force_schema or declared or SCHEMA_VERSION
-    if effective not in {3, 4}:
+    if effective not in {3, 4, 5}:
         raise ValueError(
-            "board serialization requires schema v3 or v4; migrate the board "
-            "explicitly before mutating its sessions"
+            "board serialization requires schema v3, v4, or v5; migrate the "
+            "board explicitly before mutating its sessions"
         )
     sessions = ensure_identities(sessions)
-    columns = TABLE_COLUMNS if effective >= 4 else V3_COLUMNS
+    if effective >= 5:
+        columns = V5_COLUMNS
+    elif effective == 4:
+        columns = V4_COLUMNS
+    else:
+        columns = V3_COLUMNS
     rendered = [table_header(columns)]
     rendered.extend(
         "| " + " | ".join(sanitize(value) for value in session.cells(columns)) + " |"
@@ -1094,6 +1541,10 @@ def lease_update(
     board: Path, config: dict, operation, *, declare: bool = True, require_fence: bool = False
 ) -> None:
     _invalidate_lease_stamp(board)
+    if board.exists():
+        # A writer that cannot read its own mirror must refuse before the
+        # first fetch: no network touch, no partial publish (FLEET-AC-02).
+        ensure_writable_schema(board.read_text(encoding="utf-8"))
     failure = ""
     for _ in range(LEASE_RETRIES):
         sha, content = lease_fetch(config)
@@ -1103,6 +1554,7 @@ def lease_update(
             content = (
                 board.read_text(encoding="utf-8") if board.exists() else template()
             )
+        ensure_writable_schema(content)
         updated = operation(content)
         if declare:
             updated = ensure_lease_declaration(updated, config["remote"])
@@ -1246,6 +1698,7 @@ def locked_update(board: Path, operation, *, require_fence: bool = False) -> Non
             lease_update(board, config, operation, require_fence=require_fence)
             return
         content = board.read_text(encoding="utf-8") if board.exists() else template()
+        ensure_writable_schema(content)
         declared = declared_lease(content)
         if declared is not None:
             raise RuntimeError(
@@ -1385,7 +1838,13 @@ def _validate_sessions(
             left_advisory = downgraded(left)
             right_advisory = downgraded(right)
             advisory_pair = left_advisory or right_advisory
+            parked_sides = [
+                session.compact_id
+                for session in (left, right)
+                if is_parked(session)
+            ]
             area_details: list[str] = []
+            parked_details: list[str] = []
             for left_claim in left.claims:
                 for right_claim in right.claims:
                     try:
@@ -1395,7 +1854,15 @@ def _validate_sessions(
                         problems.append(f"{_tag(left)} / {_tag(right)}: unverifiable claim scope: {exc}")
                         continue
                     if conflict:
-                        if advisory_pair:
+                        if parked_sides:
+                            # A parked row's claims are frozen, not freed:
+                            # overlap-with-parked is a warning with
+                            # provenance (the claim annotates
+                            # overlaps-parked), never an error.
+                            parked_details.append(
+                                f"{left_claim} overlaps {right_claim}"
+                            )
+                        elif advisory_pair:
                             area_details.append(
                                 f"{left_claim} overlaps {right_claim}"
                             )
@@ -1424,8 +1891,18 @@ def _validate_sessions(
                         "areas": area_details,
                     }
                 )
+            if parked_sides and notices is not None and parked_details:
+                notices.append(
+                    {
+                        "left": left.compact_id,
+                        "right": right.compact_id,
+                        "parked": parked_sides,
+                        "areas": parked_details,
+                    }
+                )
             if (
-                left.project not in {"", "unknown", "none"}
+                not parked_sides
+                and left.project not in {"", "unknown", "none"}
                 and left.project == right.project
                 and left.context_role == "owner"
                 and right.context_role == "owner"
@@ -1865,6 +2342,16 @@ def command_claim(args) -> int:
                 raise RuntimeError(
                     seat_ownership_error("omit --session to allocate a new identity")
                 )
+            if is_parked(existing_self):
+                # The owning session returning via claim resumes its parked
+                # row; only its own Mac may do that (same rule as resume).
+                home = set(local_machine_identity())
+                if existing_self.machine not in home:
+                    raise RuntimeError(
+                        f"cannot resume parked {existing_self.label}: row belongs "
+                        f"to machine {existing_self.machine_display}, not this Mac"
+                    )
+                claimed["resumed"] = existing_self.identity.compact_id
         full_reset = bool(getattr(args, "replace", False))
         if existing_self is not None and not full_reset:
             # Merge by default (ruling B): a re-claim grows the held set,
@@ -1923,13 +2410,17 @@ def command_claim(args) -> int:
         )
         claimed["identity"] = identity
         claimed["board_schema"] = board_schema(content)
+        claim_machine, claim_label = resolve_claim_machine(
+            getattr(args, "machine", "") or ""
+        )
         replacement = Session(
             session_uuid=identity.session_uuid,
             compact_id=identity.compact_id,
             speakable_id=identity.speakable_id,
             legacy_id=identity.legacy_id,
             agent=args.agent,
-            machine=args.machine,
+            machine=claim_machine,
+            machine_label=claim_label,
             client_ref=requested_ref
             or (existing_self.client_ref if existing_self else ""),
             project=args.project,
@@ -1984,6 +2475,16 @@ def command_claim(args) -> int:
                 }
             )
         claimed["downgrades"] = granted
+        parked_rows = [
+            session
+            for session in current
+            if is_parked(session) and session.session_uuid != identity.session_uuid
+        ]
+        overlaps = parked_overlaps(replacement, parked_rows) if parked_rows else []
+        claimed["overlaps_parked"] = [
+            {"parked": parked.compact_id, "areas": areas}
+            for parked, areas in overlaps
+        ]
         sharers: dict[str, str] = {}
         for session in current:
             if not active(session) or session.session_uuid == identity.session_uuid:
@@ -2008,6 +2509,11 @@ def command_claim(args) -> int:
                     identity.compact_id,
                     list(record.get("areas", [])),
                 ),
+            )
+        for parked, areas in overlaps:
+            updated = append_bus_block(
+                updated,
+                overlaps_parked_block(identity.compact_id, parked, areas),
             )
         return updated
 
@@ -2079,12 +2585,30 @@ def command_claim(args) -> int:
             "only their own paths (git commit -o <paths>); the commit gate "
             "refuses anything co-staged outside your claim."
         )
+    if claimed.get("resumed"):
+        print(
+            f"NOTICE: resumed parked row {claimed['resumed']} with claims intact. "
+            "Re-validate working state (git status, and any overlaps-parked "
+            "successors on the board) before writing."
+        )
+    for record in claimed.get("overlaps_parked", []):
+        what = "; ".join(record.get("areas", []))
+        print(
+            f"NOTICE: overlaps-parked: {record.get('parked')} — granted through "
+            f"a parked row ({what}). Do not delete its worktrees or push over "
+            "its branches."
+        )
+    claim_machine, claim_label = resolve_claim_machine(
+        getattr(args, "machine", "") or ""
+    )
     seat = write_seat(
         args.board,
         session_uuid=identity.session_uuid,
         compact_id=identity.compact_id,
-        machine=args.machine,
+        machine=claim_machine,
+        machine_label=claim_label,
         identity=self_identity(requested_ref),
+        last_heartbeat=timestamp(),
     )
     if seat is not None:
         print(f"Seat recorded at {seat} (delivery handles for peer resolution).")
@@ -2253,13 +2777,17 @@ def command_succeed(args) -> int:
                 (session.identity for session in current),
                 legacy_id="",
             )
+            successor_machine, successor_label = resolve_claim_machine(
+                getattr(args, "machine", "") or ""
+            )
             replacement = Session(
                 session_uuid=identity.session_uuid,
                 compact_id=identity.compact_id,
                 speakable_id=identity.speakable_id,
                 legacy_id=identity.legacy_id,
                 agent=args.agent,
-                machine=args.machine,
+                machine=successor_machine,
+                machine_label=successor_label,
                 client_ref=requested_ref,
                 project=predecessor.project,
                 started=now,
@@ -2314,12 +2842,17 @@ def command_succeed(args) -> int:
     print("Succession record appended to the board bus.")
     if remove_seat(args.board, predecessor_identity.session_uuid):
         print("Seat removed.")
+    successor_machine, successor_label = resolve_claim_machine(
+        getattr(args, "machine", "") or ""
+    )
     seat = write_seat(
         args.board,
         session_uuid=identity.session_uuid,
         compact_id=identity.compact_id,
-        machine=args.machine,
+        machine=successor_machine,
+        machine_label=successor_label,
         identity=self_identity(requested_ref),
+        last_heartbeat=timestamp(),
     )
     if seat is not None:
         print(f"Seat recorded at {seat} (delivery handles for peer resolution).")
@@ -2454,6 +2987,7 @@ def command_narrow(args) -> int:
 
 def command_heartbeat(args) -> int:
     updated: dict[str, SessionIdentity] = {}
+    resumed: dict[str, bool] = {}
 
     def operation(content: str) -> str:
         current = ensure_identities(rows(content))
@@ -2464,6 +2998,23 @@ def command_heartbeat(args) -> int:
             raise RuntimeError(f"session is not active: {args.id}")
         if not _caller_owns_session(args.board, session):
             raise RuntimeError(seat_ownership_error())
+        if is_parked(session):
+            home = set(local_machine_identity())
+            if session.machine not in home:
+                raise RuntimeError(
+                    f"cannot resume parked {session.label}: row belongs to "
+                    f"machine {session.machine_display}, not this Mac"
+                )
+            session.status = "active"
+            resumed["resumed"] = True
+            successors = overlaps_parked_successors(content, session.compact_id)
+            session.heartbeat = timestamp()
+            updated["identity"] = session.identity
+            notice_session = session
+            tabled = replace_table(content, current)
+            return append_bus_block(
+                tabled, resume_notice_block(notice_session, successors)
+            )
         before = set(validate_sessions(current))
         session.heartbeat = timestamp()
         after = set(validate_sessions(current))
@@ -2491,6 +3042,12 @@ def command_heartbeat(args) -> int:
         print(f"coordination heartbeat failed: {exc}", file=sys.stderr)
         return 10
     print(f"Heartbeat updated for session {updated['identity'].compact_id}.")
+    if resumed.get("resumed"):
+        print(
+            "NOTICE: parked row resumed to active with claims intact. "
+            "Re-validate working state (git status, and any overlaps-parked "
+            "successors on the board) before writing."
+        )
     existing = read_seat(args.board, updated["identity"].session_uuid)
     if existing is not None:
         write_seat(
@@ -2498,6 +3055,7 @@ def command_heartbeat(args) -> int:
             session_uuid=existing.session_uuid,
             compact_id=existing.compact_id,
             machine=existing.machine,
+            machine_label=existing.machine_label,
             identity=self_identity() if self_identity().primary_ref else SelfIdentity(
                 client=existing.client,
                 harness_session_id=existing.harness_session_id,
@@ -2505,6 +3063,8 @@ def command_heartbeat(args) -> int:
                 pid=existing.pid,
             ),
             cwd=existing.cwd,
+            last_heartbeat=timestamp(),
+            status="active",
         )
     return 0
 
@@ -2615,11 +3175,28 @@ def command_release(args) -> int:
         session = find_session(current, args.id)
         if session is None:
             raise RuntimeError(f"session not found: {args.id}")
-        if not administrative and not _caller_owns_session(args.board, session):
+        owner = _caller_owns_session(args.board, session)
+        if not administrative and not owner:
             raise RuntimeError(
                 seat_ownership_error(
                     "cross-session release requires --administrative and --reason"
                 )
+            )
+        try:
+            parked_expiry_guard(
+                content,
+                session,
+                is_owner=owner,
+                administrative=administrative,
+                reason=reason,
+            )
+        except FleetParkError as exc:
+            raise RuntimeError(str(exc))
+        recorded_reason = reason
+        if is_parked(session) and administrative:
+            recorded_reason = (
+                f"{reason} [parked row: last heartbeat {session.heartbeat}; "
+                f"machine {session.machine_display}]"
             )
         session.status = "released"
         session.heartbeat = timestamp()
@@ -2627,7 +3204,7 @@ def command_release(args) -> int:
         updated = replace_table(content, current)
         if administrative:
             updated = _append_administrative_release(
-                updated, session, reason, administrative_caller
+                updated, session, recorded_reason, administrative_caller
             )
         return updated
 
@@ -2740,17 +3317,17 @@ def delivery_lane(session: Session) -> str:
     if session.client_ref.startswith("ccd:"):
         return (
             f"ccd send_message to session_id {session.client_ref[4:]} "
-            f"(valid on machine {session.machine})"
+            f"(valid on machine {session.machine_display})"
         )
     if session.client_ref.startswith("codex:"):
         return (
             f"codex queue --thread {session.client_ref[len('codex:'):]} on machine "
-            f"{session.machine}, or the board message bus"
+            f"{session.machine_display}, or the board message bus"
         )
     if session.client_ref.startswith("cc:"):
         return (
             "harness SendMessage to the uds: socket the resolver prints (valid on "
-            f"machine {session.machine} while the session runs), or the board message bus"
+            f"machine {session.machine_display} while the session runs), or the board message bus"
         )
     if "codex" in session.agent.lower():
         return "board message bus (Codex session registered no thread id)"
@@ -2880,7 +3457,9 @@ def command_resolve(args) -> int:
             compact_id=target.compact_id,
             target_machine=target.machine,
             seat=read_seat(args.board, target.session_uuid),
-            local_machine=getattr(args, "local_machine", None),
+            local_machine=(
+                getattr(args, "local_machine", None) or local_machine_identity()[0]
+            ),
             registry=getattr(args, "registry", None),
         )
         sender = self_identity()
@@ -3057,7 +3636,9 @@ def command_whoami(args) -> int:
             compact_id=row.compact_id,
             target_machine=row.machine,
             seat=seat,
-            local_machine=getattr(args, "local_machine", None),
+            local_machine=(
+                getattr(args, "local_machine", None) or local_machine_identity()[0]
+            ),
             registry=getattr(args, "registry", None),
         )
         if row is not None
@@ -3101,6 +3682,17 @@ def command_whoami(args) -> int:
 def command_migrate(args) -> int:
     def operation(content: str) -> str:
         migrated = ensure_identities(rows(content))
+        local_id, local_label = local_machine_identity()
+        for session in migrated:
+            # Explicit v4→v5 mapping (never an in-place reinterpretation):
+            # rows naming this Mac take its machine-id; foreign rows keep
+            # their hostname in both columns until their owner re-registers.
+            if not session.machine_label:
+                if session.machine in {local_label, socket.gethostname()}:
+                    session.machine_label = session.machine
+                    session.machine = local_id
+                else:
+                    session.machine_label = session.machine
         problems = validate_sessions(migrated)
         if problems:
             raise RuntimeError("; ".join(problems))
@@ -3112,6 +3704,66 @@ def command_migrate(args) -> int:
         print(f"coordination migrate failed: {exc}", file=sys.stderr)
         return 10
     print(f"Migrated {args.board} to schema v{SCHEMA_VERSION}.")
+    return 0
+
+
+def command_challenge(args) -> int:
+    def operation(content: str) -> str:
+        return post_challenge(content, args.id, challenger=args.challenger)
+
+    try:
+        locked_update(args.board, operation)
+    except (RuntimeError, FleetParkError) as exc:
+        print(f"coordination challenge refused: {exc}", file=sys.stderr)
+        return 10
+    print(
+        f"Challenge posted against {args.id}; the owner has "
+        f"{FLEET_CHALLENGE_GRACE_MINUTES} minutes to heartbeat."
+    )
+    return 0
+
+
+def command_park(args) -> int:
+    def operation(content: str) -> str:
+        if args.basis == "pid-gone":
+            current = ensure_identities(rows(content))
+            session = find_session(current, args.id)
+            if session is not None and session.machine not in set(
+                local_machine_identity()
+            ):
+                raise RuntimeError(
+                    f"cannot park {session.label} on pid-gone: row belongs to "
+                    f"machine {session.machine_display}, and pid absence is "
+                    "only meaningful on the row's own machine"
+                )
+        return park_session(
+            content, args.id, basis=args.basis, actor=args.actor
+        )
+
+    try:
+        locked_update(args.board, operation)
+    except (RuntimeError, FleetParkError) as exc:
+        print(f"coordination park refused: {exc}", file=sys.stderr)
+        return 10
+    print(f"Parked {args.id} ({args.basis}): claims frozen, not freed.")
+    return 0
+
+
+def command_fleet_doctor(args) -> int:
+    import fleet_paths
+
+    root = getattr(args, "synthesis_root", None) or (
+        Path.home() / ".synthesis"
+    )
+    try:
+        hits = fleet_paths.check_synced_root(Path(root))
+    except fleet_paths.FleetPathsError as exc:
+        print(f"FAIL fleet-paths: {exc}", file=sys.stderr)
+        return 1
+    if hits:
+        print(fleet_paths.format_gate_report(hits), file=sys.stderr)
+        return 1
+    print(fleet_paths.format_gate_report(hits))
     return 0
 
 
@@ -3344,7 +3996,7 @@ def command_doctor(args) -> int:
     elif declared < SCHEMA_VERSION:
         schema_note = (
             f" (declared v{declared}; run migrate once every machine's "
-            "client is current to enable client session refs)"
+            "client is current to enable fleet machine identity)"
         )
     if problems:
         for problem in problems:
@@ -3611,6 +4263,49 @@ def parser() -> argparse.ArgumentParser:
     whoami.add_argument("--local-machine", default=None, help=argparse.SUPPRESS)
     commands.add_parser("migrate")
     commands.add_parser("doctor")
+    challenge = commands.add_parser(
+        "challenge",
+        help=(
+            "Post a peer challenge against a stale row; the owner has "
+            "10 minutes to heartbeat before the row may be parked."
+        ),
+    )
+    challenge.add_argument("--id", "--session", dest="id", required=True)
+    challenge.add_argument(
+        "--challenger",
+        required=True,
+        help="Label recorded as the challenger (own compact id).",
+    )
+    park = commands.add_parser(
+        "park",
+        help=(
+            "Park an unreachable row: claims frozen, not freed. Basis "
+            "challenge needs a matured challenge; pid-gone is same-machine "
+            "only; operator is explicit."
+        ),
+    )
+    park.add_argument("--id", "--session", dest="id", required=True)
+    park.add_argument(
+        "--basis", choices=("operator", "pid-gone", "challenge"), required=True
+    )
+    park.add_argument(
+        "--actor",
+        default=socket.gethostname(),
+        help="Label recorded as the parking actor.",
+    )
+    fleet_doctor = commands.add_parser(
+        "fleet-doctor",
+        help=(
+            "Fail closed on unexpanded absolute home paths in the "
+            "fleet-synced path-bearing files."
+        ),
+    )
+    fleet_doctor.add_argument(
+        "--synthesis-root",
+        type=Path,
+        default=None,
+        help="~/.synthesis root to scan (default: the real one).",
+    )
     stale = commands.add_parser(
         "stale",
         help="Report active claims whose heartbeat has gone quiet. Reports "
@@ -3648,6 +4343,9 @@ COMMANDS = {
     "migrate": command_migrate,
     "lease-disable": command_lease_disable,
     "stale": command_stale,
+    "challenge": command_challenge,
+    "park": command_park,
+    "fleet-doctor": command_fleet_doctor,
 }
 
 

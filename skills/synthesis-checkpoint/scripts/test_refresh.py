@@ -636,3 +636,19 @@ def test_recipient_registry_descriptor_requires_absolute_path(fixture, value):
     write(args.campaign, json.dumps(selected))
     with pytest.raises(refresh.RefreshError, match="recipient"):
         refresh.inspect(args)
+
+
+@pytest.mark.parametrize("spell", ["~", "$HOME"])
+def test_recipient_index_home_spelling_expands_to_registry(fixture, spell):
+    args, project, _live = fixture
+    index = routing_registry(args, project, "  - id: bridge\n    status: paused\n", explicit=True)
+    selected = enable_campaign(args)
+    selected["recipient"] = "bridge sessions"
+    selected["recipient_index"] = spell + "/" + index.relative_to(Path.home()).as_posix()
+    write(args.campaign, json.dumps(selected))
+    report, selected_campaign = refresh.inspect(args)
+    result = refresh.feedback(report, selected_campaign, args.board)
+    assert result["outcome"] == "APPENDED"
+    assert "### → bridge sessions," in args.board.read_text()
+    payload = feedback_messages(args.board)[0]
+    assert payload["recipient_route"]["registry"] == str(index)

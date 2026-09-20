@@ -12,7 +12,26 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
+V5_COLUMNS = (
+    "session uuid",
+    "compact id",
+    "speakable id v1",
+    "legacy id",
+    "agent",
+    "machine",
+    "machine label",
+    "client session ref",
+    "project",
+    "started",
+    "heartbeat",
+    "mode",
+    "workspace(s) / branch",
+    "goal",
+    "claimed areas (advisory lock)",
+    "context role",
+    "status",
+)
 V4_COLUMNS = (
     "session uuid",
     "compact id",
@@ -72,9 +91,43 @@ V1_COLUMNS = (
     "status",
 )
 
-_COLUMNS = {1: V1_COLUMNS, 2: V2_COLUMNS, 3: V3_COLUMNS, 4: V4_COLUMNS}
+_COLUMNS = {
+    1: V1_COLUMNS,
+    2: V2_COLUMNS,
+    3: V3_COLUMNS,
+    4: V4_COLUMNS,
+    5: V5_COLUMNS,
+}
 _WIDTHS = frozenset(map(len, _COLUMNS.values()))
 _ENGINE = Path(__file__).with_name("coordination.py")
+
+
+class UnsupportedBoardSchemaError(ValueError):
+    """A board newer than this engine; writers refuse before any mutation.
+
+    Guarded protocol evolution (fleet design section 1.3): a writer that
+    does not understand the declared schema fails closed instead of
+    reinterpreting columns it was never taught.
+    """
+
+
+def ensure_writable_schema(text: str, *, supported: int | None = None) -> int | None:
+    """Refuse a write to a board newer than this engine understands.
+
+    Returns the declared schema (None for undeclared legacy boards, which
+    stay readable for explicit migration). Raises the named
+    UnsupportedBoardSchemaError before the caller touches the lease remote.
+    """
+    from coordination_schema import engine_remedy
+
+    effective = SCHEMA_VERSION if supported is None else supported
+    declared = board_schema(text)
+    if declared is not None and declared > effective:
+        raise UnsupportedBoardSchemaError(
+            f"board declares schema v{declared}, newer than this engine's "
+            f"v{effective}; {engine_remedy(_ENGINE)}"
+        )
+    return declared
 
 
 def plain(value: str) -> str:
@@ -121,7 +174,7 @@ def parse_table_rows(text: str, *, strict: bool = False) -> list[dict[str, str]]
     declared = board_schema(text)
     declarations = [line for line in lines if line.startswith("Schema:")]
     if declared is not None and declared > SCHEMA_VERSION:
-        raise ValueError(
+        raise UnsupportedBoardSchemaError(
             f"board declares schema v{declared}, newer than this engine's "
             f"v{SCHEMA_VERSION}; {engine_remedy(_ENGINE)}"
         )

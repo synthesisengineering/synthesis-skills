@@ -84,6 +84,8 @@ COORDINATION_ENGINE_FILES = (
     "coordination_archive.py",
     "pointer_lock.py",
     "peer_addressing.py",
+    "fleet_identity.py",
+    "fleet_paths.py",
 )
 ENGINE_FILES = CORE_ENGINE_FILES + COORDINATION_ENGINE_FILES
 COORDINATION_ASSET = "session-words-v1.txt.zlib.b85"
@@ -820,7 +822,9 @@ def emit_shell_vars(config: dict) -> None:
         print("COORDINATION_CHECK_STAGED=0")
         print("COORDINATION_BOARD=''")
     else:
-        expanded_board = str(Path(coordination_board).expanduser())
+        expanded_board = os.path.expandvars(
+            os.path.expanduser(str(coordination_board))
+        )
         print("COORDINATION_CHECK_STAGED=1")
         print(f"COORDINATION_BOARD={shlex.quote(expanded_board)}")
     # MUST be last: the engine treats its absence as sidecar failure.

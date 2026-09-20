@@ -119,13 +119,14 @@ def test_invalid_board_refuses_diagnostic(inbox, corruption):
     board, row = inbox
     text = board.read_text(encoding="utf-8")
     own_line = next(line for line in text.splitlines() if line.startswith(f"| {row.session_uuid} |"))
+    declared = f"Schema: v{ENGINE.SCHEMA_VERSION}"
     replacements = {
         "missing-messages": ("## Messages", "## Other messages"),
         "missing-active": ("## Active sessions", "## Other sessions"),
-        "invalid-schema": ("Schema: v4", "Schema: broken"),
-        "newer-schema": ("Schema: v4", "Schema: v999"),
-        "missing-schema": ("Schema: v4", ""),
-        "duplicate-schema": ("Schema: v4", "Schema: v4\nSchema: v4"),
+        "invalid-schema": (declared, "Schema: broken"),
+        "newer-schema": (declared, "Schema: v999"),
+        "missing-schema": (declared, ""),
+        "duplicate-schema": (declared, declared + "\n" + declared),
         "bad-row-width": (own_line, "| broken | row |"),
         "garbage-row": (own_line, "unparseable active row"),
         "bad-row-identity": (row.compact_id, "s-invalid"),
@@ -263,7 +264,7 @@ def test_duplicate_json_keys_refuse_diagnostic(inbox, dependency):
     board, row = inbox
     if dependency == "seat":
         path = PEER.seat_path(board, row.session_uuid)
-        text = path.read_text(encoding="utf-8").replace('"schema": 1', '"schema": 999, "schema": 1')
+        text = path.read_text(encoding="utf-8").replace('"schema": 2', '"schema": 999, "schema": 2')
     else:
         path = PEER.watermark_path(board, ENV["SYNTHESIS_CLIENT_SESSION_REF"])
         path.parent.mkdir()

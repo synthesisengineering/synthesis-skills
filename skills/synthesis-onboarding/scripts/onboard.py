@@ -3510,6 +3510,8 @@ def _coordination_probe():
         root / "board_grammar.py",
         root / "coordination_archive.py",
         root / "peer_addressing.py",
+        root / "fleet_identity.py",
+        root / "fleet_paths.py",
     ]
     if not all(path.is_file() for path in required):
         return False, "stable coordination runtime is missing"

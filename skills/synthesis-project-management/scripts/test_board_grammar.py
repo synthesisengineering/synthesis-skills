@@ -19,6 +19,7 @@ def board_fixture(*, version: int = 4, markup: bool = False) -> str:
         "id": "old-seat",
         "agent": "Example agent",
         "machine": "example-machine",
+        "machine label": "Example Mac",
         "client session ref": "codex:example-session",
         "project": "example-project",
         "started": "2026-09-01T12:00:00+00:00",
@@ -76,7 +77,7 @@ def test_invalid_authority_rows_fail_in_every_consumer(tmp_path, consumer, damag
     if damage == "extra-column":
         text = text.replace(active_row, active_row + " future-cell |")
     elif damage == "future-schema":
-        text = text.replace("Schema: v4", "Schema: v5")
+        text = text.replace("Schema: v4", "Schema: v6")
     elif damage == "missing-delimiter":
         text = text.replace(active_row, active_row[:-1])
     elif damage == "wrong-width":
@@ -96,7 +97,7 @@ def test_invalid_authority_rows_fail_in_every_consumer(tmp_path, consumer, damag
         readers[consumer]()
 
 
-@pytest.mark.parametrize("version", [1, 2, 3, 4])
+@pytest.mark.parametrize("version", [1, 2, 3, 4, 5])
 def test_supported_versions_have_one_named_column_contract(tmp_path, version):
     text = board_fixture(version=version)
     dictionaries, recovered, sessions = consumer_rows(text, tmp_path)
@@ -108,6 +109,11 @@ def test_supported_versions_have_one_named_column_contract(tmp_path, version):
 
 def test_canonical_v4_roundtrip_preserves_every_byte():
     text = board_fixture()
+    assert coordination.replace_table(text, coordination.rows(text)).encode() == text.encode()
+
+
+def test_canonical_v5_roundtrip_preserves_every_byte():
+    text = board_fixture(version=5)
     assert coordination.replace_table(text, coordination.rows(text)).encode() == text.encode()
 
 

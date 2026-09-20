@@ -3,12 +3,12 @@
 Shared advisory-lock and message board for independent agent sessions operating
 on the same ecosystem.
 
-Schema: v4
+Schema: v5
 
 ## Active sessions
 
-| session uuid | compact id | speakable id v1 | legacy id | agent | machine | client session ref | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| session uuid | compact id | speakable id v1 | legacy id | agent | machine | machine label | client session ref | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 
 ## Messages
 
@@ -49,5 +49,10 @@ Append addressed messages here. Use a heading:
   bits from that UUID. Either can select the session at the CLI.
 - `legacy id` preserves pre-v3 letter identifiers. It is a lookup alias, not a
   claim and not the canonical identity.
+- `machine` is the fleet machine-id (UUID4, one per Mac); `machine label` is
+  its human name for display. Liveness is heartbeat age, never pid: a pid is
+  meaningful only on the row's own machine.
+- `status` may be `parked` for an unreachable row: its claims are frozen, not
+  freed, and overlapping claims record `overlaps-parked` instead of refusing.
 - Claims are the resource paths in `claimed areas (advisory lock)`; they belong
   to a session identity.
