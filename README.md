@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+**Resume anywhere (September 2026).** Release **4.112.0** ships the
+`synthesis-project-resume` skill: one console prompt restarts any
+project in any harness with full verified context.
+
 **One command onboards any Mac (September 2026).** Release **4.111.0**
 makes the bare installer detect, recommend, and interview through one
 menu — install, upgrade, fleet join, workspaces, components, repair —
