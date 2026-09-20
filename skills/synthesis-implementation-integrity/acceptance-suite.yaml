@@ -1,60 +1,26 @@
 schema: 2
-suite: claim-succession
+suite: review-roles-protocol
 membership: closed
-production_entry_point: A dead seat's areas transfer to a successor
-  atomically without admin release; live seats refuse succession and
-  duplicate live owners still refuse; board parsing preserves path globs
+production_entry_point: Adversarial engagements run three explicit roles
+  with the repairer barred from editing the reviewer's reproducer
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real succession verb and board
-  parser against disposable boards. They do not establish live lease
-  publication, installed-client reload, new-release publication, or
-  deployment approval. Those remain separate release checks.
+unverified_remainder: The fixture validates the shipped manifest shape only.
+  Role behavior is doctrine, verified by engagement records, not by code.
+  Installed-client reload, new-release publication, and deployment approval
+  remain separate release checks.
 changed_surfaces:
+- path: skills/synthesis-adversarial-review/SKILL.md
+  cases:
+  - manifest-validates
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-project-management/references/parallel-agent-protocol.md
-  cases:
-  - succession
-- path: skills/synthesis-project-management/scripts/claim_scope.py
-  cases:
-  - glob-preservation
-- path: skills/synthesis-project-management/scripts/coordination.py
-  cases:
-  - succession
-  - succession-refusal
-- path: skills/synthesis-project-management/scripts/test_claim_scope_cache.py
-  cases:
-  - glob-preservation
-- path: skills/synthesis-project-management/scripts/test_coordination.py
-  cases:
-  - succession
-  - succession-refusal
 cases:
-- id: succession
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_succeed_allocates_successor_holding_dead_seat_scope
-  motivating_defect: Dead seats needed manual admin releases; succession
-    must transfer scope atomically with exactly one winner under
-    concurrency.
-- id: succession-refusal
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_succeed_refuses_live_seat_and_duplicate_live_owners_still_refuse
-  motivating_defect: Succession must never take a live seat; the
-    duplicate-live-owner refusal is the mutual exclusion and must hold.
-- id: glob-preservation
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_split_values_preserves_glob_stars_in_paths
-  motivating_defect: Bold-stripping ate path globs, so multi-claim cells
-    misread advisory locks; globs must survive the board round-trip.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass

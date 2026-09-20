@@ -60,6 +60,33 @@ Concession is health. A loop in which neither side ever reverses is two agents d
 priors. Every round records which claims the executor conceded, which the reviewer
 conceded, and which remain evidence-bearing disagreements.
 
+## Adjudication and Separation of Duties
+
+A third role settles what concession cannot. Use it in every engagement with
+evidence-bearing disagreements:
+
+- **Adjudicator:** decides concede-or-challenge on each surviving disagreement,
+  owns finding-state transitions in the ledger, and writes the transition
+  rationale. The adjudicator authors neither attacks nor repairs in the same
+  round it judges.
+
+Separation rule: the repairer (executor) may add acceptance evidence but must
+not edit, move, or delete the reviewer's reproducer — the command or procedure
+that reproduces each finding. Reproducer changes need the adjudicator's
+explicit approval, recorded in the finding's transition history. A repair that
+cannot pass beside an untouched reproducer is not a repair.
+
+Transitions stay inside the ledger's state set (`open | challenged |
+repaired-prose | repaired-source | repaired-verified | conceded |
+awaiting-principal`) with the compare-before-write discipline below. The
+adjudicator's transitions carry the `principal-rule` or `agent-heuristic`
+authority label of the evidence they rest on, never a bare verdict.
+
+Revisit trigger (ruled 2026-09-19): the three roles live in this one skill by
+decision, not by default. If this skill's size or a role-confusion incident
+(a reviewer editing a reproducer, an adjudication bypassed) demonstrates that
+packaging is the fix, re-open the three-skill split then.
+
 ## Goal-Focused Round
 
 One goal-focused round has five terminal stages:
