@@ -1094,6 +1094,7 @@ All skills are prefixed with `synthesis-` to prevent namespace collisions with s
 | `synthesis-context-lifecycle` | Three-tier context architecture for managing AI working memory, with agent attribution for multi-agent provenance and repo families as per-engagement deletion units |
 | `synthesis-checkpoint` | Mid-session refresh and drift recovery: verified date, project state from disk, git history, concurrent-session claims |
 | `synthesis-project-management` | Lightweight PM system for human-agent collaboration, with cross-agent handoff, agent attribution, and parallel sub-agent dispatch protocols |
+| `synthesis-project-resume` | Start or resume any project in any harness with full verified context: session classification, resumption brief, cross-machine surfacing |
 | `synthesis-daily-rituals` | Day-start and day-end checklists with dependency-ordered rituals |
 | `synthesis-catchup-ledger` | Reconcile missed and incomplete commitments after a gap in the ritual cadence into a dated catch-up ledger |
 | `synthesis-chief-of-staff` | Chief-of-staff duty: meeting triage, calendar-aware scheduling, look-ahead reviews, overcommitment checks, tracked holds |

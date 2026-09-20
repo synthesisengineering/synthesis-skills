@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Project Resume"
+  short_description: "Resume any synthesis project with full context"
+  default_prompt: "Use $synthesis-project-resume to resume this project."
+
+policy:
+  allow_implicit_invocation: false
