@@ -116,7 +116,7 @@ def kb_checkout(enrolled_home: Path, tmp_path: Path) -> Path:
             },
         },
     })})
-    kb = home / "workspaces" / "w" / "ai-knowledge-kb"
+    kb = home / "workspaces" / "work" / "ai-knowledge-kb"
     kb.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         ["git", "clone", str(remote), str(kb)],
@@ -147,10 +147,10 @@ def test_sync_full_run_current(enrolled_home, kb_checkout, tmp_path):
     remote = tmp_path / "remotes" / "notes.git"
     _make_remote(remote, {"note.md": "hi"})
     _write_manifest(kb_checkout, [{
-        "remote": str(remote), "path": "~/workspaces/w/notes",
+        "remote": str(remote), "path": "~/workspaces/work/notes",
         "branch": "main",
     }])
-    notes = home / "workspaces" / "w" / "notes"
+    notes = home / "workspaces" / "work" / "notes"
     subprocess.run(
         ["git", "clone", str(remote), str(notes)],
         capture_output=True, text=True, check=True,
@@ -171,7 +171,7 @@ def test_sync_pulls_behind_repo(enrolled_home, kb_checkout, tmp_path):
     home = enrolled_home
     remote = tmp_path / "remotes" / "notes.git"
     _make_remote(remote, {"note.md": "hi"})
-    notes = home / "workspaces" / "w" / "notes"
+    notes = home / "workspaces" / "work" / "notes"
     notes.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         ["git", "clone", str(remote), str(notes)],
@@ -179,7 +179,7 @@ def test_sync_pulls_behind_repo(enrolled_home, kb_checkout, tmp_path):
     )
     _commit_on_remote(remote, "note2.md", "new")
     _write_manifest(kb_checkout, [{
-        "remote": str(remote), "path": "~/workspaces/w/notes",
+        "remote": str(remote), "path": "~/workspaces/work/notes",
         "branch": "main",
     }])
     lines: list[str] = []
@@ -198,7 +198,7 @@ def test_sync_skips_dirty_repo(enrolled_home, kb_checkout, tmp_path):
     home = enrolled_home
     remote = tmp_path / "remotes" / "notes.git"
     _make_remote(remote, {"note.md": "hi"})
-    notes = home / "workspaces" / "w" / "notes"
+    notes = home / "workspaces" / "work" / "notes"
     notes.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         ["git", "clone", str(remote), str(notes)],
@@ -206,7 +206,7 @@ def test_sync_skips_dirty_repo(enrolled_home, kb_checkout, tmp_path):
     )
     (notes / "draft.md").write_text("uncommitted", encoding="utf-8")
     _write_manifest(kb_checkout, [{
-        "remote": str(remote), "path": "~/workspaces/w/notes",
+        "remote": str(remote), "path": "~/workspaces/work/notes",
         "branch": "main",
     }])
     lines: list[str] = []
@@ -226,7 +226,7 @@ def test_sync_clones_missing_repo(enrolled_home, kb_checkout, tmp_path):
     remote = tmp_path / "remotes" / "notes.git"
     _make_remote(remote, {"note.md": "hi"})
     _write_manifest(kb_checkout, [{
-        "remote": str(remote), "path": "~/workspaces/w/notes",
+        "remote": str(remote), "path": "~/workspaces/work/notes",
         "branch": "main",
     }])
     lines: list[str] = []
@@ -237,7 +237,7 @@ def test_sync_clones_missing_repo(enrolled_home, kb_checkout, tmp_path):
         run_repair=lambda: 0, progress=lines.append,
     )
     assert code == 0
-    assert (home / "workspaces" / "w" / "notes" / "note.md").is_file()
+    assert (home / "workspaces" / "work" / "notes" / "note.md").is_file()
 
 
 def test_sync_repairs_when_doctor_fails(enrolled_home, kb_checkout):
@@ -284,7 +284,7 @@ def test_discover_kb_checkout_ambiguous(enrolled_home, tmp_path):
     home = enrolled_home
     doc = {"schema_version": 1, "machines": {MACHINE_ID: {"label": "x"}}}
     for kb_name in ("ai-knowledge-a", "ai-knowledge-b"):
-        kb = home / "workspaces" / "w" / kb_name
+        kb = home / "workspaces" / "work" / kb_name
         (kb / "fleet").mkdir(parents=True)
         (kb / "fleet" / "machines.json").write_text(
             json.dumps(doc), encoding="utf-8"
