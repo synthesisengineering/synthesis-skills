@@ -41,21 +41,19 @@ materialize to each Mac.
 ## Enroll a new Mac
 
 Clean-install path only — never copy one Mac's state onto another. One
-command downloads and installs everything, then onboards by asking
-questions: it finds the knowledge repo over GitHub sign-in (running it
-when needed) or asks for it, derives home, label, skill source,
-workspace, and manifest, asks which workspace only when several match,
-founds a new fleet when the repo holds none and otherwise joins as a
-secondary, narrates every repo as it lands, and publishes the
-enrollment back on success:
+command, the same for every scenario, downloads and installs
+everything, then onboards by asking questions: it detects what the Mac
+holds, recommends the best path, finds the knowledge repo over GitHub
+sign-in (running it when needed) or asks for it, derives home, label,
+skill source, workspace, and manifest, founds a new fleet when the
+repo holds none and otherwise joins as a secondary, narrates every
+repo as it lands, and publishes the enrollment back on success:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh -s -- fleet join
+curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh
 ```
 
-On a Mac with no installation the same command runs the guided setup
-first (answering its questions) and the join continues after it, so
-one paste is the whole procedure from a bare machine. The join mints identity, clones subscribed repos, installs the hooks
+The join mints identity, clones subscribed repos, installs the hooks
 runtime plus the skill set, enrolls the machine, verifies the doctor, and
 publishes the enrollment to the shared registry. Every step writes a
 receipt under `~/.synthesis/fleet/receipts/`; a rerun after any failure
@@ -64,6 +62,13 @@ flags `--kb`, `--label`, `--role`, and `--workspace` override the
 interactive answers for scripted runs. The underlying
 `fleet_bootstrap.py` script is an agent-and-test entry point; humans use
 the one-command installer above (or `synthesis fleet join` once set up).
+
+Robustness: taken labels offer the first free variant; renamed Macs
+are offered a relabel (explicit labels are never touched);
+concurrent enrollments merge instead of conflicting; interrupted
+clones land atomically and reruns resume; mint races adopt the
+winner; role contradictions and foreign unpushed work fail closed
+with the remedy named.
 
 ## Sync (fetch shared state)
 

@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.6.1"
+  version: "2.7.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -19,13 +19,15 @@ after its probes pass, and preserves an aborted receipt when work fails.
 
 ## Start here
 
-Full system, the default:
+One command is the whole procedure on any Mac — new user or existing,
+new machine or fleet join, install or upgrade. It detects what the
+machine holds, recommends the best path, and interviews for the rest:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh
 ```
 
-Skills only, through the same bootstrap:
+Explicit commands remain for automation and the manual path:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh -s -- setup --profile skills-only
@@ -56,8 +58,15 @@ synthesis workspace ensure --name NAME [--remote URL]
 synthesis outcome verify --task TASK --workspace PATH --source-class CLASS
 synthesis fleet join [--kb URL-or-PATH] [--label NAME]
                 [--role primary|secondary] [--workspace NAME]
+synthesis onboard
 synthesis uninstall [--purge]
 ```
+
+`synthesis onboard` is the one smart entry behind the bare installer:
+it detects the install and fleet state, recommends the best next step,
+and chains setup, update, fleet join, workspace, activate, doctor, and
+repair through one interview. It needs a terminal; automation uses the
+explicit commands.
 
 `synthesis status` and `synthesis doctor` print a plain summary by default:
 profile, policy, release, generation, each truth plane, and one next action.
@@ -317,13 +326,8 @@ interrupt resumes; finished steps report `noop`. The flags `--kb`,
 for scripted runs. A contradicting explicit role fails closed: secondary
 without a fleet, primary against one. Non-interactive use without `--kb`
 is refused with the flag named, never left hanging on input. From a bare
-machine the whole procedure is one command — the installer runs the
-guided setup first and the join continues after it:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh -s -- fleet join
-```
-
+machine the whole procedure is the one bare installer command, which
+runs the guided setup first and the join continues after it.
 Questions reach the human through the controlling terminal when stdin is
 a pipe, so the answers work in the piped install. Only a run with no
 terminal at all refuses, naming the setup-first remedy for automation.

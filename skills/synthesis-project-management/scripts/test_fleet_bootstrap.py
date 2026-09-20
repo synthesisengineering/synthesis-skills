@@ -711,3 +711,216 @@ def test_bootstrap_with_kb_repo_publishes_then_reruns_noop(tmp_path):
     )
     assert again["ok"]
     assert [step["status"] for step in again["steps"]] == ["noop"] * 6
+
+
+def test_mint_race_adopts_winner_instead_of_failing(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    directory = home / ".synthesis" / "fleet"
+    winner = str(uuid.uuid4())
+
+    def losing_mint(directory_arg=None):
+        target = directory_arg or directory
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "machine-id").write_text(winner + "\n", encoding="utf-8")
+        raise FI.FleetIdentityError("fleet machine-id already exists")
+
+    monkeypatch.setattr(FI, "mint_machine_id", losing_mint)
+    result = BOOT.step_identity(home)
+    assert result.status == "noop"
+    assert winner in result.detail
+
+
+def test_manifest_duplicate_path_refuses(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    manifest = tmp_path / "repos.json"
+    manifest.write_text(
+        json.dumps(
+            {"schema_version": 1,
+             "repos": [{"remote": "r1", "path": "~/workspaces/kb"},
+                       {"remote": "r2", "path": "~/workspaces/kb"}]}
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(BOOT.FleetBootstrapError, match="twice"):
+        BOOT.parse_repos_manifest(manifest, home)
+
+
+def test_failed_clone_leaves_no_debris_and_reruns(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    remote_url = seed_origin(tmp_path / "origin.git")
+    target = home / "workspaces" / "kb"
+    entry = {"remote": remote_url, "path": str(target), "branch": "main"}
+
+    def failing_runner(args, cwd):
+        return subprocess.CompletedProcess(
+            args, 1, stdout="", stderr="network down"
+        )
+
+    result = BOOT.step_repos(home, [entry], git_runner=failing_runner)
+    assert result.status == "fail"
+    assert not target.exists()
+    assert list(target.parent.glob("kb.partial-*")) == []
+
+    rerun = BOOT.step_repos(
+        home, [entry], git_runner=plain_git_runner
+    )
+    assert rerun.status == "done"
+    assert (target / ".git").is_dir()
+
+
+def test_enroll_live_label_dupe_refused(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    directory = home / ".synthesis" / "fleet"
+    own_id = FI.mint_machine_id(directory)
+    other_id = str(uuid.uuid4())
+    now = "2026-09-19T12:00:00+00:00"
+    FI.write_registry(
+        {"schema_version": 1,
+         "machines": {
+             other_id: {"label": "mac-b", "enrolled_at": now,
+                        "last_seen": now, "role": "primary",
+                        "environments": ["default"], "retired_at": None},
+             own_id: {"label": "mac-x", "enrolled_at": now,
+                      "last_seen": now, "role": "secondary",
+                      "environments": ["default"], "retired_at": None},
+         }},
+        directory,
+    )
+    result = BOOT.step_enroll(home, label="mac-b", role="secondary")
+    assert result.status == "fail"
+    assert "already held by live machine" in result.detail
+    assert "--label" in result.detail
+
+
+def test_enroll_role_change_refused(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    directory = home / ".synthesis" / "fleet"
+    FI.mint_machine_id(directory)
+    now = "2026-09-19T12:00:00+00:00"
+    FI.write_registry(
+        {"schema_version": 1,
+         "machines": {
+             str(uuid.uuid4()): {
+                 "label": "mac-a", "enrolled_at": now, "last_seen": now,
+                 "role": "primary", "environments": ["default"],
+                 "retired_at": None},
+         }},
+        directory,
+    )
+    FI.enroll_self(label="mac-b", role="secondary", directory=directory)
+    result = BOOT.step_enroll(home, label="mac-b", role="primary")
+    assert result.status == "fail"
+    assert "already enrolled as secondary" in result.detail
+
+
+def test_publish_recovers_concurrent_enrollment(tmp_path):
+    home1 = tmp_path / "home1"
+    home1.mkdir()
+    home2 = tmp_path / "home2"
+    home2.mkdir()
+    origin = seed_kb_origin(tmp_path / "kb.git")
+    kb1 = clone_kb(origin, tmp_path / "kb1")
+    kb2 = clone_kb(origin, tmp_path / "kb2")
+
+    id1 = enroll_local(
+        home1, "mac-b", "secondary", kb1 / "fleet" / "machines.json"
+    )
+    first = BOOT.step_publish(
+        home1, id1, label="mac-b", role="secondary", kb_repo=kb1,
+        git_runner=plain_git_runner,
+    )
+    assert first.status == "done", first.detail
+
+    id2 = enroll_local(
+        home2, "mac-c", "secondary", kb2 / "fleet" / "machines.json"
+    )
+    second = BOOT.step_publish(
+        home2, id2, label="mac-c", role="secondary", kb_repo=kb2,
+        git_runner=plain_git_runner,
+    )
+    assert second.status == "done", second.detail
+
+    # mac-b commits while unreachable, then the remote moves under it.
+    git("remote", "set-url", "--push", "origin",
+        str(tmp_path / "gone.git"), cwd=kb1)
+    directory1 = home1 / ".synthesis" / "fleet"
+    FI.enroll_self(
+        label="mac-b", role="secondary", directory=directory1,
+        now="2026-09-21T12:00:00+00:00",
+    )
+    dropped = BOOT.step_publish(
+        home1, id1, label="mac-b", role="secondary", kb_repo=kb1,
+        git_runner=plain_git_runner,
+    )
+    assert dropped.status == "fail"
+    assert "push failed" in dropped.detail
+    # The remote moves while mac-b's commit sits unpushed: true divergence.
+    directory2 = home2 / ".synthesis" / "fleet"
+    FI.enroll_self(
+        label="mac-c", role="secondary", directory=directory2,
+        now="2026-09-21T13:00:00+00:00",
+    )
+    moved = BOOT.step_publish(
+        home2, id2, label="mac-c", role="secondary", kb_repo=kb2,
+        git_runner=plain_git_runner,
+    )
+    assert moved.status == "done", moved.detail
+    git("remote", "set-url", "--push", "origin", origin, cwd=kb1)
+
+    lines: list[str] = []
+    recovered = BOOT.step_publish(
+        home1, id1, label="mac-b", role="secondary", kb_repo=kb1,
+        git_runner=plain_git_runner, progress=lines.append,
+    )
+    assert recovered.status == "done", recovered.detail
+    assert any("re-applying" in line for line in lines)
+
+    shared = json.loads((kb1 / "fleet" / "machines.json").read_text())
+    assert set(shared["machines"]) >= {id1, id2}
+    assert shared["machines"][id1]["last_seen"] == "2026-09-21T12:00:00+00:00"
+    pushed = subprocess.run(
+        ["git", "--git-dir", origin, "show", "HEAD:fleet/machines.json"],
+        capture_output=True, text=True, check=True,
+    )
+    assert id1 in pushed.stdout and id2 in pushed.stdout
+
+
+def test_publish_diverged_other_work_refuses_with_remedy(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    other_home = tmp_path / "other"
+    other_home.mkdir()
+    origin = seed_kb_origin(tmp_path / "kb.git")
+    kb1 = clone_kb(origin, tmp_path / "kb1")
+    kb2 = clone_kb(origin, tmp_path / "kb2")
+
+    git("config", "user.name", "Test", cwd=kb1)
+    git("config", "user.email", "test@example.com", cwd=kb1)
+    (kb1 / "notes.txt").write_text("mine\n", encoding="utf-8")
+    git("add", "notes.txt", cwd=kb1)
+    git("commit", "--quiet", "-m", "unrelated notes", cwd=kb1)
+
+    id2 = enroll_local(
+        other_home, "mac-c", "secondary", kb2 / "fleet" / "machines.json"
+    )
+    second = BOOT.step_publish(
+        other_home, id2, label="mac-c", role="secondary", kb_repo=kb2,
+        git_runner=plain_git_runner,
+    )
+    assert second.status == "done", second.detail
+
+    id1 = enroll_local(
+        home, "mac-b", "secondary", kb1 / "fleet" / "machines.json"
+    )
+    result = BOOT.step_publish(
+        home, id1, label="mac-b", role="secondary", kb_repo=kb1,
+        git_runner=plain_git_runner,
+    )
+    assert result.status == "fail"
+    assert "could not fast-forward" in result.detail
+    assert "pull --rebase" in result.detail

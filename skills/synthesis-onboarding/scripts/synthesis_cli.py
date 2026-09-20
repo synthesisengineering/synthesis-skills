@@ -46,7 +46,7 @@ from system_contract import (
 )
 
 
-ENGINE_VERSION = "2.6.1"
+ENGINE_VERSION = "2.7.0"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
     "setup",
@@ -61,6 +61,7 @@ CLI_COMMANDS = (
     "workspace ensure",
     "outcome verify",
     "fleet join",
+    "onboard",
     "uninstall",
 )
 
@@ -179,6 +180,9 @@ def build_parser() -> argparse.ArgumentParser:
     join.add_argument("--role", choices=("primary", "secondary"), help="found as primary or join as secondary (derived from the knowledge repo when omitted)")
     join.add_argument("--workspace", help="workspace name (derived or asked when omitted)")
     _common_output(join)
+
+    onboard_cmd = commands.add_parser("onboard", help="the one smart entry: detect, recommend, ask, and act")
+    _common_output(onboard_cmd)
 
     uninstall = commands.add_parser("uninstall", help="archive and remove generated resources")
     uninstall.add_argument(
@@ -1706,6 +1710,11 @@ def main(
 
                 return fleet_join.join(args, release_root=REPO_ROOT)
             raise AssertionError("unhandled fleet command")
+
+        if args.command == "onboard":
+            import onboard_flow
+
+            return onboard_flow.onboard(args, release_root=REPO_ROOT)
 
         if args.command == "status":
             promoted, promotion_note = _promote_live_receipts(state)
