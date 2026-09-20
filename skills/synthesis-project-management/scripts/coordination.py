@@ -2470,6 +2470,9 @@ def command_claim(args) -> int:
     def operation(content: str) -> str:
         current = ensure_identities(rows(content))
         now = timestamp()
+        # Single clock read for the row and the seat: a second read
+        # later can cross a second boundary and disagree with the row.
+        claimed["heartbeat"] = now
         selector = getattr(args, "id", None)
         existing_self = find_session(current, selector) if selector else None
         if (
@@ -2769,6 +2772,7 @@ def command_claim(args) -> int:
         claim_machine, claim_label = resolve_claim_machine(
             getattr(args, "machine", "") or ""
         )
+    row_heartbeat = claimed.get("heartbeat")
     seat = write_seat(
         args.board,
         session_uuid=identity.session_uuid,
@@ -2776,7 +2780,7 @@ def command_claim(args) -> int:
         machine=claim_machine,
         machine_label=claim_label,
         identity=self_identity(requested_ref),
-        last_heartbeat=timestamp(),
+        last_heartbeat=row_heartbeat if isinstance(row_heartbeat, str) else timestamp(),
     )
     if seat is not None:
         print(f"Seat recorded at {seat} (delivery handles for peer resolution).")
@@ -2905,6 +2909,8 @@ def command_succeed(args) -> int:
                     "needs " + ", ".join(f"--{name}" for name in missing)
                 )
         now = timestamp()
+        # Single clock read for the row and the seat (see command_claim).
+        succeeded["heartbeat"] = now
         if existing_self is not None:
             effective_areas = list(existing_self.claims)
             effective_areas.extend(
@@ -3014,6 +3020,7 @@ def command_succeed(args) -> int:
         successor_machine, successor_label = resolve_claim_machine(
             getattr(args, "machine", "") or ""
         )
+    row_heartbeat = succeeded.get("heartbeat")
     seat = write_seat(
         args.board,
         session_uuid=identity.session_uuid,
@@ -3021,7 +3028,7 @@ def command_succeed(args) -> int:
         machine=successor_machine,
         machine_label=successor_label,
         identity=self_identity(requested_ref),
-        last_heartbeat=timestamp(),
+        last_heartbeat=row_heartbeat if isinstance(row_heartbeat, str) else timestamp(),
     )
     if seat is not None:
         print(f"Seat recorded at {seat} (delivery handles for peer resolution).")
@@ -3155,7 +3162,7 @@ def command_narrow(args) -> int:
 
 
 def command_heartbeat(args) -> int:
-    updated: dict[str, SessionIdentity] = {}
+    updated: dict[str, object] = {}
     resumed: dict[str, bool] = {}
 
     def operation(content: str) -> str:
@@ -3178,6 +3185,8 @@ def command_heartbeat(args) -> int:
             resumed["resumed"] = True
             successors = overlaps_parked_successors(content, session.compact_id)
             session.heartbeat = timestamp()
+            # Single clock read for the row and the seat (see command_claim).
+            updated["heartbeat"] = session.heartbeat
             updated["identity"] = session.identity
             notice_session = session
             tabled = replace_table(content, current)
@@ -3186,6 +3195,8 @@ def command_heartbeat(args) -> int:
             )
         before = set(validate_sessions(current))
         session.heartbeat = timestamp()
+        # Single clock read for the row and the seat (see command_claim).
+        updated["heartbeat"] = session.heartbeat
         after = set(validate_sessions(current))
         # Only newly introduced problems refuse: pre-existing board issues are
         # not this heartbeat's fault. Snapshot-flavored problems are excluded
@@ -3217,6 +3228,7 @@ def command_heartbeat(args) -> int:
             "Re-validate working state (git status, and any overlaps-parked "
             "successors on the board) before writing."
         )
+    row_heartbeat = updated.get("heartbeat")
     existing = read_seat(args.board, updated["identity"].session_uuid)
     if existing is not None:
         write_seat(
@@ -3232,7 +3244,7 @@ def command_heartbeat(args) -> int:
                 pid=existing.pid,
             ),
             cwd=existing.cwd,
-            last_heartbeat=timestamp(),
+            last_heartbeat=row_heartbeat if isinstance(row_heartbeat, str) else timestamp(),
             status="active",
         )
     return 0

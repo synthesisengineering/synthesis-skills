@@ -90,6 +90,57 @@ def test_claim_writes_machine_id_and_label_when_enrolled(tmp_path, monkeypatch):
     assert seat.status == "active"
 
 
+def _ticking_clock(monkeypatch, first, second):
+    """Fake clock: first read returns `first`, every later read `second`.
+
+    A command that reads the clock once for the row and again for the
+    seat gets two different stamps; the tests below fail on that shape.
+    """
+    calls = {"n": 0}
+
+    def fake_timestamp():
+        calls["n"] += 1
+        return first if calls["n"] == 1 else second
+
+    monkeypatch.setattr(MODULE, "timestamp", fake_timestamp)
+
+
+def test_claim_seat_reuses_row_heartbeat(tmp_path, monkeypatch):
+    machine_id = FI.mint_machine_id()
+    FI.enroll_self(label="mac-a", role="primary")
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:01990000-0000-7000-8000-000000000001")
+    _ticking_clock(monkeypatch, "2026-09-20T06:00:00+00:00", "2026-09-20T06:00:01+00:00")
+    board = tmp_path / "board.md"
+    request = claim_request(
+        board, area="repo-a/**", workspace="/tmp/wt-a @ feature/a",
+        machine="mac-a",
+    )
+    assert MODULE.command_claim(request) == 0
+    row = MODULE.rows(board.read_text(encoding="utf-8"))[0]
+    seat = PA.read_seat(board, row.session_uuid, strict=True)
+    assert row.heartbeat == "2026-09-20T06:00:00+00:00"
+    assert seat.last_heartbeat == row.heartbeat
+
+
+def test_heartbeat_seat_reuses_row_heartbeat(tmp_path, monkeypatch):
+    machine_id = FI.mint_machine_id()
+    FI.enroll_self(label="mac-a", role="primary")
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:01990000-0000-7000-8000-000000000001")
+    board = tmp_path / "board.md"
+    request = claim_request(
+        board, area="repo-a/**", workspace="/tmp/wt-a @ feature/a",
+        machine="mac-a",
+    )
+    assert MODULE.command_claim(request) == 0
+    row = MODULE.rows(board.read_text(encoding="utf-8"))[0]
+    _ticking_clock(monkeypatch, "2026-09-20T07:00:00+00:00", "2026-09-20T07:00:01+00:00")
+    assert MODULE.command_heartbeat(args(board, id=row.session_uuid)) == 0
+    beaten = MODULE.rows(board.read_text(encoding="utf-8"))[0]
+    seat = PA.read_seat(board, beaten.session_uuid, strict=True)
+    assert beaten.heartbeat == "2026-09-20T07:00:00+00:00"
+    assert seat.last_heartbeat == beaten.heartbeat
+
+
 def test_claim_without_enrollment_keeps_hostname(tmp_path):
     board = tmp_path / "board.md"
     request = claim_request(
