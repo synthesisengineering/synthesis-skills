@@ -321,3 +321,10 @@ def test_new_registered_worktree_refreshes_common_discovery(checkouts, tmp_path)
     git(root, "worktree", "add", "-b", "third", str(third))
     common, _ = resolver._identity(str(third))
     assert str(third.resolve()) in resolver.registered[common]
+
+
+def test_split_values_preserves_glob_stars_in_paths():
+    """Board bold-stripping must not eat `/**` globs inside claimed paths."""
+    assert claim_scope.split_values("/a/**, /b/**") == ["/a/**", "/b/**"]
+    assert claim_scope.split_values("**bold**, /a/**") == ["bold", "/a/**"]
+    assert claim_scope.plain("**bold**") == "bold"

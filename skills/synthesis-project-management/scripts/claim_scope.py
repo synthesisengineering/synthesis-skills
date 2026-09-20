@@ -26,7 +26,9 @@ class _NoVerifiedCheckout(ClaimIdentityError):
 
 
 def plain(value: str) -> str:
-    return re.sub(r"`(.+?)`", r"\1", re.sub(r"\*\*(.+?)\*\*", r"\1", value)).strip()
+    guarded = value.replace("/**", "/\0GLOB\0").replace("**/", "\0GLOB\0/")
+    unbolded = re.sub(r"\*\*(.+?)\*\*", r"\1", guarded)
+    return re.sub(r"`(.+?)`", r"\1", unbolded).replace("\0GLOB\0", "**").strip()
 
 
 def split_values(value: str) -> list[str]:
