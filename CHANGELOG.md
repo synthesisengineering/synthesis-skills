@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.112.0] - 2026-09-20
+
+Resume anywhere. New open-source skill `synthesis-project-resume`
+v1.0.0: one console prompt restarts any project in any harness with
+full verified context — continuing, fresh, and wrong-project-paste
+sessions classified, live foreign claims respected, cross-machine
+changes surfaced, stale formats migrated. Companion: synthesis-console
+recently-active-first list with copy-paste resume prompts.
+
 ## [4.111.0] - 2026-09-20
 
 One command onboards any Mac. The bare installer detects install and
