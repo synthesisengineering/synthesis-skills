@@ -73,7 +73,17 @@ changed_surfaces:
 - path: skills/synthesis-project-management/scripts/test_fleet_identity.py
   cases:
   - identity-provenance
+- path: skills/synthesis-skills-manager/scripts/test_release.py
+  cases:
+  - bare-default-onboards
 cases:
+- id: bare-default-onboards
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_whole_system_onboarding_release_contract_is_public_and_coherent
+  motivating_defect: The bare installer must onboard (detect, recommend,
+    interview), not merely set up; the release contract pins the new
+    default command.
 - id: onboard-fresh
   control_class: acceptance-test
   expected_status: pass

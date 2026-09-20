@@ -975,7 +975,7 @@ def test_whole_system_onboarding_release_contract_is_public_and_coherent() -> No
     (version,) = versions
     assert all(part.isdigit() for part in version.split(".")), version
     assert version.count(".") == 2, version
-    assert "set -- setup" in bootstrap
+    assert "set -- onboard" in bootstrap
     assert "synthesis doctor" in readme
     assert "Skills-only alternative" in readme
     assert ".agents/workspace-AGENTS.md" in onboarding
