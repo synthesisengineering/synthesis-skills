@@ -39,11 +39,13 @@ current role and org, professional and personal goals, what they can
 commit in a room, their known positions, and their tells under
 pressure. Reader profiles hold relationship, technical depth, what
 the person cares about, what they have already been told, and what
-landed last time. Both are created by interview the first time the
-skill runs for a principal — never copied from another machine's
-private files. Missing config degrades gracefully: the skill asks
-the three questions it cannot proceed without (who is the reader to
-you, how technical, what is the meeting's job) and drafts anyway.
+landed last time. Both are scaffolded by `scripts/prep_init.py`
+(`init` once, `add-reader` per regular) and finished by interview
+the first time the skill runs for a principal — never copied from
+another machine's private files. Missing config degrades gracefully:
+the skill asks the three questions it cannot proceed without (who is
+the reader to you, how technical, what is the meeting's job) and
+drafts anyway.
 
 ## 2. The prep loop
 
