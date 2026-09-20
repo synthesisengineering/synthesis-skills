@@ -1,17 +1,18 @@
 schema: 2
-suite: session-archiver-4-114-0
+suite: dogfood-corrections-4-115-0
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.114.0, shipping the session archiver (v2-only moves to
-  sessions/archive/ with newest-period protection and a live+archived
-  index) in project_format with its reference contract
+  identify 4.115.0, moving the v2 resume state to its own
+  RESUME_STATE.json (operational CURRENT_STATE.json untouched) and
+  excluding the generated sessions INDEX from session detection in
+  the probe, the migration skeleton, and the documented contract
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real archiver, detector,
+unverified_remainder: Fixtures execute the real migration, probe,
   and manifest checks in disposable directories. They do not establish
   installed-client reload, live cross-client delivery, new-release
   publication, or deployment approval. Those remain separate release
@@ -37,13 +38,25 @@ changed_surfaces:
   - manifest-validates
 - path: skills/synthesis-project-management/references/project-formats.md
   cases:
-  - format-archive
+  - format-separation
 - path: skills/synthesis-project-management/scripts/project_format.py
   cases:
-  - format-archive
+  - format-separation
 - path: skills/synthesis-project-management/scripts/test_project_format.py
   cases:
-  - format-archive
+  - format-separation
+- path: skills/synthesis-project-resume/SKILL.md
+  cases:
+  - probe-ignores-index
+- path: skills/synthesis-project-resume/references/requirements.md
+  cases:
+  - probe-ignores-index
+- path: skills/synthesis-project-resume/scripts/resume_probe.py
+  cases:
+  - probe-ignores-index
+- path: skills/synthesis-project-resume/scripts/test_resume_probe.py
+  cases:
+  - probe-ignores-index
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -51,13 +64,21 @@ cases:
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
   motivating_defect: All client manifests and the top changelog identify the same release while retained
     release contracts remain valid.
-- id: format-archive
+- id: format-separation
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_format.py::test_archive_moves_old_periods_not_newest
-  motivating_defect: Unbounded session growth buries resume context;
-    the archiver must move only old periods, protect the newest, and
-    keep the index covering both live and archived files.
+  fixture: ../synthesis-project-management/scripts/test_project_format.py::test_skeleton_ignores_generated_index
+  motivating_defect: The v2 state file collided with the specified
+    operational handoff shape and the skeleton read its own index;
+    the engine must write a separate resume state and ignore
+    generated files.
+- id: probe-ignores-index
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-resume/scripts/test_resume_probe.py::test_probe_ignores_generated_index
+  motivating_defect: The probe reported the freshly written INDEX.md
+    as the newest session; session detection must exclude generated
+    files or every v2 resume brief names the wrong period.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
