@@ -1,22 +1,36 @@
 schema: 2
-suite: fleet-join-one-command
+suite: fleet-release-4-110-0
 membership: closed
-production_entry_point: synthesis fleet join enrolls a Mac with zero
-  required flags (GitHub KB discovery with inline sign-in, role from
-  shared state, founding path, live progress, fail-fast preflight,
-  enrollment publish-back); interrupts resume with exit 130 and
-  per-step receipts
+production_entry_point: All three client manifests and the top changelog
+  identify 4.110.0, shipping flag-free fleet enrollment (zero-flag
+  synthesis fleet join with GitHub discovery, role from shared state,
+  live progress, and enrollment publish-back) on onboarding engine 2.6.0
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures run the real join, bootstrap, and publish
-  paths against disposable homes, boards, and git remotes. Live
-  two-machine enrollment, installed-client reload, new-release
-  publication, and deployment approval remain separate release checks.
+unverified_remainder: Fixtures execute the real join, bootstrap, publish,
+  and manifest checks in disposable directories. They do not establish
+  installed-client reload, live cross-client delivery, new-release
+  publication, or deployment approval. Those remain separate release checks.
 changed_surfaces:
+- path: .claude-plugin/plugin.json
+  cases:
+  - release-version-metadata
+- path: .codex-plugin/plugin.json
+  cases:
+  - release-version-metadata
+- path: .muse-plugin/plugin.json
+  cases:
+  - release-version-metadata
+- path: CHANGELOG.md
+  cases:
+  - release-version-metadata
+- path: README.md
+  cases:
+  - release-version-metadata
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
@@ -51,6 +65,12 @@ changed_surfaces:
   cases:
   - publish-back
 cases:
+- id: release-version-metadata
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
+  motivating_defect: All client manifests and the top changelog identify the same release while retained
+    release contracts remain valid.
 - id: fleet-join-discovery
   control_class: acceptance-test
   expected_status: pass
