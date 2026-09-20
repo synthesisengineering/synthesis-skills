@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+**Flag-free fleet join (September 2026).** Release **4.110.0** replaces
+the six-flag bootstrap with `synthesis fleet join`: zero required
+flags, GitHub discovery, role from shared state, live progress, and
+automatic enrollment publish-back.
+
 **Multi-Mac fleet (September 2026).** Release **4.109.0** enrolls a
 second Mac: machine identities, cross-Mac claim exclusion, parked
 sessions, sealed handoffs, workspace subscriptions, vault-backed

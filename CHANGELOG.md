@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.110.0] - 2026-09-20
+
+Flag-free fleet enrollment. `synthesis fleet join` needs zero flags:
+it discovers the knowledge repo over GitHub sign-in or asks once,
+derives the role from shared state, narrates every repo as it lands,
+and publishes the enrollment back to the shared registry. Interrupts
+resume cleanly with per-step receipts. Onboarding engine 2.6.0.
+
 ## [4.109.0] - 2026-09-19
 
 Multi-Mac fleet support. Machines enroll with minted identities and a
