@@ -488,6 +488,36 @@ def test_stale_seat_row_is_skipped_without_blocking_unrelated_checkpoint(observe
     assert json.loads(next(observer.receipts.glob("*.json")).read_text())["session_id"] == FOREIGN
 
 
+def _desktop_owner_with_seat(observer: SimpleNamespace, *, machine: str, machine_label: str) -> None:
+    identity = identity_from_uuid(FOREIGN)
+    board(observer.board, [(FOREIGN, identity.compact_id, "alpha", str(observer.repo))])
+    observer.board.write_text(observer.board.read_text().replace(f"tool:{FOREIGN}", "ccd:local_fixture"))
+    peer_addressing.write_seat(
+        observer.board, session_uuid=FOREIGN, compact_id=identity.compact_id,
+        machine=machine, machine_label=machine_label,
+        identity=peer_addressing.SelfIdentity(client="claude-code", harness_session_id=NATIVE,
+                                             host_session_id="local_fixture"),
+    )
+
+
+def test_schema2_seat_machine_id_and_label_bind_the_desktop_row(observer: SimpleNamespace) -> None:
+    # Regression: schema-2 seats carry the fleet machine-id in `machine` and
+    # the human name in `machine_label`, while the board row shows the name.
+    # The checkpoint compared the name to the id and refused every desktop
+    # session seated under schema 2 (2026-09-20).
+    _desktop_owner_with_seat(observer, machine="e808f74c-d5c3-4a35-b865-25710f8e738d", machine_label="machine")
+    assert inspect(observer) == ("PASS", [])
+    assert json.loads(next(observer.receipts.glob("*.json")).read_text())["session_id"] == FOREIGN
+
+
+def test_schema2_seat_labelled_for_another_machine_does_not_bind(observer: SimpleNamespace) -> None:
+    _desktop_owner_with_seat(observer, machine="e808f74c-d5c3-4a35-b865-25710f8e738d", machine_label="other-mac")
+    verdict, issues = inspect(observer)
+    assert verdict == "FAIL"
+    assert any("does not bind the active claim" in issue for issue in issues)
+    assert_no_receipt(observer)
+
+
 def test_lone_stale_seat_grants_no_checkpoint_authority(observer: SimpleNamespace) -> None:
     stale_identity = identity_from_uuid(STALE)
     board(observer.board, [(STALE, stale_identity.compact_id, "alpha", str(observer.repo))])

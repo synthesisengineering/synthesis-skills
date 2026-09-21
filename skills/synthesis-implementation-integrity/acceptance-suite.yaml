@@ -1,21 +1,21 @@
 schema: 2
-suite: rulings-4-118-0
+suite: seat-schema-containment-4-120-0
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.118.0, shipping meeting-prep 1.1.0 (register samples,
-  reader-profile convention, disclosure default), year-default
-  archive retention, and the preplan proposer credit
+  identify 4.120.0, shipping project-management 2.17.0 (desktop checkpoint
+  binding by machine label; strict seat-directory reads contain stale schema-1
+  seat files and the doctor names them)
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the real archive default,
-  reader scaffolding, disclosure lint, and manifest checks in
-  disposable directories. They do not establish installed-client
-  reload, live cross-client delivery, new-release publication, or
-  deployment approval. Those remain separate release checks.
+unverified_remainder: Fixtures execute the checkpoint matcher, the seat
+  readers, the diagnostic inbox and the doctor in disposable directories.
+  They do not establish installed-client reload, live cross-client delivery,
+  new-release publication, or deployment approval. Those remain separate
+  release checks.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -35,49 +35,30 @@ changed_surfaces:
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-meeting-prep/SKILL.md
+- path: skills/synthesis-project-management/SKILL.md
   cases:
-  - prep-reader-profiles
-  - prep-forum-disclosure
-  - prep-basis-honesty
-- path: skills/synthesis-meeting-prep/references/requirements.md
+  - release-version-metadata
+- path: skills/synthesis-project-management/scripts/coordination.py
   cases:
-  - prep-reader-profiles
-  - prep-forum-disclosure
-  - prep-basis-honesty
-- path: skills/synthesis-onboarding/references/release-capabilities.json
+  - doctor-stale-seats
+- path: skills/synthesis-project-management/scripts/peer_addressing.py
   cases:
-  - fleet-sync-command
-- path: skills/synthesis-onboarding/scripts/fleet_sync.py
-  cases:
-  - fleet-sync-command
-- path: skills/synthesis-onboarding/scripts/synthesis_cli.py
-  cases:
-  - fleet-sync-command
-- path: skills/synthesis-onboarding/scripts/test_fleet_sync.py
-  cases:
-  - fleet-sync-command
-- path: skills/synthesis-preplan/SKILL.md
-  cases:
-  - preplan-credit
-- path: skills/synthesis-preplan/scripts/test_acknowledgments.py
-  cases:
-  - preplan-credit
-- path: skills/synthesis-project-management/references/project-formats.md
-  cases:
-  - retention-default
-- path: skills/synthesis-project-management/scripts/project_format.py
-  cases:
-  - retention-default
+  - strict-seat-containment
+  - diagnostic-inbox-containment
+  - doctor-stale-seats
 - path: skills/synthesis-project-management/scripts/project_state.py
   cases:
-  - stale-seat-containment
+  - desktop-seat-machine-binding
+- path: skills/synthesis-project-management/scripts/test_board_inbox.py
+  cases:
+  - diagnostic-inbox-containment
 - path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
   cases:
-  - stale-seat-containment
-- path: skills/synthesis-project-management/scripts/test_project_format.py
+  - desktop-seat-machine-binding
+- path: skills/synthesis-project-management/scripts/test_peer_addressing.py
   cases:
-  - retention-default
+  - strict-seat-containment
+  - doctor-stale-seats
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -85,51 +66,34 @@ cases:
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
   motivating_defect: All client manifests and the top changelog identify the same release while retained
     release contracts remain valid.
-- id: preplan-credit
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-preplan/scripts/test_acknowledgments.py::test_acknowledgments_credit_the_proposer
-  motivating_defect: A public credit given and then silently lost in a
-    later edit breaks trust with the contributor; the pin keeps it.
-- id: retention-default
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_format.py::test_cli_archive_defaults_to_year_retention
-  motivating_defect: An archiver with no default never runs on its
-    own; the year default must hold without the flag.
-- id: prep-reader-profiles
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-meeting-prep/scripts/test_prep_init.py::test_add_reader_writes_profile
-  motivating_defect: The per-person profile convention must exist in
-    the scaffolder, not just in prose, or nobody adopts it.
-- id: prep-forum-disclosure
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-meeting-prep/scripts/test_prep_lint.py::test_namedrop_opener_flagged_in_forum
-  motivating_defect: The upward-vs-forum disclosure line must be
-    mechanically enforced where it can be, not merely advised.
-- id: prep-basis-honesty
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-meeting-prep/scripts/test_prep_lint.py::test_missing_basis_flagged
-  motivating_defect: R13's fallback — say so in the pack when no
-    sample exists — rides on the basis check refusing silent gaps.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: fleet-sync-command
+- id: desktop-seat-machine-binding
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_fleet_sync.py::test_sync_full_run_current
-  motivating_defect: A second Mac must come fully current from one
-    command; the full-run fixture proves update, repos, heartbeat, and
-    doctor pass together on a current machine.
-- id: stale-seat-containment
+  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_schema2_seat_machine_id_and_label_bind_the_desktop_row
+  motivating_defect: Schema-2 seats hold the fleet machine-id while the board
+    row shows the label; comparing label to id refused every Claude desktop
+    checkpoint on this machine since the seat-schema bump.
+- id: strict-seat-containment
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_stale_seat_row_is_skipped_without_blocking_unrelated_checkpoint
-  motivating_defect: One stale pre-migration seat used to abort the
-    checkpoint match for every session; the row must be skipped, not fatal.
+  fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_strict_directory_read_contains_a_stale_schema1_seat_and_names_it
+  motivating_defect: One stale pre-migration seat file made every strict read
+    of the seat directory fail closed with no output; the file must be
+    skipped and named while the valid seats still load.
+- id: diagnostic-inbox-containment
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_diagnostic_inbox_survives_a_stale_schema1_seat_file
+  motivating_defect: The SessionStart diagnostic exited 2 with zero context
+    whenever a stale seat file existed, so the doctor reported nothing.
+- id: doctor-stale-seats
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_doctor_names_stale_seat_files_without_failing
+  motivating_defect: A skipped file nobody names is a silent skip; the doctor
+    lists each stale seat file so day-start can remove it.

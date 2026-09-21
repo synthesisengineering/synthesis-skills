@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.120.0] - 2026-09-20
+
+Seat-schema containment. The desktop checkpoint binds a schema-2 seat by
+the machine label the board row shows instead of comparing the label to
+the fleet machine-id, which had refused every Claude desktop checkpoint
+since 4.117.0. Strict seat-directory reads (the SessionStart diagnostic,
+the coordination doctor) skip and name a stale or malformed seat file
+instead of failing closed with no output; the doctor lists the skipped
+files so day-start can remove them. Project-management 2.17.0.
+
 ## [4.119.0] - 2026-09-20
 
 Fleet sync and checkpoint containment. New `synthesis sync` brings an

@@ -44,6 +44,7 @@ from peer_addressing import (
     CLIENT_MUSE,
     SelfIdentity,
     all_seats,
+    stale_seat_files,
     delivery_lanes,
     detect_self,
     lane_invocations,
@@ -4213,6 +4214,13 @@ def command_doctor(args) -> int:
         if stale_seats
         else ""
     )
+    # Stale pre-migration seat files that strict reads skip are named here
+    # so day-start can remove them with a receipt; they never fail the
+    # doctor, because the strict readers contain them per file.
+    stale_files = stale_seat_files(args.board)
+    if stale_files:
+        names = ", ".join(path.name for path, _reason in stale_files)
+        print(f"WARN coordination.seats: {len(stale_files)} stale schema-1 seat file(s) skipped by strict reads: {names}")
     print(
         f"PASS coordination: schema v{declared}{schema_note}, "
         f"{len(sessions)} session(s){seat_line}{lease_line}"
