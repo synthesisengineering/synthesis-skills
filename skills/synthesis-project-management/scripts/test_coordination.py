@@ -3619,6 +3619,7 @@ def succeed_args(
     mode: str = "autonomous",
     goal: str = "goal-B",
     client_ref: str | None = None,
+    only: list[str] | None = None,
 ):
     values: dict[str, object] = {
         "predecessor": from_id,
@@ -3630,7 +3631,87 @@ def succeed_args(
     }
     if client_ref is not None:
         values["client_ref"] = client_ref
+    if only:
+        values["only"] = list(only)
     return args(board, **values)
+
+
+def _park_row(board: Path, compact_id: str) -> None:
+    text = board.read_text(encoding="utf-8")
+    board.write_text(MODULE.park_session(text, compact_id, basis="operator", actor="fixture"), encoding="utf-8")
+
+
+def test_succeed_only_moves_named_areas_from_a_parked_row_and_keeps_the_rest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    # Rajiv's 2026-09-20 ruling: a single resource (here a release train)
+    # moves off a parked row with a record; the row keeps its other scope.
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-parked")
+    assert MODULE.command_claim(
+        claim_args(board, session_id="A", project="project-a",
+                   workspace="/tmp/repo-a @ feature/a", area="release-train:x")
+    ) == 0
+    assert MODULE.command_claim(
+        claim_args(board, session_id="A", project="project-a",
+                   workspace="/tmp/repo-a @ feature/a", area="repo/shared/kept.md")
+    ) == 0
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-heir")
+    assert MODULE.command_claim(
+        claim_args(board, session_id="B", project="project-b",
+                   workspace="/tmp/repo-b @ feature/b", area="repo/other/held.md")
+    ) == 0
+    sessions = MODULE.rows(board.read_text(encoding="utf-8"))
+    holder = next(s for s in sessions if s.legacy_id == "A")
+    heir = next(s for s in sessions if s.legacy_id == "B")
+    # A fresh, unparked row refuses even with --only.
+    assert MODULE.command_succeed(succeed_args(board, from_id="A", session_id="B", only=["release-train:x"])) == 10
+    assert "is live" in capsys.readouterr().err
+    _park_row(board, holder.compact_id)
+    # An area the row does not hold refuses with nothing changed.
+    assert MODULE.command_succeed(succeed_args(board, from_id="A", session_id="B", only=["repo/nope.md"])) == 10
+    assert "does not hold" in capsys.readouterr().err
+    # --only without --session refuses.
+    assert MODULE.command_succeed(succeed_args(board, from_id="A", only=["release-train:x"])) == 10
+    assert "pass --session" in capsys.readouterr().err
+    assert MODULE.command_succeed(succeed_args(board, from_id="A", session_id="B", only=["release-train:x"])) == 0
+    sessions = MODULE.rows(board.read_text(encoding="utf-8"))
+    parked = next(s for s in sessions if s.compact_id == holder.compact_id)
+    grown = next(s for s in sessions if s.compact_id == heir.compact_id)
+    assert parked.status == "parked"
+    assert parked.claims == ["repo/shared/kept.md"]
+    assert parked.workspaces == ["/tmp/repo-a @ feature/a"]
+    assert grown.claims == ["repo/other/held.md", "release-train:x"]
+    assert grown.workspaces == ["/tmp/repo-b @ feature/b"]
+    text = board.read_text(encoding="utf-8")
+    assert "PARTIAL SUCCESSION NOTICE" in text
+    assert "moved: release-train:x" in text
+    assert "kept: repo/shared/kept.md" in text
+    assert f"→ {holder.compact_id}, from {heir.compact_id}" in text
+    assert MODULE.validate_sessions(sessions) == []
+
+
+def test_succeed_takes_a_parked_row_in_full(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-parked")
+    assert MODULE.command_claim(
+        claim_args(board, session_id="A", project="project-a",
+                   workspace="/tmp/repo-a @ feature/a", area="repo/shared/dead.md")
+    ) == 0
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-heir")
+    assert MODULE.command_claim(
+        claim_args(board, session_id="B", project="project-b",
+                   workspace="/tmp/repo-b @ feature/b", area="repo/other/held.md")
+    ) == 0
+    sessions = MODULE.rows(board.read_text(encoding="utf-8"))
+    holder = next(s for s in sessions if s.legacy_id == "A")
+    _park_row(board, holder.compact_id)
+    assert MODULE.command_succeed(succeed_args(board, from_id="A", session_id="B")) == 0
+    sessions = MODULE.rows(board.read_text(encoding="utf-8"))
+    assert next(s for s in sessions if s.compact_id == holder.compact_id).status == "released"
+    assert "repo/shared/dead.md" in next(s for s in sessions if s.legacy_id == "B").claims
 
 
 def test_succeed_allocates_successor_holding_dead_seat_scope(
