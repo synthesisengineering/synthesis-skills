@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.124.0] - 2026-09-21
+
+Name-addressed resume invocation. The R1 resume prompt is one
+sentence — "Use the skill synthesis-project-resume to resume the
+synthesis project with id … in the synthesis project management
+workspace …" — naming the skill and the workspace with no
+filesystem path, client name, or release version, so the pasted
+prompt is identical on every machine. Skill-less harnesses locate
+the skill file via a documented lookup order, and workspace names
+resolve to `ai-knowledge-{workspace}` checkouts deterministically.
+
 ## [4.123.1] - 2026-09-21
 
 Patch: the installed-plane guardian check compares resolved interpreter

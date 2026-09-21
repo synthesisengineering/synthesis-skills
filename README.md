@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.124.0** makes resume invocation name-addressed: the R1
+prompt is one sentence naming the skill and the workspace, with no
+filesystem path, so it pastes identically into every harness on
+every machine.
+
 Release **4.123.1** patches the installed-plane guardian check to
 compare resolved interpreter paths instead of argv spellings.
 

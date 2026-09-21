@@ -1,20 +1,20 @@
 schema: 2
-suite: guardian-spelling-4-123-1
+suite: resume-name-addressed-4-124-0
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.123.1, patching the installed-plane guardian check to
-  compare resolved interpreter paths instead of argv spellings
+  identify 4.124.0, making resume invocation name-addressed: the R1
+  prompt is one sentence naming the skill and the workspace, with no
+  filesystem path, client name, or release version.
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: The fixture executes the launcher and guardian
-  checks in a disposable directory. It does not establish
-  installed-client reload, live cross-client delivery, new-release
-  publication, or deployment approval. Those remain separate release
-  checks.
+unverified_remainder: The fixture executes the resume probe paths in a
+  disposable directory. It does not establish installed-client reload,
+  live cross-client delivery, new-release publication, or deployment
+  approval. Those remain separate release checks.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -34,12 +34,12 @@ changed_surfaces:
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-onboarding/scripts/release_runtime.py
+- path: skills/synthesis-project-resume/SKILL.md
   cases:
-  - s19-guardian-spelling
-- path: skills/synthesis-onboarding/scripts/test_release_runtime.py
+  - resume-name-addressed
+- path: skills/synthesis-project-resume/references/requirements.md
   cases:
-  - s19-guardian-spelling
+  - resume-name-addressed
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -52,12 +52,11 @@ cases:
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: s19-guardian-spelling
+- id: resume-name-addressed
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_doctor_checks_launcher_and_guardian_against_setup_pin
-  motivating_defect: The installed-plane guardian check compared argv
-    spellings exactly, so a declaration naming python3 for the recorded
-    python3.12 binary reported defective. Resolved-path comparison
-    keeps the refusal semantics and accepts the same binary under any
-    spelling.
+  fixture: ../synthesis-project-resume/scripts/test_resume_probe.py::test_probe_reports_identity_and_goal
+  motivating_defect: The R1 prompt embedded a client-specific,
+    version-pinned filesystem path, so pasted prompts named one
+    harness's cache and died on upgrade or cross-machine paste. The
+    prompt now names the skill and the workspace only.
