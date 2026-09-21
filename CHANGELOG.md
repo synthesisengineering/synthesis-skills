@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.126.0] - 2026-09-21
+
+Repair the delivery/outcome receipt contract. Context-outcome
+records (INJECTED/REFUSED) used to replace the latest receipt
+pointers with an outcome-only record, so the hook-live verifier
+failed on latest/global selection while exact-session selection
+passed. Outcome records now carry the delivery fields forward from
+the session's delivery event, and filing an outcome without a prior
+delivery raises instead of replacing the delivery proof. Both
+immutable event records are preserved unchanged.
+
 ## [4.125.0] - 2026-09-21
 
 Project-durable board mail. `coordination message --to <project>

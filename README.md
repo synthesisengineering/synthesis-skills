@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.126.0** repairs the delivery/outcome receipt contract:
+context-outcome records carry the delivery fields forward, so the
+latest pointers keep passing the hook-live verifier after injection
+instead of failing on the outcome-only record.
+
 Release **4.125.0** delivers project-durable board mail: a message to
 `<project> sessions [durable]` reaches whichever seat next owns the
 project, across seat turnover, clients, and machines, with `--resolve`

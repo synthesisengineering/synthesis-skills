@@ -449,6 +449,45 @@ def print_envelope(message: str, payload: dict[str, object], format: str) -> Non
         print(message)
 
 
+def _newest_delivery_event(client_latest: Path, client: str,
+                           session_id: str) -> dict[str, object] | None:
+    """Return the newest delivery event for one session, or None.
+
+    Delivery events are the registry entries without a context_outcome;
+    outcome records (pre- and post-carry-forward) always carry one. The
+    outcome writer anchors to this event so the latest pointers keep the
+    delivery contract the hook-live verifier requires.
+    """
+    directory = validate_receipt_event_directory(
+        client_latest, client, session_id)
+    if not directory.is_dir():
+        return None
+    best: dict[str, object] | None = None
+    best_order: tuple[datetime, str] | None = None
+    for path in sorted(directory.glob("*.json")):
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"receipt event is unsafe: {path}")
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"receipt event is unreadable: {path}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError(f"receipt event is not an object: {path}")
+        if (
+            payload.get("client") != client
+            or payload.get("session_id") != session_id
+            or path.stem != str(payload.get("receipt_event_id") or "")
+        ):
+            raise ValueError(f"receipt event identity mismatch: {path}")
+        if "context_outcome" in payload or not payload.get("plugin_version"):
+            continue
+        order = receipt_recorded_order(payload, path)
+        if best_order is None or order > best_order:
+            best_order = order
+            best = payload
+    return best
+
+
 def record_context_outcome(payload: dict[str, object], destination: Path,
                            outcome: str, detail: str) -> bool:
     """Append the second receipt record: what the hook did (S14).
@@ -457,6 +496,14 @@ def record_context_outcome(payload: dict[str, object], destination: Path,
     record proves the outcome — INJECTED with the byte count, or REFUSED
     with the raising function and message. Only genuine SessionStart
     deliveries file one; probes and other events return False.
+
+    The outcome record carries the delivery fields forward from the
+    session's delivery event, so the latest pointers it updates keep the
+    delivery contract (plugin version/root, provenance, transcript
+    binding) the hook-live verifier requires. An outcome without a
+    prior delivery event raises instead of filing: the hook only files
+    outcomes for delivered events, and an unanchored outcome would
+    replace the delivery proof latest-pointer readers depend on.
     """
     event = payload.get("hook_event_name")
     session_id = payload.get("session_id")
@@ -472,6 +519,11 @@ def record_context_outcome(payload: dict[str, object], destination: Path,
     if provenance is None:
         return False
     client, _provenance_env = provenance
+    generic_latest, client_latest = latest_receipt_paths(destination, client)
+    delivery = _newest_delivery_event(client_latest, client, session_id)
+    if delivery is None:
+        raise ValueError(
+            f"outcome without a delivery receipt: {client}/{session_id}")
     event_id = str(uuid.uuid4())
     record = {
         "receipt_schema": 2,
@@ -479,11 +531,18 @@ def record_context_outcome(payload: dict[str, object], destination: Path,
         "hook_event_name": event,
         "session_id": session_id,
         "client": client,
+        "cwd": delivery.get("cwd"),
+        "source": delivery.get("source"),
+        "transcript_path": delivery.get("transcript_path"),
+        "transcript_bound_at_record": delivery.get("transcript_bound_at_record"),
+        "provenance_env": delivery.get("provenance_env"),
+        "plugin_version": delivery.get("plugin_version"),
+        "plugin_root": delivery.get("plugin_root"),
+        "execution_root": delivery.get("execution_root"),
         "context_outcome": outcome,
         "context_outcome_detail": detail,
         "recorded_at": datetime.now(timezone.utc).isoformat(),
     }
-    generic_latest, client_latest = latest_receipt_paths(destination, client)
     event_path = receipt_event_path(
         client_latest, client=client, session_id=session_id, event_id=event_id)
     with receipt_registry_lock(generic_latest):

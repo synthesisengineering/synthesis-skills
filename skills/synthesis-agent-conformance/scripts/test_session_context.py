@@ -18,6 +18,14 @@ MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
+CONFORMANCE_PATH = Path(__file__).with_name("conformance.py")
+CONFORMANCE_SPEC = importlib.util.spec_from_file_location(
+    "conformance", CONFORMANCE_PATH)
+assert CONFORMANCE_SPEC and CONFORMANCE_SPEC.loader
+CONFORMANCE = importlib.util.module_from_spec(CONFORMANCE_SPEC)
+sys.modules[CONFORMANCE_SPEC.name] = CONFORMANCE
+CONFORMANCE_SPEC.loader.exec_module(CONFORMANCE)
+
 from coordination_schema import identity_from_uuid  # noqa: E402
 import system_contract  # noqa: E402
 
@@ -1336,16 +1344,77 @@ def _codex_sessionstart_payload(tmp_path, monkeypatch):
 def test_context_outcome_files_a_second_record(tmp_path, monkeypatch) -> None:
     payload, receipt = _codex_sessionstart_payload(tmp_path, monkeypatch)
 
+    assert MODULE.record_live_receipt(payload, receipt)
     assert MODULE.record_context_outcome(payload, receipt, "INJECTED", "1234 bytes")
 
     events = list(
         (receipt.parent / "receipt-events" / "codex" / payload["session_id"]).glob("*.json"))
-    assert len(events) == 1
-    record = json.loads(events[0].read_text(encoding="utf-8"))
+    assert len(events) == 2
+    record = json.loads(receipt.read_text(encoding="utf-8"))
     assert record["context_outcome"] == "INJECTED"
     assert record["context_outcome_detail"] == "1234 bytes"
     assert record["session_id"] == payload["session_id"]
-    assert json.loads(receipt.read_text(encoding="utf-8"))["context_outcome"] == "INJECTED"
+    # The outcome record carries the delivery contract forward: the
+    # latest pointer it updates must keep every field the hook-live
+    # verifier requires, not just the outcome.
+    for field in ("plugin_version", "plugin_root", "execution_root",
+                  "provenance_env", "transcript_path",
+                  "transcript_bound_at_record"):
+        assert record[field], field
+
+
+def test_context_outcome_without_a_delivery_raises(tmp_path, monkeypatch) -> None:
+    """An unanchored outcome would replace the delivery proof latest
+    readers depend on; the hook only files outcomes for delivered
+    events, so filing without one is a registry violation, not a
+    record."""
+    payload, receipt = _codex_sessionstart_payload(tmp_path, monkeypatch)
+
+    with pytest.raises(ValueError, match="without a delivery receipt"):
+        MODULE.record_context_outcome(payload, receipt, "INJECTED", "1234 bytes")
+    assert not receipt.exists()
+
+
+def _receipt_check_passes_latest(path: Path, record: dict) -> None:
+    """Run the downstream hook-live verifier over a latest pointer."""
+    checks: list = []
+    CONFORMANCE._receipt_check(
+        checks,
+        "hook-live.test-latest",
+        path,
+        expected_client="codex",
+        expected_plugin_version=record["plugin_version"],
+        expected_plugin_root=Path(str(record["plugin_root"])),
+    )
+    assert len(checks) == 1, [c.detail for c in checks]
+    assert checks[0].ok is True, checks[0].detail
+
+
+def test_injected_outcome_latest_passes_the_receipt_check(tmp_path, monkeypatch) -> None:
+    """Producer-to-consumer: delivery then INJECTED keeps latest green."""
+    payload, receipt = _codex_sessionstart_payload(tmp_path, monkeypatch)
+
+    assert MODULE.record_live_receipt(payload, receipt)
+    assert MODULE.record_context_outcome(payload, receipt, "INJECTED", "1234 bytes")
+
+    latest = receipt.with_name("receipt-codex.json")
+    record = json.loads(latest.read_text(encoding="utf-8"))
+    assert record["context_outcome"] == "INJECTED"
+    _receipt_check_passes_latest(latest, record)
+
+
+def test_refused_outcome_latest_passes_the_receipt_check(tmp_path, monkeypatch) -> None:
+    """Producer-to-consumer: delivery then REFUSED keeps latest green."""
+    payload, receipt = _codex_sessionstart_payload(tmp_path, monkeypatch)
+
+    assert MODULE.record_live_receipt(payload, receipt)
+    assert MODULE.record_context_outcome(
+        payload, receipt, "REFUSED", "build: coordination board schema is invalid")
+
+    latest = receipt.with_name("receipt-codex.json")
+    record = json.loads(latest.read_text(encoding="utf-8"))
+    assert record["context_outcome"] == "REFUSED"
+    _receipt_check_passes_latest(latest, record)
 
 
 def test_context_outcome_rejects_probes(tmp_path: Path) -> None:
