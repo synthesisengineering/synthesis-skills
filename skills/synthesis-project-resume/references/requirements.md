@@ -10,13 +10,19 @@ or resume in any harness on any machine with full context, safely.
 
 The console renders a short copy-paste prompt per project. Pasting it
 into any harness — whether or not that harness loads synthesis skills
-natively — resumes the project. The prompt names the skill file by
-absolute path so skill-less harnesses can read it directly:
+natively — resumes the project. The prompt names the skill, never a
+filesystem path, so it is identical on every machine: no client
+name, no release version:
 
 ```
-Resume synthesis project <id> (source <name>).
-Skill: <abs path>/skills/synthesis-project-resume/SKILL.md
+Use the skill synthesis-project-resume to resume the synthesis
+project with id <id> in the synthesis project management
+workspace <name>.
 ```
+
+Harnesses that load synthesis skills natively invoke the skill by
+name. Skill-less harnesses locate the skill file via the lookup
+order in the skill's §1.
 
 No flags, no setup, no harness-specific variants. One prompt shape.
 
@@ -96,13 +102,13 @@ skill says so, upgrades the project through the migration path, and
 then resumes. Resume never strands a project on a dead format — and
 never breaks one mid-upgrade: migrate-verify-resume, in that order.
 
-## R10 — Harness-neutral, path-absolute
+## R10 — Harness-neutral, name-addressed
 
-The skill works from a file path and repo paths alone. It assumes no
-slash commands, no plugin loader, no MCP servers, no network beyond
-git remotes. Anything it needs beyond the repo (board claims, fleet
-registry) degrades to a named, read-only limitation — never a silent
-skip and never a crash.
+The skill is addressed by name and works from repo paths alone. It
+assumes no slash commands, no plugin loader APIs, no MCP servers,
+no network beyond git remotes. Anything it needs beyond the repo
+(board claims, fleet registry) degrades to a named, read-only
+limitation — never a silent skip and never a crash.
 
 ## Console UX contract (companion surface)
 
@@ -111,7 +117,7 @@ skip and never a crash.
 - C2: Recency derives from newest session-file mtime per project,
   falling back to the index `updated` field, falling back to name.
 - C3: Each project row shows relative recency ("2h ago") and a
-  Resume control emitting the R1 prompt for click-to-copy.
+  "Copy resume prompt" control emitting the R1 prompt for click-to-copy.
 - C4: The project detail page shows the same prompt plus the
   resumption-brief fields it can compute statically (goal, status,
   newest session period).

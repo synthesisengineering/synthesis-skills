@@ -5,12 +5,15 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Project Resume
+
+**Version 1.1.0** (2026-09-21): name-addressed invocation — the R1
+prompt names the skill and the workspace, never a filesystem path.
 
 **Version 1.0.0** (2026-09-20): first release — the R1–R10 resume
 contract, the three-way session classification, the one-screen
@@ -28,17 +31,28 @@ no MCP servers.
 The console emits the resume prompt (R1):
 
 ```
-Resume synthesis project <id> (source <name>).
-Skill: <abs path>/skills/synthesis-project-resume/SKILL.md
+Use the skill synthesis-project-resume to resume the synthesis
+project with id <id> in the synthesis project management
+workspace <name>.
 ```
 
-Read the skill file at the given path first — it is this file, and
-the path is how skill-less harnesses (Cursor and later arrivals)
-reach it. Resolve the source name to its repo checkout: the
-principal's workspace layout, or ask once and remember. Unknown
-project id means R6 (start): interview briefly (name, goal,
-workspace, repo family) and scaffold per the project-management
-contract, then continue as a fresh resume.
+If your harness loads synthesis skills natively, this skill is
+already in your context under that name — invoke it if your
+harness needs an explicit call (Codex: `$synthesis-project-resume`)
+and continue at §2. Otherwise (skill-less harnesses such as
+Cursor), locate the skill file by searching your installed skills
+for `synthesis-project-resume/SKILL.md`: the Claude, Codex, and
+Muse plugin caches first, then `~/.claude/skills` and
+`~/.agents/skills`. Read it first and follow it. If no copy
+exists anywhere, stop and say to install synthesis-skills.
+
+Resolve the workspace name to its repo checkout: the knowledge
+repo is `ai-knowledge-{workspace}` — exact match first — else the
+unique `ai-knowledge-{workspace}-*` directory under the workspace
+roots (`~/workspaces/*`). If several match or none does, ask once
+and remember. Unknown project id means R6 (start): interview
+briefly (name, goal, workspace, repo family) and scaffold per the
+project-management contract, then continue as a fresh resume.
 
 ## 2. Classify the session (R2)
 
@@ -66,8 +80,9 @@ False continuity corrupts; false caution costs one question.
    handoff, when present), `CONTEXT.md`, `REFERENCE.md`, the two
    most recent session files, and any handoff queue entries — in
    that order.
-3. Run `scripts/resume_probe.py` for the machine-readable status
-   (newest session, cross-machine changes, format version).
+3. Run `scripts/resume_probe.py` (sibling of this SKILL.md) for
+   the machine-readable status (newest session, cross-machine
+   changes, format version).
 4. Check the coordination board for live foreign claims on the
    project paths (R4). Overlap means read-only until the principal
    decides — say who, what, since when.
