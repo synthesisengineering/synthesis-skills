@@ -214,6 +214,10 @@ def test_doctor_checks_launcher_and_guardian_against_setup_pin(active, tmp_path)
     plist.write_bytes(plistlib.dumps({"ProgramArguments": ["python3", "/fixture/guardian.py", "--watch"]}))
     with pytest.raises(runtime.RuntimeContractError, match="guardian service"):
         runtime.runtime_health(data, home=tmp_path)
+    alias = tmp_path / "python3-alias"
+    alias.symlink_to(data["interpreter"]["executable"])
+    plist.write_bytes(plistlib.dumps({"ProgramArguments": [str(alias), "-B", "/fixture/guardian.py", "--watch"]}))
+    assert runtime.runtime_health(data, home=tmp_path)["guardian_declarations"] == 1
     plist.unlink()
     launcher.write_bytes(launcher.read_bytes() + b"\n# unreceipted edit\n")
     with pytest.raises(runtime.RuntimeContractError, match="launcher differs"):

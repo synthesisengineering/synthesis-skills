@@ -1,23 +1,20 @@
 schema: 2
-suite: idle-holder-narrow-4-123-0
+suite: guardian-spelling-4-123-1
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.123.0, shipping the idle-holder narrow (request-narrow plus
-  the honor pass plus administrative escalation under the standing
-  direction), per-execution launcher verification with receipt mode, the
-  announced SessionStart refusal, claim-glob parse fidelity, and the
-  third-party reader promise
+  identify 4.123.1, patching the installed-plane guardian check to
+  compare resolved interpreter paths instead of argv spellings
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the request, honor, escalation,
-  receipt, digest, refusal, and parse paths in disposable directories.
-  They do not establish installed-client reload, live cross-client
-  delivery, new-release publication, or deployment approval. Those remain
-  separate release checks.
+unverified_remainder: The fixture executes the launcher and guardian
+  checks in a disposable directory. It does not establish
+  installed-client reload, live cross-client delivery, new-release
+  publication, or deployment approval. Those remain separate release
+  checks.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -28,104 +25,21 @@ changed_surfaces:
 - path: .muse-plugin/plugin.json
   cases:
   - release-version-metadata
-  - s13-muse-inbox
-- path: .muse-plugin/hooks/synthesis-inbox.sh
-  cases:
-  - s13-muse-inbox
 - path: CHANGELOG.md
   cases:
   - release-version-metadata
 - path: README.md
   cases:
   - release-version-metadata
-- path: docs/contracts/execution-runtime.md
-  cases:
-  - s19-receipt-mode
-- path: docs/spec/versioning.md
-  cases:
-  - s17-reader-promise
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-skills-manager/scripts/test_release.py
-  cases:
-  - release-version-metadata
-  - s13-muse-inbox
-- path: skills/synthesis-agent-conformance/SKILL.md
-  cases:
-  - s14-refused-line
-- path: skills/synthesis-agent-conformance/scripts/session_context.py
-  cases:
-  - s14-refused-line
-  - s19-digest-line
-- path: skills/synthesis-agent-conformance/scripts/test_session_context.py
-  cases:
-  - s14-refused-line
-  - s19-digest-line
-- path: skills/synthesis-onboarding/SKILL.md
-  cases:
-  - s19-receipt-mode
 - path: skills/synthesis-onboarding/scripts/release_runtime.py
   cases:
-  - s19-receipt-mode
+  - s19-guardian-spelling
 - path: skills/synthesis-onboarding/scripts/test_release_runtime.py
   cases:
-  - s19-receipt-mode
-- path: skills/synthesis-onboarding/scripts/system_contract.py
-  cases:
-  - s19-activation-receipt
-- path: skills/synthesis-onboarding/scripts/test_system_contract.py
-  cases:
-  - s19-activation-receipt
-- path: skills/synthesis-onboarding/scripts/synthesis_cli.py
-  cases:
-  - s19-doctor-plane
-- path: skills/synthesis-onboarding/scripts/onboard.py
-  cases:
-  - engine-version-agrees
-- path: skills/synthesis-onboarding/scripts/test_synthesis_cli.py
-  cases:
-  - s19-doctor-plane
-- path: skills/synthesis-project-management/SKILL.md
-  cases:
-  - s13-request-honor
-- path: skills/synthesis-project-management/references/active-sessions-template.md
-  cases:
-  - s13-request-honor
-- path: skills/synthesis-project-management/references/parallel-agent-protocol.md
-  cases:
-  - s13-request-honor
-- path: skills/synthesis-project-management/scripts/board_grammar.py
-  cases:
-  - s13-glob-parse
-- path: skills/synthesis-project-management/scripts/test_board_grammar.py
-  cases:
-  - s13-glob-parse
-- path: skills/synthesis-project-management/scripts/coordination.py
-  cases:
-  - s13-request-honor
-  - s13-idle-escalation
-- path: skills/synthesis-project-management/scripts/test_coordination.py
-  cases:
-  - s13-request-honor
-  - s13-idle-escalation
-- path: skills/synthesis-project-management/scripts/board_inbox.py
-  cases:
-  - s13-request-honor
-  - s13-muse-inbox
-- path: skills/synthesis-project-management/scripts/test_board_inbox.py
-  cases:
-  - s13-request-honor
-  - s13-muse-inbox
-- path: skills/synthesis-project-management/scripts/project_state.py
-  cases:
-  - s13-request-honor
-- path: skills/synthesis-project-management/scripts/test_project_state.py
-  cases:
-  - s13-request-honor
-- path: skills/synthesis-project-management/scripts/test_project_format.py
-  cases:
-  - s17-reader-promise
+  - s19-guardian-spelling
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -133,88 +47,17 @@ cases:
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
   motivating_defect: All client manifests and the top changelog identify the same release while retained
     release contracts remain valid.
-- id: engine-version-agrees
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_engine_versions_and_skill_contract_agree
-  motivating_defect: The onboarding skill contract, the CLI engine, and
-    the installer engine must agree on one version, or installs and
-    prose describe different systems.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: s19-receipt-mode
+- id: s19-guardian-spelling
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_receipt_fast_path_skips_the_tree_digest
-  motivating_defect: A per-call full tree digest costs 34 ms on every
-    hook call. The activation receipt fast-paths verification to
-    descriptor, launcher, entrypoints, and a stat-walk.
-- id: s19-activation-receipt
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_activation_writes_a_receipt_that_fast_paths_later_calls
-  motivating_defect: Without an activation-written receipt beside the
-    descriptor, per-call checks cannot fast-path and fall back to the
-    full digest; a rolled-back activation must drop its stale receipt.
-- id: s19-doctor-plane
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_launcher_verification_plane_reports_verified_and_drifted
-  motivating_defect: The fast path trusts the receipt; only a doctor
-    that re-hashes the tree catches a same-size-mode-mtime
-    substitution. The plane reports verified, drifted, or refused.
-- id: s19-digest-line
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_sessionstart_prepends_runtime_digest_line
-  motivating_defect: A session that never runs doctor never learns its
-    runtime drifted. SessionStart carries the full digest line once per
-    session, verified or DRIFTED.
-- id: s14-refused-line
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_main_announces_a_no_pointer_failure_and_exits_zero
-  motivating_defect: A refused briefing that says nothing leaves the
-    model believing it was briefed. The hook prints REFUSED and exits
-    0; only a receipt-write failure keeps exit 2.
-- id: s13-request-honor
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_honor_narrows_clean_areas_and_replies
-  motivating_defect: Paths held by an idle session stay locked until a
-    human relays. A structured request is honored automatically when
-    the holder next runs. Clean areas narrow off, dirty areas reply
-    held, and unverifiable checkouts defer without a reply.
-- id: s13-idle-escalation
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_idle_holder_narrow_escalates_an_old_quiet_request
-  motivating_defect: An unanswered request with no escalation path is a
-    polite deadlock. After 10 idle minutes with a quiet harness log
-    and a clean checkout, the requester narrows administratively,
-    recorded on the bus for the revived holder.
-- id: s13-muse-inbox
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_muse_wrapper_delivers_and_consumes
-  motivating_defect: Muse had SessionStart delivery but no per-turn
-    event, so addressed messages waited a full session. The
-    UserPromptSubmit inbox hook injects them every turn.
-- id: s13-glob-parse
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_grammar.py::test_claim_globs_survive_the_table_parse_for_all_consumers
-  motivating_defect: The table parse ate ** pairs across multi-glob
-    claim cells, so exact-match verbs could not name what the row held
-    and every re-serialization rewrote the file.
-- id: s17-reader-promise
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_format.py::test_reader_promise_is_stated_once_in_versioning
-  motivating_defect: An interoperability promise scattered across
-    prose drifts. Older format versions stay conformant targets
-    forever, stated once in docs/spec/versioning.md and never cited
-    as a pro of an internal change.
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_doctor_checks_launcher_and_guardian_against_setup_pin
+  motivating_defect: The installed-plane guardian check compared argv
+    spellings exactly, so a declaration naming python3 for the recorded
+    python3.12 binary reported defective. Resolved-path comparison
+    keeps the refusal semantics and accepts the same binary under any
+    spelling.

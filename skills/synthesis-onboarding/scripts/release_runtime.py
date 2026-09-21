@@ -519,7 +519,19 @@ def runtime_health(active, *, home=None):
                 raise RuntimeContractError("guardian systemd command is ambiguous")
             declarations.append(shlex.split(commands[0]))
         for arguments in declarations:
-            if not isinstance(arguments, list) or arguments[:2] != [executable, "-B"]:
+            if (
+                not isinstance(arguments, list)
+                or len(arguments) < 2
+                or not isinstance(arguments[0], str)
+                or arguments[1] != "-B"
+            ):
+                raise RuntimeContractError("guardian service does not use the recorded interpreter")
+            try:
+                declared = Path(arguments[0]).expanduser().resolve()
+                expected = Path(executable).expanduser().resolve()
+            except (OSError, RuntimeError):
+                raise RuntimeContractError("guardian service does not use the recorded interpreter")
+            if declared != expected:
                 raise RuntimeContractError("guardian service does not use the recorded interpreter")
         return {"status": "verified", "interpreter": executable, "version": active["interpreter"]["version"],
                 "launcher": str(launcher), "guardian_declarations": len(declarations)}

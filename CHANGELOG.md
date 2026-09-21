@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.123.1] - 2026-09-21
+
+Patch: the installed-plane guardian check compares resolved interpreter
+paths instead of argv spellings, so a declaration naming `python3` for
+the recorded `python3.12` binary verifies instead of reporting
+defective. The refusal semantics are unchanged: a declaration pointing
+at a different interpreter, a missing `-B`, or a non-list shape still
+refuses.
+
 ## [4.123.0] - 2026-09-21
 
 Idle-holder narrow, verified execution, announced refusals. An

@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.123.1** patches the installed-plane guardian check to
+compare resolved interpreter paths instead of argv spellings.
+
 **Idle-holder narrow (September 2026).** Release **4.123.0** lets an
 interactive session ask first and narrow second: request-narrow posts a
 structured request the holder's next prompt honors automatically, and an
