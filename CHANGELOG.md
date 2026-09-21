@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.121.0] - 2026-09-21
+
+Skill-output provenance. Generator-backed skills are now verified, not
+trusted: the decision-packet generator stamps every page with a provenance
+marker pinning its embedded spec, the rulings recorder refuses a paste
+whose packet has no filed spec, and a shared checker plus a context-doctor
+`skill-outputs` check fail any packet page that is not verifiable
+generator output. Ships on install, upgrade, and doctor on every machine.
+Decision-packet 1.5.0, conformance 1.11.0, lifecycle 1.20.0.
+
 ## [4.120.0] - 2026-09-20
 
 Seat-schema containment. The desktop checkpoint binds a schema-2 seat by

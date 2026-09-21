@@ -56,6 +56,19 @@ def test_charset_is_declared_in_the_first_bytes():
     assert head.index("<meta charset") < head.index("<title"), "charset must precede <title>"
 
 
+def test_build_emits_a_verifiable_provenance_marker():
+    """Marker pins the embedded spec: skill_outputs verifies it, the context
+    doctor runs the check. A hand-authored page has no marker."""
+    import hashlib
+    import re
+    out = bp.build(spec())
+    m = re.search(r"<!-- synthesis-decision-packet spec-sha256:([0-9a-f]{64}) -->", out)
+    assert m, "page must carry the provenance marker"
+    embedded = re.search(r'<script type="application/json" id="spec">(.*?)</script>', out, re.S)
+    assert embedded, "page must embed its spec"
+    assert hashlib.sha256(embedded.group(1).encode("utf-8")).hexdigest() == m.group(1)
+
+
 def test_typographic_punctuation_survives_a_utf8_roundtrip():
     curly = "Don’t “converge” first — surface it."
     out = bp.build(spec(rows=[
@@ -769,6 +782,9 @@ def test_record_rulings_round_trips_a_generated_packet():
         paste.write_text(text + "\n", encoding="utf-8")
         target = td / "artifacts"
         target.mkdir()
+        # Rulings attach to the filed spec: file it first, as build_packet does.
+        (target / "2026-09-14-phone-contacts-keep-or-drop-spec.json").write_text(
+            json.dumps(s), encoding="utf-8")
         proc = subprocess.run(
             [sys.executable, str(HERE / "record_rulings.py"), str(paste),
              "--file-into", str(target), "--date", "2026-09-14"],
@@ -794,6 +810,31 @@ def test_record_rulings_round_trips_a_generated_packet():
              "--file-into", str(target), "--date", "2026-09-14", "--replace"],
             capture_output=True, text=True)
         assert proc3.returncode == 0, proc3.stdout + proc3.stderr
+
+
+def test_record_rulings_refuses_a_paste_with_no_filed_spec():
+    """A hand-authored page has no spec, so its paste can never become rulings.
+
+    This closes the skill_outputs loop: unmarked pages can never graduate to
+    closed records by hand-filing a paste.
+    """
+    rr = _rr()
+    s = compliant_spec()
+    state = {"R-01": {"choice": "yes"}}
+    text = rr.compose_summary(s, state)
+    with tempfile.TemporaryDirectory() as td:
+        td = pathlib.Path(td)
+        paste = td / "paste.txt"
+        paste.write_text(text + "\n", encoding="utf-8")
+        target = td / "artifacts"
+        target.mkdir()
+        proc = subprocess.run(
+            [sys.executable, str(HERE / "record_rulings.py"), str(paste),
+             "--file-into", str(target), "--date", "2026-09-14"],
+            capture_output=True, text=True)
+        assert proc.returncode == 2, proc.stdout + proc.stderr
+        assert "spec.json" in proc.stderr
+        assert list(target.iterdir()) == []
 
 
 def test_record_rulings_reads_the_storage_blocked_trailer_and_stdin():

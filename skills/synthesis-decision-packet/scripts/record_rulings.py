@@ -333,7 +333,18 @@ def main() -> int:
     if args.stdout:
         sys.stdout.write(payload)
     if directory is not None:
-        dest = directory / f"{record['ruled_on']}-{slugify(record['packet'])}-rulings.json"
+        slug = slugify(record["packet"])
+        # Rulings attach to a filed spec. A hand-authored page has no spec, so
+        # its paste cannot become a rulings file — this closes the loop the
+        # skill_outputs doctor check opens: unmarked pages can never graduate
+        # to closed records. Any filed date matches; rulings may land a day
+        # after the packet.
+        if not sorted(directory.glob(f"*-{slug}-spec.json")):
+            print(f"record_rulings: no *-{slug}-spec.json in {directory} - rulings file "
+                  "against the spec build_packet.py filed, not against a bare page; "
+                  "build the packet with the generator first", file=sys.stderr)
+            return 2
+        dest = directory / f"{record['ruled_on']}-{slug}-rulings.json"
         if dest.exists() and not args.replace:
             print(f"record_rulings: {dest} already exists - pass --replace to overwrite the "
                   "filed rulings", file=sys.stderr)

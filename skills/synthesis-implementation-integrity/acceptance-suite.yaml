@@ -1,20 +1,20 @@
 schema: 2
-suite: seat-schema-containment-4-120-0
+suite: skill-output-provenance-4-121-0
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.120.0, shipping project-management 2.17.0 (desktop checkpoint
-  binding by machine label; strict seat-directory reads contain stale schema-1
-  seat files and the doctor names them; park verifies death evidence and
-  succeed moves a single resource off a parked row)
+  identify 4.121.0, shipping decision-packet 1.5.0 (generator provenance
+  marker; rulings require a filed spec), conformance 1.11.0 (shared
+  skill-outputs checker) and lifecycle 1.20.0 (context-doctor
+  skill-outputs check)
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the checkpoint matcher, the seat
-  readers, the diagnostic inbox and the doctor in disposable directories.
-  They do not establish installed-client reload, live cross-client delivery,
+unverified_remainder: Fixtures execute the generator, the rulings gate,
+  the checker and the doctor in disposable directories. They do not
+  establish installed-client reload, live cross-client delivery,
   new-release publication, or deployment approval. Those remain separate
   release checks.
 changed_surfaces:
@@ -36,38 +36,37 @@ changed_surfaces:
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-project-management/SKILL.md
+- path: skills/synthesis-decision-packet/SKILL.md
   cases:
   - release-version-metadata
-- path: skills/synthesis-project-management/scripts/coordination.py
+- path: skills/synthesis-decision-packet/scripts/build_packet.py
   cases:
-  - doctor-stale-seats
-  - park-death-evidence
-  - succeed-only-resource
-- path: skills/synthesis-project-management/scripts/peer_addressing.py
+  - provenance-marker-emitted
+- path: skills/synthesis-decision-packet/scripts/record_rulings.py
   cases:
-  - strict-seat-containment
-  - diagnostic-inbox-containment
-  - doctor-stale-seats
-- path: skills/synthesis-project-management/scripts/project_state.py
+  - rulings-require-filed-spec
+- path: skills/synthesis-decision-packet/scripts/test_build_packet.py
   cases:
-  - desktop-seat-machine-binding
-- path: skills/synthesis-project-management/scripts/test_board_inbox.py
+  - provenance-marker-emitted
+  - rulings-require-filed-spec
+- path: skills/synthesis-agent-conformance/SKILL.md
   cases:
-  - diagnostic-inbox-containment
-- path: skills/synthesis-project-management/scripts/test_coordination.py
+  - release-version-metadata
+- path: skills/synthesis-agent-conformance/scripts/skill_outputs.py
   cases:
-  - succeed-only-resource
-- path: skills/synthesis-project-management/scripts/test_fleet_park.py
+  - unmarked-live-page-defect
+- path: skills/synthesis-agent-conformance/scripts/test_skill_outputs.py
   cases:
-  - park-death-evidence
-- path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
+  - unmarked-live-page-defect
+- path: skills/synthesis-context-lifecycle/SKILL.md
   cases:
-  - desktop-seat-machine-binding
-- path: skills/synthesis-project-management/scripts/test_peer_addressing.py
+  - release-version-metadata
+- path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
   cases:
-  - strict-seat-containment
-  - doctor-stale-seats
+  - doctor-skill-outputs
+- path: skills/synthesis-context-lifecycle/scripts/test_context_doctor.py
+  cases:
+  - doctor-skill-outputs
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -80,43 +79,31 @@ cases:
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: desktop-seat-machine-binding
+- id: provenance-marker-emitted
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_schema2_seat_machine_id_and_label_bind_the_desktop_row
-  motivating_defect: Schema-2 seats hold the fleet machine-id while the board
-    row shows the label; comparing label to id refused every Claude desktop
-    checkpoint on this machine since the seat-schema bump.
-- id: strict-seat-containment
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_build_emits_a_verifiable_provenance_marker
+  motivating_defect: A hand-authored packet page is indistinguishable from
+    generator output, so freelanced substitutes ship as skill output. Every
+    generated page carries a marker pinning its embedded spec.
+- id: rulings-require-filed-spec
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_strict_directory_read_contains_a_stale_schema1_seat_and_names_it
-  motivating_defect: One stale pre-migration seat file made every strict read
-    of the seat directory fail closed with no output; the file must be
-    skipped and named while the valid seats still load.
-- id: diagnostic-inbox-containment
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_record_rulings_refuses_a_paste_with_no_filed_spec
+  motivating_defect: A paste against a bare hand-made page could still
+    become a rulings file, graduating an unverifiable page to a closed
+    record. Rulings file only against a spec the generator filed.
+- id: unmarked-live-page-defect
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_diagnostic_inbox_survives_a_stale_schema1_seat_file
-  motivating_defect: The SessionStart diagnostic exited 2 with zero context
-    whenever a stale seat file existed, so the doctor reported nothing.
-- id: doctor-stale-seats
+  fixture: ../synthesis-agent-conformance/scripts/test_skill_outputs.py::test_unmarked_live_page_is_a_defect
+  motivating_defect: Unmarked live packet pages sat in project artifacts
+    with no check naming them. The shared checker fails them as defects
+    with a rebuild-or-remove remedy.
+- id: doctor-skill-outputs
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_doctor_names_stale_seat_files_without_failing
-  motivating_defect: A skipped file nobody names is a silent skip; the doctor
-    lists each stale seat file so day-start can remove it.
-- id: park-death-evidence
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_fleet_park.py::test_park_pid_gone_takes_a_pidless_seat_only_when_its_session_log_is_quiet[True]
-  motivating_defect: An exited harness whose seat records no pid stayed
-    live for two days; death must be proven locally (process gone, or
-    session log and heartbeat both quiet) and recorded, never asserted.
-- id: succeed-only-resource
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_succeed_only_moves_named_areas_from_a_parked_row_and_keeps_the_rest
-  motivating_defect: Taking one resource (a release train) off a parked
-    seat required an administrative release of its whole row; the named
-    area moves with a notice the parked seat meets on resume.
+  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SkillOutputsTests::test_hand_made_live_packet_is_a_defect
+  motivating_defect: The enforcement must ride install, upgrade and doctor
+    on every machine, not a local note. The context doctor fails
+    hand-made live packets and warns on closed records only.

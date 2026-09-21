@@ -72,6 +72,15 @@ if str(_PROJECT_STATE_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_PROJECT_STATE_SCRIPTS))
 import project_state  # noqa: E402
 
+_CONFORMANCE_SCRIPTS = (
+    Path(__file__).resolve().parents[2]
+    / "synthesis-agent-conformance"
+    / "scripts"
+)
+if str(_CONFORMANCE_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_CONFORMANCE_SCRIPTS))
+import skill_outputs  # noqa: E402
+
 DOCTOR_VERSION = "1.10.0"
 
 # Budgets from the tiered context architecture.
@@ -755,6 +764,7 @@ CHECKS = [
     "post-close-review-unresolvable",
     "record-unreadable",
     "artifact-cites-missing-script",
+    "skill-outputs",
 ]
 
 
@@ -933,6 +943,13 @@ def audit_project(
             "archive cold content to sessions/ and stable facts to REFERENCE.md, "
             "then trim CONTEXT.md",
         )
+
+    # --- skill-output provenance --------------------------------------------
+    # Generator-backed skills mark their outputs; a hand-made lookalike is a
+    # defect while it is live (no rulings filed), a warning once it is a
+    # closed record. Added 2026-09-20 after a session hand-authored packets.
+    for found in skill_outputs.scan_project(project_path):
+        audit.add("skill-outputs", found.severity, found.message, found.remedy)
 
     entries = session_entry_count(sessions_dir)
 

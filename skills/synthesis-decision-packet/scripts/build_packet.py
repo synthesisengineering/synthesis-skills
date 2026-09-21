@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import html
 import json
 import pathlib
@@ -966,7 +967,17 @@ def build(spec: dict) -> str:
                         or "Work through the rows, then copy this and paste it back in one message.")),
     )
     out = out.replace("__SPEC_JSON__", payload)
-    return out
+    # Provenance marker: proves generator authorship and pins the embedded
+    # spec. skill_outputs.check verifies it; the context doctor runs the check
+    # on every project. A hand-authored packet has no marker and fails as a
+    # defect — that is the enforcement, not prose in this skill. It sits
+    # after </title> so the first-200-bytes charset fixture is untouched.
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    marker = f"<!-- synthesis-decision-packet spec-sha256:{digest} -->\n"
+    head, sep, tail = out.partition("</title>\n")
+    if not sep:
+        raise RuntimeError("build_packet: template lost its </title> close; refusing to emit unmarked output")
+    return head + sep + marker + tail
 
 
 def file_packet(spec: dict, page: str, directory: pathlib.Path, date: str) -> tuple[pathlib.Path, pathlib.Path]:

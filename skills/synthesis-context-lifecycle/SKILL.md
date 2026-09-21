@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.19.3"
+  version: "1.20.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -759,6 +759,15 @@ existence and portability at the citation boundary; it does not prove the
 script is correct, the inputs are sufficient, or the regenerated conclusion is
 valid. Those questions remain with the artifact's acceptance evidence and the
 implementation-integrity review.
+
+The context doctor reports `skill-outputs` when a packet page under
+`resources/artifacts/` is not verifiable generator output: no provenance
+marker and no filed rulings is a defect (rebuild it with `build_packet.py
+--strict-reader --file-into`, or remove it if superseded); a marker whose
+hash disagrees with the embedded spec, or a marker with no embedded spec,
+is a defect (do not hand-edit generator output); an unmarked page with
+filed rulings, or a verified page with no filed `-spec.json`, is a
+warning (closed record, respectively incomplete filing).
 
 ## The Context Doctor — verification, not diligence
 

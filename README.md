@@ -18,6 +18,12 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+**Skill-output provenance (September 2026).** Release **4.121.0**
+verifies generator-backed skill output instead of trusting it: the
+decision-packet generator stamps a spec-pinning provenance marker, the
+rulings recorder requires a filed spec, and the context doctor fails
+unmarked packet pages as defects.
+
 **Seat-schema containment (September 2026).** Release **4.120.0**
 binds desktop checkpoints to schema-2 seats by machine label, and makes
 strict seat-directory reads skip and name stale seat files instead of

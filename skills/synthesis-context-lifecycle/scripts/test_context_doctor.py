@@ -1577,5 +1577,57 @@ class SkillDocContractTests(unittest.TestCase):
         self.assertIn(str(cd.REFERENCE_TOPIC_BUDGET), self.text)
 
 
+class SkillOutputsTests(unittest.TestCase):
+    """Generator-backed skill outputs must carry verifiable provenance.
+
+    Positive: a hand-made packet page with no rulings fires skill-outputs as
+    a defect. Negatives: a marked page verifying against its embedded spec
+    stays silent, and a closed record (unmarked but ruled) warns at most.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = TemporaryDirectory()
+        self.fx = Fixture(Path(self._tmp.name) / "source")
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _packet(self, *, marker=True, rulings=False):
+        import hashlib
+        project = self.fx.project("alpha")
+        artifacts = project / "resources" / "artifacts"
+        artifacts.mkdir(parents=True)
+        embedded = '{"title": "T"}'
+        head = ("<!-- synthesis-decision-packet spec-sha256:%s -->\n"
+                % hashlib.sha256(embedded.encode()).hexdigest()) if marker else ""
+        (artifacts / "2026-09-20-t-packet.html").write_text(
+            "<!doctype html>\n" + head +
+            '<script type="application/json" id="spec">' + embedded + "</script>\n",
+            encoding="utf-8")
+        (artifacts / "2026-09-20-t-packet-spec.json").write_text("{}", encoding="utf-8")
+        if rulings:
+            (artifacts / "2026-09-20-t-packet-rulings.json").write_text("{}", encoding="utf-8")
+        self.fx.index([{"id": "alpha", "status": "active"}])
+        self.fx.commit()
+        return self.fx.audit()
+
+    def test_hand_made_live_packet_is_a_defect(self):
+        result = self._packet(marker=False)
+        finding = next(item for item in result["data"]["findings"]
+                       if item["check"] == "skill-outputs")
+        self.assertEqual(finding["severity"], "defect")
+        self.assertIn("build_packet.py", finding["remedy"])
+
+    def test_marked_packet_passes_silently(self):
+        self.assertNotIn("skill-outputs", checks_in(self._packet(marker=True)))
+
+    def test_closed_unmarked_packet_warns_at_most(self):
+        result = self._packet(marker=False, rulings=True)
+        hits = [item for item in result["data"]["findings"]
+                if item["check"] == "skill-outputs"]
+        self.assertTrue(hits)
+        self.assertTrue(all(h["severity"] == "warning" for h in hits))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

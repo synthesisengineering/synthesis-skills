@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.10.1"
+  version: "1.11.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -266,6 +266,18 @@ skills may set `policy.allow_implicit_invocation: false` in
 `agents/openai.yaml`: they remain enabled and explicitly invocable, while
 `synthesis-skill-router` supplies natural-language routing. Claude Code ignores
 that OpenAI-specific prompt policy and retains its native trigger behavior.
+
+## Skill-output provenance
+
+A skill whose contract names a generator script is followed only when the
+artifact is verifiably that generator's output — not a hand-made substitute.
+`scripts/skill_outputs.py` is the shared checker: it verifies decision-packet
+pages under a project's `resources/artifacts/` against the generator's
+provenance marker (the embedded spec's sha256), treats an unmarked page with
+no filed rulings as a defect, a marker/spec disagreement as a defect, and a
+closed ruled record as a warning. The context doctor's `skill-outputs` check
+runs it on every machine via install, upgrade, and doctor; run it directly
+with `--project <dir>` for one project or `--doctor` for the whole corpus.
 
 ## Detailed architecture
 

@@ -5,14 +5,14 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.4.0"
+  version: "1.5.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Decision Packet
 
-**Version 1.4.0** (2026-09-14)
+**Version 1.5.0** (2026-09-20)
 
 An agent that has analysed N items needs N decisions from its principal. Every default shape
 fails at scale, and the measurement that produced this skill is blunt: **26 rounds of per-item
@@ -183,6 +183,20 @@ refuses a paste whose row count or decided count disagrees with its own `Decided
 and it keeps an existing rulings file for the same date and packet unless `--replace` is passed.
 Commit all three files with the project.
 
+## Enforcement (v1.5.0) — generator output is verified, not trusted
+
+Prose above tells the agent to generate; this section is what happens when
+one freelances instead. Every page `build_packet.py` emits carries a
+provenance marker pinning its embedded spec (`synthesis-decision-packet
+spec-sha256`). `record_rulings.py` refuses a paste whose packet has no
+filed `-spec.json`. And the context doctor's `skill-outputs` check fails
+any packet page under a project's `resources/artifacts/` that is not
+verifiable generator output: unmarked with no filed rulings is a defect
+(rebuild with the generator or remove it); a marker that disagrees with
+the embedded spec is a defect (never hand-edit generator output); a
+closed record (unmarked but ruled) warns. The rule ships on every
+machine with install, upgrade, and doctor — it is not a local note.
+
 **Generate from a data array; never hand-author rows.** Thirty hand-written blocks drift. One
 array with a render loop cannot. That is the whole reason this is a generator rather than a
 template.
@@ -229,6 +243,7 @@ regression-tested in `scripts/test_build_packet.py`.
 
 ## Changelog
 
+- **1.5.0 (2026-09-20)** — Enforcement: the generator emits a provenance marker pinning the embedded spec; `record_rulings.py` refuses pastes with no filed `-spec.json`; the context doctor's `skill-outputs` check fails unmarked live packets as defects. After a session hand-authored two packets.
 - **1.4.0 (2026-09-14)** — Option labels must name consequences: READER findings for bare
   acknowledgements and for two labels that do not differ in a content word, fatal under
   `--strict-reader`, with the row, the labels, and the accepted form in the message. Each option
