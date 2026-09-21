@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.0"
+  version: "2.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -60,6 +60,37 @@ Engaging the mode means the user is taken to have said all of the following, onc
 4. **State survives compaction** — plan file maintained per the protocol below; synthesis-context-lifecycle checkpoints at natural boundaries; synthesis-checkpoint whenever drift is suspected.
 5. **Verification before "done"** — synthesis-implementation-integrity (or the domain's analog: fact-checking and quality gates for content work) runs before any completion claim.
 6. **Standing rules remain in force** — nothing in this contract grants permissions the user's standing configuration withholds.
+
+## Run Profiles — the Contract as Data
+
+The delegation contract above is prose, and prose drifts: a principal
+who retypes standing instructions for every run drops a clause each
+time, and the dropped clause silently doesn't happen. The run profile
+is the same contract as data. `scripts/run_profile.py` resolves the
+effective standing checklist at engagement from four layers, weakest
+first: the shipped default, the user profile
+(`~/.synthesis/autopilot/profile.json`, synced across the fleet),
+the project overlay (`<project>/resources/autopilot-profile.json`),
+and spoken deltas from the delegation message ("skip blog seeds
+tonight", "no deploys", "add: ..."). Every item carries its
+provenance; items disabled by config stay visible in the resolution
+instead of vanishing.
+
+The resolved checklist freezes into the plan file's
+`## Standing checklist (frozen ...)` section, and the engagement
+registers with `autopilot_gate.py register --profile <effective.json>`.
+Before close, `run_profile.py verify --plan` requires every frozen item
+to be checked with evidence or unchecked with `WAIVED:` and a reason,
+plus the deploy-authority line matching the frozen grant; `close
+--goals-met` refuses without a fresh verifier receipt. An incomplete
+close stays honest through its reason. `run_profile.py init` writes a
+first user profile from the shipped default and never overwrites one.
+
+Authority rule: profiles may narrow authority, never grant it. A
+deploy grant stored in any file layer is forced to `none` with a
+warning — only the run's own delegation message can grant deployment
+authority, and the grant's provenance is recorded. Standing gates
+survive profiles exactly as they survive autonomy.
 
 ## Continuation — Unattended Time Is a Scheduled Property
 
@@ -173,6 +204,11 @@ satisfaction and control construction are not substitutes.
 ## Standing instructions
 The delegation contract above, restated — so a post-compaction
 re-read restores the mode, not just the task.
+
+## Standing checklist (frozen <timestamp>; profile <layers>)
+The resolved run profile, one line per item — `- [x] <id> — <evidence>`
+or `- [ ] <id> — WAIVED: <reason>` — plus the `Deploy authority this
+run:` line. Frozen at engagement; verified before close.
 
 ## Constraints and decisions already made
 Everything the user has decided; never re-litigate these.
@@ -304,10 +340,10 @@ When a phase reaches a gated action, prepare everything up to the gate (the draf
 2. **Anchor** — run synthesis-checkpoint: verified date, project state from disk, history from git.
 3. **Coordinate** — read the shared active-sessions board and claim every
    source area this run may write before editing.
-4. **Register** — attach to or create the synthesis project (synthesis-project-management); create the plan file, including its Continuation and Budget sections. **If the horizon exceeds this turn, establish and verify the continuation mechanism NOW** — record it in the plan and via `autopilot_gate.py continuation` before any phase work makes the first turn long enough to forget.
+4. **Register** — attach to or create the synthesis project (synthesis-project-management); create the plan file, including its Continuation and Budget sections; resolve the run profile (`run_profile.py resolve`, spoken deltas from the delegation message), freeze the standing checklist into the plan, and register with `--profile`. **If the horizon exceeds this turn, establish and verify the continuation mechanism NOW** — record it in the plan and via `autopilot_gate.py continuation` before any phase work makes the first turn long enough to forget.
 5. **Phase loop** — for each phase: re-read the plan file and coordination board; execute with anti-shortcut discipline; classify each decision per the protocol above; dispatch sub-agents per the hygiene rules below; directly orchestrate any adversarial counterpart and count principal courier crossings; record the sufficiency checkpoint; then update the plan file (cycle ledger included), **sweep the scratchpad — anything a later phase, another agent, or a durable record depends on moves into resources/ at THIS boundary, because volatile state dies at reboots** — and at natural checkpoints run the synthesis-context-lifecycle session protocol so CONTEXT.md and the session log stay current.
 6. **Verify** — before declaring the mission complete, run synthesis-implementation-integrity (or the domain analog). Fix what it finds; verification that only reports is not verification.
-7. **Close** — session-end per synthesis-context-lifecycle (context files updated, work committed where applicable); release the coordination claims; close the engagement (`autopilot_gate.py close --goals-met`, or `--incomplete <reason>` for an honest partial close); completion report in plain language: what shipped, what was decided and why, the batched questions; then the completion alert.
+7. **Close** — session-end per synthesis-context-lifecycle (context files updated, work committed where applicable); disposition every frozen checklist item in the plan, then `run_profile.py verify --plan`; release the coordination claims; close the engagement (`autopilot_gate.py close --goals-met`, or `--incomplete <reason>` for an honest partial close); completion report in plain language: what shipped, what was decided and why, the batched questions; then the completion alert.
 
 The close step repeats the scratchpad sweep one final time: **What executable
 state or required input data still exists only in this session's scratchpad?**

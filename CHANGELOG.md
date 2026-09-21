@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.122.0] - 2026-09-21
+
+Autopilot run profiles. The delegation contract as data: resolve the
+standing checklist at engagement from shipped default, user profile,
+project overlay, and spoken deltas; freeze it into the plan file; verify
+every item's disposition before close. Profiles narrow authority, never
+grant it — a stored deploy grant is ignored. Autopilot 2.2.0.
+
 ## [4.121.0] - 2026-09-21
 
 Skill-output provenance. Generator-backed skills are now verified, not

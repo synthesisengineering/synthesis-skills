@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+**Autopilot run profiles (September 2026).** Release **4.122.0**
+resolves the standing checklist from profile layers at engagement,
+freezes it into the plan file, and refuses a goals-met close until
+every item is done with evidence or waived aloud.
+
 **Skill-output provenance (September 2026).** Release **4.121.0**
 verifies generator-backed skill output instead of trusting it: the
 decision-packet generator stamps a spec-pinning provenance marker, the

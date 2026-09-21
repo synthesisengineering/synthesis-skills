@@ -31,7 +31,9 @@ a bare spin, so a loop that is burning cycles without progress has to
 either name what it is waiting for or stop and alert.
 
 Modes:
-  register      --plan PATH --mission TEXT      begin an engagement
+  register      --plan PATH --mission TEXT [--profile EFFECTIVE.json]
+                                                begin an engagement (with a
+                                                frozen standing checklist)
   continuation  --plan PATH --mechanism TEXT --next-wake TEXT --survives TEXT
   cycle         --plan PATH (--advanced TEXT | --no-advance --waiting-on TEXT)
   blocker       --plan PATH --reason TEXT --alerted
@@ -171,11 +173,27 @@ def _registration_identity(plan: str) -> tuple[str, str, str, Path, dict[str, st
     return session_id, project_id, client_ref, board, row
 
 
-def cmd_register(plan: str, mission: str, horizon: str) -> int:
+def cmd_register(plan: str, mission: str, horizon: str,
+                 profile: str | None) -> int:
     if not mission.strip():
         print("register: --mission must describe what done means",
               file=sys.stderr)
         return 2
+    frozen_profile: dict | None = None
+    if profile:
+        try:
+            with open(os.path.expanduser(profile), encoding="utf-8") as fh:
+                frozen_profile = json.load(fh)
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"register: --profile file unreadable: {exc}",
+                  file=sys.stderr)
+            return 2
+        if not isinstance(frozen_profile, dict) or not isinstance(
+                frozen_profile.get("items"), list):
+            print("register: --profile must be a run_profile.py effective "
+                  "checklist (a JSON object with an items list)",
+                  file=sys.stderr)
+            return 2
     try:
         session_id, project_id, client_ref, board, claim = _registration_identity(plan)
     except (OSError, ValueError) as exc:
@@ -193,6 +211,8 @@ def cmd_register(plan: str, mission: str, horizon: str) -> int:
                 json.dumps(claim, sort_keys=True).encode()
             ).hexdigest(),
         })
+        if frozen_profile is not None:
+            data["profile"] = frozen_profile
         save(path, data)
         print(f"engagement binding refreshed for this plan: {path}")
         return 0
@@ -200,6 +220,7 @@ def cmd_register(plan: str, mission: str, horizon: str) -> int:
         "plan": os.path.abspath(os.path.expanduser(plan)),
         "mission": mission.strip(),
         "horizon": horizon,
+        "profile": frozen_profile,
         "session_id": session_id,
         "project_id": project_id,
         "client_session_ref": client_ref,
@@ -283,6 +304,27 @@ def cmd_blocker(plan: str, reason: str, alerted: bool) -> int:
 
 def cmd_close(plan: str, goals_met: bool, incomplete: str | None) -> int:
     path, data = load_for_plan(plan)
+    if goals_met and data.get("profile"):
+        receipt_path = path.with_name(path.stem + ".profile-verified.json")
+        if not receipt_path.exists():
+            print("close: this engagement froze a standing checklist at "
+                  "register; run run_profile.py verify --plan first — a "
+                  "goals-met close without verified dispositions is the "
+                  "silent skip this gate exists to prevent",
+                  file=sys.stderr)
+            return 2
+        try:
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            receipt = {}
+        with open(os.path.abspath(os.path.expanduser(plan)),
+                  encoding="utf-8") as fh:
+            plan_hash = hashlib.sha256(fh.read().encode("utf-8")).hexdigest()
+        if receipt.get("plan_sha256") != plan_hash:
+            print("close: the plan file changed since the checklist was "
+                  "verified; re-run run_profile.py verify --plan",
+                  file=sys.stderr)
+            return 2
     if goals_met:
         data["goals_met"] = True
         data["status"] = "closed"
@@ -450,7 +492,8 @@ def main() -> int:
         return 0 if mode in ("-h", "--help") else 2
     if mode == "register":
         return cmd_register(plan, val("--mission") or "",
-                            val("--horizon") or "unspecified")
+                            val("--horizon") or "unspecified",
+                            val("--profile"))
     if mode == "continuation":
         return cmd_continuation(plan, val("--mechanism") or "",
                                 val("--next-wake") or "",

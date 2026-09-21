@@ -1,22 +1,20 @@
 schema: 2
-suite: skill-output-provenance-4-121-0
+suite: run-profiles-4-122-0
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.121.0, shipping decision-packet 1.5.0 (generator provenance
-  marker; rulings require a filed spec), conformance 1.11.0 (shared
-  skill-outputs checker) and lifecycle 1.20.0 (context-doctor
-  skill-outputs check)
+  identify 4.122.0, shipping autopilot 2.2.0 (run profiles resolve the
+  standing checklist from layers, freeze it into the plan, and refuse a
+  goals-met close until every item is done or waived aloud)
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures execute the generator, the rulings gate,
-  the checker and the doctor in disposable directories. They do not
-  establish installed-client reload, live cross-client delivery,
-  new-release publication, or deployment approval. Those remain separate
-  release checks.
+unverified_remainder: Fixtures execute the resolver, the verifier and the
+  gate in disposable directories. They do not establish installed-client
+  reload, live cross-client delivery, new-release publication, or
+  deployment approval. Those remain separate release checks.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -36,37 +34,22 @@ changed_surfaces:
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-decision-packet/SKILL.md
+- path: skills/synthesis-autopilot/SKILL.md
   cases:
   - release-version-metadata
-- path: skills/synthesis-decision-packet/scripts/build_packet.py
+- path: skills/synthesis-autopilot/scripts/autopilot_gate.py
   cases:
-  - provenance-marker-emitted
-- path: skills/synthesis-decision-packet/scripts/record_rulings.py
+  - profile-verify-close
+- path: skills/synthesis-autopilot/scripts/run_profile.py
   cases:
-  - rulings-require-filed-spec
-- path: skills/synthesis-decision-packet/scripts/test_build_packet.py
+  - profile-resolve-layers
+  - profile-grant-from-speech-only
+  - profile-verify-close
+- path: skills/synthesis-autopilot/scripts/test_run_profile.py
   cases:
-  - provenance-marker-emitted
-  - rulings-require-filed-spec
-- path: skills/synthesis-agent-conformance/SKILL.md
-  cases:
-  - release-version-metadata
-- path: skills/synthesis-agent-conformance/scripts/skill_outputs.py
-  cases:
-  - unmarked-live-page-defect
-- path: skills/synthesis-agent-conformance/scripts/test_skill_outputs.py
-  cases:
-  - unmarked-live-page-defect
-- path: skills/synthesis-context-lifecycle/SKILL.md
-  cases:
-  - release-version-metadata
-- path: skills/synthesis-context-lifecycle/scripts/context_doctor.py
-  cases:
-  - doctor-skill-outputs
-- path: skills/synthesis-context-lifecycle/scripts/test_context_doctor.py
-  cases:
-  - doctor-skill-outputs
+  - profile-resolve-layers
+  - profile-grant-from-speech-only
+  - profile-verify-close
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -79,31 +62,25 @@ cases:
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: provenance-marker-emitted
+- id: profile-resolve-layers
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_build_emits_a_verifiable_provenance_marker
-  motivating_defect: A hand-authored packet page is indistinguishable from
-    generator output, so freelanced substitutes ship as skill output. Every
-    generated page carries a marker pinning its embedded spec.
-- id: rulings-require-filed-spec
+  fixture: ../synthesis-autopilot/scripts/test_run_profile.py::test_resolve_user_disables_and_adds
+  motivating_defect: Retyped standing instructions drift and decay; each
+    retelling drops a clause that silently doesn't happen. Layers resolve
+    deterministically with provenance, and disabled items stay visible.
+- id: profile-grant-from-speech-only
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_record_rulings_refuses_a_paste_with_no_filed_spec
-  motivating_defect: A paste against a bare hand-made page could still
-    become a rulings file, graduating an unverifiable page to a closed
-    record. Rulings file only against a spec the generator filed.
-- id: unmarked-live-page-defect
+  fixture: ../synthesis-autopilot/scripts/test_run_profile.py::test_resolve_file_deploy_grant_ignored
+  motivating_defect: A profile that could grant deployment authority from
+    a file would let standing configuration override per-run principal
+    approval. File-layer grants are forced to none; only the delegation
+    message grants.
+- id: profile-verify-close
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_skill_outputs.py::test_unmarked_live_page_is_a_defect
-  motivating_defect: Unmarked live packet pages sat in project artifacts
-    with no check naming them. The shared checker fails them as defects
-    with a rebuild-or-remove remedy.
-- id: doctor-skill-outputs
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-context-lifecycle/scripts/test_context_doctor.py::SkillOutputsTests::test_hand_made_live_packet_is_a_defect
-  motivating_defect: The enforcement must ride install, upgrade and doctor
-    on every machine, not a local note. The context doctor fails
-    hand-made live packets and warns on closed records only.
+  fixture: ../synthesis-autopilot/scripts/test_run_profile.py::test_verify_happy_path_and_close
+  motivating_defect: A frozen checklist nobody verifies is prose again.
+    Goals-met close requires every item done with evidence or waived
+    aloud, and the plan hash binds the receipt.
