@@ -145,3 +145,20 @@ def test_session_context_appends_the_inbox(board, tmp_path) -> None:
     assert run.returncode == 0, run.stderr
     context = json.loads(run.stdout)["hookSpecificOutput"]["additionalContext"]
     assert "Coordination board inbox: 2 unread" in context
+
+
+def test_diagnostic_inbox_survives_a_stale_schema1_seat_file(board, monkeypatch, capsys):
+    # Regression 2026-09-20: a pre-migration seat left by a released session
+    # made the SessionStart diagnostic exit 2 with no context.
+    import peer_addressing as PA
+    from coordination_schema import identity_from_uuid
+    stale_uuid = "018f0000-0000-7000-8000-00000000aa02"
+    stale = PA.seat_path(board, stale_uuid)
+    stale.write_text(json.dumps({
+        "session_uuid": stale_uuid, "compact_id": identity_from_uuid(stale_uuid).compact_id,
+        "client": "codex", "machine": "fixture-hostname", "harness_session_id": "dead", "host_session_id": "",
+        "pid": None, "cwd": "/tmp", "updated_at": "2026-09-14T21:15:13+00:00", "schema": 1,
+    }), encoding="utf-8")
+    text = INBOX.inbox_text({"session_id": ME_SID}, board=board, environ=ME_ENV, strict=True, mark=False)
+    assert "2 unread message(s)" in text
+    assert stale.name in capsys.readouterr().err

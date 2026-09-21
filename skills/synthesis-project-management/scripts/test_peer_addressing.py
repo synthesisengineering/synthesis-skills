@@ -442,3 +442,98 @@ def test_terminal_session_claim_registers_cc_ref(tmp_path, monkeypatch) -> None:
     board = tmp_path / "board.md"
     row = claim(board, "project-a")
     assert row.client_ref == "cc:11111111-1111-4111-8111-111111111111"
+
+
+LIVE_SEAT = "018f0000-0000-7000-8000-00000000aa01"
+STALE_SEAT = "018f0000-0000-7000-8000-00000000aa02"
+
+
+def _write_v1_seat(board: Path, session_uuid: str) -> Path:
+    from coordination_schema import identity_from_uuid
+    path = PA.seat_path(board, session_uuid)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "session_uuid": session_uuid,
+        "compact_id": identity_from_uuid(session_uuid).compact_id,
+        "client": "codex",
+        "machine": "fixture-hostname",
+        "harness_session_id": "dead-native",
+        "host_session_id": "",
+        "pid": None,
+        "cwd": "/tmp/fixture",
+        "updated_at": "2026-09-14T21:15:13+00:00",
+        "schema": 1,
+    }), encoding="utf-8")
+    return path
+
+
+def _write_live_seat(board: Path) -> PA.Seat:
+    from coordination_schema import identity_from_uuid
+    PA.write_seat(
+        board, session_uuid=LIVE_SEAT, compact_id=identity_from_uuid(LIVE_SEAT).compact_id,
+        machine="e808f74c-machine-id", machine_label="fixture-mac",
+        identity=PA.SelfIdentity(client="claude-code", harness_session_id="live-native", host_session_id="local_live"),
+    )
+    return PA.read_seat(board, LIVE_SEAT, strict=True)
+
+
+def test_strict_directory_read_contains_a_stale_schema1_seat_and_names_it(tmp_path, capsys) -> None:
+    # Regression 2026-09-20: one pre-migration seat file made every strict
+    # read of the directory (the SessionStart diagnostic, the doctor) fail
+    # closed with no output. The file is skipped and named; valid seats load.
+    board = tmp_path / "board.md"
+    board.write_text("# Board\n", encoding="utf-8")
+    live = _write_live_seat(board)
+    stale = _write_v1_seat(board, STALE_SEAT)
+    skipped: list[tuple[Path, str]] = []
+    assert PA.all_seats(board, strict=True, skipped=skipped) == [live]
+    assert skipped == [(stale, "stale schema-1 seat")]
+    assert stale.name in capsys.readouterr().err
+    assert PA.stale_seat_files(board) == [(stale, "stale schema-1 seat")]
+    identity = PA.SelfIdentity(client="claude-code", harness_session_id="live-native")
+    assert PA.seat_for_identity(board, identity, strict=True) == live
+
+
+def test_strict_read_of_one_stale_seat_by_uuid_still_refuses(tmp_path) -> None:
+    board = tmp_path / "board.md"
+    board.write_text("# Board\n", encoding="utf-8")
+    _write_v1_seat(board, STALE_SEAT)
+    with pytest.raises(ValueError, match="invalid coordination seat fields"):
+        PA.read_seat(board, STALE_SEAT, strict=True)
+
+
+def test_strict_directory_read_still_raises_on_a_malformed_seat(tmp_path) -> None:
+    board = tmp_path / "board.md"
+    board.write_text("# Board\n", encoding="utf-8")
+    _write_live_seat(board)
+    malformed = PA.seat_path(board, STALE_SEAT)
+    malformed.write_text(json.dumps({"session_uuid": STALE_SEAT, "schema": 1}), encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid coordination seat fields"):
+        PA.all_seats(board, strict=True)
+
+
+def test_strict_directory_read_still_raises_on_an_unreadable_seat(tmp_path) -> None:
+    board = tmp_path / "board.md"
+    board.write_text("# Board\n", encoding="utf-8")
+    _write_live_seat(board)
+    unreadable = PA.seat_path(board, STALE_SEAT)
+    unreadable.write_text("{}", encoding="utf-8")
+    unreadable.chmod(0)
+    try:
+        with pytest.raises(OSError):
+            PA.all_seats(board, strict=True)
+    finally:
+        unreadable.chmod(0o600)
+
+
+def test_doctor_names_stale_seat_files_without_failing(tmp_path, monkeypatch, capsys) -> None:
+    board = tmp_path / "board.md"
+    monkeypatch.delenv("SYNTHESIS_CLIENT_SESSION_REF", raising=False)
+    request = args(board, id=None, agent="agent", machine="m1", project="alpha", mode="interactive", goal="g",
+                   workspace=["/tmp/wt-alpha @ feature/alpha"], area=["repo-alpha/**"], context_role="owner")
+    assert ENGINE.command_claim(request) == 0
+    stale = _write_v1_seat(board, STALE_SEAT)
+    assert ENGINE.command_doctor(args(board)) == 0
+    out = capsys.readouterr().out
+    assert "PASS coordination" in out
+    assert f"1 stale schema-1 seat file(s) skipped by strict reads: {stale.name}" in out

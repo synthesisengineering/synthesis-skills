@@ -28,6 +28,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 import re
 import socket
 from dataclasses import asdict, dataclass
@@ -370,7 +371,9 @@ def remove_seat(board: Path, session_uuid: str) -> bool:
     return True
 
 
-def all_seats(board: Path, *, strict: bool = False) -> list[Seat]:
+def all_seats(
+    board: Path, *, strict: bool = False, skipped: list[tuple[Path, str]] | None = None
+) -> list[Seat]:
     directory = seats_dir(board)
     if strict:
         try:
@@ -389,10 +392,55 @@ def all_seats(board: Path, *, strict: bool = False) -> list[Seat]:
     for path in paths:
         if strict and not UUID_RE.fullmatch(path.stem):
             raise ValueError(f"invalid coordination seat filename: {path}")
-        seat = _read_seat_path(path, expected_uuid=path.stem if strict else None, strict=strict)
+        try:
+            seat = _read_seat_path(path, expected_uuid=path.stem if strict else None, strict=strict)
+        except ValueError as exc:
+            # A strict directory read contains exactly one kind of failure:
+            # a stale pre-migration seat (schema 1, otherwise well formed)
+            # left behind by a released session. It is skipped and named,
+            # and the valid seats still load. Malformed content, foreign
+            # filenames and filesystem failures keep raising, so a
+            # diagnostic never hides corruption. Regression 2026-09-20: two
+            # schema-1 seats made every strict read of the directory fail
+            # closed with no output.
+            if not strict or not _is_stale_v1_seat(path, path.stem):
+                raise
+            _note_skipped_seat(skipped, path, "stale schema-1 seat")
+            continue
         if seat is not None:
             seats.append(seat)
     return seats
+
+
+def _is_stale_v1_seat(path: Path, expected_uuid: str) -> bool:
+    """True when the file is a well-formed schema-1 seat for its own uuid."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_json_object)
+    except (OSError, ValueError):
+        return False
+    if not isinstance(data, dict) or data.get("schema", SEAT_SCHEMA_V1) != SEAT_SCHEMA_V1:
+        return False
+    required = ("session_uuid", "compact_id", "client", "machine")
+    if any(not isinstance(data.get(key), str) or not data[key] for key in required):
+        return False
+    if data["session_uuid"] != expected_uuid or not UUID_RE.fullmatch(data["session_uuid"]):
+        return False
+    from coordination_schema import identity_from_uuid
+
+    return data["compact_id"] == identity_from_uuid(data["session_uuid"]).compact_id
+
+
+def _note_skipped_seat(skipped: list[tuple[Path, str]] | None, path: Path, reason: str) -> None:
+    if skipped is not None:
+        skipped.append((path, reason))
+    print(f"coordination seat skipped ({reason}): {path}", file=sys.stderr)
+
+
+def stale_seat_files(board: Path) -> list[tuple[Path, str]]:
+    """Stale schema-1 seat files a strict directory read skips, each with its reason."""
+    skipped: list[tuple[Path, str]] = []
+    all_seats(board, strict=True, skipped=skipped)
+    return skipped
 
 
 def seat_for_identity(board: Path, identity: SelfIdentity, *, strict: bool = False) -> Seat | None:

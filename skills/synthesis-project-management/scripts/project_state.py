@@ -1269,7 +1269,12 @@ def _row_for_event(
                     and seat.client == CLIENT_CLAUDE
                     and seat.compact_id == row.get("compact id")
                     and f"ccd:{seat.host_session_id}" == client_ref
-                    and (not row.get("machine") or row["machine"] == seat.machine)
+                    # The board row carries the machine the writer shows
+                    # (coordination.py: machine_label or machine). Schema-2
+                    # seats hold the fleet machine-id in `machine` and the
+                    # label in `machine_label`; compare the row to the same
+                    # value the writer emitted, never the label to the id.
+                    and (not row.get("machine") or row["machine"] == (seat.machine_label or seat.machine))
                 )
                 if not matched:
                     raise ProjectStateError("Desktop checkpoint identity does not bind the active claim")
