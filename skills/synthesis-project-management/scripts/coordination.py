@@ -3022,6 +3022,7 @@ def command_succeed(args) -> int:
                 evidence=harness_gone_evidence(args.board, predecessor) or "",
             )
             predecessor.claims = [area for area in predecessor.claims if area not in only]
+            succeeded["partial"] = True
         else:
             notice = succession_notice_block(predecessor, identity.compact_id)
             predecessor.status = "released"
@@ -3061,7 +3062,9 @@ def command_succeed(args) -> int:
                 f"{', '.join(retained)}."
             )
     print("Succession record appended to the board bus.")
-    if remove_seat(args.board, predecessor_identity.session_uuid):
+    if succeeded.get("partial"):
+        print("Predecessor row and seat kept; only the named areas moved.")
+    elif remove_seat(args.board, predecessor_identity.session_uuid):
         print("Seat removed.")
     with _board_scoped_fleet_dir(args.board):
         successor_machine, successor_label = resolve_claim_machine(

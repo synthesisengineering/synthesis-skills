@@ -3680,6 +3680,9 @@ def test_succeed_only_moves_named_areas_from_a_parked_row_and_keeps_the_rest(
     parked = next(s for s in sessions if s.compact_id == holder.compact_id)
     grown = next(s for s in sessions if s.compact_id == heir.compact_id)
     assert parked.status == "parked"
+    # The parked seat record survives a partial succession; only a full
+    # succession removes it. (Regression: the first cut removed it.)
+    assert MODULE.read_seat(board, holder.session_uuid) is not None
     assert parked.claims == ["repo/shared/kept.md"]
     assert parked.workspaces == ["/tmp/repo-a @ feature/a"]
     assert grown.claims == ["repo/other/held.md", "release-train:x"]
