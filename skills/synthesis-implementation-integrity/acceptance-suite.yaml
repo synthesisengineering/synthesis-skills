@@ -2,7 +2,7 @@ schema: 2
 suite: resume-name-addressed-4-124-0
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.124.0, making resume invocation name-addressed: the R1
+  identify 4.124.0, making resume invocation name-addressed — the R1
   prompt is one sentence naming the skill and the workspace, with no
   filesystem path, client name, or release version.
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
