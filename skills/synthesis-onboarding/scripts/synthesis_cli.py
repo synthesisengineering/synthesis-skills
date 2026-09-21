@@ -46,7 +46,7 @@ from system_contract import (
 )
 
 
-ENGINE_VERSION = "2.7.0"
+ENGINE_VERSION = "2.8.0"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
     "setup",
@@ -251,6 +251,33 @@ def _release_label(release: dict[str, Any] | None) -> str:
     )
 
 
+def _launcher_verification_plane(active: dict[str, Any]) -> dict[str, Any]:
+    """S19: report the per-call verification mode and re-run the full digest.
+
+    The fast path trusts the activation receipt; the doctor trusts
+    nothing and hashes the tree. A same-size-mode-mtime substitution
+    that passes every call of the day is caught here.
+    """
+    try:
+        checked = release_runtime.verified_release()
+    except release_runtime.RuntimeContractError as exc:
+        return {"status": "drifted", "mode": "refused", "detail": str(exc)}
+    except (OSError, ValueError) as exc:
+        return {"status": "defective", "mode": "unknown", "detail": str(exc)}
+    mode = checked.get("_verification_mode", release_runtime.VERIFICATION_MODE_FULL)
+    try:
+        report = release_runtime.full_digest_report(Path(checked["release_root"]))
+    except release_runtime.RuntimeContractError as exc:
+        return {"status": "drifted", "mode": mode, "detail": str(exc)}
+    projection = checked.get("projection") or {}
+    expected = projection.get("content_digest", checked.get("content_digest"))
+    if report["tree_digest"] != expected:
+        return {"status": "drifted", "mode": mode, "files": report["files"],
+                "detail": "full tree digest differs from the recorded digest"}
+    return {"status": "verified", "mode": mode, "files": report["files"],
+            "digest_ms": report["elapsed_ms"]}
+
+
 def _current_planes(
     desired: dict[str, Any],
     latest: dict[str, Any] | None,
@@ -365,6 +392,7 @@ def _current_planes(
             planes["installed"]["execution_runtime"] = runtime
         except release_runtime.RuntimeContractError as exc:
             planes["installed"].update(status="defective", execution_runtime={"status": "defective", "detail": str(exc)})
+        planes["launcher.verification-mode"] = _launcher_verification_plane(active)
     live = planes["live-loaded"]
     release_version = (recorded or {}).get("version")
     receipts = live.get("receipts") if isinstance(live.get("receipts"), dict) else {}

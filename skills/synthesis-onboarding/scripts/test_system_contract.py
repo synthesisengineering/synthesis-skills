@@ -750,6 +750,28 @@ def test_activation_rejects_dangling_git_marker_without_replacing_current_pair(t
     assert (launcher.read_bytes(), active.read_bytes()) == before
 
 
+def test_activation_writes_a_receipt_that_fast_paths_later_calls(tmp_path):
+    import release_runtime
+    root = release_repo(tmp_path)
+    descriptor = system_contract.release_descriptor_from_checkout(root, "stable", "stable", "https://example.test/synthesis-skills.git")
+    root = materialized_fixture(root, tmp_path)
+    launcher, active = tmp_path / "bin/synthesis", tmp_path / "state/active.json"
+    system_contract.activate_cli(root, descriptor, launcher, active)
+    receipt_path = active.with_name(active.name + ".verification.json")
+    assert receipt_path.is_file()
+    receipt = json.loads(receipt_path.read_text())
+    assert receipt["mode"] == release_runtime.VERIFICATION_MODE_RECEIPT
+    assert receipt["tree_stat"], "receipt snapshots the tree"
+    assert receipt["entrypoints"], "receipt hashes the entrypoints present"
+    assert runtime_mode(active) == release_runtime.VERIFICATION_MODE_RECEIPT
+
+
+def runtime_mode(active):
+    import release_runtime
+    data = json.loads(active.read_text())
+    return release_runtime.verify_fast(active, data)
+
+
 def test_launcher_records_absolute_pin_and_ignores_hostile_path(tmp_path, monkeypatch):
     root = release_repo(tmp_path)
     descriptor = system_contract.release_descriptor_from_checkout(root, "stable", "stable", "https://example.test/synthesis-skills.git")

@@ -295,6 +295,20 @@ of one dead seat serialize on the board lock — exactly one wins. A revived
 owner re-claims; if its areas now collide with a live claim, the claim names
 the collision.
 
+### Idle-holder escalation
+
+An idle-but-alive holder is not dead, so succession does not apply; the
+standing idle-holder direction (ecosystem DECISIONS.md, 2026-09-20)
+governs instead. Ask first: `request-narrow` posts a structured request
+the holder's next prompt honors automatically — clean areas narrow off,
+dirty areas reply `held`, unverifiable checkouts defer without a reply.
+Narrow second: an unanswered request older than 10 minutes, with a
+harness log that has not grown since the request and a clean checkout
+under the areas, escalates via `narrow --administrative --basis
+idle-holder --reason <request id>`, callable only by the requester. The
+escalation appends a `recorded-administrative-narrow` block addressed to
+the holder, so a revived holder meets it in its inbox.
+
 The contribution artifact records:
 
 - claimed scope and branch/worktree;

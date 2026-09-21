@@ -162,3 +162,55 @@ def test_diagnostic_inbox_survives_a_stale_schema1_seat_file(board, monkeypatch,
     text = INBOX.inbox_text({"session_id": ME_SID}, board=board, environ=ME_ENV, strict=True, mark=False)
     assert "2 unread message(s)" in text
     assert stale.name in capsys.readouterr().err
+
+
+MUSE_SID = "muse-probe-001"
+
+
+def test_per_turn_inbox_honors_open_requests(tmp_path, monkeypatch) -> None:
+    # S13 layer 2: the holder's next prompt narrows clean requested areas
+    # and says so in the injected text.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    board = tmp_path / "board.md"
+    area = f"{repo}/claimed/**"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:holder-x")
+    assert ENGINE.command_claim(args(
+        board, id=None, agent="agent", machine="m1", project="project-h",
+        mode="interactive", goal="g", workspace=[f"{repo} @ main"],
+        area=[area], context_role="owner",
+    )) == 0
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:requester-x")
+    assert ENGINE.command_claim(args(
+        board, id=None, agent="agent", machine="m1", project="project-q",
+        mode="interactive", goal="g", workspace=["/tmp/repo-q @ main"],
+        area=["elsewhere/**"], context_role="owner",
+    )) == 0
+    holder = [row for row in ENGINE.rows(board.read_text(encoding="utf-8")) if row.project == "project-h"][0]
+    assert ENGINE.command_request_narrow(args(board, holder=holder.compact_id, area=[area], reason="need it")) == 0
+    [req] = ENGINE.open_release_requests(board.read_text(encoding="utf-8"))
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:holder-x")
+    payload = {"session_id": "holder-x", "hook_event_name": "UserPromptSubmit", "cwd": str(repo)}
+    text = INBOX.inbox_text(payload, board=board, environ={"SYNTHESIS_CLIENT_SESSION_REF": "codex:holder-x"})
+    assert f"honored {req.id}: narrowed {area}" in text
+    assert ENGINE.parse_release_replies(board.read_text(encoding="utf-8")) == {req.id: "narrowed"}
+
+
+def test_muse_wrapper_delivers_and_consumes(tmp_path, monkeypatch) -> None:
+    # S13 layer 1: the UserPromptSubmit wrapper resolves the Muse seat and
+    # injects addressed messages as hook JSON, forwarding its argv.
+    board = tmp_path / "muse-board.md"
+    me = claim(board, "project-q", {"SYNTHESIS_CLIENT_SESSION_REF": f"muse:{MUSE_SID}"}, monkeypatch)
+    assert ENGINE.command_message(args(board, sender=me.compact_id, to=me.compact_id, text="Per-turn hello.")) == 0
+    wrapper = SCRIPTS_DIR.parents[2] / ".muse-plugin" / "hooks" / "synthesis-inbox.sh"
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE") and k != "SYNTHESIS_CLIENT_SESSION_REF"}
+    env["SYNTHESIS_HOOK_CLIENT"] = "muse"
+    payload = json.dumps({"session_id": MUSE_SID, "hook_event_name": "UserPromptSubmit"})
+    first = subprocess.run(["sh", str(wrapper), "--board", str(board)], input=payload, capture_output=True, text=True, env=env)
+    assert first.returncode == 0, first.stderr
+    data = json.loads(first.stdout)
+    assert data["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
+    assert "Per-turn hello." in data["hookSpecificOutput"]["additionalContext"]
+    second = subprocess.run(["sh", str(wrapper), "--board", str(board)], input=payload, capture_output=True, text=True, env=env)
+    assert second.returncode == 0 and "Per-turn hello." not in second.stdout

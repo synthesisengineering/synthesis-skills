@@ -16,6 +16,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import synthesis_cli  # noqa: E402
 import system_contract  # noqa: E402
+import release_runtime  # noqa: E402
 from test_onboard import Sandbox  # noqa: E402
 
 
@@ -1348,3 +1349,34 @@ def test_outcome_verify_refuses_generation_without_live_evidence(
         state=state,
     ) == 2
     assert "live-loaded" in capsys.readouterr().err
+
+
+def test_launcher_verification_plane_reports_verified_and_drifted(tmp_path, monkeypatch) -> None:
+    # S19: the doctor trusts nothing and re-hashes the tree; a digest
+    # mismatch is drift, and an unverifiable release refuses.
+    checked = {
+        "release_root": str(tmp_path),
+        "content_digest": "abc",
+        "_verification_mode": "receipt",
+        "projection": {},
+    }
+    monkeypatch.setattr(release_runtime, "verified_release", lambda: dict(checked))
+    monkeypatch.setattr(
+        release_runtime, "full_digest_report",
+        lambda root: {"tree_digest": "abc", "files": 3, "elapsed_ms": 1},
+    )
+    plane = synthesis_cli._launcher_verification_plane({})
+    assert plane["status"] == "verified" and plane["mode"] == "receipt"
+    monkeypatch.setattr(
+        release_runtime, "full_digest_report",
+        lambda root: {"tree_digest": "zzz", "files": 3, "elapsed_ms": 1},
+    )
+    plane = synthesis_cli._launcher_verification_plane({})
+    assert plane["status"] == "drifted" and "differs" in plane["detail"]
+
+    def _refuse():
+        raise release_runtime.RuntimeContractError("no active release")
+
+    monkeypatch.setattr(release_runtime, "verified_release", _refuse)
+    plane = synthesis_cli._launcher_verification_plane({})
+    assert plane["status"] == "drifted" and plane["mode"] == "refused"

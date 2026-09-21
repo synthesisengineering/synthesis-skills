@@ -141,8 +141,22 @@ def inbox_text(
     rendered = render_inbox(messages)
     if messages and mark:
         mark_seen(board, key, {message.key for message in messages})
+    honor: list[str] = []
+    if "release-request" in text and mark:
+        try:
+            from coordination import honor_open_requests, rows as _coord_rows
+            seat_rows = [row for row in _coord_rows(text) if row.session_uuid in forms or row.compact_id in forms]
+            if seat_rows:
+                cwd = payload.get("cwd") if isinstance(payload, dict) else None
+                honor = honor_open_requests(
+                    board, seat_rows[0].session_uuid,
+                    Path(str(cwd)).expanduser() if cwd else None,
+                )
+        except Exception as exc:  # the inbox never blocks a prompt on honor trouble
+            honor = [f"honor pass skipped: {exc}"]
     notice = identity_notice(identity)
-    return "\n".join(part for part in (notice, rendered) if part)
+    honor_text = "\n".join(honor)
+    return "\n".join(part for part in (notice, rendered, honor_text) if part)
 
 
 def main() -> int:

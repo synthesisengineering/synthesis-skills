@@ -69,6 +69,24 @@ def test_message_tables_cannot_create_active_claims(tmp_path):
     assert len(dictionaries) == len(recovered) == len(sessions) == 1
 
 
+def test_claim_globs_survive_the_table_parse_for_all_consumers(tmp_path):
+    # Regression 2026-09-21 (S13): the grammar's bold strip ate the **
+    # pairs across multi-glob claim cells, so exact-match verbs could not
+    # name what the row held and every re-serialization rewrote the file.
+    text = board_fixture().replace(
+        "/example/repo/docs/**",
+        "/example/repo/docs/**, /example/repo/skills/**",
+    )
+    dictionaries, recovered, sessions = consumer_rows(text, tmp_path)
+    assert dictionaries[0]["claimed areas (advisory lock)"] == (
+        "/example/repo/docs/**, /example/repo/skills/**"
+    )
+    assert recovered == dictionaries
+    assert sessions[0].claims == [
+        "/example/repo/docs/**", "/example/repo/skills/**",
+    ]
+
+
 @pytest.mark.parametrize("consumer", ["schema", "coordination", "project_state"])
 @pytest.mark.parametrize("damage", ["extra-column", "future-schema", "missing-delimiter", "wrong-width", "header-mismatch", "mixed-schema"])
 def test_invalid_authority_rows_fail_in_every_consumer(tmp_path, consumer, damage):

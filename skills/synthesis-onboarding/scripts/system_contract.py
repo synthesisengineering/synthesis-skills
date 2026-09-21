@@ -804,9 +804,45 @@ def _recover_activation(journal: Path, launcher_path: Path, active_path: Path) -
                 path.unlink(missing_ok=True)
             else:
                 atomic_write_bytes(path, old, mode=mode)
+        # The receipt beside a rolled-back pointer describes the pair
+        # that failed; drop it so per-call checks fall back to the full
+        # digest instead of trusting a stale snapshot.
+        release_runtime.activation_receipt_path(active_path).unlink(missing_ok=True)
         journal.unlink()
     except (KeyError, TypeError, ValueError) as exc:
         raise ContractError("activation recovery refused: %s" % exc) from exc
+
+
+def _write_activation_receipt(
+    active_descriptor_path: Path,
+    active: dict[str, Any],
+    release_root: Path,
+    launcher_sha256: str,
+    interpreter_sha256: str,
+) -> None:
+    """Write the S19 per-call verification receipt beside the descriptor.
+
+    Runs inside the activation lock after the pointer swap, so the
+    descriptor stat describes the bytes just written. The receipt lets
+    every later call verify descriptor, launcher, entrypoints, and a
+    stat-walk instead of re-hashing the tree.
+    """
+    blob = active_descriptor_path.read_bytes()
+    meta = active_descriptor_path.lstat()
+    receipt = release_runtime.build_activation_receipt(
+        release_root=release_root,
+        descriptor_bytes=blob,
+        descriptor_meta=meta,
+        launcher_sha256=launcher_sha256,
+        interpreter_sha256=interpreter_sha256,
+        generation=active.get("generation", active.get("version")),
+        content_digest=active["content_digest"],
+        projection=active.get("projection"),
+    )
+    atomic_write_json(
+        release_runtime.activation_receipt_path(active_descriptor_path),
+        receipt,
+    )
 
 
 def activate_cli(
@@ -860,6 +896,18 @@ def activate_cli(
                 raise ContractError("refusing to replace a user-owned synthesis launcher")
         if current == launcher:
             atomic_write_json(active_descriptor_path, active)
+            try:
+                _write_activation_receipt(
+                    active_descriptor_path, active, release_root,
+                    hashlib.sha256(launcher).hexdigest(), pin["sha256"])
+            except (OSError, ValueError, KeyError,
+                    release_runtime.RuntimeContractError) as exc:
+                # The pointer swap already landed and has no journal to
+                # roll back; a missing receipt only drops per-call checks
+                # to the legacy full digest, which the doctor reports.
+                print("activation receipt not written (%s); per-call "
+                      "verification stays on the full digest" % exc,
+                      file=sys.stderr)
         else:
             pending = {"schema_version": 1, "launcher_path": str(launcher_path), "active_path": str(active_descriptor_path),
                 "old_launcher": base64.b64encode(current).decode() if current is not None else None,
@@ -870,6 +918,9 @@ def activate_cli(
             try:
                 atomic_write_bytes(launcher_path, launcher, mode=0o755)
                 atomic_write_json(active_descriptor_path, active)
+                _write_activation_receipt(
+                    active_descriptor_path, active, release_root,
+                    hashlib.sha256(launcher).hexdigest(), pin["sha256"])
                 journal.unlink()
             except BaseException:
                 _recover_activation(journal, launcher_path, active_descriptor_path)

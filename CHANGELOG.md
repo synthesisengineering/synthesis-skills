@@ -4,6 +4,24 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.123.0] - 2026-09-21
+
+Idle-holder narrow, verified execution, announced refusals. An
+interactive session blocked on an idle holder's paths posts
+`request-narrow`; the holder's next prompt (and Stop hook) narrows
+clean areas off and replies `held` otherwise; an unanswered request
+older than 10 minutes with no holder harness activity escalates via
+`narrow --administrative --basis idle-holder`, recorded on the bus —
+with a per-turn inbox hook for Muse and a standing direction in the
+ecosystem DECISIONS.md. The launcher verifies the installed tree
+against the release descriptor before every execution (receipt mode
+for read-only probes; doctor plane; SessionStart digest line). The
+SessionStart briefing prints its REFUSED line instead of exiting
+silent, and files an outcome receipt either way. Claim globs survive
+the board parse exactly as written. Third-party reader promise stated
+in docs/spec/versioning.md. Project-management 2.18.0, onboarding
+2.8.0, conformance 1.12.0.
+
 ## [4.122.0] - 2026-09-21
 
 Autopilot run profiles. The delegation contract as data: resolve the

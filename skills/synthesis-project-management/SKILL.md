@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.17.0"
+  version: "2.18.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -319,6 +319,7 @@ Rules:
 6. **Autonomous claim keeps priority.** When an autonomous and interactive
    session overlap, the autonomous session keeps its existing claim; the
    interactive session yields unless the user explicitly reorders them.
+   Exception: idle-holder paths narrow administratively under the receipt ([request-narrow and escalation](references/parallel-agent-protocol.md#idle-holder-escalation)).
 7. **Direct sends need a receipt; addresses are resolved, never guessed.**
    `resolve` issues a delivery receipt for one target; the plugin's gate
    admits a direct send only at that exact address, re-verified live. Names,
@@ -338,8 +339,7 @@ The script uses an OS file lock, verified backups, and atomic replacement,
 and refuses overlapping areas, duplicate context owners, and contributor claims
 on canonical context. Sharing one checkout with disjoint areas is granted with
 a banner. Cross-machine simultaneity requires the git-backed lease
-(compare-and-swap on a shared
-remote, fail-closed when unreachable); retire merged worktrees with
+(compare-and-swap on a shared remote, fail-closed when unreachable); retire merged worktrees with
 `scripts/retire_worktree.py`, never by hand. Board file shape:
 [references/active-sessions-template.md](references/active-sessions-template.md).
 Lease bootstrap and retirement, worktree-retirement mechanics, peer

@@ -18,6 +18,13 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+**Idle-holder narrow (September 2026).** Release **4.123.0** lets an
+interactive session ask first and narrow second: request-narrow posts a
+structured request the holder's next prompt honors automatically, and an
+unanswered request older than 10 idle minutes escalates under the
+standing direction, recorded on the bus. Every execution verifies before
+running, and refused briefings say so instead of staying silent.
+
 **Autopilot run profiles (September 2026).** Release **4.122.0**
 resolves the standing checklist from profile layers at engagement,
 freezes it into the plan file, and refuses a goals-met close until

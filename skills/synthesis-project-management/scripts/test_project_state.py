@@ -10,6 +10,8 @@ import pytest
 
 import project_state as state
 
+import coordination as engine
+
 
 def run(*args: str, cwd: Path) -> str:
     result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=True)
@@ -888,3 +890,42 @@ def test_observer_stop_resolves_muse_session_from_store_without_transcript_path(
         state._observer_native_identity(
             {"session_id": "019fff79-5858-7993-a329-b301bccf5d02"}
         )
+
+
+def _stop_args(board: Path, **values):
+    return type("Args", (), {"board": board, **values})()
+
+
+def test_stop_honors_open_release_requests(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # S13 layer 2: the Stop hook answers open requests best-effort; the
+    # reply blocks on the bus are the record.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    board = tmp_path / "board.md"
+    area = f"{repo}/claimed/**"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:holder-x")
+    assert engine.command_claim(_stop_args(
+        board, id=None, agent="agent", machine="m1", project="project-h",
+        mode="interactive", goal="g", workspace=[f"{repo} @ main"],
+        area=[area], context_role="owner",
+    )) == 0
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:requester-x")
+    assert engine.command_claim(_stop_args(
+        board, id=None, agent="agent", machine="m1", project="project-q",
+        mode="interactive", goal="g", workspace=["/tmp/repo-q @ main"],
+        area=["elsewhere/**"], context_role="owner",
+    )) == 0
+    holder = [row for row in engine.rows(board.read_text(encoding="utf-8")) if row.project == "project-h"][0]
+    assert engine.command_request_narrow(_stop_args(
+        board, holder=holder.compact_id, area=[area], reason="need it",
+    )) == 0
+    [req] = engine.open_release_requests(board.read_text(encoding="utf-8"))
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:holder-x")
+    state._honor_release_requests_at_stop(
+        board, {"session uuid": holder.session_uuid},
+        {"hook_event_name": "Stop", "cwd": str(repo)},
+    )
+    assert engine.parse_release_replies(board.read_text(encoding="utf-8")) == {req.id: "narrowed"}
+    # A row without identity never crashes the hook.
+    state._honor_release_requests_at_stop(board, {}, {"hook_event_name": "Stop"})

@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.7.0"
+  version: "2.8.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -366,6 +366,14 @@ A plugin version, directory, or generated instruction file proves only its own
 plane. `live-loaded` requires a fresh client lifecycle receipt after restart.
 An outcome verifier is release-owned; organization data may name only a trusted
 verifier ID, never provide a command.
+
+Every execution verifies before running. The release-owned launcher compares
+the installed tree's digest plus the manifest's signature against the release
+descriptor before every execution; on mismatch it refuses. Receipt mode
+satisfies this for read-only probes by digesting only the release-owned
+entrypoints. Doctor reports the same per-execution check as its own plane,
+and SessionStart carries a once-per-session full digest line. The launcher
+never writes — it reports drift so upgrade can replace it.
 
 Exit `0` means the selected checks are green, `1` means a verified defect or
 required action, and `2` means ground truth could not be established.

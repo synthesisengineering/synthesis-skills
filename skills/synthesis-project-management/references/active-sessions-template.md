@@ -32,6 +32,9 @@ Append addressed messages here. Use a heading:
 4. Every root session that writes git state uses an isolated worktree and branch.
 5. One session owns canonical project context; contributors use separate artifacts.
 6. An existing autonomous claim keeps priority over an interactive session.
+   Under the standing idle-holder direction the interactive session may
+   request-narrow and, after 10 idle minutes, narrow administratively
+   under the receipt instead of yielding.
 7. Put asynchronous handoffs under `## Messages`, addressed to a session id or
    `<project> sessions`; the addressed seat receives them at its next prompt.
    Direct sends go through `resolve` (which issues the delivery receipt the
@@ -39,7 +42,8 @@ Append addressed messages here. Use a heading:
 8. Heartbeat and review scope at checkpoints and task/phase changes. Narrow or
    release completed areas promptly after required closure; retain only current
    needs. Release or narrow at pause and session end. Never automatically release
-   or narrow another session's claim.
+   or narrow another session's claim, except an idle-holder administrative
+   narrow under the standing direction and its receipt.
 
 ## Identity
 

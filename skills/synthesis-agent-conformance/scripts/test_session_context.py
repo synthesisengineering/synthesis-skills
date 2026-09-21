@@ -103,6 +103,56 @@ def test_non_sessionstart_output_has_no_plugin_currency_probe(monkeypatch) -> No
     assert MODULE.append_currency_notice("context", {}) == "context"
 
 
+class _StubRuntime:
+    def __init__(self, digest, expected):
+        self._digest = digest
+        self._expected = expected
+
+    def verified_release(self):
+        return {"release_root": "/fixture/root", "content_digest": self._expected,
+                "_verification_mode": "activation-receipt-v1"}
+
+    def full_digest_report(self, root):
+        assert str(root) == "/fixture/root"
+        return {"tree_digest": self._digest, "files": 620, "elapsed_ms": 4.5}
+
+
+def test_sessionstart_prepends_runtime_digest_line(tmp_path, monkeypatch) -> None:
+    pointer = tmp_path / "active-release.json"
+    pointer.write_text("{}")
+    monkeypatch.setenv("SYNTHESIS_ACTIVE_DESCRIPTOR", str(pointer))
+    monkeypatch.setattr(MODULE, "_release_runtime",
+                        lambda: _StubRuntime("ab" * 32, "ab" * 32))
+    message = MODULE.append_runtime_digest_notice(
+        "Context integrity: OK.", {"hook_event_name": "SessionStart"})
+    assert message.startswith("Synthesis runtime digest: verified (620 files")
+    assert message.endswith("Context integrity: OK.")
+
+
+def test_sessionstart_reports_a_drifted_tree(tmp_path, monkeypatch) -> None:
+    pointer = tmp_path / "active-release.json"
+    pointer.write_text("{}")
+    monkeypatch.setenv("SYNTHESIS_ACTIVE_DESCRIPTOR", str(pointer))
+    monkeypatch.setattr(MODULE, "_release_runtime",
+                        lambda: _StubRuntime("ab" * 32, "cd" * 32))
+    message = MODULE.append_runtime_digest_notice(
+        "Context integrity: OK.", {"hook_event_name": "SessionStart"})
+    assert "DRIFTED" in message
+    assert "synthesis doctor" in message
+
+
+def test_digest_line_absent_without_an_installed_release(monkeypatch) -> None:
+    monkeypatch.delenv("SYNTHESIS_ACTIVE_DESCRIPTOR", raising=False)
+
+    def fail():
+        raise AssertionError("runtime probe should not run")
+
+    monkeypatch.setattr(MODULE, "_release_runtime", fail)
+    assert MODULE.append_runtime_digest_notice(
+        "context", {"hook_event_name": "SessionStart"}) == "context"
+    assert MODULE.append_runtime_digest_notice("context", {}) == "context"
+
+
 def test_build_displays_compact_v3_session_identity(tmp_path: Path) -> None:
     board = tmp_path / "active-sessions.md"
     identity = identity_from_uuid(
@@ -1154,12 +1204,14 @@ def test_live_receipt_rejects_existing_transcript_for_another_session(
 
 # --- receipt before context; a pointer is a cache, not authority (4.93.2) -----------------------
 
-def _drive_main(monkeypatch, capsys, tmp_path, *, pointer_text=None, build_error=None):
+def _drive_main(monkeypatch, capsys, tmp_path, *, pointer_text=None, build_error=None,
+                receipt_error=None):
     """Run main() in-process with a stubbed receipt recorder and, optionally, a
     forced context failure; return (exit code, additionalContext, call order)."""
     import io
 
     calls: list[str] = []
+    outcomes: list[tuple[str, str]] = []
     pointer = tmp_path / "active-project.json"
     if pointer_text is not None:
         pointer.write_text(pointer_text, encoding="utf-8")
@@ -1171,11 +1223,21 @@ def _drive_main(monkeypatch, capsys, tmp_path, *, pointer_text=None, build_error
             raise build_error
         return real_build(pointer_arg, board, cwd, *args, **kwargs)
 
+    def recording_receipt(payload, destination):
+        calls.append("receipt")
+        if receipt_error is not None:
+            raise receipt_error
+        return True
+
+    def recording_outcome(payload, destination, outcome, detail):
+        outcomes.append((outcome, detail))
+        return True
+
     monkeypatch.setattr(MODULE, "build", recording_build)
-    monkeypatch.setattr(
-        MODULE, "record_live_receipt", lambda payload, destination: calls.append("receipt") or True
-    )
+    monkeypatch.setattr(MODULE, "record_live_receipt", recording_receipt)
+    monkeypatch.setattr(MODULE, "record_context_outcome", recording_outcome)
     monkeypatch.setattr(MODULE, "append_currency_notice", lambda message, payload: message)
+    monkeypatch.setattr(MODULE, "append_runtime_digest_notice", lambda message, payload: message)
     def unchanged_inbox(message, payload, board, *, diagnostic=False):
         assert not diagnostic
         return message
@@ -1206,17 +1268,19 @@ def _drive_main(monkeypatch, capsys, tmp_path, *, pointer_text=None, build_error
     code = MODULE.main()
     out = capsys.readouterr().out.strip()
     context = json.loads(out)["hookSpecificOutput"]["additionalContext"] if out else ""
-    return code, context, calls
+    return code, context, calls, outcomes
 
 
 def test_main_records_the_receipt_before_building_context(monkeypatch, capsys, tmp_path) -> None:
     """The receipt proves the client delivered the event; nothing that happens
     while building context may erase it, so it is recorded first."""
-    code, context, calls = _drive_main(monkeypatch, capsys, tmp_path)
+    code, context, calls, outcomes = _drive_main(monkeypatch, capsys, tmp_path)
 
     assert code == 0
     assert calls[0] == "receipt" and "build" in calls
     assert "No active synthesis project pointer is set." in context
+    assert outcomes and outcomes[0][0] == "INJECTED"
+    assert outcomes[0][1].endswith("bytes")
 
 
 def test_main_ignores_a_pointer_it_cannot_validate_with_a_notice(monkeypatch, capsys, tmp_path) -> None:
@@ -1227,7 +1291,7 @@ def test_main_ignores_a_pointer_it_cannot_validate_with_a_notice(monkeypatch, ca
     project = tmp_path / "project"
     project.mkdir()
     (project / "CONTEXT.md").write_text("**Phase:** 2\n**Status:** Active\n", encoding="utf-8")
-    code, context, calls = _drive_main(
+    code, context, calls, _outcomes = _drive_main(
         monkeypatch, capsys, tmp_path,
         pointer_text=json.dumps({"project": str(project), "plan": "unknown"}),
     )
@@ -1240,17 +1304,90 @@ def test_main_ignores_a_pointer_it_cannot_validate_with_a_notice(monkeypatch, ca
     assert "Active synthesis project" not in context, "the unvalidated pointer's project was injected"
 
 
-def test_main_still_fails_closed_on_a_non_pointer_failure(monkeypatch, capsys, tmp_path) -> None:
-    """Ignoring the pointer must not become ignoring every failure: with no
-    pointer in play, a context failure still exits 2 — after the receipt."""
-    code, context, calls = _drive_main(
+def _codex_sessionstart_payload(tmp_path, monkeypatch):
+    receipt = tmp_path / "live" / "receipt.json"
+    codex_home = tmp_path / ".codex"
+    transcript = codex_home / "sessions" / "live.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(
+        json.dumps(
+            {
+                "type": "session_meta",
+                "payload": {
+                    "id": "019fff79-5858-7993-a329-b301bccf5d31",
+                    "session_id": "019fff79-5858-7993-a329-b301bccf5d31",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    payload = {
+        "hook_event_name": "SessionStart",
+        "session_id": "019fff79-5858-7993-a329-b301bccf5d31",
+        "cwd": "/tmp/repo",
+        "source": "startup",
+        "transcript_path": str(transcript),
+    }
+    return payload, receipt
+
+
+def test_context_outcome_files_a_second_record(tmp_path, monkeypatch) -> None:
+    payload, receipt = _codex_sessionstart_payload(tmp_path, monkeypatch)
+
+    assert MODULE.record_context_outcome(payload, receipt, "INJECTED", "1234 bytes")
+
+    events = list(
+        (receipt.parent / "receipt-events" / "codex" / payload["session_id"]).glob("*.json"))
+    assert len(events) == 1
+    record = json.loads(events[0].read_text(encoding="utf-8"))
+    assert record["context_outcome"] == "INJECTED"
+    assert record["context_outcome_detail"] == "1234 bytes"
+    assert record["session_id"] == payload["session_id"]
+    assert json.loads(receipt.read_text(encoding="utf-8"))["context_outcome"] == "INJECTED"
+
+
+def test_context_outcome_rejects_probes(tmp_path: Path) -> None:
+    receipt = tmp_path / "receipt.json"
+
+    assert not MODULE.record_context_outcome({}, receipt, "INJECTED", "1 bytes")
+    assert not MODULE.record_context_outcome(
+        {"hook_event_name": "SessionStart", "session_id": "not-a-uuid"},
+        receipt, "INJECTED", "1 bytes")
+    assert not receipt.exists()
+
+
+def test_main_announces_a_no_pointer_failure_and_exits_zero(monkeypatch, capsys, tmp_path) -> None:
+    """Ruling S14 (2026-09-20) supersedes the old exit-2-with-no-stdout
+    contract: with no pointer in play, a context failure announces the
+    refusal as additionalContext and exits 0 — after the receipt."""
+    code, context, calls, outcomes = _drive_main(
         monkeypatch, capsys, tmp_path,
         build_error=ValueError("coordination board schema is invalid"),
     )
 
-    assert code == 2
+    assert code == 0
     assert calls == ["receipt", "build"]
-    assert context == ""
+    assert context.startswith("synthesis project context: REFUSED (")
+    assert "coordination board schema is invalid" in context
+    assert "project_packet.py compile" in context
+    assert outcomes and outcomes[0][0] == "REFUSED"
+    assert "coordination board schema is invalid" in outcomes[0][1]
+
+
+def test_main_refused_line_but_exit_two_on_a_receipt_failure(monkeypatch, capsys, tmp_path) -> None:
+    """Ruling S14: when the delivery proof itself cannot be written, the
+    REFUSED line still goes out, but the exit stays 2."""
+    code, context, calls, outcomes = _drive_main(
+        monkeypatch, capsys, tmp_path,
+        receipt_error=OSError("disk is read-only"),
+    )
+
+    assert code == 2
+    assert calls == ["receipt"]
+    assert context.startswith("synthesis project context: REFUSED (")
+    assert outcomes == [], "no outcome record without a delivery receipt"
 
 
 def _plugin_root_with_version(root: Path, version: str) -> Path:

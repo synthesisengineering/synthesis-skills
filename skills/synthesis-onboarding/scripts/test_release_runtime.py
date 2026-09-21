@@ -218,3 +218,118 @@ def test_doctor_checks_launcher_and_guardian_against_setup_pin(active, tmp_path)
     launcher.write_bytes(launcher.read_bytes() + b"\n# unreceipted edit\n")
     with pytest.raises(runtime.RuntimeContractError, match="launcher differs"):
         runtime.runtime_health(data, home=tmp_path)
+
+
+def write_receipt(pointer, root, data):
+    blob = pointer.read_bytes()
+    meta = pointer.lstat()
+    receipt = runtime.build_activation_receipt(
+        release_root=root, descriptor_bytes=blob, descriptor_meta=meta,
+        launcher_sha256=data["launcher"]["sha256"],
+        interpreter_sha256=data["interpreter"]["sha256"],
+        generation=data.get("generation", data.get("version")),
+        content_digest=data["content_digest"], projection=data.get("projection"))
+    runtime.activation_receipt_path(pointer).write_text(json.dumps(receipt))
+    return receipt
+
+
+def test_receipt_fast_path_skips_the_tree_digest(active, monkeypatch):
+    pointer, root, data = active
+    write_receipt(pointer, root, data)
+    monkeypatch.setattr(runtime, "tree_digest",
+                        lambda root: (_ for _ in ()).throw(AssertionError("full digest ran")))
+    checked = runtime.verified_release(pointer)
+    assert checked["_verification_mode"] == runtime.VERIFICATION_MODE_RECEIPT
+    argv = runtime.command(checked, SCRIPT, [])
+    assert argv[1:] and argv[1] == "-B"
+
+
+def test_stat_walk_catches_a_modified_helper(active):
+    pointer, root, data = active
+    write_receipt(pointer, root, data)
+    target = root / "skills" / SCRIPT
+    target.write_text(target.read_text() + "\n# drift\n")
+    with pytest.raises(runtime.RuntimeContractError, match="stat drifted"):
+        runtime.verified_release(pointer)
+
+
+def test_same_size_mtime_swap_passes_fast_but_fails_full(active):
+    import os
+    pointer, root, data = active
+    write_receipt(pointer, root, data)
+    target = root / "skills" / SCRIPT
+    original = target.read_bytes()
+    swapped = bytes(b ^ 0x01 for b in original)
+    assert len(swapped) == len(original)
+    meta = target.lstat()
+    target.write_bytes(swapped)
+    os.utime(target, ns=(meta.st_atime_ns, meta.st_mtime_ns))
+    checked = runtime.verified_release(pointer)  # the accepted A1 residual
+    assert checked["_verification_mode"] == runtime.VERIFICATION_MODE_RECEIPT
+    report = runtime.full_digest_report(root)
+    assert report["tree_digest"] != data["content_digest"]
+    assert report["files"] >= 1
+
+
+def test_swapped_descriptor_refuses_next_call(active):
+    import os
+    pointer, root, data = active
+    write_receipt(pointer, root, data)
+    replace(pointer, data, resolved_at="2026-06-06T06:06:06Z")
+    with pytest.raises(runtime.RuntimeContractError, match="replaced since activation"):
+        runtime.verified_release(pointer)
+    receipt = json.loads(runtime.activation_receipt_path(pointer).read_text())
+    meta = pointer.lstat()
+    os.utime(pointer, ns=(meta.st_atime_ns, receipt["descriptor_mtime_ns"]))
+    with pytest.raises(runtime.RuntimeContractError, match="descriptor bytes drifted"):
+        runtime.verified_release(pointer)
+
+
+def test_missing_receipt_keeps_the_legacy_full_digest(active):
+    pointer, root, data = active
+    checked = runtime.verified_release(pointer)
+    assert checked["_verification_mode"] == runtime.VERIFICATION_MODE_FULL
+    target = root / "skills" / SCRIPT
+    target.write_text(target.read_text() + "\n# drift\n")
+    with pytest.raises(runtime.RuntimeContractError, match="content digest drifted"):
+        runtime.verified_release(pointer)
+
+
+def test_entrypoint_swap_refuses_on_the_public_route(active):
+    import os
+    pointer, root, data = active
+    write_receipt(pointer, root, data)
+    target = root / "skills" / SCRIPT
+    original = target.read_bytes()
+    meta = target.lstat()
+    target.write_bytes(bytes(b ^ 0x01 for b in original))
+    os.utime(target, ns=(meta.st_atime_ns, meta.st_mtime_ns))
+    checked = runtime.verified_release(pointer)
+    with pytest.raises(runtime.RuntimeContractError, match="entrypoint bytes drifted"):
+        runtime.command(checked, SCRIPT, [])
+
+
+def test_modular_projection_pays_one_stat_walk(active, monkeypatch):
+    pointer, root, data = active
+    inventory = {rel: {"sha256": "0" * 64, "mode": fields[1]}
+                 for rel, fields in runtime.stat_walk(root).items()}
+    data = replace(pointer, data, projection={
+        "schema_version": 1, "kind": "modular",
+        "content_digest": data["content_digest"],
+        "source_content_digest": data["content_digest"],
+        "selection": {"roots": ["a"], "skills": ["a"], "support_skills": [], "stage_core": False},
+        "files": inventory})
+    write_receipt(pointer, root, data)
+    walks = []
+    real_walk = runtime.stat_walk
+
+    def counting_walk(root):
+        walks.append(1)
+        return real_walk(root)
+
+    monkeypatch.setattr(runtime, "stat_walk", counting_walk)
+    monkeypatch.setattr(runtime, "tree_digest",
+                        lambda root: (_ for _ in ()).throw(AssertionError("full digest ran")))
+    checked = runtime.verified_release(pointer)
+    assert checked["_verification_mode"] == runtime.VERIFICATION_MODE_RECEIPT
+    assert len(walks) == 1

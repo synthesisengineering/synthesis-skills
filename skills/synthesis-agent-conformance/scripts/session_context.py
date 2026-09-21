@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import tempfile
+import traceback
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -212,6 +213,48 @@ def append_currency_notice(message: str, payload: dict[str, object]) -> str:
     return notice + "\n" + message if notice else message
 
 
+def _release_runtime():
+    """Load the onboarding runtime from this release tree (or checkout)."""
+    scripts = (Path(__file__).resolve().parent.parent.parent
+               / "synthesis-onboarding" / "scripts")
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    import release_runtime
+    return release_runtime
+
+
+def append_runtime_digest_notice(message: str, payload: dict[str, object]) -> str:
+    """Prepend the once-per-session full-digest line (S19).
+
+    SessionStart fires once per session, so this is the reporting
+    channel for a tree that is under its tripwire but drifting: it runs
+    the full digest, reports the verdict, and never writes. Outside an
+    installed release (no active descriptor) there is nothing to check.
+    """
+    if payload.get("hook_event_name") != "SessionStart":
+        return message
+    pointer = os.environ.get("SYNTHESIS_ACTIVE_DESCRIPTOR", "")
+    if not pointer or not Path(pointer).expanduser().is_file():
+        return message
+    try:
+        runtime = _release_runtime()
+        checked = runtime.verified_release()
+        report = runtime.full_digest_report(Path(checked["release_root"]))
+        projection = checked.get("projection") or {}
+        expected = projection.get("content_digest", checked.get("content_digest"))
+        mode = checked.get("_verification_mode", "unknown")
+        if report["tree_digest"] == expected:
+            line = ("Synthesis runtime digest: verified (%d files, %s ms, "
+                    "per-call mode %s)." % (report["files"],
+                                            report["elapsed_ms"], mode))
+        else:
+            line = ("Synthesis runtime digest: DRIFTED — the full tree digest "
+                    "differs from the recorded digest; run synthesis doctor.")
+    except Exception as exc:
+        line = f"Synthesis runtime digest could not be verified: {exc}."
+    return line + "\n" + message
+
+
 def client_provenance(
     payload: dict[str, object], session_id: str
 ) -> tuple[str, str] | None:
@@ -366,6 +409,97 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
     if version and transcript_bound_at_record:
         SystemState().record_live_load(receipt=receipt)
     return True
+
+
+def refused_line(reason: str) -> str:
+    """The S14 REFUSED additionalContext line for a no-pointer failure."""
+    return ("synthesis project context: REFUSED (%s); no project context was "
+            "injected; run the resume skill or project_packet.py compile <id>"
+            % reason)
+
+
+def print_envelope(message: str, payload: dict[str, object], format: str) -> None:
+    """Emit the briefing in the client's hook envelope (or plain text)."""
+    if format == "codex":
+        event = payload.get("hook_event_name", "SessionStart")
+        print(
+            json.dumps(
+                {
+                    "continue": True,
+                    "hookSpecificOutput": {
+                        "hookEventName": event,
+                        "additionalContext": message,
+                    },
+                }
+            )
+        )
+    elif format == "claude":
+        print(
+            json.dumps(
+                {
+                    "continue": True,
+                    "hookSpecificOutput": {
+                        "hookEventName": "SessionStart",
+                        "additionalContext": message,
+                    },
+                }
+            )
+        )
+    else:
+        print(message)
+
+
+def record_context_outcome(payload: dict[str, object], destination: Path,
+                           outcome: str, detail: str) -> bool:
+    """Append the second receipt record: what the hook did (S14).
+
+    The delivery receipt proves the client delivered the event; this
+    record proves the outcome — INJECTED with the byte count, or REFUSED
+    with the raising function and message. Only genuine SessionStart
+    deliveries file one; probes and other events return False.
+    """
+    event = payload.get("hook_event_name")
+    session_id = payload.get("session_id")
+    if event != "SessionStart" or not isinstance(session_id, str) or not session_id:
+        return False
+    try:
+        uuid.UUID(session_id)
+    except ValueError:
+        return False
+    provenance = client_provenance(payload, session_id)
+    if provenance is None:
+        provenance = deferred_claude_provenance(payload, session_id)
+    if provenance is None:
+        return False
+    client, _provenance_env = provenance
+    event_id = str(uuid.uuid4())
+    record = {
+        "receipt_schema": 2,
+        "receipt_event_id": event_id,
+        "hook_event_name": event,
+        "session_id": session_id,
+        "client": client,
+        "context_outcome": outcome,
+        "context_outcome_detail": detail,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    generic_latest, client_latest = latest_receipt_paths(destination, client)
+    event_path = receipt_event_path(
+        client_latest, client=client, session_id=session_id, event_id=event_id)
+    with receipt_registry_lock(generic_latest):
+        validate_receipt_event_directory(client_latest, client, session_id)
+        if event_path.exists():
+            raise FileExistsError(f"receipt event already exists: {event_path}")
+        atomic_json_write(event_path, record)
+        _write_latest_if_newer(client_latest, record)
+        _write_latest_if_newer(generic_latest, record)
+    return True
+
+
+def raising_function(exc: BaseException) -> str:
+    """Name of the function that raised, for REFUSED outcome records."""
+    frames = traceback.extract_tb(exc.__traceback__)
+    return frames[-1].name if frames else type(exc).__name__
 
 
 def active_session_ids(board: Path) -> list[str]:
@@ -683,11 +817,16 @@ def main() -> int:
     # pointer to a worktree eleven commits behind failed this hook closed
     # before it recorded, and no Claude session on the machine could show a
     # current receipt.
+    delivered = False
     if not args.diagnostic:
         try:
-            record_live_receipt(payload, args.live_receipt.expanduser())
+            delivered = record_live_receipt(payload, args.live_receipt.expanduser())
         except Exception as exc:
+            # Receipt-write failure: the REFUSED line goes out, but the
+            # exit stays 2 — the delivery proof itself is missing (S14).
             print(f"synthesis live receipt failed closed: {exc}", file=sys.stderr)
+            print_envelope(refused_line("live receipt failed: %s" % str(exc)[:120]),
+                           payload, args.format)
             return 2
     pointer = args.active_project_file.expanduser()
     board = args.coordination_board.expanduser()
@@ -696,8 +835,19 @@ def main() -> int:
         message = build(pointer, board, cwd, diagnostic=args.diagnostic)
     except Exception as exc:
         if not pointer.is_file():
-            print(f"synthesis project context failed closed: {exc}", file=sys.stderr)
-            return 2
+            # No-pointer build failure: announce the refusal as
+            # additionalContext and exit 0 — the hook did its job by
+            # refusing loudly instead of failing silent (S14).
+            reason = "%s: %s" % (raising_function(exc), exc)
+            if delivered:
+                try:
+                    record_context_outcome(payload, args.live_receipt.expanduser(),
+                                           "REFUSED", reason[:500])
+                except Exception as outcome_exc:
+                    print(f"synthesis outcome record failed: {outcome_exc}",
+                          file=sys.stderr)
+            print_envelope(refused_line(reason[:300]), payload, args.format)
+            return 0
         # A pointer is a cache written by whichever session last activated a
         # project; it is not authority for the session starting now. When it
         # cannot be validated, say so and recover exactly as if it were absent:
@@ -717,39 +867,30 @@ def main() -> int:
         )
     if not args.diagnostic:
         message = append_currency_notice(message, payload)
+        message = append_runtime_digest_notice(message, payload)
     try:
         message = append_inbox(message, payload, board, diagnostic=args.diagnostic)
     except Exception as exc:
+        if delivered:
+            try:
+                record_context_outcome(
+                    payload, args.live_receipt.expanduser(), "REFUSED",
+                    "%s: %s" % (raising_function(exc), str(exc)[:400]))
+            except Exception as outcome_exc:
+                print(f"synthesis outcome record failed: {outcome_exc}",
+                      file=sys.stderr)
         print(f"synthesis diagnostic inbox failed closed: {exc}", file=sys.stderr)
         return 2
 
-    if args.format == "codex":
-        event = payload.get("hook_event_name", "SessionStart")
-        print(
-            json.dumps(
-                {
-                    "continue": True,
-                    "hookSpecificOutput": {
-                        "hookEventName": event,
-                        "additionalContext": message,
-                    },
-                }
-            )
-        )
-    elif args.format == "claude":
-        print(
-            json.dumps(
-                {
-                    "continue": True,
-                    "hookSpecificOutput": {
-                        "hookEventName": "SessionStart",
-                        "additionalContext": message,
-                    },
-                }
-            )
-        )
-    else:
-        print(message)
+    if delivered:
+        try:
+            record_context_outcome(
+                payload, args.live_receipt.expanduser(), "INJECTED",
+                "%d bytes" % len(message.encode("utf-8")))
+        except Exception as outcome_exc:
+            print(f"synthesis outcome record failed: {outcome_exc}",
+                  file=sys.stderr)
+    print_envelope(message, payload, args.format)
     return 0
 
 

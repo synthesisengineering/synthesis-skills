@@ -4003,3 +4003,267 @@ def test_concurrent_succeed_has_single_winner(tmp_path: Path) -> None:
     assert len(holders) == 1
     assert board.read_text(encoding="utf-8").count("SUCCESSION NOTICE") == 1
     assert MODULE.validate_sessions(sessions) == []
+
+
+# --------------------------------------------------------------------------
+# S13 layers 2-3: release requests, the honor pass, idle-holder escalation.
+# --------------------------------------------------------------------------
+
+def _row_by_project(board: Path, project: str):
+    for row in MODULE.rows(board.read_text(encoding="utf-8")):
+        if row.project == project:
+            return row
+    raise AssertionError(f"no row for {project}")
+
+
+def _claim_holder_requester(board, root, monkeypatch):
+    """Holder owns root/claimed/**; requester owns an unrelated area."""
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:holder-seat")
+    assert MODULE.command_claim(claim_args(
+        board, session_id="H", project="project-h",
+        workspace=f"{root} @ main", area=f"{root}/claimed/**",
+    )) == 0
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:requester-seat")
+    assert MODULE.command_claim(claim_args(
+        board, session_id="Q", project="project-q",
+        workspace="/tmp/repo-q @ main", area="elsewhere/**",
+    )) == 0
+    return _row_by_project(board, "project-h"), _row_by_project(board, "project-q")
+
+
+def _request(board, holder_compact: str, area: str, reason: str = "need it") -> int:
+    return MODULE.command_request_narrow(args(
+        board, holder=holder_compact, area=[area], reason=reason,
+    ))
+
+
+def test_request_narrow_posts_an_open_request(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    root = staged_repository(tmp_path)
+    holder, _requester = _claim_holder_requester(board, root, monkeypatch)
+    capsys.readouterr()
+    assert _request(board, holder.compact_id, f"{root}/claimed/**") == 0
+    out = capsys.readouterr().out
+    assert "Release request req-" in out and holder.compact_id in out
+    [req] = MODULE.open_release_requests(board.read_text(encoding="utf-8"))
+    assert req.holder == holder.compact_id
+    assert req.areas == [f"{root}/claimed/**"]
+    assert req.caller == "codex:requester-seat"
+    # The request itself moves nothing; the honor pass does.
+    assert _row_by_project(board, "project-h").claims == [f"{root}/claimed/**"]
+
+
+def test_request_narrow_refusals(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    root = staged_repository(tmp_path)
+    holder, requester = _claim_holder_requester(board, root, monkeypatch)
+    area = f"{root}/claimed/**"
+    assert _request(board, "no-such-session", area) == 10
+    assert _request(board, holder.compact_id, "unheld/**") == 10
+    assert "no named area is held" in capsys.readouterr().err
+    # Self-request: the holder narrows directly instead.
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:holder-seat")
+    assert _request(board, holder.compact_id, area) == 10
+    assert "your own row" in capsys.readouterr().err
+    # Seatless caller: no address for the reply.
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:ghost-seat")
+    assert _request(board, holder.compact_id, area) == 10
+    assert "live seat" in capsys.readouterr().err
+    # Duplicate of an open request.
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:requester-seat")
+    assert _request(board, holder.compact_id, area) == 0
+    assert _request(board, holder.compact_id, area) == 10
+    assert "duplicate of open release-request" in capsys.readouterr().err
+    assert requester.compact_id  # bound for readability
+
+
+def test_honor_narrows_clean_areas_and_replies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    root = staged_repository(tmp_path)
+    holder, _requester = _claim_holder_requester(board, root, monkeypatch)
+    area = f"{root}/claimed/**"
+    assert _request(board, holder.compact_id, area) == 0
+    [req] = MODULE.open_release_requests(board.read_text(encoding="utf-8"))
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:holder-seat")
+    outcomes = MODULE.honor_open_requests(board, holder.session_uuid, root)
+    assert outcomes == [f"honored {req.id}: narrowed {area}"]
+    assert _row_by_project(board, "project-h").claims == []
+    assert MODULE.parse_release_replies(board.read_text(encoding="utf-8")) == {req.id: "narrowed"}
+    assert MODULE.open_release_requests(board.read_text(encoding="utf-8")) == []
+
+
+def test_honor_holds_dirty_areas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    root = staged_repository(tmp_path)
+    holder, _requester = _claim_holder_requester(board, root, monkeypatch)
+    area = f"{root}/claimed/**"
+    assert _request(board, holder.compact_id, area) == 0
+    [req] = MODULE.open_release_requests(board.read_text(encoding="utf-8"))
+    (root / "claimed").mkdir()
+    (root / "claimed" / "draft.md").write_text("in flight", encoding="utf-8")
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:holder-seat")
+    outcomes = MODULE.honor_open_requests(board, holder.session_uuid, root)
+    assert outcomes == [f"held {req.id}: 1 dirty path(s)"]
+    assert _row_by_project(board, "project-h").claims == [area]
+    assert MODULE.parse_release_replies(board.read_text(encoding="utf-8")) == {req.id: "held"}
+
+
+def test_honor_defers_an_unverifiable_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    root = staged_repository(tmp_path)
+    holder, _requester = _claim_holder_requester(board, root, monkeypatch)
+    area = f"{root}/claimed/**"
+    assert _request(board, holder.compact_id, area) == 0
+    [req] = MODULE.open_release_requests(board.read_text(encoding="utf-8"))
+    # The holder's checkout is gone: silence is never clean.
+    import shutil
+
+    shutil.rmtree(root)
+    nowhere = tmp_path / "not-a-repo"
+    nowhere.mkdir()
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:holder-seat")
+    outcomes = MODULE.honor_open_requests(board, holder.session_uuid, nowhere)
+    assert len(outcomes) == 1 and outcomes[0].startswith(f"deferred {req.id}")
+    assert _row_by_project(board, "project-h").claims == [area]
+    assert MODULE.parse_release_replies(board.read_text(encoding="utf-8")) == {}
+    assert len(MODULE.open_release_requests(board.read_text(encoding="utf-8"))) == 1
+
+
+def test_honor_refuses_a_foreign_row(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    root = staged_repository(tmp_path)
+    holder, _requester = _claim_holder_requester(board, root, monkeypatch)
+    assert _request(board, holder.compact_id, f"{root}/claimed/**") == 0
+    # The requester runs the honor pass against the holder's row: refused.
+    outcomes = MODULE.honor_open_requests(board, holder.session_uuid, root)
+    assert outcomes == ["honor pass refused: hook identity does not own this row"]
+    assert MODULE.parse_release_replies(board.read_text(encoding="utf-8")) == {}
+
+
+def test_working_state_counts_unpushed_commits(tmp_path: Path) -> None:
+    origin = tmp_path / "origin.git"
+    assert git(tmp_path, "init", "--bare", str(origin)).returncode == 0
+    assert git(tmp_path, "clone", str(origin), "work").returncode == 0
+    work = tmp_path / "work"
+    assert git(work, "branch", "-M", "main").returncode == 0
+    assert git(work, "config", "user.name", "Test").returncode == 0
+    assert git(work, "config", "user.email", "test@example.com").returncode == 0
+    (work / "claimed").mkdir()
+    (work / "claimed" / "note.md").write_text("v1", encoding="utf-8")
+    assert git(work, "add", ".").returncode == 0
+    assert git(work, "commit", "-m", "base").returncode == 0
+    assert git(work, "push", "-u", "origin", "main").returncode == 0
+    (work / "claimed" / "note.md").write_text("v2", encoding="utf-8")
+    assert git(work, "add", ".").returncode == 0
+    assert git(work, "commit", "-m", "unpushed").returncode == 0
+    state = MODULE.release_request_working_state([work], [f"{work}/claimed/**"])
+    assert state is not None
+    dirty, unpushed, upstream_missing = state
+    assert (dirty, unpushed, upstream_missing) == (0, 1, False)
+
+
+def _age_request(board: Path, holder_compact: str, minutes: int) -> None:
+    old = (datetime.now().astimezone() - timedelta(minutes=minutes)).isoformat(timespec="seconds")
+    text = board.read_text(encoding="utf-8")
+    aged, count = re.subn(
+        r"(### → %s, from \S+ — )\S+" % re.escape(holder_compact),
+        r"\g<1>" + old, text, count=1,
+    )
+    assert count == 1
+    board.write_text(aged, encoding="utf-8")
+
+
+def _quiet_codex_transcript(monkeypatch: pytest.MonkeyPatch, home: Path, native: str, *, minutes_ago: int) -> Path:
+    sessions = home / "sessions"
+    sessions.mkdir(parents=True)
+    log = sessions / f"thread-{native}.jsonl"
+    log.write_text('{"t":"x"}\n', encoding="utf-8")
+    moment = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).timestamp()
+    import os
+
+    os.utime(log, (moment, moment))
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    return log
+
+
+def _idle_holder_setup(tmp_path, monkeypatch):
+    board = tmp_path / "coordination" / "active-sessions.md"
+    root = staged_repository(tmp_path)
+    holder, _requester = _claim_holder_requester(board, root, monkeypatch)
+    area = f"{root}/claimed/**"
+    assert _request(board, holder.compact_id, area) == 0
+    [req] = MODULE.open_release_requests(board.read_text(encoding="utf-8"))
+    _age_request(board, holder.compact_id, 20)
+    [req] = MODULE.open_release_requests(board.read_text(encoding="utf-8"))
+    _quiet_codex_transcript(monkeypatch, tmp_path / "codex-home", "holder-seat", minutes_ago=30)
+    monkeypatch.setattr(
+        MODULE, "local_machine_identity", lambda: (holder.machine, holder.machine)
+    )
+    monkeypatch.chdir(root)
+    return board, holder, req, area
+
+
+def _admin_narrow(board, holder_compact: str, request_id: str) -> int:
+    return MODULE.command_narrow(args(
+        board, id=holder_compact, area=[], workspace=[],
+        administrative=True, basis="idle-holder", reason=request_id,
+    ))
+
+
+def test_idle_holder_narrow_escalates_an_old_quiet_request(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+    board, holder, req, area = _idle_holder_setup(tmp_path, monkeypatch)
+    capsys.readouterr()
+    assert _admin_narrow(board, holder.compact_id, req.id) == 0
+    out = capsys.readouterr().out
+    assert f"Administratively narrowed {holder.compact_id}" in out
+    assert area in out and "unanswered for 20 min" in out
+    assert _row_by_project(board, "project-h").claims == []
+    assert "recorded-administrative-narrow" in board.read_text(encoding="utf-8")
+
+
+def test_idle_holder_narrow_refusals(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    root = staged_repository(tmp_path)
+    holder, _requester = _claim_holder_requester(board, root, monkeypatch)
+    area = f"{root}/claimed/**"
+    assert _request(board, holder.compact_id, area) == 0
+    [req] = MODULE.open_release_requests(board.read_text(encoding="utf-8"))
+    # Fresh request: the holder still has its ten minutes.
+    assert _admin_narrow(board, holder.compact_id, req.id) == 10
+    assert "needs more than 10" in capsys.readouterr().err
+    # A stranger escalates: only the requester may.
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:stranger-seat")
+    assert _admin_narrow(board, holder.compact_id, req.id) == 10
+    assert "only the requester escalates" in capsys.readouterr().err
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:requester-seat")
+    # Active holder: the harness log grew after the request.
+    _age_request(board, holder.compact_id, 20)
+    _quiet_codex_transcript(monkeypatch, tmp_path / "codex-home", "holder-seat", minutes_ago=0)
+    monkeypatch.setattr(
+        MODULE, "local_machine_identity", lambda: (holder.machine, holder.machine)
+    )
+    monkeypatch.chdir(root)
+    assert _admin_narrow(board, holder.compact_id, req.id) == 10
+    assert "is active, not idle" in capsys.readouterr().err
+    assert _row_by_project(board, "project-h").claims == [area]
+    # Dirty checkout under the areas: held, not narrowed.
+    log = tmp_path / "codex-home" / "sessions" / "thread-holder-seat.jsonl"
+    moment = (datetime.now(timezone.utc) - timedelta(minutes=30)).timestamp()
+    import os
+
+    os.utime(log, (moment, moment))
+    (root / "claimed").mkdir()
+    (root / "claimed" / "draft.md").write_text("in flight", encoding="utf-8")
+    assert _admin_narrow(board, holder.compact_id, req.id) == 10
+    assert "held: 1 dirty path(s)" in capsys.readouterr().err
+    assert _row_by_project(board, "project-h").claims == [area]
+
+
+def test_idle_holder_narrow_refuses_an_answered_request(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+    board, holder, req, _area = _idle_holder_setup(tmp_path, monkeypatch)
+    # The holder answers first; escalation of a closed request refuses.
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:holder-seat")
+    MODULE.honor_open_requests(board, holder.session_uuid, tmp_path / "repo")
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:requester-seat")
+    assert _admin_narrow(board, holder.compact_id, req.id) == 10
+    assert "already answered" in capsys.readouterr().err

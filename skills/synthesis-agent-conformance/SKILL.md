@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.11.0"
+  version: "1.12.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -246,6 +246,15 @@ behavior-producing implementation. The script:
 
 Claude calls the same script from its native `SessionStart` hook. Client hook
 configuration remains an adapter; the context-producing behavior is shared.
+
+Refusal is announced, never silent: when no pointer route identifies a
+project, the hook prints a `REFUSED` additionalContext line naming the
+recovery (resume skill or packet compile) and exits 0; only a receipt
+write failure keeps exit 2. Every genuine `SessionStart` delivery files
+a second receipt record with the outcome — `INJECTED` with the byte
+count, or `REFUSED` with the raising function and message. The same
+SessionStart output carries the once-per-session full runtime-digest
+line (verified or DRIFTED), which reports and never writes.
 Codex hook trust is a separate human-controlled check within installed state:
 `hook-trust` queries
 Codex app-server's read-only `hooks/list` API for the current normalized hash,

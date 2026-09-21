@@ -207,6 +207,192 @@ def verify_projection(root, descriptor):
     return projection["content_digest"]
 
 
+VERIFICATION_RECEIPT_SCHEMA = 1
+VERIFICATION_MODE_RECEIPT = "activation-receipt-v1"
+VERIFICATION_MODE_FULL = "full-digest-legacy"
+# Entrypoints hashed at activation and re-checked per call, as paths
+# relative to skills/ (the CLI shares the entrypoint layout).
+RECEIPT_ENTRYPOINTS = sorted(PUBLIC_ENTRYPOINTS | {
+    "synthesis-onboarding/scripts/synthesis_cli.py",
+})
+
+
+def activation_receipt_path(pointer):
+    pointer = Path(pointer)
+    return pointer.with_name(pointer.name + ".verification.json")
+
+
+def stat_walk(root):
+    """One walk of the release tree: relpath -> [size, mode, mtime_ns].
+
+    Same traversal and link/special refusal as tree_digest, minus the
+    byte hashing. A same-size-same-mode-same-mtime substitution passes
+    this walk by design (the accepted A1 residual); the full digest at
+    activation, in doctor, and once per session at SessionStart catches
+    what the walk cannot.
+    """
+    root = Path(root)
+    snapshot = {}
+    try:
+        for directory, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
+            current = Path(directory)
+            kept = []
+            for name in sorted(dirnames + filenames):
+                path = current / name
+                relative = path.relative_to(root).as_posix()
+                if relative == ".git":
+                    continue
+                meta = path.lstat()
+                if stat.S_ISLNK(meta.st_mode) or not (stat.S_ISDIR(meta.st_mode) or stat.S_ISREG(meta.st_mode)):
+                    raise RuntimeContractError("release tree contains a link or special object")
+                if stat.S_ISDIR(meta.st_mode):
+                    kept.append(name)
+                    continue
+                snapshot[relative] = [meta.st_size, stat.S_IMODE(meta.st_mode), meta.st_mtime_ns]
+            dirnames[:] = kept
+        return snapshot
+    except OSError as exc:
+        raise RuntimeContractError("release tree is unreadable: %s" % exc) from exc
+
+
+def build_activation_receipt(*, release_root, descriptor_bytes, descriptor_meta,
+                             launcher_sha256, interpreter_sha256, generation,
+                             content_digest, projection):
+    """Snapshot everything the per-call fast path re-checks.
+
+    Called inside the activation lock after the tree was fully verified.
+    descriptor_meta is the os.stat_result of the just-written descriptor.
+    """
+    root = Path(release_root)
+    entrypoints = {}
+    for rel in RECEIPT_ENTRYPOINTS:
+        target = root / "skills" / rel
+        # Modular releases omit entrypoints; record what the tree holds.
+        # Per-call execution refuses a script with no activation hash.
+        if target.is_file() and not target.is_symlink():
+            entrypoints[rel] = file_digest(target)
+    files = None
+    if isinstance(projection, dict):
+        records = projection.get("files")
+        if not isinstance(records, dict) or not records:
+            raise RuntimeContractError("activation receipt needs a projection file inventory")
+        files = {rel: {"mode": rec["mode"]} for rel, rec in records.items()}
+    return {
+        "schema_version": VERIFICATION_RECEIPT_SCHEMA,
+        "mode": VERIFICATION_MODE_RECEIPT,
+        "generation": generation,
+        "content_digest": content_digest,
+        "descriptor_sha256": hashlib.sha256(descriptor_bytes).hexdigest(),
+        "descriptor_inode": descriptor_meta.st_ino,
+        "descriptor_mtime_ns": descriptor_meta.st_mtime_ns,
+        "launcher_sha256": launcher_sha256,
+        "interpreter_sha256": interpreter_sha256,
+        "entrypoints": entrypoints,
+        "tree_stat": stat_walk(root),
+        "projection_files": files,
+    }
+
+
+def _load_activation_receipt(pointer):
+    try:
+        raw = activation_receipt_path(pointer).read_bytes()
+    except OSError:
+        return None
+    try:
+        receipt = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(receipt, dict) or receipt.get("schema_version") != VERIFICATION_RECEIPT_SCHEMA:
+        return None
+    return receipt
+
+
+def verify_fast(pointer, active):
+    """Light per-call verification. Returns the mode, or None for legacy full.
+
+    A swapped descriptor, a swapped launcher, a stat-drifted tree, or a
+    projection membership change refuses. A missing or unreadable receipt
+    returns None so installs activated before S19 keep the full digest.
+    """
+    receipt = _load_activation_receipt(pointer)
+    if receipt is None:
+        return None
+    pointer = Path(pointer)
+    try:
+        meta = pointer.lstat()
+        blob = pointer.read_bytes()
+    except OSError as exc:
+        raise RuntimeContractError("active release descriptor is unreadable: %s" % exc)
+    if receipt.get("descriptor_inode") != meta.st_ino or receipt.get("descriptor_mtime_ns") != meta.st_mtime_ns:
+        raise RuntimeContractError("active descriptor replaced since activation")
+    if hashlib.sha256(blob).hexdigest() != receipt.get("descriptor_sha256"):
+        raise RuntimeContractError("active descriptor bytes drifted")
+    if receipt.get("generation") != active.get("generation", active.get("version")):
+        raise RuntimeContractError("activation receipt is for another generation")
+    root = Path(active["release_root"])
+    snapshot = stat_walk(root)
+    if snapshot != receipt.get("tree_stat"):
+        raise RuntimeContractError("release tree stat drifted since activation: %s" % _first_stat_diff(snapshot, receipt.get("tree_stat") or {}))
+    if receipt.get("projection_files") is not None:
+        want = receipt["projection_files"]
+        if set(snapshot) != set(want):
+            raise RuntimeContractError("projection file membership drifted")
+        for rel, fields in want.items():
+            # Inventory modes are exec-bit-normalized (755/644), like the
+            # tree digest; the snapshot keeps exact modes for the drift
+            # comparison above.
+            observed = 0o755 if snapshot[rel][1] & 0o100 else 0o644
+            if observed != fields["mode"]:
+                raise RuntimeContractError("projection file mode drifted: %s" % rel)
+    launcher_path = (active.get("launcher") or {}).get("path")
+    if launcher_path and Path(launcher_path).is_file():
+        if file_digest(launcher_path) != receipt.get("launcher_sha256"):
+            raise RuntimeContractError("launcher bytes drifted since activation")
+    return VERIFICATION_MODE_RECEIPT
+
+
+def _first_stat_diff(observed, recorded):
+    for rel in sorted(set(observed) | set(recorded)):
+        if observed.get(rel) != recorded.get(rel):
+            return rel
+    return "<unknown>"
+
+
+def verify_entrypoint(active, receipt_mode, script):
+    """Per-call entrypoint check for the public execution route.
+
+    Under the receipt the entrypoint bytes hash against the activation
+    snapshot. Under the legacy full digest the tree was just hashed, so
+    there is nothing left to check.
+    """
+    if receipt_mode != VERIFICATION_MODE_RECEIPT:
+        return
+    pointer = active.get("_verification_pointer")
+    if not pointer:
+        raise RuntimeContractError("verified release lost its descriptor pointer")
+    receipt = _load_activation_receipt(pointer)
+    if receipt is None:
+        raise RuntimeContractError("activation receipt vanished mid-call")
+    want = (receipt.get("entrypoints") or {}).get(script)
+    if want is None:
+        raise RuntimeContractError("entrypoint %s has no activation hash" % script)
+    target = Path(active["release_root"]) / "skills" / script
+    if file_digest(target) != want:
+        raise RuntimeContractError("entrypoint bytes drifted since activation: %s" % script)
+
+
+def full_digest_report(root):
+    """Full tree digest for doctor and the once-per-session SessionStart line.
+
+    Reports, never writes. Returns tree_digest, file count, elapsed ms.
+    """
+    started = time.monotonic()
+    digest = tree_digest(root)
+    snapshot = stat_walk(root)
+    return {"tree_digest": digest, "files": len(snapshot),
+            "elapsed_ms": round((time.monotonic() - started) * 1000, 1)}
+
+
 def verified_release(pointer=None, *, require_current_interpreter=True):
     if os.environ.get("SYNTHESIS_PUBLIC_SKILLS_SOURCE"):
         raise RuntimeContractError("canonical public source override is forbidden for installed execution")
@@ -261,8 +447,13 @@ def _verified_release_unlocked(pointer, *, require_current_interpreter=True):
             manifest = json.loads((root / ("." + client + "-plugin") / "plugin.json").read_text())
             if manifest.get("version") != active.get("version") or manifest.get("name") != "synthesis-skills":
                 raise RuntimeContractError("active release manifests disagree with the descriptor")
-        if tree_digest(root) != verify_projection(root, active):
-            raise RuntimeContractError("active release content digest drifted")
+        mode = verify_fast(pointer, active)
+        if mode is None:
+            if tree_digest(root) != verify_projection(root, active):
+                raise RuntimeContractError("active release content digest drifted")
+            mode = VERIFICATION_MODE_FULL
+        active["_verification_mode"] = mode
+        active["_verification_pointer"] = os.fspath(pointer)
         executable = verify_interpreter(active.get("interpreter"), require_current=require_current_interpreter)
         verified_launcher(active, executable)
         return active
@@ -280,6 +471,7 @@ def command(active, script, arguments):
     if not target.is_file() or target.is_symlink() or target.resolve() != target or not target.is_relative_to(root):
         raise RuntimeContractError("public entrypoint is unavailable or escapes the verified release")
     verify_interpreter(active.get("interpreter"))
+    verify_entrypoint(active, active.get("_verification_mode"), script)
     return [sys.executable, "-B", str(target), *arguments]
 
 

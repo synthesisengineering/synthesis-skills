@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "synthesis-skills",
   "displayName": "Synthesis Skills",
-  "version": "4.122.0",
+  "version": "4.123.0",
   "description": "Synthesis engineering workflows for durable human-agent work across Muse, Claude Code, Codex, and other Agent Skills runtimes.",
   "compat": {
     "source": "native",
@@ -292,6 +292,16 @@
         ],
         "timeoutMs": 30000,
         "statusMessage": "Binding durable project state to this lifecycle event"
+      },
+      {
+        "id": "synthesis-inbox",
+        "event": "UserPromptSubmit",
+        "command": [
+          "sh",
+          ".muse-plugin/hooks/synthesis-inbox.sh"
+        ],
+        "timeoutMs": 30000,
+        "statusMessage": "Delivering addressed coordination messages"
       }
     ],
     "mcpServers": [],

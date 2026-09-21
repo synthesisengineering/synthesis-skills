@@ -1949,7 +1949,11 @@ def test_muse_bundle_manifest_agrees_with_siblings_and_resolves() -> None:
         target = repository / entry["path"]
         assert target.is_file(), entry["path"]
     hooks = muse["capabilities"]["hooks"]
-    assert {hook["event"] for hook in hooks} == {"SessionStart", "Stop"}
+    assert {hook["event"] for hook in hooks} == {
+        "SessionStart",
+        "Stop",
+        "UserPromptSubmit",
+    }
     for hook in hooks:
         command = hook["command"]
         assert command[0] == "sh", hook["id"]

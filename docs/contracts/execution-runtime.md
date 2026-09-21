@@ -27,10 +27,19 @@ enable skills or services omitted from its verified selection.
 
 The managed `synthesis` launcher has that absolute interpreter in its shebang
 and disables bytecode writes. It contains the standalone, standard-library-only
-`release_runtime.py` implementation. Before execution it verifies the active
-descriptor, materialized tree digest and manifests, interpreter identity, and
-launcher receipt. Symlinks, a source checkout, missing setup evidence, modified
-bytes, malformed provenance and `SYNTHESIS_PUBLIC_SKILLS_SOURCE` overrides refuse.
+`release_runtime.py` implementation. Setup writes an activation receipt
+beside the active descriptor in the same transaction: the release
+content digest, the descriptor bytes hash with inode and mtime, the
+launcher and interpreter hashes, the entrypoint hashes, and a
+size/mode/mtime snapshot of the tree. Before execution the launcher
+re-checks the descriptor, the launcher, the entrypoint, and a stat-walk
+against that receipt, plus the manifests and interpreter identity; the
+full tree digest runs at activation, in the doctor, and once per
+session at SessionStart, which reports but never writes. A release
+activated before the receipt exists keeps the full digest per call, and
+the doctor reports the mode as `launcher.verification-mode`. Symlinks,
+a source checkout, missing setup evidence, modified bytes, malformed
+provenance and `SYNTHESIS_PUBLIC_SKILLS_SOURCE` overrides refuse.
 No active-release failure falls back to a canonical checkout or plugin cache.
 
 `synthesis exec-public` accepts a declared public script from this verified

@@ -131,8 +131,13 @@ def ensure_writable_schema(text: str, *, supported: int | None = None) -> int | 
 
 
 def plain(value: str) -> str:
-    without_bold = re.sub(r"\*\*(.+?)\*\*", r"\1", value)
-    return re.sub(r"`(.+?)`", r"\1", without_bold).strip()
+    # One strip rule for every reader: claim globs such as docs/** must
+    # survive the table parse exactly as written, or exact-match verbs
+    # (narrow, request-narrow, the honor pass) cannot name what the row
+    # holds and every re-serialization silently rewrites the file.
+    from claim_scope import plain as claim_plain
+
+    return claim_plain(value)
 
 
 def board_schema(text: str) -> int | None:

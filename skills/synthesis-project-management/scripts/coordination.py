@@ -21,6 +21,7 @@ import platform
 import sys
 import tempfile
 import time
+import uuid
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -262,7 +263,10 @@ def template() -> str:
         "2. Claim before write; do not write through overlap.\n"
         "3. Every root session that writes git state uses an isolated worktree and branch.\n"
         "4. One session owns project context; contributors write separate handoff artifacts.\n"
-        "5. Existing autonomous claims keep priority over interactive sessions.\n"
+        "5. Existing autonomous claims keep priority over interactive sessions; "
+        "under the standing idle-holder direction an interactive session may "
+        "request-narrow and, after 10 idle minutes, narrow administratively "
+        "under the receipt.\n"
         "6. Heartbeat at checkpoints; release or narrow claims at pause and session end.\n"
         "7. Address peers through resolve — board identity, never client labels; "
         "resolve issues the delivery receipt the send gate requires, and an "
@@ -879,6 +883,93 @@ _FLEET_PARKED_RE = re.compile(r"^fleet-parked\s+target=(\S+)\s+basis=(\S+)\s+act
 _FLEET_OVERLAPS_PARKED_RE = re.compile(
     r"^fleet-overlaps-parked\s+new=(\S+)\s+parked=(\S+)\s+areas=(.*)$"
 )
+
+
+# --------------------------------------------------------------------------
+# Release requests: a peer asks a holder to narrow record paths (S13 layers
+# 2-3). The request is a message block addressed to the holder, so the
+# holder's per-turn inbox delivers it; the honor pass narrows clean areas
+# off and replies on the bus. An unanswered request older than
+# RELEASE_REQUEST_IDLE_MINUTES whose holder shows no harness activity may
+# be escalated by the requester into an administrative narrow under the
+# standing idle-holder direction (ecosystem DECISIONS.md, 2026-09-20).
+# --------------------------------------------------------------------------
+
+RELEASE_REQUEST_IDLE_MINUTES = 10
+
+_RELEASE_REQUEST_RE = re.compile(
+    r"^release-request\s+id=(\S+)\s+holder=(\S+)\s+requester=(\S+)"
+    r"\s+caller=(\S+)\s+areas=(.*?)(?:\s+reason=(.*))?$"
+)
+_RELEASE_REPLY_RE = re.compile(
+    r"^release-reply\s+id=(\S+)\s+result=(narrowed|held)\s*(.*)$"
+)
+_RELEASE_HELD_RE = re.compile(r"dirty=(\d+)\s+unpushed=(\d+)")
+
+
+@dataclass
+class ReleaseRequest:
+    """One parsed release-request bus record."""
+
+    id: str
+    holder: str
+    requester: str
+    caller: str
+    areas: list[str]
+    reason: str
+    posted: datetime
+
+
+def _release_request_areas(raw: str) -> list[str]:
+    return [area.strip() for area in raw.split(";") if area.strip()]
+
+
+def parse_release_requests(content: str) -> list[ReleaseRequest]:
+    """Open and answered release requests, oldest first.
+
+    A request whose record line fails to parse, whose timestamp is undated,
+    or which names no areas is not a request: Layer 3 must never escalate
+    a record it cannot fully attribute.
+    """
+    requests = []
+    for message in parse_messages(content):
+        match = _fleet_record_line(message.body, _RELEASE_REQUEST_RE)
+        if not match:
+            continue
+        posted = parse_iso(message.timestamp)
+        areas = _release_request_areas(match.group(5))
+        if posted is None or not areas:
+            continue
+        requests.append(
+            ReleaseRequest(
+                id=match.group(1),
+                holder=match.group(2),
+                requester=match.group(3),
+                caller=match.group(4),
+                areas=areas,
+                reason=(match.group(6) or "").strip(),
+                posted=posted,
+            )
+        )
+    return sorted(requests, key=lambda record: record.posted)
+
+
+def parse_release_replies(content: str) -> dict[str, str]:
+    """Release-request ids already answered, mapped to their result."""
+    replies = {}
+    for message in parse_messages(content):
+        match = _fleet_record_line(message.body, _RELEASE_REPLY_RE)
+        if match:
+            replies[match.group(1)] = match.group(2)
+    return replies
+
+
+def open_release_requests(content: str) -> list[ReleaseRequest]:
+    """Requests with no reply record, oldest first."""
+    answered = parse_release_replies(content)
+    return [req for req in parse_release_requests(content) if req.id not in answered]
+
+
 class FleetParkError(ValueError):
     """A refused parked-state transition (challenge, park, resume, expiry)."""
 
@@ -977,6 +1068,69 @@ def challenge_block(target: Session, challenger: str, now_iso: str) -> str:
         f"({target.project}). The row's heartbeat is stale; if no heartbeat "
         f"lands within {FLEET_CHALLENGE_GRACE_MINUTES} minutes the row may be "
         "parked and the scope claimed with an overlaps-parked annotation.\n\n"
+    )
+
+
+def release_request_block(
+    holder: Session,
+    requester_label: str,
+    caller_key: str,
+    areas: list[str],
+    reason: str,
+    now_iso: str,
+    *,
+    request_id: str,
+) -> str:
+    joined = "; ".join(areas)
+    lines = [
+        f"### → {holder.compact_id}, from {requester_label} — {now_iso}",
+        "",
+        f"release-request id={request_id} holder={holder.compact_id} "
+        f"requester={requester_label} caller={caller_key} areas={joined} "
+        f"reason={sanitize(reason)}",
+        f"{requester_label} asks {holder.compact_id} to narrow {joined} "
+        f"({holder.project}): {sanitize(reason)} The holder's next prompt "
+        "honors clean areas automatically and replies held otherwise; an "
+        f"unanswered request older than {RELEASE_REQUEST_IDLE_MINUTES} "
+        "minutes with no holder activity may be narrowed administratively "
+        "under the standing idle-holder direction.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def release_reply_block(
+    request: ReleaseRequest,
+    holder_label: str,
+    now_iso: str,
+    *,
+    result: str,
+    detail: str,
+) -> str:
+    return (
+        f"### → {request.requester}, from {holder_label} — {now_iso}\n\n"
+        f"release-reply id={request.id} result={result} {detail}\n"
+        f"{holder_label} {result} release-request {request.id} "
+        f"({'; '.join(request.areas)}): {detail}\n\n"
+    )
+
+
+def administrative_narrow_block(
+    holder: Session,
+    caller_key: str,
+    request_id: str,
+    areas: list[str],
+    now_iso: str,
+    *,
+    evidence: str,
+) -> str:
+    return (
+        f"### → {holder.compact_id}, from {sanitize(caller_key)} — {now_iso}\n\n"
+        f"recorded-administrative-narrow id={request_id} "
+        f"areas={'; '.join(areas)} caller={sanitize(caller_key)}\n"
+        f"Idle-holder administrative narrow of {'; '.join(areas)} under "
+        f"release-request {request_id} and the standing idle-holder "
+        f"direction. {evidence}\n\n"
     )
 
 
@@ -3087,6 +3241,513 @@ def command_succeed(args) -> int:
     return 0
 
 
+def _git_toplevel(path: Path) -> Path | None:
+    try:
+        run = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if run.returncode != 0:
+        return None
+    try:
+        return Path(run.stdout.strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _git_upstream_missing(root: str) -> bool:
+    try:
+        run = subprocess.run(
+            ["git", "-C", root, "rev-parse", "--verify", "@{u}"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return run.returncode != 0
+
+
+def _area_literal_prefix(area: str) -> str:
+    return re.split(r"[*?\[\]{}]", area, maxsplit=1)[0].rstrip("/") or "."
+
+
+def release_request_working_state(
+    roots: list[Path], areas: list[str]
+) -> tuple[int, int, bool] | None:
+    """(dirty paths, unpushed commits, upstream missing) over every root.
+
+    None when git cannot answer for every named area: no checkable
+    checkout, a failed status, or a failed log for any reason other than a
+    missing upstream. A missing upstream passes the log check vacuously —
+    there is nothing to be ahead of — and reports it so the reply stays
+    honest. An area covered by no checked root is unverified, never clean.
+    """
+    dirty = 0
+    unpushed = 0
+    upstream_missing = False
+    checked: list[Path] = []
+    for root in roots:
+        try:
+            if not root.exists():
+                continue
+        except OSError:
+            continue
+        top = _git_toplevel(root)
+        if top is None or top in checked:
+            continue
+        try:
+            status = subprocess.run(
+                ["git", "-C", str(top), "status", "--porcelain", "--", *areas],
+                capture_output=True, text=True, timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if status.returncode != 0:
+            if "outside repository" in (status.stderr or ""):
+                continue
+            return None
+        if _git_upstream_missing(str(top)):
+            upstream_missing = True
+        else:
+            try:
+                log = subprocess.run(
+                    ["git", "-C", str(top), "log", "@{u}..HEAD",
+                     "--format=%H", "--", *areas],
+                    capture_output=True, text=True, timeout=30,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return None
+            if log.returncode != 0:
+                return None
+            unpushed += len(
+                [line for line in log.stdout.splitlines() if line.strip()]
+            )
+        dirty += len(
+            [line for line in status.stdout.splitlines() if line.strip()]
+        )
+        checked.append(top)
+    if not checked:
+        return None
+    for area in areas:
+        if os.path.isabs(area):
+            prefix = Path(_area_literal_prefix(area))
+            covered = any(
+                prefix == top or prefix.is_relative_to(top) for top in checked
+            )
+            if not covered:
+                return None
+    return dirty, unpushed, upstream_missing
+
+
+def _holder_identity_forms(holder: Session) -> set[str]:
+    return {
+        holder.session_uuid, holder.compact_id, holder.speakable_id,
+        holder.identity.compact_id, holder.identity.speakable_id,
+        holder.identity.session_uuid,
+    } - {""}
+
+
+def _requester_seat(board: Path) -> tuple[SelfIdentity, object | None]:
+    caller = detect_self()
+    if not caller.sender_key:
+        return caller, None
+    try:
+        seat = seat_for_identity(board, caller)
+    except (OSError, ValueError):
+        return caller, None
+    return caller, seat
+
+
+def command_request_narrow(args) -> int:
+    """Ask a live holder to narrow record paths; the honor pass replies."""
+    areas = [sanitize(area) for area in (getattr(args, "area", None) or [])]
+    reason = str(getattr(args, "reason", "") or "").strip()
+    if not areas:
+        print(
+            "coordination request-narrow refused: name at least one "
+            "--area/--areas held by the holder",
+            file=sys.stderr,
+        )
+        return 10
+    if not reason:
+        print(
+            "coordination request-narrow refused: --reason is required",
+            file=sys.stderr,
+        )
+        return 10
+    for area in areas:
+        if " reason=" in f" {area}":
+            print(
+                "coordination request-narrow refused: area breaks the "
+                f"record line: {area}",
+                file=sys.stderr,
+            )
+            return 10
+    caller, seat = _requester_seat(args.board)
+    if not caller.sender_key:
+        print(
+            "coordination request-narrow refused: requires an attributable "
+            "caller identity",
+            file=sys.stderr,
+        )
+        return 10
+    posted: dict[str, str] = {}
+
+    def operation(content: str) -> str:
+        current = ensure_identities(rows(content))
+        holder = find_session(current, args.holder)
+        if holder is None:
+            raise RuntimeError(f"holder not found: {args.holder}")
+        if not active(holder):
+            raise RuntimeError(
+                f"holder {holder.label} is {holder.status}, not active"
+            )
+        own = None
+        if seat is not None:
+            own = next(
+                (s for s in current
+                 if s.session_uuid == seat.session_uuid and active(s)),
+                None,
+            )
+        if own is None:
+            raise RuntimeError(
+                "request-narrow requires the caller to hold a live seat"
+            )
+        if own.session_uuid == holder.session_uuid:
+            raise RuntimeError(
+                "cannot request-narrow from your own row; narrow it directly"
+            )
+        matched = [area for area in areas if area in holder.claims]
+        if not matched:
+            raise RuntimeError(
+                f"no named area is held by {holder.label}: "
+                + ", ".join(areas)
+            )
+        for req in open_release_requests(content):
+            if (
+                req.caller == caller.sender_key
+                and req.holder in _holder_identity_forms(holder)
+                and sorted(req.areas) == sorted(matched)
+            ):
+                raise RuntimeError(
+                    f"duplicate of open release-request {req.id}"
+                )
+        request_id = f"req-{uuid.uuid4().hex[:12]}"
+        posted["id"] = request_id
+        posted["holder"] = holder.compact_id
+        posted["skipped"] = ", ".join(
+            area for area in areas if area not in matched
+        )
+        return append_bus_block(
+            content,
+            release_request_block(
+                holder, own.compact_id, caller.sender_key,
+                matched, reason, timestamp(), request_id=request_id,
+            ),
+        )
+
+    try:
+        locked_update(args.board, operation)
+    except RuntimeError as exc:
+        print(f"coordination request-narrow refused: {exc}", file=sys.stderr)
+        return 10
+    print(f"Release request {posted['id']} posted against {posted['holder']}.")
+    if posted["skipped"]:
+        print(f"Not held by the holder (skipped): {posted['skipped']}.")
+    print(
+        "The holder's next prompt honors clean areas automatically; "
+        "an unanswered request older than "
+        f"{RELEASE_REQUEST_IDLE_MINUTES} minutes with no holder activity "
+        "may be narrowed administratively under the standing "
+        "idle-holder direction."
+    )
+    return 0
+
+
+def _honor_roots(board_content: str, holder: Session, cwd: Path) -> list[Path]:
+    del board_content
+    roots = [cwd]
+    ignored = {"", "none", "unknown", "n/a"}
+    for workspace in holder.workspaces:
+        try:
+            path, _branch = workspace_parts(workspace)
+        except (ValueError, AttributeError):
+            continue
+        if path.strip().lower() in ignored:
+            continue
+        roots.append(Path(path).expanduser())
+    return roots
+
+
+def honor_open_requests(
+    board: Path, holder_uuid: str, cwd: Path | None = None
+) -> list[str]:
+    """Narrow clean requested areas off one owned row; reply to each.
+
+    Runs as the holder — the per-turn inbox and the Stop hook both execute
+    in the holder's own session context — so holder ownership is verified
+    and every outcome is reported back to the caller for the inbox text.
+    Git silence is never clean: an unverifiable checkout defers the
+    request without a reply, and Layer 3 applies its own checks later.
+    """
+    try:
+        content = board.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"honor pass skipped: board unreadable ({exc})"]
+    if "release-request" not in content:
+        return []
+    current = ensure_identities(rows(content))
+    holder = find_session(current, holder_uuid)
+    if holder is None or not active(holder):
+        return []
+    if not _caller_owns_session(board, holder):
+        return ["honor pass refused: hook identity does not own this row"]
+    forms = _holder_identity_forms(holder)
+    targeted = [
+        req for req in open_release_requests(content) if req.holder in forms
+    ]
+    if not targeted:
+        return []
+    base = cwd or Path.cwd()
+    verdicts: list[tuple[ReleaseRequest, list[str], str, str]] = []
+    outcomes: list[str] = []
+    for req in targeted:
+        matched = [area for area in req.areas if area in holder.claims]
+        if not matched:
+            verdicts.append((req, [], "narrowed", "areas already released"))
+            outcomes.append(
+                f"honored {req.id}: already released; replied narrowed"
+            )
+            continue
+        state = release_request_working_state(
+            _honor_roots(content, holder, base), matched
+        )
+        if state is None:
+            outcomes.append(
+                f"deferred {req.id}: checkout unverifiable under "
+                + ", ".join(matched)
+            )
+            continue
+        dirty, unpushed, no_upstream = state
+        if dirty or unpushed:
+            detail = f"dirty={dirty} unpushed={unpushed}"
+            if no_upstream:
+                detail += " upstream=missing"
+            verdicts.append((req, matched, "held", detail))
+            held = []
+            if dirty:
+                held.append(f"{dirty} dirty path(s)")
+            if unpushed:
+                held.append(f"{unpushed} unpushed commit(s)")
+            outcomes.append(f"held {req.id}: {', '.join(held)}")
+            continue
+        detail = f"areas={'; '.join(matched)}"
+        if no_upstream:
+            detail += " upstream=missing"
+        verdicts.append((req, matched, "narrowed", detail))
+        outcomes.append(f"honored {req.id}: narrowed {', '.join(matched)}")
+
+    def operation(live: str) -> str:
+        rows_now = ensure_identities(rows(live))
+        holder_now = find_session(rows_now, holder.session_uuid)
+        if holder_now is None or not active(holder_now):
+            raise RuntimeError("holder row went terminal during the honor pass")
+        answered = parse_release_replies(live)
+        narrowed = [
+            area for _req, areas, result, _d in verdicts
+            for area in areas if result == "narrowed"
+        ]
+        narrowed = [area for area in narrowed if area in holder_now.claims]
+        updated_row = replace(
+            holder_now,
+            claims=[a for a in holder_now.claims if a not in narrowed],
+            heartbeat=timestamp(),
+        )
+        prospective = [
+            updated_row if s.session_uuid == holder_now.session_uuid else s
+            for s in rows_now
+        ]
+        problems = validate_sessions(prospective)
+        if problems:
+            raise RuntimeError("; ".join(problems))
+        updated = replace_table(live, prospective)
+        moment = timestamp()
+        for req, _areas, result, detail in verdicts:
+            if req.id in answered:
+                continue
+            updated = append_bus_block(
+                updated,
+                release_reply_block(req, holder_now.compact_id, moment, result=result, detail=detail),
+            )
+        return updated
+
+    if not verdicts:
+        return outcomes
+    try:
+        locked_update(board, operation)
+    except RuntimeError as exc:
+        return outcomes + [f"honor pass failed to record: {exc}"]
+    return outcomes
+
+
+def _command_narrow_idle_holder(args, holder_selector: str, request_id: str) -> int:
+    caller_key = detect_self().sender_key
+    if not caller_key:
+        print(
+            "coordination narrow refused: --administrative requires an "
+            "attributable caller identity",
+            file=sys.stderr,
+        )
+        return 10
+    if getattr(args, "area", None) or getattr(args, "workspace", None):
+        print(
+            "coordination narrow refused: an idle-holder narrow takes its "
+            "areas from the release-request, not --area/--workspace",
+            file=sys.stderr,
+        )
+        return 10
+    try:
+        before = args.board.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"coordination narrow refused: board unreadable ({exc})", file=sys.stderr)
+        return 10
+    requests = {req.id: req for req in parse_release_requests(before)}
+    req = requests.get(request_id)
+    if req is None:
+        print(
+            f"coordination narrow refused: unknown release-request {request_id}",
+            file=sys.stderr,
+        )
+        return 10
+    if req.id in parse_release_replies(before):
+        print(
+            f"coordination narrow refused: release-request {request_id} "
+            "was already answered",
+            file=sys.stderr,
+        )
+        return 10
+    if req.caller != caller_key:
+        print(
+            "coordination narrow refused: only the requester escalates "
+            f"release-request {request_id}",
+            file=sys.stderr,
+        )
+        return 10
+    moment = datetime.now(timezone.utc)
+    posted = req.posted
+    if posted.tzinfo is None:
+        posted = posted.replace(tzinfo=timezone.utc)
+    age = moment - posted
+    if age <= timedelta(minutes=RELEASE_REQUEST_IDLE_MINUTES):
+        print(
+            "coordination narrow refused: release-request "
+            f"{request_id} is {int(age.total_seconds() // 60)} min old; "
+            f"escalation needs more than {RELEASE_REQUEST_IDLE_MINUTES}",
+            file=sys.stderr,
+        )
+        return 10
+    narrowed: dict[str, object] = {}
+
+    def operation(content: str) -> str:
+        current = ensure_identities(rows(content))
+        holder = find_session(current, holder_selector)
+        if holder is None:
+            raise RuntimeError(f"holder not found: {holder_selector}")
+        if not active(holder):
+            raise RuntimeError(
+                f"holder {holder.label} is {holder.status}, not active"
+            )
+        if req.holder not in _holder_identity_forms(holder):
+            raise RuntimeError(
+                f"release-request {request_id} names a different holder"
+            )
+        if holder.machine not in set(local_machine_identity()):
+            raise RuntimeError(
+                "idle-holder evidence is local-only; the holder row lives "
+                f"on {holder.machine_display}"
+            )
+        try:
+            seat = read_seat(args.board, holder.session_uuid)
+        except (OSError, ValueError):
+            seat = None
+        transcript = _harness_transcript(seat) if seat is not None else None
+        if transcript is None:
+            raise RuntimeError(
+                "no holder harness log to test for activity; refusing"
+            )
+        try:
+            modified = datetime.fromtimestamp(
+                transcript.stat().st_mtime, tz=timezone.utc
+            )
+        except OSError:
+            raise RuntimeError("holder harness log unreadable; refusing")
+        if modified > posted:
+            raise RuntimeError(
+                "holder harness log grew since the request; the holder "
+                "is active, not idle"
+            )
+        areas = [area for area in req.areas if area in holder.claims]
+        if not areas:
+            raise RuntimeError(
+                f"nothing still held under release-request {request_id}"
+            )
+        state = release_request_working_state([Path.cwd()], areas)
+        if state is None:
+            raise RuntimeError(
+                "cannot verify a clean checkout under "
+                + ", ".join(areas)
+                + "; run from the shared checkout"
+            )
+        dirty, unpushed, _no_upstream = state
+        if dirty or unpushed:
+            raise RuntimeError(
+                f"held: {dirty} dirty path(s), {unpushed} unpushed "
+                f"commit(s) under {', '.join(areas)}"
+            )
+        narrowed_row = replace(
+            holder,
+            claims=[a for a in holder.claims if a not in areas],
+        )
+        prospective = [
+            narrowed_row if s.session_uuid == holder.session_uuid else s
+            for s in current
+        ]
+        problems = validate_sessions(prospective)
+        if problems:
+            raise RuntimeError("; ".join(problems))
+        narrowed["areas"] = areas
+        narrowed["holder"] = holder.compact_id
+        quiet = moment - modified
+        evidence = (
+            f"Request {request_id} unanswered for "
+            f"{int(age.total_seconds() // 60)} min; holder harness log "
+            f"quiet {int(quiet.total_seconds() // 60)} min; checkout "
+            "clean under the areas."
+        )
+        narrowed["evidence"] = evidence
+        updated = replace_table(content, prospective)
+        return append_bus_block(
+            updated,
+            administrative_narrow_block(
+                holder, caller_key, request_id, areas,
+                timestamp(), evidence=evidence,
+            ),
+        )
+
+    try:
+        locked_update(args.board, operation)
+    except RuntimeError as exc:
+        print(f"coordination narrow refused: {exc}", file=sys.stderr)
+        return 10
+    print(
+        f"Administratively narrowed {narrowed['holder']} under "
+        f"release-request {request_id}: {', '.join(narrowed['areas'])}. "
+        f"{narrowed['evidence']}"
+    )
+    return 0
+
+
 def command_narrow(args) -> int:
     """Release exactly the named areas/workspaces from one owned row.
 
@@ -3094,7 +3755,30 @@ def command_narrow(args) -> int:
     shrinking is a verb that names its target and prints a loud record.
     Every named target must be currently held — a typo that matches
     nothing is refused rather than silently doing nothing.
+
+    With --administrative --basis idle-holder --reason <request id>, the
+    requester escalates their own unanswered release-request after
+    RELEASE_REQUEST_IDLE_MINUTES of holder silence, under the standing
+    idle-holder direction; the checks live in _command_narrow_idle_holder.
     """
+    if bool(getattr(args, "administrative", False)):
+        basis = str(getattr(args, "basis", "") or "")
+        reason = str(getattr(args, "reason", "") or "").strip()
+        if basis != "idle-holder":
+            print(
+                "coordination narrow refused: --administrative requires "
+                "--basis idle-holder",
+                file=sys.stderr,
+            )
+            return 10
+        if not reason:
+            print(
+                "coordination narrow refused: --administrative requires "
+                "--reason <release-request id>",
+                file=sys.stderr,
+            )
+            return 10
+        return _command_narrow_idle_holder(args, args.id, reason)
     drop_areas = [sanitize(area) for area in (getattr(args, "area", None) or [])]
     drop_workspaces = [
         sanitize(workspace) for workspace in (getattr(args, "workspace", None) or [])
@@ -4563,6 +5247,35 @@ def parser() -> argparse.ArgumentParser:
     narrow.add_argument("--id", "--session", dest="id", required=True)
     narrow.add_argument("--area", action="append", default=[])
     narrow.add_argument("--workspace", action="append", default=[])
+    narrow.add_argument(
+        "--administrative",
+        action="store_true",
+        help=(
+            "escalate the requester's own unanswered release-request "
+            "under the standing idle-holder direction"
+        ),
+    )
+    narrow.add_argument(
+        "--basis", choices=("idle-holder",),
+        help="administrative narrow basis (idle-holder only)",
+    )
+    narrow.add_argument(
+        "--reason",
+        help="release-request id for an administrative narrow",
+    )
+    request_narrow = commands.add_parser(
+        "request-narrow",
+        help=(
+            "Ask a live holder to narrow record paths; the holder's "
+            "honor pass narrows clean areas and replies held otherwise."
+        ),
+    )
+    request_narrow.add_argument("holder", help="holder session selector")
+    request_narrow.add_argument("--area", action="append", default=[])
+    request_narrow.add_argument(
+        "--areas", dest="area", nargs="+", action="extend", default=[]
+    )
+    request_narrow.add_argument("--reason", required=True)
     heartbeat = commands.add_parser("heartbeat")
     heartbeat.add_argument("--id", "--session", dest="id", required=True)
     release = commands.add_parser("release")
@@ -4721,6 +5434,7 @@ COMMANDS = {
     "claim": command_claim,
     "succeed": command_succeed,
     "narrow": command_narrow,
+    "request-narrow": command_request_narrow,
     "heartbeat": command_heartbeat,
     "release": command_release,
     "message": command_message,

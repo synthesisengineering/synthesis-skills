@@ -1706,6 +1706,31 @@ def _observer_checkpoint_scope(payload: dict[str, Any], project: Path) -> tuple[
     return "NOT_APPLICABLE", ["no active checkpoint ownership or native pending attribution; observed Git project subtree is clean; no checkpoint receipt issued and no recovery/state-health PASS implied"]
 
 
+def _honor_release_requests_at_stop(
+    board: Path, row: dict[str, str], payload: dict[str, Any]
+) -> None:
+    """Answer open release-requests at Stop; best-effort, never verdicts.
+
+    The reply blocks on the bus are the record; a failing honor pass must
+    not turn a clean Stop into a FAIL.
+    """
+    try:
+        from coordination import honor_open_requests
+    except (ImportError, SyntaxError):
+        return
+    try:
+        session_uuid = (row.get("session uuid") or "").strip()
+        if not session_uuid:
+            return
+        cwd = payload.get("cwd")
+        honor_open_requests(
+            board, session_uuid,
+            Path(str(cwd)).expanduser() if cwd else None,
+        )
+    except Exception:
+        return
+
+
 def checkpoint_hook(
     payload: dict[str, Any],
     *,
@@ -1721,6 +1746,10 @@ def checkpoint_hook(
             if refresh_issue:
                 return "FAIL", [refresh_issue]
         row = _row_for_event(_parse_board_rows(coordination_board.resolve()), payload, coordination_board.resolve())
+        if row is not None and payload.get("hook_event_name") == "Stop":
+            _honor_release_requests_at_stop(
+                coordination_board.resolve(), row, payload
+            )
         if row is None:
             root = repo_guard_root or Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis"))) / "repo-guard"
             pending_scope = _observer_pending_scope(payload, root)

@@ -245,3 +245,13 @@ def test_cli_archive_defaults_to_year_retention(v2_project: Path) -> None:
         capture_output=True, text=True, check=True,
     )
     assert json.loads(defaulted.stdout) == json.loads(explicit.stdout)
+
+
+def test_reader_promise_is_stated_once_in_versioning() -> None:
+    # S17: the third-party reader promise lives in exactly one place, so
+    # a future edit cannot silently weaken or duplicate it.
+    repo = Path(__file__).resolve().parents[3]
+    stated = (repo / "docs/spec/versioning.md").read_text(encoding="utf-8")
+    assert "Readers accept every older `format_version` forever" in stated
+    assert "Downgrade is deletion of added files" in stated
+    assert "never cited as a pro of any" in stated
