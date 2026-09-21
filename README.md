@@ -18,6 +18,13 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.125.0** delivers project-durable board mail: a message to
+`<project> sessions [durable]` reaches whichever seat next owns the
+project, across seat turnover, clients, and machines, with `--resolve`
+retirement. It also names each session after its project where the
+client supports rename, and reports personal layers as their own
+skipped update phase instead of burying them in shared-runtime ok.
+
 Release **4.124.0** makes resume invocation name-addressed: the R1
 prompt is one sentence naming the skill and the workspace, with no
 filesystem path, so it pastes identically into every harness on

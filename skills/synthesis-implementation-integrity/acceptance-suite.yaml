@@ -1,20 +1,21 @@
 schema: 2
-suite: resume-name-addressed-4-124-0
+suite: durable-delivery-4-125-0
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.124.0, making resume invocation name-addressed — the R1
-  prompt is one sentence naming the skill and the workspace, with no
-  filesystem path, client name, or release version.
+  identify 4.125.0, making board mail project-durable — a message to
+  <project> sessions [durable] reaches whichever seat next owns the
+  project, across seat turnover, clients, and machines.
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: The fixture executes the resume probe paths in a
-  disposable directory. It does not establish installed-client reload,
-  live cross-client delivery, new-release publication, or deployment
-  approval. Those remain separate release checks.
+unverified_remainder: The fixtures execute delivery, phase, and probe
+  paths in disposable directories. They do not establish
+  installed-client reload, live cross-client delivery, new-release
+  publication, or deployment approval. Those remain separate release
+  checks.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -34,15 +35,39 @@ changed_surfaces:
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-project-resume/SKILL.md
+- path: skills/synthesis-context-lifecycle/SKILL.md
   cases:
-  - resume-name-addressed
-- path: skills/synthesis-project-resume/references/requirements.md
+  - session-title-naming
+- path: skills/synthesis-context-lifecycle/scripts/test_session_start_protocol.py
   cases:
-  - resume-name-addressed
-- path: skills/synthesis-project-management/scripts/test_fleet_park.py
+  - session-title-naming
+- path: skills/synthesis-onboarding/scripts/onboard.py
   cases:
-  - fleet-time-anchored-fixture
+  - personal-layers-phase
+- path: skills/synthesis-onboarding/scripts/test_onboard.py
+  cases:
+  - personal-layers-phase
+- path: skills/synthesis-project-management/SKILL.md
+  cases:
+  - durable-delivery
+- path: skills/synthesis-project-management/references/active-sessions-template.md
+  cases:
+  - durable-delivery
+- path: skills/synthesis-project-management/references/project-durable-delivery.md
+  cases:
+  - durable-delivery
+- path: skills/synthesis-project-management/scripts/board_inbox.py
+  cases:
+  - durable-delivery
+- path: skills/synthesis-project-management/scripts/coordination.py
+  cases:
+  - durable-delivery
+- path: skills/synthesis-project-management/scripts/peer_addressing.py
+  cases:
+  - durable-delivery
+- path: skills/synthesis-project-management/scripts/test_peer_addressing.py
+  cases:
+  - durable-delivery
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -55,20 +80,24 @@ cases:
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: resume-name-addressed
+- id: durable-delivery
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-resume/scripts/test_resume_probe.py::test_probe_reports_identity_and_goal
-  motivating_defect: The R1 prompt embedded a client-specific,
-    version-pinned filesystem path, so pasted prompts named one
-    harness's cache and died on upgrade or cross-machine paste. The
-    prompt now names the skill and the workspace only.
-- id: fleet-time-anchored-fixture
+  fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_durable_post_reaches_a_later_seat
+  motivating_defect: Board mail addressed a project name to its current
+    seat, so a handoff died with the seat. A durable post now reaches a
+    later seat on the same project, and resolve retires it.
+- id: personal-layers-phase
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_fleet_park.py::test_bag_laptop_drill_fleet_ac_07
-  motivating_defect: The drill fixture used a fixed T0 while
-    downgraded() keys heartbeat age off the wall clock, so the
-    blocking-overlap assertion flipped to advisory (and the suite
-    to red) once the suite aged past the 2-day threshold. T0 is
-    anchored to import time.
+  fixture: ../synthesis-onboarding/scripts/test_onboard.py::PersonalLayersTests::test_update_reports_personal_layers_as_its_own_skipped_phase
+  motivating_defect: synthesis update exited 0 with personal layers
+    unchanged buried in the shared-runtime line while a private skill
+    sat stale. Skipped layers now read as skipped on their own line.
+- id: session-title-naming
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_session_start_protocol.py::test_session_start_protocol_names_the_session_after_the_project
+  motivating_defect: Thread lists named auto-generated titles instead of
+    the work. The Session Start Protocol now names the session after
+    the project id where the client supports rename.

@@ -4,6 +4,20 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.125.0] - 2026-09-21
+
+Project-durable board mail. `coordination message --to <project>
+--durable` addresses the project rather than its current seat, so a
+handoff survives seat turnover, client switches, and machine changes;
+any later owner/contributor seat picks it up in its normal inbox read,
+and `--resolve` retires it through a resolved.json audit while the bus
+stays append-only. Archived addressees redirect to their live
+successor through the registry chain. Also in this release: the
+Session Start Protocol names the session after the project id where
+the client supports rename, and `synthesis update` reports
+personal-layers as its own skipped phase with a pointer to the owning
+installer's drift check.
+
 ## [4.124.0] - 2026-09-21
 
 Name-addressed resume invocation. The R1 resume prompt is one
