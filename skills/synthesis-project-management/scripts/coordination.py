@@ -52,6 +52,7 @@ from peer_addressing import (
     mark_seen,
     parse_iso,
     parse_messages,
+    process_alive,
     read_seat,
     remove_seat,
     render_inbox,
@@ -979,11 +980,14 @@ def challenge_block(target: Session, challenger: str, now_iso: str) -> str:
     )
 
 
-def park_record_block(target: Session, basis: str, actor: str, now_iso: str) -> str:
+def park_record_block(
+    target: Session, basis: str, actor: str, now_iso: str, *, evidence: str = ""
+) -> str:
+    detail = f" Evidence: {evidence}." if evidence else ""
     return (
         f"### → {target.compact_id}, from {actor} — {now_iso}\n\n"
         f"fleet-parked target={target.compact_id} basis={basis} actor={actor}\n"
-        f"Row parked ({basis}): claims frozen, not freed. Overlapping claims "
+        f"Row parked ({basis}): claims frozen, not freed.{detail} Overlapping claims "
         "record overlaps-parked and must not delete this session's worktrees "
         "or push over its branches.\n\n"
     )
@@ -1056,6 +1060,7 @@ def park_session(
     basis: str,
     actor: str,
     now: datetime | None = None,
+    evidence: str = "",
 ) -> str:
     """Park a row; returns updated content.
 
@@ -1112,7 +1117,8 @@ def park_session(
     return append_bus_block(
         updated,
         park_record_block(
-            session, basis, actor.strip(), moment.isoformat(timespec="seconds")
+            session, basis, actor.strip(), moment.isoformat(timespec="seconds"),
+            evidence=evidence,
         ),
     )
 
@@ -2415,6 +2421,9 @@ def downgrade_notice_block(
 def succession_notice_block(
     dead_session: Session,
     successor_compact_id: str,
+    *,
+    moved: list[str] | None = None,
+    evidence: str = "",
 ) -> str:
     """The loud record for a succession transfer.
 
@@ -2425,6 +2434,19 @@ def succession_notice_block(
     """
     age = heartbeat_age_days(dead_session)
     age_text = f"{age:.1f}d" if age is not None else "unknown age"
+    if moved:
+        basis = evidence or f"row {dead_session.status}; heartbeat quiet {age_text}"
+        lines = [
+            f"### → {dead_session.compact_id}, from {successor_compact_id} — {timestamp()}",
+            "",
+            "PARTIAL SUCCESSION NOTICE: "
+            f"{successor_compact_id} took {len(moved)} area(s) from your claim "
+            f"({basis}). Your row keeps its status and the rest of its scope; "
+            "re-claim the moved areas when you resume if you still need them.",
+            f"  moved: {', '.join(moved)}",
+            f"  kept: {', '.join(a for a in dead_session.claims if a not in moved) or '(none)'}",
+        ]
+        return "\n".join(lines) + "\n\n"
     lines = [
         f"### → {dead_session.compact_id}, from {successor_compact_id} — {timestamp()}",
         "",
@@ -2845,7 +2867,18 @@ def command_succeed(args) -> int:
                 f"(status {predecessor.status}); succession takes only "
                 "active dead seats"
             )
-        if not dead(predecessor):
+        only = [area.strip() for area in (getattr(args, "only", None) or []) if area.strip()]
+        if only and not successor_selector:
+            raise RuntimeError(
+                "--only moves named areas into an owned row; pass --session"
+            )
+        missing_only = [area for area in only if area not in predecessor.claims]
+        if missing_only:
+            raise RuntimeError(
+                f"session {_tag(predecessor)} does not hold "
+                f"{', '.join(missing_only)}; --only names only held areas"
+            )
+        if not dead(predecessor) and not is_parked(predecessor):
             if parse_time(predecessor.heartbeat) is None:
                 raise RuntimeError(
                     f"session {_tag(predecessor)} has an undated heartbeat, "
@@ -2856,7 +2889,8 @@ def command_succeed(args) -> int:
             raise RuntimeError(
                 f"session {_tag(predecessor)} is live (heartbeat "
                 f"{predecessor.heartbeat}); succession takes only dead "
-                f"seats quiet past {STALE_CLAIM_DEFAULT_DAYS:g}d"
+                f"seats quiet past {STALE_CLAIM_DEFAULT_DAYS:g}d or parked "
+                "rows (park --basis pid-gone on the row's own machine)"
             )
         existing_self = (
             find_session(current, successor_selector) if successor_selector else None
@@ -2912,26 +2946,28 @@ def command_succeed(args) -> int:
         now = timestamp()
         # Single clock read for the row and the seat (see command_claim).
         succeeded["heartbeat"] = now
+        moving = only or list(predecessor.claims)
         if existing_self is not None:
             effective_areas = list(existing_self.claims)
             effective_areas.extend(
-                area for area in predecessor.claims if area not in effective_areas
+                area for area in moving if area not in effective_areas
             )
             effective_workspaces = list(existing_self.workspaces)
-            effective_workspaces.extend(
-                workspace
-                for workspace in predecessor.workspaces
-                if workspace not in effective_workspaces
-            )
+            if not only:
+                effective_workspaces.extend(
+                    workspace
+                    for workspace in predecessor.workspaces
+                    if workspace not in effective_workspaces
+                )
             succeeded["merged"] = True
             succeeded["retained_areas"] = [
                 area
                 for area in existing_self.claims
-                if area not in predecessor.claims
+                if area not in moving
             ]
             succeeded["added_areas"] = [
                 area
-                for area in predecessor.claims
+                for area in moving
                 if area not in existing_self.claims
             ]
             identity = existing_self.identity
@@ -2977,15 +3013,25 @@ def command_succeed(args) -> int:
             prospective = [*current, replacement]
         # The notice is rendered before the release mutation: it reports the
         # quiet interval that authorized the transfer, not the fresh stamp.
-        notice = succession_notice_block(predecessor, identity.compact_id)
-        predecessor.status = "released"
-        predecessor.heartbeat = now
+        if only:
+            # Partial succession: the named areas move, the predecessor row
+            # keeps its status (parked or dead-active) and the rest of its
+            # scope, and the record names what moved and why.
+            notice = succession_notice_block(
+                predecessor, identity.compact_id, moved=only,
+                evidence=harness_gone_evidence(args.board, predecessor) or "",
+            )
+            predecessor.claims = [area for area in predecessor.claims if area not in only]
+        else:
+            notice = succession_notice_block(predecessor, identity.compact_id)
+            predecessor.status = "released"
+            predecessor.heartbeat = now
         problems = validate_sessions(prospective)
         if problems:
             raise RuntimeError("; ".join(problems))
         succeeded["identity"] = identity
         succeeded["predecessor"] = predecessor.identity
-        succeeded["areas"] = list(replacement.claims)
+        succeeded["areas"] = list(only) if only else list(replacement.claims)
         updated = replace_table(content, prospective)
         return append_bus_block(updated, notice)
 
@@ -3905,8 +3951,88 @@ def command_challenge(args) -> int:
     return 0
 
 
+def _harness_transcript(seat) -> Path | None:
+    """The harness session log for a seat on this machine, or None.
+
+    Muse logs are resolved through the conformance resolver (no path in the
+    payload); Claude Code and Codex logs are found under their client roots.
+    A missing or ambiguous log is no evidence.
+    """
+    native = (seat.harness_session_id or "").strip()
+    if not native:
+        return None
+    if seat.client == CLIENT_MUSE:
+        scripts = Path(__file__).resolve().parents[2] / "synthesis-agent-conformance" / "scripts"
+        if str(scripts) not in sys.path:
+            sys.path.insert(0, str(scripts))
+        try:
+            from live_receipt import resolve_muse_transcript
+        except (ImportError, SyntaxError):
+            return None
+        return resolve_muse_transcript(native)
+    if seat.client == CLIENT_CODEX:
+        root = Path(os.environ.get("CODEX_HOME", "~/.codex")).expanduser() / "sessions"
+        pattern = f"*{native}*.jsonl"
+    else:
+        root = Path(os.environ.get("CLAUDE_CONFIG_DIR", "~/.claude")).expanduser() / "projects"
+        pattern = f"{native}.jsonl"
+    try:
+        if not root.is_dir() or root.is_symlink():
+            return None
+        matches = [path for path in root.rglob(pattern) if path.is_file() and not path.is_symlink()]
+    except OSError:
+        return None
+    return matches[0] if len(matches) == 1 else None
+
+
+def harness_gone_evidence(board: Path, session: Session, now: datetime | None = None) -> str | None:
+    """Why this row's harness is gone on this machine, or None (no evidence).
+
+    Rajiv's 2026-09-20 ruling: a seat whose harness process is gone is dead
+    now, not after the stale threshold. Evidence is local only (the row's
+    own machine) and comes from the seat record: a recorded pid that no
+    longer exists; or, for a seat with no pid, a harness session log and a
+    heartbeat that are both quiet past FLEET_LIVENESS_MINUTES. A live pid,
+    a fresh log, a fresh heartbeat, or no log at all is no evidence, and
+    the caller must refuse.
+    """
+    if session.machine not in set(local_machine_identity()):
+        return None
+    try:
+        seat = read_seat(board, session.session_uuid)
+    except (OSError, ValueError):
+        return None
+    if seat is None:
+        return None
+    if seat.pid:
+        if process_alive(seat.pid):
+            return None
+        return f"recorded process {seat.pid} is gone"
+    moment = _fleet_moment(now)
+    age = fleet_heartbeat_age(session, moment)
+    horizon = timedelta(minutes=FLEET_LIVENESS_MINUTES)
+    if age is None or age < horizon:
+        return None
+    transcript = _harness_transcript(seat)
+    if transcript is None:
+        return None
+    try:
+        modified = datetime.fromtimestamp(transcript.stat().st_mtime, tz=timezone.utc)
+    except OSError:
+        return None
+    quiet = moment - modified
+    if quiet < horizon:
+        return None
+    return (
+        f"no recorded pid; session log quiet {int(quiet.total_seconds() // 60)} min "
+        f"and heartbeat quiet {int(age.total_seconds() // 60)} min "
+        f"(horizon {FLEET_LIVENESS_MINUTES} min)"
+    )
+
+
 def command_park(args) -> int:
     def operation(content: str) -> str:
+        evidence = ""
         if args.basis == "pid-gone":
             current = ensure_identities(rows(content))
             session = find_session(current, args.id)
@@ -3918,8 +4044,18 @@ def command_park(args) -> int:
                     f"machine {session.machine_display}, and pid absence is "
                     "only meaningful on the row's own machine"
                 )
+            if session is not None:
+                evidence = harness_gone_evidence(args.board, session) or ""
+                if not evidence:
+                    raise RuntimeError(
+                        f"cannot park {session.label} on pid-gone: no death "
+                        "evidence on this machine (the recorded process is "
+                        "alive, or the seat has no pid and its session log or "
+                        f"heartbeat moved within {FLEET_LIVENESS_MINUTES} min, "
+                        "or no session log was found)"
+                    )
         return park_session(
-            content, args.id, basis=args.basis, actor=args.actor
+            content, args.id, basis=args.basis, actor=args.actor, evidence=evidence
         )
 
     try:
@@ -4366,7 +4502,7 @@ def parser() -> argparse.ArgumentParser:
         help=(
             "Selector for the dead seat to succeed: UUID, compact, "
             "speakable, or legacy id. The seat must be quiet past the "
-            "stale threshold with a dated heartbeat."
+            "stale threshold with a dated heartbeat, or parked."
         ),
     )
     succeed.add_argument(
@@ -4377,6 +4513,16 @@ def parser() -> argparse.ArgumentParser:
             "Own live row to merge the dead seat's areas and workspaces "
             "into (it keeps its own project and context role). Omit to "
             "step into the dead seat's full scope as a new row."
+        ),
+    )
+    succeed.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        help=(
+            "Move only this held area (repeatable) into the --session row; "
+            "the predecessor keeps its status and the rest of its scope. "
+            "Requires --session."
         ),
     )
     succeed.add_argument(

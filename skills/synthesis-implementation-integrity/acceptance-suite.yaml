@@ -4,7 +4,8 @@ membership: closed
 production_entry_point: All three client manifests and the top changelog
   identify 4.120.0, shipping project-management 2.17.0 (desktop checkpoint
   binding by machine label; strict seat-directory reads contain stale schema-1
-  seat files and the doctor names them)
+  seat files and the doctor names them; park verifies death evidence and
+  succeed moves a single resource off a parked row)
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
@@ -41,6 +42,8 @@ changed_surfaces:
 - path: skills/synthesis-project-management/scripts/coordination.py
   cases:
   - doctor-stale-seats
+  - park-death-evidence
+  - succeed-only-resource
 - path: skills/synthesis-project-management/scripts/peer_addressing.py
   cases:
   - strict-seat-containment
@@ -52,6 +55,12 @@ changed_surfaces:
 - path: skills/synthesis-project-management/scripts/test_board_inbox.py
   cases:
   - diagnostic-inbox-containment
+- path: skills/synthesis-project-management/scripts/test_coordination.py
+  cases:
+  - succeed-only-resource
+- path: skills/synthesis-project-management/scripts/test_fleet_park.py
+  cases:
+  - park-death-evidence
 - path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
   cases:
   - desktop-seat-machine-binding
@@ -97,3 +106,17 @@ cases:
   fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_doctor_names_stale_seat_files_without_failing
   motivating_defect: A skipped file nobody names is a silent skip; the doctor
     lists each stale seat file so day-start can remove it.
+- id: park-death-evidence
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_fleet_park.py::test_park_pid_gone_takes_a_pidless_seat_only_when_its_session_log_is_quiet[True]
+  motivating_defect: An exited harness whose seat records no pid stayed
+    live for two days; death must be proven locally (process gone, or
+    session log and heartbeat both quiet) and recorded, never asserted.
+- id: succeed-only-resource
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_succeed_only_moves_named_areas_from_a_parked_row_and_keeps_the_rest
+  motivating_defect: Taking one resource (a release train) off a parked
+    seat required an administrative release of its whole row; the named
+    area moves with a notice the parked seat meets on resume.

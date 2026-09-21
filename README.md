@@ -21,7 +21,8 @@ care](docs/fleet-operations.md).
 **Seat-schema containment (September 2026).** Release **4.120.0**
 binds desktop checkpoints to schema-2 seats by machine label, and makes
 strict seat-directory reads skip and name stale seat files instead of
-failing closed.
+failing closed; an exited harness's seat can be parked on verified
+evidence and a single resource succeeded off it.
 
 **Fleet sync (September 2026).** Release **4.119.0** adds
 `synthesis sync` for one-command second-Mac catch-up, and contains

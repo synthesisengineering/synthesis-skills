@@ -407,10 +407,93 @@ def test_park_command_pid_gone_is_same_machine_only(tmp_path, monkeypatch, capsy
     refused = args(board, id=foreign.compact_id, basis="pid-gone", actor="mac-a")
     assert MODULE.command_park(refused) == 10
     assert "own machine" in capsys.readouterr().err
+    # Same machine, but no seat record: no death evidence, so pid-gone refuses.
+    unproven = args(board, id=own.compact_id, basis="pid-gone", actor="mac-a")
+    assert MODULE.command_park(unproven) == 10
+    assert "no death evidence" in capsys.readouterr().err
+    _seat_with_dead_pid(board, own, id_a)
     allowed = args(board, id=own.compact_id, basis="pid-gone", actor="mac-a")
     assert MODULE.command_park(allowed) == 0
     statuses = {row.compact_id: row.status for row in MODULE.rows(board.read_text(encoding="utf-8"))}
     assert statuses == {foreign.compact_id: "active", own.compact_id: "parked"}
+    assert "Evidence: recorded process" in board.read_text(encoding="utf-8")
+
+
+def _seat_with_dead_pid(board: Path, row, machine_id: str) -> None:
+    import os
+    import subprocess
+    import peer_addressing as PA
+    child = subprocess.Popen(["true"])
+    child.wait()
+    PA.write_seat(
+        board, session_uuid=row.session_uuid, compact_id=row.compact_id, machine=machine_id,
+        machine_label="mac-a",
+        identity=PA.SelfIdentity(client="codex", harness_session_id="native-dead"),
+    )
+    path = PA.seat_path(board, row.session_uuid)
+    import json
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["pid"] = child.pid
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_park_pid_gone_refuses_a_live_process(tmp_path, monkeypatch, capsys):
+    import json
+    import os
+    import peer_addressing as PA
+    fleet_a = tmp_path / "fleet-a"
+    id_a = FI.mint_machine_id(fleet_a)
+    monkeypatch.setenv(FI.FLEET_DIR_ENV, str(fleet_a))
+    own = make_row(machine=id_a, label="mac-a", heartbeat=T0.isoformat(), claims=["repo2/**"])
+    board = tmp_path / "board.md"
+    board.write_text(board_with([own]), encoding="utf-8")
+    PA.write_seat(board, session_uuid=own.session_uuid, compact_id=own.compact_id, machine=id_a,
+                  identity=PA.SelfIdentity(client="codex", harness_session_id="native-live"))
+    path = PA.seat_path(board, own.session_uuid)
+    data = json.loads(path.read_text(encoding="utf-8")); data["pid"] = os.getpid()
+    path.write_text(json.dumps(data), encoding="utf-8")
+    assert MODULE.command_park(args(board, id=own.compact_id, basis="pid-gone", actor="mac-a")) == 10
+    assert "no death evidence" in capsys.readouterr().err
+    assert MODULE.rows(board.read_text(encoding="utf-8"))[0].status == "active"
+
+
+@pytest.mark.parametrize("log_quiet", [True, False])
+def test_park_pid_gone_takes_a_pidless_seat_only_when_its_session_log_is_quiet(
+    tmp_path, monkeypatch, capsys, log_quiet
+):
+    # Rajiv's 2026-09-20 ruling: a harness that is gone (an exited Muse Code
+    # whose seat records no pid) is dead now, not after the stale threshold.
+    import os
+    import time
+    import peer_addressing as PA
+    fleet_a = tmp_path / "fleet-a"
+    id_a = FI.mint_machine_id(fleet_a)
+    monkeypatch.setenv(FI.FLEET_DIR_ENV, str(fleet_a))
+    native = "01a0bb23-4cc5-7182-881b-8fa2c59c3be2"
+    quiet_beat = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat(timespec="seconds")
+    own = make_row(machine=id_a, label="mac-a", heartbeat=quiet_beat, claims=["repo2/**", "release-train:x"],
+                   ref="muse:" + native)
+    board = tmp_path / "board.md"
+    board.write_text(board_with([own]), encoding="utf-8")
+    PA.write_seat(board, session_uuid=own.session_uuid, compact_id=own.compact_id, machine=id_a,
+                  identity=PA.SelfIdentity(client="muse", harness_session_id=native))
+    log = tmp_path / "muse-sessions" / "2026" / "09" / "19" / native / "session.jsonl"
+    log.parent.mkdir(parents=True)
+    log.write_text("{}\n", encoding="utf-8")
+    if log_quiet:
+        stamp = time.time() - 3 * 3600
+        os.utime(log, (stamp, stamp))
+    monkeypatch.setenv("MUSE_SESSIONS_DIR", str(tmp_path / "muse-sessions"))
+    code = MODULE.command_park(args(board, id=own.compact_id, basis="pid-gone", actor="mac-a"))
+    text = board.read_text(encoding="utf-8")
+    if log_quiet:
+        assert code == 0
+        assert "Evidence: no recorded pid; session log quiet" in text
+        assert MODULE.rows(text)[0].status == "parked"
+    else:
+        assert code == 10
+        assert "no death evidence" in capsys.readouterr().err
+        assert MODULE.rows(text)[0].status == "active"
 
 
 def test_challenge_then_park_commands_observe_grace_without_sleeps(

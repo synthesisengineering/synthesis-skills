@@ -12,7 +12,13 @@ the fleet machine-id, which had refused every Claude desktop checkpoint
 since 4.117.0. Strict seat-directory reads (the SessionStart diagnostic,
 the coordination doctor) skip and name a stale or malformed seat file
 instead of failing closed with no output; the doctor lists the skipped
-files so day-start can remove them. Project-management 2.17.0.
+files so day-start can remove them. Rajiv's 2026-09-20 ruling on dead
+seats: `park --basis pid-gone` now verifies death evidence on the row's
+own machine (a recorded process that is gone, or a pidless seat whose
+session log and heartbeat are both quiet past the fleet horizon) and
+records it; `succeed` takes parked rows and gains `--only <area>` to move
+one held resource into an owned row with a partial-succession notice
+addressed to the parked seat. Project-management 2.17.0.
 
 ## [4.119.0] - 2026-09-20
 
