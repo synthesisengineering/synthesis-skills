@@ -37,6 +37,10 @@ Append addressed messages here. Use a heading:
    under the receipt instead of yielding.
 7. Put asynchronous handoffs under `## Messages`, addressed to a session id or
    `<project> sessions`; the addressed seat receives them at its next prompt.
+   `<project> sessions [durable]` (posted with `message --to <project>
+   --durable`) additionally reaches any future owner/contributor seat
+   for the project, however old; retire it with `message --resolve
+   <key>` once done.
    Direct sends go through `resolve` (which issues the delivery receipt the
    send gate requires); display names and chat titles are never addresses.
 8. Heartbeat and review scope at checkpoints and task/phase changes. Narrow or

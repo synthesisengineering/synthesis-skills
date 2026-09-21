@@ -3489,7 +3489,7 @@ def phase_shared_runtime(report, receipts, desired_state=None, *, dry_run=False,
             return
         if dry_run:
             report.add("shared-runtime", CHANGED if differences else OK,
-                       "would reconcile verified runtime payload; personal layers remain unchanged")
+                       "would reconcile verified runtime payload")
             return
         def verify_after():
             healthy, detail = _protective_doctors(components)
@@ -3497,9 +3497,24 @@ def phase_shared_runtime(report, receipts, desired_state=None, *, dry_run=False,
                 raise ContractError(detail)
         apply(runtime_plan, receipts, verify_after=verify_after)
         report.add("shared-runtime", CHANGED if differences else OK,
-                   "runtime payload is current and protective doctors passed; personal layers unchanged")
+                   "runtime payload is current and protective doctors passed")
     except (ContractError, OSError, ValueError, TypeError) as exc:
         report.add("shared-runtime", ERROR, "runtime reconciliation refused: %s" % exc)
+
+
+def phase_personal_layers(report):
+    """Personal layers are outside update's scope; report that on its own line.
+
+    2026-09-10: `synthesis update` exited 0 with "personal layers unchanged"
+    buried inside the shared-runtime line while a private skill sat stale
+    against its pushed source. A skipped layer must read as skipped, with a
+    pointer to the drift check that does cover it.
+    """
+    report.add(
+        "personal-layers", SKIP,
+        "not reconciled by synthesis update; run the owning installer's status "
+        "(each installed artifact's .source.json names it in installed_by) "
+        "to check for drift")
 
 
 def _coordination_probe():
@@ -4707,6 +4722,8 @@ def _main_unlocked(argv=None):
         phase_shared_runtime(report, receipts, runtime_selection, dry_run=args.dry_run)
         if report.exit_code():
             return finish(report, args, report.exit_code())
+        if args.command == "update":
+            phase_personal_layers(report)
     if not args.dry_run:
         receipts.data["plugin_policy"] = policy
         receipts.data.setdefault("runs", []).append(

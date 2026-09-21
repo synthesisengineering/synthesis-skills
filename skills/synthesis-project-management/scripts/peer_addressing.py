@@ -38,6 +38,14 @@ from pathlib import Path
 SEATS_DIRNAME = "seats"
 RECEIPTS_DIRNAME = "receipts"
 INBOX_DIRNAME = "inbox"
+RESOLVED_FILENAME = "resolved.json"
+# A project-addressed bus message that survives seat turnover: any future
+# owner/contributor seat for the project picks it up, however old. Posted
+# via `coordination.py message --to <project> --durable`; retired via
+# `coordination.py message --resolve <key>`. Plain "<project> sessions"
+# messages keep their claim-floor semantics (sessions of their time only).
+DURABLE_RECIPIENT_SUFFIX = " [durable]"
+DURABLE_ROLES = frozenset({"owner", "contributor"})
 SEND_LOG_NAME = "peer-sends.jsonl"
 RECEIPT_SCHEMA = 1
 SEAT_SCHEMA = 2
@@ -938,11 +946,17 @@ def parse_messages(
     return messages
 
 
+def durable_recipient(project: str) -> str:
+    """The bus recipient label for a durable project-addressed message."""
+    return f"{project} sessions{DURABLE_RECIPIENT_SUFFIX}"
+
+
 def addressed_to(
     message: BoardMessage,
     identity_forms: set[str],
     project: str = "",
     since: object = None,
+    role: str = "",
 ) -> bool:
     """Whether a message names this seat exactly, or its project's sessions.
 
@@ -953,11 +967,18 @@ def addressed_to(
     as unread — the SessionStart board read still covers history. A
     ``since`` that does not parse disables the bound rather than the
     delivery. Free-text addressees are never delivered: the sender was told
-    the address did not resolve when it posted."""
+    the address did not resolve when it posted.
+
+    Durable project messages (``<project> sessions [durable]``) are the
+    exception: they reach any owner/contributor seat for the project with
+    no ``since`` floor, so handoffs survive seat turnover. Seats with any
+    other role never match them."""
     recipient = message.recipient.strip()
     tokens = {token.strip(",;") for token in recipient.split()}
     if any(form and form in tokens for form in identity_forms):
         return True
+    if project and recipient.casefold() == durable_recipient(project).casefold():
+        return (role or "").casefold() in DURABLE_ROLES
     if project and recipient.casefold().startswith(f"{project.casefold()} sessions"):
         floor = parse_iso(since) if since else None
         posted = parse_iso(message.timestamp)
@@ -1002,6 +1023,54 @@ def mark_seen(board: Path, sender_key: str, keys: set[str], *, keep: int = 2000)
     os.replace(staging, path)
 
 
+def resolved_path(board: Path) -> Path:
+    return inbox_dir(board) / RESOLVED_FILENAME
+
+
+def resolved_keys(board: Path, *, strict: bool = False) -> set[str]:
+    """Message keys retired via ``message --resolve``. Never raises in lax mode."""
+    path = resolved_path(board)
+    try:
+        data = json.loads(
+            path.read_text(encoding="utf-8"), object_pairs_hook=_unique_json_object if strict else None
+        )
+    except FileNotFoundError:
+        if strict and path.is_symlink():
+            raise
+        return set()
+    except (OSError, ValueError):
+        if strict:
+            raise
+        return set()
+    resolved = data.get("resolved") if isinstance(data, dict) else None
+    if strict and (not isinstance(resolved, dict) or any(not isinstance(key, str) for key in resolved)):
+        raise ValueError(f"invalid coordination resolutions file: {path}")
+    return set(resolved) if isinstance(resolved, dict) else set()
+
+
+def mark_resolved(board: Path, key: str, *, by: str) -> None:
+    """Retire a durable bus message without mutating bus history.
+
+    The key is content-derived, so the record stays valid across board
+    rewrites and the bus remains append-only. Audit trail, not just a set:
+    who retired it and when."""
+    path = resolved_path(board)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        resolved = data.get("resolved") if isinstance(data, dict) else None
+        resolved = dict(resolved) if isinstance(resolved, dict) else {}
+    except (OSError, ValueError):
+        resolved = {}
+    resolved[key] = {"by": by, "at": iso(utcnow())}
+    staging = path.with_suffix(".json.tmp")
+    staging.write_text(
+        json.dumps({"resolved": resolved, "updated_at": iso(utcnow())}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(staging, path)
+
+
 def unread_messages(
     board_text: str,
     *,
@@ -1010,9 +1079,11 @@ def unread_messages(
     identity_forms: set[str],
     project: str = "",
     since: object = None,
+    role: str = "",
     strict: bool = False,
 ) -> list[BoardMessage]:
     seen = seen_keys(board, sender_key, strict=strict) if sender_key else set()
+    retired = resolved_keys(board, strict=strict)
     messages = []
     for message in parse_messages(board_text, strict=strict, identity_forms=identity_forms, project=project):
         # Historical free-text addressees can have human-written timestamps.
@@ -1020,7 +1091,11 @@ def unread_messages(
         # a verifiable timestamp before a diagnostic can apply the claim floor.
         if strict and addressed_to(message, identity_forms, project) and parse_iso(message.timestamp) is None:
             raise ValueError("coordination inbox has an invalid addressed message timestamp")
-        if addressed_to(message, identity_forms, project, since) and message.key not in seen:
+        if (
+            addressed_to(message, identity_forms, project, since, role)
+            and message.key not in seen
+            and message.key not in retired
+        ):
             messages.append(message)
     return messages
 

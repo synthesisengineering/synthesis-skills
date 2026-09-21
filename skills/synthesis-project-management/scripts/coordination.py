@@ -43,6 +43,8 @@ import fleet_subscriptions
 from peer_addressing import (
     CLIENT_CODEX,
     CLIENT_MUSE,
+    DURABLE_RECIPIENT_SUFFIX,
+    DURABLE_ROLES,
     SelfIdentity,
     all_seats,
     stale_seat_files,
@@ -50,6 +52,7 @@ from peer_addressing import (
     detect_self,
     lane_invocations,
     load_receipts,
+    mark_resolved,
     mark_seen,
     parse_iso,
     parse_messages,
@@ -4249,29 +4252,96 @@ def delivery_lane(session: Session) -> str:
     return "board message bus (session has no registered client ref)"
 
 
-def report_recipient(sessions: list[Session], selector: str, project_index: Path | None) -> tuple[str, dict | None]:
+def report_recipient(sessions: list[Session], selector: str, project_index: Path | None, *, durable: bool = False) -> tuple[str, dict | None]:
     """Resolve a report address; exact handles never inherit project successors.
 
     This opt-in destination resolver is separate from thread/claim resolution.
     A registered live project needs no current seat to receive a bus report.
+    Durable delivery is project-only: a seat handle names one session, which
+    is the opposite of surviving seat turnover.
     """
     kind, matches = resolve_targets(sessions, selector)
     if kind in {"identity", "client-ref"}:
         if len(matches) != 1:
             raise ValueError("report recipient is ambiguous")
+        if durable:
+            raise ValueError("durable delivery needs a project address, not a seat")
         return matches[0].label, None
     if project_index is not None:
         from project_recipient import project_route
         candidate = selector.strip()
         project = candidate[:-len(" sessions")] if candidate.endswith(" sessions") else candidate
         route = project_route(project_index, project)
-        return f"{route['resolved_project']} sessions", route
+        label = f"{route['resolved_project']} sessions"
+        return (label + DURABLE_RECIPIENT_SUFFIX) if durable else label, route
     if kind == "project":
-        return f"{matches[0].project} sessions", None
+        label = f"{matches[0].project} sessions"
+        return (label + DURABLE_RECIPIENT_SUFFIX) if durable else label, None
     raise ValueError("report recipient matches no registered session or project")
 
 
+def command_message_resolve(args) -> int:
+    """Retire a durable bus message so future seats stop receiving it.
+
+    Only durable project messages (``<project> sessions [durable]``) can
+    be resolved, and only by a live owner/contributor seat on that same
+    project. The bus stays append-only: the resolution is recorded
+    alongside the inbox watermarks, keyed by the content-derived key.
+    """
+    for combo in ("to", "text", "durable", "free_address", "project_index"):
+        if getattr(args, combo, None):
+            print(
+                f"coordination message: --resolve cannot be combined with --{combo.replace('_', '-')}",
+                file=sys.stderr,
+            )
+            return 2
+    prefix = (args.resolve or "").strip()
+    if not prefix:
+        print("coordination message: --resolve needs a message key", file=sys.stderr)
+        return 2
+    if not args.board.is_file():
+        print(f"coordination message failed: no coordination board at {args.board}", file=sys.stderr)
+        return 10
+    try:
+        content = args.board.read_text(encoding="utf-8")
+        current = rows(content)
+        sender = find_session(current, args.sender)
+        if sender is None or not active(sender):
+            raise ValueError("the resolving shell holds no live seat on the board")
+        matches = [m for m in parse_messages(content) if m.key.startswith(prefix)]
+        if not matches:
+            raise ValueError(f"no bus message matches key {prefix!r}")
+        if len(matches) > 1:
+            raise ValueError(f"key {prefix!r} matches {len(matches)} messages; use a longer prefix")
+        message = matches[0]
+        suffix = f" sessions{DURABLE_RECIPIENT_SUFFIX}"
+        if not message.recipient.strip().casefold().endswith(suffix):
+            raise ValueError("only durable project messages can be resolved")
+        project = message.recipient.strip()[: -len(suffix)]
+        if project.casefold() != (sender.project or "").casefold():
+            raise ValueError("only a seat on the message's project can resolve it")
+        if (sender.context_role or "").casefold() not in DURABLE_ROLES:
+            raise ValueError("only an owner or contributor seat can resolve a durable message")
+        mark_resolved(args.board, message.key, by=sender.compact_id)
+    except (RuntimeError, ValueError, OSError) as exc:
+        print(f"coordination message failed: {exc}", file=sys.stderr)
+        return 10
+    print(f"Resolved durable message {message.key} for project {project} (retired by {sender.compact_id}).")
+    return 0
+
+
 def command_message(args) -> int:
+    if getattr(args, "resolve", None):
+        return command_message_resolve(args)
+    if not getattr(args, "to", None):
+        print("coordination message: --to is required unless --resolve is given", file=sys.stderr)
+        return 2
+    if getattr(args, "durable", False) and getattr(args, "free_address", False):
+        print(
+            "coordination message: --durable needs a project address; --free-address never delivers",
+            file=sys.stderr,
+        )
+        return 2
     body = args.text if args.text is not None else sys.stdin.read().strip()
     if not body:
         print("coordination message is empty", file=sys.stderr)
@@ -4288,7 +4358,9 @@ def command_message(args) -> int:
         if project_index is None and kind == "none" and getattr(args, "free_address", False):
             recipient_label = sanitize(args.to)
         else:
-            recipient_label, route = report_recipient(current, args.to, project_index)
+            recipient_label, route = report_recipient(
+                current, args.to, project_index, durable=getattr(args, "durable", False)
+            )
             if route is not None:
                 delivered["route"] = route
         delivered["recipient"] = recipient_label
@@ -4517,6 +4589,7 @@ def command_inbox(args) -> int:
         identity_forms=forms,
         project=row.project,
         since=row.started,
+        role=row.context_role,
     )
     if getattr(args, "json", False):
         print(
@@ -5294,8 +5367,29 @@ def parser() -> argparse.ArgumentParser:
     )
     message = commands.add_parser("message")
     message.add_argument("--from", dest="sender", required=True)
-    message.add_argument("--to", required=True)
+    message.add_argument("--to", required=False, default=None)
     message.add_argument("--text")
+    message.add_argument(
+        "--durable",
+        action="store_true",
+        help=(
+            "Project-addressed delivery that survives seat turnover: any "
+            "future owner/contributor seat for the project receives it, "
+            "however old. Project addresses only; cannot combine with "
+            "--free-address."
+        ),
+    )
+    message.add_argument(
+        "--resolve",
+        metavar="KEY",
+        default=None,
+        help=(
+            "Retire a durable bus message by key prefix so future seats stop "
+            "receiving it. Only a live owner/contributor seat on the "
+            "message's project may resolve it. Cannot combine with --to "
+            "or --text."
+        ),
+    )
     message.add_argument(
         "--project-index", type=Path,
         help="Explicit Git-tracked registry for report-only project successor routing; exact session handles stay exact.",

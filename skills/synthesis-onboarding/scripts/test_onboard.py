@@ -1775,5 +1775,17 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(self.box.kb_clone.is_dir())
 
 
+class PersonalLayersTests(unittest.TestCase):
+    def test_update_reports_personal_layers_as_its_own_skipped_phase(self):
+        report = onboard.Report(as_json=True)
+        onboard.phase_personal_layers(report)
+        self.assertEqual(len(report.steps), 1)
+        step = report.steps[0]
+        self.assertEqual(step["phase"], "personal-layers")
+        self.assertEqual(step["status"], onboard.SKIP)
+        self.assertIn(".source.json", step["detail"])
+        self.assertIn("installed_by", step["detail"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

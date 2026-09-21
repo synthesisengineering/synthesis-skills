@@ -279,7 +279,7 @@ python3 <synthesis-project-management-root>/scripts/coordination.py resolve \
 python3 <synthesis-project-management-root>/scripts/coordination.py whoami
 python3 <synthesis-project-management-root>/scripts/coordination.py inbox --mark-read
 
-# Leave a handoff (--to must resolve; --free-address records exceptions)
+# Leave a handoff (--to must resolve; --free-address records exceptions; --durable for handoffs future seats must receive: references/project-durable-delivery.md)
 printf '%s\n' "Source checks pass; live install awaits authorization." |
   python3 <synthesis-project-management-root>/scripts/coordination.py message \
     --from s-6adk-06yc-yqb2 --to crater-sunset-alone-okay-23907

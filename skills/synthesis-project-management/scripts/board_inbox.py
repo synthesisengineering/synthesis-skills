@@ -62,30 +62,30 @@ def _board_rows(text: str, *, strict: bool = False):
 
 def identity_forms_for(
     board: Path, identity: SelfIdentity, *, board_text: str | None = None, strict: bool = False
-) -> tuple[set[str], str, str, str]:
-    """(identity forms, project, compact id, started) for this session's seat, if any."""
+) -> tuple[set[str], str, str, str, str]:
+    """(identity forms, project, compact id, started, context role) for this session's seat, if any."""
     try:
         text = board.read_text(encoding="utf-8") if board_text is None else board_text
         board_rows = _board_rows(text, strict=strict)
     except (OSError, ValueError):
         if strict:
             raise
-        return set(), "", "", ""
+        return set(), "", "", "", ""
     seat = seat_for_identity(board, identity, strict=strict)
     if seat is None:
-        return set(), "", "", ""
+        return set(), "", "", "", ""
     matches = [row for row in board_rows if row.session_uuid == seat.session_uuid]
     if strict and len(matches) > 1:
         raise ValueError("multiple coordination rows match this session's seat")
     row = matches[0] if matches else None
     if row is None:
-        return set(), "", "", ""
+        return set(), "", "", "", ""
     if strict and (row.compact_id != seat.compact_id or not row.project or parse_iso(row.started) is None):
         raise ValueError("coordination inbox cannot verify its seat's addressing or start time")
     forms = {row.session_uuid, row.compact_id, row.speakable_id}
     if row.legacy_id:
         forms.add(row.legacy_id)
-    return forms, row.project, row.compact_id, row.started
+    return forms, row.project, row.compact_id, row.started, row.context_role or ""
 
 
 def identity_notice(identity: SelfIdentity) -> str:
@@ -132,11 +132,12 @@ def inbox_text(
         if strict:
             raise
         return ""
-    forms, project, _compact, started = identity_forms_for(board, identity, board_text=text, strict=strict)
+    forms, project, _compact, started, role = identity_forms_for(board, identity, board_text=text, strict=strict)
     if not forms:
         return identity_notice(identity)
     messages = unread_messages(
-        text, board=board, sender_key=key, identity_forms=forms, project=project, since=started, strict=strict
+        text, board=board, sender_key=key, identity_forms=forms, project=project, since=started, role=role,
+        strict=strict,
     )
     rendered = render_inbox(messages)
     if messages and mark:

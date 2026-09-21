@@ -537,3 +537,234 @@ def test_doctor_names_stale_seat_files_without_failing(tmp_path, monkeypatch, ca
     out = capsys.readouterr().out
     assert "PASS coordination" in out
     assert f"1 stale schema-1 seat file(s) skipped by strict reads: {stale.name}" in out
+
+
+# --- durable project delivery -----------------------------------------------------
+
+def _claim_role(board: Path, project: str, role: str, tag: str):
+    request = args(
+        board,
+        id=None,
+        agent=f"agent-{tag}",
+        machine=f"m-{tag}",
+        project=project,
+        mode="interactive",
+        goal=f"goal-{tag}",
+        workspace=[f"/tmp/wt-{tag} @ feature/{tag}"],
+        area=[f"repo-{tag}/**"],
+        context_role=role,
+    )
+    assert ENGINE.command_claim(request) == 0
+    matches = [row for row in ENGINE.rows(board.read_text(encoding="utf-8")) if row.project == project]
+    assert matches
+    return matches[-1]
+
+
+def _ancient_durable(board: Path, project: str, body: str) -> None:
+    text = board.read_text(encoding="utf-8")
+    heading = (
+        f"### \u2192 {project} sessions [durable], "
+        "from s-ancient \u2014 2020-01-01T00:00:00+00:00\n\n"
+    )
+    assert "## Messages\n\n" in text
+    board.write_text(
+        text.replace("## Messages\n\n", f"## Messages\n\n{heading}{body}\n\n---\n\n", 1),
+        encoding="utf-8",
+    )
+
+
+def _forms(row) -> set[str]:
+    forms = {row.session_uuid, row.compact_id, row.speakable_id}
+    if row.legacy_id:
+        forms.add(row.legacy_id)
+    return forms
+
+
+def test_durable_matching_ignores_age_and_gates_role() -> None:
+    """The core contract: a durable project message reaches any owner or
+    contributor seat for the project however old it is; any other role,
+    any other project, or the plain (time-bounded) form does not match."""
+    durable = PA.BoardMessage(
+        recipient="project-b sessions [durable]",
+        sender="s-1",
+        timestamp="2020-01-01T00:00:00+00:00",
+        body="x",
+    )
+    floor = "2026-09-21T12:00:00-04:00"
+    assert PA.addressed_to(durable, {"s-2"}, "project-b", floor, "owner")
+    assert PA.addressed_to(durable, {"s-2"}, "project-b", floor, "contributor")
+    assert PA.addressed_to(durable, {"s-2"}, "project-b", floor, "OWNER")
+    assert not PA.addressed_to(durable, {"s-2"}, "project-b", floor, "none")
+    assert not PA.addressed_to(durable, {"s-2"}, "project-b", floor, "")
+    assert not PA.addressed_to(durable, {"s-2"}, "project-c", floor, "owner")
+    assert not PA.addressed_to(durable, {"s-2"}, "project-bb", floor, "owner")
+    plain = PA.BoardMessage(
+        recipient="project-b sessions",
+        sender="s-1",
+        timestamp="2020-01-01T00:00:00+00:00",
+        body="x",
+    )
+    assert not PA.addressed_to(plain, {"s-2"}, "project-b", floor, "owner")
+
+
+def test_durable_post_reaches_a_later_seat(tmp_path) -> None:
+    board = tmp_path / "board.md"
+    owner = _claim_role(board, "project-b", "owner", "b1")
+    assert (
+        ENGINE.command_message(
+            args(board, sender=owner.compact_id, to="project-b", text="Handoff for whoever is next.", durable=True)
+        )
+        == 0
+    )
+    messages = PA.parse_messages(board.read_text(encoding="utf-8"))
+    assert [m.recipient for m in messages] == ["project-b sessions [durable]"]
+    successor = _claim_role(board, "project-b", "contributor", "b2")
+    unread = PA.unread_messages(
+        board.read_text(encoding="utf-8"),
+        board=board,
+        sender_key="cc:successor",
+        identity_forms=_forms(successor),
+        project="project-b",
+        since=successor.started,
+        role="contributor",
+    )
+    assert [m.body for m in unread] == ["Handoff for whoever is next."]
+    PA.mark_seen(board, "cc:successor", {m.key for m in unread})
+    assert (
+        PA.unread_messages(
+            board.read_text(encoding="utf-8"),
+            board=board,
+            sender_key="cc:successor",
+            identity_forms=_forms(successor),
+            project="project-b",
+            since=successor.started,
+            role="contributor",
+        )
+        == []
+    )
+
+
+def test_durable_outlives_seat_turnover_by_years(tmp_path) -> None:
+    board = tmp_path / "board.md"
+    _claim_role(board, "project-b", "owner", "b1")
+    _ancient_durable(board, "project-b", "Ancient durable note.")
+    successor = _claim_role(board, "project-b", "contributor", "b2")
+    unread = PA.unread_messages(
+        board.read_text(encoding="utf-8"),
+        board=board,
+        sender_key="cc:successor",
+        identity_forms=_forms(successor),
+        project="project-b",
+        since=successor.started,
+        role="contributor",
+    )
+    assert [m.body for m in unread] == ["Ancient durable note."]
+
+
+def test_durable_refuses_seat_and_free_addresses(tmp_path, capsys) -> None:
+    board = tmp_path / "board.md"
+    owner = _claim_role(board, "project-b", "owner", "b1")
+    assert (
+        ENGINE.command_message(
+            args(board, sender=owner.compact_id, to=owner.compact_id, text="x", durable=True)
+        )
+        == 10
+    )
+    assert "not a seat" in capsys.readouterr().err
+    assert (
+        ENGINE.command_message(
+            args(board, sender=owner.compact_id, to="project-b", text="x", durable=True, free_address=True)
+        )
+        == 2
+    )
+
+
+def test_resolve_retires_durable_for_future_seats(tmp_path) -> None:
+    board = tmp_path / "board.md"
+    owner = _claim_role(board, "project-b", "owner", "b1")
+    assert (
+        ENGINE.command_message(
+            args(board, sender=owner.compact_id, to="project-b", text="Do the thing.", durable=True)
+        )
+        == 0
+    )
+    key = PA.parse_messages(board.read_text(encoding="utf-8"))[0].key
+    assert (
+        ENGINE.command_message(args(board, sender=owner.compact_id, resolve=key[:12]))
+        == 0
+    )
+    stored = (board.parent / "inbox" / "resolved.json").read_text(encoding="utf-8")
+    assert key in stored and owner.compact_id in stored
+    successor = _claim_role(board, "project-b", "contributor", "b2")
+    assert (
+        PA.unread_messages(
+            board.read_text(encoding="utf-8"),
+            board=board,
+            sender_key="cc:successor",
+            identity_forms=_forms(successor),
+            project="project-b",
+            since=successor.started,
+            role="contributor",
+        )
+        == []
+    )
+
+
+def test_resolve_refuses_everything_but_owned_durable(tmp_path, capsys) -> None:
+    board = tmp_path / "board.md"
+    owner = _claim_role(board, "project-b", "owner", "b1")
+    other = _claim_role(board, "project-c", "owner", "c1")
+    assert (
+        ENGINE.command_message(
+            args(board, sender=owner.compact_id, to="project-b", text="Keep.", durable=True)
+        )
+        == 0
+    )
+    assert (
+        ENGINE.command_message(
+            args(board, sender=owner.compact_id, to="project-b", text="Ephemeral.")
+        )
+        == 0
+    )
+    keys = {m.body: m.key for m in PA.parse_messages(board.read_text(encoding="utf-8"))}
+    assert ENGINE.command_message(args(board, sender=owner.compact_id, resolve="zzz-no-such-key")) == 10
+    assert "no bus message matches" in capsys.readouterr().err
+    assert ENGINE.command_message(args(board, sender=owner.compact_id, resolve=keys["Ephemeral."])) == 10
+    assert "only durable project messages" in capsys.readouterr().err
+    assert ENGINE.command_message(args(board, sender=other.compact_id, resolve=keys["Keep."])) == 10
+    assert "message's project" in capsys.readouterr().err
+    bystander = _claim_role(board, "project-b", "none", "b9")
+    assert ENGINE.command_message(args(board, sender=bystander.compact_id, resolve=keys["Keep."])) == 10
+    assert "owner or contributor" in capsys.readouterr().err
+    assert (
+        ENGINE.command_message(
+            args(board, sender=owner.compact_id, to="project-b", resolve=keys["Keep."])
+        )
+        == 2
+    )
+    assert (
+        ENGINE.command_message(
+            args(board, sender=owner.compact_id, text="x", resolve=keys["Keep."])
+        )
+        == 2
+    )
+    assert ENGINE.command_message(args(board, sender=owner.compact_id)) == 2
+
+
+def test_inbox_command_surfaces_durable_for_owner(tmp_path, capsys) -> None:
+    board = tmp_path / "board.md"
+    owner = _claim_role(board, "project-b", "owner", "b1")
+    _ancient_durable(board, "project-b", "Ancient durable note.")
+    assert ENGINE.command_inbox(args(board, id=owner.compact_id)) == 0
+    assert "Ancient durable note." in capsys.readouterr().out
+
+
+def test_resolved_store_tolerates_garbage(tmp_path) -> None:
+    board = tmp_path / "board.md"
+    board.write_text("## Messages\n", encoding="utf-8")
+    store = board.parent / "inbox" / "resolved.json"
+    store.parent.mkdir(parents=True, exist_ok=True)
+    store.write_text("{not json", encoding="utf-8")
+    assert PA.resolved_keys(board) == set()
+    PA.mark_resolved(board, "abc123", by="s-1")
+    assert PA.resolved_keys(board) == {"abc123"}
