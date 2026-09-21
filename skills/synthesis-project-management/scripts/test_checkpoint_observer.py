@@ -331,10 +331,10 @@ def test_foreign_ambient_identity_cannot_grant_checkpoint_authority(observer: Si
 
 def test_empty_board_identity_does_not_bind_foreign_seat(observer: SimpleNamespace) -> None:
     row = {"status": "active", "client session ref": "", "session uuid": FOREIGN}
-    assert state._row_for_event([row], event(observer)) is None
+    assert state.row_for_event([row], event(observer)) is None
     row["session uuid"] = ""
-    assert state._row_for_event([row], event(observer)) is None
-    assert state._row_for_event([row], {}) is None
+    assert state.row_for_event([row], event(observer)) is None
+    assert state.row_for_event([row], {}) is None
 
 
 def test_matching_native_reference_and_empty_optional_reference_are_safe(observer: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:

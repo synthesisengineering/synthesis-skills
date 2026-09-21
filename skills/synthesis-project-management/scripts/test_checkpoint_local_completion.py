@@ -59,7 +59,7 @@ def completed_local(fixture, monkeypatch, client="claude", *, committed=True):
     assert json.loads(receipt.read_text())["readiness"] == "LOCAL_READY"
     assert coordination.command_release(SimpleNamespace(board=fixture.board, id=FOREIGN,
                                                         active_project_file=None)) == 0
-    assert state._row_for_event(state._parse_board_rows(fixture.board), event(fixture, client), fixture.board) is None
+    assert state.row_for_event(state._parse_board_rows(fixture.board), event(fixture, client), fixture.board) is None
     return SimpleNamespace(source=source, target=target, literal=literal, manifest=manifest,
                            receipt=receipt, checkpoint=checkpoint, accepted=accepted, sync=sync)
 

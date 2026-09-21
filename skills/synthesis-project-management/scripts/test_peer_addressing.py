@@ -768,3 +768,28 @@ def test_resolved_store_tolerates_garbage(tmp_path) -> None:
     assert PA.resolved_keys(board) == set()
     PA.mark_resolved(board, "abc123", by="s-1")
     assert PA.resolved_keys(board) == {"abc123"}
+
+
+def _seat(machine: str, machine_label: str = "") -> PA.Seat:
+    return PA.Seat(
+        session_uuid="u",
+        compact_id="s-1",
+        client=PA.CLIENT_CLAUDE,
+        machine=machine,
+        machine_label=machine_label,
+    )
+
+
+def test_board_machine_prefers_the_label_schema_2() -> None:
+    """The board row carries the label the writer emitted; readers
+    must compare against it, never the fleet id (2026-09-21: two
+    private copies compared label-to-id and failed every Desktop
+    Stop gate)."""
+    assert _seat("fleet-id-1", "rp-2026-macbook-pro").board_machine == "rp-2026-macbook-pro"
+
+
+def test_board_machine_falls_back_to_machine() -> None:
+    """Schema-1 and labelless seats keep resolving: no label means
+    the machine value itself is the comparison operand."""
+    assert _seat("some-host").board_machine == "some-host"
+    assert _seat("fleet-id-1", "").board_machine == "fleet-id-1"

@@ -18,6 +18,12 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.127.0** unifies seat/board machine-identity
+comparison in one public place: `Seat.board_machine` is the
+single comparison operand every reader uses, and the two
+native-identity helpers the private control plane borrows are
+supported public API instead of underscore internals.
+
 Release **4.126.0** repairs the delivery/outcome receipt contract:
 context-outcome records carry the delivery fields forward, so the
 latest pointers keep passing the hook-live verifier after injection

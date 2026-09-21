@@ -4,6 +4,18 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.127.0] - 2026-09-21
+
+Single-implementation seat/board machine-identity comparison.
+`peer_addressing.Seat.board_machine` (`machine_label or machine`)
+is the one operand every reader compares the board row against,
+replacing three hand-synchronized copies — the two private ones
+failed every Desktop Stop gate on 2026-09-21. The native-identity
+helpers the private control plane borrows are now supported
+public API (`row_for_event`, `observer_native_identity`); the
+underscore names remain as temporary aliases until the private
+side migrates, then go away.
+
 ## [4.126.0] - 2026-09-21
 
 Repair the delivery/outcome receipt contract. Context-outcome

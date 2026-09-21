@@ -1138,7 +1138,7 @@ def checkpoint_project(
     except ValueError as exc:
         raise ProjectStateError(f"checkpoint coordination board invalid: {exc}") from exc
     if native_event is not None:
-        fresh_row = _row_for_event(claim_rows, native_event, coordination_board.resolve())
+        fresh_row = row_for_event(claim_rows, native_event, coordination_board.resolve())
         if fresh_row is None or fresh_row.get("session uuid") != session_id:
             raise ProjectStateError("native lifecycle identity no longer owns the refreshed checkpoint claim")
     claim = _active_claim(coordination_board.resolve(), session_id, project_id, project, claim_rows=claim_rows)
@@ -1214,9 +1214,11 @@ def validate_checkpoint(
     return ("LOCAL_RECOVERABLE", problems) if problems else ("PASS", [])
 
 
-def _row_for_event(
+def row_for_event(
     rows: list[dict[str, str]], payload: dict[str, Any], board: Path | None = None,
 ) -> dict[str, str] | None:
+    """Supported entry point (ID-2, 2026-09-21): the private control
+    plane resolves native claims through this helper."""
     # Delivery selectors and coordination UUIDs are not native identity.
     # Desktop claims store a host id; their existing sidecar binds that host
     # to the transcript UUID that Stop receives. Never infer that association
@@ -1238,7 +1240,7 @@ def _row_for_event(
         client_ref = row.get("client session ref", "")
         matched = client_ref in native_refs
         if matched:
-            client, verified_native = _observer_native_identity(payload)
+            client, verified_native = observer_native_identity(payload)
             scheme = {"claude": "cc", "muse": "muse"}.get(client, "codex")
             matched = client_ref == f"{scheme}:{verified_native}"
         if client_ref.startswith("ccd:") and board is not None:
@@ -1263,18 +1265,17 @@ def _row_for_event(
                 # this stays fail-closed per row.
                 continue
             if seat is not None and seat.harness_session_id == native:
-                client, verified_native = _observer_native_identity(payload)
+                client, verified_native = observer_native_identity(payload)
                 matched = (
                     client == "claude" and verified_native == native
                     and seat.client == CLIENT_CLAUDE
                     and seat.compact_id == row.get("compact id")
                     and f"ccd:{seat.host_session_id}" == client_ref
-                    # The board row carries the machine the writer shows
-                    # (coordination.py: machine_label or machine). Schema-2
-                    # seats hold the fleet machine-id in `machine` and the
-                    # label in `machine_label`; compare the row to the same
-                    # value the writer emitted, never the label to the id.
-                    and (not row.get("machine") or row["machine"] == (seat.machine_label or seat.machine))
+                    # Compare the row to the same value the writer
+                    # emitted (Seat.board_machine) — never the label to
+                    # the id. The operand lives on Seat so every
+                    # seat/row comparison shares one implementation.
+                    and (not row.get("machine") or row["machine"] == seat.board_machine)
                 )
                 if not matched:
                     raise ProjectStateError("Desktop checkpoint identity does not bind the active claim")
@@ -1283,6 +1284,12 @@ def _row_for_event(
     if len(matches) > 1:
         raise ProjectStateError("lifecycle event matches multiple active coordination seats")
     return matches[0] if matches else None
+
+
+# Temporary alias (ID-2, 2026-09-21): the installed private control
+# plane still calls the underscore name. Remove once the private
+# side migrates to row_for_event and ships.
+_row_for_event = row_for_event
 
 
 def _project_from_claim(row: dict[str, str]) -> Path | None:
@@ -1338,8 +1345,11 @@ def _live_source_heads(state: dict[str, Any]) -> dict[str, str]:
     return live
 
 
-def _observer_native_identity(payload: dict[str, Any]) -> tuple[str, str]:
-    """Verify an observer from native transcript evidence, not a read-only flag."""
+def observer_native_identity(payload: dict[str, Any]) -> tuple[str, str]:
+    """Verify an observer from native transcript evidence, not a read-only flag.
+
+    Supported entry point (ID-2, 2026-09-21): the private control
+    plane resolves native identity through this helper."""
     native = payload.get("session_id")
     try:
         uuid.UUID(native)
@@ -1385,6 +1395,12 @@ def _observer_native_identity(payload: dict[str, Any]) -> tuple[str, str]:
     if not transcript_binds_session(resolved, "muse", native):
         raise ProjectStateError("observer transcript does not unambiguously bind this native session")
     return "muse", native
+
+
+# Temporary alias (ID-2, 2026-09-21): the installed private control
+# plane still calls the underscore name. Remove once the private
+# side migrates to observer_native_identity and ships.
+_observer_native_identity = observer_native_identity
 
 
 def _observer_git(project: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
@@ -1670,7 +1686,7 @@ def _observer_pending_scope(payload: dict[str, Any], repo_guard_root: Path) -> t
     if pending.exists() and not pending.is_dir():
         raise ProjectStateError("observer attribution directory is unreadable")
     if own.exists():
-        _observer_native_identity(payload)
+        observer_native_identity(payload)
         attribution, snapshot = _observer_local_json(own)
         if attribution.get("session_id") != native or type(attribution.get("schema_version")) is not int or attribution.get("schema_version") not in {1, 2}:
             raise ProjectStateError("exact native-session pending attribution is invalid; preserve its evidence")
@@ -1695,7 +1711,7 @@ def _observer_pending_scope(payload: dict[str, Any], repo_guard_root: Path) -> t
 
 
 def _observer_checkpoint_scope(payload: dict[str, Any], project: Path) -> tuple[str, list[str]]:
-    _observer_native_identity(payload)
+    observer_native_identity(payload)
     checkpoint_applicability(project, git_runner=_observer_git_runner)
     dirty = _observer_git(project, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".")
     if dirty.returncode:
@@ -1745,7 +1761,7 @@ def checkpoint_hook(
             refresh_issue = _refresh_coordination_board(coordination_board.resolve(), passive_stop=payload.get("hook_event_name") == "Stop")
             if refresh_issue:
                 return "FAIL", [refresh_issue]
-        row = _row_for_event(_parse_board_rows(coordination_board.resolve()), payload, coordination_board.resolve())
+        row = row_for_event(_parse_board_rows(coordination_board.resolve()), payload, coordination_board.resolve())
         if row is not None and payload.get("hook_event_name") == "Stop":
             _honor_release_requests_at_stop(
                 coordination_board.resolve(), row, payload
@@ -1808,7 +1824,7 @@ def _emit_checkpoint_hook(verdict: str, issues: list[str], payload: dict[str, An
     # terminal control, not a PASS or a receipt; Codex retains nonzero failure.
     if payload.get("hook_event_name") == "Stop" and payload.get("stop_hook_active") is True:
         try:
-            client, _native = _observer_native_identity(payload)
+            client, _native = observer_native_identity(payload)
         except (OSError, ProjectStateError):
             client = None
         if client == "claude":

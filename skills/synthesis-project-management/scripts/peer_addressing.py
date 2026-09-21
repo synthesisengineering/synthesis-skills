@@ -265,6 +265,20 @@ class Seat:
         """
         return self.machine
 
+    @property
+    def board_machine(self) -> str:
+        """The machine value the board row carries for this seat.
+
+        Writers emit ``machine_label or machine`` into the row's
+        machine column (coordination.Session.cells, legacy emission),
+        so every reader must compare the row against this same value
+        — never the label to the id. This property is the single
+        implementation of that comparison operand (2026-09-21: three
+        hand-synchronized copies drifted and the two private ones
+        failed every Desktop Stop gate).
+        """
+        return self.machine_label or self.machine
+
 
 def seat_path(board: Path, session_uuid: str) -> Path:
     return seats_dir(board) / f"{safe_name(session_uuid)}.json"
