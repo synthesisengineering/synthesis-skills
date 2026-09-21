@@ -19,7 +19,10 @@ if str(SCRIPTS_DIR) not in sys.path:
 import coordination as MODULE
 import fleet_identity as FI
 
-T0 = datetime(2026, 9, 19, 12, 0, tzinfo=timezone.utc)
+# Anchored to import time, not a fixed date: downgraded() keys heartbeat age
+# off the wall clock (2-day threshold), so a fixed T0 silently flips
+# blocking-overlap assertions to advisory once the suite ages past it.
+T0 = datetime.now(timezone.utc).replace(microsecond=0)
 
 
 @pytest.fixture(autouse=True)

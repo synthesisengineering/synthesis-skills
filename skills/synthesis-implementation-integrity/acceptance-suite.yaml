@@ -40,6 +40,9 @@ changed_surfaces:
 - path: skills/synthesis-project-resume/references/requirements.md
   cases:
   - resume-name-addressed
+- path: skills/synthesis-project-management/scripts/test_fleet_park.py
+  cases:
+  - fleet-time-anchored-fixture
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -60,3 +63,12 @@ cases:
     version-pinned filesystem path, so pasted prompts named one
     harness's cache and died on upgrade or cross-machine paste. The
     prompt now names the skill and the workspace only.
+- id: fleet-time-anchored-fixture
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_fleet_park.py::test_bag_laptop_drill_fleet_ac_07
+  motivating_defect: The drill fixture used a fixed T0 while
+    downgraded() keys heartbeat age off the wall clock, so the
+    blocking-overlap assertion flipped to advisory (and the suite
+    to red) once the suite aged past the 2-day threshold. T0 is
+    anchored to import time.
