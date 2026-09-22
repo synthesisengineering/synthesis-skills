@@ -1,23 +1,21 @@
 schema: 2
-suite: pro-5-guardrails-sha-ci-4-132-0
+suite: pro-5-entrypoint-4-133-0
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.132.0, promoting the account routing gate to the new public
-  synthesis-agent-guardrails skill, accepting commit-hash landing sources,
-  and grading CI acceptance against the previous release tag.
+  identify 4.133.0, declaring the account routing gate a verified-execution
+  entrypoint so hook consumers run it from the verified active release.
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: The fixtures execute gate, landing, workflow-shape, and
-  scaffold checks against fixtures and the working tree. They do not establish
+unverified_remainder: The fixtures execute entrypoint, release-contract, and
+  manifest checks against fixtures and the working tree. They do not establish
   installed-client reload, live cross-client delivery, new-release publication,
-  or deployment approval. Those remain separate release checks. The SKILL.md
-  and agent descriptor prose rides the release-metadata vehicle; review is the
-  evidence of prose adoption. Live CI greenness on the release push is the
-  evidence the base fix works in its environment, observed after publication.
+  launcher refresh on consumer machines, or deployment approval. Those remain
+  separate release checks. Live exec-public listing of the gate after
+  installation is the evidence the launcher refresh carried the declaration.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -28,68 +26,21 @@ changed_surfaces:
 - path: .muse-plugin/plugin.json
   cases:
   - release-version-metadata
-- path: .github/workflows/validate.yml
-  cases:
-  - ci-base-resolves-to-release-tag
 - path: CHANGELOG.md
   cases:
   - release-version-metadata
 - path: README.md
   cases:
   - release-version-metadata
-- path: skills/synthesis-agent-guardrails/SKILL.md
-  cases:
-  - release-version-metadata
-- path: skills/synthesis-agent-guardrails/agents/openai.yaml
-  cases:
-  - release-version-metadata
-- path: skills/synthesis-agent-guardrails/guards/account_routing_guard.py
-  cases:
-  - guardrails-gate-blocks-cross-account
-  - guardrails-doctor-healthy-configured
-  - guardrails-defaults-off-unconfigured
-  - guardrails-suffix-regression
-  - guardrails-no-employer-or-account-identity
-  - guardrails-no-principal-name-or-home-paths
-  - guardrails-no-private-server-ids
-  - guardrails-only-example-emails
-  - guardrails-default-config-empty-authority
-- path: skills/synthesis-agent-guardrails/schemas/workspaces.schema.json
-  cases:
-  - release-version-metadata
-- path: skills/synthesis-agent-guardrails/tests/test_account_routing_guard.py
-  cases:
-  - guardrails-gate-blocks-cross-account
-  - guardrails-doctor-healthy-configured
-  - guardrails-defaults-off-unconfigured
-  - guardrails-suffix-regression
-- path: skills/synthesis-agent-guardrails/tests/test_no_private_refs.py
-  cases:
-  - guardrails-no-employer-or-account-identity
-  - guardrails-no-principal-name-or-home-paths
-  - guardrails-no-private-server-ids
-  - guardrails-only-example-emails
-  - guardrails-default-config-empty-authority
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-onboarding/references/components.json
+- path: skills/synthesis-onboarding/scripts/release_runtime.py
   cases:
-  - guardrails-skill-registered
-- path: skills/synthesis-onboarding/references/release-capabilities.json
+  - guard-entrypoint-declared
+- path: skills/synthesis-onboarding/scripts/test_release_runtime.py
   cases:
-  - guardrails-skill-registered
-- path: skills/synthesis-project-management/scripts/canonical_landing.py
-  cases:
-  - landing-sha-source-supported
-  - landing-unresolvable-source-diagnostic
-- path: skills/synthesis-project-management/scripts/test_canonical_landing.py
-  cases:
-  - landing-sha-source-supported
-  - landing-unresolvable-source-diagnostic
-- path: skills/synthesis-skills-manager/scripts/test_release.py
-  cases:
-  - ci-base-resolves-to-release-tag
+  - guard-entrypoint-declared
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -103,80 +54,9 @@ cases:
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: ci-base-resolves-to-release-tag
+- id: guard-entrypoint-declared
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_acceptance_base_resolves_to_previous_release_tag
-  motivating_defect: CI graded push slices against the transaction manifest, so Validate stayed
-    red on green release commits. Pushes now resolve the base to the previous release tag
-    while PRs keep their base.
-- id: guardrails-gate-blocks-cross-account
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_account_routing_guard.py::test_gate_exits_2_and_explains_on_a_blocked_call
-  motivating_defect: PRO-5 — the promoted gate blocks a personal-connector mutation inside a
-    configured workspace with the bound account named.
-- id: guardrails-doctor-healthy-configured
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_account_routing_guard.py::test_doctor_reports_healthy_and_exits_zero
-  motivating_defect: PRO-5 — the doctor passes its controls against a configured workspace.
-- id: guardrails-defaults-off-unconfigured
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_account_routing_guard.py::test_doctor_reports_unhealthy_when_unconfigured
-  motivating_defect: PRO-5 defaults-off contract — with no workspaces the gate allows and the
-    doctor reports UNHEALTHY instead of failing silently.
-- id: guardrails-suffix-regression
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_account_routing_guard.py::test_slack_sends_are_not_this_guards_boundary
-  motivating_defect: PRO-5 — the guard's own first false positive stays fixed; suffix-shared
-    names never sweep in Slack sends.
-- id: guardrails-no-employer-or-account-identity
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_no_private_refs.py::test_no_employer_or_principal_name
-  motivating_defect: PRO-5 purge — no employer or account identity survives in the promoted
-    tree, proven with positive controls.
-- id: guardrails-no-principal-name-or-home-paths
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_no_private_refs.py::test_no_home_paths
-  motivating_defect: PRO-5 purge — no principal name or home path survives outside the one
-    sanctioned author line.
-- id: guardrails-no-private-server-ids
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_no_private_refs.py::test_only_generic_server_ids
-  motivating_defect: PRO-5 purge — only generic server ids remain in fixtures and controls.
-- id: guardrails-only-example-emails
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_no_private_refs.py::test_only_example_emails
-  motivating_defect: PRO-5 purge — every email-shaped token in the tree is RFC-2606 example
-    space.
-- id: guardrails-default-config-empty-authority
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_no_private_refs.py::test_default_config_is_empty_authority
-  motivating_defect: PRO-5 purge — the shipped default configures no workspace and no
-    authority.
-- id: guardrails-skill-registered
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_onboard.py::WholeSystemTests::test_every_hard_stop_has_a_real_scaffold
-  motivating_defect: PRO-5 — the new skill is registered in the component catalog and
-    capabilities inventory the scaffold audit requires.
-- id: landing-sha-source-supported
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_sha_source_forms_bind_exact_commit
-  motivating_defect: Intake item 7 — pushing a commit hash (full or abbreviated) is a
-    supported landing source binding the exact commit.
-- id: landing-unresolvable-source-diagnostic
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_unresolvable_source_refused_with_accurate_diagnostic
-  motivating_defect: Intake item 7 — an unresolvable source is refused naming the source,
-    never with git's raw stderr.
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_declared_guard_entrypoint_executes_from_the_verified_release
+  motivating_defect: PRO-5 rewire — the account routing gate is declared in the verified-execution
+    contract and executes from a verified release, so hook consumers run the verified bytes.

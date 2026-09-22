@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.133.0** wires the account routing gate into verified
+execution: hooks run it via `synthesis exec-public` from the verified
+active release.
+
 Release **4.132.0** adds the `synthesis-agent-guardrails` skill: a
 fail-closed gate that blocks cross-account calendar and mail artifacts,
 inert until you configure your workspaces. Also: push-by-commit-hash

@@ -337,3 +337,42 @@ def test_modular_projection_pays_one_stat_walk(active, monkeypatch):
     checked = runtime.verified_release(pointer)
     assert checked["_verification_mode"] == runtime.VERIFICATION_MODE_RECEIPT
     assert len(walks) == 1
+
+
+GUARD = "synthesis-agent-guardrails/guards/account_routing_guard.py"
+
+
+def test_declared_guard_entrypoint_executes_from_the_verified_release(tmp_path, monkeypatch):
+    assert GUARD in runtime.PUBLIC_ENTRYPOINTS
+    monkeypatch.delenv("SYNTHESIS_PUBLIC_SKILLS_SOURCE", raising=False)
+    root = tmp_path / "generation"
+    target = root / "skills" / GUARD
+    target.parent.mkdir(parents=True)
+    target.write_text("import sys\nsys.stdout.write('guard-ok\\n')\n")
+    for client in ("claude", "codex"):
+        manifest = root / ("." + client + "-plugin") / "plugin.json"
+        manifest.parent.mkdir()
+        manifest.write_text(json.dumps({"name": "synthesis-skills", "version": "9.8.7"}))
+    pointer = tmp_path / "state" / "active-release.json"
+    pointer.parent.mkdir()
+    pointer.with_name(pointer.name + ".lock").touch()
+    data = {
+        "schema_version": 1, "version": "9.8.7", "channel": "stable", "ref": "stable",
+        "commit": "1" * 40, "tree": "2" * 40,
+        "content_digest": system_contract.canonical_tree_digest(root),
+        "digest_algorithm": "sha256-tree-v1", "tree_policy": "regular-files-and-directories-no-links-v1",
+        "source_url": "https://example.test/skills.git", "resolved_at": "2026-01-01T00:00:00Z",
+        "release_root": str(root), "interpreter": runtime.interpreter_pin(),
+    }
+    launcher = pointer.parent.parent / "bin/synthesis"
+    launcher.parent.mkdir()
+    content = system_contract.launcher_bytes(pointer, data["interpreter"])
+    launcher.write_bytes(content)
+    launcher.chmod(0o755)
+    data["launcher"] = {"path": str(launcher), "runtime_schema": 1, "sha256": hashlib.sha256(content).hexdigest()}
+    pointer.write_text(json.dumps(data))
+    verified = runtime.verified_release(pointer)
+    assert runtime.command(verified, GUARD, ["--doctor"]) == [sys.executable, "-B", str(target), "--doctor"]
+    result = runtime.execute(verified, GUARD, [], b"{}", timeout=10)
+    assert result.returncode == 0
+    assert result.stdout == b"guard-ok\n"

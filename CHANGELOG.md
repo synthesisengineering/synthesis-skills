@@ -4,6 +4,13 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.133.0] - 2026-09-22
+
+The account routing gate joins the verified-execution contract: `synthesis
+exec-public` accepts `synthesis-agent-guardrails/guards/account_routing_guard.py`,
+so hook consumers run the gate from the verified active release instead of an
+unverified checkout path. No behavior change to the gate itself.
+
 ## [4.132.0] - 2026-09-22
 
 New public skill `synthesis-agent-guardrails` (ruling PRO-5): the
