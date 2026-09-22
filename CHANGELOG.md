@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.129.0] - 2026-09-21
+
+Fixed the coordination `narrow` sense inversion (board report): `--area`
+named areas to release but read as areas to keep, and one inverted call
+shed live claims while reporting success. `--release` /
+`--release-workspace` are now the primary spelling, `--keep` /
+`--keep-workspace` name what to retain and release the held complement,
+`--area` / `--workspace` remain as deprecated aliases that print the
+release sense aloud, and narrowing to zero areas or releasing every
+workspace warns loudly first. Mixing release and keep forms is refused.
+
 ## [4.128.0] - 2026-09-21
 
 Promoted snapshot pruning and canonical-checkout landing from the

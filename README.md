@@ -18,6 +18,12 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.129.0** fixes the coordination `narrow` sense
+inversion: `--release` is the explicit primary spelling,
+`--keep` states the inverse intent directly, the deprecated
+`--area` alias names its release sense aloud, and emptying a
+claim warns loudly first.
+
 Release **4.128.0** promotes the snapshot pruner and the
 canonical-checkout landing hook to supported public API: orphan
 snapshot maintenance is an opt-in ritual step, and explicit main

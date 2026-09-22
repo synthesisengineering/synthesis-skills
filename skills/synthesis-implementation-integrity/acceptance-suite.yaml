@@ -1,21 +1,19 @@
 schema: 2
-suite: promotion-pro-1-pro-2-4-128-0
+suite: narrow-explicit-sense-4-129-0
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.128.0, promoting the snapshot pruner (opt-in ritual step)
-  and the canonical-checkout landing hook (explicit-push trigger only)
-  with the shell parser to supported public API.
+  identify 4.129.0, fixing the coordination narrow sense inversion with
+  explicit release and keep spellings.
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: The fixtures execute pruner and landing paths in
-  disposable directories and Git fixtures. They do not establish
-  installed-client reload, live cross-client delivery, new-release
-  publication, or deployment approval. Those remain separate release
-  checks.
+unverified_remainder: The fixtures execute narrow paths against disposable
+  board fixtures. They do not establish installed-client reload, live
+  cross-client delivery, new-release publication, or deployment approval.
+  Those remain separate release checks.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -35,30 +33,19 @@ changed_surfaces:
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-daily-rituals/SKILL.md
+- path: skills/synthesis-project-management/references/parallel-agent-protocol.md
   cases:
-  - ritual-doc-budget
-- path: skills/synthesis-project-management/SKILL.md
+  - narrow-doc-spellings
+- path: skills/synthesis-project-management/scripts/coordination.py
   cases:
-  - pm-doc-budget
-- path: skills/synthesis-project-management/references/canonical-landing.md
+  - narrow-explicit-sense
+  - narrow-keep-inverse
+  - narrow-loud-warnings
+- path: skills/synthesis-project-management/scripts/test_coordination.py
   cases:
-  - pm-doc-budget
-- path: skills/synthesis-project-management/scripts/canonical_landing.py
-  cases:
-  - explicit-push-landing
-- path: skills/synthesis-project-management/scripts/prune_tool_snapshots.py
-  cases:
-  - snapshot-pruning
-- path: skills/synthesis-project-management/scripts/publication_command.py
-  cases:
-  - explicit-push-landing
-- path: skills/synthesis-project-management/scripts/test_canonical_landing.py
-  cases:
-  - explicit-push-landing
-- path: skills/synthesis-project-management/scripts/test_prune_tool_snapshots.py
-  cases:
-  - snapshot-pruning
+  - narrow-explicit-sense
+  - narrow-keep-inverse
+  - narrow-doc-spellings
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -71,24 +58,26 @@ cases:
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: ritual-doc-budget
+- id: narrow-explicit-sense
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_skill_document_stays_within_repo_budget
-  motivating_defect: The ritual step must point at the public pruner path without breaking the document budget.
-- id: pm-doc-budget
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_narrow_release_spelling_releases_without_banner
+  motivating_defect: BUG-2 — --release must be the explicit primary spelling while the deprecated
+    --area alias keeps working and names its release sense aloud.
+- id: narrow-keep-inverse
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_skill_document_stays_within_repo_budget
-  motivating_defect: The landing reference must stay linked and the skill document within budget.
-- id: snapshot-pruning
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_narrow_keep_releases_the_complement
+  motivating_defect: BUG-2 — --keep must state the retain intent directly and release the held
+    complement, refusing unknown targets and mixed forms.
+- id: narrow-loud-warnings
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_prune_tool_snapshots.py::test_retired_old_snapshot_is_verified_and_moved
-  motivating_defect: Age alone never proves an orphan; only a uniquely identified released seat, no pending
-    manifest, and verified archive bytes qualify a snapshot for removal.
-- id: explicit-push-landing
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_narrow_to_zero_areas_warns_loudly_first
+  motivating_defect: BUG-2 — emptying a claim must warn loudly first rather than reading as routine
+    success.
+- id: narrow-doc-spellings
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_real_push_lands_and_restores_only_own_authority
-  motivating_defect: Only one literal push to main lands, and only its own admitted authority is restored after.
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_parallel_protocol_documents_narrow_release_and_keep_spellings
+  motivating_defect: BUG-2 — the protocol document must state the explicit sense, not just the verb.
