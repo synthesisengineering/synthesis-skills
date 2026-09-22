@@ -26,9 +26,24 @@ jobs:
       - run: python -m pytest skills/synthesis-checkpoint/scripts/ -q
       - run: python -m pytest skills/synthesis-promotion-gate/scripts/ -q
       - run: python -m pytest skills/synthesis-context-lifecycle/scripts/ skills/synthesis-implementation-integrity/scripts/ -q
+      - name: Resolve acceptance change base
+        # The manifest declares the TRANSACTION universe (release to release),
+        # so push slices must be graded against the previous release tag, not
+        # the push base. PRs keep their base: the PR slice is the universe
+        # under review there. With no reachable release tag (pre-first-release
+        # only), fall back to the event base.
+        run: |
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            echo "SYNTHESIS_ACCEPTANCE_CHANGE_BASE=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_ENV"
+          else
+            TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)
+            if [ -z "$TAG" ]; then
+              echo "SYNTHESIS_ACCEPTANCE_CHANGE_BASE=${{ github.event.before }}" >> "$GITHUB_ENV"
+            else
+              echo "SYNTHESIS_ACCEPTANCE_CHANGE_BASE=$(git rev-list -n 1 "$TAG")" >> "$GITHUB_ENV"
+            fi
+          fi
       - name: Consume transaction-bound R5 acceptance
-        env:
-          SYNTHESIS_ACCEPTANCE_CHANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: python skills/synthesis-skills-manager/scripts/release.py --repo-root . --acceptance-only
       - run: python -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-bitbucket/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py skills/synthesis-slack-sync/scripts/test_*.py skills/synthesis-chief-of-staff/scripts/test_*.py skills/synthesis-repo-guard/test_*.py skills/synthesis-decision-packet/scripts/test_*.py -q
