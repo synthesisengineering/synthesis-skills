@@ -1,18 +1,18 @@
 schema: 2
-suite: identity-helper-4-127-0
+suite: promotion-pro-1-pro-2-4-128-0
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.127.0, unifying seat/board machine-identity comparison
-  in one public place with the borrowed native-identity helpers as
-  supported API.
+  identify 4.128.0, promoting the snapshot pruner (opt-in ritual step)
+  and the canonical-checkout landing hook (explicit-push trigger only)
+  with the shell parser to supported public API.
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: The fixtures execute helper, observer, and probe
-  paths in disposable directories. They do not establish
+unverified_remainder: The fixtures execute pruner and landing paths in
+  disposable directories and Git fixtures. They do not establish
   installed-client reload, live cross-client delivery, new-release
   publication, or deployment approval. Those remain separate release
   checks.
@@ -35,21 +35,30 @@ changed_surfaces:
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-project-management/scripts/peer_addressing.py
+- path: skills/synthesis-daily-rituals/SKILL.md
   cases:
-  - single-identity-operand
-- path: skills/synthesis-project-management/scripts/project_state.py
+  - ritual-doc-budget
+- path: skills/synthesis-project-management/SKILL.md
   cases:
-  - single-identity-operand
-- path: skills/synthesis-project-management/scripts/test_peer_addressing.py
+  - pm-doc-budget
+- path: skills/synthesis-project-management/references/canonical-landing.md
   cases:
-  - single-identity-operand
-- path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
+  - pm-doc-budget
+- path: skills/synthesis-project-management/scripts/canonical_landing.py
   cases:
-  - single-identity-operand
-- path: skills/synthesis-project-management/scripts/test_checkpoint_local_completion.py
+  - explicit-push-landing
+- path: skills/synthesis-project-management/scripts/prune_tool_snapshots.py
   cases:
-  - single-identity-operand
+  - snapshot-pruning
+- path: skills/synthesis-project-management/scripts/publication_command.py
+  cases:
+  - explicit-push-landing
+- path: skills/synthesis-project-management/scripts/test_canonical_landing.py
+  cases:
+  - explicit-push-landing
+- path: skills/synthesis-project-management/scripts/test_prune_tool_snapshots.py
+  cases:
+  - snapshot-pruning
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -62,11 +71,24 @@ cases:
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: single-identity-operand
+- id: ritual-doc-budget
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_board_machine_prefers_the_label_schema_2
-  motivating_defect: Three hand-synchronized machine comparisons
-    drifted and the two private ones failed every Desktop Stop
-    gate. One Seat property is now the single operand and the
-    borrowed helpers are supported API.
+  fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_skill_document_stays_within_repo_budget
+  motivating_defect: The ritual step must point at the public pruner path without breaking the document budget.
+- id: pm-doc-budget
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_skill_document_stays_within_repo_budget
+  motivating_defect: The landing reference must stay linked and the skill document within budget.
+- id: snapshot-pruning
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prune_tool_snapshots.py::test_retired_old_snapshot_is_verified_and_moved
+  motivating_defect: Age alone never proves an orphan; only a uniquely identified released seat, no pending
+    manifest, and verified archive bytes qualify a snapshot for removal.
+- id: explicit-push-landing
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_real_push_lands_and_restores_only_own_authority
+  motivating_defect: Only one literal push to main lands, and only its own admitted authority is restored after.

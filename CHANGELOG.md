@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.128.0] - 2026-09-21
+
+Promoted snapshot pruning and canonical-checkout landing from the
+private control plane. `prune_tool_snapshots.py` is an opt-in
+day-start ritual step (archives verified bytes before removing
+proved-ended orphans); `canonical_landing.py` fast-forwards the
+canonical checkout on one literal `git push REMOTE SOURCE:main`
+behind its explicit-push trigger only, with shell parsing from
+sibling `publication_command.py`. Same-skill loading; behavior
+suites travel with each module.
+
 ## [4.127.0] - 2026-09-21
 
 Single-implementation seat/board machine-identity comparison.

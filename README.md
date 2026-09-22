@@ -18,6 +18,12 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.128.0** promotes the snapshot pruner and the
+canonical-checkout landing hook to supported public API: orphan
+snapshot maintenance is an opt-in ritual step, and explicit main
+pushes land in the canonical checkout through the board-claim
+contract.
+
 Release **4.127.0** unifies seat/board machine-identity
 comparison in one public place: `Seat.board_machine` is the
 single comparison operand every reader uses, and the two
