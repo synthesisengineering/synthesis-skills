@@ -2180,6 +2180,18 @@ def test_peer_resolution_documented_on_public_surfaces() -> None:
         )
 
 
+def test_parallel_protocol_documents_narrow_release_and_keep_spellings() -> None:
+    """BUG-2: the protocol states the explicit sense, not just the verb."""
+    doc = (
+        Path(__file__).resolve().parents[1]
+        / "references"
+        / "parallel-agent-protocol.md"
+    ).read_text(encoding="utf-8")
+    assert "--release" in doc
+    assert "--keep" in doc
+    assert "deprecated alias" in doc
+
+
 def test_conformance_board_check_accepts_declared_v3_and_v4(tmp_path) -> None:
     """The parity checker must accept both declared schemas during the staged
     migration window, and still reject anything older."""
