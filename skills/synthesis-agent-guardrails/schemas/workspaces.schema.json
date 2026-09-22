@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "account-routing workspaces.json",
+  "description": "Per-workspace Google account bindings for the account routing guard.",
+  "type": "object",
+  "required": ["workspaces"],
+  "additionalProperties": false,
+  "properties": {
+    "workspaces": {
+      "type": "object",
+      "description": "Map of workspace root path to its account binding. Longest-prefix match wins.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["account"],
+        "additionalProperties": false,
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "The Google account address artifacts from this workspace must use."
+          },
+          "label": {
+            "type": "string",
+            "description": "Short workspace name used in block messages. Defaults to the root path."
+          },
+          "tool_hint": {
+            "type": "string",
+            "description": "Optional suggestion appended to the block message, e.g. 'calendar-mcp: manage_event'."
+          }
+        }
+      }
+    }
+  }
+}
