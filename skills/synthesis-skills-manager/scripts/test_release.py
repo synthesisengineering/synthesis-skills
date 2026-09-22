@@ -349,8 +349,9 @@ def test_agents_verification_list_matches_ci_workflow() -> None:
     """2026-09-01: a locally-green branch failed CI because validate.yml had
     grown five steps beyond AGENTS.md's documented Verification list. The
     fenced list and the conformance job now move together, or this fails.
-    Excluded by design: the CI-only dependency install and the env-bound
-    acceptance step (documented under Releases instead)."""
+    Excluded by design: the CI-only dependency install, the env-bound
+    acceptance step (documented under Releases instead), and the CI-only
+    base-resolution step (github.event context; meaningless locally)."""
     repository = Path(__file__).resolve().parents[3]
     workflow = yaml.safe_load(
         (repository / ".github" / "workflows" / "validate.yml").read_text(
@@ -363,6 +364,7 @@ def test_agents_verification_list_matches_ci_workflow() -> None:
         if "run" in step
         and "pip install" not in step["run"]
         and "--acceptance-only" not in step["run"]
+        and "GITHUB_ENV" not in step["run"]
     ]
     normalized_ci = [
         "python3 " + command[len("python "):]
@@ -381,6 +383,34 @@ def test_agents_verification_list_matches_ci_workflow() -> None:
         "drifted; change them together.\ndocumented=%r\nci=%r"
         % (documented, normalized_ci)
     )
+
+
+def test_acceptance_base_resolves_to_previous_release_tag() -> None:
+    """2026-09-22: CI graded every push slice against the transaction manifest
+    because the base was the push base, so Validate stayed red on release
+    commits whose local gate was green. Pushes now resolve the base to the
+    previous release tag (PRs keep their base); the acceptance step consumes
+    the resolved base from the environment instead of an inline binding."""
+    repository = Path(__file__).resolve().parents[3]
+    workflow = yaml.safe_load(
+        (repository / ".github" / "workflows" / "validate.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    steps = workflow["jobs"]["conformance"]["steps"]
+    resolve = next(
+        step for step in steps if step.get("name") == "Resolve acceptance change base"
+    )
+    assert "github.event.pull_request.base.sha" in resolve["run"]
+    assert "git describe --tags" in resolve["run"]
+    assert "git rev-list -n 1" in resolve["run"]
+    assert "GITHUB_ENV" in resolve["run"]
+    accept = next(
+        step
+        for step in steps
+        if step.get("name") == "Consume transaction-bound R5 acceptance"
+    )
+    assert "env" not in accept
 
 
 def test_repository_ci_executes_release_wiring_tests() -> None:
@@ -598,8 +628,10 @@ def test_repository_ci_uses_receipt_consumer_with_authoritative_base() -> None:
     workflow = (repository / ".github" / "workflows" / "validate.yml").read_text(
         encoding="utf-8"
     )
-    assert "SYNTHESIS_ACCEPTANCE_CHANGE_BASE:" in workflow
-    assert "github.event.pull_request.base.sha || github.event.before" in workflow
+    assert "SYNTHESIS_ACCEPTANCE_CHANGE_BASE=" in workflow
+    assert "github.event.pull_request.base.sha" in workflow
+    assert "git describe --tags" in workflow
+    assert "github.event.before }}" in workflow  # pre-first-release fallback only
 
 
 def test_repository_ci_fetches_authoritative_base_history() -> None:
