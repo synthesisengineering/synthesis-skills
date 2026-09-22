@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.131.0] - 2026-09-22
+
+Flush retirement is now per-path on blocked repositories (board report
+BUG-4, ruling Q3). One foreign path no longer pins a whole root's
+entries: clean pushed paths retire, own uncommitted work stays
+committable (with a subset-only commit retry after a claim refusal),
+foreign overwrites are skipped and reported, and provably landed bytes
+retire even while dirty. A hash-tolerant manifest reader accepts the
+forthcoming attribution hashes; hashless manifests behave as before.
+
 ## [4.130.0] - 2026-09-22
 
 Fixed two coordination defects (board report BUG-1). Narrowing a claim

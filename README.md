@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.131.0** retires flush entries per path on blocked
+repositories: one foreign file no longer pins a whole root, own work
+recommits without the foreign paths, and landed bytes retire even
+while dirty.
+
 Release **4.130.0** fixes two coordination defects: narrowing a
 claim now keeps the seat file in sync with the board heartbeat,
 and the claim-identity snapshot no longer trips on routine git

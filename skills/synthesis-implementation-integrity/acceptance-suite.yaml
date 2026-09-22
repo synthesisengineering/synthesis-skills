@@ -1,23 +1,23 @@
 schema: 2
-suite: bug1-seat-snapshot-4-130-0
+suite: q3-per-path-flush-4-131-0
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.130.0, fixing the narrow/seat divergence and the
-  activity-sensitive claim-identity snapshot.
+  identify 4.131.0, retiring flush entries per path on blocked
+  repositories with a hash-tolerant attribution reader.
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: The fixtures execute narrow, honor-pass, and snapshot
-  paths against disposable board and repository fixtures. They do not
-  establish installed-client reload, live cross-client delivery, new-release
-  publication, or deployment approval. Those remain separate release checks.
-  CONTRIBUTING.md and SUPPORT.md carry policy prose adopted by ruling
-  (POL-1/POL-2); no executed fixture can evidence prose adoption — review
-  is the evidence, recorded in the packet rulings — so they ride the
-  release-metadata vehicle.
+unverified_remainder: The fixtures execute flush paths against disposable
+  repository fixtures. They do not establish installed-client reload, live
+  cross-client delivery, new-release publication, or deployment approval.
+  Those remain separate release checks. The repo-guard SKILL.md carries
+  prose adopted by review; no executed fixture can evidence prose adoption —
+  review is the evidence — so it rides the release-metadata vehicle.
+  Attribution hashes are not yet emitted (private writer follows); absent
+  hashes behaving as legacy is itself a pinned case below.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -31,36 +31,35 @@ changed_surfaces:
 - path: CHANGELOG.md
   cases:
   - release-version-metadata
-- path: CONTRIBUTING.md
-  cases:
-  - release-version-metadata
 - path: README.md
-  cases:
-  - release-version-metadata
-- path: SUPPORT.md
   cases:
   - release-version-metadata
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-project-management/scripts/claim_scope.py
+- path: skills/synthesis-repo-guard/SKILL.md
   cases:
-  - snapshot-ignores-activity
-  - snapshot-keeps-identity
-  - snapshot-names-scope
-- path: skills/synthesis-project-management/scripts/coordination.py
+  - release-version-metadata
+- path: skills/synthesis-repo-guard/checkpoint_sync.py
   cases:
-  - honor-stays-in-sync
-  - seat-stays-in-sync
-- path: skills/synthesis-project-management/scripts/test_claim_scope_cache.py
+  - per-path-drains-blocked-root
+  - per-path-retry-refused-keeps
+  - per-path-legacy-no-retry
+  - per-path-landed-retires-on-push
+  - per-path-dry-run-reports
+  - per-path-guard-lock-source-scope
+  - per-path-published-root-untouched
+  - per-path-reader-validates
+- path: skills/synthesis-repo-guard/test_per_path_retirement.py
   cases:
-  - snapshot-ignores-activity
-  - snapshot-keeps-identity
-  - snapshot-names-scope
-- path: skills/synthesis-project-management/scripts/test_coordination.py
-  cases:
-  - honor-stays-in-sync
-  - seat-stays-in-sync
+  - per-path-drains-blocked-root
+  - per-path-retry-refused-keeps
+  - per-path-legacy-no-retry
+  - per-path-landed-retires-on-push
+  - per-path-dry-run-reports
+  - per-path-guard-lock-source-scope
+  - per-path-published-root-untouched
+  - per-path-reader-validates
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
@@ -73,33 +72,53 @@ cases:
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: seat-stays-in-sync
+- id: per-path-drains-blocked-root
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_narrow_updates_seat_with_row_heartbeat
-  motivating_defect: BUG-1/F1 — narrow bumped the board heartbeat without writing the seat file,
-    diverging the two stores on every call; both now update with one clock read.
-- id: honor-stays-in-sync
+  fixture: ../synthesis-repo-guard/test_per_path_retirement.py::test_hook_blocked_root_retires_clean_commits_own_and_skips_foreign
+  motivating_defect: BUG-4/Q3 — one foreign path pinned a whole root's entries after the claim gate
+    refused the mixed commit; clean siblings now retire, own work recommits without the foreign
+    paths, and the foreign path is skipped, reported, and kept with hashes pruned on rewrite.
+- id: per-path-retry-refused-keeps
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_honor_updates_seat_with_row_heartbeat
-  motivating_defect: BUG-1/F1 — the release-request honor pass had the same row-without-seat gap
-    as narrow; it now writes both with one clock read.
-- id: snapshot-ignores-activity
+  fixture: ../synthesis-repo-guard/test_per_path_retirement.py::test_retry_refused_everywhere_keeps_entries_and_reports
+  motivating_defect: BUG-4/Q3 — when the gate also refuses the own-only subset, nothing commits,
+    nothing retires, and the root alert records the refused retry; exactly two hook firings prove
+    one main attempt plus one subset retry.
+- id: per-path-legacy-no-retry
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_snapshot_survives_routine_git_activity
-  motivating_defect: BUG-1/F2 — the snapshot observed .git directory mtimes, so routine git status
-    and git add invalidated it; the stamp now tracks identity markers only.
-- id: snapshot-keeps-identity
+  fixture: ../synthesis-repo-guard/test_per_path_retirement.py::test_legacy_manifest_gets_no_retry_but_clean_sibling_retires
+  motivating_defect: BUG-4/Q3 — hashless manifests commit exactly as before (no retry without
+    proof of foreignness) while still gaining the hash-independent clean-sibling retirement.
+- id: per-path-landed-retires-on-push
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_snapshot_still_trips_on_identity_change
-  motivating_defect: BUG-1/F2 positive control — narrowing the stamp must not blind the guard to
-    genuine identity changes such as config writes.
-- id: snapshot-names-scope
+  fixture: ../synthesis-repo-guard/test_per_path_retirement.py::test_landed_bytes_retire_once_pushed_and_skip_while_unpushed
+  motivating_defect: BUG-4/Q3 — attributed bytes dirtied by others retire once HEAD proves them on
+    the origin, and stay with an unpushed-local-commit report until the push lands.
+- id: per-path-dry-run-reports
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_snapshot_error_names_the_moved_scope
-  motivating_defect: BUG-1/F3 — the trip error named nothing; it now names the moved claim and
-    target with a re-run remedy.
+  fixture: ../synthesis-repo-guard/test_per_path_retirement.py::test_dry_run_reports_per_path_sets_without_mutating
+  motivating_defect: BUG-4/Q3 — dry runs report the would-commit / would-retire / would-skip
+    sets while changing neither the manifest bytes nor the repository.
+- id: per-path-guard-lock-source-scope
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_per_path_retirement.py::test_guard_rejected_root_retires_nothing
+  motivating_defect: BUG-4/Q3 — guard-rejected roots retire nothing; sibling tests pin the same
+    for lock-active roots and root-granular source entries.
+- id: per-path-published-root-untouched
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_per_path_retirement.py::test_published_root_never_gets_per_path_record
+  motivating_defect: BUG-4/Q3 blast radius — fully published roots retire through the unchanged
+    repository pass with byte-identical behavior and no per-path record.
+- id: per-path-reader-validates
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_per_path_retirement.py::test_hash_reader_accepts_only_wellformed_entries
+  motivating_defect: BUG-4/Q3 — absent or corrupt hash maps behave as legacy, and malformed
+    entries drop individually so one corrupt value can neither pin a root nor forge a match.
