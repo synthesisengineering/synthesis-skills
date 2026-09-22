@@ -136,19 +136,19 @@ cases:
 - id: guardrails-no-employer-or-account-identity
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_no_private_refs.py::test_no_employer_or_account_identity
+  fixture: ../synthesis-agent-guardrails/tests/test_no_private_refs.py::test_no_employer_or_principal_name
   motivating_defect: PRO-5 purge — no employer or account identity survives in the promoted
     tree, proven with positive controls.
 - id: guardrails-no-principal-name-or-home-paths
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_no_private_refs.py::test_no_principal_name_or_home_paths
+  fixture: ../synthesis-agent-guardrails/tests/test_no_private_refs.py::test_no_home_paths
   motivating_defect: PRO-5 purge — no principal name or home path survives outside the one
     sanctioned author line.
 - id: guardrails-no-private-server-ids
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_no_private_refs.py::test_no_private_server_ids
+  fixture: ../synthesis-agent-guardrails/tests/test_no_private_refs.py::test_only_generic_server_ids
   motivating_defect: PRO-5 purge — only generic server ids remain in fixtures and controls.
 - id: guardrails-only-example-emails
   control_class: acceptance-test
