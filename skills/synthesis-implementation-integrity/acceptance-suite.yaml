@@ -131,7 +131,7 @@ cases:
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-agent-guardrails/tests/test_account_routing_guard.py::test_slack_sends_are_not_this_guards_boundary
-  motivating_defect: PRO-5 — the guard's own first false positive stays fixed: suffix-shared
+  motivating_defect: PRO-5 — the guard's own first false positive stays fixed; suffix-shared
     names never sweep in Slack sends.
 - id: guardrails-no-employer-or-account-identity
   control_class: acceptance-test
