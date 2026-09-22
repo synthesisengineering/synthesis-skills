@@ -65,12 +65,17 @@ def claim_args(
     )
 
 
-def narrow_args(board: Path, *, session_id: str, area=None, workspace=None):
+def narrow_args(board: Path, *, session_id: str, area=None, workspace=None,
+                release=None, release_workspace=None, keep=None, keep_workspace=None):
     return args(
         board,
         id=session_id,
         area=list(area or []),
         workspace=list(workspace or []),
+        release=list(release or []),
+        release_workspace=list(release_workspace or []),
+        keep=list(keep or []),
+        keep_workspace=list(keep_workspace or []),
     )
 
 
@@ -3473,6 +3478,133 @@ def test_narrow_to_empty_is_allowed_and_recoverable(tmp_path: Path, monkeypatch:
         workspace="/tmp/repo-a @ feature/a", area="scope/b.md",
     )) == 0
     assert _claims_of(board).claims == ["scope/b.md"]
+
+
+def _three_area_row(board: Path, monkeypatch: pytest.MonkeyPatch):
+    """Claim one row holding scope/{a,b,c}.md; return its compact id."""
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
+    first = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+    )
+    assert MODULE.command_claim(first) == 0
+    row = _claims_of(board)
+    MODULE.command_claim(args(
+        board, id=row.compact_id, agent="A", machine="machine-A",
+        project="project-a", mode="autonomous", goal="goal-A",
+        workspace=["/tmp/repo-a @ feature/a"],
+        area=["scope/a.md", "scope/b.md", "scope/c.md"],
+        context_role="owner",
+    ))
+    assert _claims_of(board).claims == ["scope/a.md", "scope/b.md", "scope/c.md"]
+    return row.compact_id
+
+
+def test_narrow_release_spelling_releases_without_banner(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    compact_id = _three_area_row(board, monkeypatch)
+    capsys.readouterr()
+    assert MODULE.command_narrow(narrow_args(
+        board, session_id=compact_id, release=["scope/b.md"],
+    )) == 0
+    out = capsys.readouterr().out
+    assert _claims_of(board).claims == ["scope/a.md", "scope/c.md"]
+    assert "Released 1 area(s): scope/b.md" in out
+    assert "deprecated" not in out
+
+
+def test_narrow_area_alias_names_the_release_sense(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BUG-2: --area keeps working but says aloud that it releases."""
+    board = tmp_path / "coordination" / "active-sessions.md"
+    compact_id = _three_area_row(board, monkeypatch)
+    capsys.readouterr()
+    assert MODULE.command_narrow(narrow_args(
+        board, session_id=compact_id, area=["scope/b.md"],
+    )) == 0
+    out = capsys.readouterr().out
+    assert _claims_of(board).claims == ["scope/a.md", "scope/c.md"]
+    assert "name what to RELEASE" in out
+    assert "prefer --release" in out
+
+
+def test_narrow_keep_releases_the_complement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BUG-2: the reporter's repro — name what to keep, shed the rest."""
+    board = tmp_path / "coordination" / "active-sessions.md"
+    compact_id = _three_area_row(board, monkeypatch)
+    assert MODULE.command_narrow(narrow_args(
+        board, session_id=compact_id, keep=["scope/a.md"],
+    )) == 0
+    assert _claims_of(board).claims == ["scope/a.md"]
+
+
+def test_narrow_keep_refuses_unheld_target_and_mixed_forms(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    compact_id = _three_area_row(board, monkeypatch)
+    assert MODULE.command_narrow(narrow_args(
+        board, session_id=compact_id, keep=["scope/typo.md"],
+    )) == 10
+    assert "does not hold" in capsys.readouterr().err
+    assert MODULE.command_narrow(narrow_args(
+        board, session_id=compact_id, release=["scope/b.md"], keep=["scope/a.md"],
+    )) == 10
+    assert "not both" in capsys.readouterr().err
+    assert _claims_of(board).claims == ["scope/a.md", "scope/b.md", "scope/c.md"]
+
+
+def test_narrow_keep_covering_everything_is_refused(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    compact_id = _three_area_row(board, monkeypatch)
+    assert MODULE.command_narrow(narrow_args(
+        board, session_id=compact_id,
+        keep=["scope/a.md", "scope/b.md", "scope/c.md"],
+    )) == 10
+    assert "nothing to release" in capsys.readouterr().err
+
+
+def test_narrow_to_zero_areas_warns_loudly_first(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    compact_id = _three_area_row(board, monkeypatch)
+    capsys.readouterr()
+    assert MODULE.command_narrow(narrow_args(
+        board, session_id=compact_id,
+        release=["scope/a.md", "scope/b.md", "scope/c.md"],
+    )) == 0
+    out = capsys.readouterr().out
+    assert _claims_of(board).claims == []
+    assert out.startswith("WARNING: this narrow leaves the seat with no areas.")
+
+
+def test_narrow_releasing_every_workspace_warns_loudly(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = tmp_path / "coordination" / "active-sessions.md"
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
+    first = claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+    )
+    assert MODULE.command_claim(first) == 0
+    row = _claims_of(board)
+    capsys.readouterr()
+    assert MODULE.command_narrow(narrow_args(
+        board, session_id=row.compact_id,
+        release_workspace=["/tmp/repo-a @ feature/a"],
+    )) == 0
+    out = capsys.readouterr().out
+    assert _claims_of(board).workspaces == []
+    assert "WARNING: this narrow releases every workspace." in out
 
 
 def test_passive_cache_hit_skips_fetch_and_dies_on_mutation(tmp_path, monkeypatch):

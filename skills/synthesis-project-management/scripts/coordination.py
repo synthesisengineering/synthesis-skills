@@ -3759,6 +3759,12 @@ def command_narrow(args) -> int:
     Every named target must be currently held — a typo that matches
     nothing is refused rather than silently doing nothing.
 
+    Sense (BUG-2, 2026-09-21): --release/--release-workspace name what
+    to RELEASE; --keep/--keep-workspace name what to KEEP and release
+    the held complement. --area/--workspace are deprecated aliases for
+    the release sense and print a banner naming it, because the same
+    flag names the held set on the sibling claim verb.
+
     With --administrative --basis idle-holder --reason <request id>, the
     requester escalates their own unanswered release-request after
     RELEASE_REQUEST_IDLE_MINUTES of holder silence, under the standing
@@ -3782,20 +3788,39 @@ def command_narrow(args) -> int:
             )
             return 10
         return _command_narrow_idle_holder(args, args.id, reason)
-    drop_areas = [sanitize(area) for area in (getattr(args, "area", None) or [])]
-    drop_workspaces = [
+    release_areas = [sanitize(area) for area in (getattr(args, "release", None) or [])]
+    release_workspaces = [
+        sanitize(workspace) for workspace in (getattr(args, "release_workspace", None) or [])
+    ]
+    legacy_areas = [sanitize(area) for area in (getattr(args, "area", None) or [])]
+    legacy_workspaces = [
         sanitize(workspace) for workspace in (getattr(args, "workspace", None) or [])
     ]
-    if not drop_areas and not drop_workspaces:
+    keep_areas = [sanitize(area) for area in (getattr(args, "keep", None) or [])]
+    keep_workspaces = [
+        sanitize(workspace) for workspace in (getattr(args, "keep_workspace", None) or [])
+    ]
+    legacy_spelling = bool(legacy_areas or legacy_workspaces)
+    drop_areas = release_areas + legacy_areas
+    drop_workspaces = release_workspaces + legacy_workspaces
+    if (drop_areas or drop_workspaces) and (keep_areas or keep_workspaces):
         print(
-            "coordination narrow refused: name at least one --area or "
-            "--workspace to release",
+            "coordination narrow refused: name what to release (--release) or "
+            "what to keep (--keep), not both",
+            file=sys.stderr,
+        )
+        return 10
+    if not drop_areas and not drop_workspaces and not keep_areas and not keep_workspaces:
+        print(
+            "coordination narrow refused: name at least one area or workspace "
+            "to release (--release) or to keep (--keep)",
             file=sys.stderr,
         )
         return 10
     narrowed: dict[str, object] = {}
 
     def operation(content: str) -> str:
+        nonlocal drop_areas, drop_workspaces
         current = ensure_identities(rows(content))
         now = timestamp()
         session = find_session(current, args.id)
@@ -3812,6 +3837,31 @@ def command_narrow(args) -> int:
             )
         held_areas = list(session.claims)
         held_workspaces = list(session.workspaces)
+        if keep_areas or keep_workspaces:
+            unknown_keep_areas = [area for area in keep_areas if area not in held_areas]
+            if unknown_keep_areas:
+                raise RuntimeError(
+                    "--keep names areas this session does not hold: "
+                    + ", ".join(unknown_keep_areas)
+                )
+            unknown_keep_workspaces = [
+                workspace for workspace in keep_workspaces if workspace not in held_workspaces
+            ]
+            if unknown_keep_workspaces:
+                raise RuntimeError(
+                    "--keep-workspace names workspaces this session does not hold: "
+                    + ", ".join(unknown_keep_workspaces)
+                )
+            if keep_areas:
+                drop_areas = [area for area in held_areas if area not in keep_areas]
+            if keep_workspaces:
+                drop_workspaces = [
+                    workspace for workspace in held_workspaces if workspace not in keep_workspaces
+                ]
+            if not drop_areas and not drop_workspaces:
+                raise RuntimeError(
+                    "--keep already covers everything held; nothing to release"
+                )
         unknown_areas = [area for area in drop_areas if area not in held_areas]
         if unknown_areas:
             raise RuntimeError(
@@ -3856,6 +3906,8 @@ def command_narrow(args) -> int:
         narrowed["retained_workspaces"] = [
             workspace for workspace in held_workspaces if workspace not in drop_workspaces
         ]
+        narrowed["warn_zero_areas"] = not narrowed_row.claims and bool(held_areas)
+        narrowed["warn_all_workspaces"] = bool(held_workspaces) and not narrowed_row.workspaces
         return replace_table(content, prospective)
 
     try:
@@ -3868,6 +3920,15 @@ def command_narrow(args) -> int:
     retained_areas = narrowed["retained_areas"]
     released_workspaces = narrowed["released_workspaces"]
     retained_workspaces = narrowed["retained_workspaces"]
+    if narrowed["warn_zero_areas"]:
+        print("WARNING: this narrow leaves the seat with no areas.")
+    if narrowed["warn_all_workspaces"]:
+        print("WARNING: this narrow releases every workspace.")
+    if legacy_spelling:
+        print(
+            "Note: --area/--workspace on narrow name what to RELEASE "
+            "(deprecated spelling; prefer --release/--release-workspace)."
+        )
     print(
         f"Narrowed session {identity.compact_id} "
         f"({identity.speakable_id}; uuid={identity.session_uuid})."
@@ -5318,8 +5379,42 @@ def parser() -> argparse.ArgumentParser:
         ),
     )
     narrow.add_argument("--id", "--session", dest="id", required=True)
-    narrow.add_argument("--area", action="append", default=[])
-    narrow.add_argument("--workspace", action="append", default=[])
+    narrow.add_argument(
+        "--release",
+        action="append",
+        default=[],
+        help="Areas to RELEASE from the row (repeatable; the primary spelling).",
+    )
+    narrow.add_argument(
+        "--release-workspace",
+        action="append",
+        default=[],
+        help="Workspaces to RELEASE from the row (repeatable; the primary spelling).",
+    )
+    narrow.add_argument(
+        "--keep",
+        action="append",
+        default=[],
+        help="Areas to KEEP; every other held area is released (repeatable; inverse form).",
+    )
+    narrow.add_argument(
+        "--keep-workspace",
+        action="append",
+        default=[],
+        help="Workspaces to KEEP; every other held workspace is released (repeatable; inverse form).",
+    )
+    narrow.add_argument(
+        "--area",
+        action="append",
+        default=[],
+        help="DEPRECATED alias for --release: names areas to RELEASE, not to keep.",
+    )
+    narrow.add_argument(
+        "--workspace",
+        action="append",
+        default=[],
+        help="DEPRECATED alias for --release-workspace: names workspaces to RELEASE.",
+    )
     narrow.add_argument(
         "--administrative",
         action="store_true",

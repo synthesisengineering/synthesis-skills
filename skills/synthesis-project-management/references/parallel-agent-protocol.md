@@ -70,8 +70,11 @@ and workspaces with what the row already holds, and names what it retained
 and added. Omission never shrinks a claim — a re-claim written from a
 compacted context cannot silently drop the areas it forgot to restate.
 Shrinking is the explicit `narrow` verb, which names each area or
-workspace to release, refuses targets the row does not hold, and prints
-the released and retained sets. The rare full reset is `claim --replace`,
+workspace to release (`--release`; `--keep` names what to retain and
+releases the held complement instead), refuses targets the row does not
+hold, warns loudly when the seat would keep nothing, and prints the
+released and retained sets. `--area` is a deprecated alias for the
+release sense. The rare full reset is `claim --replace`,
 which sets the row to exactly the call and names every drop loudly.
 Never re-claim a subset expecting the rest to fall away; that was the
 pre-ruling-B replace trap.
