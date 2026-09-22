@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.130.0] - 2026-09-22
+
+Fixed two coordination defects (board report BUG-1). Narrowing a claim
+bumped the board heartbeat without writing the seat file, diverging the
+two stores on every call; narrow and the release-request honor pass now
+write both with one clock read. The claim-identity snapshot observed
+`.git` directory mtimes, so routine `git status` / `git add` invalidated
+it; the stamp now tracks identity markers only, and the trip error names
+the moved claim with a re-run remedy.
+
 ## [4.129.0] - 2026-09-21
 
 Fixed the coordination `narrow` sense inversion (board report): `--area`

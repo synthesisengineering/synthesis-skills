@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.130.0** fixes two coordination defects: narrowing a
+claim now keeps the seat file in sync with the board heartbeat,
+and the claim-identity snapshot no longer trips on routine git
+activity — with errors that name the moved claim.
+
 Release **4.129.0** fixes the coordination `narrow` sense
 inversion: `--release` is the explicit primary spelling,
 `--keep` states the inverse intent directly, the deprecated
