@@ -3562,10 +3562,15 @@ def honor_open_requests(
             for area in areas if result == "narrowed"
         ]
         narrowed = [area for area in narrowed if area in holder_now.claims]
+        # Single clock read for the row and the seat (see command_claim):
+        # the honor pass used to bump the row heartbeat without touching
+        # the seat, diverging the two stores on every honored request (BUG-1).
+        row_heartbeat = timestamp()
+        honor_outcome["heartbeat"] = row_heartbeat
         updated_row = replace(
             holder_now,
             claims=[a for a in holder_now.claims if a not in narrowed],
-            heartbeat=timestamp(),
+            heartbeat=row_heartbeat,
         )
         prospective = [
             updated_row if s.session_uuid == holder_now.session_uuid else s
@@ -3587,10 +3592,30 @@ def honor_open_requests(
 
     if not verdicts:
         return outcomes
+    honor_outcome: dict[str, object] = {}
     try:
         locked_update(board, operation)
     except RuntimeError as exc:
         return outcomes + [f"honor pass failed to record: {exc}"]
+    row_heartbeat = honor_outcome.get("heartbeat")
+    existing = read_seat(board, holder.session_uuid)
+    if existing is not None:
+        write_seat(
+            board,
+            session_uuid=existing.session_uuid,
+            compact_id=existing.compact_id,
+            machine=existing.machine,
+            machine_label=existing.machine_label,
+            identity=self_identity() if self_identity().primary_ref else SelfIdentity(
+                client=existing.client,
+                harness_session_id=existing.harness_session_id,
+                host_session_id=existing.host_session_id,
+                pid=existing.pid,
+            ),
+            cwd=existing.cwd,
+            last_heartbeat=row_heartbeat if isinstance(row_heartbeat, str) else timestamp(),
+            status="active",
+        )
     return outcomes
 
 
@@ -3894,6 +3919,10 @@ def command_narrow(args) -> int:
         if problems:
             raise RuntimeError("; ".join(problems))
         narrowed["identity"] = session.identity
+        # Single clock read for the row and the seat (see command_claim):
+        # narrow used to bump the row heartbeat without touching the seat,
+        # diverging the two stores on every call (BUG-1).
+        narrowed["heartbeat"] = now
         narrowed["released_areas"] = [
             area for area in held_areas if area in drop_areas
         ]
@@ -3956,6 +3985,25 @@ def command_narrow(args) -> int:
         )
         + "."
     )
+    row_heartbeat = narrowed.get("heartbeat")
+    existing = read_seat(args.board, identity.session_uuid)
+    if existing is not None:
+        write_seat(
+            args.board,
+            session_uuid=existing.session_uuid,
+            compact_id=existing.compact_id,
+            machine=existing.machine,
+            machine_label=existing.machine_label,
+            identity=self_identity() if self_identity().primary_ref else SelfIdentity(
+                client=existing.client,
+                harness_session_id=existing.harness_session_id,
+                host_session_id=existing.host_session_id,
+                pid=existing.pid,
+            ),
+            cwd=existing.cwd,
+            last_heartbeat=row_heartbeat if isinstance(row_heartbeat, str) else timestamp(),
+            status="active",
+        )
     return 0
 
 

@@ -235,6 +235,7 @@ class ClaimScopeResolver:
             raise ClaimIdentityError("nested claim identity snapshots are forbidden")
         physical = []
         observations = {}
+        claimants = {}
         for claim, workspaces in claims:
             if re.match(r"^[A-Za-z][A-Za-z0-9_-]*:", plain(claim)):
                 continue
@@ -244,18 +245,29 @@ class ClaimScopeResolver:
             if Path(target).is_absolute():
                 if key not in observations:
                     observations[key] = (target, self._observe(target))
+                    claimants[key] = claim
         self._snapshot = observations
         try:
             yield
             self._snapshot = None
             for claim, workspaces, target, key in physical:
                 if self._physical(claim, workspaces) != target:
-                    raise ClaimIdentityError("claim identity snapshot physical scope changed")
+                    raise ClaimIdentityError(
+                        "claim identity snapshot physical scope changed: "
+                        f"claim {claim} resolved to {target} at entry"
+                    )
                 if key is not None and self._identity_prefix(target) != key:
-                    raise ClaimIdentityError("claim identity snapshot administrative boundary changed")
-            for target, observed in observations.values():
+                    raise ClaimIdentityError(
+                        "claim identity snapshot administrative boundary changed: "
+                        f"claim {claim} (prefix {key})"
+                    )
+            for key, (target, observed) in observations.items():
                 if self._observe(target) != observed:
-                    raise ClaimIdentityError("claim identity snapshot changed or became unreadable")
+                    raise ClaimIdentityError(
+                        "claim identity snapshot changed or became unreadable: "
+                        f"claim {claimants.get(key, target)} ({target}); "
+                        "re-run when git-quiet"
+                    )
         finally:
             self._snapshot = None
 
@@ -270,12 +282,31 @@ class ClaimScopeResolver:
         except OSError as exc:
             raise ClaimIdentityError("metadata claim administrative identity is unavailable") from exc
 
+    @staticmethod
+    def _dir_marker(path: Path):
+        """Identity marker for the bare .git directory: device, inode, mode.
+
+        mtime/ctime are deliberately excluded: every git command churns them
+        (index writes go through .git/index.lock), so they track activity,
+        not identity, and a snapshot that observes them trips on routine
+        `git status` / `git add` (BUG-1/F2). Replacement is still caught via
+        inode + config bytes; worktree add/remove/move still trip via the
+        worktrees/ registry markers below, which keep their times.
+        """
+        try:
+            info = path.lstat()
+            return (info.st_dev, info.st_ino, info.st_mode)
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise ClaimIdentityError("metadata claim administrative identity is unavailable") from exc
+
     def _registry_stamp(self, common: str):
         root = Path(common)
         directory = root / "worktrees"
         try:
             entries = sorted(directory.iterdir()) if directory.is_dir() else []
-            return (self._marker(root), self._marker(root / "config"), self._marker(root / "config.worktree"),
+            return (self._dir_marker(root), self._marker(root / "config"), self._marker(root / "config.worktree"),
                     self._marker(directory), tuple((entry.name, self._marker(entry),
                         self._marker(entry / "gitdir"), self._marker(entry / "commondir"),
                         self._marker(entry / "config.worktree")) for entry in entries))

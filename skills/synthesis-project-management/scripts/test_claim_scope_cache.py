@@ -328,3 +328,42 @@ def test_split_values_preserves_glob_stars_in_paths():
     assert claim_scope.split_values("/a/**, /b/**") == ["/a/**", "/b/**"]
     assert claim_scope.split_values("**bold**, /a/**") == ["bold", "/a/**"]
     assert claim_scope.plain("**bold**") == "bold"
+
+
+def _snapshot_claim(root):
+    return [(str(root / "projects" / "one"), ())]
+
+
+def test_snapshot_survives_routine_git_activity(checkouts):
+    """BUG-1/F2: status/add/commit move .git mtimes but not identity."""
+    root, _ = checkouts
+    (root / "projects" / "one" / "note.md").write_text("draft", encoding="utf-8")
+    resolver = claim_scope.ClaimScopeResolver()
+    with resolver.snapshot(_snapshot_claim(root)):
+        git(root, "status", "--porcelain")
+        git(root, "add", ".")
+        git(root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+            "commit", "-qm", "mid-snapshot")
+
+
+def test_snapshot_still_trips_on_identity_change(checkouts):
+    """BUG-1/F2 positive control: a config write is identity, not activity."""
+    root, _ = checkouts
+    resolver = claim_scope.ClaimScopeResolver()
+    with pytest.raises(claim_scope.ClaimIdentityError):
+        with resolver.snapshot(_snapshot_claim(root)):
+            git(root, "config", "fixture.probe", "mid-snapshot")
+
+
+def test_snapshot_error_names_the_moved_scope(checkouts):
+    """BUG-1/F3: the trip must name the claim, the target, and the remedy."""
+    root, _ = checkouts
+    claim = str(root / "projects" / "one")
+    resolver = claim_scope.ClaimScopeResolver()
+    with pytest.raises(claim_scope.ClaimIdentityError) as caught:
+        with resolver.snapshot([(claim, ())]):
+            git(root, "config", "fixture.probe", "mid-snapshot")
+    message = str(caught.value)
+    assert "changed or became unreadable" in message
+    assert claim in message
+    assert "re-run when git-quiet" in message

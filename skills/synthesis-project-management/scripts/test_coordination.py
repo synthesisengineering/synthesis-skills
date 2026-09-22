@@ -3384,6 +3384,50 @@ def test_narrow_releases_named_areas_and_reports(tmp_path: Path, capsys, monkeyp
     assert "Retained 2 area(s)" in out
 
 
+def _ticking_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Advance the board clock one minute per read; heartbeats have
+    second resolution, so a real clock cannot separate back-to-back
+    claim/narrow calls inside one test."""
+    base = datetime(2026, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
+    ticks = [0]
+
+    def _next() -> str:
+        ticks[0] += 1
+        return (base + timedelta(minutes=ticks[0])).isoformat(timespec="seconds")
+
+    monkeypatch.setattr(MODULE, "timestamp", _next)
+
+
+def test_narrow_updates_seat_with_row_heartbeat(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """BUG-1/F1: narrow must not diverge the seat from the board row."""
+    board = tmp_path / "coordination" / "active-sessions.md"
+    _ticking_clock(monkeypatch)
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
+    assert MODULE.command_claim(claim_args(
+        board, session_id="A", project="project-a",
+        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+    )) == 0
+    row = _claims_of(board)
+    assert MODULE.command_claim(args(
+        board, id=row.compact_id, agent="A", machine="machine-A",
+        project="project-a", mode="autonomous", goal="goal-A",
+        workspace=["/tmp/repo-a @ feature/a"],
+        area=["scope/b.md"],
+        context_role="owner",
+    )) == 0
+    before = MODULE.read_seat(board, _claims_of(board).session_uuid)
+    assert before is not None
+    assert MODULE.command_narrow(narrow_args(
+        board, session_id=row.compact_id, release=["scope/b.md"],
+    )) == 0
+    after_row = _claims_of(board)
+    after_seat = MODULE.read_seat(board, after_row.session_uuid)
+    assert after_row.claims == ["scope/a.md"]
+    assert after_seat is not None
+    assert after_seat.last_heartbeat == after_row.heartbeat
+    assert after_seat.last_heartbeat != before.last_heartbeat
+
+
 def test_narrow_releases_named_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
@@ -4234,6 +4278,26 @@ def test_honor_narrows_clean_areas_and_replies(tmp_path: Path, monkeypatch: pyte
     assert _row_by_project(board, "project-h").claims == []
     assert MODULE.parse_release_replies(board.read_text(encoding="utf-8")) == {req.id: "narrowed"}
     assert MODULE.open_release_requests(board.read_text(encoding="utf-8")) == []
+
+
+def test_honor_updates_seat_with_row_heartbeat(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """BUG-1/F1: the honor pass must not diverge the seat from the row."""
+    board = tmp_path / "coordination" / "active-sessions.md"
+    _ticking_clock(monkeypatch)
+    root = staged_repository(tmp_path)
+    holder, _requester = _claim_holder_requester(board, root, monkeypatch)
+    area = f"{root}/claimed/**"
+    assert _request(board, holder.compact_id, area) == 0
+    before = MODULE.read_seat(board, holder.session_uuid)
+    assert before is not None
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:holder-seat")
+    MODULE.honor_open_requests(board, holder.session_uuid, root)
+    row = _row_by_project(board, "project-h")
+    seat = MODULE.read_seat(board, holder.session_uuid)
+    assert row.claims == []
+    assert seat is not None
+    assert seat.last_heartbeat == row.heartbeat
+    assert seat.last_heartbeat != before.last_heartbeat
 
 
 def test_honor_holds_dirty_areas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
