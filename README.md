@@ -1280,7 +1280,7 @@ Read the launch article: [Synthesis Skills: Install Methodology Into Your AI Wor
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md). Support posture: [SUPPORT.md](SUPPORT.md).
 
 ## Author
 

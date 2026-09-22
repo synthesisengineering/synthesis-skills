@@ -30,6 +30,13 @@ probes, and examples from non-coding work are all useful contributions.
 2. Create a feature branch. Keep one user-visible concern per pull request.
 3. Preserve the public/private boundary. Do not include names, local paths,
    credentials, client data, or organization-specific procedures.
+   Promotion acceptance (POL-1, ruled 2026-09-21): this repo accepts
+   mechanisms strangers can configure — detectors, guards, parsers, and
+   capabilities promoted opt-in behind configuration, with the personal
+   surface audited out and the absence tested. Opinions, kernel pieces,
+   ledgers, adapters, and secrets are never accepted here. Promoted code
+   ships inert until configured and is maintained under the community
+   posture in [SUPPORT.md](SUPPORT.md).
 4. Run the source conformance check:
 
    ```bash
