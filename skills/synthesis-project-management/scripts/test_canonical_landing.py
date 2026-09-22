@@ -217,6 +217,33 @@ def test_supported_source_forms_bind_exact_commit(setup, source):
     assert result['scope'] == 'supported'
 
 
+def test_sha_source_forms_bind_exact_commit(setup):
+    fixture = setup
+    for source in (fixture.target, fixture.target[:12]):
+        fixture.payload['tool_input']['cmd'] = f'git -C {fixture.linked} push origin {source}:main'
+        result = landing.inspect_push(fixture.payload, fixture.canonical)
+        assert result['scope'] == 'supported'
+        assert result['source_oid'] == fixture.target
+
+
+def test_hex_branch_name_falls_back_when_no_such_commit(setup):
+    fixture = setup
+    git(fixture.linked, 'branch', '1a2b3c', fixture.target)
+    fixture.payload['tool_input']['cmd'] = f'git -C {fixture.linked} push origin 1a2b3c:main'
+    result = landing.inspect_push(fixture.payload, fixture.canonical)
+    assert result['scope'] == 'supported'
+    assert result['source'] == 'refs/heads/1a2b3c'
+    assert result['source_oid'] == fixture.target
+
+
+def test_unresolvable_source_refused_with_accurate_diagnostic(setup):
+    fixture = setup
+    missing = '0' * 40
+    fixture.payload['tool_input']['cmd'] = f'git -C {fixture.linked} push origin {missing}:main'
+    with pytest.raises(RuntimeError, match=f'push source did not resolve to a commit: {missing}'):
+        landing.inspect_push(fixture.payload, fixture.canonical)
+
+
 def test_native_identity_spoof_cannot_claim_or_recover(setup):
     fixture = setup
     receipt, path = capture_publish(fixture)

@@ -38,6 +38,12 @@ BOARD = SYNTHESIS_HOME / 'coordination' / 'active-sessions.md'
 COMPLETION_TOOLS = {'write_stdin', 'TaskOutput'}
 SAFE_PUSH_FLAGS = {'-q', '--quiet', '-v', '--verbose', '--porcelain', '-u', '--set-upstream', '--progress', '--no-progress', '--atomic'}
 OID = re.compile(r'^[0-9a-f]{40}(?:[0-9a-f]{24})?$')
+OID_LIKE = re.compile(r'[0-9a-fA-F]{4,64}\Z')
+
+
+def _looks_like_oid(source: str) -> bool:
+    """Hex long enough to be an abbreviated commit; rev-parse validates."""
+    return OID_LIKE.fullmatch(source) is not None
 _DEPS = None
 
 
@@ -255,14 +261,26 @@ def inspect_push(payload: dict, workdir: Path) -> dict:
     if destination not in {'main', 'refs/heads/main'}:
         return {'scope': 'not_applicable', 'reason': 'push does not name refs/heads/main'}
     if not source or source.startswith(('-', '+')) or any(v in source for v in '*?$`[]{}~^:'):
-        return dict(result, reason='landing requires one literal local branch or HEAD source')
-    if source != 'HEAD':
-        source = source if source.startswith('refs/heads/') else f'refs/heads/{source}'
+        return dict(result, reason='landing requires one literal local branch, HEAD, or commit source')
+    candidates = [source]
+    if source != 'HEAD' and not source.startswith('refs/heads/'):
+        if _looks_like_oid(source):
+            # Ref first, bare object second: mirrors git's own tie-break
+            # (refs win ambiguity), keeps branch receipts full-ref, and
+            # still binds real OIDs, which have no such branch.
+            candidates = [f'refs/heads/{source}', source]
+        else:
+            candidates = [f'refs/heads/{source}']
     repo = Path(out(repo, 'rev-parse', '--show-toplevel')).resolve()
     common = Path(out(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')).resolve()
-    source_oid = out(repo, 'rev-parse', '--verify', '--end-of-options', source + '^{commit}')
-    if not OID.fullmatch(source_oid):
-        raise RuntimeError('push source did not resolve to a commit')
+    source_oid = ''
+    for candidate in candidates:
+        probe = git(repo, 'rev-parse', '--verify', '--end-of-options', candidate + '^{commit}', check=False)
+        if probe.returncode == 0 and OID.fullmatch(probe.stdout.strip()):
+            source, source_oid = candidate, probe.stdout.strip()
+            break
+    if not source_oid:
+        raise RuntimeError(f'push source did not resolve to a commit: {positional[1].partition(":")[0]}')
     urls = out(repo, 'remote', 'get-url', '--push', '--all', remote).splitlines()
     if len(urls) != 1:
         return dict(result, reason='landing requires one configured push destination')
