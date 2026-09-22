@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.132.0** adds the `synthesis-agent-guardrails` skill: a
+fail-closed gate that blocks cross-account calendar and mail artifacts,
+inert until you configure your workspaces. Also: push-by-commit-hash
+lands cleanly, and CI acceptance reads green on release commits.
+
 Release **4.131.0** retires flush entries per path on blocked
 repositories: one foreign file no longer pins a whole root, own work
 recommits without the foreign paths, and landed bytes retire even

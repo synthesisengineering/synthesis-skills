@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.132.0] - 2026-09-22
+
+New public skill `synthesis-agent-guardrails` (ruling PRO-5): the
+cross-account artifact routing gate, promoted purge-reviewed with
+empty authority until configured, per-workspace account bindings, and
+committed absence tests proving the promoted tree carries no principal
+identity. Landing inspection accepts commit-hash push sources with an
+accurate refusal otherwise. CI grades acceptance against the previous
+release tag instead of the push base.
+
 ## [4.131.0] - 2026-09-22
 
 Flush retirement is now per-path on blocked repositories (board report
