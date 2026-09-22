@@ -47,6 +47,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import socket
 import stat
 import subprocess
@@ -1715,6 +1716,347 @@ def drop_stranded_entries(
     }, narrowed
 
 
+# ---------------------------------------------------------------------------
+# Per-path flush retirement (BUG-4 deep fix)
+# ---------------------------------------------------------------------------
+
+_CONTENT_HASH_RE = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def load_pending_manifest_hashes(data: dict) -> dict[str, str]:
+    """Return the manifest's validated attribution content-hash map.
+
+    The writer records ``content_hashes`` as {abspath: sha256 hex} beside
+    ``paths``. An absent key or non-dict value means a legacy (or corrupt)
+    manifest and yields ``{}`` — every path then behaves exactly as before
+    hashes existed. Malformed entries are dropped individually so one
+    corrupt value can neither pin a root nor forge a match; a dropped
+    entry behaves as absent for that path.
+    """
+    raw = data.get("content_hashes")
+    if not isinstance(raw, dict):
+        return {}
+    clean: dict[str, str] = {}
+    for key, value in raw.items():
+        if (
+            isinstance(key, str)
+            and isinstance(value, str)
+            and _CONTENT_HASH_RE.match(value) is not None
+        ):
+            clean[key] = value
+    return clean
+
+
+def git_bytes(repo: Path, *args: str, timeout: int = 60) -> tuple[int, bytes, str]:
+    """Run git capturing raw stdout bytes (blob-safe; ``git()`` decodes text)."""
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(repo)] + list(args),
+            capture_output=True, timeout=timeout, env=dict(os.environ),
+        )
+        return r.returncode, r.stdout, r.stderr.decode("utf-8", "replace").strip()
+    except subprocess.TimeoutExpired:
+        return -1, b"", "timeout"
+    except FileNotFoundError:
+        return -1, b"", "git not found"
+
+
+def worktree_content_hash(path: Path) -> str | None:
+    """sha256 of a worktree file's bytes; None when missing or non-regular."""
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def head_content_hash(repo: Path, rel: str) -> str | None:
+    """sha256 of the blob bytes ``HEAD:rel`` holds; None when unanswerable."""
+    rc, blob, _ = git_bytes(repo, "cat-file", "-p", f"HEAD:{rel}")
+    if rc != 0:
+        return None
+    return hashlib.sha256(blob).hexdigest()
+
+
+def current_branch(repo: Path) -> str | None:
+    rc, branch, _ = git(repo, "branch", "--show-current")
+    if rc != 0 or not branch:
+        return None
+    return branch
+
+
+def head_contained_in_origin(repo: Path, branch: str) -> bool:
+    """True when origin/<branch> already contains HEAD — local refs only.
+
+    No fetch: the flush's checkpoint pass already fetched where it could,
+    and this check must stay side-effect-free for dry-run reporting.
+    """
+    if not remote_branch_exists(repo, branch):
+        return False
+    rc, _, _ = git(repo, "merge-base", "--is-ancestor", "HEAD", f"origin/{branch}")
+    return rc == 0
+
+
+def _retry_per_path_commit(
+    root: Path,
+    branch: str,
+    committable: list[str],
+    cfg: dict,
+    result: dict,
+    rel_of: dict[Path, str],
+    retired_resolved: set[Path],
+    retries: list[dict],
+) -> None:
+    """Retry a refused commit with only the provably-own paths, in place."""
+    intent_paths: list[str] = []
+    refused: str | None = None
+    for path in committable:
+        tracked_rc, _, _ = git(root, "ls-files", "--error-unmatch", "--", path)
+        if tracked_rc == 0:
+            continue
+        add_rc, _, add_error = git(root, "add", "--intent-to-add", "--", path)
+        if add_rc != 0:
+            refused = f"could not prepare untracked context path: {add_error}"
+            break
+        intent_paths.append(path)
+    if refused is None:
+        author_env = {
+            "GIT_AUTHOR_NAME": cfg["commit_author_name"],
+            "GIT_AUTHOR_EMAIL": cfg["commit_author_email"],
+            "GIT_COMMITTER_NAME": cfg["commit_author_name"],
+            "GIT_COMMITTER_EMAIL": cfg["commit_author_email"],
+        }
+        rc, out, err = git(
+            root,
+            "commit",
+            "-m",
+            "Update project context",
+            "--only",
+            "--",
+            *committable,
+            env=author_env,
+            timeout=120,
+        )
+        if rc != 0:
+            refused = f"commit blocked: {(err or out)[:300]}"
+    if refused is not None:
+        if intent_paths:
+            git(root, "reset", "--", *intent_paths)
+        prior = result.get("alert") or ""
+        note = f"per-path subset retry also refused: {refused}"
+        result["alert"] = f"{prior}; {note}" if prior else note
+        retries.append({"repo": str(root), "committed": 0, "refused": refused})
+        return
+    result.update(files=len(committable), detail=summarize_paths(committable), alert=None)
+    finish_sync(root, branch, result, committed=True, dry_run=False)
+    if result["action"] in PUBLISHED_ACTIONS:
+        wanted = set(committable)
+        for resolved, rel in rel_of.items():
+            if rel in wanted:
+                retired_resolved.add(resolved)
+    retries.append({"repo": str(root), "committed": len(committable), "action": result["action"]})
+
+
+def retire_per_path_entries(
+    manifest: Path,
+    data: dict,
+    entries: list[tuple[str, Path, bool]],
+    root_of,
+    context_results: dict[Path, dict],
+    cfg: dict,
+    *,
+    dry_run: bool,
+) -> list[dict]:
+    """Retire what each attributed path's own state proves on blocked roots.
+
+    ``retire_published_entries`` retires whole repository roots whose result
+    proves publication. When a root blocks — typically ``hook-blocked`` after
+    the claim gate refuses a commit mixing the session's bytes with another
+    session's — one foreign path pins every entry under that root. This pass
+    re-examines ONLY roots the repository pass could not publish (and never
+    guard-rejected or lock-active roots, whose state is untrustworthy):
+
+    - clean + pushed → retire (own bytes provably on origin);
+    - dirty + (no attribution hash OR worktree matches it) → committable;
+    - dirty + hash present + worktree differs + HEAD differs → skip from
+      commit, report foreign-overwrite, keep attributed;
+    - tracked + HEAD content matches the hash + pushed → retire even though
+      the worktree is dirty (dirtied by others after landing).
+
+    On a ``hook-blocked`` root where excluding the skipped paths leaves a
+    strict committable subset, the commit is retried ``--only`` that subset
+    and finished through the normal sync path; the root result is updated in
+    place. Source (non-context) entries keep root granularity — their
+    publication is owned by their policy workflow, never reinterpreted here.
+    Called with the manifest lock held. Dry runs report only.
+    """
+    if not manifest.exists():
+        return []
+    current = {
+        Path(str(value)).expanduser().resolve(strict=False)
+        for value in [*data.get("paths", []), *data.get("remote_paths", [])]
+    }
+    hashes = load_pending_manifest_hashes(data)
+    lookup: dict[str, str] = {}
+    for key, value in hashes.items():
+        try:
+            lookup[str(Path(key).expanduser().resolve(strict=False))] = value
+        except (OSError, RuntimeError, ValueError):
+            continue
+    by_root: dict[Path, list[Path]] = {}
+    for _raw, resolved, is_context in entries:
+        if not is_context or resolved not in current:
+            continue
+        root = root_of(resolved)
+        if root is None:
+            continue
+        bucket = by_root.setdefault(root, [])
+        if resolved not in bucket:
+            bucket.append(resolved)
+    if not by_root:
+        return []
+
+    retired_resolved: set[Path] = set()
+    skipped_foreign: list[dict] = []
+    retries: list[dict] = []
+    dry_roots: list[dict] = []
+    for root in sorted(by_root, key=str):
+        result = context_results.get(root)
+        if result is None:
+            continue
+        action = result.get("action")
+        if action in PUBLISHED_ACTIONS or action in ("guard-rejected", "skipped-lock-active"):
+            continue
+        repo_base = root.resolve()
+        rel_of: dict[Path, str] = {}
+        for resolved in by_root[root]:
+            try:
+                rel_of[resolved] = str(resolved.resolve(strict=False).relative_to(repo_base))
+            except ValueError:
+                continue
+        if not rel_of:
+            continue
+        dirty = set(dirty_paths(root))
+        branch = current_branch(root)
+        pushed = branch is not None and head_contained_in_origin(root, branch)
+        verdicts: dict[Path, str] = {}
+        reasons: dict[Path, str] = {}
+        for resolved, rel in rel_of.items():
+            attr = lookup.get(str(resolved))
+            if rel in dirty:
+                work = worktree_content_hash(resolved)
+                if work is None:
+                    verdicts[resolved] = "keep"  # missing/non-file: existing flow owns it
+                    continue
+                if attr is None or work == attr:
+                    verdicts[resolved] = "committable"
+                    continue
+                head = head_content_hash(root, rel)
+                if head is not None and head == attr:
+                    if pushed:
+                        verdicts[resolved] = "retire-landed"
+                    else:
+                        verdicts[resolved] = "skip-foreign"
+                        reasons[resolved] = "attributed bytes committed locally but unpushed; worktree modified by others"
+                else:
+                    verdicts[resolved] = "skip-foreign"
+                    reasons[resolved] = "foreign-overwrite"
+            elif pushed:
+                verdicts[resolved] = "retire-clean"
+            else:
+                verdicts[resolved] = "keep"
+        committable = sorted(rel_of[r] for r in rel_of if verdicts[r] == "committable")
+        skips = sorted((rel_of[r], reasons[r]) for r in rel_of if verdicts[r] == "skip-foreign")
+        would_retry = (
+            action == "hook-blocked" and branch is not None and bool(committable) and bool(skips)
+        )
+        if dry_run:
+            dry_roots.append(
+                {
+                    "repo": str(root),
+                    "would_retire": sorted(
+                        rel_of[r] for r in rel_of if verdicts[r] in ("retire-clean", "retire-landed")
+                    ),
+                    "would_commit": committable,
+                    "would_skip": [{"path": rel, "reason": reason} for rel, reason in skips],
+                    "would_retry_commit": would_retry,
+                }
+            )
+            continue
+        for resolved in rel_of:
+            if verdicts[resolved] in ("retire-clean", "retire-landed"):
+                retired_resolved.add(resolved)
+        if action == "hook-blocked":
+            for rel, reason in skips:
+                skipped_foreign.append({"repo": str(root), "path": rel, "reason": reason})
+        if would_retry:
+            _retry_per_path_commit(
+                root, branch, committable, cfg, result, rel_of, retired_resolved, retries
+            )
+    if dry_run:
+        if not any(
+            item["would_retire"] or item["would_commit"] or item["would_skip"] for item in dry_roots
+        ):
+            return []
+        return [
+            {
+                "repo": str(manifest),
+                "name": "pending-session",
+                "action": "would-retire-per-path",
+                "roots": dry_roots,
+                "note": "per-path pass over non-published roots only; repository-level retirement not previewed",
+                "alert": None,
+            }
+        ]
+    if not retired_resolved and not skipped_foreign and not retries:
+        return []
+
+    def survives(value: object) -> bool:
+        return Path(str(value)).expanduser().resolve(strict=False) not in retired_resolved
+
+    kept = [value for value in data["paths"] if survives(value)]
+    removed = len(data["paths"]) - len(kept)
+    if retired_resolved and isinstance(data.get("content_hashes"), dict):
+        pruned = {}
+        for key, value in data["content_hashes"].items():
+            try:
+                drop = (
+                    Path(key).expanduser().resolve(strict=False) in retired_resolved
+                    if isinstance(key, str)
+                    else False
+                )
+            except (OSError, RuntimeError, ValueError):
+                drop = False
+            if not drop:
+                pruned[key] = value
+        data["content_hashes"] = pruned
+    summary = {
+        "repo": str(manifest),
+        "name": "pending-session",
+        "action": "retired-per-path",
+        "retired_paths": sorted(str(path) for path in retired_resolved),
+        "files": removed,
+        "skipped_foreign": skipped_foreign,
+        "retries": retries,
+        "alert": None,
+    }
+    if not kept:
+        manifest.unlink(missing_ok=True)
+        fsync_directory(manifest.parent)
+        return [{**summary, "manifest_removed": True}]
+    if removed:
+        before_digest = hashlib.sha256(manifest.read_bytes()).hexdigest()
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        data["paths"] = kept
+        if "remote_paths" in data:
+            data["remote_paths"] = [value for value in data["remote_paths"] if survives(value)]
+        data["updated_at"] = stamp
+        atomic_json(manifest, data)
+        rebind_receipt_digest(manifest, before_digest, {"derived_from_per_path_retirement": stamp})
+    return [{**summary, "manifest_removed": False}]
+
+
 def retire_published_entries(
     manifest: Path,
     data: dict,
@@ -1974,6 +2316,13 @@ def _flush_pending_manifests_unlocked(
                         manifest, data, entries, root_of, context_results, source_results
                     )
                 )
+        for manifest, data, entries in membership:
+            results.extend(
+                retire_per_path_entries(
+                    manifest, data, entries, root_of, context_results, cfg,
+                    dry_run=dry_run,
+                )
+            )
         return results, [manifest for manifest, _data in loaded]
     finally:
         for lock in reversed(locks):

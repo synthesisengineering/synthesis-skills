@@ -148,11 +148,21 @@ git failure never discards a live repository's pending attribution.
   replaced.
 - Every flush that is not a dry run retires the entries of each repository
   whose result is `clean`, `committed-pushed`, `pushed-stranded`
-  (earlier commits pushed now) or `source-remote-ready`, keeps the blocked
-  repositories' entries, and deletes the manifest only once it is empty. The
-  `retired-repositories` result names what was retired. A long-lived session
+  (earlier commits pushed now) or `source-remote-ready`, and deletes the
+  manifest only once it is empty. The `retired-repositories` result names
+  what was retired.
+- Blocked repositories get a per-path pass instead of keeping every entry:
+  paths that are clean with HEAD contained in the remote retire; dirty
+  paths whose bytes match the manifest's attribution hash (or predate
+  hashes) stay committable; dirty paths another session overwrote are
+  skipped from the commit, reported, and kept; paths whose attributed
+  bytes provably landed on the origin retire even while dirty. On a
+  claim-refused root the commit is retried with only the committable
+  subset. Guard-rejected and lock-active roots retire nothing, source
+  entries keep root granularity, and dry runs report the would-commit /
+  would-retire / would-skip sets without writing. A long-lived session
   therefore stops accreting already-published work onto a manifest one
-  blocked repository keeps alive.
+  foreign path keeps alive.
 
 ---
 
