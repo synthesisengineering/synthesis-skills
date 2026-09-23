@@ -150,8 +150,6 @@ def token_status(token_ref: str) -> tuple[str, str]:
         value = os.environ.get(var, "")
         if not value:
             return ("missing", f"${var} is unset")
-        if _is_placeholder(value) or _is_literal_token(value) is False and value == "":
-            return ("placeholder", f"${var} holds a placeholder")
         if _is_placeholder(value):
             return ("placeholder", f"${var} holds a placeholder")
         return ("ready", f"${var} is set")
