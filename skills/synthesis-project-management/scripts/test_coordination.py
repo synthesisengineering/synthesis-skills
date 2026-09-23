@@ -4475,3 +4475,84 @@ def test_idle_holder_narrow_refuses_an_answered_request(tmp_path: Path, capsys, 
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:requester-seat")
     assert _admin_narrow(board, holder.compact_id, req.id) == 10
     assert "already answered" in capsys.readouterr().err
+
+
+def _unverifiable_session(compact, claims, workspaces=()):
+    return MODULE.Session(
+        session_uuid=f"00000000-0000-0000-0000-{compact.replace('s-', '').replace('-', '')[:12]:0<12}",
+        compact_id=compact, speakable_id="", legacy_id="",
+        agent="test-harness", machine="test-machine", project="test-project",
+        started="2026-09-22T00:00:00Z", heartbeat="2026-09-22T00:00:00Z",
+        mode="autonomous", workspaces=list(workspaces), goal="test",
+        claims=list(claims), context_role="owner", status="active",
+    )
+
+
+class _UnverifiableScopes:
+    """Stub scopes: conflicts raises NoVerifiedCheckout; left side reproduces."""
+
+    def __init__(self, stale_claim):
+        import claim_scope
+        self._claim_scope = claim_scope
+        self._stale = stale_claim
+
+    def _physical(self, claim, workspaces):
+        return claim
+
+    def _scope_identity(self, pattern):
+        if pattern == self._stale:
+            raise self._claim_scope.NoVerifiedCheckout(
+                f"metadata claim has no verified Git checkout: {pattern}"
+            )
+        return None
+
+    def conflicts(self, left, right, **kwargs):
+        raise self._claim_scope.NoVerifiedCheckout(
+            f"metadata claim has no verified Git checkout: {self._stale}"
+        )
+
+
+def test_unverifiable_scope_attributes_to_owner_once() -> None:
+    """Intake 33: a stale checkout in one row reports once, naming the owner
+    and the exact narrow command — not once per peer pair."""
+    import claim_scope
+    left = _unverifiable_session("s-aaaa-1111-2222", ["/repo/.worktrees/gone/file.md"])
+    right = _unverifiable_session("s-bbbb-3333-4444", ["/repo/live/file.md"])
+    scopes = _UnverifiableScopes("/repo/.worktrees/gone/file.md")
+    problems: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    exc = claim_scope.NoVerifiedCheckout("metadata claim has no verified Git checkout: x")
+    assert MODULE._report_unverifiable_owner(
+        problems, seen, scopes, left, left.claims[0], right, right.claims[0], exc,
+    ) is True
+    # A second pair involving the same stale row adds nothing.
+    assert MODULE._report_unverifiable_owner(
+        problems, seen, scopes, left, left.claims[0], right, right.claims[0], exc,
+    ) is True
+    assert len(problems) == 1
+    [problem] = problems
+    assert "s-aaaa-1111-2222" in problem
+    assert "in its own row" in problem
+    assert "/repo/.worktrees/gone/file.md" in problem
+    assert "s-bbbb-3333-4444" not in problem
+    assert "coordination.py narrow --session s-aaaa-1111-2222" in problem
+    assert "--release /repo/.worktrees/gone/file.md" in problem
+
+
+def test_unverifiable_scope_keeps_pair_report_for_transients() -> None:
+    """Identity races that reproduce on neither side keep pair-level reporting."""
+    import claim_scope
+    left = _unverifiable_session("s-aaaa-1111-2222", ["/repo/a.md"])
+    right = _unverifiable_session("s-bbbb-3333-4444", ["/repo/b.md"])
+    scopes = _UnverifiableScopes("/repo/elsewhere.md")
+    problems: list[str] = []
+    exc = claim_scope.NoVerifiedCheckout("metadata claim has no verified Git checkout: x")
+    assert MODULE._report_unverifiable_owner(
+        problems, set(), scopes, left, left.claims[0], right, right.claims[0], exc,
+    ) is False
+    assert problems == []
+    other = claim_scope.ClaimIdentityError("worktree identity changed during discovery")
+    assert MODULE._report_unverifiable_owner(
+        problems, set(), scopes, left, left.claims[0], right, right.claims[0], other,
+    ) is False
+    assert problems == []

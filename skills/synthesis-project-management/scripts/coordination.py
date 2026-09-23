@@ -13,6 +13,7 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
 import socket
 import stat
@@ -2007,6 +2008,55 @@ def _tag(session: Session) -> str:
     return f"{session.label} ({session.project} · {session.agent})"
 
 
+_VIRTUAL_CLAIM_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*:")
+
+
+def _report_unverifiable_owner(
+    problems: list[str],
+    seen: set[tuple[str, str]],
+    scopes,
+    left,
+    left_claim: str,
+    right,
+    right_claim: str,
+    exc: Exception,
+) -> bool:
+    """Attribute a stable unverifiable scope to its owning session, once.
+
+    A stale checkout in one row used to print per peer pair (intake 33),
+    reading as every peer's fault. Re-resolve each side alone: the side
+    that reproduces NoVerifiedCheckout owns the stale path, named once
+    with the exact narrow command. Returns False when neither side
+    reproduces (transient identity races) so the caller keeps the
+    pair-level report.
+    """
+    if not isinstance(exc, claim_scope.NoVerifiedCheckout):
+        return False
+    attributed = False
+    for side, claim, workspaces in (
+        (left, left_claim, left.workspaces),
+        (right, right_claim, right.workspaces),
+    ):
+        if _VIRTUAL_CLAIM_RE.match(claim_scope.plain(claim)) is not None:
+            continue
+        try:
+            scopes._scope_identity(scopes._physical(claim, workspaces))
+        except claim_scope.NoVerifiedCheckout:
+            key = (side.compact_id, claim)
+            if key not in seen:
+                seen.add(key)
+                problems.append(
+                    f"session {_tag(side)} claims an unverifiable scope "
+                    f"in its own row: {claim}: {exc}. Release it with: "
+                    f"coordination.py narrow --session {side.compact_id} "
+                    f"--release {shlex.quote(claim)}"
+                )
+            attributed = True
+        except claim_scope.ClaimIdentityError:
+            continue
+    return attributed
+
+
 def _validate_sessions(
     sessions: list[Session],
     scopes,
@@ -2014,6 +2064,7 @@ def _validate_sessions(
 ) -> list[str]:
     problems: list[str] = []
     seen_selectors: dict[tuple[str, object], Session] = {}
+    seen_unverifiable: set[tuple[str, str]] = set()
     for session in sessions:
         if session.session_uuid:
             for issue in validate_identity(session.identity):
@@ -2070,7 +2121,11 @@ def _validate_sessions(
                         conflict = scopes.conflicts(left_claim, right_claim,
                             left_workspaces=left.workspaces, right_workspaces=right.workspaces)
                     except claim_scope.ClaimIdentityError as exc:
-                        problems.append(f"{_tag(left)} / {_tag(right)}: unverifiable claim scope: {exc}")
+                        if not _report_unverifiable_owner(
+                            problems, seen_unverifiable, scopes,
+                            left, left_claim, right, right_claim, exc,
+                        ):
+                            problems.append(f"{_tag(left)} / {_tag(right)}: unverifiable claim scope: {exc}")
                         continue
                     if conflict:
                         if parked_sides:

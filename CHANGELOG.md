@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.134.0] - 2026-09-22
+
+Overnight intake fixes from the fleet seats. Claim resolution no longer
+manufactures phantom project candidates from registry indexes (which
+blocked Stop for every lesson-filing session) and names its candidates
+when genuinely ambiguous. Worktree retirement releases the caller's
+cells under the removed tree in the same step, and an unverifiable
+scope now reports once against its owning row with the exact narrow
+command instead of once per peer pair. The rituals skill states its
+canonical script invocation.
+
 ## [4.133.0] - 2026-09-22
 
 The account routing gate joins the verified-execution contract: `synthesis

@@ -929,3 +929,65 @@ def test_stop_honors_open_release_requests(tmp_path: Path, monkeypatch: pytest.M
     assert engine.parse_release_replies(board.read_text(encoding="utf-8")) == {req.id: "narrowed"}
     # A row without identity never crashes the hook.
     state._honor_release_requests_at_stop(board, {}, {"hook_event_name": "Stop"})
+
+
+def _claim_row(project, areas="", workspaces="", session="s-test"):
+    return {
+        "project": project,
+        "claimed areas (advisory lock)": areas,
+        "workspace(s) / branch": workspaces,
+        "session uuid": session,
+    }
+
+
+def test_project_from_claim_ignores_phantom_registry_dirs(tmp_path, monkeypatch):
+    """Intake 31: a claimed root whose projects/ merely carries an index.yaml
+    must not manufacture a candidate that collides with the real dir."""
+    knowledge = tmp_path / "knowledge"
+    (knowledge / "projects").mkdir(parents=True)
+    (knowledge / "projects" / "index.yaml").write_text("csa-x:\n  status: active\n")
+    real = tmp_path / "real" / "projects" / "csa-x"
+    real.mkdir(parents=True)
+    seen = []
+    monkeypatch.setattr(
+        state, "checkpoint_applicability",
+        lambda project: seen.append(Path(project)) or ("APPLICABLE", []),
+    )
+    row = _claim_row("csa-x", areas=f"{knowledge} @ main",
+                     workspaces=f"{real} @ main")
+    assert state._project_from_claim(row) == real.resolve()
+    assert seen == [real.resolve()]
+
+
+def test_project_from_claim_error_names_candidates(tmp_path):
+    first = tmp_path / "a" / "projects" / "proj"
+    second = tmp_path / "b" / "projects" / "proj"
+    first.mkdir(parents=True)
+    second.mkdir(parents=True)
+    row = _claim_row("proj", areas=f"{first},{second}")
+    with pytest.raises(state.ProjectStateError) as exc:
+        state._project_from_claim(row)
+    assert str(first.resolve()) in str(exc.value)
+    assert str(second.resolve()) in str(exc.value)
+
+
+def test_project_from_claim_explicit_phantom_keeps_old_admission(tmp_path, monkeypatch):
+    """An explicitly claimed .../projects/<id> that does not exist yet keeps
+    the old admission (intake flow claims before first write)."""
+    ghost = tmp_path / "repo" / "projects" / "newbie"
+    (tmp_path / "repo" / "projects").mkdir(parents=True)
+    seen = []
+    monkeypatch.setattr(
+        state, "checkpoint_applicability",
+        lambda project: seen.append(Path(project)) or ("APPLICABLE", []),
+    )
+    row = _claim_row("newbie", areas=str(ghost))
+    assert state._project_from_claim(row) == ghost.resolve()
+    assert seen == [ghost.resolve()]
+
+
+def test_project_from_claim_without_projects_returns_none(tmp_path):
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    row = _claim_row("proj", areas=str(bare))
+    assert state._project_from_claim(row) is None

@@ -41,6 +41,17 @@ A project supplement (for example `daily-plans/daily-checklists.md`) lists the r
 
 The [day-end installer](scripts/install_day_end.py) copies the launcher, nudge, and its sibling [ritual-state query helper](scripts/ritual_state.py) from the same release as executable files. Reinstallation refreshes all three without changing the selected agent unless requested; the LaunchAgent retains its template schedule. The nudge queries ritual state without writing it and stays quiet when all expected workspaces have closed.
 
+## Script invocation
+
+Ritual scripts run as `python3 <skill-root>/scripts/<name>.py` from the
+installed skill tree — that is the canonical invocation everywhere this
+checklist names a script. `synthesis exec-public` is NOT the route: its
+declared entrypoints are the machine-wired scripts (hooks, launchers)
+whose bytes must verify against the active release, and the ritual
+workflow scripts are deliberately not registered there. An "invalid
+choice" from exec-public means the script was invoked through the wrong
+door, not that it is missing.
+
 ---
 
 ## Distributed ritual execution — desk and workers (v2.23.0)

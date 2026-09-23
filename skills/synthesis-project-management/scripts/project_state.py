@@ -1316,9 +1316,16 @@ def _project_from_claim(row: dict[str, str]) -> Path | None:
                 paths.append(direct)
                 explicit.add(direct)
         paths.append(path / "projects" / project_id)
+    # Root-derived candidates must exist as directories: the registry
+    # disjunct below used to admit <root>/projects/<id> for every claimed
+    # root whose projects/ merely carries an index.yaml, manufacturing a
+    # phantom that collided with the real project dir and blocked Stop
+    # for every lesson-filing session (intake 31). Explicitly claimed
+    # project paths keep the old admission; a phantom nobody claimed is
+    # not a candidate.
     existing = sorted(
         {path.resolve() for path in paths if path.parent.name == "projects"
-         and (path.is_dir() or path in explicit or (path.parent / "index.yaml").exists())},
+         and (path.is_dir() or path in explicit)},
         key=lambda item: (len(str(item)), str(item)),
     )
     if len(existing) > 1:
@@ -1331,7 +1338,10 @@ def _project_from_claim(row: dict[str, str]) -> Path | None:
                 continue
         if len(matching) == 1:
             return matching[0]
-        raise ProjectStateError("active claim names multiple project directories")
+        candidates = ", ".join(str(path) for path in existing)
+        raise ProjectStateError(
+            f"active claim names multiple project directories: {candidates}"
+        )
     if existing:
         checkpoint_applicability(existing[0])
     return existing[0] if existing else None

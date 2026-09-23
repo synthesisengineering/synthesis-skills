@@ -1217,3 +1217,100 @@ def test_retirement_leaves_main_on_other_branch_alone(tmp_path: Path) -> None:
     assert git(clone, "rev-parse", "HEAD").stdout.strip() == before
     assert git(clone, "branch", "--show-current").stdout.strip() == "other-work"
     assert not worktree.exists()
+
+
+def test_under_retired_matches_tree_cells_only(tmp_path):
+    retired = os.path.realpath(tmp_path / "wt")
+    assert MODULE._under_retired(str(tmp_path / "wt"), retired) is True
+    assert MODULE._under_retired(str(tmp_path / "wt" / "file.md"), retired) is True
+    assert MODULE._under_retired(f"{tmp_path}/wt/**", retired) is True
+    assert MODULE._under_retired(f"{tmp_path}/wt @ feature/x", retired) is True
+    assert MODULE._under_retired(str(tmp_path), retired) is False
+    assert MODULE._under_retired(str(tmp_path / "other"), retired) is False
+    assert MODULE._under_retired(str(tmp_path / "wt-sibling"), retired) is False
+    assert MODULE._under_retired("repo/relative.md", retired) is False
+    assert MODULE._under_retired("release-train:x", retired) is False
+
+
+COORDINATION = SCRIPT.with_name("coordination.py")
+
+
+def _claim_row(board, agent_env, workspace_cells, areas):
+    env = dict(os.environ)
+    env["SYNTHESIS_CLIENT_SESSION_REF"] = "test:caller"
+    env.update(agent_env)
+    command = [
+        sys.executable, str(COORDINATION), "--board", str(board), "claim",
+        "--agent", "test-harness", "--machine", "test-machine",
+        "--project", "test-project", "--mode", "autonomous", "--goal", "test",
+        "--context-role", "owner", "--client-ref", "test:caller",
+    ]
+    for cell in workspace_cells:
+        command += ["--workspace", cell]
+    for area in areas:
+        command += ["--area", area]
+    completed = subprocess.run(command, capture_output=True, text=True, env=env)
+    assert completed.returncode == 0, completed.stderr
+    status = subprocess.run(
+        [sys.executable, str(COORDINATION), "--board", str(board),
+         "status", "--json"],
+        capture_output=True, text=True, env=env,
+    )
+    sessions = json.loads(status.stdout)["sessions"]
+    assert len(sessions) == 1
+    return sessions[0]
+
+
+def _row_cells(board):
+    status = subprocess.run(
+        [sys.executable, str(COORDINATION), "--board", str(board),
+         "status", "--json"],
+        capture_output=True, text=True, env={**os.environ},
+    )
+    [row] = json.loads(status.stdout)["sessions"]
+    return row["claims"], row["workspaces"]
+
+
+def test_retire_narrows_caller_cells_under_removed_worktree(tmp_path):
+    """Intake 33: retirement releases the caller's cells under the removed
+    tree in the same step; covering and outside cells stay held."""
+    remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    commit_and_merge(clone, worktree)
+    board = tmp_path / "coordination" / "active-sessions.md"
+    row = _claim_row(
+        board, {},
+        [f"{worktree} @ feature/demo", f"{clone} @ main"],
+        [f"{worktree}/change.txt", f"{clone}/seed.txt", f"{tmp_path}/**"],
+    )
+    env = dict(os.environ)
+    env["SYNTHESIS_HOME"] = str(tmp_path / "synthesis-home")
+    env["SYNTHESIS_CLIENT_SESSION_REF"] = "test:caller"
+    env["SYNTHESIS_COORDINATION_SESSION"] = row["compact_id"]
+    completed = subprocess.run(
+        [sys.executable, str(SCRIPT), "--repository", str(clone),
+         "--worktree", str(worktree), "--branch", "feature/demo",
+         "--board", str(board)],
+        capture_output=True, text=True, env=env,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "narrowed 1 area(s), 1 workspace(s)" in completed.stdout
+    claims, workspaces = _row_cells(board)
+    assert claims == [f"{clone}/seed.txt", f"{tmp_path}/**"]
+    assert workspaces == [f"{clone} @ main"]
+
+
+def test_retire_without_session_identity_warns_not_fails(tmp_path):
+    remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    commit_and_merge(clone, worktree)
+    env = dict(os.environ)
+    env["SYNTHESIS_HOME"] = str(tmp_path / "synthesis-home")
+    env.pop("SYNTHESIS_COORDINATION_SESSION", None)
+    completed = subprocess.run(
+        [sys.executable, str(SCRIPT), "--repository", str(clone),
+         "--worktree", str(worktree), "--branch", "feature/demo"],
+        capture_output=True, text=True, env=env,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "no SYNTHESIS_COORDINATION_SESSION exported" in completed.stdout

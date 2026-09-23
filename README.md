@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.134.0** fixes four fleet-reported defects: phantom project
+candidates no longer block Stop, retirement narrows the caller's claims
+in the same step, stale scopes report once against their owner, and the
+rituals skill names its canonical script invocation.
+
 Release **4.133.0** wires the account routing gate into verified
 execution: hooks run it via `synthesis exec-public` from the verified
 active release.

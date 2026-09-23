@@ -25,6 +25,11 @@ class _NoVerifiedCheckout(ClaimIdentityError):
     """Git ran but could not identify a checkout at this path."""
 
 
+#: Public alias: coordination attributes this stable failure class to the
+#: owning session (intake 33) instead of repeating it per peer pair.
+NoVerifiedCheckout = _NoVerifiedCheckout
+
+
 def plain(value: str) -> str:
     guarded = value.replace("/**", "/\0GLOB\0").replace("**/", "\0GLOB\0/")
     unbolded = re.sub(r"\*\*(.+?)\*\*", r"\1", guarded)
