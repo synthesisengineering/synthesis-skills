@@ -5,6 +5,24 @@ release-by-release record of why each rule exists — the incidents and the
 design choices — so the main document stays within the repository's
 500-line budget without losing the reasoning. Newest first.
 
+## v3.11.0 — The registry owns the workspace list; placeholders are first-class
+
+v3.11.0 (2026-09-23) answers the multi-workspace question: one human, several
+Slacks. `scripts/slack_workspaces.py` keeps the per-machine registry — which
+workspaces exist, where each token lives, and the visibility mode — and
+`doctor` fails closed before any sync reads the `readable` set. Three
+decisions are load-bearing. First, tokens are never stored in the registry:
+a literal `xoxb-` value is rejected, because the registry is a synced
+dotfile and secrets don't live in synced dotfiles. Second, placeholders are
+a real status, not an error: the registry can be seeded and shipped before
+the tokens exist, and `doctor` says exactly which workspace still needs one
+plus where the minting guide lives. Third, the visibility doctrine ships
+both postures — unified (Rajiv's rule: default focus, purpose-bound
+cross-workspace reads for scheduling and priority) and isolated (session
+workspace only, with machine-level enforcement for strict-separation
+principals) — because the ecosystem serves both kinds of user and the mode
+is a registry line, not a fork.
+
 ## v3.10.0 — The preflight script owns target resolution
 
 v3.10.0 (2026-09-01) ships extraction item P2: `scripts/preflight.py` reads

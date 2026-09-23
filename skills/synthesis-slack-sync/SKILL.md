@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.10.0"
+  version: "3.11.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -70,6 +70,21 @@ group_dm_channels: []
 ```
 
 If the config file is missing, the skill should warn and ask the user to create one.
+
+## Multi-workspace registry (v3.11.0)
+
+A principal with several Slack workspaces declares them once per machine in
+`~/.synthesis/slack-workspaces.yaml` (seed with
+`scripts/slack_workspaces.py init`; tokens are `PLACEHOLDER` until provided,
+never literals). Before any sync, run
+`scripts/slack_workspaces.py doctor` from inside the session workspace: exit 0
+names the readable set, exit 1 names the workspace whose token is still
+missing. Visibility doctrine — unified (default focus plus purpose-bound
+cross-workspace reads) versus isolated (session workspace only, with
+machine-level enforcement) — lives in
+`references/cross-workspace-visibility.md`; token minting and installation in
+`references/slack-token-guide.md`. Syncs read only the `readable` set the
+registry reports for the session workspace.
 
 **Path resolution summary (v3.0.0):**
 - Channel transcripts: `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/<channel-name>.md`
