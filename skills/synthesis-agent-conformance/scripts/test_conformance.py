@@ -2227,6 +2227,139 @@ def test_parity_uses_enabled_inventory_not_newest_cache(
     assert all(check.ok for check in checks)
 
 
+def _drifted_parity(monkeypatch, tmp_path, live_holders):
+    source = tmp_path / "source"
+    source.mkdir()
+    write_manifests(source)
+
+    class Result:
+        returncode = 0
+        stderr = ""
+
+        def __init__(self, stdout: str):
+            self.stdout = stdout
+
+    monkeypatch.setattr(
+        MODULE, "resolve_client_binary", lambda client: f"/fake/{client}"
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "run",
+        lambda command, timeout=30, input_text=None, env=None: Result(
+            json.dumps(
+                [
+                    {
+                        "id": "synthesis-skills@synthesis-engineering",
+                        "enabled": True,
+                        "version": "1.0.0",
+                    }
+                ]
+                if command[0].endswith("claude")
+                else {
+                    "installed": [
+                        {
+                            "name": "synthesis-skills",
+                            "enabled": True,
+                            "version": "2.0.0",
+                        }
+                    ]
+                }
+            )
+        ),
+    )
+    return MODULE.parity_checks(source, tmp_path, live_holders=live_holders)
+
+
+def test_live_install_plane_holders_names_active_claimants_only() -> None:
+    sessions = [
+        {"compact_id": "s-live", "status": "active", "stale": False,
+         "claims": ["release-train:synthesis-skills"]},
+        {"compact_id": "s-cache", "status": "active", "stale": False,
+         "claims": ["/home/u/.codex/plugins/cache/x"]},
+        {"compact_id": "s-released", "status": "released", "stale": False,
+         "claims": ["release-train:synthesis-skills"]},
+        {"compact_id": "s-stale", "status": "active", "stale": True,
+         "claims": ["release-train:synthesis-skills"]},
+        {"compact_id": "s-other", "status": "active", "stale": False,
+         "claims": ["/home/u/workspaces/x/notes/note.md"]},
+        "not-a-session",
+    ]
+    assert MODULE.live_install_plane_holders(sessions) == ["s-live", "s-cache"]
+
+
+def test_parity_reports_pending_under_live_install_claims(tmp_path: Path, monkeypatch) -> None:
+    checks = _drifted_parity(monkeypatch, tmp_path, ["s-live"])
+    by_name = {check.name: check for check in checks}
+    for name in ("parity.clients-match", "parity.clients-current"):
+        assert by_name[name].status == "PENDING"
+        assert by_name[name].ok is None
+        assert by_name[name].required is False
+        assert "s-live" in by_name[name].detail
+        assert "do not refresh" in by_name[name].detail
+
+
+def test_parity_still_fails_drift_without_live_install_claims(tmp_path: Path, monkeypatch) -> None:
+    checks = _drifted_parity(monkeypatch, tmp_path, [])
+    by_name = {check.name: check for check in checks}
+    assert by_name["parity.clients-match"].status == "FAIL"
+    assert by_name["parity.clients-current"].status == "FAIL"
+
+
+def test_parity_queries_board_lazily_only_on_drift(tmp_path: Path, monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(
+        MODULE, "query_live_install_plane_holders",
+        lambda: calls.append(1) or ["s-live"],
+    )
+    source = tmp_path / "source"
+    source.mkdir()
+    write_manifests(source)
+    for client in ("claude", "codex"):
+        cache_tree(
+            tmp_path / f".{client}" / "plugins" / "cache" / "market" / "synthesis-skills" / "1.0.0"
+        )
+
+    class Result:
+        returncode = 0
+        stderr = ""
+
+        def __init__(self, stdout: str):
+            self.stdout = stdout
+
+    monkeypatch.setattr(
+        MODULE, "resolve_client_binary", lambda client: f"/fake/{client}"
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "run",
+        lambda command, timeout=30, input_text=None, env=None: Result(
+            json.dumps(
+                [
+                    {
+                        "id": "synthesis-skills@synthesis-engineering",
+                        "enabled": True,
+                        "version": "1.0.0",
+                    }
+                ]
+                if command[0].endswith("claude")
+                else {
+                    "installed": [
+                        {
+                            "name": "synthesis-skills",
+                            "enabled": True,
+                            "version": "1.0.0",
+                        }
+                    ]
+                }
+            )
+        ),
+    )
+    stable_pointer(tmp_path / ".synthesis" / "plugins" / "synthesis-skills" / "current", "1.0.0")
+    checks = MODULE.parity_checks(source, tmp_path)
+    assert calls == []
+    assert all(check.ok for check in checks)
+
+
 def test_surface_checks_report_ide_as_explicitly_unsupported(tmp_path: Path) -> None:
     write_manifests(tmp_path)
 

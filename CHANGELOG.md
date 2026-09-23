@@ -4,6 +4,20 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.141.0] - 2026-09-23
+
+Version drift observed while a live seat holds install-plane claims
+now reports PENDING with the holder named instead of FAIL (ITEM23):
+the mismatch belongs to an in-flight release, and the ritual reports
+it rather than refreshing clients under the live seat. The
+concurrent-seats ritual mode is documented beside observer mode with
+its six mechanical rules: claim file-by-file, fast-forward only
+unheld branches, report parity without repairing, skip shared-state
+maintenance while seats are live, fold rather than re-run peer
+artifacts, and release claims at end. Also makes the hook-gate
+inert test hermetic against the ambient catalog path, which 4.140.0
+CI exposed.
+
 ## [4.140.0] - 2026-09-23
 
 `synthesis-autopilot` 2.3.0 teaches the multi-session coordination

@@ -750,7 +750,76 @@ def on_disk_check(
         f"{root.name}: manifest {version}, reported {reported}")
 
 
-def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
+# Claim-area markers for the install plane: a live seat holding any of
+# these is mid-release (or mid-refresh), and version drift observed in
+# that window belongs to the seat's in-flight work, not to neglect.
+INSTALL_PLANE_CLAIM_MARKERS = (
+    "release-train",
+    "/plugins/",
+    "marketplaces",
+    ".synthesis/plugins",
+)
+
+
+def live_install_plane_holders(sessions: list[dict]) -> list[str]:
+    """Compact ids of live seats holding install-plane claims.
+
+    Pure over a decoded `coordination.py status --json` sessions list so
+    the rule is testable without a board. A seat counts when it is active,
+    not stale, and at least one claimed area touches the install plane.
+    """
+    holders = []
+    for session in sessions:
+        if not isinstance(session, dict):
+            continue
+        if session.get("status") != "active" or session.get("stale"):
+            continue
+        claims = session.get("claims") or []
+        if any(
+            marker in str(area)
+            for area in claims
+            for marker in INSTALL_PLANE_CLAIM_MARKERS
+        ):
+            holders.append(str(session.get("compact_id") or session.get("id") or "?"))
+    return holders
+
+
+def query_live_install_plane_holders() -> list[str]:
+    """Live install-plane holders from the coordination board.
+
+    Fails open to no holders: board health has its own checks
+    (coordination.*), and an unreadable board must not convert genuine
+    drift into silence.
+    """
+    if not COORDINATION_HELPER.is_file():
+        return []
+    try:
+        completed = run(
+            [sys.executable, str(COORDINATION_HELPER), "status", "--json"],
+            timeout=30,
+        )
+    except Exception:
+        return []
+    if completed.returncode != 0:
+        return []
+    try:
+        payload = json.loads(completed.stdout)
+    except ValueError:
+        return []
+    sessions = payload.get("sessions", []) if isinstance(payload, dict) else []
+    if not isinstance(sessions, list):
+        return []
+    try:
+        return live_install_plane_holders(sessions)
+    except Exception:
+        return []
+
+
+def parity_checks(
+    source_root: Path,
+    home: Path | None = None,
+    live_holders: list[str] | None = None,
+) -> list[Check]:
     """Dual-client version-drift detection against enabled inventories.
 
     The dual-runtime guarantee has three existing layers: CI source
@@ -761,6 +830,12 @@ def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
     refreshes only one client — or neither. This mode is that missing layer:
     fast enough to run at every day-start and session start, and it fails on
     drift rather than mistaking unused cache directories for live installs.
+
+    Drift observed while a live seat holds install-plane claims reports
+    PENDING instead of FAIL (ITEM23): the mismatch belongs to an in-flight
+    release, and the ritual must report it, never "repair" it by refreshing
+    under the live seat. Pass live_holders explicitly in tests; None queries
+    the board, lazily, only when drift is actually observed.
     """
     checks: list[Check] = []
     home = home or None
@@ -815,21 +890,52 @@ def parity_checks(source_root: Path, home: Path | None = None) -> list[Check]:
         on_disk_check(checks, client, version, home)
 
     both = all(installed.values())
-    add(
-        checks,
-        "parity.clients-match",
-        both and installed["claude"] == installed["codex"],
-        f"claude={installed['claude']} codex={installed['codex']}",
-    )
-    add(
-        checks,
-        "parity.clients-current",
+    match_ok = both and installed["claude"] == installed["codex"]
+    current_ok = (
         both
         and source_version is not None
-        and installed["claude"] == installed["codex"] == source_version,
-        f"source={source_version} claude={installed['claude']} "
-        f"codex={installed['codex']}",
+        and installed["claude"] == installed["codex"] == source_version
     )
+    holders: list[str] = []
+    if (not match_ok or not current_ok) and live_holders is None:
+        holders = query_live_install_plane_holders()
+    elif live_holders:
+        holders = list(live_holders)
+    if (not match_ok or not current_ok) and holders:
+        pending_detail = (
+            f"held by {', '.join(holders)}; report, do not refresh under a live seat"
+        )
+        add(
+            checks,
+            "parity.clients-match",
+            None,
+            f"claude={installed['claude']} codex={installed['codex']} ({pending_detail})",
+            required=False,
+            outcome="PENDING",
+        )
+        add(
+            checks,
+            "parity.clients-current",
+            None,
+            f"source={source_version} claude={installed['claude']} "
+            f"codex={installed['codex']} ({pending_detail})",
+            required=False,
+            outcome="PENDING",
+        )
+    else:
+        add(
+            checks,
+            "parity.clients-match",
+            match_ok,
+            f"claude={installed['claude']} codex={installed['codex']}",
+        )
+        add(
+            checks,
+            "parity.clients-current",
+            current_ok,
+            f"source={source_version} claude={installed['claude']} "
+            f"codex={installed['codex']}",
+        )
     stable_path_check(checks, home, installed["claude"])
     return checks
 

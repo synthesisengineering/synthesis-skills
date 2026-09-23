@@ -66,14 +66,18 @@ class ParityTests(unittest.TestCase):
         )
         return root
 
-    def checks(self, claude: str | None, codex: str | None):
+    def checks(self, claude: str | None, codex: str | None, live_holders=None):
         versions = {"claude": claude, "codex": codex}
         with patch.object(
             MODULE,
             "enabled_plugin_version",
             side_effect=lambda client, home=None: versions[client],
         ):
-            return MODULE.parity_checks(self.src, home=self.home)
+            # Hermetic by default: no live seat. Tests for the PENDING branch
+            # pass explicit holders; without this the suite reads the real
+            # board and drifts with whoever holds the release train.
+            holders = [] if live_holders is None else live_holders
+            return MODULE.parity_checks(self.src, home=self.home, live_holders=holders)
 
     def test_everything_current_passes(self):
         self.stable("4.13.0")
@@ -129,6 +133,12 @@ class ParityTests(unittest.TestCase):
         ok = by_name(self.checks("4.12.0", "4.12.0"))
         self.assertTrue(ok["parity.clients-match"])
         self.assertFalse(ok["parity.clients-current"])
+
+    def test_drift_under_live_holder_reports_pending(self):
+        checks = self.checks("4.13.0", "4.12.0", live_holders=["s-live"])
+        by_status = {c.name: c.status for c in checks}
+        self.assertEqual(by_status["parity.clients-match"], "PENDING")
+        self.assertEqual(by_status["parity.clients-current"], "PENDING")
 
     def test_missing_enabled_client_fails_installed(self):
         ok = by_name(self.checks("4.13.0", None))

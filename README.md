@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.141.0** reports version drift as PENDING under live
+install-plane claims and documents the concurrent-seats ritual mode.
+
 Release **4.140.0** teaches the multi-session coordination loop in
 synthesis-autopilot, fixes the CI change-base race, and names failing
 cases in R5 output.

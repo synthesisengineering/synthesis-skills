@@ -56,6 +56,10 @@ def load_hook(client: str, name: str):
 @pytest.mark.parametrize(("client", "name"), HOOKS, ids=[f"{c}/{n}" for c, n in HOOKS])
 def test_hook_is_inert_when_unconfigured(client, name, tmp_path, monkeypatch, capsys):
     """No hooks.json anywhere near the test: main must exit 0 with no output."""
+    empty = tmp_path / "empty-catalog.yaml"
+    empty.write_text("version: 1\nlast_updated: '2026-09-23'\n", encoding="utf-8")
+    monkeypatch.setenv("ANTI_SHORTCUT_CATALOG_PATH", str(empty))
+    monkeypatch.delitem(sys.modules, "_anti_shortcut_catalog", raising=False)
     module = load_hook(client, name)
     monkeypatch.setenv("GUARDRAILS_HOOKS_CONFIG", str(tmp_path / "missing-hooks.json"))
     monkeypatch.setattr(module.sys, "stdin", io.StringIO(json.dumps({

@@ -6,6 +6,19 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v2.41.0 — Concurrent-seats mode; PENDING parity under live claims
+
+v2.41.0 (2026-09-23): the ritual stops fighting live seats (ITEM23,
+operations-seat findings 10–11). The dual-client parity check reports
+PENDING with the holder named when a live seat holds install-plane
+claims, and the ritual reports the line instead of refreshing clients
+under the seat. Step 3a fast-forwards only branches no live seat
+holds. The new Concurrent-Seats Mode section beside observer mode
+states the six mechanical rules: claim file-by-file, fetch-all with
+fast-forward-only-unheld, report parity without repairing, skip
+shared-state maintenance while seats are live, fold peer artifacts
+instead of re-running them, and release claims at end.
+
 ## v2.40.0 — Ownership-vs-visibility triage; the shared time-block layer
 
 v2.40.0 (2026-09-20): tasks route to exactly one workspace while calendar
