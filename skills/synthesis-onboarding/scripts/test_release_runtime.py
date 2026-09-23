@@ -339,14 +339,18 @@ def test_modular_projection_pays_one_stat_walk(active, monkeypatch):
     assert len(walks) == 1
 
 
-GUARD = "synthesis-agent-guardrails/guards/account_routing_guard.py"
+GUARDS = (
+    "synthesis-agent-guardrails/guards/account_routing_guard.py",
+    "synthesis-agent-guardrails/guards/publish_guard.py",
+)
 
 
-def test_declared_guard_entrypoint_executes_from_the_verified_release(tmp_path, monkeypatch):
-    assert GUARD in runtime.PUBLIC_ENTRYPOINTS
+@pytest.mark.parametrize("guard", GUARDS)
+def test_declared_guard_entrypoint_executes_from_the_verified_release(tmp_path, monkeypatch, guard):
+    assert guard in runtime.PUBLIC_ENTRYPOINTS
     monkeypatch.delenv("SYNTHESIS_PUBLIC_SKILLS_SOURCE", raising=False)
     root = tmp_path / "generation"
-    target = root / "skills" / GUARD
+    target = root / "skills" / guard
     target.parent.mkdir(parents=True)
     target.write_text("import sys\nsys.stdout.write('guard-ok\\n')\n")
     for client in ("claude", "codex"):
@@ -372,7 +376,7 @@ def test_declared_guard_entrypoint_executes_from_the_verified_release(tmp_path, 
     data["launcher"] = {"path": str(launcher), "runtime_schema": 1, "sha256": hashlib.sha256(content).hexdigest()}
     pointer.write_text(json.dumps(data))
     verified = runtime.verified_release(pointer)
-    assert runtime.command(verified, GUARD, ["--doctor"]) == [sys.executable, "-B", str(target), "--doctor"]
-    result = runtime.execute(verified, GUARD, [], b"{}", timeout=10)
+    assert runtime.command(verified, guard, ["--doctor"]) == [sys.executable, "-B", str(target), "--doctor"]
+    result = runtime.execute(verified, guard, [], b"{}", timeout=10)
     assert result.returncode == 0
     assert result.stdout == b"guard-ok\n"

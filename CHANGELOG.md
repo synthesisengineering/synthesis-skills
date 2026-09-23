@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.137.0] - 2026-09-23
+
+The publication authority gate joins the verified-execution
+contract: `synthesis exec-public` accepts the publish guard, so
+hook consumers run it from the verified active release. Also fixes
+the sites fixture to persist its git identity, which CI (no global
+git config) exposed.
+
 ## [4.136.0] - 2026-09-23
 
 The `synthesis-agent-guardrails` skill gains the publication authority

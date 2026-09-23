@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.137.0** wires the publish guard into verified
+execution and fixes the sites fixture's git identity for CI.
+
 Release **4.136.0** adds the publication authority gate: site pushes
 and deploys need a fresh single-use approval, with timeline invariants
 and a rapid-redeploy brake above the ledger. Per-site descriptors drive

@@ -38,6 +38,7 @@ PUBLIC_ENTRYPOINTS = frozenset({
     "synthesis-project-management/scripts/project_state.py",
     "synthesis-autopilot/scripts/autopilot_gate.py",
     "synthesis-agent-guardrails/guards/account_routing_guard.py",
+    "synthesis-agent-guardrails/guards/publish_guard.py",
 })
 
 

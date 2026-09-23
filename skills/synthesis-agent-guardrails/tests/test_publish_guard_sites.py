@@ -42,9 +42,10 @@ def _site(tmp_path, name="site"):
     repo = tmp_path / name
     repo.mkdir()
     _git(repo, "init", "-q", "-b", "main")
-    _git(repo, "config", "core.hooksPath", "/dev/null")
-    _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q",
-         "--allow-empty", "-m", "seed")
+    for key, value in (("user.name", "T"), ("user.email", "t@example.com"),
+                       ("core.hooksPath", "/dev/null")):
+        _git(repo, "config", key, value)
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "seed")
     _git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
     return repo
 
