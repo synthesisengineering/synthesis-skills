@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.135.0** re-syncs the commit gate from the live release
+on every install, closing a nine-release skew between the gate and
+the claim writer that the health check could not see.
+
 Release **4.134.0** fixes four fleet-reported defects: phantom project
 candidates no longer block Stop, retirement narrows the caller's claims
 in the same step, stale scopes report once against their owner, and the

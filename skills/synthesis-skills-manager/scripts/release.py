@@ -94,6 +94,9 @@ ACCEPTANCE_RUNNER = Path(
 CACHE_GUARDIAN = Path(
     "skills/synthesis-skills-manager/scripts/cache_guardian.py"
 )
+GIT_HOOKS_INSTALLER = Path(
+    "skills/synthesis-git-hooks/scripts/install.sh"
+)
 ACCEPTANCE_CONSUMER_ID = (
     "synthesis-skills-manager.release.consume-acceptance.v1"
 )
@@ -1449,6 +1452,42 @@ def install_codex_cache_guardian(
     )
 
 
+def sync_commit_gate(result: Result, dry_run: bool, *, source: Path | None = None) -> bool:
+    """Re-sync the commit gate from the live release pointer.
+
+    The gate (pre-commit + coordination engine under ~/.synthesis/git-hooks/)
+    approves every commit on the machine, but releases never reinstalled it:
+    it ran 4.124.0 while claims were written by 4.133.0, and its doctor
+    compared against the pinned install-time clone, so the skew was
+    invisible. Every install now re-runs the gate installer from the stable
+    pointer — which main() repoints at the verified release just before —
+    so gate and claim writer always agree. The installer ends with its own
+    doctor and fails closed; a bad gate blocks the release loudly instead
+    of commits silently.
+    """
+    root = source or stable_path()
+    installer = root / GIT_HOOKS_INSTALLER
+    if not installer.is_file() or installer.is_symlink():
+        return result.add(
+            "install.commit-gate",
+            False,
+            f"gate installer is unavailable or unsafe: {installer}",
+        )
+    command = ["bash", str(installer)]
+    if dry_run:
+        return result.add(
+            "install.commit-gate",
+            True,
+            "dry-run: " + " ".join(command),
+        )
+    completed = run(command, timeout=300)
+    output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip().splitlines()
+    detail = output[-1] if output else "gate installer produced no receipt"
+    return result.add(
+        "install.commit-gate", completed.returncode == 0, detail
+    )
+
+
 def activate_published_cli(
     repo: Path, version: str, result: Result, dry_run: bool
 ) -> bool:
@@ -1842,6 +1881,12 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"\nRELEASE INCOMPLETE for {version}: the stable path could not be "
             "repointed at the verified install — re-run with --install-only."
+        )
+        return 1
+    if not sync_commit_gate(result, args.dry_run):
+        print(
+            f"\nRELEASE INCOMPLETE for {version}: the commit gate could not be "
+            "re-synced from the verified install — re-run with --install-only."
         )
         return 1
     print(f"\nRELEASED {version}: published, installed, and verified on all three clients.")

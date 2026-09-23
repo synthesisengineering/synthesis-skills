@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.135.0] - 2026-09-23
+
+Every install now re-syncs the commit gate from the live release
+pointer. The gate had run nine releases behind the claim writer
+while its doctor compared against the pinned install-time clone,
+so the skew was invisible; gate and writer now always agree, and a
+bad gate blocks the release loudly instead of commits silently.
+
 ## [4.134.0] - 2026-09-22
 
 Overnight intake fixes from the fleet seats. Claim resolution no longer

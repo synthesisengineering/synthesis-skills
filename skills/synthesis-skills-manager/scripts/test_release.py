@@ -448,6 +448,7 @@ def test_release_establishes_required_launcher_before_exposing_new_hooks(repo, m
     monkeypatch.setattr(release, "install_codex_cache_guardian", lambda *args, **kwargs: True)
     monkeypatch.setattr(release, "deep_verify", lambda *args, **kwargs: True)
     monkeypatch.setattr(release, "refresh_stable_path", lambda *args, **kwargs: True)
+    monkeypatch.setattr(release, "sync_commit_gate", lambda *args, **kwargs: True)
     assert release.main(["--repo-root", str(repo), "--install-only"]) == (0 if activation_ok else 1)
     assert observations == ([("claude", True), ("codex", True), ("muse", True)] if activation_ok else [])
 
@@ -1703,6 +1704,71 @@ def test_guardian_install_fails_closed_without_source(tmp_path: Path) -> None:
 
     assert release.install_codex_cache_guardian(tmp_path, result, False) is False
     assert result.failed[0].name == "install.codex.cache-guardian"
+
+
+def test_commit_gate_sync_runs_installer_from_stable_pointer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installer = tmp_path / release.GIT_HOOKS_INSTALLER
+    installer.parent.mkdir(parents=True)
+    installer.write_text("#!/bin/bash\necho healthy\n", encoding="utf-8")
+    calls: list[tuple[list[str], Path | None, int]] = []
+
+    def fake_run(command, cwd=None, timeout=900):
+        calls.append((command, cwd, timeout))
+        return subprocess.CompletedProcess(command, 0, stdout="healthy\n", stderr="")
+
+    monkeypatch.setattr(release, "run", fake_run)
+    monkeypatch.setattr(release, "stable_path", lambda: tmp_path)
+    result = release.Result()
+
+    assert release.sync_commit_gate(result, False) is True
+    assert calls == [(["bash", str(installer)], None, 300)]
+    step = next(step for step in result.steps if step.name == "install.commit-gate")
+    assert step.ok is True
+    assert step.detail == "healthy"
+
+
+def test_commit_gate_sync_fails_closed_without_installer(tmp_path: Path) -> None:
+    result = release.Result()
+
+    assert release.sync_commit_gate(result, False, source=tmp_path) is False
+    assert result.failed[0].name == "install.commit-gate"
+
+
+def test_commit_gate_sync_reports_installer_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installer = tmp_path / release.GIT_HOOKS_INSTALLER
+    installer.parent.mkdir(parents=True)
+    installer.write_text("#!/bin/bash\nexit 1\n", encoding="utf-8")
+
+    def fake_run(command, cwd=None, timeout=900):
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="doctor failed")
+
+    monkeypatch.setattr(release, "run", fake_run)
+    result = release.Result()
+
+    assert release.sync_commit_gate(result, False, source=tmp_path) is False
+    step = result.failed[0]
+    assert step.name == "install.commit-gate"
+    assert "doctor failed" in step.detail
+
+
+def test_commit_gate_sync_dry_run_records_without_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installer = tmp_path / release.GIT_HOOKS_INSTALLER
+    installer.parent.mkdir(parents=True)
+    installer.write_text("#!/bin/bash\n", encoding="utf-8")
+    monkeypatch.setattr(
+        release, "run", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not run"))
+    )
+    result = release.Result()
+
+    assert release.sync_commit_gate(result, True, source=tmp_path) is True
+    step = next(step for step in result.steps if step.name == "install.commit-gate")
+    assert step.detail.startswith("dry-run: bash ")
 
 
 def test_codex_refresh_restores_real_version_root_deleted_by_client(
