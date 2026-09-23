@@ -73,7 +73,7 @@ cases:
   expected_status: pass
   fixture: ../synthesis-slack-sync/scripts/test_slack_workspaces.py::RegistryTest
   motivating_defect: One human with several Slack workspaces had no per-machine
-    registry: tokens had nowhere to live but the client, placeholders were
+    registry, so tokens lived only in the client, placeholders were
     indistinguishable from misconfiguration, and unified versus isolated
     visibility was a conversation rather than a setting. The registry names
     every workspace, resolves each token to ready/placeholder/missing/
