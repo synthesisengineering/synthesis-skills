@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.143.0** adds the multi-workspace Slack registry with
+placeholder tokens and the unified/isolated visibility doctrine.
+
 Release **4.142.0** refuses worktree retirement while ignored files
 remain, closing the data-loss hole behind intake 56.
 

@@ -4,6 +4,18 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.143.0] - 2026-09-23
+
+Slack sync grows a per-machine multi-workspace registry
+(`slack_workspaces.py`): each workspace declares where its token
+lives — placeholder, env var, file, or client-managed MCP server —
+and `doctor` fails closed before any sync reads the `readable` set.
+Literal tokens are rejected in the registry; placeholders are a real
+status so the registry ships before the tokens exist. The visibility
+doctrine ships both postures: unified (default focus plus
+purpose-bound cross-workspace reads) and isolated (session workspace
+only, with machine-level enforcement). slack-sync skill 3.11.0.
+
 ## [4.142.0] - 2026-09-23
 
 Worktree retirement now runs `git status --ignored --porcelain` and
