@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.138.0** promotes the per-client hook suite: thirteen
+detectors, all defaults-off with health checks and
+principal-supplied catalogs.
+
 Release **4.137.0** wires the publish guard into verified
 execution and fixes the sites fixture's git identity for CI.
 

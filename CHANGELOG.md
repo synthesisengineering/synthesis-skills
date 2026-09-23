@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.138.0] - 2026-09-23
+
+The `synthesis-agent-guardrails` skill gains the per-client hook
+suite (ruling PRO-3): thirteen detectors across Claude, Codex, and
+Muse covering filenames, shortcuts, provenance, briefs, temporal
+drift, sessions, and install edits. Every hook ships inert without
+principal configuration, answers a health check, and reads
+detection content from principal-supplied catalogs.
+
 ## [4.137.0] - 2026-09-23
 
 The publication authority gate joins the verified-execution

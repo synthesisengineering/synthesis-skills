@@ -1,22 +1,24 @@
 schema: 2
-suite: pro-4-entrypoint-4-137-0
+suite: pro-3-hook-promotion
 membership: closed
-production_entry_point: All three client manifests and the top changelog
-  identify 4.137.0, declaring the publish guard a verified-execution
-  entrypoint and fixing the sites fixture git identity CI exposed.
+production_entry_point: The release promoting the per-client hook suite
+  to the public synthesis-agent-guardrails skill with defaults-off
+  enable gates, per-hook doctors, and principal-supplied detection
+  catalogs.
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: The fixtures execute release-contract, entrypoint, fixture,
+unverified_remainder: The fixtures execute gate, doctor, catalog-seam, purge,
   and manifest checks against fixtures and the working tree. They do not establish
   installed-client reload, live cross-client delivery, new-release publication,
-  launcher refresh, or deployment approval. Those remain separate release
-  checks. The prose rides the release-metadata vehicle; review is the evidence
-  of prose adoption. The full onboarding and guardrails suites run in the
-  required pytest checks alongside this receipt.
+  launcher refresh, deployment approval, or the principal's purge review. Those
+  remain separate release checks and the runbook gate. The SKILL.md prose rides
+  the release-metadata vehicle; review is the evidence of prose adoption. The
+  full 101-test guardrails suite runs in the pytest.guardrails required check
+  alongside this receipt.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -33,41 +35,170 @@ changed_surfaces:
 - path: README.md
   cases:
   - release-version-metadata
-- path: skills/synthesis-agent-guardrails/tests/test_publish_guard_sites.py
+- path: skills/synthesis-agent-guardrails/SKILL.md
   cases:
-  - entrypoint-sites-fixture-identity
+  - release-version-metadata
+- path: skills/synthesis-agent-guardrails/guards/installed_artifact_guard.py
+  cases:
+  - pro3-guard-blocks-unowned
+  - pro3-no-employer-or-principal-name
+- path: skills/synthesis-agent-guardrails/hooks/_settings.py
+  cases:
+  - pro3-hook-inert-unconfigured
+  - pro3-hook-doctor
+- path: skills/synthesis-agent-guardrails/hooks/claude/_anti_shortcut_catalog.py
+  cases:
+  - pro3-catalog-seams
+  - pro3-catalog-empty-safe
+  - pro3-no-employer-or-principal-name
+- path: skills/synthesis-agent-guardrails/hooks/claude/_transcript_state.py
+  cases:
+  - pro3-hook-inert-unconfigured
+- path: skills/synthesis-agent-guardrails/hooks/claude/bare_filename_detector.py
+  cases:
+  - pro3-hook-inert-unconfigured
+  - pro3-hook-doctor
+  - pro3-bare-contract
+- path: skills/synthesis-agent-guardrails/hooks/claude/lazy_shortcut_detector.py
+  cases:
+  - pro3-hook-inert-unconfigured
+  - pro3-hook-doctor
+  - pro3-catalog-seams
+- path: skills/synthesis-agent-guardrails/hooks/claude/long_session_detector.py
+  cases:
+  - pro3-hook-inert-unconfigured
+  - pro3-hook-doctor
+- path: skills/synthesis-agent-guardrails/hooks/claude/pre_tool_temporal_reminder.py
+  cases:
+  - pro3-hook-inert-unconfigured
+  - pro3-hook-doctor
+- path: skills/synthesis-agent-guardrails/hooks/claude/quote_provenance_checker.py
+  cases:
+  - pro3-hook-inert-unconfigured
+  - pro3-hook-doctor
+- path: skills/synthesis-agent-guardrails/hooks/claude/sub_agent_brief_scanner.py
+  cases:
+  - pro3-hook-inert-unconfigured
+  - pro3-hook-doctor
+  - pro3-catalog-seams
+- path: skills/synthesis-agent-guardrails/hooks/codex/bare_filename_detector.py
+  cases:
+  - pro3-hook-inert-unconfigured
+  - pro3-hook-doctor
+- path: skills/synthesis-agent-guardrails/hooks/codex/installed_skill_edit_guard.py
+  cases:
+  - pro3-hook-inert-unconfigured
+  - pro3-hook-doctor
+- path: skills/synthesis-agent-guardrails/hooks/codex/lazy_shortcut_detector.py
+  cases:
+  - pro3-hook-inert-unconfigured
+  - pro3-hook-doctor
+  - pro3-catalog-seams
+- path: skills/synthesis-agent-guardrails/hooks/codex/quote_provenance_checker.py
+  cases:
+  - pro3-hook-inert-unconfigured
+  - pro3-hook-doctor
+- path: skills/synthesis-agent-guardrails/hooks/codex/repo_guard_stop.py
+  cases:
+  - pro3-hook-inert-unconfigured
+  - pro3-hook-doctor
+  - pro3-repo-guard-fails-closed
+- path: skills/synthesis-agent-guardrails/hooks/codex/session_end_checkpoint.py
+  cases:
+  - pro3-hook-inert-unconfigured
+  - pro3-hook-doctor
+  - pro3-session-end-bounded
+- path: skills/synthesis-agent-guardrails/hooks/muse/lazy_shortcut_detector.py
+  cases:
+  - pro3-hook-inert-unconfigured
+  - pro3-hook-doctor
+  - pro3-catalog-seams
+- path: skills/synthesis-agent-guardrails/tests/test_bare_filename_detector.py
+  cases:
+  - pro3-bare-contract
+- path: skills/synthesis-agent-guardrails/tests/test_hook_gates.py
+  cases:
+  - pro3-hook-inert-unconfigured
+  - pro3-hook-doctor
+  - pro3-catalog-seams
+  - pro3-catalog-empty-safe
+- path: skills/synthesis-agent-guardrails/tests/test_installed_artifact_guard_owner.py
+  cases:
+  - pro3-guard-blocks-unowned
+- path: skills/synthesis-agent-guardrails/tests/test_repo_guard_stop.py
+  cases:
+  - pro3-repo-guard-fails-closed
+- path: skills/synthesis-agent-guardrails/tests/test_session_end_checkpoint.py
+  cases:
+  - pro3-session-end-bounded
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-onboarding/scripts/release_runtime.py
-  cases:
-  - entrypoint-publish-guard-declared
-- path: skills/synthesis-onboarding/scripts/test_release_runtime.py
-  cases:
-  - entrypoint-publish-guard-declared
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
   motivating_defect: All client manifests and the top changelog identify the same release while retained
-    release contracts remain valid. The entrypoint prose rides this vehicle; review
-    is the evidence of prose adoption.
+    release contracts remain valid. The hook-suite prose rides this vehicle; review is
+    the evidence of prose adoption.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: entrypoint-publish-guard-declared
+- id: pro3-hook-inert-unconfigured
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_declared_guard_entrypoint_executes_from_the_verified_release
-  motivating_defect: The publish guard is a verified-execution entrypoint,
-    so hook consumers run it from the verified active release instead of an
-    unverified checkout path. Both guards execute through the same test.
-- id: entrypoint-sites-fixture-identity
+  fixture: ../synthesis-agent-guardrails/tests/test_hook_gates.py::test_hook_is_inert_when_unconfigured
+  motivating_defect: PRO-3 — every promoted hook exits 0 silently with no
+    hooks.json. A hook that acts without principal configuration would enforce
+    nobody's rules.
+- id: pro3-hook-doctor
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_publish_guard_sites.py::test_custom_roots_drive_the_mutation_scan
-  motivating_defect: The sites fixture persists its git identity in the repo
-    instead of relying on ambient global config, which CI does not provide.
+  fixture: ../synthesis-agent-guardrails/tests/test_hook_gates.py::test_hook_doctor_reports_hook_name
+  motivating_defect: PRO-3 — every promoted hook answers --doctor with its
+    name and state, so rituals can verify the fleet without running it.
+- id: pro3-catalog-seams
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-guardrails/tests/test_hook_gates.py::test_catalog_parses_ack_signals_and_hints
+  motivating_defect: PRO-3 — acknowledgment signals and rewrite hints live in
+    the principal's catalog file, never hardcoded in the loader.
+- id: pro3-catalog-empty-safe
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-guardrails/tests/test_hook_gates.py::test_catalog_empty_when_unconfigured
+  motivating_defect: PRO-3 — an absent catalog means zero detections, never
+    a crash.
+- id: pro3-no-employer-or-principal-name
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-guardrails/tests/test_no_private_refs.py::test_no_employer_or_principal_name
+  motivating_defect: PRO-3 purge — no employer or principal name survives in the promoted
+    tree, proven with positive controls.
+- id: pro3-bare-contract
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-guardrails/tests/test_bare_filename_detector.py::test_claude_input_contract_records_source_detector_result
+  motivating_defect: PRO-3 — the promoted filename detector keeps its input
+    contract at its new tree location.
+- id: pro3-guard-blocks-unowned
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-guardrails/tests/test_installed_artifact_guard_owner.py::test_refusal_without_source_json_still_blocks_and_names_the_absence
+  motivating_defect: PRO-3 — the install-guard sibling blocks artifacts with
+    no provenance instead of crashing.
+- id: pro3-repo-guard-fails-closed
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-guardrails/tests/test_repo_guard_stop.py::test_invalid_stop_payload_fails_closed
+  motivating_defect: PRO-3 — the repo-guard hook fails closed on malformed
+    input and an unavailable runtime helper.
+- id: pro3-session-end-bounded
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-guardrails/tests/test_session_end_checkpoint.py::test_non_git_session_end_writes_bounded_checkpoint
+  motivating_defect: PRO-3 — the session-end hook writes its checkpoint
+    through the enable gate within budget.

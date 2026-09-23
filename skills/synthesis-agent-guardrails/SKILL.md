@@ -127,15 +127,37 @@ class) and allows everything else. An unreadable config fails closed
 (blocks); a workspace with no account fails closed (raises, and the
 doctor control reports the failure).
 
+## Hooks
+
+`hooks/{claude,codex,muse}/` carries the per-client hook suite: filename,
+shortcut, provenance, brief, temporal, session, and install-guard
+detectors. Every hook ships inert and is enabled per-hook in
+`~/.synthesis/agent-guardrails/hooks.json`:
+
+```json
+{
+  "hooks": {
+    "lazy_shortcut_detector": {"enabled": true},
+    "bare_filename_detector": {"enabled": true}
+  }
+}
+```
+
+With no config file every hook exits 0 silently; `--doctor` on any hook
+reports `UNCONFIGURED` plus its own state (log path, catalog size,
+thresholds). `GUARDRAILS_HOOKS_CONFIG` overrides the config path. The
+shortcut detectors read their phrase catalog from
+`~/.synthesis/anti-shortcut-catalog.yaml`
+(`ANTI_SHORTCUT_CATALOG_PATH` overrides); an absent catalog means zero
+detections, never a crash.
+
 ## Layout and Roadmap
 
 - `guards/` — executable gates (both promotions).
-- `hooks/{claude,codex,muse}/` — per-client hook wiring (lands with the
-  detector promotion).
+- `hooks/{claude,codex,muse}/` — per-client hook wiring (this promotion).
 - `schemas/` — config contracts.
 - `tests/` — gate regressions plus committed absence tests proving the
   promoted tree carries no principal identity.
 
-Next: the output detectors (shortcut, provenance, and brief scans over
-principal-supplied rule catalogs). Each lands with the same defaults-off
-contract.
+Both promotions have landed — the publication authority guard and
+the output detectors — each with the same defaults-off contract.
