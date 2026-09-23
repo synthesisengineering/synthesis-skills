@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.140.0] - 2026-09-23
+
+`synthesis-autopilot` 2.3.0 teaches the multi-session coordination
+loop: poll the board at every checkpoint and own triage, claim before
+writing and narrow before peer landings, register a cross-harness
+handle, drain shared mutations first, and schedule a backstop cron on
+long runs (deleted at close). Also fixes the CI change-base race —
+when the release tag beats CI onto the remote the step now grades
+against the previous tag instead of diffing HEAD against itself — and
+makes R5 failures name their unmatched cases instead of printing `}`, and widens
+the onboarding copy watchdog's idle bound from 25 to 60 seconds after CI
+evidence showed a healthy copy still in preamble at 25.
+
 ## [4.139.0] - 2026-09-23
 
 The thirteen promoted per-client hooks join the verified-execution

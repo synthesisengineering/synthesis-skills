@@ -22,14 +22,20 @@ from test_onboard import REPO_ROOT, Sandbox, snapshot_current_source
 
 
 def communicate_with_copy_progress(process, completed_copies, *, clock=time.monotonic):
-    """Allow real bulk copying, while keeping a 25-second no-progress bound.
+    """Allow real bulk copying, while keeping a 60-second no-progress bound.
 
     A full catalog copy is materially more work than a native failure probe.
     Only newly completed, source-bound receipts count as progress; repeated
     subprocess activity cannot extend the wait. The entire copy remains capped.
+
+    The idle bound was 25 seconds until CI evidence showed a loaded
+    macos-latest runner still in setup preamble — plugin-list probes
+    advancing, zero receipts yet — at 25.0 seconds (4.138.0, 4.139.0).
+    Sixty seconds absorbs preamble variance on shared runners while
+    still catching a true hang well under the total cap.
     """
     started = clock()
-    idle_deadline = started + 25
+    idle_deadline = started + 60
     total_deadline = started + 120
     high_watermark = 0
     while True:
@@ -42,7 +48,7 @@ def communicate_with_copy_progress(process, completed_copies, *, clock=time.mono
             completed = completed_copies()
             if completed > high_watermark:
                 high_watermark = completed
-                idle_deadline = clock() + 25
+                idle_deadline = clock() + 60
 
 
 def completed_copy_receipts(home, source_info, client):
@@ -88,13 +94,13 @@ def test_copy_watchdog_allows_slow_completed_work_without_relaxing_stall_limit()
     assert process.now == 60
 
 
-def test_copy_watchdog_keeps_the_twenty_five_second_stall_boundary():
+def test_copy_watchdog_keeps_the_sixty_second_stall_boundary():
     process = CopyClock()
     with pytest.raises(subprocess.TimeoutExpired):
         communicate_with_copy_progress(
             process, lambda: int(process.now >= 10), clock=lambda: process.now,
         )
-    assert process.now == 35
+    assert process.now == 70
 
 
 def test_copy_watchdog_has_an_absolute_ceiling_even_with_progress():
@@ -112,7 +118,7 @@ def test_copy_watchdog_does_not_count_rewritten_receipts_as_new_progress():
         communicate_with_copy_progress(
             process, lambda: 1, clock=lambda: process.now,
         )
-    assert process.now == 26
+    assert process.now == 61
 
 
 def test_copy_progress_counts_only_completed_selected_source_receipts(tmp_path):

@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.2.0"
+  version: "2.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -228,8 +228,9 @@ blocked-state alert threshold.
 ## Continuation
 Mechanism causing the next turn, what it survives (turn end / session
 death / reboot), the next-wake condition or cadence, the dead-man's
-switch for long horizons, and how the mechanism was VERIFIED in this
-harness (probe evidence, not memory).
+switch for long horizons, the backstop cron id (scheduled at
+engagement, deleted at close), and how the mechanism was VERIFIED in
+this harness (probe evidence, not memory).
 
 ## Budget
 Horizon; maximum cycles or wall-clock; the per-cycle value test; counters
@@ -321,6 +322,54 @@ If a round's findings are entirely self-inflicted by the new control, record the
 and stop control growth until the principal explicitly decides otherwise. Use
 synthesis-adversarial-review for the complete round and ledger protocol.
 
+## Multi-Session Coordination
+
+An autonomous run is rarely the only session on the machine. Peer
+sessions — same principal, other harnesses, other projects — share the
+checkouts, the install trees, and the principal's review bandwidth. A
+run that ignores them collides on landing, blocks peers on stale
+claims, and misses findings routed to it. This section teaches the
+loop; the mechanics (board commands, seat fields, claim verbs) live in
+synthesis-project-management and are authoritative there.
+
+**Poll the board at every checkpoint, and own triage.** Engagement,
+every phase boundary, every wake or re-entry, and close: read the
+shared board and this seat's inbox. Triage is the seat's own job, not
+a principal question — acknowledge the sender on their lane, file
+findings as intake, act on requests (narrow, pause, hand off) in the
+same cycle. An inbox that only grows is a run that stopped listening.
+
+**Claim before writing; narrow before peer landings.** Every writable
+area is claimed before the first write, and claims stay as narrow as
+the work: named files over directories wherever the work allows. When
+a peer requests a narrowing for their landing, release the overlap the
+same cycle — verify none of the peer's paths are paths this run still
+needs, narrow, and confirm on the lane. Never write through an
+overlapping active claim; never hold a directory claim past the moment
+named files would do.
+
+**Register a cross-harness handle.** The seat registers the handle
+peers in other harnesses use to route to it (board seat id plus the
+native client-session reference), so a session that cannot dispatch
+directly can still reach this run through the board. A seat with no
+registered handle is unreachable, and unreachable seats get routed
+around — or collided with.
+
+**Shared mutations drain first.** Changes to state every session
+reads — board schema, install trees, the release train, shared
+inventories — need a clean check (no peer mid-flight on the same
+state) plus propose-and-wait: announce the mutation on the board,
+wait for objections or a clear window, then execute. Unannounced
+shared mutation is the multi-session form of the shortcut.
+
+**Long runs schedule a backstop cron.** Any engagement whose horizon
+extends beyond the current sitting registers a scheduler-class
+backstop at engagement — a cron or scheduled task that re-invokes the
+run from the plan file if the inner continuation ever goes silent —
+and deletes it at close. The backstop is the dead-man's switch under
+whatever finer mechanism drives the loop; a run that ends with its
+backstop still scheduled pages a principal who already got the report.
+
 ## Standing Gates Survive Autonomy
 
 Autopilot never overrides the user's standing rules. The user's global and project instruction files (CLAUDE.md, AGENTS.md, house rules) remain fully in force during autonomous runs — delegation of a task is not delegation of authority the user has reserved. Illustrative examples of gates that survive:
@@ -338,12 +387,14 @@ When a phase reaches a gated action, prepare everything up to the gate (the draf
 1. **Engage** — one-line acknowledgment with the plan-file path; register the
    engagement with the continuation gate (`autopilot_gate.py register`).
 2. **Anchor** — run synthesis-checkpoint: verified date, project state from disk, history from git.
-3. **Coordinate** — read the shared active-sessions board and claim every
-   source area this run may write before editing.
+3. **Coordinate** — read the shared active-sessions board and inbox,
+   register this seat's cross-harness handle, triage what is already
+   waiting, and claim every source area this run may write before
+   editing — named files over directories wherever the work allows.
 4. **Register** — attach to or create the synthesis project (synthesis-project-management); create the plan file, including its Continuation and Budget sections; resolve the run profile (`run_profile.py resolve`, spoken deltas from the delegation message), freeze the standing checklist into the plan, and register with `--profile`. **If the horizon exceeds this turn, establish and verify the continuation mechanism NOW** — record it in the plan and via `autopilot_gate.py continuation` before any phase work makes the first turn long enough to forget.
-5. **Phase loop** — for each phase: re-read the plan file and coordination board; execute with anti-shortcut discipline; classify each decision per the protocol above; dispatch sub-agents per the hygiene rules below; directly orchestrate any adversarial counterpart and count principal courier crossings; record the sufficiency checkpoint; then update the plan file (cycle ledger included), **sweep the scratchpad — anything a later phase, another agent, or a durable record depends on moves into resources/ at THIS boundary, because volatile state dies at reboots** — and at natural checkpoints run the synthesis-context-lifecycle session protocol so CONTEXT.md and the session log stay current.
+5. **Phase loop** — for each phase: re-read the plan file and coordination board, triage the inbox (narrow requests release the overlap the same cycle); execute with anti-shortcut discipline; classify each decision per the protocol above; dispatch sub-agents per the hygiene rules below; directly orchestrate any adversarial counterpart and count principal courier crossings; record the sufficiency checkpoint; then update the plan file (cycle ledger included), **sweep the scratchpad — anything a later phase, another agent, or a durable record depends on moves into resources/ at THIS boundary, because volatile state dies at reboots** — and at natural checkpoints run the synthesis-context-lifecycle session protocol so CONTEXT.md and the session log stay current.
 6. **Verify** — before declaring the mission complete, run synthesis-implementation-integrity (or the domain analog). Fix what it finds; verification that only reports is not verification.
-7. **Close** — session-end per synthesis-context-lifecycle (context files updated, work committed where applicable); disposition every frozen checklist item in the plan, then `run_profile.py verify --plan`; release the coordination claims; close the engagement (`autopilot_gate.py close --goals-met`, or `--incomplete <reason>` for an honest partial close); completion report in plain language: what shipped, what was decided and why, the batched questions; then the completion alert.
+7. **Close** — session-end per synthesis-context-lifecycle (context files updated, work committed where applicable); disposition every frozen checklist item in the plan, then `run_profile.py verify --plan`; release the coordination claims; delete the backstop cron; close the engagement (`autopilot_gate.py close --goals-met`, or `--incomplete <reason>` for an honest partial close); completion report in plain language: what shipped, what was decided and why, the batched questions; then the completion alert.
 
 The close step repeats the scratchpad sweep one final time: **What executable
 state or required input data still exists only in this session's scratchpad?**
@@ -352,11 +403,12 @@ under resources/scripts/ before the checkpoint can close.
 
 ## Sub-Agent Fan-Out Hygiene
 
-Autonomous runs fan work out to sub-agents more than supervised ones, so dispatch discipline matters more, not less. Three rules (full rationale in synthesis-anti-shortcuts):
+Autonomous runs fan work out to sub-agents more than supervised ones, so dispatch discipline matters more, not less. Four rules (full rationale in synthesis-anti-shortcuts):
 
 1. **At most five deliverables per dispatch.** Larger briefs stall or return partial work; split them into focused dispatches.
 2. **No minimizing vocabulary in briefs.** "Keep changes minimal," "light touch," "conservative pass" license half-done work. Name the job at full size with explicit acceptance criteria.
 3. **Acceptance audit on every non-clean-success return.** Partial completion, timeout, "stalled with substantial progress" — inspect what actually landed, diff it against the brief, and either re-dispatch or finish the gap directly. Accepting the partial state and moving on is forbidden.
+4. **Allocate shared budgets in the brief.** Metered tools with a session-wide budget (web search is the proven one: parallel research agents share a single pool and exhaust it silently) get an explicit per-agent allocation in each brief, plus the fallback when the pool runs dry. A fan-out of N research agents against one undivided budget is a plan to get N partial reports.
 
 ## Completion and Blocked-State Alerts
 

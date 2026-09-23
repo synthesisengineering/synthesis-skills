@@ -332,6 +332,42 @@ def validate_acceptance_receipt(
     return True, "fresh transaction-bound receipt consumed"
 
 
+def _runner_failure_detail(output: str) -> str:
+    """Name the failing cases from a runner receipt.
+
+    The runner prints a JSON receipt whose last line is always `}`, so
+    reporting the raw tail renders every runner failure as
+    `FAIL checks.acceptance.r5: }`. Parse the receipt and name the
+    unmatched cases plus the first error line instead.
+    """
+    try:
+        receipt = json.loads(output)
+    except (TypeError, ValueError):
+        lines = (output or "").strip().splitlines()
+        meaningful = [
+            ln.strip()
+            for ln in lines
+            if ln.strip() and set(ln.strip()) - set("{}")
+        ]
+        return meaningful[-1] if meaningful else "acceptance runner failed"
+    if not isinstance(receipt, dict):
+        return "acceptance runner failed"
+    bad = [
+        case
+        for case in receipt.get("cases", [])
+        if isinstance(case, dict) and not case.get("matched", False)
+    ]
+    if bad:
+        names = ", ".join(str(case.get("id", "?")) for case in bad)
+        first = (bad[0].get("stderr") or bad[0].get("stdout") or "").strip().splitlines()
+        err = first[-1].strip() if first else "no runner output"
+        return f"{len(bad)} case(s) unmatched: {names}; first error: {err}"
+    errors = receipt.get("errors")
+    if errors:
+        return "; ".join(str(error) for error in errors[:3])
+    return "acceptance runner failed"
+
+
 def consume_acceptance(
     repo: Path, result: Result, dry_run: bool
 ) -> AcceptanceAuthority | None:
@@ -367,11 +403,10 @@ def consume_acceptance(
     ]
     completed = run(command, cwd=repo)
     if completed.returncode != 0:
-        tail = (completed.stdout or completed.stderr).strip().splitlines()
         result.add(
             "checks.acceptance.r5",
             False,
-            tail[-1] if tail else "acceptance runner failed",
+            _runner_failure_detail(completed.stdout or completed.stderr),
         )
         return None
     try:

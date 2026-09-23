@@ -2541,3 +2541,35 @@ def test_muse_deep_verify_checks_loaded_bytes_not_the_bundle(
     assert names["verify.muse.reported"] is True
     assert names["verify.muse.on-disk"] is True
     assert names["verify.muse.content"] is False
+
+
+def test_runner_failure_detail_names_unmatched_cases():
+    receipt = {
+        "ok": False,
+        "cases": [
+            {"id": "release-version-metadata", "matched": True, "stderr": "", "stdout": ""},
+            {
+                "id": "entrypoint-hooks-declared",
+                "matched": False,
+                "stderr": "FAILED test_x - AssertionError: boom",
+                "stdout": "",
+            },
+        ],
+    }
+    detail = release._runner_failure_detail(json.dumps(receipt, indent=2))
+    assert detail != "}"
+    assert "entrypoint-hooks-declared" in detail
+    assert "boom" in detail
+    assert "1 case(s) unmatched" in detail
+
+
+def test_runner_failure_detail_reports_receipt_errors():
+    detail = release._runner_failure_detail(json.dumps({"errors": ["no manifest", "bad base"]}))
+    assert detail == "no manifest; bad base"
+
+
+def test_runner_failure_detail_falls_back_past_bare_braces():
+    assert release._runner_failure_detail('{\n  boom\n}') == "boom"
+    assert release._runner_failure_detail("") == "acceptance runner failed"
+    assert release._runner_failure_detail("{}\n}") == "acceptance runner failed"
+    assert release._runner_failure_detail('{"ok": false}') == "acceptance runner failed"

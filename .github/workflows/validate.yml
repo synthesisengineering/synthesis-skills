@@ -36,12 +36,28 @@ jobs:
           if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
             echo "SYNTHESIS_ACCEPTANCE_CHANGE_BASE=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_ENV"
           else
+            # RACE-GUARD-TEST-REGION-BEGIN — test_ci_runtime.py extracts and
+            # executes this region verbatim against fixture repositories.
             TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)
             if [ -z "$TAG" ]; then
               echo "SYNTHESIS_ACCEPTANCE_CHANGE_BASE=${{ github.event.before }}" >> "$GITHUB_ENV"
             else
-              echo "SYNTHESIS_ACCEPTANCE_CHANGE_BASE=$(git rev-list -n 1 "$TAG")" >> "$GITHUB_ENV"
+              TAG_SHA=$(git rev-list -n 1 "$TAG")
+              if [ "$TAG_SHA" = "$(git rev-parse HEAD)" ]; then
+                # The release tag raced CI onto the remote: grading against it
+                # would diff HEAD against itself (empty universe, R5 fails).
+                # Step back to the previous release tag instead.
+                TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$TAG~1" 2>/dev/null || true)
+                if [ -z "$TAG" ]; then
+                  echo "SYNTHESIS_ACCEPTANCE_CHANGE_BASE=${{ github.event.before }}" >> "$GITHUB_ENV"
+                else
+                  echo "SYNTHESIS_ACCEPTANCE_CHANGE_BASE=$(git rev-list -n 1 "$TAG")" >> "$GITHUB_ENV"
+                fi
+              else
+                echo "SYNTHESIS_ACCEPTANCE_CHANGE_BASE=$TAG_SHA" >> "$GITHUB_ENV"
+              fi
             fi
+            # RACE-GUARD-TEST-REGION-END
           fi
       - name: Consume transaction-bound R5 acceptance
         run: python skills/synthesis-skills-manager/scripts/release.py --repo-root . --acceptance-only

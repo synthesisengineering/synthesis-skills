@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.140.0** teaches the multi-session coordination loop in
+synthesis-autopilot, fixes the CI change-base race, and names failing
+cases in R5 output.
+
 Release **4.139.0** declares the thirteen promoted hooks
 verified-execution entrypoints for principal consumers.
 
