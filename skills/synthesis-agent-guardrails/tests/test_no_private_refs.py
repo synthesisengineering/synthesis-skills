@@ -44,9 +44,19 @@ def _scanned_files() -> list[Path]:
         SKILL_ROOT / "SKILL.md",
         SKILL_ROOT / "agents" / "openai.yaml",
         SKILL_ROOT / "guards" / "account_routing_guard.py",
+        SKILL_ROOT / "guards" / "publish_guard.py",
         SKILL_ROOT / "schemas" / "workspaces.schema.json",
+        SKILL_ROOT / "schemas" / "sites.schema.json",
+        SKILL_ROOT / "tests" / "conftest.py",
         SKILL_ROOT / "tests" / "test_account_routing_guard.py",
         SKILL_ROOT / "tests" / "test_no_private_refs.py",
+        SKILL_ROOT / "tests" / "test_publish_guard_artifacts.py",
+        SKILL_ROOT / "tests" / "test_publish_guard_commands.py",
+        SKILL_ROOT / "tests" / "test_publish_guard_dates.py",
+        SKILL_ROOT / "tests" / "test_publish_guard_rapid.py",
+        SKILL_ROOT / "tests" / "test_publish_guard_sites.py",
+        SKILL_ROOT / "tests" / "test_publish_guard_targeting.py",
+        SKILL_ROOT / "tests" / "test_publish_guard_worktrees.py",
     }
     assert expected <= set(files), sorted(str(p) for p in expected - set(files))
     return files
@@ -114,4 +124,15 @@ def test_no_employer_or_principal_name():
 def test_default_config_is_empty_authority():
     guard = _sources()[SKILL_ROOT / "guards" / "account_routing_guard.py"]
     assert 'DEFAULT_CONFIG = {"workspaces": {}}' in guard
+    assert "ai-knowledge-" not in guard
+
+
+def test_publish_guard_names_no_principal():
+    guard = _sources()[SKILL_ROOT / "guards" / "publish_guard.py"]
+    # The installing principal's identity lives only in the config file:
+    # messages interpolate principal_display() and fall back to the generic.
+    assert '"the principal"' in guard
+    assert "principal_display(cfg" in guard
+    assert "principal_name" in guard
+    assert "example.com" not in guard  # no fixture identity baked into the gate
     assert "ai-knowledge-" not in guard

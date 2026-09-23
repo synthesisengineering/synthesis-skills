@@ -1,6 +1,6 @@
 ---
 name: synthesis-agent-guardrails
-description: "Fail-closed session and tool guards for agent harnesses: cross-account artifact routing today; publication authority and output detectors landing next. Every guard ships inert until its principal configures it."
+description: "Fail-closed session and tool guards for agent harnesses: cross-account artifact routing and publication authority today; output detectors landing next. Every guard ships inert until its principal configures it."
 license: "Apache-2.0"
 depends_on: []
 metadata:
@@ -67,27 +67,75 @@ optional suggestion appended to block messages. The machine-readable
 contract is `schemas/workspaces.schema.json`. Longest-prefix match wins, so
 a nested workspace overrides its parent.
 
+`--doctor` runs 9 positive/negative controls against the longest
+configured workspace and exits 0 only when all pass.
+
+### Publication authority gate (`guards/publish_guard.py`)
+
+A fail-closed PreToolUse gate on live-site publication. A `git push` into
+a configured auto-deploy repository or a `wrangler pages deploy` passes
+only with a fresh single-use approval ledger bound to the repo and its
+current HEAD (exit 2 with the remedy otherwise); everything else passes.
+
+Three invariant layers sit above the ledger and no approval can waive
+them: future-dated content never goes live before its stated date,
+already-published dates are immutable, and a second publish inside the
+rapid-redeploy window needs explicit quoted approval (the rushed
+follow-up fix is the highest-risk publish there is).
+
+Repo targeting resolves explicit `cd`/`git -C` references first, the
+ambient cwd last, so a command that names its repo is attributed to that
+repo wherever the shell sits.
+
+### Configuration
+
+Sites live in `~/.synthesis/publish-guard/config.json`
+(`PUBLISH_GUARD_CONFIG` overrides the path; `PUBLISH_GUARD_STATE_DIR`
+overrides the ledger directory):
+
+```json
+{
+  "auto_deploy_repos": ["/path/to/site-repo"],
+  "principal_name": "Dana Example",
+  "sites": {
+    "/path/to/site-repo": {
+      "label": "Personal site",
+      "content_layout": "nested-date",
+      "content_roots": ["content/posts"]
+    }
+  }
+}
+```
+
+`auto_deploy_repos` is required. `principal_name` is interpolated into
+block messages (per-site `principal_name` overrides it); empty means the
+messages address "the principal". Repos without a `sites` entry use the
+default descriptor, which scans both historical article layouts. The
+machine-readable contract is `schemas/sites.schema.json`.
+`--approve <repo> --summary "..."` writes the ledger after the principal
+previews the change and says yes for that publish; `--doctor` runs the
+positive/negative controls plus the hermetic `--test` suite.
+
 ### Defaults-off
 
 Every guard ships inert without principal configuration: with no
 workspaces configured the routing gate allows (it must not brick routine
-tool use) and `--doctor` reports UNHEALTHY with a setup pointer. An
-unreadable config fails closed (blocks); a workspace with no account fails
-closed (raises, and the doctor control reports the failure).
-
-`--doctor` runs 9 positive/negative controls against the longest
-configured workspace and exits 0 only when all pass.
+tool use) and `--doctor` reports UNHEALTHY with a setup pointer. The
+publication gate has no authority until its config names repos — with no
+config it blocks only publish-shaped commands (fail closed on the gated
+class) and allows everything else. An unreadable config fails closed
+(blocks); a workspace with no account fails closed (raises, and the
+doctor control reports the failure).
 
 ## Layout and Roadmap
 
-- `guards/` — executable gates (this promotion).
+- `guards/` — executable gates (both promotions).
 - `hooks/{claude,codex,muse}/` — per-client hook wiring (lands with the
   detector promotion).
 - `schemas/` — config contracts.
 - `tests/` — gate regressions plus committed absence tests proving the
   promoted tree carries no principal identity.
 
-Next: the publication authority guard (fail-closed deploy/publish approval
-with per-site layout descriptors), then the output detectors (shortcut,
-provenance, and brief scans over principal-supplied rule catalogs). Each
-lands with the same defaults-off contract.
+Next: the output detectors (shortcut, provenance, and brief scans over
+principal-supplied rule catalogs). Each lands with the same defaults-off
+contract.

@@ -134,6 +134,7 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
     ("onboarding.catalog-scaffolds", ["python3", "skills/synthesis-onboarding/scripts/check_scaffolds.py", "."]),
     ("onboarding.capabilities", ["python3", "skills/synthesis-onboarding/scripts/check_capabilities.py", "."]),
     ("pytest.release", ["python3", "-m", "pytest", "skills/synthesis-skills-manager/scripts/test_release.py", "-q"]),
+    ("pytest.guardrails", ["python3", "-m", "pytest", "skills/synthesis-agent-guardrails/tests/", "-q"]),
     ("meeting-transcripts.completeness", ["python3", "skills/synthesis-meeting-transcripts/test_verify_transcripts.py"]),
     ("meeting-transcripts.primary", ["python3", "skills/synthesis-meeting-transcripts/test_transcript_primary.py"]),
     ("pytest.rituals-guard-hooks", ["python3", "-m", "pytest", "skills/synthesis-daily-rituals/scripts/", "skills/synthesis-bitbucket/scripts/", "skills/synthesis-message-guard/scripts/", "skills/synthesis-git-hooks/scripts/", "skills/synthesis-slack-sync/scripts/", "skills/synthesis-chief-of-staff/scripts/", "skills/synthesis-repo-guard/", "skills/synthesis-decision-packet/scripts/", "-q"]),

@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.136.0] - 2026-09-23
+
+The `synthesis-agent-guardrails` skill gains the publication authority
+gate (ruling PRO-4): a fail-closed pre-publish check over site pushes
+and deploys, with a fresh single-use approval ledger, timeline
+invariants (no future-dated pages, immutable published dates), and a
+rapid-redeploy brake. Per-site descriptors narrow the content scan and
+name the principal; the principal's identity lives only in the
+installing config. The guardrails suite now runs in the release gate
+and CI.
+
 ## [4.135.0] - 2026-09-23
 
 Every install now re-syncs the commit gate from the live release

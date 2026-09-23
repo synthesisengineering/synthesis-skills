@@ -201,6 +201,17 @@ def test_required_checks_execute_release_wiring_tests() -> None:
     ]
 
 
+def test_required_checks_execute_guardrails_suite() -> None:
+    commands = {name: command for name, command in release.REQUIRED_CHECKS}
+    assert commands["pytest.guardrails"] == [
+        "python3",
+        "-m",
+        "pytest",
+        "skills/synthesis-agent-guardrails/tests/",
+        "-q",
+    ]
+
+
 def test_required_checks_execute_whole_system_onboarding_contract() -> None:
     commands = {name: command for name, command in release.REQUIRED_CHECKS}
     assert commands["pytest.onboarding"] == [
@@ -424,6 +435,10 @@ def test_repository_ci_executes_release_wiring_tests() -> None:
     assert "ubuntu-latest, macos-latest" in workflow
     assert (
         "python -m pytest skills/synthesis-skills-manager/scripts/test_release.py -q"
+        in workflow
+    )
+    assert (
+        "python -m pytest skills/synthesis-agent-guardrails/tests/ -q"
         in workflow
     )
 

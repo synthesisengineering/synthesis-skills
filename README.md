@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.136.0** adds the publication authority gate: site pushes
+and deploys need a fresh single-use approval, with timeline invariants
+and a rapid-redeploy brake above the ledger. Per-site descriptors drive
+the content scan and principal naming.
+
 Release **4.135.0** re-syncs the commit gate from the live release
 on every install, closing a nine-release skew between the gate and
 the claim writer that the health check could not see.
