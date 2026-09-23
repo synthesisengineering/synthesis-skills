@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.142.0** refuses worktree retirement while ignored files
+remain, closing the data-loss hole behind intake 56.
+
 Release **4.141.0** reports version drift as PENDING under live
 install-plane claims and documents the concurrent-seats ritual mode.
 

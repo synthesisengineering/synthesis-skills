@@ -791,13 +791,29 @@ def main() -> int:
             "first"
         )
 
-    status = run(worktree, "status", "--porcelain")
+    # --ignored: every check retirement runs sees only tracked files, so a
+    # worktree holding nothing but ignored content used to read clean and
+    # take its ignored files with it on removal (intake 56: a 26 MB
+    # gitignored data dump destroyed with no log line). Every non-clean
+    # line — modified, untracked, or ignored — refuses with its disposition
+    # recorded in the refusal.
+    status = run(worktree, "status", "--ignored", "--porcelain")
     if status.returncode != 0:
         return fail(status.stderr.strip() or "status failed in the worktree")
-    if status.stdout.strip():
+    lines = [line for line in status.stdout.splitlines() if line.strip()]
+    tracked = [line for line in lines if not line.startswith("!!")]
+    ignored = [line for line in lines if line.startswith("!!")]
+    if tracked:
         return fail(
             "worktree is not clean; commit, stash, or inspect before retiring:"
-            f"\n{status.stdout.strip()}"
+            f"\n{chr(10).join(tracked)}"
+        )
+    if ignored:
+        return fail(
+            "worktree holds ignored files that removal would destroy; extract "
+            "what matters (or git clean what is truly regenerable) before "
+            "retiring:"
+            f"\n{chr(10).join(ignored)}"
         )
 
     branch_ref = match.get("branch", "")

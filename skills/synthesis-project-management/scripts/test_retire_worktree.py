@@ -257,6 +257,26 @@ def test_refuses_dirty_worktree(tmp_path: Path) -> None:
     assert worktree.exists()
 
 
+def test_refuses_ignored_only_worktree_and_names_files(tmp_path: Path) -> None:
+    # Intake 56: a worktree holding only ignored content used to read clean
+    # and take its ignored files with it on removal. Every !! line refuses
+    # with its disposition recorded.
+    remote, clone = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, clone)
+    (worktree / ".gitignore").write_text("seed.jsonl\n", encoding="utf-8")
+    git(worktree, "add", ".gitignore")
+    git(worktree, "commit", "--quiet", "-m", "ignore the seed")
+    commit_and_merge(clone, worktree)
+    (worktree / "seed.jsonl").write_text('{"raw": "dump"}\n', encoding="utf-8")
+
+    result = retire("--repository", str(clone), "--worktree", str(worktree))
+    assert result.returncode == 2
+    assert "ignored files" in result.stderr
+    assert "seed.jsonl" in result.stderr
+    assert worktree.exists()
+    assert (worktree / "seed.jsonl").is_file()
+
+
 def test_refuses_main_worktree_and_wrong_repository(tmp_path: Path) -> None:
     remote, clone = build_repo(tmp_path)
     worktree = add_feature_worktree(tmp_path, clone)

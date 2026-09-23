@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.142.0] - 2026-09-23
+
+Worktree retirement now runs `git status --ignored --porcelain` and
+refuses while any non-clean line remains — modified, untracked, or
+ignored — naming every file in the refusal (intake 56, data-loss
+class). A worktree holding only ignored content previously read clean
+and took its ignored files with it on removal; the keep-curate text
+in the same report was one-off packet prose with no shipped string to
+fix. Intake 51 closed as resolved by 4.134.0 (verbatim duplicate of
+intake 31, verified against the shipped diff and a live row).
+
 ## [4.141.0] - 2026-09-23
 
 Version drift observed while a live seat holds install-plane claims
