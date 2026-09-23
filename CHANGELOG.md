@@ -4,6 +4,18 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.144.0] - 2026-09-23
+
+Autopilot skill 2.4.0 hardens the engagement gate five ways. `status --plan`
+reports engagement state read-only. Cron-class continuations record the
+on-disk job id and stay unverified until the first fire is observed
+(`cron-fired`); past a 60-minute grace, an unverified cron continuation
+blocks the Stop like none at all. Close refuses while the plan cites
+artifacts that exist only in scratch directories. And research fan-outs get
+mechanical budget protection: `SYNTHESIS_SEARCH_BUDGET_PER_AGENT` caps each
+agent's share (default 25) with `search_budget.py check --agents N` failing
+closed before dispatch when the cap is unset.
+
 ## [4.143.0] - 2026-09-23
 
 Slack sync grows a per-machine multi-workspace registry

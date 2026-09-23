@@ -1,23 +1,23 @@
 schema: 2
-suite: slack-mw-registry-4-143-0
+suite: autopilot-gate-harden-4-144-0
 membership: closed
 production_entry_point: All three client manifests and the top changelog
-  identify 4.143.0, shipping the multi-workspace Slack registry with
-  placeholder tokens and the unified/isolated visibility doctrine.
+  identify 4.144.0, shipping autopilot 2.4.0 with read-only gate status,
+  verified cron continuations, scratch-only close refusal, and the
+  per-agent search cap.
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and all-client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: The fixtures execute release-contract, registry,
+unverified_remainder: The fixtures execute release-contract, gate, registry,
   and manifest checks against fixtures and the working tree. They do not establish
-  live Slack reads (no workspace tokens are installed), installed-client reload,
-  live cross-client delivery, new-release publication,
-  launcher refresh, or deployment approval. Those remain separate release
-  checks. The doctrine, token-guide, and skill prose ride the
-  release-metadata vehicle; review is the evidence of prose adoption. The full slack-sync
-  suite runs in the required pytest checks alongside this receipt.
+  live cron fires, installed-client reload, live cross-client delivery,
+  new-release publication, launcher refresh, or deployment approval. Those
+  remain separate release checks. The skill prose rides the
+  release-metadata vehicle; review is the evidence of prose adoption. The full
+  autopilot suite runs in the required pytest checks alongside this receipt.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -37,45 +37,67 @@ changed_surfaces:
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - manifest-validates
-- path: skills/synthesis-slack-sync/SKILL.md
+- path: skills/synthesis-autopilot/SKILL.md
   cases:
   - release-version-metadata
-- path: skills/synthesis-slack-sync/references/cross-workspace-visibility.md
+- path: skills/synthesis-autopilot/scripts/autopilot_gate.py
   cases:
-  - release-version-metadata
-- path: skills/synthesis-slack-sync/references/slack-token-guide.md
+  - gate-status-readonly
+  - cron-verified-before-trusted
+  - close-refuses-scratch-cites
+- path: skills/synthesis-autopilot/scripts/test_autopilot_gate.py
   cases:
-  - release-version-metadata
-- path: skills/synthesis-slack-sync/references/version-history.md
+  - gate-status-readonly
+  - cron-verified-before-trusted
+  - close-refuses-scratch-cites
+- path: skills/synthesis-autopilot/scripts/search_budget.py
   cases:
-  - release-version-metadata
-- path: skills/synthesis-slack-sync/scripts/slack_workspaces.py
+  - search-budget-pre-dispatch
+- path: skills/synthesis-autopilot/scripts/test_search_budget.py
   cases:
-  - registry-placeholders-and-modes
-- path: skills/synthesis-slack-sync/scripts/test_slack_workspaces.py
-  cases:
-  - registry-placeholders-and-modes
+  - search-budget-pre-dispatch
 cases:
 - id: release-version-metadata
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
   motivating_defect: All client manifests and the top changelog identify the same release while retained
-    release contracts remain valid. The registry prose rides this vehicle; review
+    release contracts remain valid. The autopilot prose rides this vehicle; review
     is the evidence of prose adoption.
 - id: manifest-validates
   control_class: acceptance-test
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
   motivating_defect: The release gate consumes a closed exact changed-file universe with mapped fixture cases.
-- id: registry-placeholders-and-modes
+- id: gate-status-readonly
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-slack-sync/scripts/test_slack_workspaces.py::RegistryTest
-  motivating_defect: One human with several Slack workspaces had no per-machine
-    registry, so tokens lived only in the client, placeholders were
-    indistinguishable from misconfiguration, and unified versus isolated
-    visibility was a conversation rather than a setting. The registry names
-    every workspace, resolves each token to ready/placeholder/missing/
-    rejected/external without ever storing a secret, and gates syncs on the
-    readable set for the session workspace under the declared mode.
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_status_reports_state_without_mutating
+  motivating_defect: No subcommand showed engagement state, so the only way
+    to inspect an engagement was reading raw registry JSON. Status reports
+    mission, state, continuation, blocker, and cycle count, and the test
+    proves the record bytes are identical before and after.
+- id: cron-verified-before-trusted
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_cron_continuation_blocks_gate_when_unverified_and_aged
+  motivating_defect: A scheduled re-entry counted as a continuation the
+    moment it was named, so a cron job that never fired still released the
+    Stop gate. Cron continuations now name the on-disk job, stay unverified
+    until the first observed fire, and block past a 60-minute grace.
+- id: close-refuses-scratch-cites
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_close_refuses_scratch_only_citations
+  motivating_defect: An engagement could close while its evidence lived only
+    in scratch directories, which reboots and session ends clear. Close now
+    scans the plan for cited absolute paths and refuses while any exist only
+    under scratch roots.
+- id: search-budget-pre-dispatch
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_search_budget.py::test_unset_cap_fails_closed_with_remedy
+  motivating_defect: Six parallel research agents silently exhausted one
+    shared session-wide search budget because each assumed its own. The
+    per-agent cap lives in the shell and the pre-dispatch check fails closed
+    with the export remedy when it is unset.

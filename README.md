@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.144.0** hardens autopilot: read-only gate status, verified cron
+continuations, scratch-only close refusal, and a per-agent search cap.
+
 Release **4.143.0** adds the multi-workspace Slack registry with
 placeholder tokens and the unified/isolated visibility doctrine.
 
