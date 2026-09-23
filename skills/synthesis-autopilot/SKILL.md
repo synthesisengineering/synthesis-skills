@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.3.0"
+  version: "2.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -172,7 +172,15 @@ engagement registers with `scripts/autopilot_gate.py register --plan <plan>
 session stop while a registered engagement is active, unfinished, and has
 neither a recorded continuation (`autopilot_gate.py continuation`) nor an
 alerted blocker (`autopilot_gate.py blocker ... --alerted`) nor an honest
-close (`autopilot_gate.py close --goals-met | --incomplete <reason>`). The
+close (`autopilot_gate.py close --goals-met | --incomplete <reason>`). A
+cron-class continuation is recorded with `--cron-job ID` naming the on-disk
+schedule and stays UNVERIFIED until its first fire is observed and recorded
+(`autopilot_gate.py cron-fired --plan <plan>`); past a 60-minute grace from
+engagement, an unverified cron continuation blocks the Stop like no
+continuation at all. Close refuses while the plan cites artifacts that exist
+only in scratch directories. Engagement state is inspectable without
+mutating it (`autopilot_gate.py status --plan <plan>`, `--json` for
+machines). The
 cycle ledger is mechanical too: `autopilot_gate.py cycle` refuses to record
 a wake that advanced nothing and names no external wait — there is no way
 to log a bare spin. Registration binds the engagement to the active
@@ -408,7 +416,7 @@ Autonomous runs fan work out to sub-agents more than supervised ones, so dispatc
 1. **At most five deliverables per dispatch.** Larger briefs stall or return partial work; split them into focused dispatches.
 2. **No minimizing vocabulary in briefs.** "Keep changes minimal," "light touch," "conservative pass" license half-done work. Name the job at full size with explicit acceptance criteria.
 3. **Acceptance audit on every non-clean-success return.** Partial completion, timeout, "stalled with substantial progress" — inspect what actually landed, diff it against the brief, and either re-dispatch or finish the gap directly. Accepting the partial state and moving on is forbidden.
-4. **Allocate shared budgets in the brief.** Metered tools with a session-wide budget (web search is the proven one: parallel research agents share a single pool and exhaust it silently) get an explicit per-agent allocation in each brief, plus the fallback when the pool runs dry. A fan-out of N research agents against one undivided budget is a plan to get N partial reports.
+4. **Allocate shared budgets in the brief.** Metered tools with a session-wide budget (web search is the proven one: parallel research agents share a single pool and exhaust it silently) get an explicit per-agent allocation in each brief, plus the fallback when the pool runs dry. A fan-out of N research agents against one undivided budget is a plan to get N partial reports. The mechanical form: `SYNTHESIS_SEARCH_BUDGET_PER_AGENT` in the shell sets the per-agent search cap (default 25 — tunable, because the provider pool size is not visible to the skill), and `scripts/search_budget.py check --agents N` runs before dispatch; it fails closed when the cap is unset and prints the split the briefs must carry.
 
 ## Completion and Blocked-State Alerts
 

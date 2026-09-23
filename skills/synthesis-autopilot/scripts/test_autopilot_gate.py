@@ -159,6 +159,126 @@ def test_bare_spin_cannot_be_recorded(tmp_path: Path) -> None:
                    "--advanced", "phase 2 drafted 4 articles").returncode == 0
 
 
+def test_status_reports_state_without_mutating(tmp_path: Path) -> None:
+    register(tmp_path)
+    assert run_cli(tmp_path, "continuation", "--plan", "/tmp/p/plan.md",
+                   "--mechanism", "dynamic loop wakeup",
+                   "--next-wake", "20 minutes",
+                   "--survives", "turn end").returncode == 0
+    records = list((tmp_path / "engagements").glob("*.json"))
+    assert len(records) == 1
+    before = records[0].read_bytes()
+    done = run_cli(tmp_path, "status", "--plan", "/tmp/p/plan.md")
+    assert done.returncode == 0, done.stderr
+    assert "draft the backlog overnight" in done.stdout
+    assert "dynamic loop wakeup" in done.stdout
+    as_json = run_cli(tmp_path, "status", "--plan", "/tmp/p/plan.md", "--json")
+    assert as_json.returncode == 0, as_json.stderr
+    payload = json.loads(as_json.stdout)
+    assert payload["mission"] == "draft the backlog overnight"
+    assert payload["continuation"]["mechanism"] == "dynamic loop wakeup"
+    assert records[0].read_bytes() == before
+
+
+def test_cron_continuation_passes_gate_within_grace(tmp_path: Path) -> None:
+    register(tmp_path)
+    done = run_cli(tmp_path, "continuation", "--plan", "/tmp/p/plan.md",
+                   "--mechanism", "scheduled re-entry every 25 minutes",
+                   "--next-wake", "next quarter hour",
+                   "--survives", "turn end, session death, reboot",
+                   "--cron-job", "job-123")
+    assert done.returncode == 0, done.stderr
+    assert run_cli(tmp_path, "--gate").returncode == 0
+
+
+def test_cron_continuation_blocks_gate_when_unverified_and_aged(
+        tmp_path: Path) -> None:
+    register(tmp_path)
+    assert run_cli(tmp_path, "continuation", "--plan", "/tmp/p/plan.md",
+                   "--mechanism", "scheduled re-entry every 25 minutes",
+                   "--next-wake", "next quarter hour",
+                   "--survives", "turn end, session death, reboot",
+                   "--cron-job", "job-123").returncode == 0
+    records = list((tmp_path / "engagements").glob("*.json"))
+    assert len(records) == 1
+    payload = json.loads(records[0].read_text(encoding="utf-8"))
+    assert payload["continuation"]["verified"] is False
+    payload["engaged_at"] = "2026-01-01T00:00:00+00:00"
+    records[0].write_text(json.dumps(payload), encoding="utf-8")
+    blocked = run_cli(tmp_path, "--gate")
+    assert blocked.returncode == 2
+    assert "UNVERIFIED" in blocked.stderr
+    assert "cron-fired" in blocked.stderr
+    assert run_cli(tmp_path, "cron-fired",
+                   "--plan", "/tmp/p/plan.md").returncode == 0
+    assert run_cli(tmp_path, "--gate").returncode == 0
+
+
+def test_cron_fired_without_cron_continuation_fails(tmp_path: Path) -> None:
+    register(tmp_path)
+    done = run_cli(tmp_path, "cron-fired", "--plan", "/tmp/p/plan.md")
+    assert done.returncode == 2
+    assert "cron-job" in done.stderr
+
+
+def test_continuation_cron_job_must_name_the_schedule(
+        tmp_path: Path) -> None:
+    register(tmp_path)
+    done = run_cli(tmp_path, "continuation", "--plan", "/tmp/p/plan.md",
+                   "--mechanism", "scheduled re-entry",
+                   "--next-wake", "soon", "--survives", "reboot",
+                   "--cron-job", "  ")
+    assert done.returncode == 2
+    assert "on-disk" in done.stderr
+
+
+def test_legacy_continuation_without_kind_still_passes(
+        tmp_path: Path) -> None:
+    register(tmp_path)
+    assert run_cli(tmp_path, "continuation", "--plan", "/tmp/p/plan.md",
+                   "--mechanism", "dynamic loop wakeup",
+                   "--next-wake", "20 minutes",
+                   "--survives", "turn end").returncode == 0
+    records = list((tmp_path / "engagements").glob("*.json"))
+    payload = json.loads(records[0].read_text(encoding="utf-8"))
+    del payload["continuation"]["kind"]
+    del payload["continuation"]["verified"]
+    records[0].write_text(json.dumps(payload), encoding="utf-8")
+    assert run_cli(tmp_path, "--gate").returncode == 0
+
+
+def _write_real_plan(text: str) -> Path:
+    plan = Path("/tmp/p/plan.md")
+    plan.parent.mkdir(parents=True, exist_ok=True)
+    plan.write_text(text, encoding="utf-8")
+    return plan
+
+
+def test_close_refuses_scratch_only_citations(tmp_path: Path) -> None:
+    scratch = tmp_path / "evidence.md"
+    scratch.write_text("unflushed findings", encoding="utf-8")
+    plan = _write_real_plan(f"# Plan\n\nEvidence: {scratch}\n")
+    try:
+        register(tmp_path)
+        done = run_cli(tmp_path, "close", "--plan", str(plan),
+                       "--incomplete", "withdrawing")
+        assert done.returncode == 2
+        assert "scratch" in done.stderr
+    finally:
+        plan.unlink(missing_ok=True)
+
+
+def test_close_accepts_durable_citations(tmp_path: Path) -> None:
+    plan = _write_real_plan(f"# Plan\n\nGate: {MODULE_PATH}\n")
+    try:
+        register(tmp_path)
+        done = run_cli(tmp_path, "close", "--plan", str(plan),
+                       "--incomplete", "withdrawing")
+        assert done.returncode == 0, done.stderr
+    finally:
+        plan.unlink(missing_ok=True)
+
+
 def test_doctrine_carries_continuation_contract() -> None:
     skill = (MODULE_PATH.parents[1] / "SKILL.md").read_text(encoding="utf-8")
     assert "Continuation" in skill

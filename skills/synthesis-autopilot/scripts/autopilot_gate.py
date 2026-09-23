@@ -35,6 +35,10 @@ Modes:
                                                 begin an engagement (with a
                                                 frozen standing checklist)
   continuation  --plan PATH --mechanism TEXT --next-wake TEXT --survives TEXT
+                            [--cron-job ID]
+  cron-fired    --plan PATH                     record the observed first fire
+                                                of a cron continuation
+  status        --plan PATH [--json]            read-only engagement state
   cycle         --plan PATH (--advanced TEXT | --no-advance --waiting-on TEXT)
   blocker       --plan PATH --reason TEXT --alerted
   close         --plan PATH (--goals-met | --incomplete TEXT)
@@ -58,7 +62,13 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-ENGINE_VERSION = "1.1.0"
+ENGINE_VERSION = "1.2.0"
+
+CRON_GRACE_SECONDS = 60 * 60
+
+SCRATCH_MARKERS = ("scratchpad",)
+
+PATH_TOKEN = re.compile(r"/[A-Za-z0-9._~@#$%+=-]+(?:/[A-Za-z0-9._~@#$%+=-]+)*")
 
 
 def state_dir() -> Path:
@@ -240,7 +250,7 @@ def cmd_register(plan: str, mission: str, horizon: str,
 
 
 def cmd_continuation(plan: str, mechanism: str, next_wake: str,
-                     survives: str) -> int:
+                     survives: str, cron_job: str | None) -> int:
     for label, val in (("--mechanism", mechanism), ("--next-wake", next_wake),
                        ("--survives", survives)):
         if not val.strip():
@@ -249,14 +259,108 @@ def cmd_continuation(plan: str, mechanism: str, next_wake: str,
                   file=sys.stderr)
             return 2
     path, data = load_for_plan(plan)
-    data["continuation"] = {
+    record: dict = {
         "mechanism": mechanism.strip(),
         "next_wake": next_wake.strip(),
         "survives": survives.strip(),
         "recorded_at": now_iso(),
     }
+    if cron_job is not None:
+        job = cron_job.strip()
+        if not job:
+            print("continuation: --cron-job must name the on-disk scheduled "
+                  "re-entry (job id or schedule name) — a cron continuation "
+                  "without one is a promise, not a mechanism",
+                  file=sys.stderr)
+            return 2
+        record["kind"] = "cron"
+        record["cron_job"] = job
+        record["verified"] = False
+    else:
+        record["kind"] = "other"
+        record["verified"] = True
+    data["continuation"] = record
     save(path, data)
     print(f"continuation recorded ({mechanism.strip()[:60]})")
+    return 0
+
+
+def cmd_cron_fired(plan: str) -> int:
+    path, data = load_for_plan(plan)
+    cont = data.get("continuation") or {}
+    if cont.get("kind") != "cron":
+        print("cron-fired: no cron continuation is recorded for this plan — "
+              "record one with `continuation --cron-job ID` first",
+              file=sys.stderr)
+        return 2
+    if cont.get("verified"):
+        print("cron continuation was already verified")
+        return 0
+    cont["verified"] = True
+    cont["observed_at"] = now_iso()
+    data["continuation"] = cont
+    save(path, data)
+    print(f"cron first fire observed for job {cont.get('cron_job')}")
+    return 0
+
+
+def _engaged_seconds_ago(data: dict) -> float | None:
+    try:
+        engaged = datetime.fromisoformat(str(data.get("engaged_at")))
+    except (TypeError, ValueError):
+        return None
+    if engaged.tzinfo is None:
+        engaged = engaged.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - engaged).total_seconds()
+
+
+def cron_continuation_due(data: dict) -> bool:
+    """A cron continuation counts at the gate only while young or verified."""
+    cont = data.get("continuation") or {}
+    if cont.get("kind") != "cron" or cont.get("verified"):
+        return True
+    age = _engaged_seconds_ago(data)
+    if age is None:
+        return False
+    return age <= CRON_GRACE_SECONDS
+
+
+def cmd_status(plan: str, as_json: bool) -> int:
+    _, data = load_for_plan(plan)
+    cont = data.get("continuation") or {}
+    summary = {
+        "mission": data.get("mission"),
+        "status": data.get("status"),
+        "goals_met": data.get("goals_met"),
+        "engaged_at": data.get("engaged_at"),
+        "continuation": ({
+            "mechanism": cont.get("mechanism"),
+            "next_wake": cont.get("next_wake"),
+            "survives": cont.get("survives"),
+            "kind": cont.get("kind", "other"),
+            "verified": cont.get("verified", True),
+            "cron_job": cont.get("cron_job"),
+        } if cont else None),
+        "blocker": data.get("blocker"),
+        "cycles": len(data.get("cycles") or []),
+        "closed_at": data.get("closed_at"),
+    }
+    if as_json:
+        print(json.dumps(summary, indent=2))
+        return 0
+    print(f"mission: {summary['mission']}")
+    print(f"status: {summary['status']}  goals_met: {summary['goals_met']}  "
+          f"cycles: {summary['cycles']}")
+    if cont:
+        state = ("verified" if summary["continuation"]["verified"]
+                 else "UNVERIFIED")
+        print(f"continuation [{state}]: {cont.get('mechanism')}")
+        print(f"  next wake: {cont.get('next_wake')}")
+        print(f"  survives: {cont.get('survives')}")
+    else:
+        print("continuation: none recorded")
+    if data.get("blocker"):
+        print(f"blocker: {data['blocker'].get('reason')}")
     return 0
 
 
@@ -302,8 +406,49 @@ def cmd_blocker(plan: str, reason: str, alerted: bool) -> int:
     return 0
 
 
+def _scratch_roots() -> list[str]:
+    roots = ["/tmp", "/private/tmp", "/var/folders"]
+    tmpdir = os.environ.get("TMPDIR", "").rstrip("/")
+    if tmpdir:
+        roots.append(tmpdir)
+    return [os.path.realpath(root) for root in roots]
+
+
+def _is_scratch_path(candidate: str) -> bool:
+    lowered = candidate.lower()
+    if any(marker in lowered for marker in SCRATCH_MARKERS):
+        return True
+    return any(candidate == root or candidate.startswith(root.rstrip("/") + "/")
+               for root in _scratch_roots())
+
+
+def scratch_only_citations(plan_file: str) -> list[str]:
+    """Absolute paths the plan cites that exist only under scratch roots."""
+    try:
+        text = Path(plan_file).read_text(encoding="utf-8")
+    except OSError:
+        return []
+    hits = []
+    for token in PATH_TOKEN.findall(text):
+        cleaned = token.rstrip(".,;:!?)]}'\"")
+        if not os.path.exists(cleaned):
+            continue
+        resolved = str(Path(cleaned).resolve())
+        if _is_scratch_path(resolved) and resolved not in hits:
+            hits.append(resolved)
+    return hits
+
+
 def cmd_close(plan: str, goals_met: bool, incomplete: str | None) -> int:
     path, data = load_for_plan(plan)
+    scratch_hits = scratch_only_citations(
+        os.path.abspath(os.path.expanduser(plan)))
+    if scratch_hits:
+        print("close: the plan cites artifacts that exist only in scratch "
+              "directories — move them under resources/ (or another durable "
+              "record) before closing:\n  " + "\n  ".join(scratch_hits),
+              file=sys.stderr)
+        return 2
     if goals_met and data.get("profile"):
         receipt_path = path.with_name(path.stem + ".profile-verified.json")
         if not receipt_path.exists():
@@ -420,7 +565,17 @@ def gate() -> int:
                 file=sys.stderr,
             )
             continue
-        if data.get("continuation") or data.get("blocker"):
+        if data.get("blocker"):
+            continue
+        if data.get("continuation") and cron_continuation_due(data):
+            continue
+        if data.get("continuation"):
+            offenders.append(
+                f"{data.get('mission', path.name)!r} (plan {data.get('plan')}) "
+                f"- cron continuation for job "
+                f"{(data.get('continuation') or {}).get('cron_job')} is "
+                f"UNVERIFIED past the 60-minute grace: observe its first "
+                f"fire and record it (`cron-fired --plan P`)")
             continue
         offenders.append(
             f"{data.get('mission', path.name)!r} (plan {data.get('plan')})")
@@ -497,7 +652,11 @@ def main() -> int:
     if mode == "continuation":
         return cmd_continuation(plan, val("--mechanism") or "",
                                 val("--next-wake") or "",
-                                val("--survives") or "")
+                                val("--survives") or "", val("--cron-job"))
+    if mode == "cron-fired":
+        return cmd_cron_fired(plan)
+    if mode == "status":
+        return cmd_status(plan, "--json" in argv)
     if mode == "cycle":
         return cmd_cycle(plan, val("--advanced"),
                          "--no-advance" in argv, val("--waiting-on"))
