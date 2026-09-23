@@ -4,6 +4,12 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.139.0] - 2026-09-23
+
+The thirteen promoted per-client hooks join the verified-execution
+contract: `synthesis exec-public` accepts every guardrails hook, so
+principal hook consumers run them from the verified active release.
+
 ## [4.138.0] - 2026-09-23
 
 The `synthesis-agent-guardrails` skill gains the per-client hook

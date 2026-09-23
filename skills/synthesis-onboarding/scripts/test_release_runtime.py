@@ -345,6 +345,23 @@ GUARDS = (
 )
 
 
+HOOKS = (
+    "synthesis-agent-guardrails/hooks/claude/bare_filename_detector.py",
+    "synthesis-agent-guardrails/hooks/claude/lazy_shortcut_detector.py",
+    "synthesis-agent-guardrails/hooks/claude/long_session_detector.py",
+    "synthesis-agent-guardrails/hooks/claude/pre_tool_temporal_reminder.py",
+    "synthesis-agent-guardrails/hooks/claude/quote_provenance_checker.py",
+    "synthesis-agent-guardrails/hooks/claude/sub_agent_brief_scanner.py",
+    "synthesis-agent-guardrails/hooks/codex/bare_filename_detector.py",
+    "synthesis-agent-guardrails/hooks/codex/installed_skill_edit_guard.py",
+    "synthesis-agent-guardrails/hooks/codex/lazy_shortcut_detector.py",
+    "synthesis-agent-guardrails/hooks/codex/quote_provenance_checker.py",
+    "synthesis-agent-guardrails/hooks/codex/repo_guard_stop.py",
+    "synthesis-agent-guardrails/hooks/codex/session_end_checkpoint.py",
+    "synthesis-agent-guardrails/hooks/muse/lazy_shortcut_detector.py",
+)
+
+
 @pytest.mark.parametrize("guard", GUARDS)
 def test_declared_guard_entrypoint_executes_from_the_verified_release(tmp_path, monkeypatch, guard):
     assert guard in runtime.PUBLIC_ENTRYPOINTS
@@ -380,3 +397,41 @@ def test_declared_guard_entrypoint_executes_from_the_verified_release(tmp_path, 
     result = runtime.execute(verified, guard, [], b"{}", timeout=10)
     assert result.returncode == 0
     assert result.stdout == b"guard-ok\n"
+
+
+@pytest.mark.parametrize("hook", HOOKS)
+def test_declared_hook_entrypoint_executes_from_the_verified_release(tmp_path, monkeypatch, hook):
+    assert hook in runtime.PUBLIC_ENTRYPOINTS
+    assert hook in runtime.RECEIPT_ENTRYPOINTS
+    monkeypatch.delenv("SYNTHESIS_PUBLIC_SKILLS_SOURCE", raising=False)
+    root = tmp_path / "generation"
+    target = root / "skills" / hook
+    target.parent.mkdir(parents=True)
+    target.write_text("import sys\nsys.stdout.write('hook-ok\\n')\n")
+    for client in ("claude", "codex"):
+        manifest = root / ("." + client + "-plugin") / "plugin.json"
+        manifest.parent.mkdir()
+        manifest.write_text(json.dumps({"name": "synthesis-skills", "version": "9.8.7"}))
+    pointer = tmp_path / "state" / "active-release.json"
+    pointer.parent.mkdir()
+    pointer.with_name(pointer.name + ".lock").touch()
+    data = {
+        "schema_version": 1, "version": "9.8.7", "channel": "stable", "ref": "stable",
+        "commit": "1" * 40, "tree": "2" * 40,
+        "content_digest": system_contract.canonical_tree_digest(root),
+        "digest_algorithm": "sha256-tree-v1", "tree_policy": "regular-files-and-directories-no-links-v1",
+        "source_url": "https://example.test/skills.git", "resolved_at": "2026-01-01T00:00:00Z",
+        "release_root": str(root), "interpreter": runtime.interpreter_pin(),
+    }
+    launcher = pointer.parent.parent / "bin/synthesis"
+    launcher.parent.mkdir()
+    content = system_contract.launcher_bytes(pointer, data["interpreter"])
+    launcher.write_bytes(content)
+    launcher.chmod(0o755)
+    data["launcher"] = {"path": str(launcher), "runtime_schema": 1, "sha256": hashlib.sha256(content).hexdigest()}
+    pointer.write_text(json.dumps(data))
+    verified = runtime.verified_release(pointer)
+    assert runtime.command(verified, hook, ["--doctor"]) == [sys.executable, "-B", str(target), "--doctor"]
+    result = runtime.execute(verified, hook, [], b"{}", timeout=10)
+    assert result.returncode == 0
+    assert result.stdout == b"hook-ok\n"

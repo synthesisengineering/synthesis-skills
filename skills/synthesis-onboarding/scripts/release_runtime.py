@@ -39,6 +39,19 @@ PUBLIC_ENTRYPOINTS = frozenset({
     "synthesis-autopilot/scripts/autopilot_gate.py",
     "synthesis-agent-guardrails/guards/account_routing_guard.py",
     "synthesis-agent-guardrails/guards/publish_guard.py",
+    "synthesis-agent-guardrails/hooks/claude/bare_filename_detector.py",
+    "synthesis-agent-guardrails/hooks/claude/lazy_shortcut_detector.py",
+    "synthesis-agent-guardrails/hooks/claude/long_session_detector.py",
+    "synthesis-agent-guardrails/hooks/claude/pre_tool_temporal_reminder.py",
+    "synthesis-agent-guardrails/hooks/claude/quote_provenance_checker.py",
+    "synthesis-agent-guardrails/hooks/claude/sub_agent_brief_scanner.py",
+    "synthesis-agent-guardrails/hooks/codex/bare_filename_detector.py",
+    "synthesis-agent-guardrails/hooks/codex/installed_skill_edit_guard.py",
+    "synthesis-agent-guardrails/hooks/codex/lazy_shortcut_detector.py",
+    "synthesis-agent-guardrails/hooks/codex/quote_provenance_checker.py",
+    "synthesis-agent-guardrails/hooks/codex/repo_guard_stop.py",
+    "synthesis-agent-guardrails/hooks/codex/session_end_checkpoint.py",
+    "synthesis-agent-guardrails/hooks/muse/lazy_shortcut_detector.py",
 })
 
 

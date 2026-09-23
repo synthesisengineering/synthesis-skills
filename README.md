@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.139.0** declares the thirteen promoted hooks
+verified-execution entrypoints for principal consumers.
+
 Release **4.138.0** promotes the per-client hook suite: thirteen
 detectors, all defaults-off with health checks and
 principal-supplied catalogs.
