@@ -3,6 +3,7 @@ import importlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import threading
@@ -40,6 +41,19 @@ def test_native_query_honors_cwd_environment_and_text_mode(native_git, checkouts
     actual = native_git.run(command, cwd=repository, env=env, capture_output=True, text=True, timeout=10)
     assert (actual.returncode, actual.stdout, actual.stderr) == (expected.returncode, expected.stdout, expected.stderr)
     assert "exact-value" in actual.stdout
+
+
+def test_relative_executable_search_path_uses_requested_child_directory(native_git, checkouts):
+    repository, _ = checkouts
+    directory = repository / "fixture-bin"
+    directory.mkdir()
+    (directory / "git").symlink_to(shutil.which("git"))
+    env = {**os.environ, "PATH": "fixture-bin"}
+    command = ["git", "rev-parse", "--show-toplevel"]
+    expected = subprocess.run(command, cwd=repository, env=env, capture_output=True, timeout=10)
+    actual = native_git.run(command, cwd=repository, env=env, capture_output=True, timeout=10)
+    assert expected.returncode == 0
+    assert (actual.returncode, actual.stdout, actual.stderr) == (expected.returncode, expected.stdout, expected.stderr)
 
 
 @pytest.mark.parametrize("argv", [["git", "commit"], [sys.executable, "--version"], ["git", "-c", "alias.fixture=!false", "fixture"]])
@@ -121,6 +135,42 @@ def test_closed_parent_stdio_does_not_alias_spawn_file_actions(native_git, tmp_p
     done = subprocess.run([sys.executable, "-I", "-c", script], capture_output=True, timeout=10)
     assert done.returncode == 0
     assert json.loads(report.read_text()) == [0, "stdout\n", "stderr\n"]
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Darwin low descriptor relocation failure")
+def test_pipe_descriptor_pair_is_owned_before_low_fd_relocation_can_fail(native_git, tmp_path):
+    report = tmp_path / "failed-dup.json"
+    script = (
+        "import os,sys,json,fcntl,errno\n"
+        f"sys.path.insert(0,{str(Path(native_git.__file__).parent)!r})\n"
+        "import native_git\n"
+        "assert native_git._get_darwin_api() is not None\n"
+        "os.close(0); os.close(1)\n"
+        "original=fcntl.fcntl; calls=0\n"
+        "def fail_second(fd,command,*args):\n"
+        " global calls\n"
+        " if command==fcntl.F_DUPFD_CLOEXEC:\n"
+        "  calls+=1\n"
+        "  if calls==2: raise OSError(errno.EMFILE,'synthetic descriptor exhaustion')\n"
+        " return original(fd,command,*args)\n"
+        "fcntl.fcntl=fail_second\n"
+        "def opened():\n"
+        " found=[]\n"
+        " for fd in range(256):\n"
+        "  try: os.fstat(fd); found.append(fd)\n"
+        "  except OSError: pass\n"
+        " return found\n"
+        "before=opened(); failed=False\n"
+        "try: native_git._spawn([sys.executable,'-I','-c','raise AssertionError()'])\n"
+        "except OSError as exc: failed=exc.errno==errno.EMFILE\n"
+        "after=opened()\n"
+        f"with open({str(report)!r},'w') as f: json.dump([failed,before,after],f)\n"
+    )
+    done = subprocess.run([sys.executable, "-I", "-c", script], capture_output=True, timeout=10)
+    assert done.returncode == 0
+    failed, before, after = json.loads(report.read_text())
+    assert failed
+    assert after == before
 
 
 @pytest.mark.parametrize("failure", ["timeout", "combined-output-limit"])

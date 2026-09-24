@@ -9,6 +9,29 @@ import claim_scope
 from test_claim_scope_cache import checkouts  # noqa: F401
 
 
+def test_plain_cells_preserve_markup_and_glob_grammar_without_regex_for_plain_input(monkeypatch):
+    import itertools
+    import re
+    sub = re.sub
+    def previous(value):
+        guarded = value.replace("/**", "/\0GLOB\0").replace("**/", "\0GLOB\0/")
+        unbolded = sub(r"\*\*(.+?)\*\*", r"\1", guarded)
+        return sub(r"`(.+?)`", r"\1", unbolded).replace("\0GLOB\0", "**").strip()
+    fragments = ["", "x", " /path/projects/ ", "/**", "**/", "`text`", "**bold**", "*", "\n", "é"]
+    for parts in itertools.product(fragments, repeat=3):
+        value = "".join(parts)
+        assert claim_scope.plain(value) == previous(value)
+    calls = []
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return sub(*args, **kwargs)
+    with monkeypatch.context() as patch:
+        patch.setattr(claim_scope.re, "sub", counted)
+        for value in [" native:session ", "/repo/projects/one", "owner", "2026-09-24T01:00:00Z", "single * glob"]:
+            assert claim_scope.plain(value) == value.strip()
+    assert calls == []
+
+
 def test_independent_prefixes_observe_in_parallel_with_isolated_resolvers_at_both_bounds(checkouts, monkeypatch):
     original = claim_scope.ClaimScopeResolver._native_identity
     rendezvous = threading.Barrier(2, timeout=2)
@@ -72,7 +95,7 @@ def test_snapshot_reuses_only_exact_lexical_properties_within_one_operation(chec
 def test_registry_phase_brackets_shared_common_directory_without_reducing_native_config_reads(checkouts, monkeypatch):
     claims = [(str(path / "projects" / name), ()) for path, name in zip(checkouts, ("one", "two"))]
     original_stamp = claim_scope.ClaimScopeResolver._registry_stamp
-    original_git = claim_scope.subprocess.run
+    original_git = claim_scope.native_git.run
     stamps, commands = [], []
     lock = threading.Lock()
     def stamp(self, common):
@@ -84,7 +107,7 @@ def test_registry_phase_brackets_shared_common_directory_without_reducing_native
             commands.append(command)
         return original_git(command, **kwargs)
     monkeypatch.setattr(claim_scope.ClaimScopeResolver, "_registry_stamp", stamp)
-    monkeypatch.setattr(claim_scope.subprocess, "run", git)
+    monkeypatch.setattr(claim_scope.native_git, "run", git)
     resolver = claim_scope.ClaimScopeResolver()
     with resolver.snapshot(claims):
         assert not resolver.conflicts(claims[0][0], claims[1][0])
@@ -139,7 +162,7 @@ def test_per_prefix_configuration_bracket_refuses_real_global_config_aba(checkou
     initial = "[fixture]\n value = initial\n"
     config.write_text(initial)
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
-    original = claim_scope.subprocess.run
+    original = claim_scope.native_git.run
     reads = 0
     def git(command, **kwargs):
         nonlocal reads
@@ -150,7 +173,7 @@ def test_per_prefix_configuration_bracket_refuses_real_global_config_aba(checkou
             # Restoring A before the outer snapshot ends must not conceal it.
             config.write_text("[fixture]\n value = intermediate\n" if reads == 1 else initial)
         return result
-    monkeypatch.setattr(claim_scope.subprocess, "run", git)
+    monkeypatch.setattr(claim_scope.native_git, "run", git)
     claim = str(root / "projects" / "one")
     resolver = claim_scope.ClaimScopeResolver()
     with pytest.raises(claim_scope.ClaimIdentityError, match="changed during discovery"):

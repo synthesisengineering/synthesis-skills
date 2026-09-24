@@ -133,3 +133,37 @@ def test_projected_conformance_keeps_owned_yaml_dependency(tmp_path, corrupt):
     checked = next(item for item in json.loads(result.stdout)["checks"] if item["name"] == "source.yaml-runtime")
     assert checked["status"] == ("FAIL" if corrupt else "PASS")
     assert ("verification failed" if corrupt else "6.0.3") in checked["detail"]
+
+
+@pytest.mark.parametrize("missing_native_helper", [False, True])
+def test_projected_claim_identity_executes_its_native_git_dependency(tmp_path, missing_native_helper):
+    sys.path.insert(0, str(SOURCE / "skills/synthesis-onboarding/scripts"))
+    import modular
+    payload = tmp_path / "projected"
+    modular.materialize_payload(SOURCE, payload, modular.runtime_files(SOURCE))
+    scripts = payload / "skills/synthesis-project-management/scripts"
+    helper = scripts / "native_git.py"
+    assert helper.is_file()
+    if missing_native_helper:
+        helper.unlink()
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "init", "-b", "main", str(repository)],
+                   check=True, capture_output=True)
+    script = r'''import json,sys
+from pathlib import Path
+sys.path.insert(0,sys.argv[1])
+import claim_scope,native_git
+assert Path(native_git.__file__).parent==Path(sys.argv[1])
+common,root=claim_scope.ClaimScopeResolver()._identity(sys.argv[2])
+assert Path(root)==Path(sys.argv[2]).resolve()
+assert Path(common)==Path(root)/'.git'
+print(json.dumps({'status':'PASS','root':root}))
+'''
+    result = clean_python(tmp_path, ["-c", script, str(scripts), str(repository)])
+    if missing_native_helper:
+        assert result.returncode != 0
+        assert "No module named 'native_git'" in result.stderr
+    else:
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert json.loads(result.stdout)["status"] == "PASS"
