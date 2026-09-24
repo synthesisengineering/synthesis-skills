@@ -36,7 +36,7 @@ def review(tmp_path):
         "state": {"run_id": "run-one", "contract_digest": "a" * 64, "profile_digest": "b" * 64,
                   "contract": {"criteria": [{"id": "accept", "artifact_ids": ["draft"]}]},
                   "extensions": {"workflow": {"budget": {"reservations": {
-                      "review-one": {"status": "reserved", "category": "review", "amounts": {"wall_seconds": 120, "cost_usd": 2}}}}}}}}
+                      "review-one": {"status": "reserved", "category": "review", "amounts": {"wall_millis": 120000, "usd_micros": 2000000}}}}}}}}
     arguments = {"mode": "native-cli", "client": "claude", "criterion_id": "accept", "artifact_id": "draft",
                  "calibration_manifest_id": "gold", "reservation_id": "review-one", "timeout_seconds": 120,
                  "max_cost_usd": 2}
@@ -48,7 +48,7 @@ def result(prompt, failed=False):
     response = {"bindings": request["bindings"], "artifact_digest": request["artifact_digest"],
         "observations": {"source_fidelity": True, "reader_purpose": True, "structure": True, "voice": True},
         "findings": [], "controls": [{"artifact_id": c["artifact_id"], "artifact_digest": c["digest"],
-            "verdict": "PASS" if c["artifact_id"] == "one" or failed else "FAIL"} for c in request["controls"]]}
+            "verdict": "PASS" if c["content"] == "The sample is five." or failed else "FAIL"} for c in request["controls"]]}
     return {"response": response, "session_id": "native-child", "model": "configured-native-model",
             "usage": {"cost_usd": 0.1}, "stdout_digest": "c" * 64, "wall_seconds": 1,
             "returncode": 0, "tool_calls": [], "client": "claude"}
@@ -126,3 +126,18 @@ def test_native_parsers_require_actual_completed_identity(observer):
              {"type": "turn.completed", "usage": {"input_tokens": 10, "output_tokens": 4}}]
     assert observer.parse_native("codex", codex)["session_id"] == "native"
     with pytest.raises(ValueError): observer.parse_native("codex", codex[:-1])
+
+
+def test_muse_parser_binds_native_completion_and_rejects_tool_activity(observer):
+    def event(seq, kind, payload):
+        return {"schema_version": 1, "stream": {"kind": "session", "id": "native"}, "sequence": seq,
+                "causation_id": "command", "payload_type": kind,
+                "payload": {"command_id": "command", **payload}}
+    events = [event(1, "runtime.command.accepted", {"kind": "command_accepted", "command_kind": "turn.submit"}),
+              event(2, "turn.input.user", {"kind": "turn_input_user", "prompt": "review"}),
+              event(3, "run.terminal.completed", {"kind": "run_terminal", "terminal": "completed",
+                  "run_stream": {"kind": "run", "id": "command"}, "text": '{"answer":5}', "reason": None})]
+    assert observer.parse_native("muse", events)["response"] == {"answer": 5}
+    with pytest.raises(ValueError): observer.parse_native("muse", events[:-1])
+    events.insert(2, event(2.5, "runtime.session", {"kind": "run", "event": {"kind": "assistant_tool_calls_committed", "tool_calls": [{"name": "read_file"}]}}))
+    with pytest.raises(ValueError): observer.parse_native("muse", events)
