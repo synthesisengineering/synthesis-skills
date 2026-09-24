@@ -1043,6 +1043,7 @@ def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
         "_load_config.py",
         "coordination.py",
         "claim_scope.py",
+        "native_git.py",
         "coordination_schema.py",
         "board_grammar.py",
         "coordination_archive.py",
@@ -1079,6 +1080,18 @@ def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
     assert direct_doctor.returncode == 0, direct_doctor.stdout + direct_doctor.stderr
     assert "installed engine matches skill source (no drift)" in direct_doctor.stdout
     assert "skill source not found" not in direct_doctor.stdout
+
+    # Execute the installed closure without the source tree or PYTHONPATH.
+    # A matching copy list alone cannot prove that imports are complete.
+    isolated = subprocess.run(
+        [sys.executable, "-I", "-B", "-c",
+         "import sys; sys.path.insert(0, sys.argv[1]); "
+         "import coordination; "
+         "assert coordination.overlaps('release-train:fixture', 'release-train:fixture')",
+         str(installed)],
+        cwd=tmp_path, env=environment, capture_output=True, text=True, timeout=15,
+    )
+    assert isolated.returncode == 0, isolated.stdout + isolated.stderr
 
 
 def test_r4_invalid_persisted_source_pointer_fails_doctor_closed(

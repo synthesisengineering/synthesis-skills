@@ -23,7 +23,7 @@ SOURCE_FILES = {
         "skills/synthesis-git-hooks/scripts/_load_config.py": (".synthesis/git-hooks/_load_config.py", 0o755),
         **{"skills/synthesis-project-management/scripts/" + n:
            (".synthesis/git-hooks/" + n, 0o755) for n in
-           ("coordination.py", "claim_scope.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py")},
+           ("coordination.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py")},
         "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85":
             (".synthesis/references/session-words-v1.txt.zlib.b85", 0o644),
     },
@@ -768,9 +768,10 @@ def test_failed_dependency_introduction_restores_anchors_and_absence(day_end_his
 CLAIM_DEPENDENCY = "skills/synthesis-project-management/scripts/claim_scope.py"
 GRAMMAR_DEPENDENCY = "skills/synthesis-project-management/scripts/board_grammar.py"
 ARCHIVE_DEPENDENCY = "skills/synthesis-project-management/scripts/coordination_archive.py"
+NATIVE_GIT_DEPENDENCY = "skills/synthesis-project-management/scripts/native_git.py"
 
 
-@pytest.fixture(params=[CLAIM_DEPENDENCY, GRAMMAR_DEPENDENCY, ARCHIVE_DEPENDENCY])
+@pytest.fixture(params=[CLAIM_DEPENDENCY, GRAMMAR_DEPENDENCY, ARCHIVE_DEPENDENCY, NATIVE_GIT_DEPENDENCY])
 def pre_claim_bundle(tmp_path, request):
     """A released standalone bundle whose installed closure predates the helper."""
     from types import SimpleNamespace
