@@ -489,3 +489,100 @@ def test_native_scheduler_wake_requires_unique_registered_prompt_and_host_queue(
     assert bridge.verify_source(record("continuation-wake", data, observed), observed)
     world["transcript"].write_text(world["transcript"].read_text().replace('"isMeta": true', '"isMeta": false'))
     assert not bridge.verify_source(record("continuation-wake", data, observed), observed)
+
+
+def native_turn_end_probe(world, observed):
+    """Actual wire shapes, synthetic timestamps, and two distinct native jobs."""
+    now = datetime.fromisoformat(observed['now'])
+    minute = now.replace(second=0, microsecond=0)
+    bindings = {key: observed['state'][key] for key in ('run_id', 'contract_digest', 'profile_digest')}
+    def prompt(role, generation, **extra):
+        return json.dumps({'autopilot_continuation': {'schema_version': 1, 'bindings': bindings,
+            'role': role, 'generation': generation, **extra}})
+    worker = {'cron': '* * * * *', 'recurring': True, 'prompt': prompt('worker', 'probe')}
+    monitor = {'cron': '* * * * *', 'recurring': True,
+               'prompt': prompt('backstop', 'probe', worker_job_id='worker01')}
+    active = {'cron': '* * * * *', 'recurring': True, 'prompt': prompt('worker', 'active')}
+    session = world['actor']['native_payload']['session_id']
+    def tool(name, args, result, ident, when):
+        stamp = when.isoformat()
+        events = [{'type':'assistant','sessionId':session,'timestamp':stamp,
+            'message':{'content':[{'type':'tool_use','id':ident,'name':name,'input':args}]}},
+            {'type':'user','sessionId':session,'timestamp':stamp,'toolUseResult':result,
+             'message':{'content':[{'type':'tool_result','tool_use_id':ident,'content':'Native result'}]}}]
+        with world['transcript'].open('a') as handle:
+            handle.write(''.join(json.dumps(event)+'\n' for event in events))
+    def wake(ident, text, when):
+        events = [{'type':'queue-operation','operation':'enqueue','sessionId':session,
+            'timestamp':when.isoformat(),'content':text},
+            {'type':'user','sessionId':session,'timestamp':when.isoformat(),'uuid':ident,
+             'isMeta':True,'queueSkipAttachments':True,'promptSource':'sdk','promptId':ident+'-prompt',
+             'message':{'role':'user','content':text}}]
+        with world['transcript'].open('a') as handle:
+            handle.write(''.join(json.dumps(event)+'\n' for event in events))
+    first = minute-timedelta(minutes=3)
+    tool('CronCreate',worker,{'id':'worker01','recurring':True},'probe-create',first-timedelta(seconds=5))
+    tool('CronCreate',monitor,{'id':'monitor1','recurring':True},'monitor-create',first-timedelta(seconds=4))
+    tool('CronList',{}, {'jobs':[{'id':'worker01',**worker},{'id':'monitor1',**monitor}]}, 'probe-list',first-timedelta(seconds=3))
+    wake('worker-wake',worker['prompt'],first+timedelta(seconds=5))
+    tool('CronDelete',{'id':'worker01'},{'id':'worker01','deleted':True},'probe-cancel',first+timedelta(seconds=6))
+    wake('monitor-wake',monitor['prompt'],first+timedelta(minutes=2,seconds=15))
+    tool('CronList',{}, {'jobs':[{'id':'monitor1',**monitor}]},'monitor-check',first+timedelta(minutes=2,seconds=16))
+    tool('CronCreate',active,{'id':'worker02','recurring':True},'active-create',now-timedelta(seconds=3))
+    tool('CronList',{}, {'jobs':[{'id':'worker02',**active},{'id':'monitor1',**monitor}]},'active-list',now-timedelta(seconds=2))
+    arguments={'create_call_id':'probe-create','readback_call_id':'probe-list','wake_event_id':'worker-wake',
+        'monitor_create_call_id':'monitor-create','monitor_readback_call_id':'probe-list',
+        'monitor_wake_event_id':'monitor-wake','monitor_check_call_id':'monitor-check',
+        'cancellation_call_id':'probe-cancel','cancellation_readback_call_id':'monitor-check'}
+    return arguments, active, wake
+
+
+def test_native_turn_end_components_admit_actual_registration_with_computed_deadlines(bridge, observed, world):
+    import capabilities as cap
+    args, _, _ = native_turn_end_probe(world, observed)
+    data = bridge.observe_native_capability(observed,args)
+    assert data['capabilities']['survival'] == ['turn_end']
+    assert data['backstop']['status'] == 'missed'
+    assert data['backstop']['worker_job_id'] != data['backstop']['observer_job_id']
+    records={'cap':record('capability',data,observed)}
+    observed['evidence']=records
+    observed['verify_receipt']=lambda ref,kind,bindings: records[ref]['kind']==kind and bridge.verify_source(records[ref],observed)
+    state=cap.record_capability(observed['state'],{'surface':'claude-code-cli','receipt':'cap'},observed)
+    assert cap.admission(state,'claude-code-cli','turn_end',observed)['admitted']
+    assert not cap.admission(state,'claude-code-cli','reboot',observed)['admitted']
+    registration=bridge.observe_native_registration(observed,'active-create','active-list',capability_receipt='cap')
+    assert registration['deadline_provenance']['kind']=='control-plane-derived'
+    assert registration['deadline_provenance']['maximum_jitter_seconds']==30
+    assert registration['observer_id']=='native-job:monitor1'
+    records['active']=record('continuation-registration',registration,observed)
+    state=cap.register_continuation(state,{'receipt':'active','horizon':'turn_end'},observed)
+    assert state['extensions']['capabilities']['continuation']['job_id']=='worker02'
+    assert cap.continuation_status(state,observed)['state']=='awaiting_first_wake'
+
+
+@pytest.mark.parametrize('fault',['same_job','early_monitor','worker_did_wake','monitor_missing','cancel_not_observed','foreign_run'])
+def test_native_turn_end_probe_rejects_unproved_or_nonindependent_components(bridge,observed,world,fault):
+    args, _, wake=native_turn_end_probe(world,observed)
+    if fault=='same_job':
+        args['monitor_create_call_id']=args['create_call_id'];args['monitor_wake_event_id']=args['wake_event_id']
+    else:
+        rows=[json.loads(line) for line in world['transcript'].read_text().splitlines()]
+        for event in rows:
+            parts=event.get('message',{}).get('content',[])
+            if fault=='early_monitor' and event.get('uuid')=='monitor-wake':
+                worker=next(row for row in rows if row.get('uuid')=='worker-wake')
+                event['timestamp']=(datetime.fromisoformat(worker['timestamp'])+timedelta(seconds=1)).isoformat()
+            if fault=='monitor_missing' and any(isinstance(p,dict) and p.get('tool_use_id')=='monitor-check' for p in parts):
+                event['toolUseResult']={'jobs':[]}
+            if fault=='cancel_not_observed' and any(isinstance(p,dict) and p.get('tool_use_id')=='probe-cancel' for p in parts):
+                event['toolUseResult']={'id':'worker01','deleted':False}
+            if fault=='foreign_run' and event.get('uuid')=='worker-wake':
+                event['message']['content']='foreign'
+        if fault=='worker_did_wake':
+            worker=copy.deepcopy(next(row for row in rows if row.get('uuid')=='worker-wake'))
+            monitor=next(row for row in rows if row.get('uuid')=='monitor-wake')
+            worker['uuid']='unexpected-worker-wake';worker['timestamp']=(datetime.fromisoformat(monitor['timestamp'])-timedelta(seconds=1)).isoformat()
+            rows.insert(rows.index(monitor),worker)
+        world['transcript'].write_text(''.join(json.dumps(row)+'\n' for row in rows))
+    with pytest.raises(ValueError):
+        bridge.observe_native_capability(observed,args)
