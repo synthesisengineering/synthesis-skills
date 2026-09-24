@@ -9,3 +9,206 @@ def test_all_release_contracts_run_the_whole_autopilot_suite():
     assert "python -m pytest skills/synthesis-autopilot/scripts/ -q" in (ROOT / ".github/workflows/validate.yml").read_text()
     text = (ROOT / "skills/synthesis-skills-manager/scripts/release.py").read_text()
     assert '("pytest.autopilot", ["python3", "-m", "pytest", "skills/synthesis-autopilot/scripts/", "-q"])' in text
+
+
+"""Candidate additions for synthesis-autopilot/scripts/test_ci_wiring.py."""
+import importlib.util
+import json
+from pathlib import Path
+import sys
+from types import SimpleNamespace
+
+import pytest
+
+
+@pytest.fixture
+def ci_sandbox():
+    root = Path(__file__).resolve().parents[3]
+    helper = root / '.github/scripts/check-ci-sandbox.py'
+    spec = importlib.util.spec_from_file_location('ci_sandbox_probe', helper)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_ci_sandbox_preflight_is_required_before_consumer_tests():
+    import yaml
+    root = Path(__file__).resolve().parents[3]
+    workflow = yaml.safe_load((root / '.github/workflows/validate.yml').read_text())
+    job = workflow['jobs']['conformance']
+    steps = job['steps']
+    setup = next(step for step in steps if step.get('name') == 'Install OS isolation for executable consumer acceptance')
+    assert setup['run'].splitlines() == [
+        'sudo apt-get update && sudo apt-get install -y bubblewrap',
+        'python .github/scripts/check-ci-sandbox.py',
+    ]
+    assert not setup.get('continue-on-error') and not job.get('continue-on-error')
+    consumers = next(step for step in steps if step.get('run') == 'python -m pytest skills/synthesis-autopilot/scripts/ -q')
+    assert steps.index(setup) < steps.index(consumers)
+
+
+def _result(code=0, stdout='', stderr='', **extra):
+    return {'returncode': code, 'stdout': stdout, 'stderr': stderr, **extra}
+
+
+def _scenario(monkeypatch, module, results, settings=None, profile_error=None, host='github-hosted'):
+    monkeypatch.setenv('GITHUB_ACTIONS', 'true')
+    monkeypatch.setenv('RUNNER_ENVIRONMENT', host)
+    commands = []
+    def run(argv, **kwargs):
+        commands.append((list(argv), kwargs))
+        assert results, 'Unexpected additional command'
+        return {'argv': list(argv), **results.pop(0)}
+    monkeypatch.setattr(module, 'run', run)
+    monkeypatch.setattr(module, 'read_settings', lambda: settings if settings is not None else {
+        module.APPARMOR_ENABLED: 'Y', module.RESTRICT_USERNS: '1'})
+    def profile():
+        if profile_error:
+            raise ValueError(profile_error)
+        return module.APPROVED_PROFILE
+    monkeypatch.setattr(module, 'read_approved_profile', profile)
+    report = module.ensure_sandbox(['/usr/bin/bwrap', 'exact-production-command'], '/trusted/python')
+    assert not results, 'Expected command was omitted'
+    return report, commands
+
+
+def _control():
+    return _result(stdout='interpreter-ready\n')
+
+
+def _denial():
+    return _result(1, stderr='bwrap: Creating new namespace failed: Operation not permitted\n')
+
+
+def _owner(module):
+    return _result(stdout='apparmor-profiles: ' + str(module.PROFILE) + '\n')
+
+
+def test_ci_sandbox_ready_never_changes_policy(ci_sandbox, monkeypatch):
+    result, commands = _scenario(monkeypatch, ci_sandbox, [_control(), _result(stdout='sandbox-ready\n')])
+    assert result['status'] == 'PASS' and not result['repair_attempted'] and len(commands) == 2
+    assert all(kwargs['env'] == ci_sandbox.PROBE_ENV for _, kwargs in commands)
+    assert 'LD_LIBRARY_PATH' not in ci_sandbox.PROBE_ENV
+
+
+@pytest.mark.parametrize('failure', [
+    _result(127, stderr='error while loading shared libraries: libpython3.12.so.1.0'),
+    _result(1, stderr='bwrap: Creating new namespace failed: Invalid argument'),
+    _result(0, stdout='wrong-output'),
+    _result(1, stderr='bwrap: Creating new namespace failed: Operation not permitted', timed_out=True),
+    _result(1, stderr='bwrap: Creating new namespace failed: Operation not permitted', output_limit_exceeded=True),
+])
+def test_ci_sandbox_other_failures_never_change_policy(ci_sandbox, monkeypatch, failure):
+    result, commands = _scenario(monkeypatch, ci_sandbox, [_control(), failure])
+    assert result['status'] == 'FAIL' and not result['repair_attempted'] and len(commands) == 2
+
+
+def test_ci_sandbox_failed_interpreter_does_not_load_profile(ci_sandbox, monkeypatch):
+    result, commands = _scenario(monkeypatch, ci_sandbox, [_result(127, stderr='libpython missing'), _denial()])
+    assert result['status'] == 'FAIL' and not result['repair_attempted'] and len(commands) == 2
+
+
+@pytest.mark.parametrize('host', ['', 'self-hosted'])
+def test_ci_sandbox_local_and_self_hosted_cannot_change_policy(ci_sandbox, monkeypatch, host):
+    result, commands = _scenario(monkeypatch, ci_sandbox, [_control(), _denial()], host=host)
+    assert result['status'] == 'FAIL' and not result['repair_attempted'] and len(commands) == 2
+
+
+@pytest.mark.parametrize('actions,host', [('', ''), ('true', 'self-hosted'), ('false', 'github-hosted')])
+def test_ci_sandbox_main_refuses_outside_hosted_actions_before_import(ci_sandbox, monkeypatch, actions, host):
+    monkeypatch.setattr(ci_sandbox.platform, 'system', lambda: 'Linux')
+    monkeypatch.setenv('GITHUB_ACTIONS', actions)
+    monkeypatch.setenv('RUNNER_ENVIRONMENT', host)
+    with pytest.raises(SystemExit, match='GitHub-hosted'):
+        ci_sandbox.main()
+
+
+@pytest.mark.parametrize('failure', ['import', 'missing-bwrap'])
+def test_ci_sandbox_main_reports_setup_failures(ci_sandbox, monkeypatch, capsys, failure):
+    monkeypatch.setattr(ci_sandbox.platform, 'system', lambda: 'Linux')
+    monkeypatch.setenv('GITHUB_ACTIONS', 'true')
+    monkeypatch.setenv('RUNNER_ENVIRONMENT', 'github-hosted')
+    def fail(*args, **kwargs):
+        if failure == 'import':
+            raise ImportError('missing runtime dependency')
+        raise ValueError('Verified OS sandbox is unavailable; worker code was not executed')
+    if failure == 'import':
+        monkeypatch.setattr(ci_sandbox.importlib.util, 'spec_from_file_location', fail)
+    else:
+        monkeypatch.setattr(ci_sandbox.importlib.util, 'spec_from_file_location', lambda *args: SimpleNamespace(loader=SimpleNamespace(exec_module=lambda module: None)))
+        monkeypatch.setattr(ci_sandbox.importlib.util, 'module_from_spec', lambda spec: SimpleNamespace(_sandbox_command=fail))
+    assert ci_sandbox.main() == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report['status'] == 'FAIL' and report['error_type'] == ('ImportError' if failure == 'import' else 'ValueError')
+
+
+def test_ci_sandbox_classifies_only_upstream_namespace_denials(ci_sandbox):
+    state = {ci_sandbox.APPARMOR_ENABLED: 'Y', ci_sandbox.RESTRICT_USERNS: '1'}
+    upstream = 'bwrap: No permissions to creating new namespace, likely because the kernel does not allow non-privileged user namespaces. On e.g. debian this can be enabled with extra configuration.'
+    assert ci_sandbox.namespace_denial(_result(1, stderr=upstream), state)
+    assert not ci_sandbox.namespace_denial(_result(1, stderr='bwrap: writing uid_map: Operation not permitted'), state)
+    assert not ci_sandbox.namespace_denial(_result(1, stderr='bwrap: setting up gid map: Permission denied'), state)
+
+
+@pytest.mark.parametrize('settings', [{}, {'enabled': 'Y'},
+    {'/sys/module/apparmor/parameters/enabled': 'Y', '/proc/sys/kernel/apparmor_restrict_unprivileged_userns': '0'}])
+def test_ci_sandbox_unproven_apparmor_state_never_changes_policy(ci_sandbox, monkeypatch, settings):
+    result, commands = _scenario(monkeypatch, ci_sandbox, [_control(), _denial()], settings=settings)
+    assert result['status'] == 'FAIL' and not result['repair_attempted'] and len(commands) == 2
+
+
+def test_ci_sandbox_repairs_only_reviewed_package_then_repeats_exact_probe(ci_sandbox, monkeypatch):
+    result, commands = _scenario(monkeypatch, ci_sandbox,
+        [_control(), _denial(), _result(), _owner(ci_sandbox), _result(), _result(stdout='sandbox-ready\n')])
+    assert result['status'] == 'PASS' and result['repair_attempted']
+    assert commands[2][0] == ['/usr/bin/sudo', '-n', '/usr/bin/apt-get', 'install', '-y', 'apparmor-profiles']
+    assert commands[4][0] == ['/usr/bin/sudo', '-n', '/usr/sbin/apparmor_parser', '--replace', str(ci_sandbox.PROFILE)]
+    assert commands[1] == commands[5]
+
+
+@pytest.mark.parametrize('stage', ['package', 'owner', 'profile', 'parser', 'second-probe'])
+def test_ci_sandbox_each_failed_repair_step_stops(ci_sandbox, monkeypatch, stage):
+    results = [_control(), _denial()]
+    if stage == 'package':
+        results += [_result(100, stderr='package installation failed')]
+    else:
+        results += [_result(), _result(stdout='another-package: wrong-path') if stage == 'owner' else _owner(ci_sandbox)]
+        if stage not in ('owner', 'profile'):
+            results += [_result(1, stderr='profile denied') if stage == 'parser' else _result()]
+        if stage == 'second-probe':
+            results += [_denial()]
+    result, commands = _scenario(monkeypatch, ci_sandbox, results,
+        profile_error='profile differs' if stage == 'profile' else None)
+    assert result['status'] == 'FAIL' and result['repair_attempted']
+    assert len(commands) == {'package': 3, 'owner': 4, 'profile': 4, 'parser': 5, 'second-probe': 6}[stage]
+
+
+@pytest.mark.parametrize('replacement', [
+    ('/usr/bin/bwrap', '/usr/**'),
+    ('audit deny capability,', 'allow capability,'),
+    ('flags=(attach_disconnected)', 'flags=(unconfined)'),
+    ('allow px /** -> bwrap//&unpriv_bwrap,', 'allow ix /**,'),
+    ('include if exists <local/unpriv_bwrap>', 'include <arbitrary>'),
+])
+def test_ci_sandbox_rejects_changed_profile_authority(ci_sandbox, replacement):
+    ci_sandbox.validate_profile(ci_sandbox.APPROVED_PROFILE)
+    with pytest.raises(ValueError, match='differs'):
+        ci_sandbox.validate_profile(ci_sandbox.APPROVED_PROFILE.replace(*replacement))
+
+
+def test_ci_sandbox_local_override_is_not_loaded(ci_sandbox, monkeypatch):
+    monkeypatch.setattr(ci_sandbox.os.path, 'lexists', lambda _: True)
+    monkeypatch.setattr(ci_sandbox, 'trusted_file', lambda p: ci_sandbox.APPROVED_PROFILE if p == ci_sandbox.PROFILE else 'allow capability,')
+    with pytest.raises(ValueError, match='local profile override'):
+        ci_sandbox.read_approved_profile()
+
+
+def test_ci_sandbox_bounds_real_command_output(ci_sandbox):
+    result = ci_sandbox.run([sys.executable, '-I', '-c', 'print("x"*100000)'], limit=128)
+    assert result['output_limit_exceeded'] and len(result['stdout'].encode()) <= 128
+    assert not ci_sandbox.succeeded(result)
+
+
+def test_ci_sandbox_bounds_real_command_deadline(ci_sandbox):
+    result = ci_sandbox.run([sys.executable, '-I', '-c', 'import time;time.sleep(5)'], timeout=.1)
+    assert result['timed_out'] and not ci_sandbox.succeeded(result)
