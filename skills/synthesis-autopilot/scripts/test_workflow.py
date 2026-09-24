@@ -865,3 +865,21 @@ def test_repaired_grade_cannot_spend_another_quality_round(wf, state, context):
     context = receipt(state, context, "q3", "quality_observation", context["evidence"]["q2"]["data"])
     with pytest.raises(ValueError, match="budget"):
         call(wf, state, context, "grade", criterion_id="c1", receipt_ids=["q3"], independent=True, resolution_receipt_id="resolution")
+
+
+def test_repair_cannot_change_only_passing_artifact_and_discard_unchanged_failure(wf, state, context):
+    state["contract"]["criteria"][0]["artifact_ids"].append("a2")
+    state = configured(wf, state, context)
+    context = quality_context(state, context, passed=False)
+    passing = copy.deepcopy(context["evidence"]["q1"]["data"])
+    passing.update(artifact_id="a2", observations={"expected": "ready", "observed": "ready", "consumer_verified": True})
+    context = receipt(state, context, "old-pass", "quality_observation", passing)
+    state = call(wf, state, context, "grade", criterion_id="c1", receipt_ids=["q1", "old-pass"], independent=True)
+    prior = state["extensions"]["workflow"]["quality"]["c1"]
+    assert prior["verdict"] == "DISAGREEMENT"
+    new_bindings = {
+        "rerolled-failure": {"digest": "e" * 64, "artifact_id": "a1", "artifact_digest": "d" * 64},
+        "changed-passing": {"digest": "f" * 64, "artifact_id": "a2", "artifact_digest": "a" * 64},
+    }
+    with pytest.raises(ValueError, match="failing artifact"):
+        wf.quality_resolution_requirements(prior, "c1", new_bindings)
