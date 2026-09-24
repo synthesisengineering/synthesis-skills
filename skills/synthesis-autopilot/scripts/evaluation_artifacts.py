@@ -219,9 +219,12 @@ def _sandbox_command(root, scratch, script, argv):
         cmd = [bwrap,'--die-with-parent','--unshare-all','--new-session','--proc','/proc','--dev','/dev']
         roots = {str(root), sys.base_prefix, '/usr'}
         for path in ('/lib','/lib64'):
-            if Path(path).exists(): roots.add(str(Path(path).resolve()))
+            # ELF loader paths retain these names on usr-merged systems.
+            # Resolving the source also as the mount destination loses them.
+            if Path(path).exists(): roots.add(path)
         for path in sorted(roots): cmd += ['--ro-bind',path,path]
-        cmd += ['--bind',str(scratch),str(scratch),'--chdir',str(root),'--',str(python),'-I',str(script),*argv]
+        cmd += ['--bind',str(scratch),str(scratch),'--remount-ro','/',
+                '--chdir',str(root),'--',str(python),'-I',str(script),*argv]
         return cmd, 'linux-bubblewrap'
     raise ValueError('Verified OS sandbox is unavailable; worker code was not executed')
 

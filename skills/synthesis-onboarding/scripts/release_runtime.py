@@ -778,6 +778,8 @@ def exec_public_main(argv, pointer):
         active = verified_release(pointer)
         os.environ["SYNTHESIS_ACTIVE_DESCRIPTOR"] = str(pointer)
         remaining = args.timeout_seconds - (time.monotonic() - started)
+        if remaining <= 0:
+            raise ExecutionDeadline("public execution exhausted its total deadline before worker dispatch")
         result = execute(active, args.script, forwarded, raw_payload, timeout=remaining)
         if stop_event:
             print(json.dumps(stop_result(payload, result)))

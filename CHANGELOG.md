@@ -24,6 +24,12 @@ Native workers declare immutable inputs and separate outputs, with observed
 client-specific operation boundaries. Continuation renewal retains the same
 worker and backstop, wake history and receipt expiry limits. Installed Git-hook
 bundles now include and verify the native Git identity dependency.
+Linux consumer sandboxes retain required loader paths and restrict writes to
+the declared scratch mount. Native transcript checks compare bounded actual
+bytes, and continuation checks reject incomplete cancellation evidence.
+Historical renewal checks retain cancellation evidence without imposing a
+lifetime call limit on an otherwise valid lease.
+Expired launcher deadlines terminate before worker dispatch.
 
 ## [4.144.1] - 2026-09-23
 

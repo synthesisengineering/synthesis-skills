@@ -132,6 +132,61 @@ def _codex_native_call(item):
     return None
 
 
+def _native_tool_index(records, proof, identities):
+    """Pair selected calls/results in one already byte-bounded snapshot.
+
+    A duplicate retains an invalid marker instead of accumulating unbounded
+    candidates. Call and result positions come from these same snapshot bytes;
+    a later read cannot silently change the negative-coverage interval.
+    """
+    if any(not isinstance(identity, str) or not identity or len(identity) > 512 for identity in identities):
+        raise ValueError("invalid native call identity")
+    calls, results = {}, {}
+    def remember(target, identity, value):
+        target[identity] = None if identity in target else value
+    for position, event in enumerate(records):
+        if proof["client"] == "claude":
+            if event.get("sessionId") != proof["native_session_id"]:
+                continue
+            message = event.get("message", {})
+            if not isinstance(message, dict) or not isinstance(message.get("content"), list):
+                continue
+            content = message["content"]
+            siblings = sum(isinstance(item, dict) and item.get("type") == "tool_result" for item in content)
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                identity = item.get("id") if item.get("type") == "tool_use" else item.get("tool_use_id")
+                if not isinstance(identity, str) or identity not in identities:
+                    continue
+                if event.get("type") == "assistant" and item.get("type") == "tool_use":
+                    remember(calls, identity, {"tool": item.get("name"), "arguments": item.get("input"), "call_position": position})
+                if event.get("type") == "user" and item.get("type") == "tool_result":
+                    structured = event.get("toolUseResult", event.get("tool_use_result"))
+                    raw = structured if structured is not None and siblings == 1 else item.get("content")
+                    remember(results, identity, (None if item.get("is_error") else _result(raw), position, event.get("timestamp")))
+        elif proof["client"] == "codex" and event.get("type") == "response_item":
+            item = event.get("payload", {})
+            identity = item.get("call_id")
+            if not isinstance(identity, str) or identity not in identities:
+                continue
+            if item.get("type") in {"function_call", "custom_tool_call"}:
+                call = _codex_native_call(item)
+                remember(calls, identity, {**(call or {"tool": None, "arguments": None}), "call_position": position})
+            elif item.get("type") in {"function_call_output", "custom_tool_call_output"}:
+                remember(results, identity, (_result(item.get("output")), position, event.get("timestamp")))
+    observations = {}
+    for identity in identities:
+        call, result = calls.get(identity), results.get(identity)
+        if (call is None or result is None or call["tool"] not in NATIVE_TOOLS or result[0] is None
+                or not isinstance(call["arguments"], dict) or call["call_position"] >= result[1]):
+            observations[identity] = None
+        else:
+            observations[identity] = {**call, "result": result[0], "result_position": result[1], "call_id": identity,
+                                      "native_ref": proof["native_ref"], "result_timestamp": result[2]}
+    return observations
+
+
 def native_tool_observation(context, call_id):
     """Read one unambiguous tool call/result from this authenticated session.
 
@@ -148,43 +203,7 @@ def native_tool_observation(context, call_id):
         path = Path(context["actor"]["native_payload"]["transcript_path"])
         from native_review import _records
         records = _records(path)
-        calls, results = [], []
-        for position, event in enumerate(records):
-            if proof["client"] == "claude":
-                if event.get("sessionId") != proof["native_session_id"]:
-                    continue
-                message = event.get("message", {})
-                if not isinstance(message, dict) or not isinstance(message.get("content"), list):
-                    continue
-                for item in message["content"]:
-                    if not isinstance(item, dict):
-                        continue
-                    if event.get("type") == "assistant" and item.get("type") == "tool_use" and item.get("id") == call_id:
-                        calls.append({"tool": item.get("name"), "arguments": item.get("input"), "call_position": position})
-                    if event.get("type") == "user" and item.get("type") == "tool_result" and item.get("tool_use_id") == call_id:
-                        structured = event.get("toolUseResult", event.get("tool_use_result"))
-                        # Host structured output belongs only to a unique paired
-                        # result item; never attach it to ambiguous siblings.
-                        siblings = [part for part in message["content"] if isinstance(part, dict) and part.get("type") == "tool_result"]
-                        raw_result = structured if structured is not None and len(siblings) == 1 else item.get("content")
-                        results.append((None if item.get("is_error") else _result(raw_result), position, event.get("timestamp")))
-            elif event.get("type") == "response_item":
-                item = event.get("payload", {})
-                if item.get("call_id") != call_id:
-                    continue
-                if item.get("type") in {"function_call", "custom_tool_call"}:
-                    call = _codex_native_call(item)
-                    # Invalid calls still count, so a duplicate cannot hide a
-                    # conflicting execution behind a later accepted call.
-                    calls.append({**(call or {"tool": None, "arguments": None}), "call_position": position})
-                elif item.get("type") in {"function_call_output", "custom_tool_call_output"}:
-                    results.append((_result(item.get("output")), position, event.get("timestamp")))
-        if len(calls) != 1 or len(results) != 1 or calls[0]["tool"] not in NATIVE_TOOLS or results[0][0] is None:
-            return None
-        if not isinstance(calls[0]["arguments"], dict) or calls[0]["call_position"] >= results[0][1]:
-            return None
-        return {**calls[0], "result": results[0][0], "result_position": results[0][1], "call_id": call_id,
-                "native_ref": proof["native_ref"], "result_timestamp": results[0][2]}
+        return _native_tool_index(records, proof, {call_id})[call_id]
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return None
 
@@ -293,7 +312,9 @@ def observe_native_registration(context, create_call_id, readback_call_id, *, ca
             raise ValueError("current worker and independent backstop are not both registered")
         # A fresh-looking earlier list cannot override later native cancellation
         # or a complete list showing either member of the current pair missing.
-        for later in _native_observations(context):
+        # Timestamps gate affirmative freshness, not later invalidation. A
+        # missing or skewed clock cannot hide an authenticated cancellation.
+        for later in _native_observations(context, fresh_only=False, after_observation=listed):
             if later["call_position"] <= listed["result_position"]:
                 continue
             if later["tool"] == "CronDelete" and later["arguments"].get("id") in {job_id, monitor_id}:
@@ -712,7 +733,10 @@ def _native_intake_context(record, context):
     when = saved.get("recorded_at")
     if not _time(record["observed_at"]) <= _time(when) <= _time(context["now"]):
         raise ValueError("native receipt intake time is invalid")
-    return {**context, "now": when}
+    # Only this exact admitted envelope can replay its entire historical
+    # invalidation interval. The source is still reparsed inside the native
+    # snapshot's fixed byte limit; this does not widen a new/current intake.
+    return {**context, "now": when, "_historical_native_intake": saved["fingerprint"]}
 
 
 def verify_source(record, context):
@@ -896,24 +920,49 @@ def _recovery_valid(data, context, reference):
             and data == {**arguments, "run_revision": revision, "remaining": _remaining(context)})
 
 
-def _native_observations(context):
-    """Read only the bounded authenticated transcript; never contact a host."""
+def _native_observations(context, *, fresh_only=True, after_observation=None):
+    """Read bounded authenticated events; positive facts require freshness."""
     from native_review import _records
     proof = _fresh(context)
     records = _records(context["actor"]["native_payload"]["transcript_path"])
     identities = []
-    for event in records:
+    for position, event in enumerate(records):
         if proof["client"] == "claude" and event.get("type") == "assistant" and event.get("sessionId") == proof["native_session_id"]:
             content = event.get("message", {}).get("content", [])
             if isinstance(content, list):
-                identities.extend(item.get("id") for item in content if isinstance(item, dict) and item.get("type") == "tool_use" and item.get("name") in NATIVE_TOOLS)
+                identities.extend((position, item.get("id")) for item in content if isinstance(item, dict) and item.get("type") == "tool_use" and item.get("name") in NATIVE_TOOLS)
         elif proof["client"] == "codex" and event.get("type") == "response_item":
             item = event.get("payload", {})
             if item.get("type") in {"function_call", "custom_tool_call"}:
-                identities.append(item.get("call_id"))
-    # Bounded newest native calls; unavailable older entries remain unknown.
-    result = [native_tool_observation(context, identity) for identity in list(dict.fromkeys(identities))[-64:]]
-    return sorted((item for item in result if _recent_native(item, context)), key=lambda item: item["result_position"])
+                identities.append((position, item.get("call_id")))
+    if after_observation is not None:
+        anchor = after_observation
+        if [position for position, identity in identities if identity == anchor["call_id"]] != [anchor["call_position"]]:
+            raise ValueError("native invalidation readback anchor is missing or changed")
+        selected = [(position, identity) for position, identity in identities
+                    if position > anchor["result_position"]]
+        if len(selected) > 64 and not context.get("_historical_native_intake"):
+            raise ValueError("native invalidation interval exceeds bounded coverage")
+        # Current intake retains its 64-call coverage limit. Historical replay
+        # must not acquire a lifetime call ceiling: pair all selected events in
+        # one bounded snapshot instead of rescanning that snapshot per call.
+        # Every later negative event remains visible, regardless of timestamp;
+        # a newer affirmative list never revives a cancelled or missing pair.
+        indexed = _native_tool_index(records, proof, {anchor["call_id"], *(identity for _, identity in selected)})
+        if indexed[anchor["call_id"]] != anchor:
+            raise ValueError("native invalidation readback anchor is missing or changed")
+        result = [indexed[identity] for _, identity in selected]
+        if any(item is None or item["call_position"] != position
+               for (position, _), item in zip(selected, result)):
+            raise ValueError("native invalidation interval has ambiguous or changed calls")
+    else:
+        # Positive discovery may consider only the newest calls. This bounded
+        # suffix cannot certify absence of invalidation since an older readback.
+        selected = list(dict.fromkeys(identity for _, identity in identities))[-64:]
+        result = [native_tool_observation(context, identity) for identity in selected]
+    return sorted((item for item in result if item is not None
+                   and (not fresh_only or _recent_native(item, context))),
+                  key=lambda item: item["result_position"])
 
 
 def observe_native_cleanup(kind, arguments, context):

@@ -72,16 +72,17 @@ def _records(path):
     """Read one bounded complete-line snapshot, permitting verified appends.
 
     Native runtimes append while their completed earlier events are being
-    consumed. Growth does not invalidate those bytes: if metadata changed,
-    reread the exact selected initial prefix and require equality. Replacement,
-    truncation and changes inside the selected window remain unknown. This is
-    a new snapshot for every call, never a cross-operation evidence cache.
+    consumed. Read the exact selected initial window twice without buffering
+    and require byte equality, even when filesystem metadata is unchanged.
+    Growth does not invalidate those bytes. Replacement, truncation and changes
+    inside the selected window remain unknown. This is a new snapshot for every
+    call, never a cross-operation evidence cache or an unbounded retry loop.
     """
     path = Path(path)
     named = path.lstat()
     if not stat.S_ISREG(named.st_mode):
         raise ValueError("unsafe native transcript")
-    with path.open("rb") as stream:
+    with path.open("rb", buffering=0) as stream:
         before = os.fstat(stream.fileno())
         identity = (before.st_dev, before.st_ino)
         if identity != (named.st_dev, named.st_ino) or not stat.S_ISREG(before.st_mode):
@@ -96,19 +97,18 @@ def _records(path):
                 or (current.st_dev, current.st_ino) != identity
                 or not stat.S_ISREG(current.st_mode)):
             raise ValueError("native transcript was replaced or truncated")
-        # Check even a same-size rewrite; native append is the only tolerated
-        # mutation. The second read cannot incorporate any newly appended row.
-        metadata = lambda info: (info.st_size, info.st_mtime_ns, info.st_ctime_ns)
-        if metadata(before) != metadata(after) or metadata(before) != metadata(current):
-            stream.seek(offset)
-            if stream.read(length) != raw:
-                raise ValueError("native transcript selected bytes changed")
-            final = os.fstat(stream.fileno())
-            named_final = path.lstat()
-            if (final.st_size < before.st_size or named_final.st_size < before.st_size
-                    or (named_final.st_dev, named_final.st_ino) != identity
-                    or not stat.S_ISREG(named_final.st_mode)):
-                raise ValueError("native transcript was replaced or truncated")
+        # Metadata can miss equal-size rewrites, and buffered seek/read can
+        # replay old bytes. Always compare one fresh bounded read of the same
+        # window; newly appended rows cannot enter this snapshot.
+        stream.seek(offset)
+        if stream.read(length) != raw:
+            raise ValueError("native transcript selected bytes changed")
+        final = os.fstat(stream.fileno())
+        named_final = path.lstat()
+        if (final.st_size < before.st_size or named_final.st_size < before.st_size
+                or (named_final.st_dev, named_final.st_ino) != identity
+                or not stat.S_ISREG(named_final.st_mode)):
+            raise ValueError("native transcript was replaced or truncated")
     if offset:
         newline = raw.find(b"\n")
         raw = raw[newline + 1:] if newline >= 0 else b""
