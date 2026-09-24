@@ -532,6 +532,20 @@ def test_indexed_stop_also_checks_exact_plan_new_record_and_import_digest(engine
     assert engine.legacy_for_stop(world["actor"], root, plan=world["plan"])["owned_active"]
 
 
+def test_stop_legacy_plan_fallback_uses_current_pm_declaration(engine, world):
+    import hashlib
+    root = world["runtime"] / "engagements"
+    root.mkdir(parents=True)
+    engine.index_legacy(world["actor"], root)
+    key = hashlib.sha1(str(world["plan"]).encode()).hexdigest()[:12]
+    path = root / f"{world['plan'].stem[:40]}-{key}.json"
+    path.write_text(json.dumps(legacy_record(world)))
+    found = engine.legacy_for_stop(world["actor"], root)
+    assert found["scanned"] == 1 and found["owned_active"][0]["source"] == str(path)
+    path.write_text('{"session_id":"' + SEAT + '",broken')
+    assert engine.legacy_for_stop(world["actor"], root)["unattributed"][0]["blocking"] is True
+
+
 def test_corrupt_foreign_index_does_not_affect_selected_native(engine, world):
     root = world["runtime"] / "engagements"
     root.mkdir(parents=True)

@@ -752,6 +752,8 @@ def test_unreachable_coordination_lease_is_unknown_not_green(tmp_path: Path) -> 
         [(identity.session_uuid, identity.compact_id, "alpha", str(repo))],
     )
     claims.write_text(claims.read_text(encoding="utf-8").replace("words-1", identity.speakable_id), encoding="utf-8")
+    # This is a remote failure test, not a rejection of a valid local board.
+    (claims.parent / "lease.json").write_text(json.dumps({"remote": str(tmp_path / "missing-lease.git")}))
     report = state.resolve_project(
         "alpha",
         repo / "projects" / "index.yaml",

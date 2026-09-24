@@ -77,10 +77,11 @@ def test_working_input_requires_registered_current_bytes_and_no_arbitrary_path(b
 
 
 def append_claude_tool(world, name, arguments, output, call_id="native-call"):
+    timestamp = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
     with world["transcript"].open("a") as handle:
-        handle.write(json.dumps({"type": "assistant", "sessionId": world["actor"]["native_payload"]["session_id"],
+        handle.write(json.dumps({"type": "assistant", "timestamp": timestamp, "sessionId": world["actor"]["native_payload"]["session_id"],
             "message": {"content": [{"type": "tool_use", "id": call_id, "name": name, "input": arguments}]}}) + "\n")
-        handle.write(json.dumps({"type": "user", "sessionId": world["actor"]["native_payload"]["session_id"],
+        handle.write(json.dumps({"type": "user", "timestamp": timestamp, "sessionId": world["actor"]["native_payload"]["session_id"],
             "message": {"content": [{"type": "tool_result", "tool_use_id": call_id, "content": json.dumps(output)}]}}) + "\n")
 
 
@@ -397,3 +398,39 @@ def test_capability_components_preserve_unknowns_and_require_genuine_receipts(br
     assert bridge.verify_source(record("capability", data, observed), observed)
     forged = copy.deepcopy(data);forged["capabilities"]["survival"] = ["reboot"]
     assert not bridge.verify_source(record("capability", forged, observed), observed)
+
+
+def test_old_native_delivery_cannot_be_wrapped_in_new_receipt(bridge, observed, world):
+    args = {"threadId": "peer", "prompt": observed["state"]["run_id"]}
+    append_claude_tool(world, "mcp__codex_app__send_message_to_thread", args, {"status": "delivered", "threadId": "peer"})
+    data = {"source": {"kind": "native-tool", "call_id": "native-call"}, "delivery_id": "native-call", "channel": "codex-task", "status": "delivered"}
+    assert bridge.verify_source(record("delivery", data, observed), observed)
+    lines = [json.loads(line) for line in world["transcript"].read_text().splitlines()]
+    for line in lines:
+        if "timestamp" in line:
+            line["timestamp"] = "2000-01-01T00:00:00Z"
+    world["transcript"].write_text("".join(json.dumps(line) + "\n" for line in lines))
+    assert not bridge.verify_source(record("delivery", data, observed), observed)
+
+
+def test_terminal_delivery_observation_uses_predeclared_target_and_actual_native_result(bridge, world):
+    import autopilot
+    engine = autopilot.engine()
+    current = create(engine, world)
+    spec = world["project"] / "delivery.json"
+    spec.write_text(json.dumps({"schema_version": 1, "kind": "delivery", "arguments": {"thread_id": "peer"}}))
+    current = command(engine, world, current, "artifact.register", {"id": "delivery-spec", "path": str(spec), "role": "input", "required": False, "retention": "durable"})
+    current = command(engine, world, current, "close", {"status": "cancelled", "reason": "Fixture stopped"})
+    terminal = copy.deepcopy(current["terminal"])
+    append_claude_tool(world, "mcp__codex_app__send_message_to_thread", {"threadId": "peer", "prompt": current["run_id"]}, {"status": "delivered", "threadId": "peer"}, "delivered-after-close")
+    # Native result timestamp occurs after the immutable terminal boundary.
+    lines = [json.loads(line) for line in world["transcript"].read_text().splitlines()]
+    for line in lines:
+        if "timestamp" in line:
+            line["timestamp"] = datetime.now(timezone.utc).isoformat()
+    world["transcript"].write_text("".join(json.dumps(line) + "\n" for line in lines))
+    current = engine.observe(world["project"], current["run_id"], "delivery", {"check_id": "delivery-spec"},
+        expected_revision=current["revision"], command_id="observed-after-close", actor=world["actor"], runtime_root=world["runtime"])
+    current = command(engine, world, current, "delivery.record", {"receipt": "observed-after-close"})
+    assert current["status"] == "cancelled" and current["terminal"] == terminal
+    assert current["extensions"]["capabilities"]["deliveries"]["delivered-after-close"]["status"] == "delivered"
