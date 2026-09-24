@@ -589,6 +589,23 @@ def test_terminal_cleanup_can_observe_existing_spec_without_reopening_or_new_art
                        expected_revision=state["revision"], command_id="cleanup-unregistered", actor=world["actor"], runtime_root=world["runtime"])
 
 
+def test_long_current_artifact_read_stays_within_its_fresh_admission_operation(engine, world, monkeypatch):
+    import run_admission
+    state, _ = output(engine, world, create(engine, world))
+    clock = run_admission.time.monotonic
+    elapsed = [0.0]
+    monkeypatch.setattr(run_admission.time, "monotonic", lambda: clock() + elapsed[0])
+    original = engine._artifact
+    def slow_read(*args, **kwargs):
+        value = original(*args, **kwargs)
+        elapsed[0] += 2.0
+        return value
+    monkeypatch.setattr(engine, "_artifact", slow_read)
+    context = engine.inspect_context(state, world["actor"], project=world["project"])
+    assert context["artifacts"]["output"]["digest"] == state["artifacts"]["output"]["digest"]
+    assert "admission_observation" not in context
+
+
 def test_central_sources_share_admission_only_during_one_current_inspection(engine, world):
     from run_admission import read_admission_observation
     state = receipt(engine, world, create(engine, world), "local-source", {"fact": "fixture"})

@@ -643,3 +643,17 @@ def test_native_pair_cancellation_cannot_hide_surviving_backstop(bridge,observed
     append_claude_tool(world,'CronList',{}, {'jobs':[]},'pair-empty')
     data=bridge.observe_native_cleanup('continuation-cancellation',{'job_id':'worker02'},observed)
     assert data['cancelled'] is True
+
+
+def test_cron_deadline_uses_native_host_local_minute_steps(bridge,monkeypatch):
+    import time
+    prior=os.environ.get('TZ')
+    try:
+        monkeypatch.setenv('TZ','Asia/Kolkata');time.tzset()
+        result=bridge._schedule_deadline('*/20 * * * *','2026-09-24T10:00:05+00:00')
+        assert result['nominal_at']==datetime(2026,9,24,10,10,tzinfo=timezone.utc).timestamp()
+        assert result['maximum_jitter_seconds']==600
+    finally:
+        if prior is None:monkeypatch.delenv('TZ',raising=False)
+        else:monkeypatch.setenv('TZ',prior)
+        time.tzset()
