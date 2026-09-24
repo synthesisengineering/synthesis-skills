@@ -657,3 +657,34 @@ def test_cron_deadline_uses_native_host_local_minute_steps(bridge,monkeypatch):
         if prior is None:monkeypatch.delenv('TZ',raising=False)
         else:monkeypatch.setenv('TZ',prior)
         time.tzset()
+
+
+def test_native_tool_pair_uses_completed_snapshot_while_writer_appends(bridge, observed, world, monkeypatch):
+    import native_review
+    from test_native_review import _mutate_after_first_native_read
+    append_claude_tool(world, 'CronList', {}, {'jobs': []}, 'snapshot-pair')
+    original = native_review._records
+    calls = []
+    def completed(path):
+        calls.append(str(path))
+        def append():
+            with Path(path).open('ab') as stream:
+                stream.write(b'{"new_native_event":')
+        _mutate_after_first_native_read(monkeypatch, Path(path), append)
+        return original(path)
+    monkeypatch.setattr(native_review, '_records', completed)
+    result = bridge.native_tool_observation(observed, 'snapshot-pair')
+    assert result is not None and result['result'] == {'jobs': []}
+    assert calls == [str(world['transcript'])]
+
+
+def test_local_readback_access_time_does_not_mean_content_changed(bridge, observed, world):
+    import os
+    path = world['project'] / 'target.txt'
+    content = b'local observed bytes'
+    path.write_bytes(content)
+    observed['state']['effects']['target'] = {'id': 'target', 'idempotency_key': 'target-once', 'target': 'file:target.txt', 'payload_digest': hashlib.sha256(content).hexdigest()}
+    os.utime(path, ns=(1, path.stat().st_mtime_ns))
+    result = bridge._local_effect_readback(observed, 'target')
+    assert result['status'] == 'confirmed'
+    assert result['observed_digest'] == hashlib.sha256(content).hexdigest()
