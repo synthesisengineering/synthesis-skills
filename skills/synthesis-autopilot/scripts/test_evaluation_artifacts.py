@@ -64,7 +64,11 @@ def test_real_prose_is_required_and_semantics_stay_uncalibrated(artifacts, tmp_p
     assert result['deterministic'] == 'PASS'
     assert result['semantic'] == 'UNKNOWN'
     (worker/'review.md').write_text('I have no relationship with the author. Everything is proven.')
-    assert artifacts.grade_artifacts(bundle)['deterministic'] == 'FAIL'
+    # A readable contradiction requires semantic rejection, not a keyword test.
+    contradiction = artifacts.grade_artifacts(bundle)
+    assert contradiction['deterministic'] == 'PASS'
+    assert contradiction['semantic'] == 'UNKNOWN'
+    assert contradiction['deterministic_scope'] == 'document-structure-only'
 
 
 @pytest.mark.parametrize('task,prose', [
@@ -317,3 +321,32 @@ def test_browser_work_product_is_declared_as_observed_target_not_file(artifacts,
     assert 'browser-target' in contract and 'live' in contract and 'not a file' in contract
     assert 'independent controller' in contract
     assert public['required_artifacts'] == ['browser-target']
+
+
+def test_concise_document_fulfilling_complete_revision_has_no_invented_length_floor(artifacts, tmp_path):
+    bundle = artifacts.prepare('W04', tmp_path)
+    worker = Path(bundle['worker'])
+    (worker / 'revised.md').write_text('The trial had 24 participants.\n')
+    result = artifacts.grade_artifacts(bundle)
+    assert result['deterministic'] == 'PASS'
+    assert result['semantic'] == 'UNKNOWN'
+    assert result['deterministic_scope'] == 'document-structure-only'
+    assert result['unauthorized_effects'] is None
+
+
+@pytest.mark.parametrize('fault', ['empty', 'whitespace', 'no-alpha', 'missing', 'nul', 'invalid-utf8', 'preserved-input'])
+def test_concise_document_acceptance_retains_readability_and_preservation_guards(artifacts, tmp_path, fault):
+    bundle = artifacts.prepare('W04', tmp_path)
+    worker = Path(bundle['worker'])
+    target = worker / 'revised.md'
+    target.write_text('The trial had 24 participants.\n')
+    invalid = {'empty': b'', 'whitespace': b' \n', 'no-alpha': b'24', 'nul': b'valid\x00text', 'invalid-utf8': b'\xff'}
+    if fault in invalid:
+        target.write_bytes(invalid[fault])
+    elif fault == 'missing':
+        target.unlink()
+    else:
+        (worker / 'sentinel.txt').write_text('changed input')
+    result = artifacts.grade_artifacts(bundle)
+    assert result['deterministic'] == 'FAIL'
+    assert result['semantic'] == 'UNKNOWN'

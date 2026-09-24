@@ -17,6 +17,184 @@ from test_run_admission import world, write_board, SEAT, NATIVE  # noqa: F401
 
 
 @pytest.fixture
+def handoff_world(world, monkeypatch):
+    """Real PM bootstrap/claim/release; synthetic native transcripts only."""
+    import coordination
+    target_native = "01990000-0000-7000-8000-000000000023"
+    world["board"] = world["scratch"] / "official-board" / "active-sessions.md"
+    world["actor"]["board"] = str(world["board"])
+    for name in ("CLAUDE_CODE_HOST_SESSION_ID", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "CLAUDE_PID", "CLAUDECODE"):
+        monkeypatch.delenv(name, raising=False)
+    transcript = world["transcript"].with_name(f"{target_native}.jsonl")
+    transcript.write_text(json.dumps({"type": "user", "sessionId": target_native}) + "\n")
+    target = {"board": str(world["board"]), "native_payload": {
+        **world["actor"]["native_payload"], "session_id": target_native, "transcript_path": str(transcript)}}
+    def switch(native):
+        monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", f"cc:{native}")
+    def claim(native, area):
+        switch(native)
+        args = coordination.parser().parse_args(["--board", str(world["board"]), "claim",
+            "--agent", "claude", "--project", "alpha", "--mode", "fixture",
+            "--goal", "Isolated handoff regression", "--workspace", f"{world['repo']} @ main",
+            "--area", str(area), "--context-role", "none" if "target-preparation" in str(area) else "owner"])
+        return coordination.command_claim(args)
+    assert claim(NATIVE, f"{world['project']}/**") == 0
+    assert claim(target_native, f"{world['repo']}/target-preparation/**") == 0
+    switch(NATIVE)
+    owner = coordination.rows(world["board"].read_text())[0]
+    target_row = next(row for row in coordination.rows(world["board"].read_text()) if row.client_ref == f"cc:{target_native}")
+    def release_and_claim():
+        switch(NATIVE)
+        args = coordination.parser().parse_args(["--board", str(world["board"]), "release", "--id", owner.session_uuid,
+            "--active-project-file", str(world["scratch"] / "isolated-active-project.json")])
+        assert coordination.command_release(args) == 0
+        assert claim(target_native, f"{world['project']}/**") == 0
+    return {"world": world, "target": target, "native": target_native, "switch": switch,
+            "claim": claim, "release_and_claim": release_and_claim,
+            "target_identity": {"session_uuid": target_row.session_uuid, "native_ref": target_row.client_ref}}
+
+
+def prepare_handoff(engine, fixture, state=None, **changes):
+    w = fixture["world"]
+    fixture["switch"](NATIVE)
+    state = state or create(engine, w)
+    payload = {"id": "handoff", "target": fixture["target_identity"],
+               "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=20)).isoformat()}
+    payload.update(changes)
+    return command(engine, w, state, "owner.transfer.prepare", payload)
+
+
+def test_handoff_official_pm_release_claim_and_fresh_target_acceptance(engine, handoff_world):
+    f = handoff_world
+    w = f["world"]
+    state = create(engine, w)
+    state = command(engine, w, state, "wait.add", {"id": "dependency", "kind": "external", "reason": "Still unresolved"})
+    state = prepare_handoff(engine, f, state)
+    before = deepcopy(state)
+    assert f["claim"](f["native"], f"{w['project']}/**") == 10
+    with pytest.raises(ValueError):
+        command(engine, w, state, "owner.transfer.accept", {"id": "handoff"}, actor=f["target"])
+    f["release_and_claim"]()
+    # A foreign discovery record is deliberately corrupt and remains untouched.
+    foreign = w["runtime"] / "owners" / "01990000-0000-7000-8000-000000000099.json"
+    foreign.write_text("{unrelated malformed record")
+    changed = command(engine, w, state, "owner.transfer.accept", {"id": "handoff"}, actor=f["target"], command_id="accept")
+    assert changed["owner"]["native_ref"] == f"cc:{f['native']}"
+    assert changed["status"] == "recovering" and changed["handoff"]["status"] == "accepted"
+    for key in ("contract", "contract_digest", "profile", "profile_digest", "waits", "effects", "artifacts", "extensions"):
+        assert changed[key] == before[key]
+    assert foreign.read_text() == "{unrelated malformed record"
+    assert command(engine, w, state, "owner.transfer.accept", {"id": "handoff"}, actor=f["target"], command_id="accept") == changed
+    with pytest.raises(ValueError):
+        command(engine, w, changed, "owner.transfer.accept", {"id": "handoff"}, actor=f["target"])
+    assert engine.completion_report(w["project"], changed["run_id"], actor=f["target"])["status"] == "FAIL"
+    with pytest.raises(ValueError):
+        command(engine, w, changed, "progress", {"summary": "Old owner"})
+    assert engine.owned_runs(f["target"], runtime_root=w["runtime"])[0]["run_id"] == state["run_id"]
+
+
+@pytest.mark.parametrize("fault", ["plan", "contract", "profile", "workflow", "revision", "expiry", "revoked", "wrong_id", "wrong_board", "wrong_native", "old_owner", "claim_revoked", "seat_replaced"])
+def test_handoff_rejects_stale_revoked_or_wrong_authority(engine, handoff_world, monkeypatch, fault):
+    f = handoff_world
+    w = f["world"]
+    state = prepare_handoff(engine, f)
+    if fault == "plan":
+        w["plan"].write_text(w["plan"].read_text() + "Changed human plan.\n")
+    elif fault == "contract":
+        value = deepcopy(state["contract"])
+        value["criteria"].append({"id": "additional", "description": "Additional verification",
+                                  "required": True, "method": "artifact", "artifact_ids": ["output"]})
+        value["outcomes"][0]["criteria"].append("additional")
+        state = command(engine, w, state, "contract.amend", {"contract": value, "reason": "Additional obligation"})
+    elif fault == "profile":
+        value = deepcopy(state["profile"])
+        value["items"].append({"id": "additional", "required": True})
+        state = command(engine, w, state, "profile.amend", {"profile": value})
+    elif fault == "workflow":
+        def change(state, payload, context):
+            state["extensions"]["workflow"] = {"pending": ["new-task"]}
+            return state
+        engine.register_command("fixture.workflow", change, allowed_fields=("extensions",))
+        state = command(engine, w, state, "fixture.workflow", {})
+    elif fault == "revoked":
+        state = command(engine, w, state, "owner.transfer.revoke", {"id": "handoff"})
+    f["release_and_claim"]()
+    if fault == "expiry":
+        monkeypatch.setattr(engine, "_now", lambda: (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat())
+    actor = deepcopy(f["target"])
+    if fault == "wrong_board":
+        # Even identical board bytes at another authority location are rejected.
+        other = w["scratch"] / "copied-board.md"
+        other.write_bytes(w["board"].read_bytes())
+        actor["board"] = str(other)
+    elif fault == "wrong_native":
+        actor["native_payload"] = w["actor"]["native_payload"]
+    elif fault == "old_owner":
+        actor = w["actor"]
+    elif fault in {"claim_revoked", "seat_replaced"}:
+        import coordination
+        row = next(item for item in coordination.rows(w["board"].read_text()) if item.client_ref == f"cc:{f['native']}")
+        args = coordination.parser().parse_args(["--board", str(w["board"]), "release", "--id", row.session_uuid,
+            "--active-project-file", str(w["scratch"] / "isolated-active-project.json")])
+        assert coordination.command_release(args) == 0
+        if fault == "seat_replaced":
+            assert f["claim"](f["native"], f"{w['project']}/**") == 0
+    before = engine.load_run(w["project"], state["run_id"])
+    with pytest.raises(ValueError):
+        command(engine, w, state, "owner.transfer.accept", {"id": "wrong" if fault == "wrong_id" else "handoff"},
+                actor=actor, expected_revision=state["revision"] - (fault == "revision"))
+    assert engine.load_run(w["project"], state["run_id"]) == before
+
+
+@pytest.mark.parametrize("fault", ["claim", "expiry"])
+def test_handoff_rechecks_target_authority_after_reducer(engine, handoff_world, monkeypatch, fault):
+    f = handoff_world
+    w = f["world"]
+    state = prepare_handoff(engine, f)
+    f["release_and_claim"]()
+    def revoke_during_verification(updated, name, payload, context):
+        if name != "owner.transfer.accept":
+            return
+        if fault == "expiry":
+            monkeypatch.setattr(engine, "_now", lambda: (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat())
+        else:
+            import coordination
+            row = next(item for item in coordination.rows(w["board"].read_text()) if item.client_ref == f"cc:{f['native']}")
+            args = coordination.parser().parse_args(["--board", str(w["board"]), "release", "--id", row.session_uuid,
+                "--active-project-file", str(w["scratch"] / "isolated-active-project.json")])
+            assert coordination.command_release(args) == 0
+    engine.register_constraint("handoff-revalidation", revoke_during_verification)
+    with pytest.raises(ValueError):
+        command(engine, w, state, "owner.transfer.accept", {"id": "handoff"}, actor=f["target"])
+    assert engine.load_run(w["project"], state["run_id"]) == state
+
+
+@pytest.mark.parametrize("fault", ["same_owner", "other_board", "expired", "unbounded", "legacy_command", "revoke_other_id", "duplicate_prepare"])
+def test_handoff_prepare_and_revocation_boundaries(engine, handoff_world, fault):
+    f = handoff_world
+    w = f["world"]
+    state = create(engine, w)
+    before = deepcopy(state)
+    if fault in {"revoke_other_id", "duplicate_prepare"}:
+        state = prepare_handoff(engine, f, state)
+        before = deepcopy(state)
+    with pytest.raises(ValueError):
+        if fault == "same_owner":
+            prepare_handoff(engine, f, state, target={key: state["owner"][key] for key in ("session_uuid", "native_ref")})
+        elif fault == "other_board":
+            prepare_handoff(engine, f, state, target={**f["target"], "board": str(w["scratch"] / "other.md")})
+        elif fault in {"expired", "unbounded"}:
+            prepare_handoff(engine, f, state, expires_at=(datetime.now(timezone.utc) + timedelta(hours=-1 if fault == "expired" else 2)).isoformat())
+        elif fault == "legacy_command":
+            command(engine, w, state, "owner.transfer", {})
+        elif fault == "revoke_other_id":
+            command(engine, w, state, "owner.transfer.revoke", {"id": "other"})
+        else:
+            prepare_handoff(engine, f, state)
+    assert engine.load_run(w["project"], state["run_id"]) == before
+
+
+@pytest.fixture
 def engine(monkeypatch):
     module = importlib.import_module("run_state")
     # Tests register deliberately synthetic trusted-code callbacks. Isolate

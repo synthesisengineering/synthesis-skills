@@ -1,6 +1,7 @@
 """Discovery reuse is transaction-local and respects Git administrative changes."""
 from pathlib import Path
 import re
+import shutil
 import subprocess
 
 import pytest
@@ -44,14 +45,14 @@ def test_unverified_checkout_names_the_dead_path(tmp_path):
 
 def test_discovery_reprobes_new_scopes_and_reuses_one_listing_per_configuration(checkouts, monkeypatch):
     root, sibling = checkouts
-    original = claim_scope.subprocess.run
+    original = claim_scope.native_git.run
     calls = []
 
     def counting(command, **kwargs):
         calls.append(command)
         return original(command, **kwargs)
 
-    monkeypatch.setattr(claim_scope.subprocess, "run", counting)
+    monkeypatch.setattr(claim_scope.native_git, "run", counting)
     resolver = claim_scope.ClaimScopeResolver()
     for checkout in checkouts:
         for name in ("one", "two", "three"):
@@ -113,12 +114,12 @@ def test_effective_configuration_change_invalidates_registration_cache(checkouts
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
     resolver = claim_scope.ClaimScopeResolver()
     resolver._identity(str(root / "projects" / "one"))
-    original = claim_scope.subprocess.run
+    original = claim_scope.native_git.run
     calls = []
     def counting(command, **kwargs):
         calls.append(command)
         return original(command, **kwargs)
-    monkeypatch.setattr(claim_scope.subprocess, "run", counting)
+    monkeypatch.setattr(claim_scope.native_git, "run", counting)
     config.write_text("[fixture]\n\tvalue = two\n")
     resolver._identity(str(root / "projects" / "two"))
     assert sum("worktree" in c for c in calls) == 1
@@ -128,12 +129,12 @@ def test_environment_configuration_change_invalidates_registration_cache(checkou
     root, _ = checkouts
     resolver = claim_scope.ClaimScopeResolver()
     resolver._identity(str(root / "projects" / "one"))
-    original = claim_scope.subprocess.run
+    original = claim_scope.native_git.run
     calls = []
     def counting(command, **kwargs):
         calls.append(command)
         return original(command, **kwargs)
-    monkeypatch.setattr(claim_scope.subprocess, "run", counting)
+    monkeypatch.setattr(claim_scope.native_git, "run", counting)
     monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
     monkeypatch.setenv("GIT_CONFIG_KEY_0", "fixture.changed")
     monkeypatch.setenv("GIT_CONFIG_VALUE_0", "yes")
@@ -147,13 +148,13 @@ def test_configuration_change_during_identity_discovery_refuses(checkouts, tmp_p
     config = tmp_path / "global.conf"
     config.write_text("[fixture]\n\tvalue = one\n")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
-    original = claim_scope.subprocess.run
+    original = claim_scope.native_git.run
     def changing(command, **kwargs):
         result = original(command, **kwargs)
         if "rev-parse" in command:
             config.write_text("[fixture]\n\tvalue = two\n")
         return result
-    monkeypatch.setattr(claim_scope.subprocess, "run", changing)
+    monkeypatch.setattr(claim_scope.native_git, "run", changing)
     with pytest.raises(claim_scope.ClaimIdentityError, match="changed during discovery"):
         claim_scope.ClaimScopeResolver()._identity(str(root / "projects" / "one"))
 
@@ -161,12 +162,12 @@ def test_configuration_change_during_identity_discovery_refuses(checkouts, tmp_p
 def test_bounded_comparison_snapshot_probes_each_scope_at_both_bounds(checkouts, monkeypatch):
     root, sibling = checkouts
     claims = [(str(root / "projects" / "one"), ()), (str(sibling / "projects" / "two"), ())]
-    original = claim_scope.subprocess.run
+    original = claim_scope.native_git.run
     calls = []
     def counting(command, **kwargs):
         calls.append(command)
         return original(command, **kwargs)
-    monkeypatch.setattr(claim_scope.subprocess, "run", counting)
+    monkeypatch.setattr(claim_scope.native_git, "run", counting)
     resolver = claim_scope.ClaimScopeResolver()
     with resolver.snapshot(claims):
         for _ in range(20):
@@ -175,12 +176,12 @@ def test_bounded_comparison_snapshot_probes_each_scope_at_both_bounds(checkouts,
 
 
 def test_same_checkout_prefixes_share_a_verified_identity_boundary(checkouts, monkeypatch):
-    original = claim_scope.subprocess.run
+    original = claim_scope.native_git.run
     calls = []
     def counting(command, **kwargs):
         calls.append(command)
         return original(command, **kwargs)
-    monkeypatch.setattr(claim_scope.subprocess, "run", counting)
+    monkeypatch.setattr(claim_scope.native_git, "run", counting)
     claims = [(str(root / "projects" / name), ()) for root in checkouts for name in ("one", "two", "three")]
     resolver = claim_scope.ClaimScopeResolver()
     with resolver.snapshot(claims):
@@ -334,9 +335,10 @@ def _snapshot_claim(root):
     return [(str(root / "projects" / "one"), ())]
 
 
-def test_snapshot_survives_routine_git_activity(checkouts):
-    """BUG-1/F2: status/add/commit move .git mtimes but not identity."""
-    root, _ = checkouts
+@pytest.mark.parametrize("checkout_index", [0, 1], ids=["main", "linked"])
+def test_snapshot_survives_routine_git_activity(checkouts, checkout_index):
+    """Main and linked index/HEAD writes change activity, not identity."""
+    root = checkouts[checkout_index]
     (root / "projects" / "one" / "note.md").write_text("draft", encoding="utf-8")
     resolver = claim_scope.ClaimScopeResolver()
     with resolver.snapshot(_snapshot_claim(root)):
@@ -344,6 +346,71 @@ def test_snapshot_survives_routine_git_activity(checkouts):
         git(root, "add", ".")
         git(root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
             "commit", "-qm", "mid-snapshot")
+
+
+@pytest.mark.parametrize("checkout_index", [0, 1], ids=["main-observer", "linked-observer"])
+def test_linked_index_write_during_native_discovery_preserves_identity(checkouts, monkeypatch, checkout_index):
+    """Reproduce the observed phase failure with a real linked-worktree git add."""
+    root, sibling = checkouts
+    note = sibling / "projects/one/observed.txt"
+    note.write_text("synthetic linked-worktree change\n")
+    admin = root / ".git/worktrees/sibling"
+    before = admin.stat()
+    original = claim_scope.native_git.run
+    changed = []
+
+    def write_index_during_discovery(command, **kwargs):
+        result = original(command, **kwargs)
+        if "worktree" in command and not changed:
+            git(sibling, "add", "projects/one/observed.txt")
+            after = admin.stat()
+            assert (after.st_dev, after.st_ino, after.st_mode) == (before.st_dev, before.st_ino, before.st_mode)
+            assert (after.st_mtime_ns, after.st_ctime_ns) != (before.st_mtime_ns, before.st_ctime_ns)
+            changed.append(True)
+        return result
+
+    monkeypatch.setattr(claim_scope.native_git, "run", write_index_during_discovery)
+    resolver = claim_scope.ClaimScopeResolver()
+    checkout = checkouts[checkout_index]
+    with resolver.snapshot(_snapshot_claim(checkout)):
+        assert resolver._identity(str(checkout / "projects/one"))[1] == str(checkout.resolve())
+    assert changed == [True]
+    assert git(sibling, "diff", "--cached", "--name-only").strip() == "projects/one/observed.txt"
+
+
+@pytest.mark.parametrize("mutation", ["gitdir", "commondir", "worktree-config", "add", "remove", "move", "replace", "alias", "gitdir-aba"])
+def test_linked_registry_identity_changes_still_refuse(checkouts, tmp_path, mutation):
+    """Positive controls retain identity and ABA protection around native reads."""
+    root, sibling = checkouts
+    admin = root / ".git/worktrees/sibling"
+    resolver = claim_scope.ClaimScopeResolver()
+    phase = claim_scope._RegistryPhase(resolver._registry_stamp)
+    phase.observe(str(root / ".git"))
+    if mutation == "gitdir":
+        (admin / "gitdir").write_text(str(tmp_path / "unregistered/.git") + "\n")
+    elif mutation == "commondir":
+        (admin / "commondir").write_text("../../../unregistered\n")
+    elif mutation == "worktree-config":
+        (admin / "config.worktree").write_text("[core]\n\tworktree = " + str(tmp_path) + "\n")
+    elif mutation == "add":
+        git(root, "worktree", "add", "-b", "third", str(tmp_path / "third"))
+    elif mutation == "remove":
+        admin.rename(tmp_path / "retained-admin")
+    elif mutation == "move":
+        git(root, "worktree", "move", str(sibling), str(tmp_path / "moved-sibling"))
+    elif mutation in {"replace", "alias"}:
+        retained = tmp_path / "retained-admin"
+        admin.rename(retained)
+        if mutation == "replace":
+            shutil.copytree(retained, admin)
+        else:
+            admin.symlink_to(retained, target_is_directory=True)
+    else:
+        original = (admin / "gitdir").read_bytes()
+        (admin / "gitdir").write_text(str(tmp_path / "unregistered/.git") + "\n")
+        (admin / "gitdir").write_bytes(original)
+    with pytest.raises(claim_scope.ClaimIdentityError, match="registry changed"):
+        phase.finish()
 
 
 def test_snapshot_still_trips_on_identity_change(checkouts):
