@@ -1,5 +1,6 @@
 """Stop feedback is bounded without converting failed protection into success."""
 import json
+import fcntl
 import os
 import subprocess
 import time
@@ -114,3 +115,24 @@ def test_stalled_pipe_is_bounded_and_never_runs_a_child(active):
     finally:
         os.close(reader)
         os.close(writer)
+
+
+def test_held_activation_lock_is_terminal_without_waiting_for_host_timeout(active):
+    pointer, _, _ = active
+    with pointer.with_name(pointer.name + ".lock").open("rb") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        started = time.monotonic()
+        result = launch(active, json.dumps(event()).encode())
+        assert time.monotonic() - started < 1
+        assert_terminal(result)
+
+
+def test_stop_execution_budget_includes_input_and_verification(active, monkeypatch, capsys):
+    pointer, _, _ = active
+    monkeypatch.setattr(runtime, "read_payload", lambda _: (time.sleep(0.04) or json.dumps(event()).encode()))
+    monkeypatch.setattr(runtime, "verified_release", lambda _: (time.sleep(0.04) or {}))
+    def execute(*args, timeout):
+        assert 0 < timeout < 0.13
+        return subprocess.CompletedProcess([], 0, b'{}', b'')
+    monkeypatch.setattr(runtime, "execute", execute)
+    assert runtime.exec_public_main(["--hook-event", "Stop", "--timeout-seconds", "0.2", SCRIPT], pointer) == 0
