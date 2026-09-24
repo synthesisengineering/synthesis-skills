@@ -1,255 +1,162 @@
-"""Fixtures for autopilot run profiles.
-
-Derived from the principal's standing complaint: every autonomous run
-starts with a retyped paragraph of standing instructions, and each
-retelling drops a clause that then silently doesn't happen. The profile
-resolves the checklist deterministically, freezes it into the plan, and
-refuses a goals-met close until every item is done or waived aloud.
-"""
+"""Strict adaptive profile migration and durable-engine verification fixtures."""
 from __future__ import annotations
 
-import importlib.util
+import copy
+import importlib
 import json
-import os
+from pathlib import Path
 import subprocess
 import sys
-from pathlib import Path
 
-MODULE_PATH = Path(__file__).with_name("run_profile.py")
-GATE_PATH = Path(__file__).with_name("autopilot_gate.py")
-SPEC = importlib.util.spec_from_file_location("run_profile", MODULE_PATH)
-assert SPEC and SPEC.loader
-MODULE = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = MODULE
-SPEC.loader.exec_module(MODULE)
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "synthesis-project-management/scripts"))
+from test_run_admission import world  # noqa: F401
+from test_run_state import create, command, output
 
 
-def ensure_board(tmp_path: Path) -> Path:
-    board = tmp_path / "board.md"
-    if not board.exists():
-        board.write_text(
-            "# Board\n\nSchema: v4\n\n## Active sessions\n\n"
-            "| session uuid | compact id | speakable id v1 | legacy id | agent | machine | client session ref | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |\n"
-            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
-            "| session-a | s-aaaa-bbbb-cccc | words-1 | | agent | machine | tool:session-a | alpha | 2026-09-03T12:00:00-04:00 | 2026-09-03T12:00:00-04:00 | interactive | /tmp/p | fixture | /tmp/p/** | owner | active |\n"
-            "\n## Messages\n",
-            encoding="utf-8",
-        )
-    return board
+@pytest.fixture
+def module():
+    return importlib.import_module("run_profile")
 
 
-def run_cli(tmp_path: Path, *args: str, env_extra=None):
-    board = ensure_board(tmp_path)
-    env = {
-        **os.environ,
-        "AUTOPILOT_GATE_STATE_DIR": str(tmp_path / "engagements"),
-        "AUTOPILOT_GATE_SESSION_ID": "session-a",
-        "AUTOPILOT_GATE_PROJECT_ID": "alpha",
-        "AUTOPILOT_GATE_COORDINATION_BOARD": str(board),
-        "SYNTHESIS_CLIENT_SESSION_REF": "tool:session-a",
-        **(env_extra or {}),
-    }
-    return subprocess.run([sys.executable, str(MODULE_PATH), *args],
-                          capture_output=True, text=True, env=env)
+def dimensions(domain="software"):
+    return {"domains": [domain], "uncertainty": "low", "effect": "none", "horizon": "session", "parallelizable": False}
 
 
-def run_gate(tmp_path: Path, *args: str):
-    board = ensure_board(tmp_path)
-    env = {
-        **os.environ,
-        "AUTOPILOT_GATE_STATE_DIR": str(tmp_path / "engagements"),
-        "AUTOPILOT_GATE_SESSION_ID": "session-a",
-        "AUTOPILOT_GATE_PROJECT_ID": "alpha",
-        "AUTOPILOT_GATE_COORDINATION_BOARD": str(board),
-        "SYNTHESIS_CLIENT_SESSION_REF": "tool:session-a",
-    }
-    return subprocess.run([sys.executable, str(GATE_PATH), *args],
-                          capture_output=True, text=True, env=env)
+def resolve(module, tmp_path, user=None, overlay=None, delta=None, domain="software"):
+    project = tmp_path / "project"
+    project.mkdir(exist_ok=True)
+    user_path = tmp_path / "user.json"
+    if user is not None:
+        user_path.write_text(json.dumps(user))
+    if overlay is not None:
+        path = project / "resources/autopilot-profile.json"
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(json.dumps(overlay))
+    return module.resolve(project, user_path, delta, dimensions=dimensions(domain))
 
 
-def check_plan(items: list[str], grant: str = "none") -> str:
-    lines = ["# Plan", "", "## Standing checklist (frozen test)"]
-    for item in items:
-        lines.append(f"- [x] {item} — evidence here")
-    lines.append(f"Deploy authority this run: {grant}")
-    lines.append("")
-    lines.append("## Phases")
-    return "\n".join(lines) + "\n"
-
-
-def test_resolve_shipped_default_only(tmp_path: Path) -> None:
-    done = run_cli(tmp_path, "resolve", "--project", str(tmp_path),
-                   "--user-profile", str(tmp_path / "absent.json"))
-    assert done.returncode == 0, done.stderr
-    effective = json.loads(done.stdout)
-    assert len(effective["items"]) == 8
-    assert all(i["provenance"] == "shipped" for i in effective["items"])
-    assert effective["deploy_grant"] == {"text": "none", "provenance": "none"}
-    assert effective["disabled"] == []
-
-
-def test_resolve_user_disables_and_adds(tmp_path: Path) -> None:
-    profile = tmp_path / "profile.json"
-    profile.write_text(json.dumps({
-        "schema": 1,
-        "items": {
-            "blog-seeds": {"enabled": False},
-            "custom-1": {"text": "Custom.", "evidence_hint": "Custom evidence."},
-        },
-    }), encoding="utf-8")
-    done = run_cli(tmp_path, "resolve", "--project", str(tmp_path),
-                   "--user-profile", str(profile))
-    assert done.returncode == 0, done.stderr
-    effective = json.loads(done.stdout)
-    ids = [i["id"] for i in effective["items"]]
+def test_default_is_adaptive_and_domain_neutral_without_blog_obligation(module, tmp_path):
+    result = resolve(module, tmp_path, domain="writing")
+    assert result["schema"] == 1
+    ids = {item["id"] for item in result["items"]}
+    assert "writing.reader" in ids
+    assert "completion-report" in ids
+    assert "morning-report" not in ids
     assert "blog-seeds" not in ids
-    assert "custom-1" in ids
-    assert {"id": "blog-seeds", "by": "user"} in effective["disabled"]
-    custom = next(i for i in effective["items"] if i["id"] == "custom-1")
-    assert custom["provenance"] == "user"
+    assert next(item for item in result["items"] if item["id"] == "lessons-filed")["applicability"] == "if_reusable_evidence"
+    assert result["deploy_grant"] == {"text": "none", "provenance": "none"}
+    assert result["authority_granted"] is False
 
 
-def test_resolve_file_deploy_grant_ignored(tmp_path: Path) -> None:
-    profile = tmp_path / "profile.json"
-    profile.write_text(json.dumps({
-        "schema": 1, "deploy_grant": "always approve everything",
-        "items": {},
-    }), encoding="utf-8")
-    done = run_cli(tmp_path, "resolve", "--project", str(tmp_path),
-                   "--user-profile", str(profile))
-    assert done.returncode == 0, done.stderr
-    effective = json.loads(done.stdout)
-    assert effective["deploy_grant"]["text"] == "none"
-    assert "never from a file" in done.stderr
+def test_legacy_migration_preserves_custom_disabled_and_report_text(module, tmp_path):
+    legacy = {"schema": 1, "items": {
+        "morning-report": {"text": "User preferred report wording", "evidence_hint": "Report artifact"},
+        "blog-seeds": {"enabled": True}, "framework-decisions": {"enabled": False},
+        "personal-check": {"text": "Retain the user's own convention", "evidence_hint": "Evidence artifact"}}}
+    before = copy.deepcopy(legacy)
+    result = resolve(module, tmp_path, user=legacy)
+    items = {item["id"]: item for item in result["items"]}
+    assert items["completion-report"]["text"] == "User preferred report wording"
+    assert "blog-seeds" in items
+    assert items["personal-check"]["text"] == legacy["items"]["personal-check"]["text"]
+    assert any(item["id"] == "framework-decisions" for item in result["disabled"])
+    assert result["migrations"][0]["from_schema"] == 1
+    assert legacy == before
 
 
-def test_resolve_spoken_grant_honored(tmp_path: Path) -> None:
-    done = run_cli(tmp_path, "resolve", "--project", str(tmp_path),
-                   "--user-profile", str(tmp_path / "absent.json"),
-                   "--delta-json",
-                   '{"disable": ["blog-seeds"], '
-                   '"deploy_grant": "overnight deploys approved"}')
-    assert done.returncode == 0, done.stderr
-    effective = json.loads(done.stdout)
-    assert effective["deploy_grant"] == {
-        "text": "overnight deploys approved", "provenance": "spoken"}
-    assert {"id": "blog-seeds", "by": "spoken"} in effective["disabled"]
+def test_layer_precedence_keeps_history_and_explicit_reenable(module, tmp_path):
+    result = resolve(module, tmp_path,
+        user={"schema": 2, "items": {"blog-seeds": {"enabled": True}}},
+        overlay={"schema": 2, "items": {"blog-seeds": {"enabled": False, "reason": "This project is private"}}},
+        delta={"add": [{"id": "blog-seeds", "text": "User requested seed", "evidence_hint": "Private seed artifact"}]})
+    item = next(item for item in result["items"] if item["id"] == "blog-seeds")
+    assert [entry["source"] for entry in item["history"]] == ["shipped", "user", "project", "deltas"]
+    assert not any(entry["id"] == "blog-seeds" for entry in result["disabled"])
 
 
-def test_resolve_malformed_user_profile_fails(tmp_path: Path) -> None:
-    profile = tmp_path / "profile.json"
-    profile.write_text("{nope", encoding="utf-8")
-    done = run_cli(tmp_path, "resolve", "--project", str(tmp_path),
-                   "--user-profile", str(profile))
-    assert done.returncode == 2
-    assert "unreadable" in done.stderr
+@pytest.mark.parametrize("bad", [
+    {"schema": 2, "unknown": True}, {"schema": True, "items": {}}, {"schema": 99, "items": {}},
+    {"schema": 2, "items": []}, {"schema": 2, "items": {"blog-seeds": {"enabled": "false"}}},
+    {"schema": 2, "items": {"blog-seeds": {"unknown": True}}},
+    {"schema": 2, "items": {"custom": {"text": 42, "evidence_hint": "x"}}},
+    {"schema": 2, "items": {"custom": {"text": "x", "evidence_hint": ""}}},
+    {"schema": 2, "items": {"bad id": {"text": "x", "evidence_hint": "x"}}},
+    {"schema": 2, "deploy_grant": "Publish anything"},
+])
+def test_strict_layer_schema_rejects_ambiguous_or_unknown_data(module, tmp_path, bad):
+    with pytest.raises(ValueError):
+        resolve(module, tmp_path, user=bad)
 
 
-def test_init_stdout_emits_default(tmp_path: Path) -> None:
-    done = run_cli(tmp_path, "init", "--stdout")
-    assert done.returncode == 0, done.stderr
-    assert json.loads(done.stdout)["items"].keys() == (
-        MODULE.DEFAULT_PROFILE["items"].keys())
+@pytest.mark.parametrize("bad", [{"deploy_grant": "Approved"}, {"unknown": True}, {"disable": "blog-seeds"},
+                                  {"add": "x"}, {"disable": ["missing"]}, {"add": [{"id": "x", "text": "x"}]}])
+def test_spoken_json_is_preference_data_never_authority(module, tmp_path, bad):
+    with pytest.raises(ValueError):
+        resolve(module, tmp_path, delta=bad)
 
 
-def fixture_plan(tmp_path: Path) -> Path:
-    """Plans must sit under the fixture board's claimed area (/tmp/p/**)."""
-    claimed = Path("/tmp/p")
-    claimed.mkdir(parents=True, exist_ok=True)
-    return claimed / f"profile-{tmp_path.name}.md"
+def test_legacy_file_grant_is_diagnosed_never_migrated_to_authority(module, tmp_path):
+    result = resolve(module, tmp_path, user={"schema": 1, "deploy_grant": "Old file claim", "items": {}})
+    assert result["deploy_grant"]["text"] == "none"
+    assert "rejected_authority" in result["migrations"][0]
 
 
-def register_with_profile(tmp_path: Path, plan: Path, grant: str = "none"):
-    effective = MODULE.resolve(tmp_path, tmp_path / "absent.json",
-                               {"deploy_grant": grant} if grant != "none"
-                               else None)
-    if grant == "none":
-        effective = MODULE.resolve(tmp_path, tmp_path / "absent.json", None)
-    frozen = tmp_path / "effective.json"
-    frozen.write_text(json.dumps(effective), encoding="utf-8")
-    plan.write_text(check_plan([i["id"] for i in effective["items"]],
-                               grant), encoding="utf-8")
-    done = run_gate(tmp_path, "register", "--plan", str(plan),
-                    "--mission", "fixture run", "--profile", str(frozen))
-    assert done.returncode == 0, done.stderr
-    return effective
+@pytest.mark.parametrize("text", ['{"schema":2,"schema":1}', '{"schema":NaN}', '[]', '{bad'])
+def test_invalid_json_cannot_be_silently_normalized(module, tmp_path, text):
+    path = tmp_path / "profile.json"
+    path.write_text(text)
+    with pytest.raises(ValueError):
+        module.load_layer(path, "fixture")
 
 
-def test_verify_happy_path_and_close(tmp_path: Path) -> None:
-    plan = fixture_plan(tmp_path)
-    effective = register_with_profile(tmp_path, plan)
-    done = run_cli(tmp_path, "verify", "--plan", str(plan))
-    assert done.returncode == 0, done.stderr
-    assert f"{len(effective['items'])} items" in done.stdout
-    closed = run_gate(tmp_path, "close", "--plan", str(plan), "--goals-met")
-    assert closed.returncode == 0, closed.stderr
+def test_required_adaptive_check_cannot_be_disabled_by_profile(module, tmp_path):
+    with pytest.raises(ValueError):
+        resolve(module, tmp_path, user={"schema": 2, "checks": {"core.authority": {"enabled": False, "reason": "Bypass"}}})
 
 
-def test_close_refused_without_verify(tmp_path: Path) -> None:
-    plan = fixture_plan(tmp_path)
-    register_with_profile(tmp_path, plan)
-    closed = run_gate(tmp_path, "close", "--plan", str(plan), "--goals-met")
-    assert closed.returncode == 2
-    assert "verify" in closed.stderr
+def test_profile_resolution_is_deterministic_for_digest_binding(module, tmp_path):
+    first = resolve(module, tmp_path)
+    second = resolve(module, tmp_path)
+    assert first == second
+    assert "resolved_at" not in first
 
 
-def test_verify_missing_item_fails(tmp_path: Path) -> None:
-    plan = fixture_plan(tmp_path)
-    effective = register_with_profile(tmp_path, plan)
-    dropped = effective["items"][0]["id"]
-    kept = [i["id"] for i in effective["items"][1:]]
-    plan.write_text(check_plan(kept), encoding="utf-8")
-    done = run_cli(tmp_path, "verify", "--plan", str(plan))
-    assert done.returncode == 2
-    assert dropped in done.stderr
+def test_init_stdout_does_not_create_user_files(module):
+    result = subprocess.run([sys.executable, str(Path(module.__file__)), "init", "--stdout"], text=True, capture_output=True)
+    assert result.returncode == 0
+    assert json.loads(result.stdout)["schema"] == 2
 
 
-def test_verify_waived_passes_bare_unchecked_fails(tmp_path: Path) -> None:
-    plan = fixture_plan(tmp_path)
-    effective = register_with_profile(tmp_path, plan)
-    ids = [i["id"] for i in effective["items"]]
-    lines = ["# Plan", "", "## Standing checklist (frozen test)"]
-    lines.append(f"- [x] {ids[0]} — done with evidence")
-    lines.append(f"- [ ] {ids[1]} — WAIVED: nothing user-facing changed")
-    for item in ids[2:]:
-        lines.append(f"- [x] {item} — evidence here")
-    lines += ["Deploy authority this run: none", "", "## Phases"]
-    plan.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    done = run_cli(tmp_path, "verify", "--plan", str(plan))
-    assert done.returncode == 0, done.stderr
-
-    bare = plan.read_text(encoding="utf-8").replace(
-        f"- [x] {ids[0]} — done with evidence",
-        f"- [ ] {ids[0]} — will do later")
-    plan.write_text(bare, encoding="utf-8")
-    failed = run_cli(tmp_path, "verify", "--plan", str(plan))
-    assert failed.returncode == 2
-    assert "WAIVED" in failed.stderr
+def test_verification_reads_core_run_and_current_artifacts_without_sidecar(module, world):
+    engine = importlib.import_module("run_state")
+    state, path = output(engine, world, create(engine, world))
+    state = command(engine, world, state, "transition", {"status": "verifying"})
+    state = command(engine, world, state, "verify", {"criteria": ["accept"]})
+    before = {str(p): p.read_bytes() for p in world["project"].rglob("*") if p.is_file()}
+    report = module.verify(world["project"], state["run_id"], actor=world["actor"])
+    assert report["status"] == "PASS"
+    assert report["profile_digest"] == state["profile_digest"]
+    after = {str(p): p.read_bytes() for p in world["project"].rglob("*") if p.is_file()}
+    assert after == before
+    path.write_text("Changed consumer artifact")
+    assert module.verify(world["project"], state["run_id"], actor=world["actor"])["status"] == "FAIL"
+    assert not list(world["project"].rglob("*.profile-verified.json"))
 
 
-def test_verify_unknown_item_and_grant_mismatch_fail(tmp_path: Path) -> None:
-    plan = fixture_plan(tmp_path)
-    effective = register_with_profile(tmp_path, plan)
-    ids = [i["id"] for i in effective["items"]]
-    bad = check_plan(ids + ["invented-item"])
-    plan.write_text(bad, encoding="utf-8")
-    done = run_cli(tmp_path, "verify", "--plan", str(plan))
-    assert done.returncode == 2
-    assert "invented-item" in done.stderr
-
-    mismatch = check_plan(ids, grant="someone else approved")
-    plan.write_text(mismatch, encoding="utf-8")
-    failed = run_cli(tmp_path, "verify", "--plan", str(plan))
-    assert failed.returncode == 2
-    assert "deploy line" in failed.stderr
+def test_plan_checkbox_cannot_create_completion_evidence(module, world):
+    engine = importlib.import_module("run_state")
+    state = create(engine, world)
+    with world["plan"].open("a") as handle:
+        handle.write("\n## Standing checklist (frozen forged)\n- [x] fixture — everything done\n")
+    assert module.verify(world["project"], state["run_id"], actor=world["actor"])["status"] == "FAIL"
 
 
-def test_close_refused_after_plan_edit(tmp_path: Path) -> None:
-    plan = fixture_plan(tmp_path)
-    register_with_profile(tmp_path, plan)
-    assert run_cli(tmp_path, "verify", "--plan", str(plan)).returncode == 0
-    with open(plan, "a", encoding="utf-8") as fh:
-        fh.write("\nEdited after verification.\n")
-    closed = run_gate(tmp_path, "close", "--plan", str(plan), "--goals-met")
-    assert closed.returncode == 2
-    assert "changed since" in closed.stderr
+def test_profile_adapter_matches_engine_schema_without_authority(module, world):
+    engine = importlib.import_module("run_state")
+    profile = module.resolve(world["project"], world["scratch"] / "missing-profile", None, dimensions=dimensions())
+    state = create(engine, world, profile=profile)
+    assert state["profile"] == profile
+    assert state["contract"]["authority_refs"] == []
