@@ -674,6 +674,110 @@ def native_turn_end_probe(world, observed):
     return arguments, active, wake
 
 
+def native_renewal_fixture(bridge, observed, world):
+    """Authenticated temporary PM/native source, preserving admitted envelopes."""
+    import capabilities as cap
+    observed['now'] = datetime.fromisoformat(observed['now']).replace(second=45, microsecond=0).isoformat()
+    args, active, wake = native_turn_end_probe(world, observed)
+    records = {}; observed['evidence'] = records
+    observed['verify_receipt'] = lambda ref, kind, bindings: (ref in records and records[ref]['kind'] == kind
+        and bridge.verify_source(records[ref], observed))
+    def save(kind, data, identity):
+        records[identity] = {**record(kind, data, observed), 'id': identity}
+        return identity
+    save('capability', bridge.observe_native_capability(observed, args), 'cap')
+    observed['state'] = cap.record_capability(observed['state'], {'surface': 'claude-code-cli', 'receipt': 'cap'}, observed)
+    data = bridge.observe_native_registration(observed, 'active-create', 'active-list', capability_receipt='cap', monitor_create_call_id='active-monitor-create')
+    save('continuation-registration', data, 'registered')
+    observed['state'] = cap.register_continuation(observed['state'], {'receipt': 'registered', 'horizon': 'turn_end'}, observed)
+    original_rows = [json.loads(line) for line in world['transcript'].read_text().splitlines()]
+    active_list = next(row for row in original_rows if any(p.get('tool_use_id') == 'active-list'
+        for p in row.get('message', {}).get('content', []) if isinstance(p, dict)))
+    def readback(identity, when, jobs=None):
+        append_claude_tool(world, 'CronList', {}, jobs or active_list['toolUseResult'], identity)
+        rows = [json.loads(line) for line in world['transcript'].read_text().splitlines()]
+        for row in rows[-2:]: row['timestamp'] = when.isoformat()
+        world['transcript'].write_text(''.join(json.dumps(row) + '\n' for row in rows))
+    return records, save, active, wake, readback
+
+
+def test_same_native_pair_can_renew_with_fresh_readbacks_and_wake_again_after_five_minutes(bridge, observed, world):
+    import capabilities as cap
+    records, save, active, wake, readback = native_renewal_fixture(bridge, observed, world)
+    first = datetime.fromtimestamp(records['registered']['data']['deadline_provenance']['nominal_at'], timezone.utc) + timedelta(seconds=5)
+    original = copy.deepcopy(observed['state']['extensions']['capabilities']['continuation'])
+    listing = 'active-list'; lease = 'registered'
+    for number in range(6):
+        when = first + timedelta(minutes=number)
+        wake(f'wake-{number}', active['prompt'], when)
+        observed['now'] = (when + timedelta(seconds=1)).isoformat()
+        data = bridge.observe_native_wake(observed, 'active-create', listing, f'wake-{number}',
+            registration_receipt='registered', lease_receipt=lease)
+        save('continuation-wake', data, f'wake-{number}')
+        observed['state'] = cap.observe_wake(observed['state'], {'receipt': f'wake-{number}'}, observed)
+        listing = f'fresh-list-{number}'
+        readback(listing, when + timedelta(seconds=2))
+        observed['now'] = (when + timedelta(seconds=3)).isoformat()
+        renewal = bridge.observe_native_renewal(observed, listing, lease)
+        assert renewal['lease_expires_at'] <= (when + timedelta(seconds=302)).timestamp()
+        save('continuation-renewal', renewal, f'renew-{number}')
+        observed['state'] = cap.renew_continuation(observed['state'], {'receipt': f'renew-{number}'}, observed)
+        lease = f'renew-{number}'
+    job = observed['state']['extensions']['capabilities']['continuation']
+    assert len(job['wakes']) == 6 and len(job['renewals']) == 6
+    assert job['registered_at'] == original['registered_at'] and job['registration_receipt'] == 'registered'
+    assert bridge._time(job['wakes'][-1]['observed_at']) - bridge._time(job['wakes'][0]['observed_at']) == 300
+    assert cap.continuation_status(observed['state'], observed)['continuation_verified'] is True
+    cap.validate_horizon(observed['state'], 'turn_end', observed)
+    assert observed['verify_receipt']('cap', 'capability', {})
+    assert observed['verify_receipt']('registered', 'continuation-registration', {})
+    assert observed['verify_receipt']('wake-0', 'continuation-wake', {})
+
+
+@pytest.mark.parametrize('fault', ['missing_monitor', 'changed_worker', 'stale', 'after_expiry', 'replayed_list', 'cancelled'])
+def test_native_renewal_requires_fresh_same_pair_readback_before_expiry(bridge, observed, world, fault):
+    records, _, _, _, readback = native_renewal_fixture(bridge, observed, world)
+    start = datetime.fromisoformat(observed['now']); at = start + timedelta(seconds=5)
+    listing = 'renew-list'
+    readback(listing, at)
+    if fault in {'missing_monitor', 'changed_worker'}:
+        rows = [json.loads(line) for line in world['transcript'].read_text().splitlines()]
+        result = json.loads(rows[-1]['message']['content'][0]['content'])
+        if fault == 'missing_monitor': result['jobs'] = result['jobs'][:1]
+        else: result['jobs'][0]['prompt'] = 'changed'
+        rows[-1]['message']['content'][0]['content'] = json.dumps(result)
+        world['transcript'].write_text(''.join(json.dumps(row) + '\n' for row in rows))
+    elif fault == 'replayed_list': listing = 'active-list'
+    elif fault == 'cancelled': append_claude_tool(world, 'CronDelete', {'id': 'worker02'}, {'id': 'worker02', 'deleted': True}, 'cancel-current')
+    observed['now'] = (at + timedelta(seconds=301 if fault == 'stale' else 1)).isoformat()
+    if fault == 'after_expiry': observed['now'] = datetime.fromtimestamp(records['registered']['data']['lease_expires_at'], timezone.utc).isoformat()
+    with pytest.raises(ValueError): bridge.observe_native_renewal(observed, listing, 'registered')
+
+
+@pytest.mark.parametrize('fault', ['new_id', 'changed_data', 'backdated_envelope', 'expired_receipt', 'claim_revoked'])
+def test_historical_native_intake_requires_identical_admitted_envelope_and_current_authority(bridge, observed, world, fault):
+    records, _, _, _, _ = native_renewal_fixture(bridge, observed, world)
+    observed['now'] = (datetime.fromisoformat(observed['now']) + timedelta(seconds=310)).isoformat()
+    candidate = copy.deepcopy(records['cap'])
+    if fault == 'new_id': candidate['id'] = 'new-stale-envelope'
+    elif fault == 'changed_data': candidate['data']['unknown'] = []
+    elif fault == 'backdated_envelope': candidate['observed_at'] = (datetime.fromisoformat(candidate['observed_at']) - timedelta(seconds=1)).isoformat()
+    elif fault == 'expired_receipt': observed['now'] = candidate['expires_at']
+    elif fault == 'claim_revoked': write_board(world, status='released')
+    assert bridge.verify_source(candidate, observed) is False
+
+
+def test_renewal_registered_as_production_observer_source_and_nonterminal_reducer(bridge):
+    import capabilities as cap
+    commands = {}; observers = {}; sources = {}
+    cap.register_commands(lambda name, fn, **kw: commands.update({name: kw}))
+    bridge.register_observers(lambda name, fn, **kw: observers.update({name: kw}))
+    bridge.register_sources(lambda name, fn: sources.update({name: fn}))
+    assert commands['continuation.renew']['terminal_safe'] is False
+    assert observers['continuation-renewal']['terminal_safe'] is False
+    assert 'continuation-renewal' in sources
+
+
 def test_native_turn_end_components_admit_actual_registration_with_computed_deadlines(bridge, observed, world):
     import capabilities as cap
     args, _, _ = native_turn_end_probe(world, observed)

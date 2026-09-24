@@ -75,6 +75,73 @@ def configured():
     return registered, records, ctx
 
 
+def renewal_fixture():
+    current, records, _ = configured()
+    records['cap']['expires_at'] = datetime.fromtimestamp(NOW + 1000, timezone.utc).isoformat()
+    records['renew'] = receipt('continuation-renewal', observed_at=NOW + 10, expires_at=NOW + 1000,
+        surface='codex-desktop', job_id='job-1', mechanism='codex-heartbeat',
+        owner='native-host', observer_id='observer-1', lease_expires_at=NOW + 310,
+        readback_at=NOW + 10, registration_receipt='registered', previous_lease_receipt='registered')
+    return current, records, context(records, now=NOW + 10)
+
+
+def test_renewal_preserves_actual_wakes_and_next_deadline_without_claiming_a_wake():
+    current, records, ctx = renewal_fixture()
+    prior = copy.deepcopy(current['extensions']['capabilities']['continuation'])
+    renewed = CAP.renew_continuation(current, {'receipt': 'renew'}, ctx)
+    job = renewed['extensions']['capabilities']['continuation']
+    assert job['lease_expires_at'] == NOW + 310
+    assert job['lease_receipt'] == 'renew'
+    for key in ('registered_at', 'registration_receipt', 'next_wake_at', 'wakes', 'status', 'binding'):
+        assert job[key] == prior[key]
+    assert CAP.continuation_status(renewed, ctx)['continuation_verified'] is False
+    records['wake-renewed'] = receipt('continuation-wake', observed_at=NOW + 15,
+        job_id='job-1', event_id='later', native_observed_at=NOW + 15, next_wake_at=NOW + 90,
+        source={'lease_receipt': 'renew'})
+    renewed = CAP.observe_wake(renewed, {'receipt': 'wake-renewed'}, context(records, now=NOW + 16))
+    assert len(renewed['extensions']['capabilities']['continuation']['wakes']) == 1
+    assert CAP.renew_continuation(renewed, {'receipt': 'renew'}, context(records, now=NOW + 17)) == renewed
+
+
+@pytest.mark.parametrize('fault', ['expired', 'overdue', 'cancelled', 'cancellation_pending', 'terminal',
+    'owner', 'job_id', 'observer_id', 'mechanism', 'surface', 'previous', 'registration', 'ttl',
+    'capability_expiry', 'no_extension', 'future_readback', 'foreign_binding'])
+def test_renewal_cannot_reset_or_weaken_current_authority_or_lease(fault):
+    current, records, ctx = renewal_fixture()
+    data = records['renew']['data']; job = current['extensions']['capabilities']['continuation']
+    if fault == 'expired': ctx = context(records, now=NOW + 200)
+    elif fault == 'overdue': ctx = context(records, now=NOW + 61)
+    elif fault in {'cancelled', 'cancellation_pending'}: job['status'] = fault
+    elif fault == 'terminal': current['status'] = 'cancelled'
+    elif fault in {'owner', 'job_id', 'observer_id', 'mechanism', 'surface'}: data[fault] = 'foreign'
+    elif fault == 'previous': data['previous_lease_receipt'] = 'another'
+    elif fault == 'registration': data['registration_receipt'] = 'another'
+    elif fault == 'ttl': data['lease_expires_at'] = NOW + 311
+    elif fault == 'capability_expiry': records['cap']['expires_at'] = datetime.fromtimestamp(NOW + 250, timezone.utc).isoformat()
+    elif fault == 'no_extension': data['lease_expires_at'] = NOW + 200
+    elif fault == 'future_readback': data['readback_at'] = NOW + 11
+    elif fault == 'foreign_binding': ctx['binding']['native_ref'] = 'foreign'
+    before = copy.deepcopy(current)
+    with pytest.raises(ValueError): CAP.renew_continuation(current, {'receipt': 'renew'}, ctx)
+    assert current == before
+
+
+def test_renewed_job_rejects_wake_bound_to_superseded_lease_and_keeps_duplicates_idempotent():
+    current, records, ctx = renewal_fixture()
+    current = CAP.renew_continuation(current, {'receipt': 'renew'}, ctx)
+    records['wake'] = receipt('continuation-wake', observed_at=NOW + 15, job_id='job-1',
+        event_id='event-1', native_observed_at=NOW + 15, next_wake_at=NOW + 90,
+        source={'lease_receipt': 'registered'})
+    with pytest.raises(ValueError): CAP.observe_wake(current, {'receipt': 'wake'}, context(records, now=NOW + 16))
+    records['wake']['data']['source']['lease_receipt'] = 'renew'
+    current = CAP.observe_wake(current, {'receipt': 'wake'}, context(records, now=NOW + 16))
+    assert CAP.observe_wake(current, {'receipt': 'wake'}, context(records, now=NOW + 17)) == current
+    records['late'] = receipt('continuation-wake', observed_at=NOW + 18, job_id='job-1',
+        event_id='event-older', native_observed_at=NOW + 14, next_wake_at=NOW + 80,
+        source={'lease_receipt': 'renew'})
+    with pytest.raises(ValueError): CAP.observe_wake(current, {'receipt': 'late'}, context(records, now=NOW + 18))
+
+
 def test_registry_separates_native_portability_and_prospective_support():
     registry = CAP.supported_surfaces()
     assert registry["schema_version"] == 1
