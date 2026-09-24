@@ -127,3 +127,16 @@ def test_doctor_index_requires_native_actor_and_never_infers_native_acceptance(w
     done = cli(world, "doctor")
     assert done.returncode == 0
     assert "UNKNOWN" in json.loads(done.stdout)["native_acceptance"]
+
+
+def test_stop_retains_selected_corrupt_legacy_failure_after_indexing(world):
+    from test_run_admission import NATIVE
+    legacy = world["runtime"] / "engagements"
+    legacy.mkdir(parents=True)
+    own = legacy / "own.json"
+    own.write_text('{"client_session_ref":"cc:' + NATIVE + '", broken')
+    assert cli(world, "doctor", "--index-legacy").returncode == 0
+    result = importlib.import_module("autopilot").stop_result(world["actor"], runtime_root=world["runtime"])
+    assert result["continue"] is False
+    assert "legacy" in result["systemMessage"].lower()
+    assert "UNRESOLVED" in result["systemMessage"]

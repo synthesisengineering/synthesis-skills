@@ -334,3 +334,33 @@ def test_codex_literal_native_tool_wrapper_is_observable_without_arbitrary_exec(
                                    ("variable", 'text(await tools.mcp__codex_app__read_thread(args));', "functions")]:
         append(ident, code, namespace)
         assert bridge.native_tool_observation(ctx, ident) is None
+
+
+def test_local_effect_readback_is_actual_bounded_state_not_claimed_success(bridge, world):
+    import autopilot
+    engine = autopilot.engine()
+    current = create(engine, world)
+    target = world["project"] / "published.txt"
+    content = b"delivered artifact\n"
+    intent = {"id": "publish", "target": "file:published.txt", "payload_digest": hashlib.sha256(content).hexdigest(),
+              "idempotency_key": "local-write-1", "authority_ref": ""}
+    current = command(engine, world, current, "effect.prepare", intent)
+    spec = world["project"] / "readback.json"
+    spec.write_text(json.dumps({"schema_version": 1, "kind": "effect-readback", "arguments": {"effect_id": "publish"}}))
+    current = command(engine, world, current, "artifact.register", {"id": "readback-spec", "path": str(spec), "role": "input", "required": False, "retention": "durable"})
+    def observe(ident):
+        nonlocal current
+        current = engine.observe(world["project"], current["run_id"], "effect-readback", {"check_id": "readback-spec"},
+            expected_revision=current["revision"], command_id=ident, actor=world["actor"], runtime_root=world["runtime"])
+        return current["evidence"][ident]["data"]
+    assert observe("read-absent")["status"] == "absent"
+    target.write_bytes(b"wrong output")
+    assert observe("read-wrong")["status"] == "failed"
+    target.write_bytes(content)
+    assert observe("read-present")["status"] == "confirmed"
+    current = command(engine, world, current, "effect.reconcile", {"id": "publish", "evidence": "read-present"})
+    assert current["effects"]["publish"]["status"] == "confirmed"
+    target.unlink()
+    target.symlink_to(world["plan"])
+    with pytest.raises(ValueError):
+        observe("unsafe-link")

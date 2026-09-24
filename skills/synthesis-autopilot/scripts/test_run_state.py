@@ -557,3 +557,19 @@ def test_stop_inspection_validates_each_owned_run_once_and_rejects_revocation(en
     write_board(world, status="released")
     with pytest.raises(ValueError):
         engine.inspect_owned_runs(world["actor"], runtime_root=world["runtime"])
+
+
+def test_terminal_cleanup_can_observe_existing_spec_without_reopening_or_new_artifact(engine, world):
+    state, _ = output(engine, world, create(engine, world))
+    state = command(engine, world, state, "close", {"status": "cancelled", "reason": "Fixture end"})
+    terminal = deepcopy(state["terminal"])
+    engine.register_observer("continuation-cancellation", lambda context, payload: {"status": "cancelled"}, terminal_safe=True)
+    state = engine.observe(world["project"], state["run_id"], "continuation-cancellation", {"check_id": "output"},
+                           expected_revision=state["revision"], command_id="cleanup-observed", actor=world["actor"], runtime_root=world["runtime"])
+    assert state["terminal"] == terminal and state["status"] == "cancelled"
+    assert "cleanup-observed" in state["observations"]
+    with pytest.raises(ValueError):
+        engine.register_observer("arbitrary-work", lambda context, payload: {}, terminal_safe=True)
+    with pytest.raises(ValueError):
+        engine.observe(world["project"], state["run_id"], "continuation-cancellation", {"check_id": "unregistered"},
+                       expected_revision=state["revision"], command_id="cleanup-unregistered", actor=world["actor"], runtime_root=world["runtime"])
