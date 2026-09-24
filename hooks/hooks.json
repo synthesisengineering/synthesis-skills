@@ -52,13 +52,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis\" exec-public --timeout-seconds 13 synthesis-autopilot/scripts/autopilot_gate.py --gate",
+            "command": "\"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis\" exec-public --hook-event Stop --timeout-seconds 13 synthesis-autopilot/scripts/autopilot_gate.py --gate",
             "timeout": 15,
             "statusMessage": "Checking autopilot engagements for a continuation"
           },
           {
             "type": "command",
-            "command": "\"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis\" exec-public --timeout-seconds 28 synthesis-project-management/scripts/project_state.py hook",
+            "command": "\"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis\" exec-public --hook-event Stop --timeout-seconds 28 synthesis-project-management/scripts/project_state.py hook",
             "timeout": 30,
             "statusMessage": "Binding durable project state to this lifecycle event"
           }

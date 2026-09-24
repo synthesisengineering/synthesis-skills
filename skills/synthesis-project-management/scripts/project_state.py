@@ -1828,20 +1828,22 @@ def _emit_checkpoint_hook(verdict: str, issues: list[str], payload: dict[str, An
         return 0
     reason = "Project checkpoint remains " + verdict + ": " + "; ".join(issues)
     reason += ". Preserve retained work; resolve only this session's authorized checkpoint obligations. Do not create or release a foreign claim to silence this error."
-    # Claude ignores stdout on exit 2 and feeds stderr back to the model.
-    # A repeated Stop must end with an explicit blocked result rather than
-    # repeatedly spending model turns. continue:false is Claude's documented
-    # terminal control, not a PASS or a receipt; Codex retains nonzero failure.
-    if payload.get("hook_event_name") == "Stop" and payload.get("stop_hook_active") is True:
+    # Stop's "block" asks for another model turn; it does not stop execution.
+    # Preserve the failed checkpoint verdict while bounding corrective turns.
+    # Other lifecycle events retain their nonzero fail-closed contract.
+    event = payload.get("hook_event_name")
+    if event is None or event == "Stop":
         try:
-            client, _native = observer_native_identity(payload)
-        except (OSError, ProjectStateError):
-            client = None
-        if client == "claude":
-            output.update({"continue": False, "stopReason": reason})
-            print(json.dumps(output))
-            print(reason, file=sys.stderr)
-            return 0
+            scripts = Path(__file__).resolve().parents[2] / "synthesis-onboarding" / "scripts"
+            if str(scripts) not in sys.path:
+                sys.path.insert(0, str(scripts))
+            from release_runtime import stop_failure
+            output = stop_failure(payload, reason, system_message=output["systemMessage"])
+        except (ImportError, OSError, SyntaxError, AttributeError):
+            # Missing loop protection must not itself create a repair loop.
+            output.update({"continue": False, "stopReason": "UNRESOLVED: " + reason})
+        print(json.dumps(output))
+        return 0
     print(json.dumps(output))
     print(reason, file=sys.stderr)
     return 2

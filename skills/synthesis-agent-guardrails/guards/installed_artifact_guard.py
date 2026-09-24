@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -22,6 +23,33 @@ GENERATED_RULES = (
     HOME / ".claude" / "CLAUDE.md",
     HOME / ".codex" / "AGENTS.md",
 )
+
+
+def verified_shell_parser():
+    """Load the parser from the receipt-verified public release, never a private helper."""
+    runtime_path = (Path(__file__).resolve().parents[2]
+                    / "synthesis-onboarding/scripts/release_runtime.py")
+    if not runtime_path.is_file() or runtime_path.is_symlink() or runtime_path.resolve() != runtime_path:
+        raise ValueError("public execution engine is missing or unsafe")
+    spec = importlib.util.spec_from_file_location("_artifact_guard_public_runtime", runtime_path)
+    if spec is None or spec.loader is None:
+        raise ValueError("public execution engine cannot be loaded")
+    runtime = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runtime)
+    active = runtime.verified_release()
+    parser_path = (Path(active["release_root"])
+                   / "skills/synthesis-project-management/scripts/publication_command.py")
+    if not parser_path.is_file() or parser_path.is_symlink() or parser_path.resolve() != parser_path:
+        raise ValueError("verified public shell parser is missing or unsafe")
+    parser_spec = importlib.util.spec_from_file_location("_artifact_guard_verified_shell_parser", parser_path)
+    if parser_spec is None or parser_spec.loader is None:
+        raise ValueError("verified public shell parser cannot be loaded")
+    parser = importlib.util.module_from_spec(parser_spec)
+    # NamedTuple annotations resolve through the defining module. Register only
+    # this newly bound module, without reusing a same-named ambient import.
+    sys.modules[parser_spec.name] = parser
+    parser_spec.loader.exec_module(parser)
+    return parser
 
 
 def resolve(value: str, cwd: str) -> Path | None:
@@ -94,17 +122,10 @@ def shell_write_paths(command: str, cwd: str, *, depth: int = 0,
     if depth > 16:
         return [], ["Installed-artifact guard shell nesting exceeds inspection limit"]
     try:
-        # PRO-2: the shell parser is a public module since 4.128.0, bound
-        # lazily through the verified public runtime; PublicRuntimeError is
-        # a ValueError, so a missing runtime keeps this function's existing
-        # error-string contract instead of raising.
-        import public_runtime
-        parser = public_runtime.public_module(
-            "synthesis-project-management", "publication_command",
-            floor="4.128.0", consumer="installed_artifact_guard")
+        parser = verified_shell_parser()
         syntax = parser.parse_shell(command)
         unwrap_argv = parser.unwrap_argv
-    except (ImportError, SyntaxError, ValueError, AttributeError) as exc:
+    except (ImportError, OSError, SyntaxError, ValueError, AttributeError) as exc:
         return [], [f"Installed-artifact guard could not parse shell command: {exc}"]
     mutators_all_args = {"rm", "mkdir", "rmdir", "touch", "tee"}
     mutators_last_arg = {"cp", "mv", "install", "rsync", "ln"}

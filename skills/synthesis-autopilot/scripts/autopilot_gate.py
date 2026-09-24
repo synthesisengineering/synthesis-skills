@@ -42,7 +42,7 @@ Modes:
   cycle         --plan PATH (--advanced TEXT | --no-advance --waiting-on TEXT)
   blocker       --plan PATH --reason TEXT --alerted
   close         --plan PATH (--goals-met | --incomplete TEXT)
-  --gate        Stop-hook mode: read payload on stdin, allow (0) or block (2)
+  --gate        Stop-hook mode: allow or emit bounded failure JSON (exit 0)
   --doctor      self-check with positive and negative controls
   --test        hermetic behavioral suite
 
@@ -533,13 +533,33 @@ def _foreign_claim_state(data: dict) -> str:
         return "UNKNOWN"
 
 
+def _stop_failure(payload, reason: str, *, terminal: bool = False) -> int:
+    """Retain engagement obligations without using Stop as an unbounded loop."""
+    try:
+        scripts = Path(__file__).resolve().parents[2] / "synthesis-onboarding" / "scripts"
+        if str(scripts) not in sys.path:
+            sys.path.insert(0, str(scripts))
+        from release_runtime import stop_failure
+        output = stop_failure(payload, reason, terminal=terminal)
+    except (ImportError, OSError, SyntaxError, AttributeError):
+        output = {"continue": False, "stopReason": "UNRESOLVED: " + reason,
+                  "systemMessage": "UNRESOLVED: " + reason}
+    print(json.dumps(output))
+    return 0
+
+
 def gate() -> int:
     try:
         payload = json.load(sys.stdin)
         if not isinstance(payload, dict):
-            payload = {}
-    except Exception:
-        payload = {}
+            raise ValueError("Stop payload must be a JSON object")
+        if (payload.get("hook_event_name") != "Stop"
+                or not isinstance(payload.get("session_id"), str)
+                or not payload["session_id"].strip()
+                or type(payload.get("stop_hook_active")) is not bool):
+            raise ValueError("Stop payload needs a native session and boolean repeat state")
+    except (OSError, ValueError, TypeError) as exc:
+        return _stop_failure({}, "autopilot-gate input is invalid: " + str(exc), terminal=True)
     identities, cwd = _caller_identity(payload)
     root = state_dir()
     if not root.is_dir():
@@ -548,12 +568,14 @@ def gate() -> int:
     for path in sorted(root.glob("*.json")):
         try:
             data = load(path)
+            if not isinstance(data, dict):
+                raise ValueError("engagement record is not a JSON object")
         except Exception as exc:
-            print(f"autopilot-gate BLOCKED (fail closed): engagement record "
-                  f"{path} is unreadable ({exc}). Repair or remove it — an "
-                  "unreadable engagement cannot prove it was continued.",
-                  file=sys.stderr)
-            return 2
+            return _stop_failure(payload,
+                f"autopilot-gate BLOCKED (fail closed): engagement record "
+                f"{path} is unreadable ({exc}). Preserve the record; restore "
+                "its integrity through the authorized owner. An unreadable "
+                "engagement cannot prove it was continued.", terminal=True)
         if data.get("status") != "active" or data.get("goals_met"):
             continue
         if not _owned_by_caller(data, identities, cwd):
@@ -582,7 +604,7 @@ def gate() -> int:
     if not offenders:
         return 0
     me = os.path.basename(__file__)
-    print(
+    reason = (
         "autopilot-gate BLOCKED: this session owns an autopilot "
         "engagement is active, unfinished, and has NO continuation — the "
         "exact shape of the overnight silent-idle failure. Engagements: "
@@ -593,10 +615,9 @@ def gate() -> int:
         "--plan P --reason ... --alerted), or "
         f"(3) close the engagement honestly ({me} close --plan P "
         "--goals-met | --incomplete REASON). Foreign engagements are reported "
-        "separately and never block this session.",
-        file=sys.stderr,
+        "separately and never block this session."
     )
-    return 2
+    return _stop_failure(payload, reason)
 
 
 def run_doctor() -> int:

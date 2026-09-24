@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.144.1] - 2026-09-23
+
+Fix the public repository Stop hook and installed-artifact parser to use the
+verified public runtime rather than a private-only helper. Enabled guard doctors
+now verify their execution dependencies. Bound Stop failure feedback in the
+launcher, checkpoint, repository, and autopilot gates: retain unresolved evidence,
+allow one corrective continuation for an identifiable obligation, and terminate
+repeated or infrastructure failures without claiming success. Launcher input and
+execution share a deadline, and activation-lock contention fails visibly.
+Real packaged-entrypoint tests cover imports, dependency damage, native output,
+re-entry, timeout, and preserved healthy behavior. Tool-denial semantics remain
+separate from Stop lifecycle control.
+
 ## [4.144.0] - 2026-09-23
 
 Autopilot skill 2.4.0 hardens the engagement gate five ways. `status --plan`

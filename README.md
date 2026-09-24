@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.144.1** repairs public guard runtime dependencies and bounds repeated
+Stop feedback while retaining failed health and unfinished work.
+
 Release **4.144.0** hardens autopilot: read-only gate status, verified cron
 continuations, scratch-only close refusal, and a per-agent search cap.
 

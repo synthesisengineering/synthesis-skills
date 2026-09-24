@@ -15,6 +15,7 @@ import plistlib
 import re
 import select
 import shlex
+import signal
 import stat
 import subprocess
 import sys
@@ -54,9 +55,23 @@ PUBLIC_ENTRYPOINTS = frozenset({
     "synthesis-agent-guardrails/hooks/muse/lazy_shortcut_detector.py",
 })
 
+# Recognized event identities may override a mislabeled Stop command. An
+# unknown, empty, or malformed identity cannot exonerate a declared Stop.
+NON_STOP_NATIVE_EVENTS = frozenset({
+    "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse",
+    "PermissionRequest", "PostToolUse", "PostToolUseFailure", "Notification",
+    "SubagentStart", "PreCompact", "PostCompact", "TeammateIdle", "TaskCompleted",
+    "ConfigChange", "InstructionsLoaded", "WorktreeCreate", "WorktreeRemove",
+    "StopFailure", "Elicitation", "ElicitationResult",
+})
+
 
 class RuntimeContractError(ValueError):
     """Execution cannot be bound to its setup receipt and immutable release."""
+
+
+class ExecutionDeadline(BaseException):
+    """Escape dependency recovery handlers and terminate at the launcher."""
 
 
 def file_digest(path):
@@ -418,7 +433,9 @@ def verified_release(pointer=None, *, require_current_interpreter=True):
         if lock.is_symlink() or not lock.is_file():
             raise RuntimeContractError("setup activation lock is missing or unsafe")
         with lock.open("rb") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_SH)
+            # Activation is an unavailable runtime, not permission to wait
+            # beyond the host hook deadline and restart a failed Stop forever.
+            fcntl.flock(handle.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
             if pending.exists() or pending.is_symlink():
                 raise RuntimeContractError("unfinished setup activation requires recovery")
             return _verified_release_unlocked(pointer, require_current_interpreter=require_current_interpreter)
@@ -565,6 +582,55 @@ def execute(active, script, arguments, payload, *, timeout=60):
         raise RuntimeContractError("public entrypoint failed to start or finish: %s" % exc) from exc
 
 
+def valid_stop_payload(payload):
+    return (isinstance(payload, dict)
+            and payload.get("hook_event_name") in ("Stop", "SubagentStop")
+            and isinstance(payload.get("session_id"), str)
+            and bool(payload["session_id"].strip())
+            and type(payload.get("stop_hook_active")) is bool)
+
+
+def stop_failure(payload, reason, system_message=None, *, terminal=False):
+    """Bound native Stop feedback; termination never certifies failed work.
+
+    The native re-entry bit spans all matching hooks. Error wording, timestamps
+    and sibling order cannot reset this budget. Missing native identity cannot
+    authorize even one corrective continuation. This is NOT a tool denial API.
+    """
+    valid = valid_stop_payload(payload)
+    # Structured diagnostics already carry their own FAIL/UNKNOWN verdict and
+    # have consumers that parse their prefix. Preserve them byte-for-byte.
+    output = {"systemMessage": system_message or (reason if reason.startswith("UNRESOLVED: ") else "UNRESOLVED: " + reason)}
+    if terminal or not valid or payload["stop_hook_active"]:
+        output.update({"continue": False, "stopReason": reason})
+    else:
+        output.update({"decision": "block", "reason": reason})
+    return output
+
+
+def stop_result(payload, result):
+    """Validate Stop wire output before the host can re-enter the model."""
+    try:
+        output = json.loads(result.stdout) if result.stdout.strip() else {}
+        allowed = {"continue", "stopReason", "systemMessage", "suppressOutput", "decision", "reason"}
+        if (not isinstance(output, dict) or set(output) - allowed
+                or ("continue" in output and type(output["continue"]) is not bool)
+                or ("suppressOutput" in output and type(output["suppressOutput"]) is not bool)
+                or ("decision" in output and output["decision"] != "block")
+                or (output.get("decision") == "block" and not output.get("reason"))
+                or any(key in output and not isinstance(output[key], str)
+                       for key in ("stopReason", "systemMessage", "reason"))):
+            raise ValueError("invalid native Stop result")
+    except (ValueError, UnicodeError):
+        return stop_failure(payload, "Stop hook returned invalid output; protection remains unverified.", terminal=True)
+    if output.get("continue") is False:
+        return output
+    if result.returncode or output.get("decision") == "block":
+        reason = output.get("reason") or result.stderr.decode("utf-8", errors="replace").strip() or "Stop hook failed without a diagnostic."
+        return stop_failure(payload, reason, output.get("systemMessage"), terminal=result.returncode not in {0, 2})
+    return output
+
+
 def read_payload(wait_seconds):
     stream = sys.stdin.buffer
     try:
@@ -574,9 +640,8 @@ def read_payload(wait_seconds):
         mode = os.fstat(descriptor).st_mode
     except (AttributeError, ValueError, OSError):
         return b""
-    if stat.S_ISFIFO(mode) or stat.S_ISREG(mode):
-        return stream.read()
     chunks = []
+    size = 0
     deadline = time.monotonic() + wait_seconds
     while True:
         try:
@@ -587,7 +652,73 @@ def read_payload(wait_seconds):
         if not chunk:
             break
         chunks.append(chunk)
+        size += len(chunk)
+        if size > 8 * 1024 * 1024:
+            raise RuntimeContractError("public hook input exceeds the 8 MiB limit")
     return b"".join(chunks)
+
+
+def _invalid_arguments_result(argv):
+    """Identify native Stop after a parse failure without running any child."""
+    declared_stop = False
+    budget = 2.0
+    index = 0
+    # Only launcher options can declare the event. A child's flags after its
+    # script or `--` cannot turn an unrelated parser failure into Stop success.
+    while index < len(argv):
+        token = argv[index]
+        if token == "--" or not token.startswith("--"):
+            break
+        name, equals, value = token.partition("=")
+        if name not in {"--hook-event", "--timeout-seconds", "--stdin-wait-seconds", "--success-exit-code"}:
+            break
+        if not equals:
+            index += 1
+            value = argv[index] if index < len(argv) else None
+        if name == "--hook-event" and value in ("Stop", "SubagentStop"):
+            declared_stop = True
+        if name in ("--timeout-seconds", "--stdin-wait-seconds"):
+            try:
+                seconds = float(value)
+                if math.isfinite(seconds) and seconds > 0:
+                    budget = min(budget, seconds)
+            except (TypeError, ValueError):
+                pass
+        index += 1
+
+    payload = None
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.getitimer(signal.ITIMER_REAL)
+    started = time.monotonic()
+
+    def expired(_signum, _frame):
+        raise ExecutionDeadline("invalid launcher arguments exhausted the input deadline")
+
+    signal.signal(signal.SIGALRM, expired)
+    signal.setitimer(signal.ITIMER_REAL, budget)
+    try:
+        payload = json.loads(read_payload(budget))
+    except (RuntimeContractError, ExecutionDeadline, ValueError, UnicodeError):
+        pass
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer[0] > 0:
+            signal.setitimer(signal.ITIMER_REAL,
+                max(0.001, previous_timer[0] - (time.monotonic() - started)), previous_timer[1])
+
+    native_event = payload.get("hook_event_name") if isinstance(payload, dict) else None
+    if isinstance(native_event, str) and native_event in NON_STOP_NATIVE_EVENTS:
+        # A positively identified PreToolUse (or other event) must fail closed
+        # with its nonzero contract even when the command was mislabeled Stop.
+        declared_stop = False
+    elif native_event in ("Stop", "SubagentStop"):
+        declared_stop = True
+    if declared_stop:
+        print(json.dumps(stop_failure(payload,
+            "Synthesis launcher arguments are invalid; protection remains unverified.", terminal=True)))
+        return 0
+    return 2
 
 
 def exec_public_main(argv, pointer):
@@ -595,22 +726,78 @@ def exec_public_main(argv, pointer):
     parser.add_argument("--timeout-seconds", type=float, default=60)
     parser.add_argument("--stdin-wait-seconds", type=float, default=2)
     parser.add_argument("--success-exit-code", action="append", type=int, choices=[1], default=[])
+    parser.add_argument("--hook-event", choices=["Stop", "SubagentStop"])
     parser.add_argument("script", choices=sorted(PUBLIC_ENTRYPOINTS))
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
-    args = parser.parse_args(argv)
-    if not math.isfinite(args.stdin_wait_seconds) or args.stdin_wait_seconds < 0:
-        parser.error("stdin wait must be finite and nonnegative")
-    forwarded = args.arguments[1:] if args.arguments[:1] == ["--"] else args.arguments
     try:
+        args = parser.parse_args(argv)
+        if not math.isfinite(args.stdin_wait_seconds) or args.stdin_wait_seconds < 0:
+            parser.error("stdin wait must be finite and nonnegative")
+        if not math.isfinite(args.timeout_seconds) or args.timeout_seconds <= 0:
+            parser.error("public execution timeout must be finite and positive")
+    except SystemExit as exc:
+        if exc.code == 0:  # Help has already printed and must never read stdin.
+            return 0
+        return _invalid_arguments_result(argv)
+    forwarded = args.arguments[1:] if args.arguments[:1] == ["--"] else args.arguments
+    started = time.monotonic()
+    payload = None
+    stop_event = bool(args.hook_event)
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.getitimer(signal.ITIMER_REAL)
+    alarm_set = False
+
+    def deadline_expired(_signum, _frame):
+        raise ExecutionDeadline("public execution exceeded its total deadline")
+
+    try:
+        signal.signal(signal.SIGALRM, deadline_expired)
+        signal.setitimer(signal.ITIMER_REAL, args.timeout_seconds)
+        alarm_set = True
+        raw_payload = read_payload(min(args.stdin_wait_seconds, args.timeout_seconds))
+        try:
+            payload = json.loads(raw_payload)
+        except (ValueError, UnicodeError):
+            payload = None
+        native_event = payload.get("hook_event_name") if isinstance(payload, dict) else None
+        if args.hook_event and isinstance(native_event, str) and native_event in NON_STOP_NATIVE_EVENTS:
+            # Native event identity wins over a misconfigured command. A Stop
+            # terminal envelope is not a valid PreToolUse denial in Codex.
+            stop_event = False
+            raise RuntimeContractError("declared hook event conflicts with the native event")
+        if isinstance(payload, dict) and payload.get("hook_event_name") in ("Stop", "SubagentStop"):
+            stop_event = True
+        if stop_event:
+            if (not valid_stop_payload(payload)
+                    or (args.hook_event and payload["hook_event_name"] != args.hook_event)):
+                print(json.dumps(stop_failure(payload, "Stop hook input is invalid or lacks native identity; protection remains unverified.", terminal=True)))
+                return 0
         active = verified_release(pointer)
         os.environ["SYNTHESIS_ACTIVE_DESCRIPTOR"] = str(pointer)
-        result = execute(active, args.script, forwarded, read_payload(args.stdin_wait_seconds), timeout=args.timeout_seconds)
-        sys.stdout.buffer.write(result.stdout)
+        remaining = args.timeout_seconds - (time.monotonic() - started)
+        result = execute(active, args.script, forwarded, raw_payload, timeout=remaining)
+        if stop_event:
+            print(json.dumps(stop_result(payload, result)))
+        else:
+            sys.stdout.buffer.write(result.stdout)
         sys.stderr.buffer.write(result.stderr)
+        if stop_event:
+            return 0
         return 0 if result.returncode in args.success_exit_code else result.returncode
-    except RuntimeContractError as exc:
-        print("Synthesis execution refused: %s" % exc, file=sys.stderr)
+    except (RuntimeContractError, ExecutionDeadline) as exc:
+        reason = "Synthesis execution refused: %s" % exc
+        print(reason, file=sys.stderr)
+        if stop_event:
+            print(json.dumps(stop_failure(payload, reason, terminal=True)))
+            return 0
         return 2
+    finally:
+        if alarm_set:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, previous_handler)
+            if previous_timer[0] > 0:
+                signal.setitimer(signal.ITIMER_REAL,
+                    max(0.001, previous_timer[0] - (time.monotonic() - started)), previous_timer[1])
 
 
 def launcher_main(pointer, argv):

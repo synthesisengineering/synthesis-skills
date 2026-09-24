@@ -32,6 +32,8 @@ Config: ~/.synthesis/checkpoint-sync.yaml (see checkpoint-sync.example.yaml).
 State:  ~/.synthesis/repo-guard/checkpoint-state.json plus per-session pending manifests.
 
 Exit codes: 0 = requested readiness reached; 1 = attention required; 2 = error.
+Native --hook failures may instead exit 0 with continue:false JSON: the turn
+terminates with unresolved protection, without issuing a successful receipt.
 
 Examples:
   ./checkpoint_sync.py --hook --quiet        # same-machine Stop receipt
@@ -2607,6 +2609,21 @@ def write_state(mode: str, results: list[dict], running: bool) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+def _stop_failure(payload, reason: str, *, terminal: bool = False) -> int:
+    """Fail the handoff without repeatedly restarting an unrepairable turn."""
+    try:
+        scripts = Path(__file__).resolve().parents[1] / "synthesis-onboarding" / "scripts"
+        if str(scripts) not in sys.path:
+            sys.path.insert(0, str(scripts))
+        from release_runtime import stop_failure
+        output = stop_failure(payload, reason, terminal=terminal)
+    except (ImportError, OSError, SyntaxError, AttributeError):
+        output = {"continue": False, "stopReason": "UNRESOLVED: " + reason,
+                  "systemMessage": "UNRESOLVED: " + reason}
+    print(json.dumps(output))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", type=Path, default=CONFIG_PATH, help=f"Config path (default {CONFIG_PATH})")
@@ -2900,13 +2917,21 @@ def main() -> int:
         try:
             raw_payload = sys.stdin.read()
             hook_payload = json.loads(raw_payload) if raw_payload.strip() else {}
-        except (OSError, json.JSONDecodeError) as exc:
-            if not args.quiet:
-                print(f"checkpoint_sync: invalid hook payload: {exc}", file=sys.stderr)
-            return 2
-        results, manifest = local_handoff_checkpoint(hook_payload, cfg)
-        if not args.dry_run:
-            write_state("hook", results, running=False)
+            if (not isinstance(hook_payload, dict)
+                    or hook_payload.get("hook_event_name") != "Stop"
+                    or not isinstance(hook_payload.get("session_id"), str)
+                    or not hook_payload["session_id"].strip()
+                    or type(hook_payload.get("stop_hook_active")) is not bool):
+                raise ValueError("Stop payload needs a native session and boolean repeat state")
+        except (OSError, ValueError) as exc:
+            return _stop_failure({}, f"checkpoint_sync: invalid hook payload: {exc}", terminal=True)
+        try:
+            results, manifest = local_handoff_checkpoint(hook_payload, cfg)
+            if not args.dry_run:
+                write_state("hook", results, running=False)
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            return _stop_failure(hook_payload,
+                f"checkpoint_sync: local handoff could not be recorded: {exc}", terminal=True)
         alerts = [result for result in results if result.get("alert")]
         if alerts:
             generic_alert_ping(len(alerts), speak=args.speak, notify=args.notify)
