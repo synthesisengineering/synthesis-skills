@@ -688,3 +688,42 @@ def test_local_readback_access_time_does_not_mean_content_changed(bridge, observ
     result = bridge._local_effect_readback(observed, 'target')
     assert result['status'] == 'confirmed'
     assert result['observed_digest'] == hashlib.sha256(content).hexdigest()
+
+
+def test_later_native_wake_reuses_live_registration_after_its_first_deadline(bridge, observed, world):
+    import capabilities as cap
+    observed['now'] = datetime.fromisoformat(observed['now']).replace(second=45, microsecond=0).isoformat()
+    args, active, wake = native_turn_end_probe(world, observed)
+    # A two-minute probe, followed by two active wakes within all existing
+    # five-minute evidence windows. This does not extend any freshness policy.
+    rows = [json.loads(line) for line in world['transcript'].read_text().splitlines()]
+    for event in rows:
+        parts = event.get('message', {}).get('content', [])
+        is_active = any(isinstance(item, dict) and
+            (str(item.get('id', '')).startswith('active-') or str(item.get('tool_use_id', '')).startswith('active-'))
+            for item in parts) if isinstance(parts, list) else False
+        if 'timestamp' in event and not is_active:
+            event['timestamp'] = (datetime.fromisoformat(event['timestamp']) + timedelta(minutes=1)).isoformat()
+    world['transcript'].write_text(''.join(json.dumps(row) + '\n' for row in rows))
+    records = {'cap': record('capability', bridge.observe_native_capability(observed, args), observed)}
+    observed['evidence'] = records
+    observed['verify_receipt'] = lambda ref, kind, bindings: records[ref]['kind'] == kind and bridge.verify_source(records[ref], observed)
+    current = cap.record_capability(observed['state'], {'surface': 'claude-code-cli', 'receipt': 'cap'}, observed)
+    registration = bridge.observe_native_registration(observed, 'active-create', 'active-list', capability_receipt='cap', monitor_create_call_id='active-monitor-create')
+    records['registered'] = record('continuation-registration', registration, observed)
+    current = cap.register_continuation(current, {'receipt': 'registered', 'horizon': 'turn_end'}, observed)
+    first = datetime.fromtimestamp(registration['deadline_provenance']['nominal_at'], timezone.utc) + timedelta(seconds=5)
+    for number, at in enumerate((first, first + timedelta(minutes=1)), start=1):
+        identity = f'active-wake-{number}'
+        wake(identity, active['prompt'], at)
+        observed['now'] = (at + timedelta(seconds=1)).isoformat()
+        data = bridge.observe_native_wake(observed, 'active-create', 'active-list', identity, registration_receipt='registered')
+        records[identity] = record('continuation-wake', data, observed)
+        current = cap.observe_wake(current, {'receipt': identity}, observed)
+    assert cap.continuation_status(current, observed)['continuation_verified'] is True
+    assert cap.continuation_status(current, observed)['observed_wakes'] == 2
+    # An expired initial deadline cannot admit a brand-new continuation, even
+    # though its historical registration remains a valid current-lease source.
+    fresh = cap.record_capability(observed['state'], {'surface': 'claude-code-cli', 'receipt': 'cap'}, observed)
+    with pytest.raises(ValueError, match='deadline|lease'):
+        cap.register_continuation(fresh, {'receipt': 'registered', 'horizon': 'turn_end'}, observed)

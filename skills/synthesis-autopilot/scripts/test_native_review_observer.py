@@ -175,3 +175,82 @@ def test_review_consumes_real_workflow_verification_reservation(observer, review
     context["state"]["extensions"]["workflow"]["budget"] = state["extensions"]["workflow"]["budget"]
     monkeypatch.setattr(observer, "execute_native", lambda client, prompt, **kw: result(prompt))
     assert observer.observe_native_cli_review(context, args)["passed"] is True
+
+
+def test_muse_boundary_uses_empty_toolset_and_native_auth_reference(observer, tmp_path):
+    source = tmp_path / 'original-config' / 'muse'
+    source.mkdir(parents=True)
+    settings = {'schema_version': 1, 'provider': 'meta', 'model': 'user-selected',
+                'reasoning_effort': 'max', 'run': {'toolset': ['read_file']},
+                'private_unrelated_setting': 'do-not-copy'}
+    (source / 'settings.json').write_text(json.dumps(settings))
+    (source / 'auth.json').write_text('synthetic-auth-only')
+    original = {p.name: p.read_bytes() for p in source.iterdir()}
+    scratch = tmp_path / 'review'; scratch.mkdir()
+    env, proof = observer.prepare_muse_boundary(scratch, {'XDG_CONFIG_HOME': str(source.parent), 'PATH': '/bin'})
+    config = Path(env['XDG_CONFIG_HOME']) / 'muse'
+    selected = json.loads((config / 'settings.json').read_text())
+    assert selected == {'schema_version': 1, 'provider': 'meta', 'model': 'user-selected',
+                        'reasoning_effort': 'max', 'run': {'toolset': []}}
+    assert (config / 'auth.json').is_symlink()
+    assert (config / 'auth.json').resolve() == source / 'auth.json'
+    assert not (config / 'trust.json').exists()
+    assert {p.name: p.read_bytes() for p in source.iterdir()} == original
+    assert proof['model'] == 'user-selected'
+    assert all(Path(env[k]).is_relative_to(scratch) for k in ['XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME'])
+    assert not list(Path(env['XDG_DATA_HOME']).rglob('*'))
+
+
+@pytest.mark.parametrize('changed', [None, {'model': None}, {'provider': 'echo'}, {'reasoning_effort': 3}])
+def test_muse_boundary_rejects_unresolved_original_native_selection(observer, tmp_path, changed):
+    source = tmp_path / 'config' / 'muse'; source.mkdir(parents=True)
+    settings = {'schema_version': 1, 'provider': 'meta', 'model': 'chosen', 'reasoning_effort': 'max'}
+    if changed is None:
+        (source / 'settings.json').write_text('{bad')
+    else:
+        settings.update(changed); (source / 'settings.json').write_text(json.dumps(settings))
+    (source / 'auth.json').write_text('synthetic')
+    scratch = tmp_path / 'review'; scratch.mkdir()
+    with pytest.raises(ValueError):
+        observer.prepare_muse_boundary(scratch, {'XDG_CONFIG_HOME': str(source.parent)})
+
+
+def muse_runtime_log(tmp_path, toolsets):
+    session = '019c0000-0000-7000-8000-000000000001'
+    path = tmp_path / 'muse' / 'sessions' / '2026' / '09' / '24' / session / 'session.jsonl'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    events = [{'stream': {'kind': 'session', 'id': session}, 'sequence': i + 1,
+               'payload_type': 'runtime.session', 'payload': {'event': {'kind': 'model_request_configured',
+               'toolset': toolset}}} for i, toolset in enumerate(toolsets)]
+    path.write_text(''.join(json.dumps(e) + '\n' for e in events))
+    return session
+
+
+@pytest.mark.parametrize('toolsets', [[], [{'source': 'default', 'mode': 'all', 'active_tools': []}],
+    [{'source': 'settings', 'mode': 'named', 'active_tools': ['read_file']}],
+    [{'source': 'settings', 'mode': 'named', 'active_tools': []},
+     {'source': 'settings', 'mode': 'named', 'active_tools': ['cron_create']}],
+    [{'source': 'settings', 'mode': 'named'}]])
+def test_muse_boundary_requires_actual_empty_native_toolset(observer, tmp_path, toolsets):
+    session = muse_runtime_log(tmp_path, toolsets)
+    with pytest.raises(ValueError): observer.verify_muse_boundary(tmp_path, session)
+
+
+def test_muse_boundary_accepts_native_empty_toolset_and_rejects_changed_identity(observer, tmp_path):
+    session = muse_runtime_log(tmp_path, [{'source': 'settings', 'mode': 'named', 'active_tools': []}])
+    proof = observer.verify_muse_boundary(tmp_path, session)
+    assert proof['toolset'] == [] and len(proof['source_digest']) == 64
+    with pytest.raises(ValueError): observer.verify_muse_boundary(tmp_path, '../other')
+
+
+def test_muse_paid_request_never_starts_if_offline_boundary_preflight_fails(observer, tmp_path, monkeypatch):
+    called = []
+    monkeypatch.setattr(observer.shutil, 'which', lambda _: '/native/muse')
+    monkeypatch.setattr(observer, 'prepare_muse_boundary', lambda scratch, env: (env, {'model': 'chosen'}), raising=False)
+    def preflight(*args, **kwargs):
+        called.append('preflight'); raise ValueError('tools remain available')
+    monkeypatch.setattr(observer, 'preflight_muse_boundary', preflight, raising=False)
+    monkeypatch.setattr(observer, '_bounded_process', lambda *a, **k: pytest.fail('paid call must not run'))
+    with pytest.raises(ValueError, match='tools remain available'):
+        observer.execute_native('muse', 'private registered input', timeout_seconds=45, max_cost_usd=1)
+    assert called == ['preflight']
