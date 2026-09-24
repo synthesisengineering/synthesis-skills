@@ -658,3 +658,89 @@ def test_observer_keeps_current_operation_admission_through_slow_io_and_readmits
     assert admitted == [SEAT]
     with pytest.raises(ValueError):
         run_admission.read_admission_observation(contexts[0])
+def _repairable_observer_run(engine, world, kind="quality_observation"):
+    declared = contract()
+    declared["criteria"][0].update(method=kind, evidence_ids=["review-slot"])
+    state, path = output(engine, world, create(engine, world, contract=declared))
+    def observe(context, payload):
+        return {"criterion_id": "accept", "artifact_id": "output",
+                "artifact_digest": context["artifacts"]["output"]["digest"], "passed": path.read_text() == "Corrected\n"}
+    engine.register_observer(kind, observe)
+    engine.register_evidence_source(kind, lambda record, context: record.get("provenance") == "engine-observation")
+    engine.register_acceptance(kind, lambda record, state, criterion, context: record["data"]["passed"] is True)
+    state = command(engine, world, state, "observe:" + kind, {"check_id": "output"}, command_id="review-slot")
+    return state, path
+
+
+def _bind_review(engine, world, state, attempt, **changes):
+    prior = state.get("criterion_evidence_bindings", {}).get("accept", {}).get("review-slot", {}).get("receipt_id", "review-slot")
+    payload = {"criterion_id": "accept", "slot": "review-slot", "receipt_id": attempt,
+               "expected_prior_receipt_id": prior, "expected_prior_digest": state["evidence"][prior]["digest"]}
+    return command(engine, world, state, "criterion.evidence.bind", {**payload, **changes})
+
+
+@pytest.mark.parametrize("kind", ["quality_observation", "consumer-check"])
+def test_corrected_attempt_routes_declared_slot_without_changing_contract(engine, world, kind):
+    state, path = _repairable_observer_run(engine, world, kind)
+    failed = deepcopy(state["observations"]["review-slot"])
+    contract_digest, profile_digest = state["contract_digest"], state["profile_digest"]
+    path.write_text("Corrected\n")
+    state = command(engine, world, state, "artifact.register", {"id": "output", "path": str(path), "role": "output", "retention": "durable", "required": True})
+    state = command(engine, world, state, "observe:" + kind, {"check_id": "output"}, command_id="review-attempt-2")
+    state = _bind_review(engine, world, state, "review-attempt-2")
+    assert state["contract_digest"] == contract_digest and state["profile_digest"] == profile_digest
+    assert state["observations"]["review-slot"] == failed
+    assert state["evidence"]["review-slot"]["digest"] == failed["digest"]
+    assert state["criterion_evidence_bindings"]["accept"]["review-slot"]["receipt_id"] == "review-attempt-2"
+    state = command(engine, world, state, "transition", {"status": "verifying"})
+    state = command(engine, world, state, "verify", {"criteria": ["accept"]})
+    bound = state["verification"]["accept"]["binding"]
+    assert bound["evidence_bindings"]["review-slot"] == {"receipt_id": "review-attempt-2", "digest": state["evidence"]["review-attempt-2"]["digest"]}
+    assert engine.completion_report(world["project"], state["run_id"], actor=world["actor"])["status"] == "PASS"
+
+
+@pytest.mark.parametrize("change", [{"slot": "undeclared"}, {"criterion_id": "other"},
+    {"expected_prior_receipt_id": "other"}, {"expected_prior_digest": "0" * 64}, {"receipt_id": "absent"}])
+def test_evidence_routing_rejects_wrong_slot_identity_or_cas(engine, world, change):
+    state, _ = _repairable_observer_run(engine, world)
+    with pytest.raises(ValueError):
+        _bind_review(engine, world, state, "review-slot", **change)
+    assert engine.load_run(world["project"], state["run_id"]) == state
+
+
+@pytest.mark.parametrize("kind", ["authority", "contract-amendment", "profile-amendment", "effect-authorization"])
+def test_observation_binding_cannot_route_authority_receipts(engine, world, kind):
+    state, _ = _repairable_observer_run(engine, world, kind)
+    with pytest.raises(ValueError):
+        _bind_review(engine, world, state, "review-slot")
+
+
+def test_routing_revalidates_current_artifact_and_invalidates_verification(engine, world):
+    state, path = _repairable_observer_run(engine, world)
+    state = _bind_review(engine, world, state, "review-slot")
+    path.write_text("Changed outside the reviewed snapshot\n")
+    with pytest.raises(ValueError):
+        _bind_review(engine, world, state, "review-slot")
+
+
+def test_core_observation_cannot_overwrite_registered_evidence_attempt(engine, world):
+    state = receipt(engine, world, create(engine, world), "consumer-check")
+    engine.register_observer("consumer-check", lambda context, payload: {"fixture": True})
+    with pytest.raises(ValueError):
+        command(engine, world, state, "observe:consumer-check", {"check_id": "consumer-check"}, command_id="consumer-check")
+
+
+def test_external_receipt_cannot_overwrite_an_attempt_identity(engine, world):
+    state = receipt(engine, world, create(engine, world), "consumer-check")
+    with pytest.raises(ValueError):
+        command(engine, world, state, "evidence.record", {"id": "consumer-check", "kind": "consumer-check", "artifact_id": "consumer-check"})
+
+
+def test_profile_amendment_clears_current_evidence_routing(engine, world):
+    state, _ = _repairable_observer_run(engine, world)
+    state = _bind_review(engine, world, state, "review-slot")
+    profile = deepcopy(state["profile"])
+    profile["items"].append({"id": "additional", "required": True, "criterion_ids": ["accept"]})
+    state = command(engine, world, state, "profile.amend", {"profile": profile})
+    assert state.get("criterion_evidence_bindings", {}) == {}
+    assert "review-slot" in state["observations"]

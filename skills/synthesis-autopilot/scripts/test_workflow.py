@@ -797,3 +797,71 @@ def test_later_ambiguous_report_does_not_reuse_earlier_partial_settlement(wf, st
     with pytest.raises(ValueError, match='accounting'):
         wf.validate_command(result, 'close', {'status': 'completed'}, context)
     assert wf.budget_summary(result)['tokens']['committed'] == 100
+def _failed_grade_and_repair(wf, state, context):
+    state = configured(wf, state, context)
+    context = quality_context(state, context, passed=False)
+    state = call(wf, state, context, "grade", criterion_id="c1", receipt_ids=["q1"], independent=True)
+    prior = copy.deepcopy(state["extensions"]["workflow"]["quality"]["c1"])
+    new_data = copy.deepcopy(context["evidence"]["q1"]["data"])
+    new_data.update(artifact_digest="e" * 64, observations={"expected": "ready", "observed": "ready", "consumer_verified": True}, findings=[])
+    context["artifacts"] = {**context["artifacts"], "a1": {"digest": "e" * 64}}
+    context = receipt(state, context, "q2", "quality_observation", new_data)
+    context["evidence"]["q2"]["digest"] = "f" * 64
+    context["evidence"].pop("q1")  # Old review is historical, not fresh for repaired bytes.
+    return state, context, prior
+
+
+def _repair_resolution(wf, state, context, prior, **changes):
+    data = {"criterion_id": "c1", "prior_grade_digest": prior.get("grade_digest", "old-source-missing"),
+            "prior_receipt_ids": ["q1"], "prior_receipt_digests": {"q1": "c" * 64},
+            "receipt_ids": ["q2"], "new_receipt_digests": {"q2": "f" * 64},
+            "changed_artifacts": {"a1": {"before": ["d" * 64], "after": "e" * 64}},
+            "changed_evidence": "The registered reviewed output changed and received a fresh independent review."}
+    return receipt(state, context, "resolution", "quality_resolution", {**data, **changes})
+
+
+def test_quality_repair_preserves_failed_fingerprints_and_history(wf, state, context):
+    state, context, prior = _failed_grade_and_repair(wf, state, context)
+    assert prior["receipt_bindings"] == {"q1": {"digest": "c" * 64, "artifact_id": "a1", "artifact_digest": "d" * 64}}
+    context = _repair_resolution(wf, state, context, prior)
+    repaired = call(wf, state, context, "grade", criterion_id="c1", receipt_ids=["q2"], independent=True, resolution_receipt_id="resolution")
+    flow = repaired["extensions"]["workflow"]
+    assert flow["quality"]["c1"]["verdict"] == "PASS" and flow["quality"]["c1"]["round"] == 2
+    assert flow["quality_history"]["c1"] == [prior]
+    assert flow["quality"]["c1"]["resolution"] == {"receipt_id": "resolution", "digest": context["evidence"]["resolution"]["digest"]}
+    assert repaired["contract_digest"] == state["contract_digest"]
+
+
+@pytest.mark.parametrize("changes", [
+    {"prior_grade_digest": "0" * 64}, {"prior_receipt_digests": {"q1": "0" * 64}},
+    {"new_receipt_digests": {"q2": "0" * 64}}, {"receipt_ids": ["other"]},
+    {"changed_artifacts": {}}, {"changed_artifacts": {"a1": {"before": ["e" * 64], "after": "e" * 64}}},
+    {"changed_artifacts": {"a2": {"before": ["d" * 64], "after": "e" * 64}}},
+])
+def test_quality_resolution_rejects_wrong_or_unchanged_evidence(wf, state, context, changes):
+    state, context, prior = _failed_grade_and_repair(wf, state, context)
+    context = _repair_resolution(wf, state, context, prior, **changes)
+    with pytest.raises(ValueError):
+        call(wf, state, context, "grade", criterion_id="c1", receipt_ids=["q2"], independent=True, resolution_receipt_id="resolution")
+
+
+def test_same_quality_ids_revalidate_proof_and_reject_replaced_bytes(wf, state, context):
+    state = configured(wf, state, context)
+    context = quality_context(state, context)
+    state = call(wf, state, context, "grade", criterion_id="c1", receipt_ids=["q1"], independent=True)
+    changed = copy.deepcopy(context)
+    changed["evidence"]["q1"]["digest"] = "0" * 64
+    with pytest.raises(ValueError):
+        call(wf, state, changed, "grade", criterion_id="c1", receipt_ids=["q1"], independent=True)
+    changed["verify_receipt"] = lambda *args: False
+    with pytest.raises(ValueError):
+        call(wf, state, changed, "grade", criterion_id="c1", receipt_ids=["q1"], independent=True)
+
+
+def test_repaired_grade_cannot_spend_another_quality_round(wf, state, context):
+    state, context, prior = _failed_grade_and_repair(wf, state, context)
+    context = _repair_resolution(wf, state, context, prior)
+    state = call(wf, state, context, "grade", criterion_id="c1", receipt_ids=["q2"], independent=True, resolution_receipt_id="resolution")
+    context = receipt(state, context, "q3", "quality_observation", context["evidence"]["q2"]["data"])
+    with pytest.raises(ValueError, match="budget"):
+        call(wf, state, context, "grade", criterion_id="c1", receipt_ids=["q3"], independent=True, resolution_receipt_id="resolution")

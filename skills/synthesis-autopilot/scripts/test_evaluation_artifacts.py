@@ -67,6 +67,40 @@ def test_real_prose_is_required_and_semantics_stay_uncalibrated(artifacts, tmp_p
     assert artifacts.grade_artifacts(bundle)['deterministic'] == 'FAIL'
 
 
+@pytest.mark.parametrize('task,prose', [
+    ('R05', 'The sample rose by four units. Those observations alone do not identify whether the intervention caused the increase.'),
+    ('R04', 'The claimed response time has no accessible primary evidence. Its expired receipt supplies no current support.'),
+    ('W01', 'A copy is made each day. Nobody has checked whether a usable system can be recovered from those copies.'),
+    ('W02', 'I know the author personally. The excerpt recommends modest trials; it supplies no comparison showing how well that advice works.'),
+])
+def test_document_structure_does_not_require_evaluator_phrases(artifacts, tmp_path, task, prose):
+    bundle = artifacts.prepare(task, tmp_path)
+    (Path(bundle['worker']) / artifacts.ARTIFACTS[task][0]).write_text(prose)
+    result = artifacts.grade_artifacts(bundle)
+    assert result['deterministic'] == 'PASS'
+    assert result['semantic'] == 'UNKNOWN'
+    assert result['deterministic_scope'] == 'document-structure-only'
+
+
+def test_keyword_stuffing_cannot_claim_document_semantic_acceptance(artifacts, tmp_path):
+    bundle = artifacts.prepare('R05', tmp_path)
+    (Path(bundle['worker']) / 'causal-analysis.md').write_text(
+        '4 causal underdetermined cannot establish. The intervention certainly caused the rise and no other explanation is possible.')
+    result = artifacts.grade_artifacts(bundle)
+    assert result['semantic'] == 'UNKNOWN'
+    assert result['deterministic_scope'] == 'document-structure-only'
+
+
+def test_empty_required_document_is_not_a_structural_pass(artifacts, tmp_path):
+    bundle = artifacts.prepare('W05', tmp_path)
+    worker = Path(bundle['worker'])
+    (worker/'title.txt').write_text('Prepared review')
+    (worker/'body.md').write_text('This is a complete draft supplied for independent reader-purpose and factual review.')
+    (worker/'disclosure.md').write_text(' \n')
+    result = artifacts.grade_artifacts(bundle)
+    assert result['deterministic'] == 'FAIL'
+
+
 def test_worker_cannot_write_its_own_browser_state_receipt(artifacts, tmp_path):
     bundle = artifacts.prepare('B02', tmp_path)
     worker = Path(bundle['worker'])
