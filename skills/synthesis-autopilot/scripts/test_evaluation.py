@@ -279,7 +279,7 @@ def test_baseline_semantic_failure_does_not_reject_verified_candidate_improvemen
 
 def test_semantic_cohort_uses_declared_threshold_without_discarding_failures():
     old = calibrated_registration()
-    reg = evaluation.preregister(tasks=old['tasks'], repetitions=old['repetitions'], lane=old['lane'],
+    reg = evaluation.preregister(tasks=list(old['tasks']), repetitions=old['repetitions'], lane=old['lane'],
         seed=47, arms=old['arms'], thresholds={**old['thresholds'], 'required_pass_rate': 0.75},
         semantic_calibration=old['semantic_calibration'])
     rows = [trial(reg, i) for i in range(len(reg['schedule']))]
