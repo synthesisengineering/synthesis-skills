@@ -4606,3 +4606,28 @@ def test_advisory_age_is_evaluated_once_per_row_in_each_board_validation(monkeyp
         observed.clear()
         assert MODULE.validate_sessions(sessions) == []
         assert sorted(observed) == sorted(session.legacy_id for session in sessions)
+
+
+def test_lease_repository_init_obeys_existing_git_deadline(tmp_path, monkeypatch):
+    import os
+    import time
+    bin_dir = tmp_path / 'bin'; bin_dir.mkdir()
+    started_marker = tmp_path / 'started'
+    fake_git = bin_dir / 'git'
+    fake_git.write_text('#!' + sys.executable + '\nfrom pathlib import Path\nimport time\n'
+                        + 'Path(' + repr(str(started_marker)) + ').write_text("started")\n'
+                        + 'time.sleep(2)\n')
+    fake_git.chmod(0o755)
+    monkeypatch.setenv('PATH', str(bin_dir) + os.pathsep + os.environ.get('PATH', ''))
+    monkeypatch.setattr(MODULE, 'LEASE_GIT_TIMEOUT', .2)
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match='initialization timed out'):
+        MODULE.lease_repository({'repository': tmp_path / 'lease.git'})
+    assert started_marker.read_text() == 'started'
+    assert time.monotonic() - started < 1.5
+
+
+def test_lease_repository_init_still_creates_real_bare_repository(tmp_path):
+    repository = tmp_path / 'lease.git'
+    assert MODULE.lease_repository({'repository': repository}) == repository
+    assert (repository / 'HEAD').is_file()

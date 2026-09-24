@@ -208,6 +208,14 @@ def test_missing_native_capability_uses_standard_close_fds_subprocess(native_git
     assert not calls[0].get("shell", False)
 
 
+def test_missing_ctypes_uses_the_same_isolated_subprocess_fallback(native_git, monkeypatch):
+    monkeypatch.setattr(native_git, "_API", None)
+    monkeypatch.setitem(sys.modules, "ctypes", None)
+    assert native_git._get_darwin_api() is None
+    done = native_git._spawn([sys.executable, "-I", "-c", "print('no-ctypes')"])
+    assert done.stdout == b"no-ctypes\n"
+
+
 def test_spawn_errors_release_owned_descriptors(native_git):
     def descriptors():
         result = set()

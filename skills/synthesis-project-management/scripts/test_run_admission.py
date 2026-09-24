@@ -271,3 +271,94 @@ def test_polyrepo_targets_require_each_exact_worktree_branch_and_path_claim(worl
                 workspace=f"{world['repo']} @ main; {source} @ feature")
     with pytest.raises(ValueError):
         admission(world, [world["plan"], target])
+
+
+def _hold_authority_lock(board, seconds):
+    """A separate real flock owner; no shared Python lock mock."""
+    script = '''import fcntl,sys,time
+from pathlib import Path
+board=Path(sys.argv[1])
+with (board.parent/'.active-sessions.lock').open('a+') as handle:
+ fcntl.flock(handle.fileno(),fcntl.LOCK_EX)
+ print('locked',flush=True)
+ time.sleep(float(sys.argv[2]))
+ board.write_text(board.read_text()+'\\nHolder finished its fenced operation.\\n')
+'''
+    process = subprocess.Popen([sys.executable, '-c', script, str(board), str(seconds)],
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    assert process.stdout.readline().strip() == 'locked'
+    return process
+
+
+def _finish_lock_holder(process):
+    if process.poll() is None: process.terminate()
+    process.wait(timeout=5)
+    process.stdout.close(); process.stderr.close()
+
+
+def test_mutation_snapshot_waits_for_existing_lease_owner_past_generic_five_seconds(world, monkeypatch):
+    import time
+    module = importlib.import_module('run_admission')
+    config = {'remote': 'fixture-only'}
+    monkeypatch.setattr(module.coordination, 'lease_configuration', lambda _: config)
+    calls = []
+    def fenced(board, received, operation, *, require_fence):
+        assert require_fence is True and received == config
+        assert 'Holder finished' in board.read_text()
+        calls.append(operation(board.read_text()))
+    monkeypatch.setattr(module.coordination, 'lease_update', fenced)
+    holder = _hold_authority_lock(world['board'], 5.3)
+    started = time.monotonic()
+    try:
+        text = module._snapshot(world['board'])
+    finally:
+        _finish_lock_holder(holder)
+    assert 5.1 <= time.monotonic() - started < 12
+    assert calls == [text] and 'Holder finished' in text
+
+
+def test_mutation_snapshot_uses_two_existing_git_deadlines_as_bounded_queue_budget(world, monkeypatch):
+    from contextlib import contextmanager
+    module = importlib.import_module('run_admission')
+    monkeypatch.setattr(module.coordination, 'LEASE_GIT_TIMEOUT', 2)
+    monkeypatch.setattr(module.coordination, 'LEASE_RETRIES', 3)
+    received = []
+    @contextmanager
+    def recorded(path, *, timeout=None):
+        received.append((path, timeout)); yield
+    monkeypatch.setattr(module, 'bounded_lock', recorded)
+    monkeypatch.setattr(module.coordination, 'lease_configuration', lambda _: None)
+    module._snapshot(world['board'])
+    assert received == [(world['board'].parent / '.active-sessions.lock', 2 * 2)]
+
+
+def test_snapshot_deadline_still_rejects_live_holder_without_running_lease_or_bypassing_lock(world, monkeypatch):
+    import time
+    module = importlib.import_module('run_admission')
+    original = module.bounded_lock
+    # Scale only the wait duration, after proving the production budget arrives.
+    def scaled(path, *, timeout=None):
+        assert timeout == 2 * module.coordination.LEASE_GIT_TIMEOUT
+        return original(path, timeout=.05)
+    monkeypatch.setattr(module, 'bounded_lock', scaled)
+    monkeypatch.setattr(module.coordination, 'lease_update', lambda *a, **k: pytest.fail('lock deadline must not bypass authority'))
+    holder = _hold_authority_lock(world['board'], 10)
+    started = time.monotonic()
+    try:
+        with pytest.raises(module.AdmissionError, match='timed out'):
+            module._snapshot(world['board'])
+        assert time.monotonic() - started < 1
+    finally:
+        _finish_lock_holder(holder)
+
+
+def test_passive_snapshot_remains_nonblocking_while_mutation_owner_holds_lock(world):
+    import time
+    module = importlib.import_module('run_admission')
+    holder = _hold_authority_lock(world['board'], 10)
+    started = time.monotonic()
+    try:
+        assert module._snapshot(world['board'], readonly=True).startswith('# Board')
+        assert time.monotonic() - started < 1
+    finally:
+        _finish_lock_holder(holder)

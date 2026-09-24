@@ -279,7 +279,7 @@ def test_local_and_recovery_observers_produce_real_core_event_evidence(bridge, o
     assert not ctx["verify_receipt"]("recovery-observation", "recovery", {})
 
 
-def test_delivery_survives_evidence_bookkeeping_but_not_a_new_wait(bridge, observed, world):
+def test_delivery_survives_evidence_bookkeeping_but_not_a_new_wait(bridge, observed, world, monkeypatch):
     engine = importlib.import_module("run_state")
     cap = importlib.import_module("capabilities")
     bridge.register_sources(engine.register_evidence_source)
@@ -299,6 +299,25 @@ def test_delivery_survives_evidence_bookkeeping_but_not_a_new_wait(bridge, obser
     current = command(engine, world, current, "delivery.record", {"receipt": "delivery"})
     pure = engine.inspect_context(current, world["actor"], project=world["project"])
     assert cap.wait_delivery_status(current, pure)["delivered"]
+    # The original delivery remains an authentic past event while its exact
+    # wait and receipt remain current. Intake recency is not a five-minute
+    # requirement to send the same waiting-user notification repeatedly.
+    later = datetime.fromisoformat(ctx["now"]) + timedelta(minutes=6)
+    monkeypatch.setattr(engine, "_now", lambda: later.isoformat())
+    pure = engine.inspect_context(current, world["actor"], project=world["project"])
+    assert cap.wait_delivery_status(current, pure)["delivered"]
+    for envelope in ("fresh", "backdated"):
+        incoming = record("delivery", data, {**ctx, "now": later.isoformat()} if envelope == "fresh" else ctx)
+        new_path = world["project"] / (envelope + "-delivery.json")
+        new_path.write_text(json.dumps(incoming))
+        current = command(engine, world, current, "artifact.register", {"id": envelope, "path": str(new_path), "role": "evidence", "retention": "durable", "required": False})
+        current = command(engine, world, current, "evidence.record", {"id": envelope, "kind": "delivery", "artifact_id": envelope})
+        with pytest.raises(ValueError, match="receipt"):
+            command(engine, world, current, "delivery.record", {"receipt": envelope})
+    monkeypatch.setattr(engine, "_now", lambda: (later + timedelta(hours=2)).isoformat())
+    pure = engine.inspect_context(current, world["actor"], project=world["project"])
+    assert not cap.wait_delivery_status(current, pure)["delivered"]
+    monkeypatch.setattr(engine, "_now", lambda: later.isoformat())
     current = command(engine, world, current, "wait.add", {"id": "publish", "kind": "user", "reason": "Publication choice"})
     pure = engine.inspect_context(current, world["actor"], project=world["project"])
     assert not cap.wait_delivery_status(current, pure)["delivered"]
