@@ -174,6 +174,9 @@ def namespace_denial(result, settings):
         # Bubblewrap v0.9.0 bubblewrap.c raw_clone failure diagnostics.
         r'bwrap: No permissions to creating new namespace, likely because the kernel does not allow non-privileged user namespaces\..*',
         r'bwrap: Creating new namespace failed: (?:Operation not permitted|Permission denied)',
+        # network.c configures loopback after unshare; restricted userns can
+        # deny CAP_NET_ADMIN here even though namespace creation succeeded.
+        r'bwrap: loopback: Failed RTM_NEWADDR: (?:Operation not permitted|Permission denied)',
     ))
     return (result.get('returncode', 0) != 0 and observed
             and settings.get(APPARMOR_ENABLED) == 'Y' and settings.get(RESTRICT_USERNS) == '1')
