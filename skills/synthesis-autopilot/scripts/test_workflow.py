@@ -310,7 +310,8 @@ def artifact_only_dispatch(wf,state,context):
     return result,context,brief
 
 
-def test_artifact_only_dispatch_uses_observed_native_child_without_inventing_a_seat(wf,state,context):
+@pytest.mark.parametrize('reviewer',['claude:independent-review','codex:root-native'])
+def test_artifact_only_dispatch_uses_observed_native_child_without_inventing_a_seat(wf,state,context,reviewer):
     result,context,brief=artifact_only_dispatch(wf,state,context)
     result=call(wf,result,context,'dispatch',**brief)
     child=result['extensions']['workflow']['children']['/root/artifact_worker']
@@ -320,7 +321,7 @@ def test_artifact_only_dispatch_uses_observed_native_child_without_inventing_a_s
     result=call(wf,result,context,'return',child_id=brief['child_id'],disposition='complete',artifact_ids=['a1'],evidence_ids=[],reason='Returned artifact only')
     context['artifacts']={'a1':{'digest':'d'*64}}
     context=receipt(result,context,'integration','child_integration',{
-        'child_id':brief['child_id'],'task_id':'build','producer':brief['child_id'],'reviewer':'claude:independent-review',
+        'child_id':brief['child_id'],'task_id':'build','producer':brief['child_id'],'reviewer':reviewer,
         'integration_owner':'root-seat','artifact_ids':['a1'],'artifact_digests':{'a1':'d'*64},
         'criteria':['c1'],'accepted':True,'actual':{'searches':2}})
     result=call(wf,result,context,'integrate',child_id=brief['child_id'],receipt_id='integration')

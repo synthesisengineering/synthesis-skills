@@ -207,3 +207,54 @@ def test_worker_spec_declares_output_fields_without_answer_values():
         schema = case["worker"]["output_schema"]
         assert set(schema["required"]) == set(case["grader"]["expected_value"])
         assert "expected_value" not in json.dumps(case["worker"])
+
+
+def calibrated_registration():
+    reg = preregistration()
+    calibration = evaluation.calibrate(grader="fixed", reviewer="independent", rubric={"quality":"purpose"},
+        controls=[{"id":"a","expected":"PASS","observed":"PASS","artifact_digest":"a"*64},
+                  {"id":"b","expected":"FAIL","observed":"FAIL","artifact_digest":"b"*64}],
+        provenance={"method":"blind","source":"native-review"})
+    return evaluation.preregister(tasks=["S01","R02"], repetitions=2, lane="controlled", seed=47,
+        arms=reg["arms"],thresholds=reg["thresholds"],semantic_calibration=calibration)
+
+
+def test_quality_regression_threshold_is_applied_per_domain():
+    reg = calibrated_registration()
+    rows = [trial(reg, i) for i in range(len(reg["schedule"]))]
+    for row in rows:
+        row["outcome"].update(semantic="PASS", quality_score=0.8 if row["arm"] == "candidate" and row["task"] == "R02" else 1.0)
+    report = evaluation.compare(reg, rows)
+    assert report["quality_regression_status"] == "FAIL"
+    assert report["default_promotion_ready"] is False
+    assert report["quality_comparisons"]["R"]["baseline"]["regression"] == pytest.approx(0.2)
+
+
+def test_comparison_exposes_uncertainty_and_does_not_infer_first_attempt_from_rescues():
+    reg = preregistration()
+    rows = [trial(reg, i) for i in range(len(reg["schedule"]))]
+    report = evaluation.compare(reg, rows)
+    for row in report["arms"].values():
+        assert row["first_attempt_known"] is False
+        assert row["first_attempt_pass_rate"] is None
+        assert row["pass_rate_interval"][0] < 1.0
+        assert row["wall_seconds_variance"] == 0
+    assert report["quality_regression_status"] == "UNKNOWN"
+
+
+def test_invalid_quality_score_refused_and_failed_baseline_not_erased():
+    reg = calibrated_registration()
+    rows = [trial(reg, i) for i in range(len(reg["schedule"]))]
+    for row in rows:
+        row["outcome"].update(semantic="PASS", quality_score=1.0)
+        row["attempts"] = [{"deterministic":"PASS"}]
+    bad = copy.deepcopy(rows)
+    bad[0]["outcome"]["quality_score"] = float("nan")
+    with pytest.raises(ValueError):
+        evaluation.compare(reg, bad)
+    baseline = next(row for row in rows if row["arm"] == "baseline")
+    baseline["outcome"]["deterministic"] = "FAIL"
+    report = evaluation.compare(reg, rows)
+    assert report["arms"]["baseline"]["failed"] == 1
+    assert report["candidate_acceptance"]["mechanical"] == "PASS"
+    assert report["arms"]["candidate"]["first_attempt_pass_rate"] == 1

@@ -94,3 +94,22 @@ def test_native_user_amendment_is_exact_instruction_not_assistant_or_tool_text(r
     receipt["data"]["replacement_digest"] = "b" * 64
     world["transcript"].write_text(world["transcript"].read_text().replace('"type": "user", "uuid": "user-approval"', '"type": "assistant", "uuid": "user-approval"'))
     assert not review.verify_source(receipt, observed)
+
+
+def test_codex_delegation_requires_native_dispatch_ack_and_exact_canonical_target(review, observed):
+    data = {"child_id": "/root/worker", "mode": "artifact-only", "integration_owner": observed["binding"]["session_uuid"],
+            "task_id": "build", "paths": ["/fixture/project/output"], "deliverables": ["Output"], "criteria": ["accept"],
+            "reservation_id": "work", "integration_reservation_id": "integrate", "return_contract": ["artifact_ids", "evidence_ids", "disposition"],
+            "cancellation": "Return partial artifacts when cancelled"}
+    envelope = {"schema_version": 1, "kind": "delegation", "bindings": {
+        key: observed["state"][key] for key in ("run_id", "contract_digest", "profile_digest")}, "data": data}
+    call = {"type": "response_item", "payload": {"type": "function_call", "namespace": "collaboration",
+        "name": "followup_task", "call_id": "dispatch", "arguments": json.dumps({"target": "/root/worker",
+        "message": json.dumps({"autopilot_delegation": envelope})})}}
+    ack = {"type": "response_item", "payload": {"type": "function_call_output", "call_id": "dispatch", "output": ""}}
+    source = {"kind": "native-dispatch", "call_id": "dispatch"}
+    assert review.parse_codex_dispatch([call, ack], source) == envelope
+    assert review.parse_codex_dispatch([call], source) is None
+    assert review.parse_codex_dispatch([call, ack, ack], source) is None
+    call["payload"]["arguments"] = json.dumps({"target": "/root/foreign", "message": json.dumps({"autopilot_delegation": envelope})})
+    assert review.parse_codex_dispatch([call, ack], source) is None
