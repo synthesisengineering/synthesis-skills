@@ -4,6 +4,7 @@ The sole approved profile is the distro-packaged AppArmor 4.0.1 profile whose
 semantics are below. Primary source:
 https://gitlab.com/apparmor/apparmor/-/raw/v4.0.1/profiles/apparmor/profiles/extras/bwrap-userns-restrict
 """
+import hashlib
 import importlib.util
 import json
 import os
@@ -63,15 +64,30 @@ profile unpriv_bwrap flags=(attach_disconnected) {
 '''
 
 
-def run(argv, *, timeout=10, env=None, limit=32768):
+def run(argv, *, timeout=10, env=None, limit=32768, input_text=None):
     """Bound each output stream and the complete process-group lifetime."""
     result = {'argv': argv}
+    input_stream = None
     try:
+        if input_text is not None:
+            data = input_text.encode('utf-8')
+            if len(data) > 32768:
+                raise ValueError('Input exceeds the reviewed 32768-byte bound')
+            result.update(stdin_bytes=len(data), stdin_sha256=hashlib.sha256(data).hexdigest())
+            # An anonymous regular file cannot block on a child that never reads
+            # stdin, and does not ask a privileged parser to reopen a pathname.
+            input_stream = tempfile.TemporaryFile(mode='w+b')
+            input_stream.write(data)
+            input_stream.seek(0)
         proc = subprocess.Popen(argv, env=ENV if env is None else env,
+                                stdin=input_stream if input_stream is not None else subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 start_new_session=True)
-    except OSError as error:
+    except (OSError, UnicodeError, ValueError) as error:
         return {**result, 'error': type(error).__name__ + ': ' + str(error)}
+    finally:
+        if input_stream is not None:
+            input_stream.close()
     chunks = {'stdout': bytearray(), 'stderr': bytearray()}
     deadline = time.monotonic() + timeout
     try:
@@ -134,33 +150,49 @@ def validate_profile(text):
         raise ValueError('Distro profile differs from the reviewed bwrap attachment/child-capability policy')
 
 
-def trusted_file(path):
+def check_parents(path, *, trusted_parents=True):
     for parent in path.parents:
         metadata = parent.lstat()
-        if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != 0 or metadata.st_mode & 0o022:
+        if not stat.S_ISDIR(metadata.st_mode) or (trusted_parents and (metadata.st_uid != 0 or metadata.st_mode & 0o022)):
             raise ValueError('Unsafe profile parent: ' + str(parent))
+
+
+def trusted_file(path, *, trusted_parents=True):
+    check_parents(path, trusted_parents=trusted_parents)
     metadata = path.lstat()
     if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0 or metadata.st_mode & 0o022 or metadata.st_nlink != 1:
         raise ValueError('Unsafe profile file: ' + str(path))
     with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as stream:
         opened = os.fstat(stream.fileno())
-        if (opened.st_dev, opened.st_ino) != (metadata.st_dev, metadata.st_ino):
+        fields = lambda value: (value.st_dev, value.st_ino, value.st_mode, value.st_uid,
+                                value.st_gid, value.st_nlink, value.st_size, value.st_mtime_ns)
+        if fields(opened) != fields(metadata):
             raise ValueError('Profile changed before read')
         data = stream.read(32769)
+        if fields(os.fstat(stream.fileno())) != fields(opened):
+            raise ValueError('Profile changed during read')
     if len(data) > 32768:
         raise ValueError('Profile exceeds the review bound')
     after = path.lstat()
-    fields = lambda value: (value.st_dev, value.st_ino, value.st_mode, value.st_size, value.st_mtime_ns)
     if fields(metadata) != fields(after):
         raise ValueError('Profile changed during read')
     return data.decode('utf-8')
 
 
 def read_approved_profile():
-    text = trusted_file(PROFILE)
+    # Hosted runners make /usr/share writable. Its packaged leaf is still
+    # checked, captured and compared with the exact reviewed semantics; only
+    # these captured bytes reach the parser. Includes keep trusted ancestors.
+    text = trusted_file(PROFILE, trusted_parents=False)
     validate_profile(text)
+    # Stdin parsing skips AppArmor's filename-based administrator signals.
+    for directory in ('disable', 'force-complain'):
+        flag = Path('/etc/apparmor.d') / directory / PROFILE.name
+        if os.path.lexists(flag):
+            raise ValueError('Administrator profile flag prevents loading: ' + str(flag))
     for path in (Path('/etc/apparmor.d/local/bwrap-userns-restrict'),
                  Path('/etc/apparmor.d/local/unpriv_bwrap')):
+        check_parents(path)
         if os.path.lexists(path) and profile_tokens(trusted_file(path)):
             raise ValueError('Unreviewed local profile override: ' + str(path))
     return text
@@ -221,12 +253,11 @@ def ensure_sandbox(command, interpreter):
         return report
     try:
         text = read_approved_profile()
-        import hashlib
         report['profile_sha256'] = hashlib.sha256(text.encode()).hexdigest()
     except (OSError, UnicodeError, ValueError) as error:
         report['reason'] = str(error)
         return report
-    loaded = checked(['/usr/bin/sudo', '-n', '/usr/sbin/apparmor_parser', '--replace', str(PROFILE)])
+    loaded = checked(['/usr/bin/sudo', '-n', '/usr/sbin/apparmor_parser', '--replace'], input_text=text)
     if not succeeded(loaded):
         report['reason'] = 'Reviewed profile did not load'
         return report

@@ -31,6 +31,8 @@ Historical renewal checks retain cancellation evidence without imposing a
 lifetime call limit on an otherwise valid lease.
 Linux CI verifies actual sandbox startup before running consumers and admits
 only the reviewed distribution profile for a matching namespace setup denial.
+The loader consumes validated profile bytes through bounded anonymous input,
+retaining administrator disable signals and trusted local include paths.
 Expired launcher deadlines terminate before worker dispatch.
 
 ## [4.144.1] - 2026-09-23
