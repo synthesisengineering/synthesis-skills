@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.145.3** reduces repeated path and directory work while retaining
+full verification. Incomplete traversal and changes to the project root fail closed.
+
 Release **4.145.2** reduces whole-project checkpoint overhead while retaining
 complete content verification, live ownership checks and bounded Stop behavior.
 

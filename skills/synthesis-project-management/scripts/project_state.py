@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+import fnmatch
 import hashlib
 import json
 import os
@@ -742,15 +743,48 @@ def _released_versions(
     return versions
 
 
+def _project_paths(project: Path, pattern: str | None = None) -> Iterable[Path]:
+    """Enumerate once per directory; unreadable or replaced inputs fail closed."""
+    pending = [(project, True)]
+    while pending:
+        directory, is_root = pending.pop()
+        if not is_root and directory.is_symlink():
+            raise ProjectStateError(f"project directory became a symlink: {directory}")
+        with os.scandir(directory) as iterator:
+            entries = list(iterator)
+        children = []
+        for entry in entries:
+            is_directory = entry.is_dir(follow_symlinks=False)
+            selected = pattern is None or fnmatch.fnmatch(entry.name, pattern)
+            if is_directory or selected:
+                path = directory / entry.name
+                if is_directory:
+                    children.append((path, False))
+                if selected:
+                    yield path
+        pending.extend(reversed(children))
+
+
 def _content_hashes(project: Path, controlling_plan: str | None = None) -> dict[str, str]:
-    paths = [path for path in project.rglob("*.md") if path.is_file()]
-    hashes = {
-        str(path.resolve().relative_to(project.resolve())): _sha_file(path)
-        for path in sorted(set(paths))
-    }
+    root = project.resolve()
+    root_parts = root.parts
+    prefix_size = len(root_parts)
+    paths = [path for path in _project_paths(project, "*.md") if path.is_file()]
+    hashes: dict[str, str] = {}
+    for path in sorted(set(paths)):
+        resolved = path.resolve()
+        parts = resolved.parts
+        # Retain resolved file identities without resolving the same project
+        # ancestors again for every Markdown file.
+        if resolved.anchor != root.anchor or parts[:prefix_size] != root_parts:
+            raise ValueError(f"content path is outside project: {path}")
+        relative = str(Path(*parts[prefix_size:]))
+        hashes[relative] = _sha_file(path)
     if controlling_plan:
         plan_ref = _required_plan(project, controlling_plan)
         hashes[plan_ref.relative_path] = _sha_file(plan_ref.resolved)
+    if project.resolve() != root:
+        raise ProjectStateError("project root changed while hashing durable files")
     return dict(sorted(hashes.items()))
 
 
@@ -1072,11 +1106,11 @@ def _working_digest(project: Path) -> str:
     project_parts = project.parts
     project_anchor = project.anchor
     prefix_size = len(project_parts)
-    for path in sorted(item for item in project.rglob("*") if item.is_file()):
+    for path in sorted(item for item in _project_paths(project) if item.is_file()):
         parts = path.parts
         if ".git" in parts:
             continue
-        # rglob supplies lexical descendants. Slice their validated prefix
+        # Traversal supplies lexical descendants. Slice their validated prefix
         # instead of walking every ancestor for every file's relative name.
         if path.anchor != project_anchor or parts[:prefix_size] != project_parts:
             raise ValueError(f"digest path is outside project: {path}")

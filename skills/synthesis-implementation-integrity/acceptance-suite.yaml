@@ -1,8 +1,8 @@
 schema: 2
-suite: checkpoint-digest-deadline-4-145-2
+suite: checkpoint-runtime-overhead-4-145-3
 membership: closed
-production_entry_point: project_state.py checkpoint_project and validate_checkpoint
-  shared whole-project digest
+production_entry_point: project_state.py shared checkpoint hashing, coordination.py
+  exact lease fetch, and live_receipt.py bounded native identity parser
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing
   and client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
@@ -10,104 +10,259 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures prove exact complete digest coverage, ordering, independent
-  reads, mutation invalidation and bounded lexical name construction. Actual project
-  latency and installed native-envelope acceptance require their separately retained
-  receipts. No action authority is granted.
+unverified_remainder: Fixtures establish complete independent hashes and traversal,
+  root/directory/error refusal, one remote fetch on success with immutable tip/content
+  binding and failed-fetch absence checks, and chunk-bounded transcript parsing with
+  preserved grammar, identity, read and memory limits. Actual latency and installed
+  native-envelope acceptance require separate retained receipts. No action authority
+  is granted.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
-  - dl-006
+  - ch-007
 - path: .codex-plugin/plugin.json
   cases:
-  - dl-006
+  - ch-007
 - path: .muse-plugin/plugin.json
   cases:
-  - dl-006
+  - ch-007
 - path: CHANGELOG.md
-  cases:
-  - dl-001
-  - dl-002
-  - dl-003
-  - dl-004
-  - dl-005
-  - dl-006
+  cases: &id001
+  - ch-001
+  - ch-002
+  - ch-003
+  - ch-004
+  - ch-005
+  - ch-006
+  - ch-007
+  - ch-008
+  - ch-009
+  - ch-010
+  - ch-011
+  - ch-012
+  - lf-001
+  - lf-002
+  - lf-003
+  - lf-004
+  - lf-005
+  - lf-006
+  - lf-007
+  - lf-008
+  - ts-001
+  - ts-002
+  - ts-003
+  - ts-004
+  - ts-005
+  - ts-006
 - path: README.md
-  cases:
-  - dl-001
-  - dl-002
-  - dl-003
-  - dl-004
-  - dl-005
-  - dl-006
+  cases: *id001
 - path: skills/synthesis-project-management/SKILL.md
   cases:
-  - dl-001
-  - dl-002
-  - dl-003
-  - dl-004
-  - dl-005
-  - dl-006
+  - ch-001
+  - ch-002
+  - ch-003
+  - ch-004
+  - ch-005
+  - ch-006
+  - ch-007
+  - ch-008
+  - ch-009
+  - ch-010
+  - ch-011
+  - ch-012
+  - lf-001
+  - lf-002
+  - lf-003
+  - lf-004
+  - lf-005
+  - lf-006
+  - lf-007
+  - lf-008
 - path: skills/synthesis-project-management/scripts/project_state.py
   cases:
-  - dl-001
-  - dl-002
-  - dl-003
-  - dl-004
-  - dl-005
-  - dl-006
+  - ch-001
+  - ch-002
+  - ch-003
+  - ch-004
+  - ch-005
+  - ch-006
+  - ch-007
+  - ch-008
+  - ch-009
+  - ch-010
+  - ch-011
+  - ch-012
 - path: skills/synthesis-project-management/scripts/test_project_state.py
   cases:
-  - dl-001
-  - dl-002
-  - dl-003
-  - dl-004
-  - dl-005
-  - dl-006
+  - ch-001
+  - ch-002
+  - ch-003
+  - ch-004
+  - ch-005
+  - ch-006
+  - ch-007
+  - ch-008
+  - ch-009
+  - ch-010
+  - ch-011
+  - ch-012
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
-  cases:
-  - dl-001
-  - dl-002
-  - dl-003
-  - dl-004
-  - dl-005
-  - dl-006
-- path: skills/synthesis-autopilot/scripts/test_delegation_boundary.py
-  cases:
-  - dl-007
+  cases: *id001
+- path: skills/synthesis-project-management/scripts/coordination.py
+  cases: &id002
+  - lf-001
+  - lf-002
+  - lf-003
+  - lf-004
+  - lf-005
+  - lf-006
+  - lf-007
+  - lf-008
+- path: skills/synthesis-project-management/scripts/test_coordination.py
+  cases: *id002
+- path: skills/synthesis-agent-conformance/SKILL.md
+  cases: &id003
+  - ts-001
+  - ts-002
+  - ts-003
+  - ts-004
+  - ts-005
+  - ts-006
+- path: skills/synthesis-agent-conformance/scripts/live_receipt.py
+  cases: *id003
+- path: skills/synthesis-agent-conformance/scripts/test_streaming_transcript.py
+  cases: *id003
 cases:
-- id: dl-001
+- id: ch-001
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_working_digest_preserves_complete_coverage_and_order
-  motivating_defect: working digest preserves complete coverage and order
-- id: dl-002
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_content_hashes_preserve_complete_selection_names_and_reads
+  motivating_defect: preserve complete selection names and reads
+- id: ch-002
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_working_digest_recomputes_changed_new_deleted_and_linked_content
-  motivating_defect: working digest recomputes changed new deleted and linked content
-- id: dl-003
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_content_hashes_recompute_each_file_set_and_content
+  motivating_defect: recompute each file set and content
+- id: ch-003
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_working_digest_rereads_every_included_file_independently
-  motivating_defect: working digest rereads every included file independently
-- id: dl-004
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_content_hashes_keep_alias_order_and_final_plan_overwrite
+  motivating_defect: keep alias order and final plan overwrite
+- id: ch-004
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_working_digest_avoids_per_file_relative_ancestor_walks
-  motivating_defect: working digest avoids per file relative ancestor walks
-- id: dl-005
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_content_hashes_use_constant_root_resolution_without_ancestor_walks
+  motivating_defect: use constant root resolution without ancestor walks
+- id: ch-005
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_working_digest_rejects_non_descendant_from_traversal
-  motivating_defect: working digest rejects non descendant from traversal
-- id: dl-006
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_content_hashes_reject_outside_resolved_target_before_read
+  motivating_defect: reject outside resolved target before read
+- id: ch-006
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_content_hashes_reject_root_retarget_after_last_read
+  motivating_defect: reject root retarget after last read
+- id: ch-007
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
-  motivating_defect: Release metadata and archive contract must remain coherent.
-- id: dl-007
+  motivating_defect: Release metadata must remain coherent.
+- id: ch-008
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_interrupted_native_worker_keeps_partial_provider_evidence
-  motivating_defect: Observe partial worker evidence before deterministically expiring the fixture clock; process startup load must not decide the assertion.
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_hash_traversal_matches_retained_rglob_corpus
+  motivating_defect: matches retained rglob corpus
+- id: ch-009
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_hash_traversal_scans_each_directory_once_per_fresh_pass
+  motivating_defect: scans each directory once per fresh pass
+- id: ch-010
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_hash_traversal_does_not_accept_incomplete_io
+  motivating_defect: does not accept incomplete io
+- id: ch-011
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_hash_traversal_rechecks_file_type_after_enumeration
+  motivating_defect: rechecks file type after enumeration
+- id: ch-012
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_hash_traversal_rejects_queued_directory_replaced_by_link
+  motivating_defect: rejects queued directory replaced by link
+- id: lf-001
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_success_uses_one_remote_call_and_exact_tip
+  motivating_defect: lease fetch success uses one remote call and exact tip
+- id: lf-002
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_verified_absence_never_reads_stale_tip_or_authorizes_bootstrap
+  motivating_defect: lease fetch verified absence never reads stale tip or authorizes
+    bootstrap
+- id: lf-003
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_captured_tip_and_board_stay_bound_during_local_ref_race
+  motivating_defect: lease fetch captured tip and board stay bound during local ref
+    race
+- id: lf-004
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_failure_requires_fresh_absence_and_never_uses_local_tip
+  motivating_defect: lease fetch failure requires fresh absence and never uses local
+    tip
+- id: lf-005
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_transport_exception_is_not_retried
+  motivating_defect: lease fetch transport exception is not retried
+- id: lf-006
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_accepts_typed_object_ids_and_uses_immutable_reads
+  motivating_defect: lease fetch accepts typed object ids and uses immutable reads
+- id: lf-007
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_rejects_invalid_tip_before_reading_tree
+  motivating_defect: lease fetch rejects invalid tip before reading tree
+- id: lf-008
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_rejects_failed_local_commands_with_plausible_stdout
+  motivating_defect: lease fetch rejects failed local commands with plausible stdout
+- id: ts-001
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_streaming_transcript.py::test_string_scan_batches_complete_escapes_per_chunk
+  motivating_defect: string scan batches complete escapes per chunk
+- id: ts-002
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_streaming_transcript.py::test_batched_string_scan_keeps_every_escape_split_and_json_decoding
+  motivating_defect: batched string scan keeps every escape split and json decoding
+- id: ts-003
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_streaming_transcript.py::test_batched_string_scan_rejects_invalid_tokens_at_every_split
+  motivating_defect: batched string scan rejects invalid tokens at every split
+- id: ts-004
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_streaming_transcript.py::test_batched_string_scan_keeps_exact_encoded_projection_cap
+  motivating_defect: batched string scan keeps exact encoded projection cap
+- id: ts-005
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_streaming_transcript.py::test_batched_escape_prefix_preserves_all_records_and_late_evidence
+  motivating_defect: batched escape prefix preserves all records and late evidence
+- id: ts-006
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_streaming_transcript.py::test_dense_escaped_record_keeps_bounded_reads_and_memory
+  motivating_defect: dense escaped record keeps bounded reads and memory

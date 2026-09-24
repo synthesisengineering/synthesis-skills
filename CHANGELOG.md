@@ -4,6 +4,22 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.145.3] - 2026-09-24
+
+Project content hashing resolves the canonical project root once per pass and
+verifies it again after all reads. Every selected file is still resolved and
+hashed independently; containment, alias ordering and controlling-plan checks
+remain active. A root retarget during hashing is rejected. The shared change
+reduces repeated path work without relaxing checkpoint or Stop deadlines.
+Both hash passes enumerate each directory once, retain fresh file-type checks,
+and close directory iterators before descent. Unreadable directories and queued
+directories replaced by symlinks fail closed instead of yielding incomplete evidence.
+Successful coordination reads fetch the exact remote reference without a redundant
+preliminary query, then bind board content to its validated immutable object ID.
+Failed fetches cannot use retained local refs. Native transcript validation batches
+valid string spans within the existing buffer while retaining complete record
+inspection, identity-conflict checks and fixed memory/depth limits.
+
 ## [4.145.2] - 2026-09-24
 
 Project checkpoints avoid repeated ancestor walks when naming files in large
