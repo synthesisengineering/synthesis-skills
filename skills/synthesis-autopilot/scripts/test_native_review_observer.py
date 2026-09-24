@@ -35,7 +35,7 @@ def review(tmp_path):
         "binding": {"session_uuid": "owner"},
         "state": {"run_id": "run-one", "contract_digest": "a" * 64, "profile_digest": "b" * 64,
                   "contract": {"criteria": [{"id": "accept", "artifact_ids": ["draft"]}]},
-                  "extensions": {"workflow": {"budget": {"reservations": {
+                  "extensions": {"workflow": {"budget": {"limits": {"usd_micros": {"enforcement": "forecast"}}, "reservations": {
                       "review-one": {"status": "reserved", "category": "review", "amounts": {"wall_millis": 120000, "usd_micros": 2000000}}}}}}}}
     arguments = {"mode": "native-cli", "client": "claude", "criterion_id": "accept", "artifact_id": "draft",
                  "calibration_manifest_id": "gold", "reservation_id": "review-one", "timeout_seconds": 120,
@@ -96,6 +96,17 @@ def test_review_without_reserved_resources_does_not_launch(observer, review, mon
     monkeypatch.setattr(observer, "execute_native", lambda *a, **kw: pytest.fail("must not execute"))
     with pytest.raises(ValueError, match="reservation"):
         observer.observe_native_cli_review(context, args)
+
+
+@pytest.mark.parametrize("client", ["claude", "codex", "muse"])
+def test_forecast_only_native_review_cannot_accept_hard_currency_policy(observer, review, monkeypatch, client):
+    context, args = review
+    args['client'] = client
+    context['state']['extensions']['workflow']['budget']['limits']['usd_micros']['enforcement'] = 'hard'
+    monkeypatch.setattr(observer, 'execute_native', lambda *a, **kw: pytest.fail('hard cap cannot launch forecast adapter'))
+    with pytest.raises(ValueError, match='forecast'):
+        observer.observe_native_cli_review(context, args)
+    assert not (context['project']/'resources').exists()
 
 
 def test_interrupted_attempt_cannot_repeat_provider_call(observer, review, monkeypatch):

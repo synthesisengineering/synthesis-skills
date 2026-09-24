@@ -273,3 +273,13 @@ def test_project_recovery_accepts_documented_metadata_and_owned_path_identity(ar
     recovery['remaining']['A']=[]
     (worker/'projects/A/recovery.json').write_text(json.dumps(recovery))
     assert artifacts.grade_artifacts(bundle)['deterministic']=='FAIL'
+
+
+@pytest.mark.parametrize('task', ['B01','B02','B03','B04','B05'])
+def test_browser_work_product_is_declared_as_observed_target_not_file(artifacts, tmp_path, task):
+    bundle = artifacts.prepare(task, tmp_path)
+    public = json.loads((Path(bundle['worker'])/'task.json').read_text())
+    contract = public.get('artifact_format', '')
+    assert 'browser-target' in contract and 'live' in contract and 'not a file' in contract
+    assert 'independent controller' in contract
+    assert public['required_artifacts'] == ['browser-target']
