@@ -629,3 +629,17 @@ def test_native_current_registration_refuses_later_cancellation(bridge,observed,
     append_claude_tool(world,'CronDelete',{'id':'worker02'},{'id':'worker02','deleted':True},'late-cancel')
     with pytest.raises(ValueError):
         bridge.observe_native_registration(observed,'active-create','active-list',capability_receipt='cap',monitor_create_call_id='active-monitor-create')
+
+
+def test_native_pair_cancellation_cannot_hide_surviving_backstop(bridge,observed,world):
+    state=observed['state'];requested=(datetime.fromisoformat(observed['now'])-timedelta(seconds=3)).isoformat()
+    state['extensions']['capabilities']={'continuation':{'job_id':'worker02','observer_id':'native-job:monitor2','surface':'claude-code-cli','cancel_requested_at':requested,
+        'binding':{**{k:observed['binding'][k] for k in bridge.BINDING_KEYS},**{k:state[k] for k in ('run_id','contract_digest','profile_digest')}}}}
+    append_claude_tool(world,'CronDelete',{'id':'worker02'},{'id':'worker02','deleted':True},'delete-worker')
+    append_claude_tool(world,'CronList',{}, {'jobs':[{'id':'monitor2'}]},'pair-readback')
+    data=bridge.observe_native_cleanup('continuation-cancellation',{'job_id':'worker02'},observed)
+    assert data['cancelled'] is False
+    append_claude_tool(world,'CronDelete',{'id':'monitor2'},{'id':'monitor2','deleted':True},'delete-monitor')
+    append_claude_tool(world,'CronList',{}, {'jobs':[]},'pair-empty')
+    data=bridge.observe_native_cleanup('continuation-cancellation',{'job_id':'worker02'},observed)
+    assert data['cancelled'] is True
