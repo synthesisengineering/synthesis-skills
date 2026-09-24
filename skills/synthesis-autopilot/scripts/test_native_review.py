@@ -218,3 +218,63 @@ def test_native_calibration_rederives_blind_positive_and_negative_controls(revie
     append_claude_tool(world, "Agent", {"prompt": json.dumps({"autopilot_review": request})}, {"autopilot_review": response}, "review-call")
     receipt = record("quality_observation", {**response["data"], "source": {"kind": "native-agent", "call_id": "review-call"}}, observed)
     assert review.verify_source(receipt, observed) is (case in {"valid", "failed-calibration"})
+
+
+def _mutate_after_first_native_read(monkeypatch, path, mutation):
+    original = Path.open
+    changed = False
+    class Reader:
+        def __init__(self, stream): self.stream = stream
+        def __enter__(self): return self
+        def __exit__(self, *args): return self.stream.__exit__(*args)
+        def __getattr__(self, name): return getattr(self.stream, name)
+        def read(self, *args):
+            nonlocal changed
+            value = self.stream.read(*args)
+            if not changed:
+                changed = True
+                mutation()
+            return value
+    def opened(target, *args, **kwargs):
+        stream = original(target, *args, **kwargs)
+        return Reader(stream) if target == path and args and args[0] == 'rb' else stream
+    monkeypatch.setattr(Path, 'open', opened)
+
+
+def test_native_snapshot_accepts_identical_completed_prefix_during_append(review, tmp_path, monkeypatch):
+    path = tmp_path / 'native.jsonl'
+    path.write_bytes(b'{"id":"complete"}\n')
+    def append():
+        with path.open('ab') as stream:
+            stream.write(b'{"id":"later"}\n{"partial":')
+    _mutate_after_first_native_read(monkeypatch, path, append)
+    assert review._records(path) == [{'id': 'complete'}]
+
+
+@pytest.mark.parametrize('mutation', ['in-place', 'truncate', 'replace', 'symlink'])
+def test_native_snapshot_rejects_changed_or_replaced_selected_prefix(review, tmp_path, monkeypatch, mutation):
+    path = tmp_path / 'native.jsonl'
+    original = b'{"id":"complete"}\n'
+    path.write_bytes(original)
+    replacement = tmp_path / 'replacement.jsonl'
+    replacement.write_bytes(original)
+    def change():
+        if mutation == 'in-place': path.write_bytes(original.replace(b'complete', b'changed!'))
+        elif mutation == 'truncate': path.write_bytes(b'')
+        elif mutation == 'replace': replacement.replace(path)
+        else:
+            path.unlink()
+            path.symlink_to(replacement)
+    _mutate_after_first_native_read(monkeypatch, path, change)
+    with pytest.raises(ValueError): review._records(path)
+
+
+def test_native_snapshot_uses_only_complete_initial_lines_and_keeps_bound(review, tmp_path, monkeypatch):
+    path = tmp_path / 'native.jsonl'
+    path.write_bytes(b'{"id":"old-outside-window"}\n{"id":"inside"}\n{"unfinished":')
+    monkeypatch.setattr(review, 'MAX_TRANSCRIPT_BYTES', 36)
+    assert review._records(path) == [{'id': 'inside'}]
+    path.write_bytes(b'{"unfinished":')
+    with pytest.raises(ValueError): review._records(path)
+    path.write_bytes(b'{invalid}\n')
+    with pytest.raises(ValueError): review._records(path)
