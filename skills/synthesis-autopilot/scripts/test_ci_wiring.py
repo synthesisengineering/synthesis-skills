@@ -142,12 +142,18 @@ def test_ci_sandbox_main_reports_setup_failures(ci_sandbox, monkeypatch, capsys,
     assert report['status'] == 'FAIL' and report['error_type'] == ('ImportError' if failure == 'import' else 'ValueError')
 
 
-def test_ci_sandbox_classifies_only_upstream_namespace_denials(ci_sandbox):
+@pytest.mark.parametrize('stderr,eligible', [
+    ('bwrap: No permissions to creating new namespace, likely because the kernel does not allow non-privileged user namespaces. On e.g. debian this can be enabled with extra configuration.', True),
+    ('bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted', True),
+    ('bwrap: loopback: Failed RTM_NEWADDR: Permission denied', True),
+    ('bwrap: loopback: Failed RTM_NEWADDR: Invalid argument', False),
+    ('bwrap: loopback: Failed RTM_NEWADDR: Input/output error', False),
+    ('bwrap: writing uid_map: Operation not permitted', False),
+    ('bwrap: setting up gid map: Permission denied', False),
+])
+def test_ci_sandbox_classifies_only_upstream_namespace_denials(ci_sandbox, stderr, eligible):
     state = {ci_sandbox.APPARMOR_ENABLED: 'Y', ci_sandbox.RESTRICT_USERNS: '1'}
-    upstream = 'bwrap: No permissions to creating new namespace, likely because the kernel does not allow non-privileged user namespaces. On e.g. debian this can be enabled with extra configuration.'
-    assert ci_sandbox.namespace_denial(_result(1, stderr=upstream), state)
-    assert not ci_sandbox.namespace_denial(_result(1, stderr='bwrap: writing uid_map: Operation not permitted'), state)
-    assert not ci_sandbox.namespace_denial(_result(1, stderr='bwrap: setting up gid map: Permission denied'), state)
+    assert ci_sandbox.namespace_denial(_result(1, stderr=stderr), state) is eligible
 
 
 @pytest.mark.parametrize('settings', [{}, {'enabled': 'Y'},
