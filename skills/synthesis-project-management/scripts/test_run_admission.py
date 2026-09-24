@@ -129,6 +129,34 @@ def test_native_transcript_spoof_and_symlink_are_rejected(world):
         admission(world, [world["project"] / "linked/escaped.md"])
 
 
+def test_admission_observation_is_single_operation_and_cannot_be_serialized_or_rebound(world):
+    from copy import deepcopy
+    module = importlib.import_module("run_admission")
+    proof = admission(world, readonly=True)
+    with module.admission_scope(proof, world["actor"], world["project"]) as token:
+        context = {"admission_observation": token, "actor": world["actor"], "project": world["project"], "binding": dict(proof)}
+        assert module.read_admission_observation(context) == proof
+        assert deepcopy(token) is token
+        with pytest.raises(TypeError):
+            json.dumps(token)
+        changed = deepcopy(context)
+        changed["binding"]["claim_hash"] = "invented"
+        with pytest.raises(ValueError):
+            module.read_admission_observation(changed)
+        changed = deepcopy(context)
+        changed["actor"]["native_payload"]["session_id"] = "foreign"
+        with pytest.raises(ValueError):
+            module.read_admission_observation(changed)
+    with pytest.raises(ValueError):
+        module.read_admission_observation(context)
+    with pytest.raises(ValueError):
+        with module.admission_scope(proof, world["actor"], world["project"]):
+            pass
+    with pytest.raises(ValueError):
+        with module.admission_scope(dict(proof), world["actor"], world["project"]):
+            pass
+
+
 def test_claim_digest_changes_on_revocation_but_not_heartbeat(world):
     first = admission(world)
     write_board(world, heartbeat="2026-09-23T13:00:00Z")

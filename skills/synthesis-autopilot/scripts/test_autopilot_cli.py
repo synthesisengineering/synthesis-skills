@@ -140,3 +140,25 @@ def test_stop_retains_selected_corrupt_legacy_failure_after_indexing(world):
     assert result["continue"] is False
     assert "legacy" in result["systemMessage"].lower()
     assert "UNRESOLVED" in result["systemMessage"]
+
+
+def test_first_task_doctor_explains_missing_home_without_creating_authority(world):
+    before = world["board"].read_bytes()
+    unregistered = world["repo"] / "projects/new-project"
+    done = cli(world, "doctor", "--project", str(unregistered), "--project-id", "new-project")
+    assert done.returncode == 0, done.stderr
+    report = json.loads(done.stdout)
+    assert report["durable_admission"]["status"] == "UNKNOWN"
+    assert report["read_only_in_session"] is True
+    assert report["unattended_admitted"] is False
+    assert "project management" in report["next_step"].lower()
+    assert not unregistered.exists()
+    assert before == world["board"].read_bytes()
+
+
+def test_first_task_doctor_validates_real_registered_ownership(world):
+    done = cli(world, "doctor", "--project", str(world["project"]), "--project-id", "alpha")
+    assert done.returncode == 0, done.stderr
+    report = json.loads(done.stdout)
+    assert report["durable_admission"]["status"] == "PASS"
+    assert report["unattended_admitted"] is False

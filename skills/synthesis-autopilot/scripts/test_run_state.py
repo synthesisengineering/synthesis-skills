@@ -573,3 +573,21 @@ def test_terminal_cleanup_can_observe_existing_spec_without_reopening_or_new_art
     with pytest.raises(ValueError):
         engine.observe(world["project"], state["run_id"], "continuation-cancellation", {"check_id": "unregistered"},
                        expected_revision=state["revision"], command_id="cleanup-unregistered", actor=world["actor"], runtime_root=world["runtime"])
+
+
+def test_central_sources_share_admission_only_during_one_current_inspection(engine, world):
+    from run_admission import read_admission_observation
+    state = receipt(engine, world, create(engine, world), "local-source", {"fact": "fixture"})
+    contexts = []
+    def source(record, context):
+        contexts.append(context)
+        return read_admission_observation(context)["session_uuid"] == SEAT
+    engine.register_evidence_source("local-source", source)
+    context = engine.inspect_context(state, world["actor"])
+    assert context["verify_receipt"]("local-source", "local-source", {}) is True
+    with pytest.raises(ValueError):
+        read_admission_observation(contexts[0])
+    assert "admission_observation" not in context
+    write_board(world, status="released")
+    with pytest.raises(ValueError):
+        engine.inspect_context(state, world["actor"])
