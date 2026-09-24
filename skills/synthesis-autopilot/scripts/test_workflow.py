@@ -427,3 +427,47 @@ def test_forecast_overrun_is_measured_without_claiming_hard_enforcement(wf, stat
     result = call(wf, result, context, "settle", reservation_id="worker", actual={"tokens": 20})
     assert wf.budget_summary(result)["tokens"]["spent"] == 20
     assert wf.budget_summary(result)["tokens"]["enforcement"] == "forecast"
+
+
+@pytest.mark.parametrize("condition", ["unfinished", "children", "quality", "usage", "stale_profile", "stale_quality"])
+def test_core_completed_close_cannot_bypass_workflow_obligations(wf, state, context, condition):
+    result = graphed(wf, state, context)
+    flow = result["extensions"]["workflow"]
+    for node in flow["graph"]["nodes"].values():
+        node["status"] = "done"
+    for criterion in ("c1", "c2"):
+        typed = quality_context(result, context)["evidence"]["q1"]["data"]
+        typed["criterion_id"] = criterion
+        typed["artifact_id"] = "a1" if criterion == "c1" else "a2"
+        context = receipt(result, context, criterion, "quality_observation", typed)
+        context["evidence"][criterion]["artifact_id"] = typed["artifact_id"]
+        flow["quality"][criterion] = {"verdict": "PASS", "receipt_ids": [criterion], "round": 1, "independent": True}
+    if condition == "unfinished":
+        flow["graph"]["nodes"]["build"]["status"] = "blocked"
+    elif condition == "children":
+        flow["children"]["lost"] = {"disposition": "running", "audit_status": "required"}
+    elif condition == "quality":
+        flow["quality"]["c1"]["verdict"] = "UNKNOWN"
+    elif condition == "usage":
+        flow["budget"] = {"reservations": {"lost": {"status": "unknown"}}}
+    elif condition == "stale_profile":
+        result["profile_digest"] = "e" * 64
+    elif condition == "stale_quality":
+        context["evidence"].pop("c1")
+    with pytest.raises(ValueError):
+        wf.validate_command(result, "close", {"status": "completed"}, context)
+    wf.validate_command(result, "close", {"status": "incomplete", "reason": "Preserved work"}, context)
+
+
+def test_completion_guard_accepts_sound_fresh_outcomes(wf, state, context):
+    result = graphed(wf, state, context)
+    flow = result["extensions"]["workflow"]
+    for node in flow["graph"]["nodes"].values():
+        node["status"] = "done"
+    for criterion in ("c1", "c2"):
+        typed = quality_context(result, context)["evidence"]["q1"]["data"]
+        typed.update(criterion_id=criterion, artifact_id="a1" if criterion == "c1" else "a2")
+        context = receipt(result, context, criterion, "quality_observation", typed)
+        context["evidence"][criterion]["artifact_id"] = typed["artifact_id"]
+        flow["quality"][criterion] = {"verdict": "PASS", "receipt_ids": [criterion], "round": 1, "independent": True}
+    wf.validate_command(result, "close", {"status": "completed"}, context)
