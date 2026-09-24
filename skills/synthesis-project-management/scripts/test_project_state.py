@@ -1094,3 +1094,143 @@ def test_board_refresh_still_rejects_unproven_or_failed_authority(tmp_path, monk
     monkeypatch.setattr(state.subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess(
         args[0], 0, json.dumps({"lease": lease, "problems": []}), ""))
     assert state._refresh_coordination_board(tmp_path / "board.md", passive_stop=True) is not None
+
+
+def working_digest_fixture(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    deep = "/".join(["deep"] + [f"level-{i:02}" for i in range(24)] + ["雪.txt"])
+    contents = {
+        ".gitignore": b"ignored/\n",
+        ".hidden": b"hidden\x00bytes",
+        "a/child.txt": b"child",
+        "a.txt": b"sibling with a shared prefix",
+        deep: "deep Unicode content: café\n".encode(),
+        "ignored/output.bin": bytes(range(256)),
+        "nested/.pytest_cache/state.json": b'{"cached":true}',
+        "z-last.md": b"last\n",
+    }
+    for name, content in contents.items():
+        path = project / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    for name in (".git/HEAD", "nested/.git/objects/ignored"):
+        path = project / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"Git metadata is excluded")
+    external = tmp_path / "outside.txt"
+    external.write_bytes(b"external file target")
+    external_dir = tmp_path / "outside-directory"
+    external_dir.mkdir()
+    (external_dir / "not-traversed.txt").write_bytes(b"directory link is not traversed")
+    (project / "link-internal").symlink_to("z-last.md")
+    (project / "link-external").symlink_to(external)
+    (project / "link-directory").symlink_to(external_dir, target_is_directory=True)
+    (project / "link-missing").symlink_to(tmp_path / "missing-target")
+    contents["link-internal"] = contents["z-last.md"]
+    contents["link-external"] = external.read_bytes()
+    # Path ordering compares path components, so a/child precedes a.txt.
+    order = [".gitignore", ".hidden", "a/child.txt", "a.txt", deep,
+             "ignored/output.bin", "link-external", "link-internal",
+             "nested/.pytest_cache/state.json", "z-last.md"]
+    return project, contents, order
+
+
+def expected_working_digest(contents, order):
+    entries = [(name, hashlib.sha256(contents[name]).hexdigest()) for name in order]
+    return hashlib.sha256(json.dumps(entries, separators=(",", ":")).encode()).hexdigest()
+
+
+@pytest.mark.parametrize("root_form", ["absolute", "relative", "symlink"])
+def test_working_digest_preserves_complete_coverage_and_order(tmp_path, monkeypatch, root_form):
+    project, contents, order = working_digest_fixture(tmp_path)
+    if root_form == "relative":
+        monkeypatch.chdir(tmp_path)
+        project = Path("project")
+    elif root_form == "symlink":
+        alias = tmp_path / "project-alias"
+        alias.symlink_to(project, target_is_directory=True)
+        project = alias
+    observed = []
+    original = state._sha_file
+    monkeypatch.setattr(state, "_sha_file", lambda path: observed.append(path) or original(path))
+    assert state._working_digest(project) == expected_working_digest(contents, order)
+    assert observed == [project / name for name in order]
+
+
+@pytest.mark.parametrize("change", ["changed", "new", "deleted", "symlink-target"])
+def test_working_digest_recomputes_changed_new_deleted_and_linked_content(tmp_path, change):
+    project, contents, order = working_digest_fixture(tmp_path)
+    before = state._working_digest(project)
+    assert before == expected_working_digest(contents, order)
+    if change == "changed":
+        contents["a.txt"] = b"changed bytes"
+        (project / "a.txt").write_bytes(contents["a.txt"])
+    elif change == "new":
+        contents["new-untracked.txt"] = b"new untracked bytes"
+        (project / "new-untracked.txt").write_bytes(contents["new-untracked.txt"])
+        order.insert(order.index("z-last.md"), "new-untracked.txt")
+    elif change == "deleted":
+        (project / "a.txt").unlink()
+        del contents["a.txt"]
+        order.remove("a.txt")
+    else:
+        contents["link-external"] = b"changed external file target"
+        (tmp_path / "outside.txt").write_bytes(contents["link-external"])
+    after = state._working_digest(project)
+    assert after == expected_working_digest(contents, order)
+    assert after != before
+
+
+def test_working_digest_rereads_every_included_file_independently(tmp_path, monkeypatch):
+    project, contents, order = working_digest_fixture(tmp_path)
+    reads = []
+    original = state._sha_file
+    monkeypatch.setattr(state, "_sha_file", lambda path: reads.append(path) or original(path))
+    assert state._working_digest(project) == expected_working_digest(contents, order)
+    assert state._working_digest(project) == expected_working_digest(contents, order)
+    assert reads == [project / name for name in order] * 2
+
+
+@pytest.mark.parametrize("depth", [0, 32])
+def test_working_digest_avoids_per_file_relative_ancestor_walks(tmp_path, monkeypatch, depth):
+    project = tmp_path / "project"
+    project.mkdir()
+    parent = project.joinpath(*(f"level-{i:02}" for i in range(depth)))
+    parent.mkdir(parents=True, exist_ok=True)
+    for index in range(8):
+        (parent / f"file-{index}.txt").write_bytes(str(index).encode())
+    calls = {"relative_to": 0, "parents": 0}
+    original_relative = Path.relative_to
+    original_parents = Path.parents.fget
+
+    def relative(self, *args, **kwargs):
+        calls["relative_to"] += 1
+        return original_relative(self, *args, **kwargs)
+
+    def parents(self):
+        calls["parents"] += 1
+        return original_parents(self)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "relative_to", relative)
+        isolated.setattr(Path, "parents", property(parents))
+        digest = state._working_digest(project)
+    assert len(digest) == 64
+    assert calls == {"relative_to": 0, "parents": 0}
+
+
+def test_working_digest_rejects_non_descendant_from_traversal(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    project.mkdir()
+    other = tmp_path / "project-sibling" / "file.txt"
+    other.parent.mkdir()
+    other.write_bytes(b"must not enter this digest")
+    original = Path.rglob
+
+    def traversal(self, pattern):
+        return iter([other]) if self == project else original(self, pattern)
+
+    monkeypatch.setattr(Path, "rglob", traversal)
+    with pytest.raises(ValueError):
+        state._working_digest(project)
