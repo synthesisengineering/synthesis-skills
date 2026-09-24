@@ -954,4 +954,47 @@ def test_native_cli_completion_requires_actual_bound_launch_observation(wf,state
     result,context,brief=native_cli_dispatch(wf,state,context)
     result=call(wf,result,context,'dispatch',**brief)
     with pytest.raises(ValueError):
-        call(wf,result,context,'child_return',child_id='child-a',disposition='complete',artifact_ids=[],evidence_ids=[],reason='self reported')
+        call(wf,result,context,'return',child_id='child-a',disposition='complete',artifact_ids=[],evidence_ids=[],reason='self reported')
+
+
+def launched_native_child(wf,state,context):
+    result,context,brief=native_cli_dispatch(wf,state,context)
+    result=call(wf,result,context,'dispatch',**brief)
+    data={'schema_version':1,'child_id':'child-a','client':'claude',
+          'producer':'claude:actual-child','file_contract_digest':wf._digest(brief['file_contract']),
+          'boundary':{'status':'ENFORCED','mechanism':'claude-native','configuration_digest':'f'*64},
+          'preservation':'PASS','violations':[], 'output_manifest':{},
+          'terminal':'completed','native_exit_code':0,'elapsed_millis':1000,
+          'usage':{'tokens':None,'usd_micros':None},'receipt_path':'/fixture/retained.json','receipt_digest':'a'*64}
+    context=receipt(result,context,'worker-observed','native_worker',data)
+    return result,context,data
+
+
+def test_worker_record_binds_actual_producer_without_quality_acceptance(wf,state,context):
+    result,context,data=launched_native_child(wf,state,context)
+    result=call(wf,result,context,'worker_record',child_id='child-a',receipt_id='worker-observed')
+    child=result['extensions']['workflow']['children']['child-a']
+    assert child['producer']=='claude:actual-child'
+    assert child['worker_receipt_id']=='worker-observed'
+    assert child['disposition']=='running' and child['audit_status']=='required'
+    assert child['authority_granted'] is False
+    assert result['status']=='running'
+    result=call(wf,result,context,'return',child_id='child-a',disposition='complete',artifact_ids=[],evidence_ids=['worker-observed'],reason='actual bounded worker complete')
+    assert result['extensions']['workflow']['children']['child-a']['audit_status']=='required'
+
+
+@pytest.mark.parametrize('change',[{'file_contract_digest':'0'*64},{'client':'muse'},
+    {'child_id':'foreign-child'},{'producer':'codex:foreign'},{'boundary':{'status':'UNVERIFIED'}},
+    {'producer':None}])
+def test_worker_record_rejects_unbound_or_unenforced_observation(wf,state,context,change):
+    result,context,data=launched_native_child(wf,state,context)
+    context['evidence']['worker-observed']['data'].update(change)
+    with pytest.raises(ValueError):call(wf,result,context,'worker_record',child_id='child-a',receipt_id='worker-observed')
+
+
+def test_worker_failed_preservation_cannot_be_reported_complete(wf,state,context):
+    result,context,data=launched_native_child(wf,state,context)
+    context['evidence']['worker-observed']['data'].update(preservation='FAIL',violations=['preserved input changed'])
+    result=call(wf,result,context,'worker_record',child_id='child-a',receipt_id='worker-observed')
+    with pytest.raises(ValueError):
+        call(wf,result,context,'return',child_id='child-a',disposition='complete',artifact_ids=[],evidence_ids=[],reason='worker said done')
