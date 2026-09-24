@@ -1640,3 +1640,194 @@ def test_stranded_entry_with_blocked_receipt_names_the_head_remedy(tmp_path: Pat
     assert "--retirement-session" not in entry["remedy"]
     assert f"--retirement-head {'d' * 40}" in entry["remedy"]
     assert f"accepted form: {entry['remedy']}" in entry["alert"]
+
+
+@pytest.fixture
+def argument_limit_paths(tmp_path: Path):
+    """Real files whose distinct relative names exceed this host's exec limit."""
+    repo, remote, cfg = repository(tmp_path)
+    parent = repo / "projects" / "alpha"
+    for depth in range(4):
+        parent /= str(depth) + "p" * 79
+    parent.mkdir(parents=True)
+    sample = parent / ("item-000000-" + "x" * 110 + ".md")
+    width = len(os.fsencode(sample.relative_to(repo))) + 1
+    limit = os.sysconf("SC_ARG_MAX")
+    count = (limit + 65536) // width + 1
+    paths = [parent / (f"item-{number:06d}-" + "x" * 110 + ".md")
+             for number in range(count)]
+    for path in paths:
+        path.write_text("before\n", encoding="utf-8")
+    relative = [str(path.relative_to(repo)) for path in paths]
+    assert sum(len(os.fsencode(path)) + 1 for path in relative) > limit
+    # Fixture setup uses a directory containing only these synthetic files.
+    command("git", "add", "--", str(parent.relative_to(repo)), cwd=repo)
+    command("git", "commit", "-qm", "seed paths", cwd=repo)
+    command("git", "push", "-q", "origin", "main", cwd=repo)
+    return repo, remote, cfg, paths, relative
+
+
+def test_source_readiness_real_paths_exceed_arg_max(argument_limit_paths):
+    repo, _remote, _cfg, paths, _relative = argument_limit_paths
+    (repo / "unrelated.md").write_text("foreign dirty\n", encoding="utf-8")
+    result = MODULE.source_groups_remote_ready({repo: paths})[repo]
+    assert result["action"] == "source-remote-ready"
+    assert result["files"] == len(paths)
+    paths[-1].write_text("own dirty at end\n", encoding="utf-8")
+    assert MODULE.source_groups_remote_ready({repo: paths})[repo]["action"] == "source-local-only"
+
+
+@pytest.mark.parametrize("flow", ["explicit", "subset-retry"])
+def test_large_exact_commit_is_one_commit_and_preserves_foreign_index(
+    argument_limit_paths, monkeypatch, flow
+):
+    repo, _remote, cfg, paths, relative = argument_limit_paths
+    for path in paths:
+        path.write_text("after\n", encoding="utf-8")
+    foreign = repo / "unrelated.md"
+    foreign.write_text("foreign staged\n", encoding="utf-8")
+    command("git", "add", "--", "unrelated.md", cwd=repo)
+    foreign.write_text("foreign unstaged\n", encoding="utf-8")
+    before_head = command("git", "rev-parse", "HEAD", cwd=repo)
+    # These real files were tracked by the fixture's actual seed commit. Cache
+    # only that proven index lookup to avoid thousands of redundant processes;
+    # status, commit, hooks, index updates, fetch and push remain real Git calls.
+    tracked = set(command("git", "ls-files", "-z", cwd=repo).split("\0"))
+    original = MODULE.git
+    def cached_tracked(root, *args, **kwargs):
+        if args[:2] == ("ls-files", "--error-unmatch"):
+            return (0, args[-1], "") if args[-1] in tracked else (1, "", "not tracked")
+        return original(root, *args, **kwargs)
+    monkeypatch.setattr(MODULE, "git", cached_tracked)
+    if flow == "explicit":
+        result = MODULE.checkpoint_explicit_paths(repo, paths, cfg, dry_run=False)
+    else:
+        result = {"repo": str(repo), "name": repo.name, "action": "hook-blocked", "alert": "fixture prior refusal"}
+        MODULE._retry_per_path_commit(repo, "main", relative, cfg, result,
+                                      dict(zip(paths, relative)), set(), [])
+    assert result["action"] == "committed-pushed"
+    assert command("git", "rev-list", "--count", before_head + "..HEAD", cwd=repo) == "1"
+    committed = set(command("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "-z", "HEAD", cwd=repo).split("\0")) - {""}
+    assert committed == set(relative)
+    assert command("git", "show", "HEAD:unrelated.md", cwd=repo) == "one"
+    assert command("git", "show", ":unrelated.md", cwd=repo) == "foreign staged"
+    assert foreign.read_text() == "foreign unstaged\n"
+
+
+@pytest.mark.parametrize("flow", ["explicit", "subset-retry"])
+def test_large_refused_commit_rolls_back_only_own_intent(
+    argument_limit_paths, monkeypatch, flow
+):
+    repo, _remote, cfg, tracked_paths, _relative = argument_limit_paths
+    paths = [p.with_suffix(".new") for p in tracked_paths]
+    for path in paths:
+        path.write_text("new own\n", encoding="utf-8")
+    relative = [str(p.relative_to(repo)) for p in paths]
+    foreign = repo / "unrelated.md"
+    foreign.write_text("foreign staged\n", encoding="utf-8")
+    command("git", "add", "--", "unrelated.md", cwd=repo)
+    before_head = command("git", "rev-parse", "HEAD", cwd=repo)
+    tracked = set(command("git", "ls-files", "-z", cwd=repo).split("\0"))
+    original = MODULE.git
+    prepared = False
+    commit_calls = []
+    def retained_refusal(root, *args, **kwargs):
+        nonlocal prepared
+        if args[:2] == ("ls-files", "--error-unmatch"):
+            return (0, args[-1], "") if args[-1] in tracked else (1, "", "not tracked")
+        if args[:2] == ("add", "--intent-to-add"):
+            if not prepared:
+                # Prepare exactly the fixture's real untracked files once;
+                # rollback below is the real production Git subprocess.
+                command("git", "add", "--intent-to-add", "--", str(paths[0].parent.relative_to(repo)), cwd=repo)
+                prepared = True
+            return 0, "", ""
+        if args and args[0] == "commit":
+            commit_calls.append(args)
+            return 1, "", "fixture hook refusal"
+        return original(root, *args, **kwargs)
+    monkeypatch.setattr(MODULE, "git", retained_refusal)
+    manifest = write_manifest("large-refused", list(map(str, paths)), list(map(str, paths)))
+    before_manifest = manifest.read_bytes()
+    if flow == "explicit":
+        result = MODULE.checkpoint_explicit_paths(repo, paths, cfg, dry_run=False)
+    else:
+        result = {"repo": str(repo), "name": repo.name, "action": "hook-blocked", "alert": "fixture prior refusal"}
+        MODULE._retry_per_path_commit(repo, "main", relative, cfg, result,
+                                      dict(zip(paths, relative)), set(), [])
+    assert result["alert"] and len(commit_calls) == 1
+    assert command("git", "rev-parse", "HEAD", cwd=repo) == before_head
+    assert set(command("git", "ls-files", "-z", cwd=repo).split("\0")) == tracked
+    assert command("git", "show", ":unrelated.md", cwd=repo) == "foreign staged"
+    assert all(p.read_text() == "new own\n" for p in paths)
+    assert manifest.read_bytes() == before_manifest
+
+
+@pytest.mark.parametrize("name", ["report[1].md", "question?.md", "star*.md", " leading.md", "line\nbreak.md", "quote\".md", "café.md", ":(glob)*.md"])
+def test_exact_checkpoint_literal_names_do_not_capture_siblings(tmp_path, name):
+    repo, _remote, cfg = repository(tmp_path)
+    parent = repo / "projects" / "alpha"
+    own = parent / name
+    own.write_text("own\n", encoding="utf-8")
+    siblings = [parent / "report1.md", parent / "questionX.md", parent / "star-other.md", parent / "other.md"]
+    for sibling in siblings:
+        sibling.write_text("foreign\n", encoding="utf-8")
+    result = MODULE.checkpoint_explicit_paths(repo, [own], cfg, dry_run=False)
+    assert result["action"] == "committed-pushed"
+    committed = set(command("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "-z", "HEAD", cwd=repo).split("\0")) - {""}
+    assert committed == {str(own.relative_to(repo))}
+    assert all(s.read_text() == "foreign\n" for s in siblings)
+    assert all(command("git", "ls-files", "--", str(s.relative_to(repo)), cwd=repo) == "" for s in siblings)
+
+
+def test_source_readiness_literal_wildcard_ignores_foreign_sibling(tmp_path):
+    repo, _remote, _cfg = repository(tmp_path)
+    own = repo / "source*.py"
+    own.write_text("own\n", encoding="utf-8")
+    command("git", "--literal-pathspecs", "add", "--", own.name, cwd=repo)
+    command("git", "commit", "-qm", "seed literal", cwd=repo)
+    command("git", "push", "-q", "origin", "main", cwd=repo)
+    (repo / "source-foreign.py").write_text("foreign\n", encoding="utf-8")
+    assert MODULE.source_groups_remote_ready({repo: [own]})[repo]["action"] == "source-remote-ready"
+
+
+
+def test_status_failure_retains_exact_session_manifest(tmp_path, monkeypatch):
+    repo, _remote, cfg = repository(tmp_path)
+    own = repo / "projects" / "alpha" / "CONTEXT.md"
+    own.write_text("uncommitted own\n", encoding="utf-8")
+    manifest = write_manifest("status-unavailable", [str(own)], [str(own)])
+    before = manifest.read_bytes()
+    original = MODULE.git
+    def unavailable(root, *args, **kwargs):
+        if args and args[0] == "status":
+            return 1, "", "fixture status unavailable"
+        return original(root, *args, **kwargs)
+    monkeypatch.setattr(MODULE, "git", unavailable)
+    results, _ = MODULE.flush_pending_session(cfg, "status-unavailable", dry_run=False)
+    assert any(result.get("alert") for result in results)
+    assert manifest.read_bytes() == before
+    assert command("git", "show", "HEAD:projects/alpha/CONTEXT.md", cwd=repo) == "one"
+    assert own.read_text() == "uncommitted own\n"
+
+
+def test_real_refusing_hook_preserves_manifest_worktree_and_foreign_index(tmp_path):
+    repo, _remote, cfg = repository(tmp_path)
+    own = repo / "projects" / "alpha" / "new.md"
+    own.write_text("uncommitted own\n", encoding="utf-8")
+    foreign = repo / "unrelated.md"
+    foreign.write_text("foreign staged\n", encoding="utf-8")
+    command("git", "add", "--", "unrelated.md", cwd=repo)
+    manifest = write_manifest("hook-refusal", [str(own)], [str(own)])
+    before_manifest = manifest.read_bytes()
+    before_head = command("git", "rev-parse", "HEAD", cwd=repo)
+    hook = tmp_path / "fixture-hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\nprintf 'retained fixture refusal\\n' >&2\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o700)
+    results, _ = MODULE.flush_pending_session(cfg, "hook-refusal", dry_run=False)
+    assert any(result["action"] == "hook-blocked" for result in results)
+    assert manifest.read_bytes() == before_manifest
+    assert command("git", "rev-parse", "HEAD", cwd=repo) == before_head
+    assert command("git", "show", ":unrelated.md", cwd=repo) == "foreign staged"
+    assert command("git", "ls-files", "--", str(own.relative_to(repo)), cwd=repo) == ""
+    assert own.read_text() == "uncommitted own\n"
