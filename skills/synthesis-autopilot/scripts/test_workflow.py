@@ -925,7 +925,7 @@ def native_cli_dispatch(wf, state, context):
     result, context, brief = typed_dispatch(wf, state, context)
     context['binding']['native_ref'] = 'codex:parent'
     context['admissions']['child-admission'].update(session_uuid='root-seat',native_ref='codex:parent')
-    brief.update(mode='native-cli',client='claude')
+    brief.update(mode='native-cli',client='claude',required_capabilities=['read','write','edit','shell'])
     return result, context, brief
 
 
@@ -1026,3 +1026,32 @@ def test_native_worker_cannot_integrate_contradictory_known_usage(wf,state,conte
         'artifact_digests':{},'actual':{'searches':1}}
     context=receipt(result,context,'review','child_integration',audit)
     with pytest.raises(ValueError):call(wf,result,context,'integrate',child_id='child-a',receipt_id='review')
+
+
+@pytest.mark.parametrize('requirements',[None,[],['read'],['write'],['edit'],['shell'],['network'],['artifact-generation','artifact-generation']])
+def test_muse_dispatch_never_silently_downgrades_requirements(wf,state,context,requirements):
+    result,context,brief=native_cli_dispatch(wf,state,context)
+    brief['client']='muse'
+    if requirements is None:brief.pop('required_capabilities')
+    else:brief['required_capabilities']=requirements
+    with pytest.raises(ValueError):call(wf,result,context,'dispatch',**brief)
+
+
+def test_muse_artifact_dispatch_declares_its_exact_requirements(wf,state,context,monkeypatch):
+    import delegation_boundary
+    monkeypatch.setattr(delegation_boundary,'_muse_host_available',lambda:True,raising=False)
+    result,context,brief=native_cli_dispatch(wf,state,context)
+    brief.update(client='muse',required_capabilities=['artifact-generation'])
+    result=call(wf,result,context,'dispatch',**brief)
+    child=result['extensions']['workflow']['children']['child-a']
+    assert child['required_capabilities']==['artifact-generation']
+    assert child['write_enforcement']=='UNVERIFIED'
+
+
+def test_native_terminal_with_unknown_boundary_is_retained_but_cannot_complete(wf,state,context):
+    result,context,data=launched_native_child(wf,state,context)
+    context['evidence']['worker-observed']['data']['boundary']['status']='UNKNOWN'
+    result=call(wf,result,context,'worker_record',child_id='child-a',receipt_id='worker-observed')
+    child=result['extensions']['workflow']['children']['child-a']
+    assert child['worker_observation']['terminal']=='completed' and child['write_enforcement']=='UNKNOWN'
+    with pytest.raises(ValueError):call(wf,result,context,'return',child_id='child-a',disposition='complete',artifact_ids=[],evidence_ids=[],reason='No enforcement proof')

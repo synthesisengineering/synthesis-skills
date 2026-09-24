@@ -182,7 +182,7 @@ def worker_world(roles):
     context['binding'].update(session_uuid='parent-seat',native_ref='fixture:parent')
     child={'child_id':'worker','mode':'native-cli','client':'claude','disposition':'running',
         'file_contract':contract,'paths':paths,'owner':copy.deepcopy(context['binding']),
-        'integration_owner':'parent-seat','deliverables':['Produce a synthetic result'],'reservation_id':'worker-budget'}
+        'required_capabilities':['read','write','edit','shell'],'integration_owner':'parent-seat','deliverables':['Produce a synthetic result'],'reservation_id':'worker-budget'}
     state={'run_id':'run-a','project_id':'project-a','contract_digest':'a'*64,'profile_digest':'b'*64,
         'extensions':{'workflow':{'children':{'worker':child},'budget':{
             'deadline':(datetime.now(timezone.utc)+timedelta(minutes=2)).isoformat(),
@@ -368,7 +368,7 @@ def test_codex_readback_requires_exact_native_turn_permissions(boundary,roles):
     contract,_,_=roles
     config={'client':'codex','file_contract':contract,'selected':{'model':'model','model_reasoning_effort':'high'}}
     turn={'type':'turn_context','payload':{'cwd':contract['scratch_root'],'model':'model','effort':'high',
-        'approval_policy':'never','sandbox_policy':{'type':'workspace-write','writable_roots':contract['output_roots'],
+        'approval_policy':'never','sandbox_policy':{'type':'workspace-write','writable_roots':list(contract['output_roots']),
         'network_access':False,'exclude_slash_tmp':True,'exclude_tmpdir_env_var':True}}}
     assert boundary.native_boundary_readback(config,[turn])['status']=='ENFORCED'
     turn['payload']['sandbox_policy']['writable_roots'].append('/foreign')
@@ -421,3 +421,110 @@ def test_claude_usage_includes_reported_cache_tokens(boundary):
         {'type':'result','subtype':'success','session_id':'cached','is_error':False,
          'usage':{'input_tokens':10,'output_tokens':2,'cache_read_input_tokens':100,'cache_creation_input_tokens':20}}])
     assert boundary.parse_worker('claude',raw.encode())['usage']['tokens']==132
+
+
+def test_worker_capability_distinguishes_artifact_and_shell_lanes(boundary,monkeypatch):
+    monkeypatch.setattr(boundary,'_muse_host_available',lambda:True,raising=False)
+    for client in ('claude','codex'):
+        observed=boundary.capability(client)
+        assert observed['operations']==['read','write','edit','shell']
+        assert observed['write_enforcement']=='UNVERIFIED'
+    muse=boundary.capability('muse')
+    assert muse['operations']==['artifact-generation']
+    assert muse['status']=='AVAILABLE' and muse['host_requirements']
+    monkeypatch.setattr(boundary,'_muse_host_available',lambda:False)
+    assert boundary.capability('muse')['status']=='UNAVAILABLE'
+
+
+def test_muse_shell_request_rejects_before_native_selection(boundary,roles,monkeypatch):
+    state,context,runtime=worker_world(roles)
+    state['extensions']['workflow']['children']['worker']['client']='muse'
+    monkeypatch.setattr(boundary,'client_selection',lambda *args:pytest.fail('Shell requirement must reject before provider'))
+    with pytest.raises(ValueError,match='capabilit|shell'):
+        boundary.run_worker(state,'worker',context,client='muse',runtime_root=runtime,timeout_seconds=10)
+
+
+def test_failed_prelaunch_receipt_keeps_honest_unknown(boundary,roles,monkeypatch):
+    state,context,runtime=worker_world(roles)
+    monkeypatch.setattr(boundary,'_authorize_worker',lambda context,paths:context['binding'])
+    monkeypatch.setattr(boundary,'client_selection',lambda *args:({'effort':'high'},'/does/not/exist'))
+    data=boundary.run_worker(state,'worker',context,client='claude',runtime_root=runtime,timeout_seconds=10)
+    assert data['producer'] is None and data['boundary']['status']=='UNKNOWN'
+    assert data['usage']=={'tokens':None,'usd_micros':None}
+    assert boundary.verify_worker_observation(data,context)
+
+
+def test_unresolved_cleanup_cannot_report_worker_completion(boundary,roles,monkeypatch):
+    state,context,runtime=worker_world(roles)
+    raw=b'{"type":"system","subtype":"init","session_id":"actual","model":"model"}\n{"type":"result","subtype":"success","session_id":"actual","is_error":false}\n'
+    monkeypatch.setattr(boundary,'_authorize_worker',lambda context,paths:context['binding'])
+    monkeypatch.setattr(boundary,'client_selection',lambda *args:({'effort':'high'},'/fixture/cli'))
+    monkeypatch.setattr(boundary,'_execute_native',lambda *args:(0,raw,b'','observed child cleanup unresolved',{'cleanup_verified':False,'unresolved_pids':[123]}))
+    data=boundary.run_worker(state,'worker',context,client='claude',runtime_root=runtime,timeout_seconds=10)
+    assert data['terminal']=='failed'
+    assert boundary.verify_worker_observation(data,context)
+
+
+def test_interrupted_partial_last_frame_preserves_prior_native_identity(boundary):
+    raw=b'{"type":"system","subtype":"init","session_id":"started","model":"model"}\n{"type":"assistant"'
+    result=boundary.parse_worker('claude',raw,allow_incomplete=True)
+    assert result['producer']=='claude:started' and result['terminal']=='failed'
+    assert result['usage']=={'tokens':None,'usd_micros':None}
+    with pytest.raises(ValueError):boundary.parse_worker('claude',raw)
+
+
+@pytest.mark.parametrize('client',['claude','codex','muse'])
+def test_worker_environment_does_not_transfer_unrelated_secrets(boundary,client):
+    env={'PATH':'/bin','HOME':'/fixture/native-home','LANG':'en_US.UTF-8',
+         'CODEX_THREAD_ID':'root','SYNTHESIS_SESSION_UUID':'root-seat',
+         'UNRELATED_SYNTHETIC_SECRET':'not-for-child','AWS_SECRET_ACCESS_KEY':'synthetic',
+         'PYTHONPATH':'/inject','DYLD_INSERT_LIBRARIES':'/inject',
+         'ANTHROPIC_API_KEY':'synthetic-claude','OPENAI_API_KEY':'synthetic-codex','META_API_KEY':'synthetic-muse'}
+    observed=boundary.worker_environment(client,env)
+    assert observed['HOME']==env['HOME'] and observed['PATH']=='/bin'
+    assert not set(observed)&{'CODEX_THREAD_ID','SYNTHESIS_SESSION_UUID','UNRELATED_SYNTHETIC_SECRET',
+                              'AWS_SECRET_ACCESS_KEY','PYTHONPATH','DYLD_INSERT_LIBRARIES'}
+    expected={'claude':'ANTHROPIC_API_KEY','codex':'OPENAI_API_KEY','muse':'META_API_KEY'}[client]
+    assert observed[expected]==env[expected]
+    assert set(observed)&{'ANTHROPIC_API_KEY','OPENAI_API_KEY','META_API_KEY'}=={expected}
+
+
+def test_muse_artifact_exchange_preserves_inputs_and_materializes_declared_output(boundary,roles):
+    contract,_,_=roles
+    before=boundary.inspect_files(contract)
+    prompt=boundary.muse_artifact_prompt('Produce result.txt',contract,deadline='2026-09-24T12:00:00Z',reservation={'amounts':{'wall_millis':1000}})
+    assert 'preserve synthetic source' in prompt and 'artifact-generation' in prompt
+    response={'schema_version':1,'files':[{'output_root':0,'path':'nested/result.txt','content':'verified synthetic output\n'}]}
+    paths=boundary.materialize_artifacts(response,contract,before)
+    assert paths==[str(Path(contract['output_roots'][0])/'nested/result.txt')]
+    assert Path(paths[0]).read_text()=='verified synthetic output\n'
+    assert boundary.inspect_effects(contract,before)['preservation']=='PASS'
+
+
+@pytest.mark.parametrize('change',['escape','absolute','wrong_root','bool_root','duplicate','nontext','too_large','unknown','input_alias','output_alias','input_drift'])
+def test_muse_artifact_exchange_rejects_unsafe_materialization(boundary,roles,change):
+    contract,_,_=roles
+    before=boundary.inspect_files(contract)
+    item={'output_root':0,'path':'result.txt','content':'result'}
+    response={'schema_version':1,'files':[item]}
+    if change=='escape':item['path']='../inputs/source.txt'
+    if change=='absolute':item['path']=contract['immutable_inputs'][0]['path']
+    if change=='wrong_root':item['output_root']=1
+    if change=='bool_root':item['output_root']=False
+    if change=='duplicate':response['files'].append(dict(item))
+    if change=='nontext':item['content']={'unexpected':'object'}
+    if change=='too_large':item['content']='x'*(1024*1024+1)
+    if change=='unknown':response['command']='shell'
+    if change=='input_alias':(Path(contract['output_roots'][0])/'result.txt').symlink_to(contract['immutable_inputs'][0]['path'])
+    if change=='output_alias':os.link(contract['immutable_inputs'][0]['path'],Path(contract['output_roots'][0])/'result.txt')
+    if change=='input_drift':Path(contract['immutable_inputs'][0]['path']).write_text('changed')
+    with pytest.raises(ValueError):boundary.materialize_artifacts(response,contract,before)
+    assert not (Path(contract['output_roots'][0])/'result.txt').exists() or change in {'input_alias','output_alias'}
+
+
+def test_muse_artifact_input_budget_fails_before_provider(boundary,roles):
+    contract,_,_=roles
+    path=Path(contract['immutable_inputs'][0]['path'])
+    path.write_text('x'*(256*1024+1))
+    contract['immutable_inputs'][0]['digest']=hashlib.sha256(path.read_bytes()).hexdigest()
+    with pytest.raises(ValueError):boundary.muse_artifact_prompt('Task',contract,deadline='2026-09-24T12:00:00Z',reservation={})
