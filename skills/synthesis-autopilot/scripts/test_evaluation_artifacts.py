@@ -226,3 +226,13 @@ def test_sandbox_output_and_closed_pipe_process_remain_bounded(artifacts,tmp_pat
     result=artifacts.run_python_check(script,tmp_path,timeout_seconds=.2)
     assert result['timed_out'] is True
     assert time.monotonic()-started<2
+
+
+@pytest.mark.skipif(sys.platform!='darwin',reason='macOS process isolation boundary')
+def test_mac_worker_cannot_fork_or_spawn_a_process_outside_the_deadline(artifacts,tmp_path):
+    if not artifacts.sandbox_available():pytest.skip('Native sandbox unavailable; release acceptance requires this control')
+    script=tmp_path/'check.py'
+    script.write_text('import json,os,sys\nresults=[]\ntry:\n pid=os.fork()\n if pid==0:os._exit(0)\n os.waitpid(pid,0);results.append("forked")\nexcept OSError:results.append("denied")\ntry:\n pid=os.posix_spawn(sys.executable,[sys.executable,"-I","-c","pass"],{})\n os.waitpid(pid,0);results.append("spawned")\nexcept OSError:results.append("denied")\nprint(json.dumps(results))\n')
+    result=artifacts.run_python_check(script,tmp_path)
+    assert result['returncode']==0,result
+    assert json.loads(result['stdout'])==['denied','denied']
