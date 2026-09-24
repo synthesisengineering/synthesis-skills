@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.145.2** reduces whole-project checkpoint overhead while retaining
+complete content verification, live ownership checks and bounded Stop behavior.
+
 Release **4.145.1** fixes checkpoint publication for large session manifests while
 retaining exact-file ownership and ordinary commit protections.
 

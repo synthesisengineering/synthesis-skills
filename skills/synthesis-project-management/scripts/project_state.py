@@ -1069,10 +1069,19 @@ def compile_context(project: Path, state: dict[str, Any]) -> None:
 
 def _working_digest(project: Path) -> str:
     entries: list[tuple[str, str]] = []
+    project_parts = project.parts
+    project_anchor = project.anchor
+    prefix_size = len(project_parts)
     for path in sorted(item for item in project.rglob("*") if item.is_file()):
-        if ".git" in path.parts:
+        parts = path.parts
+        if ".git" in parts:
             continue
-        entries.append((str(path.relative_to(project)), _sha_file(path)))
+        # rglob supplies lexical descendants. Slice their validated prefix
+        # instead of walking every ancestor for every file's relative name.
+        if path.anchor != project_anchor or parts[:prefix_size] != project_parts:
+            raise ValueError(f"digest path is outside project: {path}")
+        relative = str(Path(*parts[prefix_size:]))
+        entries.append((relative, _sha_file(path)))
     return _sha_bytes(json.dumps(entries, separators=(",", ":")).encode())
 
 

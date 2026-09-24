@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.145.2] - 2026-09-24
+
+Project checkpoints avoid repeated ancestor walks when naming files in large
+working-tree digests. Complete content coverage, ordering, independent reads,
+claim verification and native Stop deadlines remain unchanged. This reduces
+checkpoint work in the shared implementation used by supported clients.
+The interrupted-worker fixture synchronizes on observed partial output before
+expiring its test clock, removing process-startup timing from the assertion.
+
 ## [4.145.1] - 2026-09-24
 
 Large session manifests can publish without exceeding operating-system argument

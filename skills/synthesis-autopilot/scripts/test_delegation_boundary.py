@@ -283,17 +283,55 @@ def test_inventory_bound_counts_aggregate_bytes(boundary,roles,monkeypatch):
 
 
 def test_interrupted_native_worker_keeps_partial_provider_evidence(boundary,roles,tmp_path,monkeypatch):
+    from types import SimpleNamespace
     state,context,runtime=worker_world(roles)
+    init_wire=(json.dumps({'type':'system','subtype':'init','session_id':'began-provider','model':'configured'})+'\n').encode()
     script=tmp_path/'fixture-timeout-cli'
-    script.write_text('#!/usr/bin/env python3\nimport json,sys,time\nsys.stdin.read()\nprint(json.dumps({"type":"system","subtype":"init","session_id":"began-provider","model":"configured"}),flush=True)\ntime.sleep(10)\n')
+    # Startup deliberately exceeds the worker's unchanged .1s logical budget.
+    # Begin the timeout assertion only after real partial output is captured.
+    script.write_text('#!/usr/bin/env python3\nimport sys,time\nsys.stdin.read()\ntime.sleep(.2)\n'
+        +f'sys.stdout.buffer.write({init_wire!r});sys.stdout.buffer.flush()\ntime.sleep(10)\n')
     script.chmod(0o700)
     monkeypatch.setattr(boundary,'_authorize_worker',lambda context,paths:context['binding'])
     monkeypatch.setattr(boundary,'client_selection',lambda client,env:({'effort':'high'},str(script)))
+    real_os=boundary.os
+    real_monotonic=boundary.time.monotonic
+    watchdog_started=real_monotonic()
+    logical_now=[0.0]
+    observed={}
+    def controlled_monotonic():
+        assert real_monotonic()-watchdog_started < 5, 'Real fixture initialization watchdog expired'
+        return logical_now[0]
+    class ObservedPipeReads:
+        def __getattr__(self,name):return getattr(real_os,name)
+        def read(self,descriptor,size):
+            raw=real_os.read(descriptor,size)
+            buffered=observed.setdefault(descriptor,bytearray())
+            buffered.extend(raw)
+            assert len(buffered) <= 4096, 'Fixture output exceeded its declared bound'
+            if b'\n' in buffered:
+                try:event=json.loads(bytes(buffered).split(b'\n',1)[0])
+                except (ValueError,UnicodeError):event=None
+                if isinstance(event,dict) and event.get('type')=='system' and event.get('subtype')=='init':
+                    logical_now[0]=1.0
+            return raw
+    # Replace only this module's references, never the shared time/os modules.
+    # Launch, selector, pipe read, process identity checks and cleanup stay real.
+    monkeypatch.setattr(boundary,'time',SimpleNamespace(monotonic=controlled_monotonic))
+    monkeypatch.setattr(boundary,'os',ObservedPipeReads())
     data=boundary.run_worker(state,'worker',context,client='claude',runtime_root=runtime,timeout_seconds=0.1)
     assert data['terminal']=='timed_out'
-    raw=(runtime/'worker/stdout.jsonl').read_text()
-    assert 'began-provider' in raw
-    assert data['usage']['usd_micros'] is None
+    raw=(runtime/'worker/stdout.jsonl').read_bytes()
+    assert raw==init_wire
+    assert data['producer']=='claude:began-provider'
+    assert data['usage']=={'tokens':None,'usd_micros':None}
+    assert data['preservation']=='PASS' and data['native_exit_code']!=0
+    receipt=json.loads(Path(data['receipt_path']).read_text())
+    assert receipt['configuration']['timeout_seconds']==0.1
+    assert receipt['failure']=='native worker timed out'
+    assert receipt['raw']['stdout.jsonl']==hashlib.sha256(raw).hexdigest()
+    assert receipt['process_cleanup']['cleanup_verified'] is True
+    assert receipt['process_cleanup']['terminated_pids']
 
 
 def test_worker_deadline_reaps_observed_detached_child_and_preserves_unrelated(boundary,roles,tmp_path,monkeypatch):

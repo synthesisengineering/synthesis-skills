@@ -1,160 +1,113 @@
 schema: 2
-suite: checkpoint-path-streams-4-145-1
+suite: checkpoint-digest-deadline-4-145-2
 membership: closed
-production_entry_point: checkpoint_sync.py exact-session publication and source publication verification
-enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and client installation
+production_entry_point: project_state.py checkpoint_project and validate_checkpoint
+  shared whole-project digest
+enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing
+  and client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Real isolated Git fixtures establish large path streams, exact literal selection,
-  one commit, foreign staged preservation and fail-closed publication. Installed exact-session acceptance
-  and native Stop receipts remain separately retained; no action authority is granted.
+unverified_remainder: Fixtures prove exact complete digest coverage, ordering, independent
+  reads, mutation invalidation and bounded lexical name construction. Actual project
+  latency and installed native-envelope acceptance require their separately retained
+  receipts. No action authority is granted.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
-  - cp-008
-  - cp-009
+  - dl-006
 - path: .codex-plugin/plugin.json
   cases:
-  - cp-008
-  - cp-009
+  - dl-006
 - path: .muse-plugin/plugin.json
   cases:
-  - cp-008
-  - cp-009
+  - dl-006
 - path: CHANGELOG.md
   cases:
-  - cp-001
-  - cp-002
-  - cp-003
-  - cp-004
-  - cp-005
-  - cp-006
-  - cp-007
-  - cp-008
-  - cp-009
-  - cp-010
-  - cp-011
+  - dl-001
+  - dl-002
+  - dl-003
+  - dl-004
+  - dl-005
+  - dl-006
 - path: README.md
   cases:
-  - cp-001
-  - cp-002
-  - cp-003
-  - cp-004
-  - cp-005
-  - cp-006
-  - cp-007
-  - cp-008
-  - cp-009
-  - cp-010
-  - cp-011
-- path: skills/synthesis-repo-guard/SKILL.md
+  - dl-001
+  - dl-002
+  - dl-003
+  - dl-004
+  - dl-005
+  - dl-006
+- path: skills/synthesis-project-management/SKILL.md
   cases:
-  - cp-001
-  - cp-002
-  - cp-003
-  - cp-004
-  - cp-005
-  - cp-006
-  - cp-007
-  - cp-008
-  - cp-009
-  - cp-010
-  - cp-011
-- path: skills/synthesis-repo-guard/checkpoint_sync.py
+  - dl-001
+  - dl-002
+  - dl-003
+  - dl-004
+  - dl-005
+  - dl-006
+- path: skills/synthesis-project-management/scripts/project_state.py
   cases:
-  - cp-001
-  - cp-002
-  - cp-003
-  - cp-004
-  - cp-005
-  - cp-006
-  - cp-007
-  - cp-008
-  - cp-009
-  - cp-010
-  - cp-011
-- path: skills/synthesis-repo-guard/test_checkpoint_sync.py
+  - dl-001
+  - dl-002
+  - dl-003
+  - dl-004
+  - dl-005
+  - dl-006
+- path: skills/synthesis-project-management/scripts/test_project_state.py
   cases:
-  - cp-001
-  - cp-002
-  - cp-003
-  - cp-004
-  - cp-005
-  - cp-006
-  - cp-007
-  - cp-008
-  - cp-009
-  - cp-010
-  - cp-011
+  - dl-001
+  - dl-002
+  - dl-003
+  - dl-004
+  - dl-005
+  - dl-006
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
-  - cp-001
-  - cp-002
-  - cp-003
-  - cp-004
-  - cp-005
-  - cp-006
-  - cp-007
-  - cp-008
-  - cp-009
-  - cp-010
-  - cp-011
+  - dl-001
+  - dl-002
+  - dl-003
+  - dl-004
+  - dl-005
+  - dl-006
+- path: skills/synthesis-autopilot/scripts/test_delegation_boundary.py
+  cases:
+  - dl-007
 cases:
-- id: cp-001
+- id: dl-001
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_source_readiness_real_paths_exceed_arg_max
-  motivating_defect: source readiness real paths exceed arg max
-- id: cp-002
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_working_digest_preserves_complete_coverage_and_order
+  motivating_defect: working digest preserves complete coverage and order
+- id: dl-002
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_large_exact_commit_is_one_commit_and_preserves_foreign_index
-  motivating_defect: large exact commit is one commit and preserves foreign index
-- id: cp-003
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_working_digest_recomputes_changed_new_deleted_and_linked_content
+  motivating_defect: working digest recomputes changed new deleted and linked content
+- id: dl-003
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_large_refused_commit_rolls_back_only_own_intent
-  motivating_defect: large refused commit rolls back only own intent
-- id: cp-004
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_working_digest_rereads_every_included_file_independently
+  motivating_defect: working digest rereads every included file independently
+- id: dl-004
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_exact_checkpoint_literal_names_do_not_capture_siblings
-  motivating_defect: exact checkpoint literal names do not capture siblings
-- id: cp-005
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_working_digest_avoids_per_file_relative_ancestor_walks
+  motivating_defect: working digest avoids per file relative ancestor walks
+- id: dl-005
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_source_readiness_literal_wildcard_ignores_foreign_sibling
-  motivating_defect: source readiness literal wildcard ignores foreign sibling
-- id: cp-006
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_status_failure_retains_exact_session_manifest
-  motivating_defect: status failure retains exact session manifest
-- id: cp-007
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_real_refusing_hook_preserves_manifest_worktree_and_foreign_index
-  motivating_defect: real refusing hook preserves manifest worktree and foreign index
-- id: cp-008
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_working_digest_rejects_non_descendant_from_traversal
+  motivating_defect: working digest rejects non descendant from traversal
+- id: dl-006
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
-  motivating_defect: deduplicated archive release contract is public and coherent.
-- id: cp-009
+  motivating_defect: Release metadata and archive contract must remain coherent.
+- id: dl-007
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
-  motivating_defect: agents verification list matches ci workflow.
-- id: cp-010
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_source_requested_directory_uses_literal_descendants_and_rename_endpoints
-  motivating_defect: source requested directory uses literal descendants and rename endpoints
-- id: cp-011
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_source_readiness_still_requires_fetchable_matching_upstream
-  motivating_defect: source readiness still requires fetchable matching upstream
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_interrupted_native_worker_keeps_partial_provider_evidence
+  motivating_defect: Observe partial worker evidence before deterministically expiring the fixture clock; process startup load must not decide the assertion.
