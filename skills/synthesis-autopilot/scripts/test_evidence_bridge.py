@@ -862,3 +862,45 @@ def test_later_native_wake_reuses_live_registration_after_its_first_deadline(bri
     fresh = cap.record_capability(observed['state'], {'surface': 'claude-code-cli', 'receipt': 'cap'}, observed)
     with pytest.raises(ValueError, match='deadline|lease'):
         cap.register_continuation(fresh, {'receipt': 'registered', 'horizon': 'turn_end'}, observed)
+
+
+def worker_check(observed, world, arguments):
+    path = world["project"] / "worker-check.json"
+    path.write_text(json.dumps({"schema_version": 1, "kind": "native_worker", "arguments": arguments}))
+    observed["artifacts"]["worker-check"] = {"path": "worker-check.json", "digest": hashlib.sha256(path.read_bytes()).hexdigest(), "role": "input"}
+    observed["state"].setdefault("extensions", {})["workflow"] = {"children": {"child-a": {"client": "claude", "mode": "native-cli"}}}
+    return {"check_id": "worker-check"}
+
+
+def test_native_worker_observer_registered_without_completion_acceptance(bridge, observed):
+    callbacks = {}
+    bridge.register_observers(lambda kind, callback, **kw: callbacks.update({kind: (callback, kw)}))
+    assert "native_worker" in callbacks
+    assert callbacks["native_worker"][1]["terminal_safe"] is False
+    assert "native_worker" in bridge.KINDS
+    assert not bridge._accept({"kind": "native_worker", "data": {"preservation": "PASS", "native_exit_code": 0}}, observed["state"], {}, observed)
+
+
+def test_native_worker_observer_uses_owned_runtime_and_dispatched_client(bridge, observed, world, monkeypatch):
+    import types
+    calls = []
+    result = {"child_id": "child-a", "producer": "claude-cli:actual-test-session", "preservation": "PASS"}
+    def launch(state, child_id, context, **kwargs):
+        calls.append((state, child_id, context, kwargs))
+        return result
+    monkeypatch.setitem(sys.modules, "delegation_boundary", types.SimpleNamespace(run_worker=launch))
+    payload = worker_check(observed, world, {"child_id": "child-a", "timeout_seconds": 60})
+    assert bridge._observe("native_worker", observed, payload) == result
+    assert len(calls) == 1
+    assert calls[0][1] == "child-a"
+    assert calls[0][3] == {"client": "claude", "runtime_root": world["project"] / "resources/autopilot-runs" / observed["state"]["run_id"] / "native-worker-attempts", "timeout_seconds": 60}
+
+
+@pytest.mark.parametrize("extra", [{"client": "muse"}, {"runtime_root": "/arbitrary"}, {"environment": {}}, {"command": "anything"}])
+def test_native_worker_observer_rejects_caller_execution_overrides(bridge, observed, world, extra):
+    payload = worker_check(observed, world, {"child_id": "child-a", "timeout_seconds": 60, **extra})
+    with pytest.raises(ValueError): bridge._observe("native_worker", observed, payload)
+
+
+def test_native_worker_receipt_file_cannot_claim_engine_execution(bridge, observed):
+    assert not bridge.verify_source(record("native_worker", {"preservation": "PASS", "native_exit_code": 0, "producer": "invented"}, observed), observed)
