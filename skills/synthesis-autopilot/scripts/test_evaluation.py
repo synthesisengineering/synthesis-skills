@@ -275,3 +275,21 @@ def test_baseline_semantic_failure_does_not_reject_verified_candidate_improvemen
     report = evaluation.compare(reg, rows)
     assert report["candidate_acceptance"]["semantic"] == "FAIL"
     assert report["default_promotion_ready"] is False
+
+
+def test_semantic_cohort_uses_declared_threshold_without_discarding_failures():
+    old = calibrated_registration()
+    reg = evaluation.preregister(tasks=old['tasks'], repetitions=old['repetitions'], lane=old['lane'],
+        seed=47, arms=old['arms'], thresholds={**old['thresholds'], 'required_pass_rate': 0.75},
+        semantic_calibration=old['semantic_calibration'])
+    rows = [trial(reg, i) for i in range(len(reg['schedule']))]
+    for row in rows:
+        row['outcome']['semantic'] = 'FAIL' if row['task'] == 'S01' and row['repetition'] == 1 else 'PASS'
+    report = evaluation.compare(reg, rows)
+    assert report['arms']['candidate']['semantic_pass_rate'] == 0.75
+    assert report['semantic_status'] == 'FAIL'  # Real failures are still visible.
+    assert report['candidate_acceptance']['semantic'] == 'PASS'
+    assert report['quality_regression_status'] == 'PASS'
+    assert report['default_promotion_ready'] is True
+    next(row for row in rows if row['arm'] == 'candidate')['outcome']['semantic'] = 'UNKNOWN'
+    assert evaluation.compare(reg, rows)['default_promotion_ready'] is False
