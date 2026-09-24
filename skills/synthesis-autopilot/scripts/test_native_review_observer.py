@@ -111,7 +111,9 @@ def test_supported_native_argv_has_restricted_tools_and_no_shell_override(observ
     argv = observer.native_argv(client, "/tools/" + client, tmp_path, {"model": "chosen", "model_reasoning_effort": "high"})
     assert not any(flag in argv for flag in ("--yolo", "--disable-sandbox", "--dangerously-bypass-approvals-and-sandbox"))
     if client == "claude": assert "--safe-mode" in argv and argv[argv.index("--tools") + 1] == ""
-    if client == "codex": assert "read-only" in argv and "--ignore-user-config" in argv and "shell_tool" in argv
+    if client == "codex":
+        assert "read-only" in argv and "--ignore-user-config" in argv and "shell_tool" in argv
+        assert argv.index("exec") < argv.index("--ignore-user-config")
     if client == "muse": assert all(v in argv for v in ("--disable-write", "--disable-shell", "--disable-web-tools"))
 
 

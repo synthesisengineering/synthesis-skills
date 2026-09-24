@@ -4589,3 +4589,20 @@ def test_repository_state_observes_committed_root_and_branch_in_one_native_call(
     assert git(root, "checkout", "--detach").returncode == 0
     with pytest.raises(RuntimeError, match="detached HEAD"):
         MODULE._repository_state(root)
+
+
+def test_advisory_age_is_evaluated_once_per_row_in_each_board_validation(monkeypatch):
+    sessions = [MODULE.Session(session_uuid="", compact_id="", speakable_id="", legacy_id=f"seat-{number}",
+        agent="Fixture", machine="fixture", project=f"project-{number}", started="2026-01-01T00:00:00Z",
+        heartbeat="2026-01-01T00:00:00Z", mode="active", workspaces=[], goal="fixture",
+        claims=[], context_role="none", status="active") for number in range(7)]
+    observed = []
+    original = MODULE.downgraded
+    def counted(session):
+        observed.append(session.legacy_id)
+        return original(session)
+    monkeypatch.setattr(MODULE, "downgraded", counted)
+    for _ in range(2):
+        observed.clear()
+        assert MODULE.validate_sessions(sessions) == []
+        assert sorted(observed) == sorted(session.legacy_id for session in sessions)
