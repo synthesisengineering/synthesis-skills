@@ -145,3 +145,56 @@ def test_linked_worktree_is_not_the_claimed_worktree(world):
     with pytest.raises(ValueError):
         module.admit_paths(world["board"], "alpha", linked / "projects/alpha",
                            [linked / "projects/alpha/plan.md"], world["actor"]["native_payload"])
+
+
+def test_readonly_admission_never_fetches_or_creates_lock_and_requires_valid_cache(world, monkeypatch):
+    module = importlib.import_module("run_admission")
+    import coordination
+    def forbidden(*args, **kwargs):
+        raise AssertionError("passive observation attempted remote mutation")
+    monkeypatch.setattr(coordination, "lease_update", forbidden)
+    monkeypatch.setattr(coordination, "lease_fetch", forbidden)
+    assert admission(world, readonly=True)
+    assert not (world["board"].parent / ".active-sessions.lock").exists()
+    config_path = world["board"].parent / coordination.LEASE_CONFIG_NAME
+    config_path.write_text(json.dumps({"remote": "fixture://remote", "ref": "refs/heads/coordination",
+                                       "repository": str(world["scratch"] / "fixture-lease.git")}))
+    with pytest.raises(ValueError, match="passive|stale|cache"):
+        admission(world, readonly=True)
+    config = coordination.lease_configuration(world["board"])
+    coordination._write_lease_stamp(world["board"], config, "a" * 40)
+    assert admission(world, readonly=True)
+    write_board(world, heartbeat="2026-09-23T15:00:00Z")
+    with pytest.raises(ValueError):
+        admission(world, readonly=True)
+
+
+def test_overlapping_active_peer_claim_is_not_silently_admitted(world):
+    other = identity_from_uuid("01990000-0000-7000-8000-000000000033")
+    text = world["board"].read_text()
+    own = next(line for line in text.splitlines() if line.startswith(f"| {SEAT} |"))
+    first = identity_from_uuid(SEAT)
+    peer = own.replace(SEAT, other.session_uuid).replace(first.compact_id, other.compact_id).replace(first.speakable_id, other.speakable_id).replace(NATIVE, "01990000-0000-7000-8000-000000000044")
+    world["board"].write_text(text.replace(own, own + "\n" + peer))
+    with pytest.raises(ValueError, match="overlap|context"):
+        admission(world)
+
+
+def test_polyrepo_targets_require_each_exact_worktree_branch_and_path_claim(world):
+    source = world["scratch"] / "source-repository"
+    source.mkdir()
+    git(source, "init", "-b", "feature")
+    target = source / "module.py"
+    target.write_text("fixture = True\n")
+    write_board(world, claims=f"{world['project']}/**; {target}",
+                workspace=f"{world['repo']} @ main; {source} @ feature")
+    proof = admission(world, [world["plan"], target])
+    assert proof["target_workspaces"][str(target)]["branch"] == "feature"
+    write_board(world, claims=f"{world['project']}/**; {target}",
+                workspace=f"{world['repo']} @ main; {source} @ wrong")
+    with pytest.raises(ValueError):
+        admission(world, [world["plan"], target])
+    write_board(world, claims=f"{world['project']}/**; {source}/elsewhere.py",
+                workspace=f"{world['repo']} @ main; {source} @ feature")
+    with pytest.raises(ValueError):
+        admission(world, [world["plan"], target])

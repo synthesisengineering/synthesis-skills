@@ -32,7 +32,7 @@ def preregistration():
 def trial(reg, index=0):
     cell = reg["schedule"][index]
     return {**cell, "registration_digest": reg["digest"], "status": "completed",
-            "configuration": configuration(), "implementation": cell["arm"] + "-digest",
+            "configuration": copy.deepcopy(next(a["configuration"] for a in reg["arms"] if a["id"] == cell["arm"])), "implementation": cell["arm"] + "-digest",
             "outcome": {"deterministic": "PASS", "semantic": "UNKNOWN", "unauthorized_effects": 0},
             "usage": {"tokens": None, "cost": None, "tool_calls": 2, "wall_seconds": 1,
                       "human_interventions": 0, "human_minutes": None},
@@ -167,3 +167,43 @@ def test_invalid_task_and_budgets_refuse_before_writes(tmp_path):
         with pytest.raises(ValueError):
             evaluation.preregister(tasks=["S01"], repetitions=repetitions, lane="controlled", seed=1,
                                    arms=reg["arms"], thresholds=reg["thresholds"], semantic_calibration="unvalidated")
+
+
+def test_arbitrary_calibration_label_cannot_certify_semantics():
+    reg = preregistration()
+    with pytest.raises(ValueError, match="calibration"):
+        evaluation.preregister(tasks=["S01"], repetitions=1, lane="controlled", seed=1,
+            arms=reg["arms"], thresholds=reg["thresholds"], semantic_calibration="I checked it")
+
+
+def test_failed_semantics_and_unknown_attention_remain_visible():
+    reg = preregistration()
+    rows = [trial(reg, i) for i in range(len(reg["schedule"]))]
+    rows[0]["outcome"]["semantic"] = "FAIL"
+    rows[0]["usage"]["human_interventions"] = None
+    report = evaluation.compare(reg, rows)
+    assert report["semantic_status"] == "FAIL"
+    assert report["arms"][rows[0]["arm"]]["human_interventions_known"] is False
+    assert report["default_promotion_ready"] is False
+
+
+def test_semantic_grader_calibration_requires_independent_controls():
+    sound = {"id": "sound", "expected": "PASS", "observed": "PASS", "artifact_digest": "a" * 64}
+    defect = {"id": "defect", "expected": "FAIL", "observed": "FAIL", "artifact_digest": "b" * 64}
+    result = evaluation.calibrate(grader="reviewer-v1", reviewer="separate-agent", rubric={"fidelity": "preserve facts"},
+        controls=[sound, defect], provenance={"method": "blind", "source": "native transcript"})
+    assert result["status"] == "PASS"
+    bad = copy.deepcopy(defect)
+    bad["observed"] = "PASS"
+    assert evaluation.calibrate(grader="reviewer-v1", reviewer="separate-agent", rubric={"fidelity": "preserve facts"},
+        controls=[sound, bad], provenance={"method": "blind", "source": "native transcript"})["status"] == "FAIL"
+    with pytest.raises(ValueError):
+        evaluation.calibrate(grader="reviewer-v1", reviewer="separate-agent", rubric={"fidelity": "preserve facts"},
+            controls=[sound], provenance={"method": "blind", "source": "native transcript"})
+
+
+def test_worker_spec_declares_output_fields_without_answer_values():
+    for case in evaluation.corpus():
+        schema = case["worker"]["output_schema"]
+        assert set(schema["required"]) == set(case["grader"]["expected_value"])
+        assert "expected_value" not in json.dumps(case["worker"])
