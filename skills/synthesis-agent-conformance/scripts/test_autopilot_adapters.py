@@ -114,11 +114,16 @@ def test_healthy_children_do_not_create_feedback():
 
 def test_actual_autopilot_child_imports_and_runs_current_runtime(tmp_path, monkeypatch):
     monkeypatch.syspath_prepend(str(SCRIPT.parent))
+    monkeypatch.syspath_prepend(str(ROOT / "skills/synthesis-project-management/scripts"))
+    # A parent client selector must not mask the real native-discovery path.
+    monkeypatch.delenv("SYNTHESIS_CLIENT_SESSION_REF", raising=False)
+    monkeypatch.delenv("SYNTHESIS_HOOK_CLIENT", raising=False)
     monkeypatch.setenv("SYNTHESIS_AUTOPILOT_RUNTIME", str(tmp_path / "runtime"))
     monkeypatch.setenv("SYNTHESIS_COORDINATION_BOARD", str(tmp_path / "missing-board"))
     # No injected child: exercise the actual import and the production dispatcher.
     result = NATIVE._autopilot_result(payload())
-    assert isinstance(result, dict)
+    assert result.get("continue") is False
+    assert "cannot identify this native client" in result["systemMessage"]
     assert "cannot import" not in result.get("systemMessage", "")
 
 
