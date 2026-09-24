@@ -67,7 +67,7 @@ def verified(engine, world):
     return state, path
 
 
-def receipt(engine, world, state, kind, data=None):
+def receipt(engine, world, state, kind, data=None, *, receipt_id=None):
     now = datetime.now(timezone.utc)
     path = world["project"] / "resources/artifacts" / f"{kind}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -78,7 +78,7 @@ def receipt(engine, world, state, kind, data=None):
     state = command(engine, world, state, "artifact.register", {"id": kind, "path": str(path),
                     "role": "evidence", "retention": "durable", "required": False})
     engine.register_verifier(kind, lambda record, bindings: True)
-    return command(engine, world, state, "evidence.record", {"id": kind, "kind": kind, "artifact_id": kind})
+    return command(engine, world, state, "evidence.record", {"id": receipt_id or kind, "kind": kind, "artifact_id": kind})
 
 
 def test_creation_requires_real_plan_contract_and_exact_admission(engine, world):
@@ -480,9 +480,17 @@ def test_authentic_failed_observation_is_not_criterion_acceptance(engine, world)
     engine.register_acceptance("fixture-check", lambda record, state, criterion, context: record["data"].get("passed") is True)
     with pytest.raises(ValueError):
         command(engine, world, state, "verify", {"criteria": ["accept"]})
-    state = receipt(engine, world, state, "fixture-check", {"passed": True})
+    failed_run = deepcopy(state)
+    # This synthetic external-verifier control does not exercise production
+    # engine-observation routing. Keep its failed run intact; prove positive
+    # acceptance independently using a new run and new immutable receipt ID.
+    spec["criteria"][0]["evidence_ids"] = ["fixture-pass"]
+    state, _ = output(engine, world, create(engine, world, contract=spec, command_id="create-positive-control"))
+    state = receipt(engine, world, state, "fixture-check", {"passed": True}, receipt_id="fixture-pass")
+    state = command(engine, world, state, "transition", {"status": "verifying"})
     state = command(engine, world, state, "verify", {"criteria": ["accept"]})
     assert engine.completion_report(world["project"], state["run_id"], actor=world["actor"])["status"] == "PASS"
+    assert engine.load_run(world["project"], failed_run["run_id"]) == failed_run
 
 
 def test_stop_legacy_inventory_requires_explicit_index_only_when_nonempty(engine, world):
@@ -559,11 +567,11 @@ def test_corrupt_foreign_index_does_not_affect_selected_native(engine, world):
 def test_stop_inspection_validates_each_owned_run_once_and_rejects_revocation(engine, world, monkeypatch):
     state = create(engine, world)
     calls = []
-    original = engine.admit_paths
+    original = engine.inspect_paths
     def observed(*args, **kwargs):
-        calls.append(kwargs.get("readonly"))
+        calls.append(True)
         return original(*args, **kwargs)
-    monkeypatch.setattr(engine, "admit_paths", observed)
+    monkeypatch.setattr(engine, "inspect_paths", observed)
     inspected = engine.inspect_owned_runs(world["actor"], runtime_root=world["runtime"])
     assert len(inspected) == 1 and inspected[0][0]["run_id"] == state["run_id"]
     assert inspected[0][1]["binding"]["session_uuid"] == SEAT
@@ -571,6 +579,47 @@ def test_stop_inspection_validates_each_owned_run_once_and_rejects_revocation(en
     write_board(world, status="released")
     with pytest.raises(ValueError):
         engine.inspect_owned_runs(world["actor"], runtime_root=world["runtime"])
+
+
+def test_passive_owned_wait_uses_current_evidence_despite_unrelated_board_defect(engine, world):
+    import capabilities
+    import evidence_bridge
+    from test_evidence_bridge import append_claude_tool, record
+    from test_run_admission import add_passive_peer
+    capabilities.register_commands(engine.register_command)
+    evidence_bridge.register_sources(engine.register_evidence_source)
+    state = create(engine, world)
+    state = command(engine, world, state, "wait.add", {"id": "review", "kind": "user", "reason": "Review output"})
+    wait = capabilities.wait_binding(state)
+    append_claude_tool(world, "mcp__codex_app__send_message_to_thread",
+                      {"threadId": "fixture-peer", "prompt": json.dumps({"run_id": state["run_id"], **wait})},
+                      {"status": "delivered", "threadId": "fixture-peer"})
+    context = {"project": world["project"], "state": state, "binding": state["owner"],
+               "actor": world["actor"], "now": datetime.now(timezone.utc).isoformat(), "artifacts": {}}
+    data = {"source": {"kind": "native-tool", "call_id": "native-call"}, "delivery_id": "native-call",
+            "channel": "codex-task", "status": "delivered", **wait}
+    receipt = world["project"] / "delivery.json"
+    receipt.write_text(json.dumps(record("delivery", data, context)))
+    state = command(engine, world, state, "artifact.register", {"id": "delivery", "path": str(receipt),
+                    "role": "evidence", "retention": "durable", "required": False})
+    state = command(engine, world, state, "evidence.record", {"id": "delivery", "kind": "delivery", "artifact_id": "delivery"})
+    state = command(engine, world, state, "delivery.record", {"receipt": "delivery"})
+    add_passive_peer(world, world["scratch"] / "retired/projects/foreign/file.md")
+    inspected = engine.inspect_owned_runs(world["actor"], runtime_root=world["runtime"])
+    assert len(inspected) == 1
+    current, validated = inspected[0]
+    assert validated["binding"]["purpose"] == "passive-stop"
+    assert capabilities.wait_delivery_status(current, validated)["delivered"] is True
+    # It remains a fresh read of receipt bytes, not a cached positive.
+    receipt.write_text(receipt.read_text() + "\n")
+    current, validated = engine.inspect_owned_runs(world["actor"], runtime_root=world["runtime"])[0]
+    assert capabilities.wait_delivery_status(current, validated)["delivered"] is False
+    # The passive capability cannot route mutation or ordinary status through
+    # its narrower purpose: both retain complete PM admission.
+    with pytest.raises(ValueError, match="unverifiable|identity"):
+        engine.inspect_context(state, world["actor"])
+    with pytest.raises(ValueError, match="unverifiable|identity"):
+        command(engine, world, state, "progress", {"summary": "Must not be written"})
 
 
 def test_terminal_cleanup_can_observe_existing_spec_without_reopening_or_new_artifact(engine, world):

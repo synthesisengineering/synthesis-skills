@@ -362,3 +362,155 @@ def test_passive_snapshot_remains_nonblocking_while_mutation_owner_holds_lock(wo
         assert time.monotonic() - started < 1
     finally:
         _finish_lock_holder(holder)
+
+
+def passive_inspection(world, paths=None):
+    module = importlib.import_module("run_admission")
+    return module.inspect_paths(world["board"], "alpha", world["project"],
+                                paths or [world["plan"]], world["actor"]["native_payload"])
+
+
+def add_passive_peer(world, claim, *, number=33, workspace=None, **changes):
+    """Real board rows, with no fabricated proof or native callback."""
+    from copy import deepcopy
+    import coordination
+    sessions = coordination.rows(world["board"].read_text())
+    peer = deepcopy(sessions[0])
+    peer.session_uuid = f"01990000-0000-7000-8000-{number:012d}"
+    identity = identity_from_uuid(peer.session_uuid)
+    peer.compact_id, peer.speakable_id = identity.compact_id, identity.speakable_id
+    peer.client_ref = f"cc:01990000-0000-7000-9000-{number:012d}"
+    peer.project, peer.context_role = "foreign", "none"
+    peer.claims = [str(claim)]
+    peer.workspaces = [workspace or f"{world['repo']} @ main"]
+    for key, value in changes.items():
+        setattr(peer, key, value)
+    world["board"].write_text(coordination.replace_table(world["board"].read_text(), sessions + [peer]))
+    return peer
+
+
+def test_passive_inspection_is_scoped_not_mutation_authority(world):
+    module = importlib.import_module("run_admission")
+    proof = passive_inspection(world)
+    assert proof["purpose"] == "passive-stop"
+    assert proof["paths"] == [str(world["plan"])]
+    assert proof["global_board_validated"] is False
+    with pytest.raises(ValueError, match="purpose|passive|admission"):
+        with module.admission_scope(proof, world["actor"], world["project"]):
+            pass
+    with module.admission_scope(proof, world["actor"], world["project"], purpose="passive-stop") as token:
+        context = {"actor": world["actor"], "project": world["project"], "binding": dict(proof),
+                   "admission_observation": token}
+        assert module.read_admission_observation(context)["purpose"] == "passive-stop"
+    with pytest.raises(ValueError):
+        module.read_admission_observation(context)
+    with pytest.raises(ValueError):
+        with module.admission_scope(dict(proof), world["actor"], world["project"], purpose="passive-stop"):
+            pass
+
+
+def test_passive_foreign_conflict_is_isolated_but_full_read_and_mutation_still_refuse(world):
+    foreign = world["repo"] / "projects/foreign/file.md"
+    add_passive_peer(world, foreign)
+    add_passive_peer(world, foreign, number=44)
+    before = world["board"].read_bytes()
+    assert passive_inspection(world)["session_uuid"] == SEAT
+    assert world["board"].read_bytes() == before
+    for readonly in (False, True):
+        with pytest.raises(ValueError, match="overlap"):
+            admission(world, readonly=readonly)
+
+
+def test_passive_does_not_probe_unrelated_unreadable_foreign_claim_identity(world, monkeypatch):
+    import claim_scope
+    foreign = world["scratch"] / "retired/projects/foreign/file.md"
+    add_passive_peer(world, foreign)
+    original = claim_scope.ClaimScopeResolver._native_identity
+    calls = []
+    def observed(resolver, pattern):
+        calls.append(pattern)
+        assert "retired" not in pattern, "unrelated unreadable claim was probed"
+        return original(resolver, pattern)
+    monkeypatch.setattr(claim_scope.ClaimScopeResolver, "_native_identity", observed)
+    assert passive_inspection(world)["purpose"] == "passive-stop"
+    assert calls and len(calls) >= 2  # Fresh native entry and exit, not a cached/no-op path.
+
+
+@pytest.mark.parametrize("kind", ["exact", "ancestor", "wildcard", "relative", "symlink", "sibling"])
+def test_passive_rejects_each_relevant_physical_or_logical_claim(world, kind):
+    claim, workspace = world["plan"], None
+    if kind == "ancestor":
+        claim = world["project"]
+    elif kind == "wildcard":
+        claim = str(world["repo"] / "projects/*/*.md")
+    elif kind == "relative":
+        claim = "projects/alpha/*.md"
+    elif kind == "symlink":
+        alias = world["scratch"] / "alias"
+        alias.symlink_to(world["project"], target_is_directory=True)
+        claim = alias / "plan.md"
+    elif kind == "sibling":
+        sibling = world["scratch"] / "sibling"
+        git(world["repo"], "worktree", "add", "-b", "sibling", str(sibling))
+        claim, workspace = sibling / "projects/alpha/plan.md", f"{sibling} @ sibling"
+    add_passive_peer(world, claim, workspace=workspace)
+    with pytest.raises(ValueError, match="overlap|conflict"):
+        passive_inspection(world)
+
+
+def test_passive_nested_repository_is_not_a_metadata_alias(world):
+    nested = world["repo"] / "projects/foreign"
+    nested.mkdir()
+    git(nested, "init", "-b", "main")
+    target = nested / "projects/alpha/plan.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("Independent nested repository\n")
+    add_passive_peer(world, target, workspace=f"{nested} @ main")
+    assert passive_inspection(world)["purpose"] == "passive-stop"
+
+
+@pytest.mark.parametrize("change", ["claim", "branch", "released", "native", "duplicate", "context"])
+def test_passive_cannot_hide_own_admission_or_ambiguity_failure(world, change):
+    if change == "claim":
+        write_board(world, claims=str(world["project"] / "other/**"))
+    elif change == "branch":
+        write_board(world, workspace=f"{world['repo']} @ foreign")
+    elif change == "released":
+        write_board(world, status="released")
+    elif change == "native":
+        write_board(world, native="01990000-0000-7000-8000-000000000099")
+    elif change == "duplicate":
+        write_board(world, duplicate=True)
+    else:
+        add_passive_peer(world, world["project"] / "other.md", project="alpha", context_role="owner")
+    with pytest.raises(ValueError):
+        passive_inspection(world)
+
+
+@pytest.mark.parametrize("mutation", ["configuration", "registration", "physical"])
+def test_passive_scope_verdict_cannot_escape_changed_observation_bounds(world, monkeypatch, mutation):
+    import claim_scope
+    sibling = world["scratch"] / "sibling"
+    git(world["repo"], "worktree", "add", "-b", "sibling", str(sibling))
+    alias = world["scratch"] / "alias"
+    alias.symlink_to(sibling / "projects/alpha", target_is_directory=True)
+    add_passive_peer(world, alias / "plan.md", workspace=f"{sibling} @ sibling")
+    original = claim_scope.ClaimScopeResolver.conflicts
+    changed = []
+    def observed(resolver, *args, **kwargs):
+        result = original(resolver, *args, **kwargs)
+        if not changed:
+            changed.append(True)
+            if mutation == "configuration":
+                git(world["repo"], "config", "fixture.changed", "yes")
+            elif mutation == "registration":
+                directory = world["repo"] / ".git/worktrees/sibling"
+                directory.rename(directory.with_name("moved"))
+            else:
+                alias.unlink()
+                alias.symlink_to(world["project"], target_is_directory=True)
+        return result
+    monkeypatch.setattr(claim_scope.ClaimScopeResolver, "conflicts", observed)
+    with pytest.raises(ValueError, match="snapshot|changed|identity"):
+        passive_inspection(world)
+    assert changed
