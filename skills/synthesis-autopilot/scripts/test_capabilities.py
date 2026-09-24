@@ -144,6 +144,18 @@ def test_renewed_job_rejects_wake_bound_to_superseded_lease_and_keeps_duplicates
     with pytest.raises(ValueError): CAP.observe_wake(current, {'receipt': 'late'}, context(records, now=NOW + 18))
 
 
+def test_renewal_cannot_outlive_its_previous_renewal_receipt():
+    current, records, ctx = renewal_fixture()
+    records['renew']['expires_at'] = datetime.fromtimestamp(NOW + 315, timezone.utc).isoformat()
+    current = CAP.renew_continuation(current, {'receipt': 'renew'}, ctx)
+    records['renew-again'] = receipt('continuation-renewal', observed_at=NOW + 20, expires_at=NOW + 1000,
+        surface='codex-desktop', job_id='job-1', mechanism='codex-heartbeat', owner='native-host',
+        observer_id='observer-1', lease_expires_at=NOW + 320, readback_at=NOW + 20,
+        registration_receipt='registered', previous_lease_receipt='renew')
+    with pytest.raises(ValueError):
+        CAP.renew_continuation(current, {'receipt': 'renew-again'}, context(records, now=NOW + 20))
+
+
 def test_registry_separates_native_portability_and_prospective_support():
     registry = CAP.supported_surfaces()
     assert registry["schema_version"] == 1
