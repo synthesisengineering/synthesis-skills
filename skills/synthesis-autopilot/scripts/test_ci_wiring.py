@@ -168,7 +168,8 @@ def test_ci_sandbox_repairs_only_reviewed_package_then_repeats_exact_probe(ci_sa
         [_control(), _denial(), _result(), _owner(ci_sandbox), _result(), _result(stdout='sandbox-ready\n')])
     assert result['status'] == 'PASS' and result['repair_attempted']
     assert commands[2][0] == ['/usr/bin/sudo', '-n', '/usr/bin/apt-get', 'install', '-y', 'apparmor-profiles']
-    assert commands[4][0] == ['/usr/bin/sudo', '-n', '/usr/sbin/apparmor_parser', '--replace', str(ci_sandbox.PROFILE)]
+    assert commands[4][0] == ['/usr/bin/sudo', '-n', '/usr/sbin/apparmor_parser', '--replace']
+    assert commands[4][1]['input_text'] == ci_sandbox.APPROVED_PROFILE
     assert commands[1] == commands[5]
 
 
@@ -203,8 +204,9 @@ def test_ci_sandbox_rejects_changed_profile_authority(ci_sandbox, replacement):
 
 
 def test_ci_sandbox_local_override_is_not_loaded(ci_sandbox, monkeypatch):
-    monkeypatch.setattr(ci_sandbox.os.path, 'lexists', lambda _: True)
-    monkeypatch.setattr(ci_sandbox, 'trusted_file', lambda p: ci_sandbox.APPROVED_PROFILE if p == ci_sandbox.PROFILE else 'allow capability,')
+    monkeypatch.setattr(ci_sandbox.os.path, 'lexists', lambda p: '/local/' in str(p))
+    monkeypatch.setattr(ci_sandbox, 'check_parents', lambda *a, **k: None)
+    monkeypatch.setattr(ci_sandbox, 'trusted_file', lambda p, **kwargs: ci_sandbox.APPROVED_PROFILE if p == ci_sandbox.PROFILE else 'allow capability,')
     with pytest.raises(ValueError, match='local profile override'):
         ci_sandbox.read_approved_profile()
 
@@ -217,4 +219,83 @@ def test_ci_sandbox_bounds_real_command_output(ci_sandbox):
 
 def test_ci_sandbox_bounds_real_command_deadline(ci_sandbox):
     result = ci_sandbox.run([sys.executable, '-I', '-c', 'import time;time.sleep(5)'], timeout=.1)
+    assert result['timed_out'] and not ci_sandbox.succeeded(result)
+
+
+def test_ci_sandbox_profile_bytes_use_anonymous_stdin(ci_sandbox):
+    text = ci_sandbox.APPROVED_PROFILE
+    result = ci_sandbox.run([sys.executable, '-I', '-c', 'import sys;sys.stdout.write(sys.stdin.read())'], input_text=text)
+    assert ci_sandbox.succeeded(result) and result['stdout'] == text
+    assert result['stdin_bytes'] == len(text.encode())
+    import hashlib
+    assert result['stdin_sha256'] == hashlib.sha256(text.encode()).hexdigest()
+
+
+def test_ci_sandbox_input_size_fails_before_process(ci_sandbox, monkeypatch):
+    calls = []
+    monkeypatch.setattr(ci_sandbox.subprocess, 'Popen', lambda *a, **k: calls.append(a))
+    result = ci_sandbox.run(['unused'], input_text='x' * 32769)
+    assert not calls and not ci_sandbox.succeeded(result) and result.get('error')
+
+
+def test_ci_sandbox_packaged_snapshot_does_not_trust_mutable_parent(ci_sandbox, monkeypatch, tmp_path):
+    import stat
+    path = tmp_path / 'profile'
+    path.write_text(ci_sandbox.APPROVED_PROFILE)
+    original = Path.lstat
+    fields = ('st_dev', 'st_ino', 'st_mode', 'st_size', 'st_mtime_ns', 'st_nlink', 'st_gid')
+    def fixture_stat(value):
+        observed = original(value)
+        data = {key: getattr(observed, key) for key in fields}
+        data['st_uid'] = 0
+        if value == tmp_path:
+            data['st_mode'] |= stat.S_IWGRP
+        return SimpleNamespace(**data)
+    monkeypatch.setattr(Path, 'lstat', fixture_stat)
+    original_fstat = ci_sandbox.os.fstat
+    def fixture_fstat(fd):
+        observed = original_fstat(fd)
+        return SimpleNamespace(st_uid=0, **{key: getattr(observed, key) for key in fields})
+    monkeypatch.setattr(ci_sandbox.os, 'fstat', fixture_fstat)
+    with pytest.raises(ValueError, match='Unsafe profile parent'):
+        ci_sandbox.trusted_file(path)
+    snapshot = ci_sandbox.trusted_file(path, trusted_parents=False)
+    ci_sandbox.validate_profile(snapshot)
+    assert snapshot == ci_sandbox.APPROVED_PROFILE
+
+
+def test_ci_sandbox_only_package_snapshot_relaxes_parent_metadata(ci_sandbox, monkeypatch):
+    calls = []
+    def read(path, *, trusted_parents=True):
+        calls.append((path, trusted_parents))
+        return ci_sandbox.APPROVED_PROFILE if path == ci_sandbox.PROFILE else '# empty local override\n'
+    monkeypatch.setattr(ci_sandbox, 'trusted_file', read)
+    monkeypatch.setattr(ci_sandbox.os.path, 'lexists', lambda p: '/local/' in str(p))
+    monkeypatch.setattr(ci_sandbox, 'check_parents', lambda *a, **k: None)
+    assert ci_sandbox.read_approved_profile() == ci_sandbox.APPROVED_PROFILE
+    assert calls == [(ci_sandbox.PROFILE, False),
+        (Path('/etc/apparmor.d/local/bwrap-userns-restrict'), True),
+        (Path('/etc/apparmor.d/local/unpriv_bwrap'), True)]
+
+
+@pytest.mark.parametrize('directory', ['disable', 'force-complain'])
+def test_ci_sandbox_preserves_admin_profile_flags(ci_sandbox, monkeypatch, directory):
+    monkeypatch.setattr(ci_sandbox, 'trusted_file', lambda *a, **k: ci_sandbox.APPROVED_PROFILE)
+    monkeypatch.setattr(ci_sandbox.os.path, 'lexists', lambda p: str(p) == '/etc/apparmor.d/' + directory + '/bwrap-userns-restrict')
+    with pytest.raises(ValueError, match='Administrator profile flag'):
+        ci_sandbox.read_approved_profile()
+
+
+def test_ci_sandbox_absent_override_still_checks_parents(ci_sandbox, monkeypatch):
+    monkeypatch.setattr(ci_sandbox, 'trusted_file', lambda *a, **k: ci_sandbox.APPROVED_PROFILE)
+    monkeypatch.setattr(ci_sandbox.os.path, 'lexists', lambda _: False)
+    def refuse(*a, **k):
+        raise ValueError('Unsafe profile parent: fixture')
+    monkeypatch.setattr(ci_sandbox, 'check_parents', refuse)
+    with pytest.raises(ValueError, match='Unsafe profile parent'):
+        ci_sandbox.read_approved_profile()
+
+
+def test_ci_sandbox_stdin_nonreader_is_bounded(ci_sandbox):
+    result = ci_sandbox.run([sys.executable, '-I', '-c', 'import time;time.sleep(5)'], input_text='x' * 32768, timeout=.1)
     assert result['timed_out'] and not ci_sandbox.succeeded(result)
