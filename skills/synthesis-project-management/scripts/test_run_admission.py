@@ -90,6 +90,25 @@ def test_admission_binds_real_native_seat_exact_worktree_and_claim(world):
     assert len(proof["claim_hash"]) == 64
 
 
+def test_native_binding_parses_each_fresh_complete_board_once(world, monkeypatch):
+    module = importlib.import_module("run_admission")
+    original = module.parse_table_rows
+    parsed = []
+    def counted(text, **kwargs):
+        parsed.append(text)
+        return original(text, **kwargs)
+    monkeypatch.setattr(module, "parse_table_rows", counted)
+    monkeypatch.setattr(module.coordination, "parse_table_rows", counted)
+    for count in (1, 2):
+        assert module.native_binding(world["board"], world["actor"]["native_payload"], readonly=True)["session_uuid"] == SEAT
+        assert len(parsed) == count
+    text = world["board"].read_text()
+    world["board"].write_text(text.replace("\n## Messages", "\n| malformed foreign row |\n\n## Messages"))
+    with pytest.raises(ValueError):
+        module.native_binding(world["board"], world["actor"]["native_payload"], readonly=True)
+    assert len(parsed) == 3
+
+
 @pytest.mark.parametrize("change", ["disjoint", "inactive", "wrong_branch", "wrong_native", "duplicate", "registry"])
 def test_admission_refuses_location_without_current_exact_authority(world, change):
     if change == "disjoint":
