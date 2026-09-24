@@ -1141,12 +1141,15 @@ def expected_working_digest(contents, order):
     return hashlib.sha256(json.dumps(entries, separators=(",", ":")).encode()).hexdigest()
 
 
-@pytest.mark.parametrize("root_form", ["absolute", "relative", "symlink"])
+@pytest.mark.parametrize("root_form", ["absolute", "relative", "current", "symlink"])
 def test_working_digest_preserves_complete_coverage_and_order(tmp_path, monkeypatch, root_form):
     project, contents, order = working_digest_fixture(tmp_path)
     if root_form == "relative":
         monkeypatch.chdir(tmp_path)
         project = Path("project")
+    elif root_form == "current":
+        monkeypatch.chdir(project)
+        project = Path(".")
     elif root_form == "symlink":
         alias = tmp_path / "project-alias"
         alias.symlink_to(project, target_is_directory=True)
@@ -1220,12 +1223,16 @@ def test_working_digest_avoids_per_file_relative_ancestor_walks(tmp_path, monkey
     assert calls == {"relative_to": 0, "parents": 0}
 
 
-def test_working_digest_rejects_non_descendant_from_traversal(tmp_path, monkeypatch):
+@pytest.mark.parametrize("root_form", ["absolute", "current"])
+def test_working_digest_rejects_non_descendant_from_traversal(tmp_path, monkeypatch, root_form):
     project = tmp_path / "project"
     project.mkdir()
     other = tmp_path / "project-sibling" / "file.txt"
     other.parent.mkdir()
     other.write_bytes(b"must not enter this digest")
+    if root_form == "current":
+        monkeypatch.chdir(project)
+        project = Path(".")
     original = Path.rglob
 
     def traversal(self, pattern):
