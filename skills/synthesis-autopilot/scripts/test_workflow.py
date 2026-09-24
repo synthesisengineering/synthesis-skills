@@ -703,3 +703,97 @@ def test_quality_receipt_cannot_certify_a_missing_or_changed_reviewed_artifact(w
         context["artifacts"]["a1"]["digest"] = "f" * 64
     with pytest.raises(ValueError):
         call(wf, result, context, "grade", criterion_id="c1", receipt_ids=["q1"], independent=True)
+
+
+def accounting_completion_ready(wf, state, context):
+    result = ledger(wf, state, context)
+    flow = result['extensions']['workflow']
+    for node in flow['graph']['nodes'].values():
+        node['status'] = 'done'
+    context['artifacts'] = {'a1': {'digest': 'd' * 64}, 'a2': {'digest': 'd' * 64}}
+    for criterion in ('c1', 'c2'):
+        typed = quality_context(result, context)['evidence']['q1']['data']
+        typed.update(criterion_id=criterion, artifact_id='a1' if criterion == 'c1' else 'a2')
+        context = receipt(result, context, criterion, 'quality_observation', typed)
+        flow['quality'][criterion] = {'verdict': 'PASS', 'receipt_ids': [criterion], 'round': 1, 'independent': True}
+    return result, context
+
+
+def test_completed_outcome_can_retain_unmeasured_forecast_without_refund(wf, state, context):
+    result, context = accounting_completion_ready(wf, state, context)
+    result = call(wf, result, context, 'reserve', reservation_id='review', amounts={'searches': 2, 'tokens': 100}, category='verification')
+    result = call(wf, result, context, 'settle', reservation_id='review', actual={'searches': 1})
+    before = copy.deepcopy(result)
+    wf.validate_command(result, 'close', {'status': 'completed'}, context)
+    assert result == before
+    summary = wf.budget_summary(result)
+    assert summary['tokens']['spent'] is None
+    assert summary['tokens']['committed'] == 100
+    assert summary['tokens']['unknown_reservations'] == ['review']
+    assert result['extensions']['workflow']['budget']['reservations']['review']['status'] == 'unknown'
+
+
+@pytest.mark.parametrize('actual', [None, {}, {'tokens': 80}, 'reserved'])
+def test_unknown_or_active_hard_usage_still_blocks_completed_close(wf, state, context, actual):
+    result, context = accounting_completion_ready(wf, state, context)
+    result = call(wf, result, context, 'reserve', reservation_id='review', amounts={'searches': 2, 'tokens': 100}, category='verification')
+    if actual != 'reserved':
+        result = call(wf, result, context, 'settle', reservation_id='review', actual=actual)
+    with pytest.raises(ValueError, match='accounting'):
+        wf.validate_command(result, 'close', {'status': 'completed'}, context)
+    assert wf.budget_summary(result)['tokens']['committed'] >= 100
+
+
+def test_forecast_unknown_does_not_excuse_measured_hard_breach(wf, state, context):
+    result, context = accounting_completion_ready(wf, state, context)
+    result = call(wf, result, context, 'reserve', reservation_id='review', amounts={'searches': 2, 'tokens': 100}, category='verification')
+    result = call(wf, result, context, 'settle', reservation_id='review', actual={'searches': 3})
+    with pytest.raises(ValueError, match='accounting'):
+        wf.validate_command(result, 'close', {'status': 'completed'}, context)
+
+
+def test_parent_keeps_conservative_forecast_when_finished_child_cost_unknown(wf, state, context):
+    result, context = accounting_completion_ready(wf, state, context)
+    result = call(wf, result, context, 'reserve', reservation_id='parent', amounts={'searches': 8, 'tokens': 200}, category='work')
+    result = call(wf, result, context, 'reserve', reservation_id='child', parent_id='parent', amounts={'searches': 4, 'tokens': 100}, category='verification')
+    result = call(wf, result, context, 'settle', reservation_id='child', actual={'searches': 2})
+    # Parent-local tokens are measured; the child's are not. Do not refund the
+    # child's missing usage by treating the parent as wholly measured.
+    result = call(wf, result, context, 'settle', reservation_id='parent', actual={'searches': 1, 'tokens': 20})
+    wf.validate_command(result, 'close', {'status': 'completed'}, context)
+    summary = wf.budget_summary(result)
+    assert summary['searches']['spent'] == 3
+    assert summary['tokens']['spent'] is None
+    assert summary['tokens']['known_spent'] == 20
+    assert summary['tokens']['committed'] == 200
+    assert summary['tokens']['unknown_reservations'] == ['child']
+    assert result['extensions']['workflow']['budget']['reservations']['parent']['status'] == 'unknown'
+
+
+def test_forecast_exception_cannot_discharge_running_child_reservation(wf, state, context):
+    result, context = accounting_completion_ready(wf, state, context)
+    result = call(wf, result, context, 'reserve', reservation_id='parent', amounts={'searches': 8, 'tokens': 200}, category='work')
+    result = call(wf, result, context, 'reserve', reservation_id='child', parent_id='parent', amounts={'searches': 4, 'tokens': 100}, category='verification')
+    result = call(wf, result, context, 'settle', reservation_id='parent', actual={'searches': 1})
+    with pytest.raises(ValueError, match='accounting'):
+        wf.validate_command(result, 'close', {'status': 'completed'}, context)
+
+
+def test_forecast_exception_still_requires_actual_quality_acceptance(wf, state, context):
+    result, context = accounting_completion_ready(wf, state, context)
+    result = call(wf, result, context, 'reserve', reservation_id='review', amounts={'searches': 2, 'tokens': 100}, category='verification')
+    result = call(wf, result, context, 'settle', reservation_id='review', actual={'searches': 1})
+    result['extensions']['workflow']['quality'].pop('c1')
+    with pytest.raises(ValueError, match='quality'):
+        wf.validate_command(result, 'close', {'status': 'completed'}, context)
+
+
+def test_later_ambiguous_report_does_not_reuse_earlier_partial_settlement(wf, state, context):
+    result, context = accounting_completion_ready(wf, state, context)
+    result = call(wf, result, context, 'reserve', reservation_id='review', amounts={'searches': 2, 'tokens': 100}, category='verification')
+    result = call(wf, result, context, 'settle', reservation_id='review', actual={'searches': 1})
+    result = call(wf, result, context, 'settle', reservation_id='review', actual=None)
+    assert result['extensions']['workflow']['budget']['reservations']['review']['actual'] == {'searches': 1}
+    with pytest.raises(ValueError, match='accounting'):
+        wf.validate_command(result, 'close', {'status': 'completed'}, context)
+    assert wf.budget_summary(result)['tokens']['committed'] == 100
