@@ -236,3 +236,11 @@ def test_mac_worker_cannot_fork_or_spawn_a_process_outside_the_deadline(artifact
     result=artifacts.run_python_check(script,tmp_path)
     assert result['returncode']==0,result
     assert json.loads(result['stdout'])==['denied','denied']
+
+@pytest.mark.parametrize('exit_code,expected', [(0, 'PASS'), (2, 'FAIL')])
+def test_native_style_cli_system_exit_is_collected_without_swallowing_failure(artifacts, tmp_path, exit_code, expected):
+    bundle = artifacts.prepare('S02', tmp_path)
+    worker = Path(bundle['worker'])
+    (worker/'transform.py').write_text('def transform(values,unique=False):\n return list(dict.fromkeys(values)) if unique else list(values)\n')
+    (worker/'cli.py').write_text('import json,sys\nfrom transform import transform\nprint(json.dumps(transform(json.loads(sys.argv[-1]),unique=True)))\nsys.exit('+str(exit_code)+')\n')
+    assert artifacts.grade_artifacts(bundle)['deterministic'] == expected
