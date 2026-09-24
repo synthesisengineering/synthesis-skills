@@ -144,3 +144,61 @@ def test_muse_review_binds_native_spawn_and_ready_result_not_arbitrary_tool_text
     changed = deepcopy(calls)
     changed[-1]["stream"]["id"] = "foreign"
     assert review.parse_muse_review(changed, source, native) is None
+
+
+def test_async_native_question_reply_is_bound_to_exact_question_and_positive_option(review):
+    title = "Approve the reviewed proposal at project/proposal.json (sha256 " + "a" * 64 + ")?"
+    call = {"type": "response_item", "payload": {"type": "function_call", "name": "request_user_input_async",
+        "call_id": "question-call", "arguments": json.dumps({"questions": [{"title": title, "options": ["Approve proposal", "Keep current contract"]}]})}}
+    ack = {"type": "response_item", "payload": {"type": "function_call_output", "call_id": "question-call", "output": '{"accepted":true}'}}
+    answer = {"questionItemId": json.dumps(["request_user_input_async", "question-call", 0]), "question": title, "answer": "Approve proposal"}
+    reply = {"type": "response_item", "payload": {"type": "message", "id": "user-answer", "role": "user", "content": [{"type": "input_text",
+        "text": "<send_user_message_question_reply>\n" + json.dumps([answer]) + "\n</send_user_message_question_reply>"}]}}
+    source = {"kind": "native-question", "call_id": "question-call", "message_id": "user-answer", "question_index": 0}
+    assert review.parse_codex_question([call, ack, reply], source, title, "Approve proposal") is True
+    assert review.parse_codex_question([call, ack], source, title, "Approve proposal") is False
+    assert review.parse_codex_question([call, ack, reply], source, title + "changed", "Approve proposal") is False
+    assert review.parse_codex_question([call, ack, reply], source, title, "Keep current contract") is False
+    reply["payload"]["role"] = "assistant"
+    assert review.parse_codex_question([call, ack, reply], source, title, "Approve proposal") is False
+
+
+def calibration_package(context, request, response):
+    import hashlib
+    def artifact(ident, text):
+        path = context["project"] / (ident + ".json")
+        path.write_text(text)
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        context["artifacts"][ident] = {"path": path.name, "digest": digest}
+        return digest
+    rubric = artifact("rubric", '"Check the stated writing dimensions"')
+    positive = artifact("positive-control", '"A complete source-faithful control"')
+    negative = artifact("negative-control", '"A control with a deliberate unsupported statement"')
+    controls = [{"artifact_id": "positive-control", "artifact_digest": positive, "expected": "PASS"},
+                {"artifact_id": "negative-control", "artifact_digest": negative, "expected": "FAIL"}]
+    manifest = {"schema_version": 1, "domain": "writing", "rubric": "fixture-rubric", "rubric_artifact_id": "rubric",
+                "rubric_digest": rubric, "controls": controls}
+    manifest_digest = artifact("control-manifest", json.dumps(manifest))
+    request["artifact_digests"].update({"rubric": rubric, "positive-control": positive, "negative-control": negative})
+    response["data"].update(domain="writing", calibrated=True,
+        observations={"source_fidelity": True, "reader_purpose": True, "structure": True, "voice": True},
+        calibration={"manifest_id": "control-manifest", "manifest_digest": manifest_digest,
+            "reviewer": response["data"]["reviewer"], "rubric_artifact_id": "rubric", "rubric_digest": rubric,
+            "observations": [{"artifact_id": row["artifact_id"], "artifact_digest": row["artifact_digest"], "verdict": row["expected"]} for row in controls]})
+
+
+@pytest.mark.parametrize("case", ["flag-only", "valid", "false-positive", "visible-labels", "failed-calibration"])
+def test_native_calibration_rederives_blind_positive_and_negative_controls(review, observed, world, case):
+    request, response = package(observed)
+    response["data"].update(domain="writing", calibrated=True)
+    if case != "flag-only":
+        calibration_package(observed, request, response)
+    if case in {"false-positive", "failed-calibration"}:
+        response["data"]["calibration"]["observations"][1]["verdict"] = "PASS"
+    if case == "failed-calibration":
+        response["data"]["calibrated"] = False
+    if case == "visible-labels":
+        request["artifact_digests"]["control-manifest"] = observed["artifacts"]["control-manifest"]["digest"]
+    append_claude_tool(world, "Agent", {"prompt": json.dumps({"autopilot_review": request})}, {"autopilot_review": response}, "review-call")
+    receipt = record("quality_observation", {**response["data"], "source": {"kind": "native-agent", "call_id": "review-call"}}, observed)
+    assert review.verify_source(receipt, observed) is (case in {"valid", "failed-calibration"})

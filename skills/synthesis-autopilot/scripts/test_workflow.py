@@ -638,8 +638,10 @@ def test_core_completed_close_cannot_bypass_workflow_obligations(wf, state, cont
     wf.validate_command(result, "close", {"status": "incomplete", "reason": "Preserved work"}, context)
 
 
-def test_completion_guard_accepts_sound_fresh_outcomes(wf, state, context):
-    result = graphed(wf, state, context)
+@pytest.mark.parametrize("horizon", ["session", "reboot"])
+def test_completion_guard_accepts_sound_fresh_outcomes(wf, state, context, horizon):
+    result = configured(wf, state, context, horizon=horizon)
+    result = call(wf, result, context, "graph", nodes=nodes(), wip_limit=2)
     flow = result["extensions"]["workflow"]
     for node in flow["graph"]["nodes"].values():
         node["status"] = "done"
@@ -650,7 +652,12 @@ def test_completion_guard_accepts_sound_fresh_outcomes(wf, state, context):
         context = receipt(result, context, criterion, "quality_observation", typed)
         context["evidence"][criterion]["artifact_id"] = typed["artifact_id"]
         flow["quality"][criterion] = {"verdict": "PASS", "receipt_ids": [criterion], "round": 1, "independent": True}
-    wf.validate_command(result, "close", {"status": "completed"}, context)
+    if horizon == "reboot":
+        with pytest.raises(ValueError):
+            wf.validate_command(result, "close", {"status": "completed"}, context)
+        wf.validate_command(result, "close", {"status": "incomplete", "reason": "Survival unproved"}, context)
+    else:
+        wf.validate_command(result, "close", {"status": "completed"}, context)
 
 
 def test_real_engine_transactions_enforce_workflow_close_guard(wf, world, monkeypatch):
