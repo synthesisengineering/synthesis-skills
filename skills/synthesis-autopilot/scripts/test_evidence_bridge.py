@@ -276,3 +276,61 @@ def test_local_and_recovery_observers_produce_real_core_event_evidence(bridge, o
     ctx = engine.inspect_context(current, world["actor"], project=world["project"])
     assert not ctx["verify_receipt"]("resolver-observation", "project-resolution", {})
     assert not ctx["verify_receipt"]("recovery-observation", "recovery", {})
+
+
+def test_delivery_survives_evidence_bookkeeping_but_not_a_new_wait(bridge, observed, world):
+    engine = importlib.import_module("run_state")
+    cap = importlib.import_module("capabilities")
+    bridge.register_sources(engine.register_evidence_source)
+    cap.register_commands(engine.register_command)
+    current = command(engine, world, observed["state"], "wait.add", {"id": "review", "kind": "user", "reason": "Review actual output"})
+    ctx = {**observed, "state": current}
+    wait = cap.wait_binding(current)
+    append_claude_tool(world, "mcp__codex_app__send_message_to_thread",
+        {"threadId": "peer", "prompt": json.dumps({"run_id": current["run_id"], **wait})},
+        {"status": "delivered", "threadId": "peer"})
+    data = {"source": {"kind": "native-tool", "call_id": "native-call"},
+            "delivery_id": "native-call", "channel": "codex-task", "status": "delivered", **wait}
+    path = world["project"] / "delivery.json"
+    path.write_text(json.dumps(record("delivery", data, ctx)))
+    current = command(engine, world, current, "artifact.register", {"id": "delivery", "path": str(path), "role": "evidence", "retention": "durable", "required": False})
+    current = command(engine, world, current, "evidence.record", {"id": "delivery", "kind": "delivery", "artifact_id": "delivery"})
+    current = command(engine, world, current, "delivery.record", {"receipt": "delivery"})
+    pure = engine.inspect_context(current, world["actor"], project=world["project"])
+    assert cap.wait_delivery_status(current, pure)["delivered"]
+    current = command(engine, world, current, "wait.add", {"id": "publish", "kind": "user", "reason": "Publication choice"})
+    pure = engine.inspect_context(current, world["actor"], project=world["project"])
+    assert not cap.wait_delivery_status(current, pure)["delivered"]
+
+
+@pytest.mark.parametrize("custom", [False, True])
+def test_codex_literal_native_tool_wrapper_is_observable_without_arbitrary_exec(bridge, observed, world, monkeypatch, custom):
+    import run_admission
+    native = world["actor"]["native_payload"]["session_id"]
+    root = world["scratch"] / "codex"
+    root.mkdir()
+    transcript = root / "session.jsonl"
+    transcript.write_text(json.dumps({"type": "session_meta", "payload": {"id": native}}) + "\n")
+    monkeypatch.setenv("CODEX_HOME", str(root))
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:" + native)
+    world["board"].write_text(world["board"].read_text().replace("| claude |", "| codex |").replace("cc:" + native, "codex:" + native))
+    actor = copy.deepcopy(world["actor"])
+    actor["native_payload"]["transcript_path"] = str(transcript)
+    binding = run_admission.admit_paths(world["board"], "alpha", world["project"], [world["plan"]], actor["native_payload"], readonly=True)
+    ctx = {**observed, "actor": actor, "binding": binding}
+    source = 'text(await tools.mcp__codex_app__read_thread({"threadId":"peer"}));'
+    def append(call_id, code, namespace="functions"):
+        payload = {"type": "custom_tool_call" if custom else "function_call", "namespace": namespace, "name": "exec", "call_id": call_id,
+                   "input" if custom else "arguments": code if custom else json.dumps({"code": code})}
+        result = {"type": "custom_tool_call_output" if custom else "function_call_output", "call_id": call_id, "output": json.dumps({"threadId": "peer", "status": "completed"})}
+        with transcript.open("a") as handle:
+            handle.write(json.dumps({"type": "response_item", "payload": payload}) + "\n")
+            handle.write(json.dumps({"type": "response_item", "payload": result}) + "\n")
+    append("read", source)
+    assert bridge.native_tool_observation(ctx, "read")["tool"] == "mcp__codex_app__read_thread"
+    for ident, code, namespace in [("extra", source + 'text({"verified":true});', "functions"),
+                                   ("shell", 'text(await tools.exec_command({"cmd":"echo PASS"}));', "functions"),
+                                   ("foreign", source, "untrusted"),
+                                   ("variable", 'text(await tools.mcp__codex_app__read_thread(args));', "functions")]:
+        append(ident, code, namespace)
+        assert bridge.native_tool_observation(ctx, ident) is None

@@ -263,10 +263,41 @@ def test_integration_needs_independent_bound_evidence_and_accounts_worker_usage(
     result, context, brief = dispatch_ready(wf, state, context)
     result = call(wf, result, context, "dispatch", **brief)
     result = call(wf, result, context, "return", child_id="child-a", disposition="complete", artifact_ids=["a1"], evidence_ids=["r1"], reason="Ready")
-    context = receipt(result, context, "audit", "child_integration", {"child_id": "child-a", "task_id": "build", "accepted": True, "criteria": ["c1"], "artifact_ids": ["a1"], "reviewer": "root-seat", "actual": {"searches": 3}})
+    context["artifacts"]={"a1":{"digest":"d"*64}}
+    context = receipt(result, context, "audit", "child_integration", {"child_id": "child-a", "task_id": "build", "accepted": True, "criteria": ["c1"], "artifact_ids": ["a1"], "artifact_digests":{"a1":"d"*64}, "reviewer": "native:independent-reviewer", "producer":"fixture:child", "integration_owner":"root-seat", "actual": {"searches": 3}})
     result = call(wf, result, context, "integrate", child_id="child-a", receipt_id="audit")
     assert result["extensions"]["workflow"]["graph"]["nodes"]["build"]["status"] == "done"
     assert wf.budget_summary(result)["searches"]["spent"] == 3
+
+
+@pytest.mark.parametrize('changes',[
+    {'integration_owner':'another-seat'}, {'producer':'another-child'},
+    {'reviewer':'fixture:child'}, {'reviewer':'child-seat'}, {'reviewer':'child-a'},
+    {'artifact_digests':{'a1':'e'*64}}, {'artifact_digests':{}}, {'criteria':['c2']},
+])
+def test_integration_separates_owner_authority_from_review_provenance(wf,state,context,changes):
+    result,context,brief=dispatch_ready(wf,state,context)
+    result=call(wf,result,context,'dispatch',**brief)
+    result=call(wf,result,context,'return',child_id='child-a',disposition='complete',artifact_ids=['a1'],evidence_ids=['r1'],reason='Ready')
+    context['artifacts']={'a1':{'digest':'d'*64}}
+    data={'child_id':'child-a','task_id':'build','accepted':True,'criteria':['c1'],'artifact_ids':['a1'],
+          'artifact_digests':{'a1':'d'*64},'reviewer':'native:independent-reviewer','producer':'fixture:child',
+          'integration_owner':'root-seat','actual':{'searches':3},**changes}
+    context=receipt(result,context,'audit','child_integration',data)
+    with pytest.raises(ValueError):call(wf,result,context,'integrate',child_id='child-a',receipt_id='audit')
+
+
+def test_integration_current_actor_must_still_be_stored_integration_owner(wf,state,context):
+    result,context,brief=dispatch_ready(wf,state,context)
+    result=call(wf,result,context,'dispatch',**brief)
+    result=call(wf,result,context,'return',child_id='child-a',disposition='complete',artifact_ids=['a1'],evidence_ids=[],reason='Ready')
+    context['artifacts']={'a1':{'digest':'d'*64}}
+    data={'child_id':'child-a','task_id':'build','accepted':True,'criteria':['c1'],'artifact_ids':['a1'],
+          'artifact_digests':{'a1':'d'*64},'reviewer':'native:independent-reviewer','producer':'fixture:child',
+          'integration_owner':'root-seat','actual':{'searches':3}}
+    context=receipt(result,context,'audit','child_integration',data)
+    context['binding']['session_uuid']='different-command-actor'
+    with pytest.raises(ValueError):call(wf,result,context,'integrate',child_id='child-a',receipt_id='audit')
 
 
 def quality_context(state, context, *, passed=True, reviewer="independent", domain="software", calibrated=True):

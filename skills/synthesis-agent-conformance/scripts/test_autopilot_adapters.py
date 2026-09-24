@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -29,6 +30,17 @@ def test_muse_wrapper_uses_verified_outer_launcher_and_combined_entrypoint():
     assert 'exec-public --hook-event Stop --timeout-seconds 13' in wrapper
     assert 'synthesis-autopilot/scripts/autopilot_gate.py --combined-stop' in wrapper
     assert 'exec python3' not in wrapper
+
+
+def test_missing_launcher_has_native_terminal_output_not_a_shell_retry(tmp_path):
+    done = subprocess.run(["sh", str(ROOT / ".muse-plugin/hooks/synthesis-session-stop.sh")],
+        input=json.dumps(payload()), capture_output=True, text=True, timeout=3,
+        env={"HOME": str(tmp_path), "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+             "SYNTHESIS_INSTALL_BIN_DIR": str(tmp_path / "missing")})
+    assert done.returncode == 0
+    result = json.loads(done.stdout)
+    assert result["continue"] is False
+    assert result["systemMessage"].startswith("UNRESOLVED:")
 
 
 def test_both_checkpoint_and_autopilot_run_even_when_one_is_terminal():
@@ -130,3 +142,11 @@ def test_checkpoint_refuses_a_different_verified_release_root(monkeypatch, tmp_p
     with pytest.raises(ValueError):
         NATIVE.checkpoint_result(payload())
 
+
+def test_composed_terminal_diagnostic_does_not_repeat_unresolved_prefix():
+    module = NATIVE
+    payload = {"hook_event_name": "Stop", "session_id": "native-1", "stop_hook_active": True}
+    result = module.combined_result(payload,
+        checkpoint=lambda event: {"continue": False, "stopReason": "failure", "systemMessage": "UNRESOLVED: failure"},
+        autopilot_check=lambda event: {})
+    assert result["systemMessage"] == "UNRESOLVED: failure"
