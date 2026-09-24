@@ -13,6 +13,51 @@ import project_state as state
 import coordination as engine
 
 
+@pytest.mark.parametrize("client", ["codex", "claude"])
+@pytest.mark.parametrize("repeat", [False, True])
+def test_stop_feedback_is_bounded_without_accepting_failed_checkpoint(
+    client: str, repeat: bool, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    native = "018f0000-0000-7000-8000-000000000001"
+    payload = {"hook_event_name": "Stop", "session_id": native,
+               "turn_id": "fixture-turn", "stop_hook_active": repeat}
+    monkeypatch.setattr(state, "observer_native_identity", lambda _payload: (client, native))
+    code = state._emit_checkpoint_hook("UNKNOWN", ["fixture checkpoint is unresolved"], payload)
+    captured = capsys.readouterr()
+    output = json.loads(captured.out)
+    assert code == 0
+    assert '"checkpoint_accepted": false' in output["systemMessage"]
+    assert '"status": "UNKNOWN"' in output["systemMessage"]
+    if repeat:
+        assert output["continue"] is False
+        assert "unresolved" in output["stopReason"]
+        assert output.get("decision") != "block"
+    else:
+        assert output["decision"] == "block"
+        assert "unresolved" in output["reason"]
+
+
+@pytest.mark.parametrize("payload", [{}, {"hook_event_name": "Stop"},
+    {"hook_event_name": "Stop", "session_id": "fixture", "stop_hook_active": "false"}])
+def test_stop_unidentifiable_failure_is_terminal(payload, capsys) -> None:
+    assert state._emit_checkpoint_hook("UNKNOWN", ["identity unavailable"], payload) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["continue"] is False
+    assert output.get("decision") != "block"
+    assert '"checkpoint_accepted": false' in output["systemMessage"]
+
+
+@pytest.mark.parametrize("verdict", ["PASS", "NOT_APPLICABLE"])
+def test_repeated_stop_still_evaluates_and_reports_healthy_checkpoint(verdict, capsys) -> None:
+    payload = {"hook_event_name": "Stop", "session_id": "018f0000-0000-7000-8000-000000000001",
+               "stop_hook_active": True}
+    assert state._emit_checkpoint_hook(verdict, [], payload) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert "continue" not in output
+    assert "decision" not in output
+    assert f'"status": "{verdict}"' in output["systemMessage"]
+
+
 def run(*args: str, cwd: Path) -> str:
     result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=True)
     return result.stdout.strip()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import re
@@ -20,6 +21,37 @@ assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
+
+
+@pytest.mark.parametrize("raw", ["{broken", "[]", "{}"])
+def test_direct_stop_invalid_payload_terminates_and_preserves_pending(tmp_path, monkeypatch, capsys, raw):
+    pending = MODULE.PENDING_DIR
+    pending.mkdir(parents=True)
+    retained = pending / "retained.json"
+    retained.write_text('{"session_id":"foreign","paths":[]}', encoding="utf-8")
+    before = retained.read_bytes()
+    monkeypatch.setattr(sys, "stdin", io.StringIO(raw))
+    monkeypatch.setattr(sys, "argv", [str(MODULE_PATH), "--hook", "--quiet", "--dry-run"])
+    monkeypatch.setattr(MODULE, "resolve_config", lambda _path: dict(MODULE.DEFAULTS))
+    assert MODULE.main() == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["continue"] is False
+    assert output.get("decision") != "block"
+    assert retained.read_bytes() == before
+
+
+def test_direct_repeated_stop_records_healthy_handoff_without_terminal_failure(monkeypatch, capsys):
+    raw = {"session_id": "018f0000-0000-7000-8000-000000000001", "hook_event_name": "Stop",
+           "stop_hook_active": True, "cwd": "/tmp/fixture"}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(raw)))
+    monkeypatch.setattr(sys, "argv", [str(MODULE_PATH), "--hook", "--quiet"])
+    monkeypatch.setattr(MODULE, "resolve_config", lambda _path: dict(MODULE.DEFAULTS))
+    calls = []
+    monkeypatch.setattr(MODULE, "local_handoff_checkpoint", lambda payload, _cfg: (calls.append(payload) or [], None))
+    monkeypatch.setattr(MODULE, "write_state", lambda *_args, **_kwargs: None)
+    assert MODULE.main() == 0
+    assert calls == [raw]
+    assert not capsys.readouterr().out.strip()
 
 
 @pytest.fixture(autouse=True)

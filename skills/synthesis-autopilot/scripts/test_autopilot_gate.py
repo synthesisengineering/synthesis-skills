@@ -13,12 +13,93 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 MODULE_PATH = Path(__file__).with_name("autopilot_gate.py")
 SPEC = importlib.util.spec_from_file_location("autopilot_gate", MODULE_PATH)
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
+
+
+NATIVE_STOP_SESSION = "018f0000-0000-7000-8000-000000000001"
+
+
+def native_stop_payload(repeat=False):
+    return {"session_id": NATIVE_STOP_SESSION, "hook_event_name": "Stop",
+            "stop_hook_active": repeat, "turn_id": "fixture-turn", "cwd": "/tmp/p"}
+
+
+def native_engagement(tmp_path, **updates):
+    root = tmp_path / "engagements"
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / "owned.json"
+    path.write_text(json.dumps({"status": "active", "session_id": NATIVE_STOP_SESSION,
+        "client_session_ref": "codex:" + NATIVE_STOP_SESSION, "mission": "fixture obligation",
+        "plan": "/tmp/p/plan.md", **updates}), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("repeat", [False, True])
+def test_native_stop_feedback_is_bounded_and_preserves_engagement(tmp_path, repeat):
+    record = native_engagement(tmp_path)
+    before = record.read_bytes()
+    done = run_cli(tmp_path, "--gate", stdin=json.dumps(native_stop_payload(repeat)),
+        env_extra={"SYNTHESIS_CLIENT_SESSION_REF": "codex:" + NATIVE_STOP_SESSION})
+    assert done.returncode == 0
+    output = json.loads(done.stdout)
+    if repeat:
+        assert output["continue"] is False
+        assert output.get("decision") != "block"
+        assert "fixture obligation" in output["stopReason"]
+    else:
+        assert output["decision"] == "block"
+        assert "fixture obligation" in output["reason"]
+    assert record.read_bytes() == before
+
+
+@pytest.mark.parametrize("stdin", ["{broken", "[]", "{}",
+    '{"hook_event_name":"Stop","stop_hook_active":false}'])
+def test_native_stop_invalid_input_terminates_without_retry_or_false_success(tmp_path, stdin):
+    record = native_engagement(tmp_path)
+    before = record.read_bytes()
+    done = run_cli(tmp_path, "--gate", stdin=stdin,
+        env_extra={"SYNTHESIS_CLIENT_SESSION_REF": ""})
+    assert done.returncode == 0
+    output = json.loads(done.stdout)
+    assert output["continue"] is False
+    assert output.get("decision") != "block"
+    assert record.read_bytes() == before
+
+
+def test_native_stop_unreadable_registry_is_terminal_and_preserved(tmp_path):
+    root = tmp_path / "engagements"
+    root.mkdir()
+    broken = root / "broken.json"
+    broken.write_text("{broken", encoding="utf-8")
+    done = run_cli(tmp_path, "--gate", stdin=json.dumps(native_stop_payload()),
+        env_extra={"SYNTHESIS_CLIENT_SESSION_REF": "codex:" + NATIVE_STOP_SESSION})
+    assert done.returncode == 0
+    output = json.loads(done.stdout)
+    assert output["continue"] is False
+    assert "unreadable" in output["stopReason"]
+    assert broken.read_text(encoding="utf-8") == "{broken"
+
+
+@pytest.mark.parametrize("updates", [
+    {"status": "closed", "closed_incomplete": "principal stopped this work"},
+    {"blocker": {"reason": "awaiting principal decision", "alerted_at": "2026-09-23T00:00:00+00:00"}},
+    {"continuation": {"kind": "native", "mechanism": "verified native continuation"}},
+])
+def test_native_repeated_stop_preserves_legitimate_wait_close_and_continuation(tmp_path, updates):
+    record = native_engagement(tmp_path, **updates)
+    before = record.read_bytes()
+    done = run_cli(tmp_path, "--gate", stdin=json.dumps(native_stop_payload(True)),
+        env_extra={"SYNTHESIS_CLIENT_SESSION_REF": "codex:" + NATIVE_STOP_SESSION})
+    assert done.returncode == 0
+    assert not done.stdout.strip() or json.loads(done.stdout).get("continue") is not False
+    assert record.read_bytes() == before
 
 
 def run_cli(tmp_path: Path, *args: str, stdin: str = "{}", env_extra=None):
