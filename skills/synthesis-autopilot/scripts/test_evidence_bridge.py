@@ -317,6 +317,18 @@ def test_delivery_survives_evidence_bookkeeping_but_not_a_new_wait(bridge, obser
         current = command(engine, world, current, "evidence.record", {"id": envelope, "kind": "delivery", "artifact_id": envelope})
         with pytest.raises(ValueError, match="receipt"):
             command(engine, world, current, "delivery.record", {"receipt": envelope})
+    # Reusing the original receipt ID must not renew an old native event by
+    # replacing its envelope with a longer expiry. Preserve exact proof bytes.
+    replacement = record("delivery", data, ctx)
+    replacement["expires_at"] = (later + timedelta(days=1)).isoformat()
+    path.write_text(json.dumps(replacement))
+    current = command(engine, world, current, "artifact.register", {"id": "delivery", "path": str(path), "role": "evidence", "retention": "durable", "required": False})
+    current = command(engine, world, current, "evidence.record", {"id": "delivery", "kind": "delivery", "artifact_id": "delivery"})
+    pure = engine.inspect_context(current, world["actor"], project=world["project"])
+    assert not cap.wait_delivery_status(current, pure)["delivered"]
+    path.write_text(json.dumps(record("delivery", data, ctx)))
+    current = command(engine, world, current, "artifact.register", {"id": "delivery", "path": str(path), "role": "evidence", "retention": "durable", "required": False})
+    current = command(engine, world, current, "evidence.record", {"id": "delivery", "kind": "delivery", "artifact_id": "delivery"})
     monkeypatch.setattr(engine, "_now", lambda: (later + timedelta(hours=2)).isoformat())
     pure = engine.inspect_context(current, world["actor"], project=world["project"])
     assert not cap.wait_delivery_status(current, pure)["delivered"]
