@@ -442,3 +442,20 @@ def test_required_horizon_closure_needs_matching_observed_job_not_a_label():
     records.pop("wake")
     with pytest.raises(ValueError):
         CAP.validate_horizon(current, "reboot", context(records, now=NOW + 31))
+
+
+def test_explain_keeps_worker_operations_distinct_from_root_support():
+    import json, subprocess
+    command=[sys.executable,str(Path(__file__).with_name('autopilot.py')),'explain']
+    rows=json.loads(subprocess.run(command,capture_output=True,text=True,check=True).stdout)['surfaces']
+    for surface in ('claude-code-cli','codex-cli'):
+        worker=rows[surface]['native_worker']
+        assert set(worker['operations'])=={'read','write','edit','shell'}
+        assert worker['write_enforcement']!='ENFORCED'
+    muse=rows['muse-cli']
+    assert muse['level']=='native'
+    assert 'shell' not in muse['native_worker']['operations']
+    assert muse['native_worker']['write_enforcement']!='ENFORCED'
+    assert rows['cursor-cli']['native_worker']['status']=='UNAVAILABLE'
+    selected=json.loads(subprocess.run(command+['--surface','muse-cli'],capture_output=True,text=True,check=True).stdout)
+    assert selected['native_worker']==muse['native_worker']
