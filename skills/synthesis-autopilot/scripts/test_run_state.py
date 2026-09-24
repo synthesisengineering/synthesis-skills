@@ -483,3 +483,59 @@ def test_authentic_failed_observation_is_not_criterion_acceptance(engine, world)
     state = receipt(engine, world, state, "fixture-check", {"passed": True})
     state = command(engine, world, state, "verify", {"criteria": ["accept"]})
     assert engine.completion_report(world["project"], state["run_id"], actor=world["actor"])["status"] == "PASS"
+
+
+def test_stop_legacy_inventory_requires_explicit_index_only_when_nonempty(engine, world):
+    root = world["runtime"] / "engagements"
+    assert engine.legacy_for_stop(world["actor"], root)["health"] == "PASS"
+    root.mkdir(parents=True)
+    (root / "foreign.json").write_text(json.dumps({"session_id": "foreign"}))
+    result = engine.legacy_for_stop(world["actor"], root)
+    assert result["health"] == "UNKNOWN" and result["scanned"] == 0
+    assert "doctor --index-legacy" in result["action"]
+
+
+def test_indexed_stop_reads_only_owned_records_despite_foreign_volume(engine, world):
+    root = world["runtime"] / "engagements"
+    root.mkdir(parents=True)
+    owned = root / "owned.json"
+    owned.write_text(json.dumps(legacy_record(world)))
+    for number in range(600):
+        (root / f"foreign-{number}.json").write_text(json.dumps({"session_id": "foreign", "status": "active"}))
+    broken = root / "foreign-broken.json"
+    broken.write_bytes(b"{foreign corrupt\xff")
+    before = {path.name: path.read_bytes() for path in root.iterdir()}
+    indexed = engine.index_legacy(world["actor"], root)
+    assert indexed["health"] == "PASS" and indexed["unattributed"]
+    result = engine.legacy_for_stop(world["actor"], root)
+    assert result["health"] == "PASS" and result["scanned"] == 1
+    assert result["owned_active"][0]["source"] == str(owned)
+    assert {path.name: path.read_bytes() for path in root.iterdir()} == before
+    owned.write_text('{"session_id":"' + SEAT + '",broken')
+    result = engine.legacy_for_stop(world["actor"], root)
+    assert result["unattributed"][0]["blocking"] is True
+
+
+def test_indexed_stop_also_checks_exact_plan_new_record_and_import_digest(engine, world):
+    import hashlib
+    root = world["runtime"] / "engagements"
+    root.mkdir(parents=True)
+    engine.index_legacy(world["actor"], root)
+    key = hashlib.sha1(str(world["plan"]).encode()).hexdigest()[:12]
+    owned = root / f"{world['plan'].stem[:40]}-{key}.json"
+    owned.write_text(json.dumps(legacy_record(world)))
+    assert engine.legacy_for_stop(world["actor"], root, plan=world["plan"])["owned_active"]
+    engine.import_legacy(world["project"], owned, project_id="alpha", plan=world["plan"], contract=contract(),
+                         actor=world["actor"], command_id="index-import", runtime_root=world["runtime"])
+    assert not engine.legacy_for_stop(world["actor"], root, plan=world["plan"])["owned_active"]
+    owned.write_text(owned.read_text() + "\n")
+    assert engine.legacy_for_stop(world["actor"], root, plan=world["plan"])["owned_active"]
+
+
+def test_corrupt_foreign_index_does_not_affect_selected_native(engine, world):
+    root = world["runtime"] / "engagements"
+    root.mkdir(parents=True)
+    engine.index_legacy(world["actor"], root)
+    index_root = world["runtime"] / "legacy-index"
+    (index_root / "native" / "foreign.json").write_text("corrupt")
+    assert engine.legacy_for_stop(world["actor"], root)["health"] == "PASS"
