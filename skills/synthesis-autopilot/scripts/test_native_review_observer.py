@@ -8,6 +8,7 @@ import sys
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_run_state import engine, world, create, command  # noqa: F401
 
 
 @pytest.fixture
@@ -36,7 +37,7 @@ def review(tmp_path):
         "state": {"run_id": "run-one", "contract_digest": "a" * 64, "profile_digest": "b" * 64,
                   "contract": {"criteria": [{"id": "accept", "artifact_ids": ["draft"]}]},
                   "extensions": {"workflow": {"budget": {"limits": {"usd_micros": {"enforcement": "forecast"}}, "reservations": {
-                      "review-one": {"status": "reserved", "category": "review", "amounts": {"wall_millis": 120000, "usd_micros": 2000000}}}}}}}}
+                      "review-one": {"status": "reserved", "category": "verification", "amounts": {"wall_millis": 120000, "usd_micros": 2000000}}}}}}}}
     arguments = {"mode": "native-cli", "client": "claude", "criterion_id": "accept", "artifact_id": "draft",
                  "calibration_manifest_id": "gold", "reservation_id": "review-one", "timeout_seconds": 120,
                  "max_cost_usd": 2}
@@ -154,3 +155,23 @@ def test_muse_parser_binds_native_completion_and_rejects_tool_activity(observer)
     with pytest.raises(ValueError): observer.parse_native("muse", events[:-1])
     events.insert(2, event(2.5, "runtime.session", {"kind": "run", "event": {"kind": "assistant_tool_calls_committed", "tool_calls": [{"name": "read_file"}]}}))
     with pytest.raises(ValueError): observer.parse_native("muse", events)
+
+
+def test_review_consumes_real_workflow_verification_reservation(observer, review, engine, world, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    import workflow
+    workflow.register_commands(engine.register_command)
+    state = create(engine, world)
+    state = command(engine, world, state, "workflow.configure", {"dimensions": {
+        "domains": ["writing"], "uncertainty": "low", "effect": "local-reversible",
+        "horizon": "session", "parallelizable": False}})
+    state = command(engine, world, state, "workflow.budget", {"limits": {
+        "wall_millis": {"limit": 120000, "enforcement": "hard"},
+        "usd_micros": {"limit": 2000000, "enforcement": "forecast"}},
+        "deadline": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()})
+    state = command(engine, world, state, "workflow.reserve", {"reservation_id": "review-one",
+        "amounts": {"wall_millis": 120000, "usd_micros": 2000000}, "category": "verification"})
+    context, args = review
+    context["state"]["extensions"]["workflow"]["budget"] = state["extensions"]["workflow"]["budget"]
+    monkeypatch.setattr(observer, "execute_native", lambda client, prompt, **kw: result(prompt))
+    assert observer.observe_native_cli_review(context, args)["passed"] is True
