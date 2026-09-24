@@ -264,3 +264,32 @@ def test_muse_boundary_rejects_unbounded_reminder_lane(observer, tmp_path, roste
     event['payload']['event']['reminder_roster'] = roster
     path.write_text(json.dumps(event) + '\n')
     with pytest.raises(ValueError): observer.verify_muse_boundary(tmp_path, session)
+
+
+def test_muse_boundary_accepts_native_retained_permission_frame(observer, tmp_path):
+    session = muse_runtime_log(tmp_path, [{'source': 'settings', 'mode': 'named', 'active_tools': []}])
+    path = next(tmp_path.rglob('session.jsonl'))
+    configured = json.loads(path.read_text()); configured['sequence'] = 3
+    records = [{'stream': {'kind': 'session', 'id': session}, 'sequence': i + 1,
+                'payload_type': kind, 'payload': {}} for i, kind in enumerate(
+                ['runtime.session.permission_format_declared', 'runtime.session.permission_profile_committed'])]
+    frame = {'retained_frame': 'session_permission_transaction', 'frame_schema_version': 1,
+             'outer_log_ordinal': 1, 'transaction_id': 'transaction',
+             'children': [{'child_index': i, 'record_json': json.dumps(record)} for i, record in enumerate(records)]}
+    path.write_text(json.dumps(frame) + '\n' + json.dumps(configured) + '\n')
+    assert observer.verify_muse_boundary(tmp_path, session)['toolset'] == []
+
+
+@pytest.mark.parametrize('bad', ['foreign-identity', 'bad-index', 'unknown-frame', 'non-string-record'])
+def test_muse_boundary_rejects_invalid_native_permission_frame(observer, tmp_path, bad):
+    session = muse_runtime_log(tmp_path, [{'source': 'settings', 'mode': 'named', 'active_tools': []}])
+    path = next(tmp_path.rglob('session.jsonl')); configured = path.read_text()
+    record = {'stream': {'kind': 'session', 'id': session}, 'sequence': 0,
+              'payload_type': 'runtime.session.permission_format_declared', 'payload': {}}
+    if bad == 'foreign-identity': record['stream']['id'] = 'different'
+    frame = {'retained_frame': 'other' if bad == 'unknown-frame' else 'session_permission_transaction',
+             'frame_schema_version': 1, 'outer_log_ordinal': 1, 'transaction_id': 'transaction',
+             'children': [{'child_index': 1 if bad == 'bad-index' else 0,
+                           'record_json': record if bad == 'non-string-record' else json.dumps(record)}]}
+    path.write_text(json.dumps(frame) + '\n' + configured)
+    with pytest.raises(ValueError): observer.verify_muse_boundary(tmp_path, session)
