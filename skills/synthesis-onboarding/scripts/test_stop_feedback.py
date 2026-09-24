@@ -235,13 +235,46 @@ def test_held_activation_lock_is_terminal_without_waiting_for_host_timeout(activ
 
 def test_stop_execution_budget_includes_input_and_verification(active, monkeypatch, capsys):
     pointer, _, _ = active
-    monkeypatch.setattr(runtime, "read_payload", lambda _: (time.sleep(0.04) or json.dumps(event()).encode()))
-    monkeypatch.setattr(runtime, "verified_release", lambda _: (time.sleep(0.04) or {}))
+    clock = [10.0]
+    monkeypatch.setattr(runtime.time, "monotonic", lambda: clock[0])
+    def read(_):
+        clock[0] += 4.0
+        return json.dumps(event()).encode()
+    def verify(_):
+        clock[0] += 4.0
+        return {}
+    monkeypatch.setattr(runtime, "read_payload", read)
+    monkeypatch.setattr(runtime, "verified_release", verify)
     def execute(*args, timeout):
-        assert 0 < timeout < 0.13
+        assert timeout == 12.0
         return subprocess.CompletedProcess([], 0, b'{}', b'')
     monkeypatch.setattr(runtime, "execute", execute)
-    assert runtime.exec_public_main(["--hook-event", "Stop", "--timeout-seconds", "0.2", SCRIPT], pointer) == 0
+    assert runtime.exec_public_main(["--hook-event", "Stop", "--timeout-seconds", "20", SCRIPT], pointer) == 0
+
+
+@pytest.mark.parametrize("hook_event", ["Stop", "PreToolUse"])
+def test_exhausted_total_deadline_never_dispatches_worker(active, monkeypatch, capsys, hook_event):
+    pointer, _, _ = active
+    clock = [10.0]
+    monkeypatch.setattr(runtime.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(runtime, "read_payload", lambda _: json.dumps(event(hook_event_name=hook_event)).encode())
+    def verify(_):
+        clock[0] += 21.0
+        return {}
+    def forbidden(*args, **kwargs):
+        pytest.fail("expired launcher must not dispatch a worker")
+    monkeypatch.setattr(runtime, "verified_release", verify)
+    monkeypatch.setattr(runtime, "execute", forbidden)
+    code = runtime.exec_public_main(["--timeout-seconds", "20", SCRIPT], pointer)
+    output = capsys.readouterr()
+    if hook_event == "Stop":
+        assert code == 0
+        result = json.loads(output.out)
+        assert result["continue"] is False and "decision" not in result
+        assert "UNRESOLVED" in result["systemMessage"]
+    else:
+        assert code == 2 and not output.out
+    assert "deadline" in output.err
 
 
 def test_timeout_bounds_descendants_holding_output_pipes(active):

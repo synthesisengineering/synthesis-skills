@@ -251,6 +251,35 @@ def test_native_snapshot_accepts_identical_completed_prefix_during_append(review
     assert review._records(path) == [{'id': 'complete'}]
 
 
+def test_native_snapshot_continuous_appends_keep_initial_window_and_read_budget(review, tmp_path, monkeypatch):
+    path = tmp_path / 'native.jsonl'
+    path.write_bytes(b'{"id":"old"}\n{"id":"selected"}\n')
+    monkeypatch.setattr(review, 'MAX_TRANSCRIPT_BYTES', 24)
+    opened = Path.open
+    reads = []
+
+    class Reader:
+        def __init__(self, stream): self.stream = stream
+        def __enter__(self): return self
+        def __exit__(self, *args): return self.stream.__exit__(*args)
+        def __getattr__(self, name): return getattr(self.stream, name)
+        def read(self, length):
+            reads.append(length)
+            assert len(reads) <= 2 and 0 < length <= review.MAX_TRANSCRIPT_BYTES
+            value = self.stream.read(length)
+            with opened(path, 'ab') as writer:
+                writer.write(b'{"id":"later"}\n')
+            return value
+
+    def wrap(target, *args, **kwargs):
+        stream = opened(target, *args, **kwargs)
+        return Reader(stream) if target == path and args and args[0] == 'rb' else stream
+
+    monkeypatch.setattr(Path, 'open', wrap)
+    assert review._records(path) == [{'id': 'selected'}]
+    assert reads == [24, 24]
+
+
 @pytest.mark.parametrize('mutation', ['in-place', 'truncate', 'replace', 'symlink'])
 def test_native_snapshot_rejects_changed_or_replaced_selected_prefix(review, tmp_path, monkeypatch, mutation):
     path = tmp_path / 'native.jsonl'
@@ -267,6 +296,45 @@ def test_native_snapshot_rejects_changed_or_replaced_selected_prefix(review, tmp
             path.symlink_to(replacement)
     _mutate_after_first_native_read(monkeypatch, path, change)
     with pytest.raises(ValueError): review._records(path)
+
+
+@pytest.mark.parametrize('metadata_changed', [False, True])
+def test_native_snapshot_rechecks_actual_bytes_with_unreliable_metadata(review, tmp_path, monkeypatch, metadata_changed):
+    path = tmp_path / 'native.jsonl'
+    original = b'{"id":"complete"}\n'
+    rewritten = b'{"id":"changed!"}\n'
+    assert len(original) == len(rewritten)
+    path.write_bytes(original)
+    initial = path.lstat()
+    fstat, lstat = review.os.fstat, Path.lstat
+    mutated = False
+
+    class Metadata:
+        def __init__(self, actual): self.actual = actual
+        def __getattr__(self, name):
+            if name in {'st_mtime_ns', 'st_ctime_ns'}:
+                return getattr(initial, name) + int(mutated and metadata_changed)
+            return getattr(self.actual, name)
+
+    def descriptor_metadata(fd):
+        actual = fstat(fd)
+        return Metadata(actual) if (actual.st_dev, actual.st_ino) == (initial.st_dev, initial.st_ino) else actual
+
+    def path_metadata(target, *args, **kwargs):
+        actual = lstat(target, *args, **kwargs)
+        return Metadata(actual) if target == path else actual
+
+    def rewrite():
+        nonlocal mutated
+        path.write_bytes(rewritten)
+        mutated = True
+
+    monkeypatch.setattr(review.os, 'fstat', descriptor_metadata)
+    monkeypatch.setattr(Path, 'lstat', path_metadata)
+    _mutate_after_first_native_read(monkeypatch, path, rewrite)
+    with pytest.raises(ValueError, match='selected bytes changed'):
+        review._records(path)
+    assert mutated and path.read_bytes() == rewritten
 
 
 def test_native_snapshot_uses_only_complete_initial_lines_and_keeps_bound(review, tmp_path, monkeypatch):

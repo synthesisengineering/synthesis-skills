@@ -350,3 +350,22 @@ def test_concise_document_acceptance_retains_readability_and_preservation_guards
     result = artifacts.grade_artifacts(bundle)
     assert result['deterministic'] == 'FAIL'
     assert result['semantic'] == 'UNKNOWN'
+
+
+def test_linux_sandbox_preserves_loader_library_paths(artifacts, tmp_path, monkeypatch):
+    """ELF interpreters use /lib or /lib64 even on a usr-merged host."""
+    exists, resolve = Path.exists, Path.resolve
+    aliases = {'/lib', '/lib64'}
+    monkeypatch.setattr(artifacts.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(artifacts.shutil, 'which', lambda name: '/usr/bin/bwrap')
+    monkeypatch.setattr(Path, 'exists', lambda path: True if str(path) in aliases else exists(path))
+    monkeypatch.setattr(Path, 'resolve', lambda path, *a, **kw: Path('/usr/lib') if str(path) in aliases else resolve(path, *a, **kw))
+    command, provider = artifacts._sandbox_command(tmp_path, tmp_path / 'scratch', tmp_path / 'check.py', [])
+    mounts = [tuple(command[i:i + 3]) for i, value in enumerate(command) if value in {'--ro-bind', '--bind'}]
+    for alias in aliases:
+        assert ('--ro-bind', alias, alias) in mounts
+    assert provider == 'linux-bubblewrap'
+    assert '--unshare-all' in command
+    assert command[command.index('--remount-ro') + 1] == '/'
+    assert ('--ro-bind', '/', '/') not in mounts
+    assert [item for item in mounts if item[0] == '--bind'] == [('--bind', str(tmp_path / 'scratch'), str(tmp_path / 'scratch'))]

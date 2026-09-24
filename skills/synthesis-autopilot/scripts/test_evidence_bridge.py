@@ -767,10 +767,74 @@ def test_native_renewal_requires_fresh_same_pair_readback_before_expiry(bridge, 
         rows[-1]['message']['content'][0]['content'] = json.dumps(result)
         world['transcript'].write_text(''.join(json.dumps(row) + '\n' for row in rows))
     elif fault == 'replayed_list': listing = 'active-list'
-    elif fault == 'cancelled': append_claude_tool(world, 'CronDelete', {'id': 'worker02'}, {'id': 'worker02', 'deleted': True}, 'cancel-current')
+    elif fault == 'cancelled':
+        append_claude_tool(world, 'CronDelete', {'id': 'worker02'}, {'id': 'worker02', 'deleted': True}, 'cancel-current')
+        rows = [json.loads(line) for line in world['transcript'].read_text().splitlines()]
+        for row in rows[-2:]: row['timestamp'] = (at + timedelta(seconds=1)).isoformat()
+        world['transcript'].write_text(''.join(json.dumps(row) + '\n' for row in rows))
     observed['now'] = (at + timedelta(seconds=301 if fault == 'stale' else 1)).isoformat()
     if fault == 'after_expiry': observed['now'] = datetime.fromtimestamp(records['registered']['data']['lease_expires_at'], timezone.utc).isoformat()
     with pytest.raises(ValueError): bridge.observe_native_renewal(observed, listing, 'registered')
+
+
+@pytest.mark.parametrize('event', ['cancel', 'pair-removed'])
+@pytest.mark.parametrize('timestamp', ['future', 'missing', 'old'])
+def test_later_native_invalidation_cannot_hide_behind_unfresh_timestamp(bridge, observed, world, event, timestamp):
+    _, _, _, _, readback = native_renewal_fixture(bridge, observed, world)
+    start = datetime.fromisoformat(observed['now'])
+    readback('renew-list', start + timedelta(seconds=5))
+    observed['now'] = (start + timedelta(seconds=6)).isoformat()
+    assert bridge.observe_native_renewal(observed, 'renew-list', 'registered')['job_id'] == 'worker02'
+    if event == 'cancel':
+        append_claude_tool(world, 'CronDelete', {'id': 'worker02'}, {'id': 'worker02', 'deleted': True}, 'invalidating-event')
+    else:
+        append_claude_tool(world, 'CronList', {}, {'jobs': []}, 'invalidating-event')
+    rows = [json.loads(line) for line in world['transcript'].read_text().splitlines()]
+    for row in rows[-2:]:
+        if timestamp == 'missing': row.pop('timestamp')
+        else: row['timestamp'] = (start + timedelta(seconds=60 if timestamp == 'future' else -600)).isoformat()
+    world['transcript'].write_text(''.join(json.dumps(row) + '\n' for row in rows))
+    assert not bridge._recent_native(bridge.native_tool_observation(observed, 'invalidating-event'), observed)
+    with pytest.raises(ValueError):
+        bridge.observe_native_renewal(observed, 'renew-list', 'registered')
+
+
+@pytest.mark.parametrize('timestamp', ['future', 'missing', 'old'])
+def test_native_renewal_keeps_freshness_for_affirmative_readback(bridge, observed, world, timestamp):
+    _, _, _, _, readback = native_renewal_fixture(bridge, observed, world)
+    start = datetime.fromisoformat(observed['now'])
+    readback('unfresh-list', start + timedelta(seconds=60 if timestamp == 'future' else -600))
+    if timestamp == 'missing':
+        rows = [json.loads(line) for line in world['transcript'].read_text().splitlines()]
+        for row in rows[-2:]: row.pop('timestamp')
+        world['transcript'].write_text(''.join(json.dumps(row) + '\n' for row in rows))
+    observed['now'] = (start + timedelta(seconds=6)).isoformat()
+    with pytest.raises(ValueError):
+        bridge.observe_native_renewal(observed, 'unfresh-list', 'registered')
+
+
+@pytest.mark.parametrize('gap', ['overflow', 'ambiguous-cancel'])
+def test_native_renewal_refuses_incomplete_invalidation_coverage(bridge, observed, world, gap):
+    _, _, _, _, readback = native_renewal_fixture(bridge, observed, world)
+    start = datetime.fromisoformat(observed['now'])
+    readback('renew-list', start + timedelta(seconds=5))
+    observed['now'] = (start + timedelta(seconds=6)).isoformat()
+    assert bridge.observe_native_renewal(observed, 'renew-list', 'registered')['job_id'] == 'worker02'
+    append_claude_tool(world, 'CronDelete', {'id': 'worker02'}, {'id': 'worker02', 'deleted': True}, 'cancel-current')
+    if gap == 'overflow':
+        for number in range(64):
+            readback('later-list-' + str(number), start + timedelta(seconds=6))
+    else:
+        append_claude_tool(world, 'CronDelete', {'id': 'worker02'}, {'id': 'worker02', 'deleted': True}, 'cancel-current')
+    rows = [json.loads(line) for line in world['transcript'].read_text().splitlines()]
+    for row in rows:
+        content = row.get('message', {}).get('content', [])
+        if isinstance(content, list) and any(isinstance(item, dict) and
+                (item.get('id') == 'cancel-current' or item.get('tool_use_id') == 'cancel-current') for item in content):
+            row['timestamp'] = observed['now']
+    world['transcript'].write_text(''.join(json.dumps(row) + '\n' for row in rows))
+    with pytest.raises(ValueError):
+        bridge.observe_native_renewal(observed, 'renew-list', 'registered')
 
 
 @pytest.mark.parametrize('fault', ['new_id', 'changed_data', 'backdated_envelope', 'expired_receipt', 'claim_revoked'])
