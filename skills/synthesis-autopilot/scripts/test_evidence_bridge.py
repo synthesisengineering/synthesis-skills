@@ -323,12 +323,12 @@ def test_delivery_survives_evidence_bookkeeping_but_not_a_new_wait(bridge, obser
     replacement["expires_at"] = (later + timedelta(days=1)).isoformat()
     path.write_text(json.dumps(replacement))
     current = command(engine, world, current, "artifact.register", {"id": "delivery", "path": str(path), "role": "evidence", "retention": "durable", "required": False})
-    current = command(engine, world, current, "evidence.record", {"id": "delivery", "kind": "delivery", "artifact_id": "delivery"})
+    with pytest.raises(ValueError):
+        command(engine, world, current, "evidence.record", {"id": "delivery", "kind": "delivery", "artifact_id": "delivery"})
     pure = engine.inspect_context(current, world["actor"], project=world["project"])
     assert not cap.wait_delivery_status(current, pure)["delivered"]
     path.write_text(json.dumps(record("delivery", data, ctx)))
     current = command(engine, world, current, "artifact.register", {"id": "delivery", "path": str(path), "role": "evidence", "retention": "durable", "required": False})
-    current = command(engine, world, current, "evidence.record", {"id": "delivery", "kind": "delivery", "artifact_id": "delivery"})
     monkeypatch.setattr(engine, "_now", lambda: (later + timedelta(hours=2)).isoformat())
     pure = engine.inspect_context(current, world["actor"], project=world["project"])
     assert not cap.wait_delivery_status(current, pure)["delivered"]
@@ -468,6 +468,97 @@ def test_terminal_delivery_observation_uses_predeclared_target_and_actual_native
     current = command(engine, world, current, "delivery.record", {"receipt": "observed-after-close"})
     assert current["status"] == "cancelled" and current["terminal"] == terminal
     assert current["extensions"]["capabilities"]["deliveries"]["delivered-after-close"]["status"] == "delivered"
+
+
+def quality_repair_world(world, *, change_output=True):
+    """Real core and OS-sandbox consumer receipts; no verifier callbacks."""
+    import autopilot
+    engine = autopilot.engine()
+    current = create(engine, world)
+    current = command(engine, world, current, "workflow.configure", {"dimensions": {
+        "domains": ["software"], "uncertainty": "low", "effect": "local-reversible",
+        "horizon": "session", "parallelizable": False}})
+    def register(identity, content, role="input"):
+        nonlocal current
+        path = world["project"] / (identity + (".py" if identity == "program" else ".json"))
+        path.write_text(content)
+        current = command(engine, world, current, "artifact.register", {
+            "id": identity, "path": str(path), "role": role, "required": role == "output", "retention": "durable"})
+        return path
+    register("output", '{"answer":0}', "output")
+    register("program", 'from pathlib import Path\nprint(Path("output.json").read_text())\n')
+    register("consumer", json.dumps({"schema_version": 1, "kind": "python-consumer", "criterion_id": "accept",
+        "artifact_id": "output", "script_artifact_id": "program", "expected": {"answer": 1}, "argv": [], "timeout_seconds": 2}))
+    def observe(kind, check_id, identity):
+        nonlocal current
+        current = engine.observe(world["project"], current["run_id"], kind, {"check_id": check_id},
+            expected_revision=current["revision"], command_id=identity, actor=world["actor"], runtime_root=world["runtime"])
+    observe("consumer-check", "consumer", "failed-consumer")
+    register("first-review-spec", json.dumps({"schema_version": 1, "kind": "quality_observation",
+        "arguments": {"observation_id": "failed-consumer"}}))
+    observe("quality_observation", "first-review-spec", "failed-review")
+    current = command(engine, world, current, "workflow.grade", {
+        "criterion_id": "accept", "receipt_ids": ["failed-review"], "independent": False})
+    prior = copy.deepcopy(current["extensions"]["workflow"]["quality"]["accept"])
+    assert prior["verdict"] == "FAIL"
+    if change_output:
+        register("output", '{"answer":1}', "output")
+    observe("consumer-check", "consumer", "repaired-consumer")
+    register("second-review-spec", json.dumps({"schema_version": 1, "kind": "quality_observation",
+        "arguments": {"observation_id": "repaired-consumer"}}))
+    observe("quality_observation", "second-review-spec", "repaired-review")
+    arguments = {"criterion_id": "accept", "prior_grade_digest": prior.get("grade_digest", "missing-grade-fingerprint"),
+                 "receipt_ids": ["repaired-review"]}
+    register("resolution-spec", json.dumps({"schema_version": 1, "kind": "quality_resolution", "arguments": arguments}))
+    return engine, current, prior, arguments
+
+
+def test_quality_resolution_derives_changed_output_from_real_consumer_attempts(bridge, world):
+    engine, current, prior, arguments = quality_repair_world(world)
+    failed_snapshot = copy.deepcopy(current["observations"]["failed-review"])
+    current = engine.observe(world["project"], current["run_id"], "quality_resolution", {"check_id": "resolution-spec"},
+        expected_revision=current["revision"], command_id="repair-resolution", actor=world["actor"], runtime_root=world["runtime"])
+    data = current["evidence"]["repair-resolution"]["data"]
+    assert data["prior_grade_digest"] == prior["grade_digest"]
+    assert data["prior_receipt_ids"] == ["failed-review"] and data["receipt_ids"] == ["repaired-review"]
+    assert data["prior_receipt_digests"] == {"failed-review": failed_snapshot["digest"]}
+    assert data["new_receipt_digests"] == {"repaired-review": current["observations"]["repaired-review"]["digest"]}
+    assert data["changed_artifacts"] == {"output": {
+        "before": [failed_snapshot["data"]["artifact_digest"]], "after": current["artifacts"]["output"]["digest"]}}
+    assert data["changed_evidence"] and not {"approved", "passed", "verdict"} & data.keys()
+    pure = engine.inspect_context(current, world["actor"], project=world["project"])
+    assert pure["verify_receipt"]("repair-resolution", "quality_resolution", {})
+    assert not pure["verify_receipt"]("failed-review", "quality_observation", {})  # Honest stale old artifact.
+    current = command(engine, world, current, "workflow.grade", {"criterion_id": "accept",
+        "receipt_ids": ["repaired-review"], "independent": False, "resolution_receipt_id": "repair-resolution"})
+    assert current["extensions"]["workflow"]["quality"]["accept"]["verdict"] == "PASS"
+    assert current["observations"]["failed-review"] == failed_snapshot
+    pure = engine.inspect_context(current, world["actor"], project=world["project"])
+    assert pure["verify_receipt"]("repair-resolution", "quality_resolution", {})
+    with pytest.raises(ValueError):
+        engine.observe(world["project"], current["run_id"], "quality_resolution", {"check_id": "resolution-spec"},
+            expected_revision=current["revision"], command_id="replayed-resolution", actor=world["actor"], runtime_root=world["runtime"])
+
+
+@pytest.mark.parametrize("damage", ["unchanged", "prior-attempt", "grade", "old-observation", "new-observation", "new-set", "criterion"])
+def test_quality_resolution_rejects_unchanged_or_forged_repair(bridge, world, damage):
+    engine, current, prior, arguments = quality_repair_world(world, change_output=damage != "unchanged")
+    pure = engine.inspect_context(current, world["actor"], project=world["project"])
+    context = {**pure, "state": copy.deepcopy(current), "project": world["project"], "actor": world["actor"]}
+    if damage == "prior-attempt":
+        arguments["receipt_ids"] = ["failed-review"]
+    elif damage == "grade":
+        context["state"]["extensions"]["workflow"]["quality"]["accept"]["round"] = 99
+    elif damage == "old-observation":
+        context["state"]["observations"]["failed-review"]["data"]["artifact_digest"] = "a" * 64
+    elif damage == "new-observation":
+        context["state"]["evidence"]["repaired-review"]["data"]["artifact_digest"] = "b" * 64
+    elif damage == "new-set":
+        arguments["receipt_ids"].append("failed-review")
+    elif damage == "criterion":
+        arguments["criterion_id"] = "other"
+    with pytest.raises(ValueError):
+        bridge.observe_quality_resolution(context, arguments)
 
 
 def test_claude_actual_structured_tool_result_and_list_shape(bridge, observed, world):
