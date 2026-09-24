@@ -219,7 +219,7 @@ def test_cancel_requested_is_not_cancelled_until_native_readback():
     current, records, ctx = configured()
     requested = CAP.request_cancel(current, {"reason": "principal stopped the run"}, ctx)
     assert CAP.continuation_status(requested, ctx)["state"] == "cancellation_pending"
-    records["cancelled"] = receipt("continuation-cancellation", job_id="job-1", cancelled=True)
+    records["cancelled"] = receipt("continuation-cancellation", job_id="job-1", cancelled=True, observed_at=NOW)
     done = CAP.confirm_cancel(requested, {"receipt": "cancelled"}, ctx)
     assert CAP.continuation_status(done, ctx)["state"] == "cancelled"
     records["late"] = receipt("continuation-wake", job_id="job-1", event_id="wake-late", next_wake_at=NOW + 60)
@@ -231,7 +231,7 @@ def test_cancel_requested_is_not_cancelled_until_native_readback():
 def test_cancel_failure_remains_actionable_not_confirmed():
     current, records, ctx = configured()
     current = CAP.request_cancel(current, {"reason": "stop"}, ctx)
-    records["failed"] = receipt("continuation-cancellation", job_id="job-1", cancelled=False)
+    records["failed"] = receipt("continuation-cancellation", job_id="job-1", cancelled=False, observed_at=NOW)
     current = CAP.confirm_cancel(current, {"receipt": "failed"}, ctx)
     assert CAP.continuation_status(current, ctx)["state"] == "cancellation_failed"
 
@@ -239,13 +239,88 @@ def test_cancel_failure_remains_actionable_not_confirmed():
 def test_recovery_capsule_requires_current_resolver_native_claim_and_run_revision():
     records = {"recovery": receipt("recovery", run_revision=3, resolver_receipt="resolver-1",
                                    native_receipt="native-proof", claim_receipt="claim-proof",
-                                   remaining=["deliverable-2"], input_receipts=["input-1"])}
+                                   remaining=["deliverable-2"], input_receipts=["input-1"]),
+               "resolver-1": receipt("project-resolution"), "native-proof": receipt("native-identity"),
+               "claim-proof": receipt("claim-ownership"), "input-1": receipt("working-input")}
     current = CAP.record_recovery(state(), {"receipt": "recovery"}, context(records))
     capsule = current["extensions"]["capabilities"]["recovery"]
     assert capsule["remaining"] == ["deliverable-2"]
     records["recovery"]["data"]["run_revision"] = 2
     with pytest.raises(ValueError):
         CAP.record_recovery(state(), {"receipt": "recovery"}, context(records))
+
+
+def test_invalid_event_is_not_reported_healthy_when_diagnostic_is_omitted():
+    assert CAP.stop_response("codex-cli", {})["continue"] is False
+    assert CAP.stop_response("cursor-ide", {}) == {}
+
+
+def test_registration_facility_must_be_observed_not_just_statically_known():
+    current, records, ctx = configured()
+    del current["extensions"]["capabilities"]["continuation"]
+    records["registered"]["data"]["mechanism"] = "codex-automation"
+    with pytest.raises(ValueError):
+        CAP.register_continuation(current, {"receipt": "registered", "horizon": "turn_end"}, ctx)
+
+
+def test_recovery_rejects_missing_or_stale_component_receipt():
+    records = {"recovery": receipt("recovery", run_revision=3, resolver_receipt="absent",
+                                   native_receipt="absent", claim_receipt="absent",
+                                   remaining=[], input_receipts=[])}
+    with pytest.raises(ValueError):
+        CAP.record_recovery(state(), {"receipt": "recovery"}, context(records))
+
+
+def test_cancellation_readback_before_request_is_not_confirmation():
+    current, records, ctx = configured()
+    current = CAP.request_cancel(current, {"reason": "stop"}, ctx)
+    records["stale"] = receipt("continuation-cancellation", job_id="job-1", cancelled=True)
+    with pytest.raises(ValueError):
+        CAP.confirm_cancel(current, {"receipt": "stale"}, ctx)
+
+
+def test_recovery_summary_is_unknown_after_a_later_revision():
+    current = state()
+    current["revision"] = 8
+    current["extensions"] = {"capabilities": {"recovery": {
+        "run_revision": 3, "recorded_revision": 4, "remaining": ["old"], "receipt": "old"}}}
+    assert CAP.status_view(current, context())["remaining"] is None
+    assert CAP.status_view(current, context())["recovery_status"] == "unverified"
+
+
+def test_capability_evidence_expiry_cannot_leave_continuation_verified():
+    current, _, ctx = configured()
+    future = {**ctx, "now": datetime.fromtimestamp(NOW + 301, timezone.utc).isoformat()}
+    assert not CAP.admission(current, "codex-desktop", "turn_end", future)["admitted"]
+
+
+def test_late_wake_from_retired_job_cannot_change_new_owner_deadline():
+    current, records, ctx = configured()
+    current = CAP.request_cancel(current, {"reason": "replace completed schedule"}, ctx)
+    records["cancelled"] = receipt("continuation-cancellation", job_id="job-1", cancelled=True, observed_at=NOW)
+    current = CAP.confirm_cancel(current, {"receipt": "cancelled"}, ctx)
+    records["replacement"] = copy.deepcopy(records["registered"])
+    records["replacement"]["data"]["job_id"] = "job-2"
+    current = CAP.register_continuation(current, {"receipt": "replacement", "horizon": "turn_end"}, ctx)
+    records["late"] = receipt("continuation-wake", job_id="job-1", event_id="late-old", next_wake_at=NOW + 80)
+    after = CAP.observe_wake(current, {"receipt": "late"}, ctx)
+    assert after["extensions"]["capabilities"]["continuation"] == current["extensions"]["capabilities"]["continuation"]
+    assert after["extensions"]["capabilities"]["ignored_wakes"][-1]["reason"] == "retired_job"
+
+
+def test_cursor_non_stop_payload_cannot_request_followup():
+    payload = {"hook_event_name": "preToolUse", "conversation_id": "c", "generation_id": "g",
+               "loop_count": 0, "status": "completed"}
+    assert CAP.stop_response("cursor-ide", payload, "unfinished") == {}
+
+
+def test_non_git_project_can_use_authenticated_receipts():
+    binding = {**BINDING, "repository": None, "branch": None}
+    evidence = capability_receipt()
+    evidence["bindings"].update(binding)
+    ctx = context({"cap": evidence}, binding=binding)
+    current = CAP.record_capability(state(), {"surface": "codex-desktop", "receipt": "cap"}, ctx)
+    assert CAP.admission(current, "codex-desktop", "turn_end", ctx)["admitted"]
 
 
 def test_delivery_does_not_confuse_queued_with_received_and_preserves_mute():
@@ -268,7 +343,84 @@ def test_reducers_are_pure_and_registered_with_bounded_payload_fields():
     assert before == state()
     assert after != before
     registrations = {}
-    CAP.register_commands(lambda name, reducer, *, allowed_fields: registrations.update({name: (reducer, allowed_fields)}))
+    CAP.register_commands(lambda name, reducer, *, allowed_fields, terminal_safe=False:
+        registrations.update({name: (reducer, allowed_fields, terminal_safe)}))
     assert {"capability.record", "continuation.register", "continuation.wake", "continuation.cancel",
             "continuation.cancel-confirm", "recovery.record", "delivery.record"} <= set(registrations)
     assert registrations["capability.record"][1] == ("extensions",)
+    assert registrations["continuation.cancel-confirm"][2] is True
+    assert registrations["continuation.register"][2] is False
+
+
+def test_terminal_status_retains_pending_native_cleanup():
+    current, _, ctx = configured()
+    current = CAP.request_cancel(current, {"reason": "stop"}, ctx)
+    current["status"] = "incomplete"
+    status = CAP.continuation_status(current, ctx)
+    assert status["state"] == "closed"
+    assert status["cleanup_required"] is True
+    assert status["cleanup_state"] == "cancellation_pending"
+
+
+def test_close_constraint_requires_only_explicit_capability_criteria():
+    current, _, ctx = configured()
+    current["contract"] = {"criteria": [{"id": "output", "method": "artifact", "required": True}]}
+    current["status"] = "completed"
+    CAP.validate_command(current, "close", {"status": "completed"}, ctx)
+    current["contract"]["criteria"].append({"id": "wake", "method": "continuation-wake",
+                                              "required": True, "evidence_ids": ["missing"]})
+    with pytest.raises(ValueError):
+        CAP.validate_command(current, "close", {"status": "completed"}, ctx)
+    CAP.validate_command(current, "close", {"status": "cancelled"}, ctx)
+
+
+def waiting_state():
+    current = state()
+    current["status"] = "waiting_user"
+    current["waits"] = {"review": {"id": "review", "kind": "user", "status": "pending", "reason": "Review output", "at": "2033-05-18T03:33:00+00:00"}}
+    return current
+
+
+def test_wait_delivery_requires_current_wait_binding_and_fresh_source():
+    current = waiting_state()
+    binding = CAP.wait_binding(current)
+    records = {"notice": receipt("delivery", delivery_id="notice-1", channel="host-ui", status="delivered", **binding)}
+    current = CAP.record_delivery(current, {"receipt": "notice"}, context(records))
+    assert CAP.wait_delivery_status(current, context(records))["delivered"]
+    assert not CAP.wait_delivery_status(current, context({}))["delivered"]
+    records["notice"]["expires_at"] = datetime.fromtimestamp(NOW - 1, timezone.utc).isoformat()
+    assert not CAP.wait_delivery_status(current, context(records))["delivered"]
+
+
+def test_old_notification_cannot_silence_new_or_changed_unresolved_waits():
+    current = waiting_state()
+    binding = CAP.wait_binding(current)
+    records = {"notice": receipt("delivery", delivery_id="notice-1", channel="host-ui", status="delivered", **binding)}
+    current = CAP.record_delivery(current, {"receipt": "notice"}, context(records))
+    current["waits"]["review"]["reason"] = "Review changed output"
+    assert not CAP.wait_delivery_status(current, context(records))["delivered"]
+    current = waiting_state()
+    current = CAP.record_delivery(current, {"receipt": "notice"}, context(records))
+    current["waits"]["approval"] = {"id": "approval", "kind": "user", "status": "pending", "reason": "Approve deployment"}
+    assert not CAP.wait_delivery_status(current, context(records))["delivered"]
+
+
+def test_unbound_or_queued_delivery_is_not_current_wait_notification():
+    current = waiting_state()
+    for data in ({}, CAP.wait_binding(current)):
+        records = {"notice": receipt("delivery", delivery_id="notice-1", channel="host-ui", status="queued", **data)}
+        recorded = CAP.record_delivery(current, {"receipt": "notice"}, context(records))
+        assert not CAP.wait_delivery_status(recorded, context(records))["delivered"]
+    records = {"notice": receipt("delivery", delivery_id="notice-1", channel="host-ui", status="delivered")}
+    recorded = CAP.record_delivery(current, {"receipt": "notice"}, context(records))
+    assert not CAP.wait_delivery_status(recorded, context(records))["delivered"]
+    assert not CAP.wait_delivery_status(state(), context(records))["delivered"]
+
+
+def test_delivery_refuses_partial_or_mismatched_wait_bindings():
+    current = waiting_state()
+    binding = CAP.wait_binding(current)
+    for changes in ({"wait_ids": []}, {"wait_digest": "f" * 64}, {"run_revision": current["revision"] + 1}):
+        records = {"notice": receipt("delivery", delivery_id="notice-1", channel="host-ui", status="delivered", **{**binding, **changes})}
+        with pytest.raises(ValueError):
+            CAP.record_delivery(current, {"receipt": "notice"}, context(records))

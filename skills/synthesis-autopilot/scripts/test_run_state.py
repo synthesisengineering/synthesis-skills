@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "synthesis-project-management/scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_run_admission import world, write_board, SEAT  # noqa: F401
+from test_run_admission import world, write_board, SEAT, NATIVE  # noqa: F401
 
 
 @pytest.fixture
@@ -399,3 +399,53 @@ def test_effect_absence_observation_cannot_authorize_a_later_attempt(engine, wor
     state = command(engine, world, state, "effect.prepare", intent)
     with pytest.raises(ValueError):
         command(engine, world, state, "effect.reconcile", {"id": "effect", "evidence": "effect-readback"})
+
+
+def legacy_record(world):
+    return {"plan": str(world["plan"]), "project_id": "alpha", "session_id": SEAT,
+            "client_session_ref": f"cc:{NATIVE}", "status": "active", "goals_met": True,
+            "profile": {"schema": 1, "items": [{"id": "fixture", "criterion_ids": ["accept"]}]}}
+
+
+def test_legacy_discovery_scopes_owner_and_requires_byte_identical_import(engine, world):
+    root = world["runtime"] / "engagements"
+    root.mkdir(parents=True)
+    owned = root / "owned.json"
+    owned.write_text(json.dumps(legacy_record(world)))
+    foreign = root / "foreign.json"
+    foreign.write_text(json.dumps({**legacy_record(world), "session_id": "foreign", "client_session_ref": "cc:01990000-0000-7000-8000-000000000099"}))
+    corrupt = root / "corrupt-foreign.json"
+    corrupt.write_bytes(b"{foreign corrupt\xff")
+    before = corrupt.read_bytes(), foreign.read_bytes()
+    found = engine.discover_legacy(world["actor"], root)
+    assert len(found["owned_active"]) == 1
+    assert found["owned_active"][0]["source"] == str(owned)
+    assert found["foreign_count"] == 1 and found["unattributed"]
+    engine.import_legacy(world["project"], owned, project_id="alpha", plan=world["plan"], contract=contract(),
+                         actor=world["actor"], command_id="migrate-owned", runtime_root=world["runtime"])
+    assert not engine.discover_legacy(world["actor"], root)["owned_active"]
+    owned.write_text(owned.read_text() + "\n")
+    assert engine.discover_legacy(world["actor"], root)["owned_active"]
+    assert (corrupt.read_bytes(), foreign.read_bytes()) == before
+
+
+def test_legacy_exact_plan_path_fast_lookup_retains_owned_corruption(engine, world):
+    import hashlib
+    root = world["runtime"] / "engagements"
+    root.mkdir(parents=True)
+    key = hashlib.sha1(str(world["plan"]).encode()).hexdigest()[:12]
+    path = root / f"{world['plan'].stem[:40]}-{key}.json"
+    path.write_text('{"session_id": "' + SEAT + '", "client_session_ref": "cc:' + NATIVE + '", broken')
+    result = engine.discover_legacy(world["actor"], root, plan=world["plan"])
+    assert result["unattributed"][0]["blocking"] is True
+    assert result["scanned"] == 1
+
+
+def test_criterion_report_is_current_and_shared_with_completion(engine, world):
+    state, path = verified(engine, world)
+    report = engine.criterion_report(state, engine.inspect_context(state, world["actor"]))
+    assert report["criteria"][0]["status"] == "PASS"
+    path.write_text("Changed fixture")
+    report = engine.criterion_report(state, engine.inspect_context(state, world["actor"]))
+    assert report["criteria"][0]["status"] == "FAIL"
+    assert report["status"] == "FAIL"
