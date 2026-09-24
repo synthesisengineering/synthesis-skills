@@ -110,7 +110,7 @@ def test_native_tool_unknown_or_duplicate_call_is_not_accepted(bridge, observed,
 
 
 def test_delivery_projection_cannot_turn_queued_into_delivered(bridge, observed, world):
-    append_claude_tool(world, "mcp__codex_app__send_message_to_thread", {"threadId": "peer", "prompt": "Review"},
+    append_claude_tool(world, "mcp__codex_app__send_message_to_thread", {"threadId": "peer", "prompt": "Review run " + observed["state"]["run_id"]},
                        {"status": "queued", "threadId": "peer"})
     data = {"source": {"kind": "native-tool", "call_id": "native-call"},
             "delivery_id": "native-call", "channel": "codex-task", "status": "queued"}
@@ -129,6 +129,15 @@ def test_registered_production_source_overrides_test_verifier(bridge, observed, 
     bridge.register_sources(lambda kind, fn: registered.update({kind: fn}))
     assert {"project-resolution", "native-identity", "claim-ownership", "working-input", "delivery"} <= set(registered)
     assert registered["claim-ownership"](record("claim-ownership", {"verified": True}, observed), observed) is False
+    bridge.register_sources(engine.register_evidence_source)
+    engine.register_verifier("claim-ownership", lambda proof, bindings: True)
+    path = world["project"] / "forged.json"
+    path.write_text(json.dumps(record("claim-ownership", {"verified": True}, observed)))
+    state = command(engine, world, observed["state"], "artifact.register", {
+        "id": "forged", "path": str(path), "role": "evidence", "retention": "durable", "required": False})
+    state = command(engine, world, state, "evidence.record", {"id": "forged", "kind": "claim-ownership", "artifact_id": "forged"})
+    ctx = engine.inspect_context(state, world["actor"], project=world["project"])
+    assert ctx["verify_receipt"]("forged", "claim-ownership", {}) is False
 
 
 def test_ordinary_local_artifact_task_completes_through_cli_without_verifier_configuration(bridge, world):
@@ -156,3 +165,70 @@ def test_ordinary_local_artifact_task_completes_through_cli_without_verifier_con
                      "--payload", str(request), "--actor", str(actor), "--expected-revision", str(state["revision"]),
                      "--command-id", name])
     assert state["status"] == "completed"
+
+
+def ready_context(observed, world):
+    engine = importlib.import_module("run_state")
+    output = world["project"] / "output.txt"
+    output.write_text("Actual result\n")
+    current = command(engine, world, observed["state"], "artifact.register", {
+        "id": "output", "path": str(output), "role": "output", "retention": "durable", "required": True})
+    current = command(engine, world, current, "transition", {"status": "verifying"})
+    current = command(engine, world, current, "verify", {"criteria": ["accept"]})
+    pure = engine.inspect_context(current, world["actor"], project=world["project"])
+    current["extensions"]["workflow"] = {"graph": {"nodes": {"build": {"id": "build", "criteria": ["accept"], "status": "running"}}}}
+    return {**observed, "state": current, "artifacts": pure["artifacts"],
+            "criterion_report": engine.criterion_report(current, pure)}
+
+
+def test_workflow_completion_and_profile_are_derived_from_current_criteria(bridge, observed, world):
+    ctx = ready_context(observed, world)
+    data = bridge.observe_workflow("task_completion", ctx, task_id="build")
+    assert data["criteria"] == ["accept"]
+    assert bridge.verify_source(record("task_completion", data, ctx), ctx)
+    assert not bridge.verify_source(record("task_completion", {**data, "criteria": []}, ctx), ctx)
+    data = bridge.observe_workflow("profile", ctx)
+    assert data["satisfied_items"] == ["fixture"]
+    assert bridge.verify_source(record("profile", data, ctx), ctx)
+
+
+def test_workflow_completion_rechecks_artifact_bytes_after_report(bridge, observed, world):
+    ctx = ready_context(observed, world)
+    data = bridge.observe_workflow("task_completion", ctx, task_id="build")
+    (world["project"] / "output.txt").write_text("Changed result")
+    assert not bridge.verify_source(record("task_completion", data, ctx), ctx)
+
+
+def test_progress_source_binds_actual_input_and_output_digests(bridge, observed, world):
+    ctx = ready_context(observed, world)
+    data = bridge.observe_workflow("progress_observation", ctx, task_id="build")
+    assert data["artifact_digests"] == {"output": ctx["artifacts"]["output"]["digest"]}
+    assert bridge.verify_source(record("progress_observation", data, ctx), ctx)
+    assert not bridge.verify_source(record("progress_observation", {**data, "negative_finding": True}, ctx), ctx)
+
+
+def test_native_delivery_wait_metadata_must_appear_in_actual_prompt(bridge, observed, world):
+    state = observed["state"]
+    state["waits"] = {"review": {"id": "review", "kind": "user", "status": "pending", "reason": "Review"}}
+    cap = importlib.import_module("capabilities")
+    wait = cap.wait_binding(state)
+    args = {"threadId": "peer", "prompt": json.dumps({"run_id": state["run_id"], **wait})}
+    append_claude_tool(world, "mcp__codex_app__send_message_to_thread", args,
+                       {"status": "delivered", "threadId": "peer"})
+    data = {"source": {"kind": "native-tool", "call_id": "native-call"},
+            "delivery_id": "native-call", "channel": "codex-task", "status": "delivered", **wait}
+    assert bridge.verify_source(record("delivery", data, observed), observed)
+    assert not bridge.verify_source(record("delivery", {**data, "wait_ids": ["invented"]}, observed), observed)
+
+
+def test_continuation_cancellation_requires_actual_native_readback(bridge, observed, world):
+    state = observed["state"]
+    state["extensions"]["capabilities"] = {"continuation": {"job_id": "job-1", "surface": "claude-code-cli", "binding": {
+        **{key: observed["binding"][key] for key in ("project_id", "project_root", "session_uuid", "native_ref", "claim_hash", "repository", "branch")},
+        **{key: state[key] for key in ("run_id", "contract_digest", "profile_digest")}}}}
+    append_claude_tool(world, "CronDelete", {"id": "job-1"}, {"id": "job-1", "deleted": True}, "delete")
+    append_claude_tool(world, "CronList", {}, {"jobs": []}, "readback")
+    data = {"source": {"kind": "native-tool", "call_id": "delete", "readback_call_id": "readback"},
+            "job_id": "job-1", "cancelled": True}
+    assert bridge.verify_source(record("continuation-cancellation", data, observed), observed)
+    assert not bridge.verify_source(record("continuation-cancellation", {**data, "job_id": "foreign"}, observed), observed)
