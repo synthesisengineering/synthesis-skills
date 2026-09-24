@@ -201,6 +201,8 @@ def test_owned_worker_runs_once_and_verifier_rederives_native_artifacts(boundary
         +'print(json.dumps({"type":"system","subtype":"init","session_id":"fixture-native","model":"configured"}))\n'
         +'print(json.dumps({"type":"result","subtype":"success","session_id":"fixture-native","total_cost_usd":0.1,"usage":{"input_tokens":4,"output_tokens":2}}))\n')
     script.chmod(0o700)
+    # Runner wire-fixture unit only: real PM authority is exercised separately below.
+    monkeypatch.setattr(boundary,'_authorize_worker',lambda context,paths:context['binding'])
     monkeypatch.setattr(boundary,'client_selection',lambda client,env:({'effort':'high'},str(script)))
     data=boundary.run_worker(state,'worker',context,client='claude',runtime_root=runtime,timeout_seconds=10)
     assert data['producer']=='claude:fixture-native'
@@ -223,3 +225,42 @@ def test_worker_rejects_invalid_admission_before_native_selection(boundary,roles
     client='muse' if change=='wrong_client' else 'claude'
     monkeypatch.setattr(boundary,'client_selection',lambda *args:pytest.fail('Rejected work must not inspect native configuration'))
     with pytest.raises(ValueError):boundary.run_worker(state,'worker',context,client=client,runtime_root=runtime,timeout_seconds=10)
+
+
+sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'synthesis-project-management/scripts'))
+from test_run_admission import world  # noqa: E402,F401
+
+
+def test_worker_authority_uses_active_pm_token_and_fresh_exact_paths(boundary,world):
+    import run_admission
+    from test_run_admission import write_board
+    project=world['project'];out=project/'outputs';out.mkdir()
+    proof=run_admission.admit_paths(world['board'],'alpha',project,[project],world['actor']['native_payload'])
+    context={'project':project,'state':{'project_id':'alpha'},'actor':world['actor'],'binding':proof}
+    with pytest.raises(ValueError):boundary._authorize_worker(context,[str(out)])
+    with run_admission.admission_scope(proof,world['actor'],project) as token:
+        context['admission_observation']=token
+        admitted=boundary._authorize_worker(context,[str(out)])
+        assert admitted['paths']==[str(out)]
+        write_board(world,claims=str(world['plan']))
+        with pytest.raises(ValueError):boundary._authorize_worker(context,[str(out)])
+
+
+@pytest.mark.parametrize('change',['output_ancestor','output_descendant','scratch_ancestor'])
+def test_worker_cannot_make_controller_state_writable(boundary,roles,tmp_path,monkeypatch,change):
+    state,context,runtime=worker_world(roles)
+    child=state['extensions']['workflow']['children']['worker']
+    if change=='output_ancestor':child['file_contract']['output_roots']=[str(runtime.parent)]
+    if change=='output_descendant':child['file_contract']['output_roots']=[str(runtime/'worker/output')]
+    if change=='scratch_ancestor':child['file_contract']['scratch_root']=str(runtime.parent)
+    monkeypatch.setattr(boundary,'client_selection',lambda *args:pytest.fail('Cannot select native client for writable controller state'))
+    with pytest.raises(ValueError):boundary.run_worker(state,'worker',context,client='claude',runtime_root=runtime,timeout_seconds=10)
+
+
+@pytest.mark.parametrize('field,value',[('is_error',True),('subtype','error_max_budget_usd'),('session_id','different')])
+def test_claude_parser_does_not_accept_error_or_changed_identity(boundary,field,value):
+    final={'type':'result','subtype':'success','session_id':'native-1','is_error':False}
+    final[field]=value
+    raw='\n'.join(json.dumps(row) for row in [{'type':'system','subtype':'init','session_id':'native-1','model':'configured'},final])
+    observed=boundary.parse_worker('claude',raw.encode())
+    assert observed['terminal']!='completed'
