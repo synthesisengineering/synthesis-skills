@@ -529,7 +529,9 @@ def native_turn_end_probe(world, observed):
     wake('monitor-wake',monitor['prompt'],first+timedelta(minutes=2,seconds=15))
     tool('CronList',{}, {'jobs':[{'id':'monitor1',**monitor}]},'monitor-check',first+timedelta(minutes=2,seconds=16))
     tool('CronCreate',active,{'id':'worker02','recurring':True},'active-create',now-timedelta(seconds=3))
-    tool('CronList',{}, {'jobs':[{'id':'worker02',**active},{'id':'monitor1',**monitor}]},'active-list',now-timedelta(seconds=2))
+    active_monitor={'cron':'* * * * *','recurring':True,'prompt':prompt('backstop','active',worker_job_id='worker02')}
+    tool('CronCreate',active_monitor,{'id':'monitor2','recurring':True},'active-monitor-create',now-timedelta(seconds=2))
+    tool('CronList',{}, {'jobs':[{'id':'worker02',**active},{'id':'monitor2',**active_monitor}]},'active-list',now-timedelta(seconds=1))
     arguments={'create_call_id':'probe-create','readback_call_id':'probe-list','wake_event_id':'worker-wake',
         'monitor_create_call_id':'monitor-create','monitor_readback_call_id':'probe-list',
         'monitor_wake_event_id':'monitor-wake','monitor_check_call_id':'monitor-check',
@@ -550,10 +552,10 @@ def test_native_turn_end_components_admit_actual_registration_with_computed_dead
     state=cap.record_capability(observed['state'],{'surface':'claude-code-cli','receipt':'cap'},observed)
     assert cap.admission(state,'claude-code-cli','turn_end',observed)['admitted']
     assert not cap.admission(state,'claude-code-cli','reboot',observed)['admitted']
-    registration=bridge.observe_native_registration(observed,'active-create','active-list',capability_receipt='cap')
+    registration=bridge.observe_native_registration(observed,'active-create','active-list',capability_receipt='cap',monitor_create_call_id='active-monitor-create')
     assert registration['deadline_provenance']['kind']=='control-plane-derived'
     assert registration['deadline_provenance']['maximum_jitter_seconds']==30
-    assert registration['observer_id']=='native-job:monitor1'
+    assert registration['observer_id']=='native-job:monitor2'
     records['active']=record('continuation-registration',registration,observed)
     state=cap.register_continuation(state,{'receipt':'active','horizon':'turn_end'},observed)
     assert state['extensions']['capabilities']['continuation']['job_id']=='worker02'
@@ -586,3 +588,44 @@ def test_native_turn_end_probe_rejects_unproved_or_nonindependent_components(bri
         world['transcript'].write_text(''.join(json.dumps(row)+'\n' for row in rows))
     with pytest.raises(ValueError):
         bridge.observe_native_capability(observed,args)
+
+
+def test_registered_native_wake_has_derived_next_boundary_and_preserves_native_time(bridge,observed,world):
+    import capabilities as cap
+    args, active, wake=native_turn_end_probe(world,observed)
+    records={'cap':record('capability',bridge.observe_native_capability(observed,args),observed)}
+    observed['evidence']=records
+    observed['verify_receipt']=lambda ref,kind,bindings: records[ref]['kind']==kind and bridge.verify_source(records[ref],observed)
+    initial=cap.record_capability(observed['state'],{'surface':'claude-code-cli','receipt':'cap'},observed)
+    registered=bridge.observe_native_registration(observed,'active-create','active-list',capability_receipt='cap',monitor_create_call_id='active-monitor-create')
+    records['active']=record('continuation-registration',registered,observed)
+    current=cap.register_continuation(initial,{'receipt':'active','horizon':'turn_end'},observed)
+    actual=datetime.fromisoformat(observed['now'])+timedelta(seconds=10)
+    wake('active-wake',active['prompt'],actual)
+    observed['now']=(actual+timedelta(seconds=1)).isoformat()
+    data=bridge.observe_native_wake(observed,'active-create','active-list','active-wake',registration_receipt='active')
+    assert data['deadline_provenance']['kind']=='control-plane-derived'
+    assert data['native_observed_at']==actual.isoformat()
+    records['wake']=record('continuation-wake',data,observed)
+    current=cap.observe_wake(current,{'receipt':'wake'},observed)
+    assert current['extensions']['capabilities']['continuation']['wakes'][0]['observed_at']==actual.isoformat()
+    assert cap.continuation_status(current,observed)['state']=='observed'
+
+
+def test_replacement_worker_cannot_reuse_probe_backstop_target(bridge,observed,world):
+    args,_,_=native_turn_end_probe(world,observed)
+    records={'cap':record('capability',bridge.observe_native_capability(observed,args),observed)}
+    observed['evidence']=records
+    observed['verify_receipt']=lambda ref,kind,bindings: bridge.verify_source(records[ref],observed)
+    with pytest.raises(ValueError):
+        bridge.observe_native_registration(observed,'active-create','active-list',capability_receipt='cap',monitor_create_call_id='monitor-create')
+
+
+def test_native_current_registration_refuses_later_cancellation(bridge,observed,world):
+    args,_,_=native_turn_end_probe(world,observed)
+    records={'cap':record('capability',bridge.observe_native_capability(observed,args),observed)}
+    observed['evidence']=records
+    observed['verify_receipt']=lambda ref,kind,bindings: bridge.verify_source(records[ref],observed)
+    append_claude_tool(world,'CronDelete',{'id':'worker02'},{'id':'worker02','deleted':True},'late-cancel')
+    with pytest.raises(ValueError):
+        bridge.observe_native_registration(observed,'active-create','active-list',capability_receipt='cap',monitor_create_call_id='active-monitor-create')

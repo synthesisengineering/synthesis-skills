@@ -18,7 +18,7 @@ def test_independent_prefixes_observe_in_parallel_with_isolated_resolvers_at_bot
         return original(self, pattern)
     monkeypatch.setattr(claim_scope.ClaimScopeResolver, "_native_identity", observed)
     resolver = claim_scope.ClaimScopeResolver()
-    claims = [(str(path / "projects/one"), ()) for path in checkouts]
+    claims = [(str(path / "projects" / name), ()) for path, name in zip(checkouts, ("one", "two"))]
     with resolver.snapshot(claims):
         assert not resolver.conflicts(claims[0][0], claims[1][0])
     assert Counter(pattern for _, pattern in calls) == {claim: 2 for claim, _ in claims}
@@ -27,3 +27,19 @@ def test_independent_prefixes_observe_in_parallel_with_isolated_resolvers_at_bot
     assert len(set.union(*by_pattern.values())) == 2
     assert id(resolver) not in set.union(*by_pattern.values())
 
+
+def test_snapshot_pair_math_reuses_exact_observed_paths_and_rechecks_on_exit(checkouts, monkeypatch):
+    claims = [(str(path / "projects" / name), ()) for path, name in zip(checkouts, ("one", "two"))]
+    resolver = claim_scope.ClaimScopeResolver()
+    original = resolver._identity_prefix
+    calls = []
+    def observed(pattern):
+        calls.append(pattern)
+        return original(pattern)
+    monkeypatch.setattr(resolver, "_identity_prefix", observed)
+    with resolver.snapshot(claims):
+        entry_count = len(calls)
+        for _ in range(10):
+            assert not resolver.conflicts(claims[0][0], claims[1][0])
+        assert len(calls) == entry_count
+    assert len(calls) > entry_count
