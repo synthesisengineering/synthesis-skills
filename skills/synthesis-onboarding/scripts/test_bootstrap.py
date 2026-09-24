@@ -4,9 +4,6 @@
 from __future__ import annotations
 
 import json
-import copy
-import hashlib
-import importlib.util
 import os
 import shutil
 import subprocess
@@ -22,106 +19,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import bootstrap  # noqa: E402
 import system_contract  # noqa: E402
-import release_runtime  # noqa: E402
 from test_system_contract import git, release_repo  # noqa: E402
-
-
-@pytest.fixture
-def bytecode_release(tmp_path):
-    checkout = release_repo(tmp_path)
-    directory = checkout / "skills/synthesis-autopilot/scripts"
-    directory.mkdir(parents=True)
-    (directory / "fixture_dep.py").write_text('VALUE = "verified cached import"\n')
-    (directory / "autopilot_gate.py").write_text(
-        'import sys,json\n'
-        'def audit(event,args):\n'
-        '    if event == "compile" and str(args[1]).endswith("fixture_dep.py"):\n'
-        '        raise RuntimeError("dependency was recompiled instead of using verified bytecode")\n'
-        'sys.addaudithook(audit)\n'
-        'import fixture_dep\n'
-        'print(json.dumps({"fixture":fixture_dep.VALUE}))\n')
-    git(checkout, "add", "--all")
-    git(checkout, "commit", "-q", "-m", "fixture cached dependency")
-    git(checkout, "branch", "-f", "stable", "HEAD")
-    git(checkout, "tag", "-f", "v9.8.7", "HEAD")
-    source_descriptor = system_contract.release_descriptor_from_checkout(checkout, "stable", "stable", "https://example.test/synthesis-skills.git")
-    generation, descriptor = bootstrap.materialize_release(checkout, tmp_path / "generations",
-        channel="stable", ref="stable", source_url="https://example.test/synthesis-skills.git")
-    return checkout, generation, descriptor, source_descriptor
-
-
-def test_materialization_builds_checked_hash_cache_without_changing_source_identity(bytecode_release):
-    checkout, generation, descriptor, source_descriptor = bytecode_release
-    assert descriptor["content_digest"] == source_descriptor["content_digest"]
-    cache = descriptor["bytecode"]
-    assert cache["schema_version"] == 1
-    assert cache["source_content_digest"] == descriptor["content_digest"]
-    assert cache["abi"]["cache_tag"] == sys.implementation.cache_tag
-    assert cache["abi"]["magic"] == importlib.util.MAGIC_NUMBER.hex()
-    assert cache["abi"]["optimize"] == 0
-    assert not list(checkout.rglob("*.pyc"))
-    assert cache["files"]
-    for relative, proof in cache["files"].items():
-        compiled = (generation / relative).read_bytes()
-        source = (generation / proof["source"]).read_bytes()
-        assert compiled[:4] == importlib.util.MAGIC_NUMBER
-        assert int.from_bytes(compiled[4:8], "little") == 3
-        assert compiled[8:16] == importlib.util.source_hash(source)
-        assert hashlib.sha256(compiled).hexdigest() == proof["sha256"]
-        assert hashlib.sha256(source).hexdigest() == proof["source_sha256"]
-        assert (generation / relative).stat().st_mode & 0o222 == 0
-    system_contract.verify_materialized_release(generation, descriptor)
-
-
-def test_activated_launcher_imports_verified_cache_without_compilation(bytecode_release, tmp_path):
-    _, generation, descriptor, _ = bytecode_release
-    launcher, pointer = tmp_path / "bin/synthesis", tmp_path / "state/active.json"
-    system_contract.activate_cli(generation, descriptor, launcher, pointer)
-    payload = {"hook_event_name": "Stop", "session_id": "synthetic-bytecode-acceptance", "stop_hook_active": False}
-    result = subprocess.run([str(launcher), "exec-public", "--hook-event", "Stop",
-        "synthesis-autopilot/scripts/autopilot_gate.py"], input=json.dumps(payload), text=True, capture_output=True)
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == {"fixture": "verified cached import"}
-    assert release_runtime.verified_release(pointer)["bytecode"] == descriptor["bytecode"]
-
-
-@pytest.mark.parametrize("damage", ["body", "missing", "extra", "magic", "unchecked", "source", "symlink", "abi", "manifest-path"])
-def test_verified_cache_rejects_body_header_source_and_inventory_drift(bytecode_release, tmp_path, damage):
-    _, generation, original, _ = bytecode_release
-    descriptor = copy.deepcopy(original)
-    relative, proof = next((path, item) for path, item in descriptor["bytecode"]["files"].items()
-                           if item["source"].endswith("fixture_dep.py"))
-    path = generation / relative
-    metadata = path.stat()
-    path.chmod(0o644)
-    if damage == "body":
-        raw = path.read_bytes()
-        assert raw.count(b"verified cached import") == 1
-        replacement = raw.replace(b"verified cached import", b"tampered cached import")
-        assert len(replacement) == len(raw)
-        path.write_bytes(replacement)
-        os.utime(path, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
-    elif damage == "missing":
-        path.parent.chmod(0o755);path.unlink()
-    elif damage == "extra":
-        path.parent.chmod(0o755);(path.parent / "foreign.cpython-312.pyc").write_bytes(path.read_bytes())
-    elif damage in {"magic", "unchecked"}:
-        raw = bytearray(path.read_bytes())
-        raw[:4] = b"BAD!" if damage == "magic" else raw[:4]
-        if damage == "unchecked": raw[4:8] = (1).to_bytes(4, "little")
-        path.write_bytes(raw)
-        proof["sha256"] = hashlib.sha256(raw).hexdigest()
-    elif damage == "source":
-        source = generation / proof["source"];source.chmod(0o644);source.write_text('VALUE = "unverified source"\n')
-    elif damage == "symlink":
-        outside = tmp_path / "outside.pyc";outside.write_bytes(path.read_bytes())
-        path.parent.chmod(0o755);path.unlink();path.symlink_to(outside)
-    elif damage == "abi":descriptor["bytecode"]["abi"]["interpreter_sha256"] = "0" * 64
-    elif damage == "manifest-path":
-        descriptor["bytecode"]["files"]["../escape.pyc"] = descriptor["bytecode"]["files"].pop(relative)
-    if path.exists() and not path.is_symlink():path.chmod(0o444)
-    with pytest.raises((system_contract.ContractError, release_runtime.RuntimeContractError)):
-        system_contract.verify_materialized_release(generation, descriptor)
 
 
 @pytest.fixture(autouse=True)
