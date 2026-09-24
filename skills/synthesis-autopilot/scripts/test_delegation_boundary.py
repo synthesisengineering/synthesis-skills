@@ -373,3 +373,51 @@ def test_codex_readback_requires_exact_native_turn_permissions(boundary,roles):
     assert boundary.native_boundary_readback(config,[turn])['status']=='ENFORCED'
     turn['payload']['sandbox_policy']['writable_roots'].append('/foreign')
     assert boundary.native_boundary_readback(config,[turn])['status']=='UNKNOWN'
+
+
+def test_observed_process_group_change_does_not_erase_identity(boundary):
+    assert boundary._same_process({'group':10,'start':'same-start'}, {'group':20,'start':'same-start'})
+    assert not boundary._same_process({'group':10,'start':'old-start'}, {'group':10,'start':'new-start'})
+
+
+def test_initial_process_inventory_cannot_extend_native_deadline(boundary,tmp_path,monkeypatch):
+    import time
+    marker=tmp_path/'launched'
+    def slow_snapshot():time.sleep(.2);return {}
+    monkeypatch.setattr(boundary,'_process_snapshot',slow_snapshot)
+    with pytest.raises(ValueError,match='deadline|timed out'):
+        boundary._execute_native([sys.executable,'-c',f'from pathlib import Path;Path({str(marker)!r}).write_text("launched")'],'',tmp_path,.1,dict(os.environ))
+    assert not marker.exists()
+
+
+def test_worker_deadline_reaps_child_that_changes_group_after_observation(boundary,roles,tmp_path,monkeypatch):
+    import subprocess, signal
+    state,context,runtime=worker_world(roles)
+    pidfile=Path(roles[0]['output_roots'][0])/'changed-group.pid'
+    script=tmp_path/'fixture-late-detach-cli'
+    script.write_text('#!/usr/bin/env python3\nimport subprocess,sys,time,json\nfrom pathlib import Path\nsys.stdin.read()\n'
+        +'p=subprocess.Popen([sys.executable,"-c","import os,time;time.sleep(.25);os.setsid();time.sleep(20)"],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)\n'
+        +f'Path({str(pidfile)!r}).write_text(str(p.pid))\n'
+        +'print(json.dumps({"type":"system","subtype":"init","session_id":"later-detached","model":"configured"}),flush=True)\ntime.sleep(20)\n')
+    script.chmod(0o700)
+    monkeypatch.setattr(boundary,'_authorize_worker',lambda context,paths:context['binding'])
+    monkeypatch.setattr(boundary,'client_selection',lambda client,env:({'effort':'high'},str(script)))
+    child_pid=None
+    try:
+        data=boundary.run_worker(state,'worker',context,client='claude',runtime_root=runtime,timeout_seconds=.8)
+        child_pid=int(pidfile.read_text())
+        status=subprocess.run(['ps','-o','stat=','-p',str(child_pid)],capture_output=True,text=True,timeout=3).stdout.strip()
+        assert not status or status.startswith('Z'), 'Observed changing-group child survived'
+        assert json.loads(Path(data['receipt_path']).read_text())['process_cleanup']['cleanup_verified']
+    finally:
+        if child_pid:
+            try:os.kill(child_pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+
+
+def test_claude_usage_includes_reported_cache_tokens(boundary):
+    raw='\n'.join(json.dumps(row) for row in [
+        {'type':'system','subtype':'init','session_id':'cached','model':'model'},
+        {'type':'result','subtype':'success','session_id':'cached','is_error':False,
+         'usage':{'input_tokens':10,'output_tokens':2,'cache_read_input_tokens':100,'cache_creation_input_tokens':20}}])
+    assert boundary.parse_worker('claude',raw.encode())['usage']['tokens']==132
