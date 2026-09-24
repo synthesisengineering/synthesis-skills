@@ -528,3 +528,44 @@ def test_muse_artifact_input_budget_fails_before_provider(boundary,roles):
     path.write_text('x'*(256*1024+1))
     contract['immutable_inputs'][0]['digest']=hashlib.sha256(path.read_bytes()).hexdigest()
     with pytest.raises(ValueError):boundary.muse_artifact_prompt('Task',contract,deadline='2026-09-24T12:00:00Z',reservation={})
+
+
+def test_materialization_does_not_truncate_late_hardlink(boundary,roles,monkeypatch):
+    contract,_,_=roles
+    before=boundary.inspect_files(contract)
+    source=Path(contract['immutable_inputs'][0]['path'])
+    original=source.read_bytes()
+    target=Path(contract['output_roots'][0])/'result.txt'
+    native_open=os.open
+    swapped=[]
+    def inject(path,flags,*args,**kwargs):
+        if flags & os.O_WRONLY and not swapped:
+            os.link(source,target);swapped.append(True)
+        return native_open(path,flags,*args,**kwargs)
+    monkeypatch.setattr(boundary.os,'open',inject)
+    boundary.materialize_artifacts({'schema_version':1,'files':[{'output_root':0,'path':'result.txt','content':'generated output'}]},contract,before)
+    assert swapped and source.read_bytes()==original
+    assert target.read_text()=='generated output' and target.stat().st_nlink==1
+
+
+def test_materialization_cannot_follow_late_parent_symlink(boundary,roles,monkeypatch):
+    contract,_,_=roles
+    out=Path(contract['output_roots'][0]);nested=out/'nested';nested.mkdir()
+    before=boundary.inspect_files(contract)
+    source=Path(contract['immutable_inputs'][0]['path']);original=source.read_bytes()
+    native_open=os.open;swapped=[]
+    def inject(path,flags,*args,**kwargs):
+        if flags & os.O_WRONLY and not swapped:
+            nested.rename(out/'retained-nested');nested.symlink_to(source.parent,target_is_directory=True);swapped.append(True)
+        return native_open(path,flags,*args,**kwargs)
+    monkeypatch.setattr(boundary.os,'open',inject)
+    with pytest.raises(ValueError):
+        boundary.materialize_artifacts({'schema_version':1,'files':[{'output_root':0,'path':'nested/source.txt','content':'generated output'}]},contract,before)
+    assert swapped and source.read_bytes()==original
+
+
+def test_interrupted_utf8_tail_keeps_complete_native_prefix(boundary):
+    raw=b'{"type":"system","subtype":"init","session_id":"started","model":"model"}\n{"text":"\xe2'
+    result=boundary.parse_worker('claude',raw,allow_incomplete=True)
+    assert result['producer']=='claude:started' and result['terminal']=='failed'
+    with pytest.raises(ValueError):boundary.parse_worker('claude',raw)
