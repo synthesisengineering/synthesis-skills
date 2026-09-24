@@ -191,7 +191,7 @@ def test_muse_boundary_uses_empty_toolset_and_native_auth_reference(observer, tm
     config = Path(env['XDG_CONFIG_HOME']) / 'muse'
     selected = json.loads((config / 'settings.json').read_text())
     assert selected == {'schema_version': 1, 'provider': 'meta', 'model': 'user-selected',
-                        'reasoning_effort': 'max', 'run': {'toolset': []}}
+                        'reasoning_effort': 'max', 'run': {'toolset': [], 'reminder_roster': {'agents': []}}}
     assert (config / 'auth.json').is_symlink()
     assert (config / 'auth.json').resolve() == source / 'auth.json'
     assert not (config / 'trust.json').exists()
