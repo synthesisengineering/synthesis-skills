@@ -793,3 +793,91 @@ def test_profile_amendment_clears_current_evidence_routing(engine, world):
     state = command(engine, world, state, "profile.amend", {"profile": profile})
     assert state.get("criterion_evidence_bindings", {}) == {}
     assert "review-slot" in state["observations"]
+
+
+@pytest.mark.parametrize('missing',[False,True])
+def test_command_keeps_exact_authority_fences_without_redundant_existing_lock_admission(engine,world,monkeypatch,missing):
+    from contextlib import contextmanager
+    state=create(engine,world)
+    lock=world['project']/'resources/autopilot-runs'/state['run_id']/'.run.lock'
+    if missing:lock.unlink()
+    native_binding=engine._binding;native_lock=engine.bounded_lock;calls=[];held=[];modes=[]
+    def observed_binding(*args,**kwargs):
+        calls.append(bool(held));return native_binding(*args,**kwargs)
+    @contextmanager
+    def observed_lock(path,**kwargs):
+        if path==lock:modes.append(kwargs.get('create',True))
+        with native_lock(path,**kwargs):
+            if path==lock:held.append(True)
+            try:yield
+            finally:
+                if path==lock:held.pop()
+    monkeypatch.setattr(engine,'_binding',observed_binding)
+    monkeypatch.setattr(engine,'bounded_lock',observed_lock)
+    command(engine,world,state,'progress',{'summary':'Observed authority fences'})
+    assert calls==([False,True,True] if missing else [True,True])
+    assert modes==[missing]
+
+
+def test_existing_lock_disappearing_never_retries_creation(engine,world,monkeypatch):
+    from contextlib import contextmanager
+    state=create(engine,world)
+    lock=world['project']/'resources/autopilot-runs'/state['run_id']/'.run.lock'
+    original=engine.bounded_lock
+    @contextmanager
+    def disappear(path,**kwargs):
+        if path==lock:lock.unlink()
+        with original(path,**kwargs):yield
+    monkeypatch.setattr(engine,'bounded_lock',disappear)
+    with pytest.raises(ValueError):command(engine,world,state,'progress',{'summary':'Must not commit'})
+    assert not lock.exists()
+    assert engine.load_run(world['project'],state['run_id'])['revision']==state['revision']
+
+
+def test_lock_wait_revalidates_revoked_authority_before_mutations(engine,world,monkeypatch):
+    from contextlib import contextmanager
+    import fcntl,threading
+    state=create(engine,world)
+    home=world['project']/'resources/autopilot-runs'/state['run_id'];lock=home/'.run.lock'
+    def inventory():
+        return {str(p):p.read_bytes() for root in (home,world['runtime']) for p in root.rglob('*') if p.is_file()}
+    before=inventory();entered=threading.Event();original=engine.bounded_lock
+    @contextmanager
+    def waiting(path,**kwargs):
+        if path==lock:entered.set()
+        with original(path,**kwargs):yield
+    monkeypatch.setattr(engine,'bounded_lock',waiting)
+    with lock.open('r') as holder:
+        fcntl.flock(holder.fileno(),fcntl.LOCK_EX)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pending=pool.submit(command,engine,world,state,'progress',{'summary':'Must not commit'})
+            assert entered.wait(5)
+            write_board(world,status='released')
+            fcntl.flock(holder.fileno(),fcntl.LOCK_UN)
+            with pytest.raises(ValueError):pending.result(timeout=10)
+    assert inventory()==before
+
+
+def test_reducer_revocation_keeps_event_projection_and_index_unchanged(engine,world):
+    state=create(engine,world)
+    home=world['project']/'resources/autopilot-runs'/state['run_id']
+    def inventory():
+        return {str(p):p.read_bytes() for root in (home,world['runtime']) for p in root.rglob('*') if p.is_file()}
+    before=inventory()
+    def revoke(state,payload,context):
+        write_board(world,status='released');state['extensions']['synthetic']='uncommitted';return state
+    engine.register_command('fixture-revoke',revoke)
+    with pytest.raises(ValueError):command(engine,world,state,'fixture-revoke',{})
+    assert inventory()==before
+
+
+def test_replayed_command_still_readmits_inside_existing_lock(engine,world,monkeypatch):
+    state=create(engine,world)
+    result=command(engine,world,state,'progress',{'summary':'Once'},command_id='once')
+    original=engine._binding;calls=[]
+    def observed(*args,**kwargs):calls.append(True);return original(*args,**kwargs)
+    monkeypatch.setattr(engine,'_binding',observed)
+    assert command(engine,world,state,'progress',{'summary':'Once'},command_id='once')==result
+    assert len(calls)==1
+    write_board(world,status='released')
+    with pytest.raises(ValueError):command(engine,world,state,'progress',{'summary':'Once'},command_id='once')

@@ -581,3 +581,67 @@ def test_passive_scope_verdict_cannot_escape_changed_observation_bounds(world, m
     with pytest.raises(ValueError, match="snapshot|changed|identity"):
         passive_inspection(world)
     assert changed
+
+
+def test_noncreating_lock_never_creates_or_truncates_paths(tmp_path,monkeypatch):
+    module=importlib.import_module('run_admission')
+    path=tmp_path/'existing.lock';path.write_text('retained lock bytes')
+    original=os.open;opened=[]
+    def observe(target,flags,*args,**kwargs):
+        opened.append(flags)
+        assert not flags & (os.O_CREAT|os.O_TRUNC)
+        return original(target,flags,*args,**kwargs)
+    monkeypatch.setattr(module.os,'open',observe)
+    monkeypatch.setattr(Path,'mkdir',lambda *args,**kwargs:pytest.fail('Noncreating lock must not mkdir'))
+    with module.bounded_lock(path,create=False):pass
+    assert opened and path.read_text()=='retained lock bytes'
+
+
+@pytest.mark.parametrize('shape',['missing','symlink','fifo','directory','ancestor_symlink'])
+def test_noncreating_lock_rejects_nonregular_or_absent_paths(tmp_path,shape):
+    module=importlib.import_module('run_admission')
+    path=tmp_path/'lock'
+    if shape=='symlink':
+        other=tmp_path/'other';other.write_text('retained');path.symlink_to(other)
+    elif shape=='fifo':os.mkfifo(path)
+    elif shape=='directory':path.mkdir()
+    elif shape=='ancestor_symlink':
+        real=tmp_path/'real';real.mkdir();(real/'lock').write_text('retained')
+        alias=tmp_path/'alias';alias.symlink_to(real,target_is_directory=True);path=alias/'lock'
+    with pytest.raises(module.AdmissionError):
+        with module.bounded_lock(path,create=False,timeout=.05):pytest.fail('Unsafe lock acquired')
+    if shape=='missing':assert not path.exists()
+
+
+@pytest.mark.parametrize('shape',['deleted','replacement','symlink','fifo'])
+def test_noncreating_lock_rejects_substitution_before_open(tmp_path,monkeypatch,shape):
+    module=importlib.import_module('run_admission')
+    path=tmp_path/'lock';path.write_text('retained')
+    original=os.open;changed=[]
+    def substitute(target,flags,*args,**kwargs):
+        if Path(target)==path and not changed:
+            path.rename(tmp_path/'retained-lock');changed.append(True)
+            if shape=='replacement':path.write_text('different inode')
+            elif shape=='symlink':path.symlink_to(tmp_path/'retained-lock')
+            elif shape=='fifo':os.mkfifo(path)
+        return original(target,flags,*args,**kwargs)
+    monkeypatch.setattr(module.os,'open',substitute)
+    with pytest.raises(module.AdmissionError):
+        with module.bounded_lock(path,create=False,timeout=.05):pytest.fail('Replaced lock acquired')
+    assert changed and (tmp_path/'retained-lock').read_text()=='retained'
+    if shape=='deleted':assert not path.exists()
+
+
+def test_noncreating_lock_rejects_replacement_while_waiting(tmp_path,monkeypatch):
+    module=importlib.import_module('run_admission')
+    path=tmp_path/'lock';path.write_text('retained')
+    original=module.fcntl.flock;calls=[]
+    def changed_during_wait(fd,flags):
+        if flags & module.fcntl.LOCK_NB and not calls:
+            calls.append(True);path.rename(tmp_path/'retained-lock');path.write_text('different inode')
+            raise BlockingIOError()
+        return original(fd,flags)
+    monkeypatch.setattr(module.fcntl,'flock',changed_during_wait)
+    with pytest.raises(module.AdmissionError):
+        with module.bounded_lock(path,create=False,timeout=.05):pytest.fail('Stale lock acquired')
+    assert calls
