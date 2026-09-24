@@ -44,7 +44,7 @@ def state():
 @pytest.fixture
 def context():
     return {"now": "2026-01-01T00:00:00Z", "binding": {"session_uuid": "root-seat", "project_id": "project-a"},
-            "admissions": {}, "evidence": {}, "verify_receipt": lambda *args: False}
+            "admissions": {}, "artifacts": {}, "evidence": {}, "verify_receipt": lambda *args: False}
 
 
 def call(wf, state, context, command, **payload):
@@ -270,6 +270,8 @@ def test_integration_needs_independent_bound_evidence_and_accounts_worker_usage(
 
 
 def quality_context(state, context, *, passed=True, reviewer="independent", domain="software", calibrated=True):
+    context = copy.copy(context)
+    context["artifacts"] = {"a1": {"digest": "d" * 64}, "a2": {"digest": "d" * 64}}
     observations = {
         "software": {"expected": "ready", "observed": "ready" if passed else "broken", "consumer_verified": True},
         "research": {"sources_verified": True, "decisive_claims_verified": passed, "counterevidence_checked": True},
@@ -279,11 +281,13 @@ def quality_context(state, context, *, passed=True, reviewer="independent", doma
         "knowledge": {"expected_hashes": {"record": "abc"}, "recovered_hashes": {"record": "abc" if passed else "bad"}, "foreign_preserved": True},
         "operations": {"expected_state": "settled", "observed_state": "settled" if passed else "ambiguous", "effects_reconciled": True},
     }[domain]
-    return receipt(state, context, "q1", "quality_observation", {
+    result = receipt(state, context, "q1", "quality_observation", {
         "domain": domain, "criterion_id": "c1", "artifact_id": "a1", "rubric": "behavior-v1", "passed": passed,
         "method": "consumer", "producer": "worker", "reviewer": reviewer, "calibrated": calibrated,
         "findings": [] if passed else ["Consumer output disagrees with expected result"], "independent": True,
-        "observations": observations})
+        "observations": observations, "artifact_digest": "d" * 64})
+    result["evidence"]["q1"]["artifact_id"] = "quality-receipt-json"
+    return result
 
 
 def test_quality_pass_fail_and_unknown_are_distinct(wf, state, context):
@@ -472,6 +476,7 @@ def test_core_completed_close_cannot_bypass_workflow_obligations(wf, state, cont
     for node in flow["graph"]["nodes"].values():
         node["status"] = "done"
     for criterion in ("c1", "c2"):
+        context["artifacts"] = {"a1": {"digest": "d" * 64}, "a2": {"digest": "d" * 64}}
         typed = quality_context(result, context)["evidence"]["q1"]["data"]
         typed["criterion_id"] = criterion
         typed["artifact_id"] = "a1" if criterion == "c1" else "a2"
@@ -501,6 +506,7 @@ def test_completion_guard_accepts_sound_fresh_outcomes(wf, state, context):
     for node in flow["graph"]["nodes"].values():
         node["status"] = "done"
     for criterion in ("c1", "c2"):
+        context["artifacts"] = {"a1": {"digest": "d" * 64}, "a2": {"digest": "d" * 64}}
         typed = quality_context(result, context)["evidence"]["q1"]["data"]
         typed.update(criterion_id=criterion, artifact_id="a1" if criterion == "c1" else "a2")
         context = receipt(result, context, criterion, "quality_observation", typed)
@@ -527,3 +533,15 @@ def test_real_engine_transactions_enforce_workflow_close_guard(wf, world, monkey
     assert engine.load_run(world["project"], state["run_id"]) == before
     state = command(engine, world, state, "close", {"status": "incomplete", "reason": "Retained unfinished work"})
     assert state["extensions"]["workflow"]["graph"]["nodes"]["work"]["status"] == "pending"
+
+
+@pytest.mark.parametrize("change", ["missing", "changed"])
+def test_quality_receipt_cannot_certify_a_missing_or_changed_reviewed_artifact(wf, state, context, change):
+    result = configured(wf, state, context)
+    context = quality_context(result, context)
+    if change == "missing":
+        context["artifacts"].pop("a1")
+    else:
+        context["artifacts"]["a1"]["digest"] = "f" * 64
+    with pytest.raises(ValueError):
+        call(wf, result, context, "grade", criterion_id="c1", receipt_ids=["q1"], independent=True)
