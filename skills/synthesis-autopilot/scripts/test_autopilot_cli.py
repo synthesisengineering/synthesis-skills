@@ -97,3 +97,33 @@ def test_explain_surface_never_infers_scheduling_from_skill_portability(world):
     info = json.loads(done.stdout)
     assert info["level"] == "skill-only"
     assert info["unattended_admitted"] is False
+
+
+def test_doctor_indexes_legacy_outside_stop_and_reports_unknown_records(world):
+    legacy = world["runtime"] / "engagements"
+    legacy.mkdir(parents=True)
+    foreign = legacy / "unknown.json"
+    foreign.write_text("malformed unassignable record")
+    module = importlib.import_module("autopilot")
+    before = module.stop_result(world["actor"], runtime_root=world["runtime"])
+    assert before["continue"] is False
+    assert "index-legacy" in before["systemMessage"]
+    done = cli(world, "doctor", "--index-legacy")
+    assert done.returncode == 0, done.stderr
+    output = json.loads(done.stdout)
+    assert output["legacy_inventory"]["scanned"] == 1
+    assert len(output["legacy_inventory"]["unattributed"]) == 1
+    assert output["status"] == "UNKNOWN"
+    assert foreign.read_text() == "malformed unassignable record"
+    after = module.stop_result(world["actor"], runtime_root=world["runtime"])
+    assert after.get("decision") != "block"
+    assert after.get("continue") is not False
+
+
+def test_doctor_index_requires_native_actor_and_never_infers_native_acceptance(world):
+    done = subprocess.run([sys.executable, str(SCRIPT), "doctor", "--index-legacy"],
+                          capture_output=True, text=True)
+    assert done.returncode != 0
+    done = cli(world, "doctor")
+    assert done.returncode == 0
+    assert "UNKNOWN" in json.loads(done.stdout)["native_acceptance"]
