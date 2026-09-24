@@ -1062,3 +1062,33 @@ def test_project_from_claim_without_projects_returns_none(tmp_path):
     bare.mkdir()
     row = _claim_row("proj", areas=str(bare))
     assert state._project_from_claim(row) is None
+
+
+@pytest.mark.parametrize("passive", [False, True])
+def test_local_only_board_refresh_uses_existing_coordination_authority(tmp_path, passive):
+    claims = tmp_path / "coordination" / "active-sessions.md"
+    claims.parent.mkdir()
+    claims.write_text(engine.template())
+    assert engine.require_fresh_board(claims) == {"configured": False}
+    assert state._refresh_coordination_board(claims, passive_stop=passive) is None
+
+
+def test_hook_default_honors_explicit_board_environment(tmp_path, monkeypatch):
+    claims = tmp_path / "isolated" / "board.md"
+    monkeypatch.setenv("SYNTHESIS_COORDINATION_BOARD", str(claims))
+    assert state._parser().parse_args(["hook"]).coordination_board == claims
+    explicit = tmp_path / "explicit.md"
+    assert state._parser().parse_args(["hook", "--coordination-board", str(explicit)]).coordination_board == explicit
+
+
+@pytest.mark.parametrize("lease", [
+    {"configured": True, "refreshed": False},
+    {"configured": True, "error": "offline"},
+    {"configured": True, "cache_hit": True, "age_seconds": 300},
+    {"configured": False, "error": "unreadable"},
+    {},
+])
+def test_board_refresh_still_rejects_unproven_or_failed_authority(tmp_path, monkeypatch, lease):
+    monkeypatch.setattr(state.subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess(
+        args[0], 0, json.dumps({"lease": lease, "problems": []}), ""))
+    assert state._refresh_coordination_board(tmp_path / "board.md", passive_stop=True) is not None

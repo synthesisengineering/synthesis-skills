@@ -300,6 +300,44 @@ def test_integration_current_actor_must_still_be_stored_integration_owner(wf,sta
     with pytest.raises(ValueError):call(wf,result,context,'integrate',child_id='child-a',receipt_id='audit')
 
 
+def artifact_only_dispatch(wf,state,context):
+    result,context,brief=dispatch_ready(wf,state,context)
+    context['binding']['native_ref']='codex:root-native'
+    context['admissions']['child-admission'].update(session_uuid='root-seat',native_ref='codex:root-native')
+    brief.update(child_id='/root/artifact_worker',mode='artifact-only',dispatch_receipt_id='native-dispatch')
+    data={key:value for key,value in brief.items() if key not in {'admission_id','admission_requests','dispatch_receipt_id'}}
+    context=receipt(result,context,'native-dispatch','delegation',data)
+    return result,context,brief
+
+
+def test_artifact_only_dispatch_uses_observed_native_child_without_inventing_a_seat(wf,state,context):
+    result,context,brief=artifact_only_dispatch(wf,state,context)
+    result=call(wf,result,context,'dispatch',**brief)
+    child=result['extensions']['workflow']['children']['/root/artifact_worker']
+    assert child['owner']['session_uuid']=='root-seat'
+    assert child['producer']=='/root/artifact_worker'
+    assert child['authority_granted'] is False
+    result=call(wf,result,context,'return',child_id=brief['child_id'],disposition='complete',artifact_ids=['a1'],evidence_ids=[],reason='Returned artifact only')
+    context['artifacts']={'a1':{'digest':'d'*64}}
+    context=receipt(result,context,'integration','child_integration',{
+        'child_id':brief['child_id'],'task_id':'build','producer':brief['child_id'],'reviewer':'claude:independent-review',
+        'integration_owner':'root-seat','artifact_ids':['a1'],'artifact_digests':{'a1':'d'*64},
+        'criteria':['c1'],'accepted':True,'actual':{'searches':2}})
+    result=call(wf,result,context,'integrate',child_id=brief['child_id'],receipt_id='integration')
+    assert result['extensions']['workflow']['graph']['nodes']['build']['status']=='done'
+
+
+@pytest.mark.parametrize('mutation',['missing-receipt','changed-brief','foreign-parent','wrong-native','peer-claims'])
+def test_artifact_only_dispatch_cannot_turn_native_child_into_write_authority(wf,state,context,mutation):
+    result,context,brief=artifact_only_dispatch(wf,state,context)
+    if mutation=='missing-receipt':context['evidence']={}
+    elif mutation=='changed-brief':brief['paths']=['/fixture/expanded'];context['admissions']['child-admission']['paths']=brief['paths']
+    elif mutation=='foreign-parent':context['admissions']['child-admission']['session_uuid']='foreign-parent'
+    elif mutation=='wrong-native':context['admissions']['child-admission']['native_ref']='codex:another'
+    else:brief['mode']='peer'
+    with pytest.raises(ValueError):call(wf,result,context,'dispatch',**brief)
+
+
 def quality_context(state, context, *, passed=True, reviewer="independent", domain="software", calibrated=True):
     context = copy.copy(context)
     context["artifacts"] = {"a1": {"digest": "d" * 64}, "a2": {"digest": "d" * 64}}
