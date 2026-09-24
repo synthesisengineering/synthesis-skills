@@ -157,6 +157,32 @@ def test_admission_observation_is_single_operation_and_cannot_be_serialized_or_r
             pass
 
 
+def test_passive_snapshot_ignores_read_access_time_but_rejects_actual_content_change(world, monkeypatch):
+    module = importlib.import_module("run_admission")
+    original_stat = Path.stat
+    calls = []
+    def stat_with_read_atime(path, *args, **kwargs):
+        result = original_stat(path, *args, **kwargs)
+        if path == world["board"]:
+            calls.append(1)
+            values = list(result)
+            values[7] += len(calls)
+            return os.stat_result(values)
+        return result
+    monkeypatch.setattr(Path, "stat", stat_with_read_atime)
+    assert module._snapshot(world["board"], readonly=True).startswith("# Board")
+    monkeypatch.setattr(Path, "stat", original_stat)
+    original_read = Path.read_text
+    def read_then_mutate(path, *args, **kwargs):
+        result = original_read(path, *args, **kwargs)
+        if path == world["board"]:
+            path.write_text(result + "\nConcurrent fixture board edit\n")
+        return result
+    monkeypatch.setattr(Path, "read_text", read_then_mutate)
+    with pytest.raises(ValueError, match="changed"):
+        module._snapshot(world["board"], readonly=True)
+
+
 def test_claim_digest_changes_on_revocation_but_not_heartbeat(world):
     first = admission(world)
     write_board(world, heartbeat="2026-09-23T13:00:00Z")
