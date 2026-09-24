@@ -540,7 +540,7 @@ def test_quality_resolution_derives_changed_output_from_real_consumer_attempts(b
             expected_revision=current["revision"], command_id="replayed-resolution", actor=world["actor"], runtime_root=world["runtime"])
 
 
-@pytest.mark.parametrize("damage", ["unchanged", "prior-attempt", "grade", "old-observation", "new-observation", "new-set", "criterion"])
+@pytest.mark.parametrize("damage", ["unchanged", "prior-attempt", "grade", "old-observation", "historical-verdict", "new-observation", "new-set", "criterion"])
 def test_quality_resolution_rejects_unchanged_or_forged_repair(bridge, world, damage):
     engine, current, prior, arguments = quality_repair_world(world, change_output=damage != "unchanged")
     pure = engine.inspect_context(current, world["actor"], project=world["project"])
@@ -551,6 +551,16 @@ def test_quality_resolution_rejects_unchanged_or_forged_repair(bridge, world, da
         context["state"]["extensions"]["workflow"]["quality"]["accept"]["round"] = 99
     elif damage == "old-observation":
         context["state"]["observations"]["failed-review"]["data"]["artifact_digest"] = "a" * 64
+    elif damage == "historical-verdict":
+        forged = context["state"]["extensions"]["workflow"]["quality"]["accept"]
+        # The retained consumer review is not independent. Its computed verdict
+        # becomes UNKNOWN under this substituted grade policy, while the old
+        # stored FAIL still satisfies the pure failing-artifact comparison.
+        forged["independent"] = True
+        forged["grade_digest"] = hashlib.sha256(json.dumps(
+            {key: value for key, value in forged.items() if key != "grade_digest"},
+            sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+        arguments["prior_grade_digest"] = forged["grade_digest"]
     elif damage == "new-observation":
         context["state"]["evidence"]["repaired-review"]["data"]["artifact_digest"] = "b" * 64
     elif damage == "new-set":

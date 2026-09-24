@@ -469,6 +469,27 @@ def test_passive_nested_repository_is_not_a_metadata_alias(world):
     assert passive_inspection(world)["purpose"] == "passive-stop"
 
 
+@pytest.mark.parametrize("scope", ["metadata", "checkout-root"])
+def test_passive_unregistered_linked_claim_remains_an_unresolved_possible_alias(world, scope):
+    sibling = world["scratch"] / "retired-linked"
+    git(world["repo"], "worktree", "add", "-b", "retired", str(sibling))
+    directory = world["repo"] / ".git/worktrees/retired-linked"
+    directory.rename(world["scratch"] / "retained-registration")
+    claim = sibling / "projects/alpha/plan.md" if scope == "metadata" else sibling
+    add_passive_peer(world, claim, workspace=f"{sibling} @ retired")
+    with pytest.raises(ValueError, match="identity|unverifiable"):
+        passive_inspection(world)
+
+
+def test_passive_virtual_claim_is_not_path_authority_but_own_alias_still_refuses(world):
+    add_passive_peer(world, "coordination:foreign")
+    assert passive_inspection(world)["purpose"] == "passive-stop"
+    add_passive_peer(world, "coordination:another", number=44,
+                     compact_id=identity_from_uuid(SEAT).compact_id)
+    with pytest.raises(ValueError, match="ambiguous|selector"):
+        passive_inspection(world)
+
+
 @pytest.mark.parametrize("change", ["claim", "branch", "released", "native", "duplicate", "context"])
 def test_passive_cannot_hide_own_admission_or_ambiguity_failure(world, change):
     if change == "claim":
