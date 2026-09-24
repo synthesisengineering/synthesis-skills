@@ -13,6 +13,13 @@ import system_contract
 from test_release_runtime import active, replace, SCRIPT  # noqa: F401
 
 
+@pytest.fixture(autouse=True)
+def isolated_launcher_environment(monkeypatch):
+    # CLI entrypoints export the descriptor for their child. Direct function
+    # fixtures must restore that export before unrelated installer tests run.
+    monkeypatch.setenv("SYNTHESIS_ACTIVE_DESCRIPTOR", os.environ.get("SYNTHESIS_ACTIVE_DESCRIPTOR", ""))
+
+
 def event(**changes):
     return {"hook_event_name": "Stop", "session_id": "fixture-session",
             "turn_id": "fixture-turn", "stop_hook_active": False, **changes}
@@ -181,3 +188,22 @@ def test_invalid_native_output_fields_terminalize_without_losing_failure(output)
     wire = runtime.stop_result(event(), result)
     assert wire["continue"] is False
     assert "UNRESOLVED" in wire["systemMessage"]
+
+
+def test_deadline_cannot_be_swallowed_by_dependency_value_error_recovery(active, monkeypatch, capsys):
+    pointer, _, _ = active
+    monkeypatch.setattr(runtime, "read_payload", lambda _: json.dumps(event()).encode())
+    recovered = []
+    def slow_verifier(_):
+        try:
+            time.sleep(0.3)
+        except ValueError:
+            recovered.append(True)
+            time.sleep(0.3)
+        return {}
+    monkeypatch.setattr(runtime, "verified_release", slow_verifier)
+    started = time.monotonic()
+    assert runtime.exec_public_main(["--hook-event", "Stop", "--timeout-seconds", "0.03", SCRIPT], pointer) == 0
+    assert time.monotonic() - started < 0.2
+    assert not recovered
+    assert json.loads(capsys.readouterr().out)["continue"] is False
