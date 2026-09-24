@@ -280,8 +280,11 @@ def test_same_size_mtime_swap_passes_fast_but_fails_full(active):
 def test_swapped_descriptor_refuses_next_call(active):
     import os
     pointer, root, data = active
-    write_receipt(pointer, root, data)
+    receipt = write_receipt(pointer, root, data)
     replace(pointer, data, resolved_at="2026-06-06T06:06:06Z")
+    # Filesystems may coalesce immediate rewrites into one timestamp tick.
+    # Exercise metadata refusal deterministically before the byte-drift case.
+    os.utime(pointer, ns=(pointer.stat().st_atime_ns, receipt["descriptor_mtime_ns"] + 1_000_000_000))
     with pytest.raises(runtime.RuntimeContractError, match="replaced since activation"):
         runtime.verified_release(pointer)
     receipt = json.loads(runtime.activation_receipt_path(pointer).read_text())

@@ -837,6 +837,71 @@ def test_native_renewal_refuses_incomplete_invalidation_coverage(bridge, observe
         bridge.observe_native_renewal(observed, 'renew-list', 'registered')
 
 
+def test_admitted_history_has_no_64_call_lifetime_limit_but_new_renewal_keeps_current_bound(bridge, observed, world, monkeypatch):
+    """A fresh anchored renewal survives complete harmless historical traffic."""
+    import capabilities as cap
+    records, save, _, _, readback = native_renewal_fixture(bridge, observed, world)
+    start = datetime.fromisoformat(observed['now'])
+    readback('first-renewal-list', start + timedelta(seconds=5))
+    observed['now'] = (start + timedelta(seconds=6)).isoformat()
+    assert bridge.verify_source(records['registered'], observed) is True
+    renewal = bridge.observe_native_renewal(observed, 'first-renewal-list', 'registered')
+    save('continuation-renewal', renewal, 'first-renewal')
+    observed['state'] = cap.renew_continuation(observed['state'], {'receipt': 'first-renewal'}, observed)
+    for number in range(65):
+        readback('harmless-list-' + str(number), start + timedelta(seconds=7 + number))
+    observed['now'] = (start + timedelta(seconds=73)).isoformat()
+    assert bridge._time(observed['now']) < renewal['lease_expires_at']
+    latest = bridge.native_tool_observation(observed, 'harmless-list-64')
+    assert bridge._native_observations(observed, fresh_only=False, after_observation=latest) == []
+    # New callers cannot borrow historical permission or silently widen the
+    # current negative window. The old anchor still exceeds its current cap.
+    original = bridge.native_tool_observation(observed, 'active-list')
+    with pytest.raises(ValueError, match='exceeds bounded coverage'):
+        bridge._native_observations(observed, fresh_only=False, after_observation=original)
+    calls = []
+    native = bridge.native_tool_observation
+    def counted(context, call_id):
+        calls.append(call_id)
+        return native(context, call_id)
+    monkeypatch.setattr(bridge, 'native_tool_observation', counted)
+    assert bridge.verify_source(records['registered'], observed) is True
+    # Historical coverage must use one indexed snapshot, not fan out into a
+    # full authenticated transcript scan for every historical tool call.
+    assert not any(identity.startswith('harmless-list-') for identity in calls)
+    fresh = bridge.observe_native_renewal(observed, 'harmless-list-64', 'first-renewal')
+    assert fresh['job_id'] == 'worker02'
+    assert fresh['lease_expires_at'] > renewal['lease_expires_at']
+
+
+@pytest.mark.parametrize('fault', ['cancelled', 'missing_pair', 'duplicate', 'missing_result'])
+def test_historical_native_coverage_keeps_earlier_invalidation_before_65_good_lists(bridge, observed, world, fault):
+    records, _, _, _, readback = native_renewal_fixture(bridge, observed, world)
+    start = datetime.fromisoformat(observed['now'])
+    assert bridge.verify_source(records['registered'], observed) is True
+    if fault == 'cancelled':
+        append_claude_tool(world, 'CronDelete', {'id': 'worker02'}, {'id': 'worker02', 'deleted': True}, 'hidden-negative')
+    elif fault == 'missing_pair':
+        readback('hidden-negative', start + timedelta(seconds=1), {'jobs': []})
+    else:
+        readback('hidden-negative', start + timedelta(seconds=1))
+        if fault == 'duplicate':
+            readback('hidden-negative', start + timedelta(seconds=1))
+        else:
+            rows = world['transcript'].read_text().splitlines()
+            world['transcript'].write_text('\n'.join(rows[:-1]) + '\n')
+    for number in range(65):
+        readback('later-good-' + str(number), start + timedelta(seconds=2 + number))
+    observed['now'] = (start + timedelta(seconds=68)).isoformat()
+    latest = bridge.native_tool_observation(observed, 'later-good-64')
+    assert bridge._native_observations(observed, fresh_only=False, after_observation=latest) == []
+    # A current affirmative listing cannot erase historical cancellation,
+    # pair absence or ambiguous/incomplete authenticated native calls.
+    assert bridge.verify_source(records['registered'], observed) is False
+    with pytest.raises(ValueError):
+        bridge.observe_native_renewal(observed, 'later-good-64', 'registered')
+
+
 @pytest.mark.parametrize('fault', ['new_id', 'changed_data', 'backdated_envelope', 'expired_receipt', 'claim_revoked'])
 def test_historical_native_intake_requires_identical_admitted_envelope_and_current_authority(bridge, observed, world, fault):
     records, _, _, _, _ = native_renewal_fixture(bridge, observed, world)
@@ -896,6 +961,10 @@ def test_engine_observation_and_reducer_retains_exact_native_intake_without_exte
     current = command(engine, world, current, 'continuation.renew', {'receipt': 'renewed-native'})
     assert current['extensions']['capabilities']['continuation']['lease_receipt'] == 'renewed-native'
     assert current['extensions']['capabilities']['continuation']['wakes'] == []
+    # The actual engine source-verdict closure also replays every admitted
+    # ancestor. Harmless traffic must not impose a 64-call lifetime ceiling.
+    for number in range(65):
+        append_claude_tool(world, 'CronList', {}, listing, 'engine-harmless-' + str(number))
     clock += timedelta(seconds=310)
     context = engine.inspect_context(current, world['actor'], project=world['project'])
     assert context['verify_receipt']('cap-native', 'capability', {}) is True
