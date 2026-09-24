@@ -38,3 +38,18 @@ def test_description_parser_enforces_one_line_frontmatter() -> None:
     assert check_capabilities._frontmatter_description("description: \"short\"\n") == "short"
     with pytest.raises(check_capabilities.CapabilityError):
         check_capabilities._frontmatter_description("description: |\n  long\n")
+
+
+def test_release_client_inventory_tracks_native_registry_and_portability_levels():
+    import json
+    data = json.loads((ROOT / "skills/synthesis-onboarding/references/release-capabilities.json").read_text())
+    assert data["clients"] == ["claude", "codex", "muse"]
+    check_capabilities.validate_client_inventory(ROOT, data)
+    changed = copy.deepcopy(data)
+    changed["clients"].remove("muse")
+    with pytest.raises(check_capabilities.CapabilityError, match="client"):
+        check_capabilities.validate_client_inventory(ROOT, changed)
+    changed = copy.deepcopy(data)
+    changed["agent_surfaces"]["cursor-ide"]["level"] = "native"
+    with pytest.raises(check_capabilities.CapabilityError, match="surface"):
+        check_capabilities.validate_client_inventory(ROOT, changed)

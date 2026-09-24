@@ -232,3 +232,13 @@ def test_continuation_cancellation_requires_actual_native_readback(bridge, obser
             "job_id": "job-1", "cancelled": True}
     assert bridge.verify_source(record("continuation-cancellation", data, observed), observed)
     assert not bridge.verify_source(record("continuation-cancellation", {**data, "job_id": "foreign"}, observed), observed)
+
+
+def test_authentic_negative_observation_is_not_passing_acceptance(bridge, observed):
+    predicates = {}
+    bridge.register_acceptance_predicates(lambda kind, fn: predicates.update({kind: fn}))
+    criterion = {"id": "accept", "method": "consumer-check", "required": True}
+    for data in ({"passed": False, "returncode": 1}, {"passed": True, "returncode": 1}, {"passed": False, "returncode": 0}):
+        assert not predicates["consumer-check"]({"kind": "consumer-check", "data": data}, observed["state"], criterion, observed)
+    assert predicates["consumer-check"]({"kind": "consumer-check", "data": {"passed": True, "returncode": 0}}, observed["state"], criterion, observed)
+    assert not predicates["continuation-cancellation"]({"kind": "continuation-cancellation", "data": {"cancelled": False}}, observed["state"], criterion, observed)

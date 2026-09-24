@@ -2463,3 +2463,19 @@ def test_receipt_check_verifies_the_execution_root_carries_the_expected_version(
     assert check(receipt_with(tmp_path / "release" / "same", "1.2.3")) is True
     assert check(receipt_with(tmp_path / "release" / "other", "1.2.2")) is False
     assert check(receipt_with(tmp_path / "release" / "missing", None)) is False
+
+
+def test_capability_surface_inventory_is_shared_with_autopilot():
+    inventory = MODULE.supported_agent_surfaces()
+    assert inventory["muse-cli"]["level"] == "native"
+    assert inventory["cursor-ide"]["level"] == "skill-only"
+    assert inventory["hermes"]["level"] == "prospective"
+    assert set(MODULE.CAPABILITY_CLIENTS) == {key for key, item in inventory.items() if item["level"] == "native"}
+
+
+def test_capability_native_binary_inventory_includes_muse(monkeypatch, tmp_path):
+    clients = []
+    monkeypatch.setattr(MODULE, "resolve_client_binary", lambda client: clients.append(client) or "/fixture/" + client)
+    checks = MODULE.capability_checks(tmp_path, tmp_path / "absent-evidence.json")
+    assert clients == ["claude", "codex", "muse"]
+    assert any(item.name == "capability.muse-cli.repository" and item.status == "UNKNOWN" for item in checks)

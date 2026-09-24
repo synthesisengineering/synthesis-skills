@@ -21,7 +21,7 @@ def engine(monkeypatch):
     module = importlib.import_module("run_state")
     # Tests register deliberately synthetic trusted-code callbacks. Isolate
     # them from production bridge/extension registration in other test files.
-    for name in ("_COMMANDS", "_VERIFIERS", "_CONSTRAINTS", "_EVIDENCE_SOURCES"):
+    for name in ("_COMMANDS", "_VERIFIERS", "_CONSTRAINTS", "_EVIDENCE_SOURCES", "_OBSERVERS", "_ACCEPTANCE"):
         if hasattr(module, name):
             monkeypatch.setattr(module, name, {})
     if hasattr(module, "_TERMINAL_COMMANDS"):
@@ -449,3 +449,37 @@ def test_criterion_report_is_current_and_shared_with_completion(engine, world):
     report = engine.criterion_report(state, engine.inspect_context(state, world["actor"]))
     assert report["criteria"][0]["status"] == "FAIL"
     assert report["status"] == "FAIL"
+
+
+def test_engine_observer_executes_once_and_generated_evidence_tracks_inputs(engine, world):
+    state, path = output(engine, world, create(engine, world))
+    calls = []
+    def observer(context, payload):
+        calls.append(payload["check_id"])
+        assert context["actor"] == world["actor"]
+        return {"passed": False, "returncode": 1, "artifact_id": payload["check_id"]}
+    engine.register_observer("fixture-check", observer)
+    kwargs = {"expected_revision": state["revision"], "command_id": "observe-check", "actor": world["actor"], "runtime_root": world["runtime"]}
+    observed = engine.observe(world["project"], state["run_id"], "fixture-check", {"check_id": "output"}, **kwargs)
+    assert observed["observations"]["observe-check"]["data"]["passed"] is False
+    assert engine.observe(world["project"], state["run_id"], "fixture-check", {"check_id": "output"}, **kwargs) == observed
+    assert calls == ["output"]
+    assert "observe-check" in engine.inspect_context(observed, world["actor"])["evidence"]
+    path.write_text("Changed input")
+    assert "observe-check" not in engine.inspect_context(observed, world["actor"])["evidence"]
+
+
+def test_authentic_failed_observation_is_not_criterion_acceptance(engine, world):
+    spec = contract()
+    spec["criteria"][0].update(method="fixture-check", evidence_ids=["fixture-check"])
+    state, _ = output(engine, world, create(engine, world, contract=spec))
+    state = receipt(engine, world, state, "fixture-check", {"passed": False})
+    state = command(engine, world, state, "transition", {"status": "verifying"})
+    with pytest.raises(ValueError):
+        command(engine, world, state, "verify", {"criteria": ["accept"]})
+    engine.register_acceptance("fixture-check", lambda record, state, criterion, context: record["data"].get("passed") is True)
+    with pytest.raises(ValueError):
+        command(engine, world, state, "verify", {"criteria": ["accept"]})
+    state = receipt(engine, world, state, "fixture-check", {"passed": True})
+    state = command(engine, world, state, "verify", {"criteria": ["accept"]})
+    assert engine.completion_report(world["project"], state["run_id"], actor=world["actor"])["status"] == "PASS"
