@@ -29,6 +29,8 @@ the declared scratch mount. Native transcript checks compare bounded actual
 bytes, and continuation checks reject incomplete cancellation evidence.
 Historical renewal checks retain cancellation evidence without imposing a
 lifetime call limit on an otherwise valid lease.
+Linux CI verifies actual sandbox startup before running consumers and admits
+only the reviewed distribution profile for an observed user-namespace denial.
 Expired launcher deadlines terminate before worker dispatch.
 
 ## [4.144.1] - 2026-09-23

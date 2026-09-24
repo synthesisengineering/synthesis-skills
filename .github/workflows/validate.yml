@@ -20,7 +20,9 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install pytest pyyaml jsonschema
       - name: Install OS isolation for executable consumer acceptance
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+        run: |
+          sudo apt-get update && sudo apt-get install -y bubblewrap
+          python .github/scripts/check-ci-sandbox.py
       - run: python skills/synthesis-agent-conformance/scripts/conformance.py source
       - run: python skills/synthesis-agent-conformance/scripts/conformance.py instructions --repo-root .
       - run: python -m pytest skills/synthesis-agent-conformance/scripts/test_*.py -q
