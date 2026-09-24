@@ -19,7 +19,9 @@ MAX_TRANSCRIPT_JSON_DEPTH = 128
 RECEIPT_CLIENTS = {"claude", "codex", "muse"}
 
 _ASCII_DIGITS = re.compile(r"[0-9]+")
-_STRING_SPECIAL = re.compile(r'["\\\x00-\x1f]')
+# Disjoint, possessive alternatives validate complete runs in the current
+# fixed-size text buffer without per-escape Python work or backtracking.
+_STRING_RUN = re.compile(r'(?:[^"\\\x00-\x1f]++|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))++')
 _HORIZONTAL_SPACE = re.compile(r"[ \t\r]+")
 _DIGITS = re.compile(r"[0-9]+")
 _NON_STRING = object()
@@ -91,12 +93,14 @@ class _TranscriptJSON:
                 fragments.append(fragment)
 
         while self.peek():
-            match = _STRING_SPECIAL.search(self.buffer, self.offset)
-            end = match.start() if match else len(self.buffer)
-            retain(self.buffer[self.offset:end])
-            self.offset = end
-            if match is None:
+            match = _STRING_RUN.match(self.buffer, self.offset)
+            if match is not None:
+                if capture:
+                    retain(self.buffer[self.offset:match.end()])
+                self.offset = match.end()
                 continue
+            # Quotes, invalid tokens and escapes split across buffer edges
+            # still pass through the existing checked character path.
             special = self.take()
             if special == '"':
                 retain('"')

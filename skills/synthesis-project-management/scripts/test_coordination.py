@@ -4631,3 +4631,188 @@ def test_lease_repository_init_still_creates_real_bare_repository(tmp_path):
     repository = tmp_path / 'lease.git'
     assert MODULE.lease_repository({'repository': repository}) == repository
     assert (repository / 'HEAD').is_file()
+
+
+def lease_fetch_fixture(tmp_path):
+    [board] = lease_machines(tmp_path, count=1)
+    config = MODULE.lease_configuration(board)
+    content = MODULE.ensure_lease_declaration(MODULE.template(), config["remote"])
+    assert MODULE.lease_publish(config, board.name, content, "")[0]
+    tip, observed = MODULE.lease_fetch(config)
+    assert observed == content
+    board.write_text(content, encoding="utf-8")
+    return board, config, tip, content
+
+
+def lease_fixture_commit(repository, content):
+    blob = MODULE.git_lease(repository, "hash-object", "-w", "--stdin", input_text=content)
+    assert blob.returncode == 0
+    tree = MODULE.git_lease(repository, "mktree", input_text=f"100644 blob {blob.stdout.strip()}\tactive-sessions.md\n")
+    assert tree.returncode == 0
+    committed = MODULE.git_lease(repository, "commit-tree", tree.stdout.strip(), "-m", "Fixture board")
+    assert committed.returncode == 0
+    return committed.stdout.strip()
+
+
+@pytest.mark.parametrize("force_update", [False, True])
+def test_lease_fetch_success_uses_one_remote_call_and_exact_tip(tmp_path, monkeypatch, force_update):
+    board, config, expected_tip, expected_content = lease_fetch_fixture(tmp_path)
+    original = MODULE.git_lease
+    if force_update:
+        expected_content += "\nFixture replacement board.\n"
+        remote = Path(config["remote"])
+        expected_tip = lease_fixture_commit(remote, expected_content)
+        assert original(remote, "update-ref", config["ref"], expected_tip).returncode == 0
+    calls = []
+
+    def observed(repository, *arguments, **kwargs):
+        calls.append(arguments)
+        return original(repository, *arguments, **kwargs)
+
+    monkeypatch.setattr(MODULE, "git_lease", observed)
+    assert MODULE.lease_fetch(config) == (expected_tip, expected_content)
+    assert [call[0] for call in calls if call[0] in {"fetch", "ls-remote"}] == ["fetch"]
+    assert ("fetch", "--quiet", config["remote"], f"+{config['ref']}:refs/lease/current") in calls
+    assert ("ls-tree", "--name-only", expected_tip) in calls
+    assert ("show", f"{expected_tip}:{board.name}") in calls
+
+
+@pytest.mark.parametrize("previously_published", [False, True])
+def test_lease_fetch_verified_absence_never_reads_stale_tip_or_authorizes_bootstrap(tmp_path, monkeypatch, previously_published):
+    original = MODULE.git_lease
+    if previously_published:
+        board, config, stale_tip, _ = lease_fetch_fixture(tmp_path)
+        assert original(Path(config["remote"]), "update-ref", "-d", config["ref"]).returncode == 0
+    else:
+        [board] = lease_machines(tmp_path, count=1)
+        config = MODULE.lease_configuration(board)
+        board.write_text(MODULE.template(), encoding="utf-8")
+        stale_tip = None
+    before = board.read_bytes()
+    calls = []
+
+    def observed(repository, *arguments, **kwargs):
+        calls.append(arguments[0])
+        return original(repository, *arguments, **kwargs)
+
+    monkeypatch.setattr(MODULE, "git_lease", observed)
+    assert MODULE.lease_fetch(config) == ("", None)
+    assert calls == ["fetch", "ls-remote"]
+    if stale_tip:
+        assert original(config["repository"], "rev-parse", "refs/lease/current").stdout.strip() == stale_tip
+    monkeypatch.setattr(MODULE, "lease_publish", lambda *a, **k: pytest.fail("absence must not authorize a fence"))
+    with pytest.raises(RuntimeError, match="cannot bootstrap"):
+        MODULE._check_staged_board_snapshot(board)
+    assert board.read_bytes() == before
+
+
+def test_lease_fetch_captured_tip_and_board_stay_bound_during_local_ref_race(tmp_path, monkeypatch):
+    board, config, tip, content = lease_fetch_fixture(tmp_path)
+    competing = lease_fixture_commit(config["repository"], content + "\nDifferent board.\n")
+    original = MODULE.git_lease
+    raced, calls = [], []
+
+    def observed(repository, *arguments, **kwargs):
+        calls.append(arguments)
+        result = original(repository, *arguments, **kwargs)
+        if arguments[0] == "rev-parse" and not raced:
+            assert result.stdout.strip() == tip
+            assert original(repository, "update-ref", "refs/lease/current", competing).returncode == 0
+            raced.append(True)
+        return result
+
+    monkeypatch.setattr(MODULE, "git_lease", observed)
+    assert MODULE.lease_fetch(config) == (tip, content)
+    assert raced == [True]
+    assert ("ls-tree", "--name-only", tip) in calls
+    assert ("show", f"{tip}:{board.name}") in calls
+
+
+@pytest.mark.parametrize("listing", ["empty", "appeared", "authentication", "transport"])
+def test_lease_fetch_failure_requires_fresh_absence_and_never_uses_local_tip(tmp_path, monkeypatch, listing):
+    config = {"repository": tmp_path / "retained-cache", "remote": "fixture-remote", "ref": MODULE.LEASE_DEFAULT_REF}
+    calls = []
+    monkeypatch.setattr(MODULE, "lease_repository", lambda config: config["repository"])
+
+    def git_result(repository, *arguments, **kwargs):
+        calls.append(arguments[0])
+        if arguments[0] == "fetch":
+            return subprocess.CompletedProcess(arguments, 128, "", "fetch failed")
+        if arguments[0] == "ls-remote":
+            assert arguments[1:] == (config["remote"], config["ref"])
+            if listing == "empty":
+                return subprocess.CompletedProcess(arguments, 0, "", "")
+            if listing == "appeared":
+                return subprocess.CompletedProcess(arguments, 0, "a" * 40 + "\t" + config["ref"] + "\n", "")
+            return subprocess.CompletedProcess(arguments, 128, "", listing + " failure")
+        pytest.fail("failed fetch must never inspect a retained local tip")
+
+    monkeypatch.setattr(MODULE, "git_lease", git_result)
+    if listing == "empty":
+        assert MODULE.lease_fetch(config) == ("", None)
+    else:
+        with pytest.raises(RuntimeError):
+            MODULE.lease_fetch(config)
+    assert calls == ["fetch", "ls-remote"]
+
+
+@pytest.mark.parametrize("failure", ["timed out", "requires git on PATH"])
+def test_lease_fetch_transport_exception_is_not_retried(tmp_path, monkeypatch, failure):
+    config = {"repository": tmp_path / "cache", "remote": "fixture-remote", "ref": MODULE.LEASE_DEFAULT_REF}
+    calls = []
+    monkeypatch.setattr(MODULE, "lease_repository", lambda config: config["repository"])
+
+    def unavailable(repository, *arguments, **kwargs):
+        calls.append(arguments[0])
+        raise RuntimeError(failure)
+
+    monkeypatch.setattr(MODULE, "git_lease", unavailable)
+    with pytest.raises(RuntimeError, match=failure):
+        MODULE.lease_fetch(config)
+    assert calls == ["fetch"]
+
+
+def lease_result_fixture(tmp_path, monkeypatch, tip="a" * 40, failure=None):
+    config = {"repository": tmp_path / "cache", "remote": "fixture-remote", "ref": MODULE.LEASE_DEFAULT_REF}
+    calls = []
+    monkeypatch.setattr(MODULE, "lease_repository", lambda config: config["repository"])
+
+    def git_result(repository, *arguments, **kwargs):
+        calls.append(arguments)
+        command = arguments[0]
+        output = {"fetch": "", "ls-remote": "a" * 40 + "\t" + config["ref"],
+                  "rev-parse": tip, "ls-tree": "active-sessions.md\n", "show": "fixture board"}[command]
+        return subprocess.CompletedProcess(arguments, 1 if command == failure else 0, output,
+                                           "fixture command failure" if command == failure else "")
+
+    monkeypatch.setattr(MODULE, "git_lease", git_result)
+    return config, calls
+
+
+@pytest.mark.parametrize("width", [40, 64])
+def test_lease_fetch_accepts_typed_object_ids_and_uses_immutable_reads(tmp_path, monkeypatch, width):
+    tip = "a" * width
+    config, calls = lease_result_fixture(tmp_path, monkeypatch, tip + "\n")
+    assert MODULE.lease_fetch(config) == (tip, "fixture board")
+    assert ("ls-tree", "--name-only", tip) in calls
+    assert ("show", f"{tip}:active-sessions.md") in calls
+
+
+@pytest.mark.parametrize("tip", [None, True, 42, "", "a" * 39, "a" * 41, "a" * 63,
+                                  "a" * 65, "g" * 40, "a" * 40 + "\n" + "b" * 40])
+def test_lease_fetch_rejects_invalid_tip_before_reading_tree(tmp_path, monkeypatch, tip):
+    config, calls = lease_result_fixture(tmp_path, monkeypatch, tip)
+    with pytest.raises(RuntimeError):
+        MODULE.lease_fetch(config)
+    assert not any(call[0] in {"ls-tree", "show"} for call in calls)
+
+
+@pytest.mark.parametrize("failure", ["rev-parse", "ls-tree", "show"])
+def test_lease_fetch_rejects_failed_local_commands_with_plausible_stdout(tmp_path, monkeypatch, failure):
+    config, calls = lease_result_fixture(tmp_path, monkeypatch, failure=failure)
+    with pytest.raises(RuntimeError):
+        MODULE.lease_fetch(config)
+    if failure == "rev-parse":
+        assert not any(call[0] in {"ls-tree", "show"} for call in calls)
+    elif failure == "ls-tree":
+        assert not any(call[0] == "show" for call in calls)

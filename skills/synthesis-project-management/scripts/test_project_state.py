@@ -1233,11 +1233,422 @@ def test_working_digest_rejects_non_descendant_from_traversal(tmp_path, monkeypa
     if root_form == "current":
         monkeypatch.chdir(project)
         project = Path(".")
-    original = Path.rglob
+    original = getattr(state, "_project_paths", lambda path, pattern=None: path.rglob(pattern or "*"))
 
-    def traversal(self, pattern):
-        return iter([other]) if self == project else original(self, pattern)
+    def traversal(path, pattern=None):
+        return iter([other]) if path == project else original(path, pattern)
 
-    monkeypatch.setattr(Path, "rglob", traversal)
+    monkeypatch.setattr(state, "_project_paths", traversal, raising=False)
     with pytest.raises(ValueError):
         state._working_digest(project)
+
+
+@pytest.mark.parametrize("root_form", ["absolute", "relative", "current", "symlink"])
+@pytest.mark.parametrize("plan", [None, "UPPER.MD", "z-target.md"])
+def test_content_hashes_preserve_complete_selection_names_and_reads(tmp_path, monkeypatch, root_form, plan):
+    project = tmp_path / "project"
+    project.mkdir()
+    deep = "/".join(["deep"] + [f"level-{i:02}" for i in range(24)] + ["雪.md"])
+    contents = {
+        ".hidden.md": b"hidden", ".git/notes.md": b"included Markdown",
+        "a/child.md": b"child", "a.md": b"sibling", deep: "café\n".encode(),
+        "ignored/note.md": b"ignored by Git only", "z-target.md": b"target",
+        "UPPER.MD": b"explicit plan", "other.txt": b"not Markdown",
+        ".gitignore": b"ignored/\n",
+    }
+    for name, content in contents.items():
+        path = project / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    (project / "a-alias.md").symlink_to("z-target.md")
+    (project / "z-alias.md").symlink_to("z-target.md")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "not-traversed.md").write_bytes(b"outside directory")
+    (project / "directory.md").symlink_to(outside, target_is_directory=True)
+    (project / "broken.md").symlink_to(tmp_path / "missing.md")
+    canonical = project.resolve()
+    if root_form == "relative":
+        monkeypatch.chdir(tmp_path)
+        project = Path("project")
+    elif root_form == "current":
+        monkeypatch.chdir(project)
+        project = Path(".")
+    elif root_form == "symlink":
+        alias = tmp_path / "alias"
+        alias.symlink_to(project, target_is_directory=True)
+        project = alias
+    selected = [name for name in contents if name.endswith(".md")]
+    expected = {name: hashlib.sha256(contents[name]).hexdigest() for name in selected}
+    if plan:
+        expected[plan] = hashlib.sha256(contents[plan]).hexdigest()
+    expected = dict(sorted(expected.items()))
+    order = sorted(project / name for name in [*selected, "a-alias.md", "z-alias.md"])
+    if plan:
+        order.append(canonical / plan)
+    reads = []
+    original = state._sha_file
+    monkeypatch.setattr(state, "_sha_file", lambda path: reads.append(path) or original(path))
+    assert state._content_hashes(project, plan) == expected
+    assert state._content_hashes(project, plan) == expected
+    assert reads == order * 2
+
+
+@pytest.mark.parametrize("change", ["changed", "new", "deleted", "linked-target"])
+def test_content_hashes_recompute_each_file_set_and_content(tmp_path, change):
+    project = tmp_path / "project"
+    project.mkdir()
+    target = project / "target.md"
+    target.write_bytes(b"original")
+    (project / "alias.md").symlink_to("target.md")
+    other = project / "other.md"
+    other.write_bytes(b"other")
+    before = state._content_hashes(project)
+    expected = {"other.md": hashlib.sha256(b"other").hexdigest(),
+                "target.md": hashlib.sha256(b"original").hexdigest()}
+    assert before == expected
+    if change == "changed":
+        other.write_bytes(b"changed")
+        expected["other.md"] = hashlib.sha256(b"changed").hexdigest()
+    elif change == "new":
+        (project / "new.md").write_bytes(b"new")
+        expected["new.md"] = hashlib.sha256(b"new").hexdigest()
+    elif change == "deleted":
+        other.unlink()
+        del expected["other.md"]
+    else:
+        (project / "alias.md").write_bytes(b"linked change")
+        expected["target.md"] = hashlib.sha256(b"linked change").hexdigest()
+    assert state._content_hashes(project) == dict(sorted(expected.items()))
+    assert expected != before
+
+
+@pytest.mark.parametrize("plan", [None, "middle.md"])
+def test_content_hashes_keep_alias_order_and_final_plan_overwrite(tmp_path, monkeypatch, plan):
+    project = tmp_path / "project"
+    project.mkdir()
+    target = project / "middle.md"
+    target.write_bytes(b"revision-0")
+    (project / "a-alias.md").symlink_to("middle.md")
+    (project / "z-alias.md").symlink_to("middle.md")
+    reads = []
+    original = state._sha_file
+
+    def changing_file(path):
+        digest = original(path)
+        reads.append(path.name)
+        target.write_bytes(f"revision-{len(reads)}".encode())
+        return digest
+
+    monkeypatch.setattr(state, "_sha_file", changing_file)
+    expected_order = ["a-alias.md", "middle.md", "z-alias.md"] + (["middle.md"] if plan else [])
+    expected = hashlib.sha256(f"revision-{len(expected_order) - 1}".encode()).hexdigest()
+    assert state._content_hashes(project, plan) == {"middle.md": expected}
+    assert reads == expected_order
+
+
+@pytest.mark.parametrize("depth", [0, 32])
+def test_content_hashes_use_constant_root_resolution_without_ancestor_walks(tmp_path, monkeypatch, depth):
+    project = tmp_path / "project"
+    parent = project.joinpath(*(f"level-{i:02}" for i in range(depth)))
+    parent.mkdir(parents=True)
+    files = [parent / f"file-{i}.md" for i in range(8)]
+    for path in files:
+        path.write_bytes(path.name.encode())
+    resolves, reads = [], []
+    walks = {"relative_to": 0, "parents": 0}
+    original_resolve, original_relative = Path.resolve, Path.relative_to
+    original_parents, original_hash = Path.parents.fget, state._sha_file
+
+    def resolve(path, *args, **kwargs):
+        resolves.append(path)
+        return original_resolve(path, *args, **kwargs)
+
+    def relative(path, *args, **kwargs):
+        walks["relative_to"] += 1
+        return original_relative(path, *args, **kwargs)
+
+    def parents(path):
+        walks["parents"] += 1
+        return original_parents(path)
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    monkeypatch.setattr(Path, "relative_to", relative)
+    monkeypatch.setattr(Path, "parents", property(parents))
+    monkeypatch.setattr(state, "_sha_file", lambda path: reads.append(path) or original_hash(path))
+    result = state._content_hashes(project)
+    assert len(result) == 8
+    assert reads == sorted(files)
+    assert [path for path in resolves if path != project] == sorted(files)
+    assert resolves.count(project) == 2
+    assert walks == {"relative_to": 0, "parents": 0}
+
+
+def test_content_hashes_reject_outside_resolved_target_before_read(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    project.mkdir()
+    outside = tmp_path / "project-sibling" / "outside.md"
+    outside.parent.mkdir()
+    outside.write_bytes(b"must not be read")
+    (project / "outside.md").symlink_to(outside)
+    reads = []
+    monkeypatch.setattr(state, "_sha_file", lambda path: reads.append(path) or "unexpected")
+    with pytest.raises(ValueError):
+        state._content_hashes(project)
+    assert reads == []
+
+
+@pytest.mark.parametrize("phase", ["markdown", "plan", "empty"])
+def test_content_hashes_reject_root_retarget_after_last_read(tmp_path, monkeypatch, phase):
+    first, second = tmp_path / "first", tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    project = tmp_path / "project"
+    project.symlink_to(first, target_is_directory=True)
+    plan = "UPPER.MD" if phase == "plan" else None
+    if phase != "empty":
+        (first / (plan or "note.md")).write_bytes(b"first root")
+    original_hash = state._sha_file
+    original_paths = getattr(state, "_project_paths", lambda path, pattern=None: path.rglob(pattern or "*"))
+
+    def retarget():
+        project.unlink()
+        project.symlink_to(second, target_is_directory=True)
+
+    def hash_then_retarget(path):
+        digest = original_hash(path)
+        retarget()
+        return digest
+
+    def empty_then_retarget(path, pattern=None):
+        yield from original_paths(path, pattern)
+        retarget()
+
+    if phase == "empty":
+        monkeypatch.setattr(state, "_project_paths", empty_then_retarget, raising=False)
+    else:
+        monkeypatch.setattr(state, "_sha_file", hash_then_retarget)
+    with pytest.raises((ValueError, state.ProjectStateError)):
+        state._content_hashes(project, plan)
+    assert project.resolve() == second
+
+
+def traversal_corpus(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    for name in (".md", "line\nbreak.md", "UPPER.MD", ".hidden/note.md",
+                 ".git/inside.md", "a/inside.md", "a.md", "folder.md/child.md",
+                 "雪.md", "other.bin"):
+        path = project / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(name.encode())
+    (project / "alias.md").symlink_to("a.md")
+    (project / "broken.md").symlink_to(tmp_path / "missing.md")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "outside.md").write_bytes(b"unvisited")
+    (project / "directory.md").symlink_to(outside, target_is_directory=True)
+    (project / "cycle").symlink_to(project, target_is_directory=True)
+    return project
+
+
+@pytest.mark.parametrize("consumer", ["_content_hashes", "_working_digest"])
+@pytest.mark.parametrize("root_form", ["absolute", "relative", "current", "symlink"])
+def test_hash_traversal_matches_retained_rglob_corpus(tmp_path, monkeypatch, consumer, root_form):
+    project = traversal_corpus(tmp_path)
+    if root_form == "relative":
+        monkeypatch.chdir(tmp_path)
+        project = Path("project")
+    elif root_form == "current":
+        monkeypatch.chdir(project)
+        project = Path(".")
+    elif root_form == "symlink":
+        alias = tmp_path / "root-alias"
+        alias.symlink_to(project, target_is_directory=True)
+        project = alias
+    if consumer == "_content_hashes":
+        paths = sorted(set(path for path in project.rglob("*.md") if path.is_file()))
+        expected = dict(sorted({str(path.resolve().relative_to(project.resolve())): sha(path)
+                                for path in paths}.items()))
+        assert ".md" in expected and "line\nbreak.md" in expected
+        assert ".git/inside.md" in expected
+    else:
+        paths = [path for path in sorted(item for item in project.rglob("*") if item.is_file())
+                 if ".git" not in path.parts]
+        entries = [(str(path.relative_to(project)), sha(path)) for path in paths]
+        expected = hashlib.sha256(json.dumps(entries, separators=(",", ":")).encode()).hexdigest()
+    reads = []
+    original = state._sha_file
+    monkeypatch.setattr(state, "_sha_file", lambda path: reads.append(path) or original(path))
+    assert getattr(state, consumer)(project) == expected
+    assert reads == paths
+
+
+@pytest.mark.parametrize("consumer", ["_content_hashes", "_working_digest"])
+def test_hash_traversal_scans_each_directory_once_per_fresh_pass(tmp_path, monkeypatch, consumer):
+    project = traversal_corpus(tmp_path)
+    directories = {project, project / ".hidden", project / ".git", project / "a", project / "folder.md"}
+    import collections
+    scans, active = [], []
+    original_scan, original_is_file = state.os.scandir, Path.is_file
+
+    class Scan:
+        def __init__(self, path):
+            assert not active, "a directory iterator remained open while descending"
+            self.path = Path(path)
+            self.iterator = original_scan(path)
+
+        def __enter__(self):
+            active.append(self.path)
+            scans.append(self.path)
+            return self.iterator
+
+        def __exit__(self, *args):
+            self.iterator.close()
+            active.remove(self.path)
+
+    def is_file(path):
+        assert not active, "a directory iterator remained open during file selection"
+        return original_is_file(path)
+
+    monkeypatch.setattr(state.os, "scandir", Scan)
+    monkeypatch.setattr(Path, "is_file", is_file)
+    first = getattr(state, consumer)(project)
+    assert collections.Counter(scans) == {path: 1 for path in directories}
+    assert getattr(state, consumer)(project) == first
+    assert collections.Counter(scans) == {path: 2 for path in directories}
+    assert not active
+
+
+@pytest.mark.parametrize("consumer", ["_content_hashes", "_working_digest"])
+@pytest.mark.parametrize("failure", ["open", "iterate", "classify", "is_file"])
+def test_hash_traversal_does_not_accept_incomplete_io(tmp_path, monkeypatch, consumer, failure):
+    project = tmp_path / "project"
+    child = project / "child"
+    child.mkdir(parents=True)
+    leaf = child / "note.md"
+    leaf.write_bytes(b"must be accounted for")
+    original_scan, original_is_file = state.os.scandir, Path.is_file
+    opened, closed = [], []
+
+    class Entry:
+        def __init__(self, entry):
+            self.entry = entry
+
+        def __getattr__(self, name):
+            return getattr(self.entry, name)
+
+        def is_dir(self, *args, **kwargs):
+            if failure == "classify" and self.name == "child":
+                raise PermissionError("fixture directory classification denied")
+            return self.entry.is_dir(*args, **kwargs)
+
+    class Scan:
+        def __init__(self, path):
+            self.path = Path(path)
+            if failure == "open" and self.path == child:
+                raise PermissionError("fixture directory open denied")
+            self.iterator = original_scan(path)
+
+        def __enter__(self):
+            opened.append(self.path)
+            return self
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            entry = next(self.iterator)
+            if failure == "iterate" and self.path == child:
+                raise PermissionError("fixture directory iteration denied")
+            return Entry(entry)
+
+        def __exit__(self, *args):
+            self.iterator.close()
+            closed.append(self.path)
+
+    def is_file(path):
+        if failure == "is_file" and path == leaf:
+            raise PermissionError("fixture file stat denied")
+        return original_is_file(path)
+
+    monkeypatch.setattr(state.os, "scandir", Scan)
+    monkeypatch.setattr(Path, "is_file", is_file)
+    with pytest.raises(OSError):
+        getattr(state, consumer)(project)
+    assert len(opened) == len(closed)
+
+
+@pytest.mark.parametrize("consumer", ["_content_hashes", "_working_digest"])
+def test_hash_traversal_rechecks_file_type_after_enumeration(tmp_path, monkeypatch, consumer):
+    project = tmp_path / "project"
+    project.mkdir()
+    leaf = project / "changed.md"
+    leaf.write_bytes(b"was a file")
+    original = Path.is_file
+    checked, reads = [], []
+
+    def is_file(path):
+        if path == leaf and not checked:
+            leaf.unlink()
+            leaf.mkdir()
+            checked.append(path)
+        return original(path)
+
+    monkeypatch.setattr(Path, "is_file", is_file)
+    monkeypatch.setattr(state, "_sha_file", lambda path: reads.append(path) or "unexpected")
+    result = getattr(state, consumer)(project)
+    assert result == ({} if consumer == "_content_hashes" else hashlib.sha256(b"[]").hexdigest())
+    assert checked == [leaf]
+    assert reads == []
+
+
+@pytest.mark.parametrize("consumer", ["_content_hashes", "_working_digest"])
+def test_hash_traversal_rejects_queued_directory_replaced_by_link(tmp_path, monkeypatch, consumer):
+    project = tmp_path / "project"
+    child = project / "child"
+    child.mkdir(parents=True)
+    target = tmp_path / "outside"
+    target.mkdir()
+    (target / "foreign.txt").write_bytes(b"must not be traversed")
+    original = state.os.scandir
+    changed, scanned = [], []
+
+    class Entry:
+        def __init__(self, entry):
+            self.entry = entry
+
+        def __getattr__(self, name):
+            return getattr(self.entry, name)
+
+        def is_dir(self, *args, **kwargs):
+            result = self.entry.is_dir(*args, **kwargs)
+            if self.name == "child" and not changed:
+                child.rmdir()
+                child.symlink_to(target, target_is_directory=True)
+                changed.append(child)
+            return result
+
+    class Scan:
+        def __init__(self, path):
+            self.path = Path(path)
+            scanned.append(self.path)
+            self.iterator = original(path)
+
+        def __enter__(self):
+            return self
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            return Entry(next(self.iterator))
+
+        def __exit__(self, *args):
+            self.iterator.close()
+
+    monkeypatch.setattr(state.os, "scandir", Scan)
+    with pytest.raises((OSError, state.ProjectStateError)):
+        getattr(state, consumer)(project)
+    assert changed == [child]
+    assert child not in scanned

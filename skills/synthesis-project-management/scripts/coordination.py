@@ -1653,13 +1653,6 @@ def lease_repository(config: dict) -> Path:
 def lease_fetch(config: dict) -> tuple[str, str | None]:
     """Return the remote ref tip and board content, or ("", None) pre-bootstrap."""
     repository = lease_repository(config)
-    listed = git_lease(repository, "ls-remote", config["remote"], config["ref"])
-    if listed.returncode != 0:
-        raise RuntimeError(
-            f"coordination lease remote unreachable: {listed.stderr.strip()}"
-        )
-    if not listed.stdout.strip():
-        return "", None
     fetched = git_lease(
         repository,
         "fetch",
@@ -1668,19 +1661,34 @@ def lease_fetch(config: dict) -> tuple[str, str | None]:
         f"+{config['ref']}:refs/lease/current",
     )
     if fetched.returncode != 0:
+        # A failed fetch leaves the old local ref behind. Only a fresh remote
+        # absence observation can distinguish bootstrap from unavailable data.
+        listed = git_lease(repository, "ls-remote", config["remote"], config["ref"])
+        if listed.returncode != 0:
+            raise RuntimeError(
+                f"coordination lease remote unreachable: {listed.stderr.strip()}"
+            )
+        if not listed.stdout.strip():
+            return "", None
         raise RuntimeError(
             f"coordination lease fetch failed: {fetched.stderr.strip()}"
         )
-    sha = git_lease(repository, "rev-parse", "refs/lease/current").stdout.strip()
-    names = git_lease(
-        repository, "ls-tree", "--name-only", "refs/lease/current"
-    ).stdout.split()
+    resolved = git_lease(repository, "rev-parse", "--verify", "refs/lease/current")
+    if resolved.returncode != 0:
+        raise RuntimeError(f"coordination lease tip unreadable: {resolved.stderr.strip()}")
+    if not isinstance(resolved.stdout, str) or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", resolved.stdout.strip()):
+        raise RuntimeError("coordination lease fetched tip is not a valid object id")
+    sha = resolved.stdout.strip()
+    tree = git_lease(repository, "ls-tree", "--name-only", sha)
+    if tree.returncode != 0:
+        raise RuntimeError(f"coordination lease tree unreadable: {tree.stderr.strip()}")
+    names = tree.stdout.split()
     if len(names) != 1:
         raise RuntimeError(
             "coordination lease ref must contain exactly one board file, found: "
             + (", ".join(names) or "none")
         )
-    shown = git_lease(repository, "show", f"refs/lease/current:{names[0]}")
+    shown = git_lease(repository, "show", f"{sha}:{names[0]}")
     if shown.returncode != 0:
         raise RuntimeError(
             f"coordination lease board unreadable: {shown.stderr.strip()}"

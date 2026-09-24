@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import sys
 import tracemalloc
@@ -267,3 +268,140 @@ def test_invalid_utf8_in_scanned_records_fails_closed(
         + b'\n{"discarded":"\xff"}\n'
     )
     assert live_receipt.transcript_binding_state(path, "codex", SESSION) == "invalid"
+
+
+@pytest.mark.parametrize("capture", [False, True])
+@pytest.mark.parametrize("read_chars", [64, 64 * 1024])
+@pytest.mark.parametrize("fragment", [r'a\"b\\c\/\b\f\n\r\t', r'\u0041\uD834\uDD1E'])
+def test_string_scan_batches_complete_escapes_per_chunk(monkeypatch, capture, read_chars, fragment):
+    """Dense valid escapes must not invoke Python helpers for every escape."""
+    encoded = '"' + fragment * 4096 + '"'
+    monkeypatch.setattr(live_receipt, "TRANSCRIPT_READ_CHARS", read_chars)
+    calls = {"take": 0, "peek": 0}
+    for name in calls:
+        original = getattr(live_receipt._TranscriptJSON, name)
+
+        def counted(self, _name=name, _original=original):
+            calls[_name] += 1
+            return _original(self)
+
+        monkeypatch.setattr(live_receipt._TranscriptJSON, name, counted)
+    parser = live_receipt._TranscriptJSON(io.StringIO(encoded))
+    assert parser.string(capture) is live_receipt._NON_STRING
+    assert parser.peek() == ""
+    chunks = (len(encoded) + read_chars - 1) // read_chars
+    # Split escapes still use the checked cross-chunk path (at most six
+    # characters); complete runs must advance together regardless of length.
+    assert calls["take"] <= 12 * (chunks + 1) + 4
+    assert calls["peek"] <= 40 * (chunks + 1) + 8
+
+
+@pytest.mark.parametrize("read_chars", [1, 2, 3, 4, 5, 6, 7, 64 * 1024])
+def test_batched_string_scan_keeps_every_escape_split_and_json_decoding(monkeypatch, read_chars):
+    monkeypatch.setattr(live_receipt, "TRANSCRIPT_READ_CHARS", read_chars)
+    tokens = [r'\"', r'\\', r'\/', r'\b', r'\f', r'\n', r'\r', r'\t',
+              r'\u0000', r'\u00e9', r'\uD834\uDD1E', r'\ud800', "雪"]
+    for offset in range(8):
+        encoded = '"' + "x" * offset + "".join(tokens) + '"'
+        parser = live_receipt._TranscriptJSON(io.StringIO(encoded))
+        assert parser.string(True) == json.loads(encoded)
+        assert parser.peek() == ""
+
+
+@pytest.mark.parametrize("read_chars", [1, 2, 3, 4, 5, 6, 7, 64 * 1024])
+def test_batched_string_scan_rejects_invalid_tokens_at_every_split(monkeypatch, read_chars):
+    monkeypatch.setattr(live_receipt, "TRANSCRIPT_READ_CHARS", read_chars)
+    invalid = [r'\q', r'\u123z', r'\uZ123', "\\", "\\u", "\\u1", "\\u12", "\\u123"]
+    invalid.extend(chr(code) for code in range(32))
+    for offset in range(8):
+        for suffix in invalid:
+            # A valid escape run preceding the bad token must not hide it.
+            encoded = '"' + "x" * offset + r'\n\u0061\"' * 4 + suffix + '"'
+            with pytest.raises(ValueError):
+                live_receipt._TranscriptJSON(io.StringIO(encoded)).string(False)
+
+
+@pytest.mark.parametrize("encoded_length", [511, 512, 513])
+@pytest.mark.parametrize("read_chars", [1, 7, 64 * 1024])
+def test_batched_string_scan_keeps_exact_encoded_projection_cap(monkeypatch, encoded_length, read_chars):
+    monkeypatch.setattr(live_receipt, "TRANSCRIPT_READ_CHARS", read_chars)
+    count, tail = divmod(encoded_length - 2, 6)
+    encoded = '"' + r'\u0061' * count + "a" * tail + '"'
+    assert len(encoded) == encoded_length
+    result = live_receipt._TranscriptJSON(io.StringIO(encoded)).string(True)
+    if encoded_length <= live_receipt.MAX_PROJECTED_STRING_CHARS:
+        assert result == json.loads(encoded)
+    else:
+        assert result is live_receipt._NON_STRING
+
+
+@pytest.mark.parametrize("client", ["claude", "codex", "muse"])
+@pytest.mark.parametrize("last_record", ["bound", "conflicting", "malformed", "duplicate"])
+def test_batched_escape_prefix_preserves_all_records_and_late_evidence(tmp_path, monkeypatch, client, last_record):
+    def declaration(identity):
+        return {"stream": {"id": identity}} if client == "muse" else _binding(client, identity)
+
+    duplicate = {
+        "claude": '{"sessionId":"%s","sessionId":"%s"}',
+        "codex": '{"type":"session_meta","payload":{"id":"%s","id":"%s"}}',
+        "muse": '{"stream":{"id":"%s","id":"%s"}}',
+    }[client] % (SESSION, OTHER)
+    last = {"bound": "{}", "conflicting": json.dumps(declaration(OTHER)),
+            "malformed": r'{"discarded":"bad\q"}', "duplicate": duplicate}[last_record]
+    path = tmp_path / "dense-prefix.jsonl"
+    path.write_text(json.dumps(declaration(SESSION)) + '\n{"discarded":"'
+                    + r'\n\u0061\"\\' * 8192 + '"}\n'
+                    + "{}\n" * (live_receipt.MAX_BINDING_LINES - 3)
+                    + last + "\n" + json.dumps(declaration(OTHER)) + "\n", encoding="utf-8")
+    before = _digest(path)
+    records = []
+    original = live_receipt._TranscriptJSON.record
+
+    def record(parser):
+        records.append(None)
+        return original(parser)
+
+    monkeypatch.setattr(live_receipt._TranscriptJSON, "record", record)
+    expected = "invalid" if last_record in {"malformed", "duplicate"} else last_record
+    assert live_receipt.transcript_binding_state(path, client, SESSION) == expected
+    assert len(records) == live_receipt.MAX_BINDING_LINES
+    assert _digest(path) == before
+
+
+def test_dense_escaped_record_keeps_bounded_reads_and_memory(tmp_path, monkeypatch):
+    path = tmp_path / "dense-memory.jsonl"
+    with path.open("w", encoding="utf-8") as handle:
+        handle.write('{"discarded":"')
+        for _ in range(65):
+            handle.write(r'\n' * (32 * 1024))
+        handle.write('","sessionId":"' + SESSION + '"}\n')
+    assert path.stat().st_size > 4 * 1024 * 1024
+    before = _digest(path)
+    original_open = Path.open
+    reads = []
+
+    class BoundedRead:
+        def __enter__(self):
+            self.handle = original_open(path, encoding="utf-8")
+            return self
+
+        def read(self, size=-1):
+            reads.append(size)
+            assert size == live_receipt.TRANSCRIPT_READ_CHARS == 64 * 1024
+            return self.handle.read(size)
+
+        def __exit__(self, *args):
+            self.handle.close()
+
+    def open_path(candidate, *args, **kwargs):
+        return BoundedRead() if candidate == path and kwargs.get("encoding") == "utf-8" else original_open(candidate, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", open_path)
+    tracemalloc.start()
+    try:
+        assert live_receipt.transcript_binding_state(path, "claude", SESSION) == "bound"
+        _current, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert reads and peak < 4 * 1024 * 1024
+    assert _digest(path) == before
