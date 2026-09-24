@@ -364,3 +364,36 @@ def test_local_effect_readback_is_actual_bounded_state_not_claimed_success(bridg
     target.symlink_to(world["plan"])
     with pytest.raises(ValueError):
         observe("unsafe-link")
+
+
+def test_native_registration_readback_is_observed_without_claiming_future_wake(bridge, observed, world):
+    bindings = {key: observed["state"][key] for key in ("run_id", "contract_digest", "profile_digest")}
+    prompt = json.dumps({"autopilot_continuation": {"schema_version": 1, "bindings": bindings}})
+    args = {"cron": "*/5 * * * *", "prompt": prompt, "recurring": True}
+    append_claude_tool(world, "CronCreate", args, {"id": "abcd1234"}, "create-job")
+    append_claude_tool(world, "CronList", {}, {"jobs": [{"id": "abcd1234", **args}]}, "list-job")
+    data = bridge.observe_native_registration(observed, "create-job", "list-job")
+    assert data["job_id"] == "abcd1234" and data["registration_status"] == "observed"
+    assert data["wake_status"] == "unknown" and data["survival"] == []
+    assert "next_wake_at" not in data and "lease_expires_at" not in data
+    assert bridge.verify_source(record("continuation-registration", data, observed), observed)
+    forged = {**data, "next_wake_at": "2030-01-01T00:00:00Z"}
+    assert not bridge.verify_source(record("continuation-registration", forged, observed), observed)
+    wrong = copy.deepcopy(data);wrong["job_id"] = "foreign1"
+    assert not bridge.verify_source(record("continuation-registration", wrong, observed), observed)
+
+
+def test_capability_components_preserve_unknowns_and_require_genuine_receipts(bridge, observed, world):
+    bindings = {key: observed["state"][key] for key in ("run_id", "contract_digest", "profile_digest")}
+    args = {"cron": "*/5 * * * *", "prompt": json.dumps({"autopilot_continuation": {"schema_version": 1, "bindings": bindings}}), "recurring": True}
+    append_claude_tool(world, "CronCreate", args, {"id": "abcd1234"}, "create-job")
+    append_claude_tool(world, "CronList", {}, {"jobs": [{"id": "abcd1234", **args}]}, "list-job")
+    data = bridge.observe_native_capability(observed, {"create_call_id": "create-job", "readback_call_id": "list-job"})
+    assert data["capabilities"]["native_identity"] is True
+    assert data["capabilities"]["registration_readback"] is True
+    assert data["capabilities"]["wake_observation"] is False
+    assert data["capabilities"]["independent_observer"] is False
+    assert data["capabilities"]["survival"] == []
+    assert bridge.verify_source(record("capability", data, observed), observed)
+    forged = copy.deepcopy(data);forged["capabilities"]["survival"] = ["reboot"]
+    assert not bridge.verify_source(record("capability", forged, observed), observed)

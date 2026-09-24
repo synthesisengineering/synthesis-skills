@@ -388,7 +388,7 @@ def test_claimed_quality_pass_cannot_override_measured_consumer_failure(wf, stat
 
 @pytest.mark.parametrize("changes", [{"reviewer": "worker"}, {"calibrated": False, "domain": "writing"}])
 def test_consensus_or_uncalibrated_semantic_grade_cannot_certify(wf, state, context, changes):
-    result = configured(wf, state, context)
+    result = configured(wf, state, context, domain=changes.get('domain','software'))
     context = quality_context(result, context, **changes)
     observed = call(wf, result, context, "grade", criterion_id="c1", receipt_ids=["q1"], independent=True)
     assert observed["extensions"]["workflow"]["quality"]["c1"]["verdict"] == "UNKNOWN"
@@ -490,9 +490,66 @@ def test_verified_changed_condition_unlocks_blocked_task_within_attempt_budget(w
     for number in range(2):
         result = call(wf, result, context, "progress", task_id="build", attempt_id=f"a{number}", input_digest="1" * 64,
                       output_digest="2" * 64, evidence_ids=[], outcome="transient_failure", summary="Unavailable")
-    context = receipt(result, context, "clear", "retry_clearance", {"task_id": "build", "changed_condition": "Verified service recovery"})
+    context = receipt(result, context, "clear", "retry_clearance", {**wf.retry_binding(result,'build'), "changed_condition": "Verified service recovery"})
     result = call(wf, result, context, "task", task_id="build", action="retry", receipt_id="clear")
     assert "build" in wf.ready_tasks(result)
+
+
+@pytest.mark.parametrize('domain,observation',[
+    ('software',{'expected':1,'observed':True,'consumer_verified':True}),
+    ('browser',{'expected_state':{'rows':[1]},'observed_state':{'rows':[True]},'independent_readback':True}),
+    ('knowledge',{'expected_hashes':{'x':1},'recovered_hashes':{'x':True},'foreign_preserved':True}),
+    ('operations',{'expected_state':[0],'observed_state':[False],'effects_reconciled':True}),
+])
+def test_domain_outcomes_use_typed_json_equality(wf,domain,observation):
+    assert wf._observed_quality(domain,observation) is False
+
+
+def test_writing_work_cannot_be_graded_using_software_only_checks(wf,state,context):
+    result=configured(wf,state,context,domain='writing')
+    with pytest.raises(ValueError):
+        call(wf,result,quality_context(result,context,domain='software'),'grade',criterion_id='c1',receipt_ids=['q1'],independent=True)
+
+
+def test_mixed_domain_closure_requires_each_domain_quality(wf,state,context):
+    result=call(wf,state,context,'configure',dimensions={**dimensions(),'domains':['software','writing']})
+    result=call(wf,result,context,'graph',nodes=nodes(),wip_limit=2)
+    for node in result['extensions']['workflow']['graph']['nodes'].values():node['status']='done'
+    for ident,artifact in [('c1','a1'),('c2','a2')]:
+        data=quality_context(result,context)['evidence']['q1']['data'];data.update(criterion_id=ident,artifact_id=artifact)
+        context['artifacts']={'a1':{'digest':'d'*64},'a2':{'digest':'d'*64}}
+        context=receipt(result,context,ident,'quality_observation',data)
+        result=call(wf,result,context,'grade',criterion_id=ident,receipt_ids=[ident],independent=True)
+    with pytest.raises(ValueError):wf.validate_command(result,'close',{'status':'completed'},context)
+    writing=quality_context(result,context,domain='writing')['evidence']['q1']['data'];writing.update(criterion_id='c2',artifact_id='a2')
+    context=receipt(result,context,'writing','quality_observation',writing)
+    result=call(wf,result,context,'grade',criterion_id='c2',receipt_ids=['writing'],independent=True)
+    wf.validate_command(result,'close',{'status':'completed'},context)
+
+
+def test_retry_clearance_cannot_replay_after_later_failure_or_through_alias(wf,state,context):
+    result=graphed(wf,state,context)
+    def fail(value,attempt):
+        return call(wf,value,context,'progress',task_id='build',attempt_id=attempt,input_digest='1'*64,output_digest='2'*64,evidence_ids=[],outcome='permanent_failure',summary='Actual failure')
+    result=fail(result,'a1')
+    binding=wf.retry_binding(result,'build')
+    context=receipt(result,context,'clear','retry_clearance',{**binding,'changed_condition':'Verified repaired dependency'})
+    result=call(wf,result,context,'task',task_id='build',action='retry',receipt_id='clear')
+    result=fail(result,'a2')
+    with pytest.raises(ValueError):call(wf,result,context,'task',task_id='build',action='retry',receipt_id='clear')
+    result=call(wf,result,context,'task',task_id='build',action='cancel',reason='Stop here')
+    assert result['extensions']['workflow']['graph']['nodes']['build']['status']=='cancelled'
+
+
+def test_retry_clearance_is_bound_to_current_block_and_consumed_once(wf,state,context):
+    result=graphed(wf,state,context)
+    result=call(wf,result,context,'task',task_id='build',action='block',reason='Dependency unavailable')
+    data={**wf.retry_binding(result,'build'),'changed_condition':'Actual repaired dependency'}
+    context=receipt(result,context,'clear','retry_clearance',data)
+    result=call(wf,result,context,'task',task_id='build',action='retry',receipt_id='clear')
+    result=call(wf,result,context,'task',task_id='build',action='block',reason='Dependency unavailable')
+    context=receipt(result,context,'alias','retry_clearance',data)
+    with pytest.raises(ValueError):call(wf,result,context,'task',task_id='build',action='retry',receipt_id='alias')
 
 
 def test_profile_required_independence_cannot_be_disabled_per_grade(wf, state, context):

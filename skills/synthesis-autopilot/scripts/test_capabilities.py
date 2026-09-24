@@ -424,3 +424,21 @@ def test_delivery_refuses_partial_or_mismatched_wait_bindings():
         records = {"notice": receipt("delivery", delivery_id="notice-1", channel="host-ui", status="delivered", **{**binding, **changes})}
         with pytest.raises(ValueError):
             CAP.record_delivery(current, {"receipt": "notice"}, context(records))
+
+
+def test_required_horizon_closure_needs_matching_observed_job_not_a_label():
+    current, records, _ = configured()
+    with pytest.raises(ValueError):
+        CAP.validate_horizon(current, "reboot", context(records))
+    job = current["extensions"]["capabilities"]["continuation"]
+    records["cap"]["data"]["capabilities"]["survival"].append("reboot")
+    job["horizon"] = "reboot"
+    with pytest.raises(ValueError):
+        CAP.validate_horizon(current, "reboot", context(records))
+    records["wake"] = receipt("continuation-wake", job_id="job-1", event_id="wake-1", observed_at=NOW + 30, next_wake_at=NOW + 60)
+    current = CAP.observe_wake(current, {"receipt": "wake"}, context(records, now=NOW + 31))
+    current["status"] = "completed"
+    CAP.validate_horizon(current, "reboot", context(records, now=NOW + 31))
+    records.pop("wake")
+    with pytest.raises(ValueError):
+        CAP.validate_horizon(current, "reboot", context(records, now=NOW + 31))
