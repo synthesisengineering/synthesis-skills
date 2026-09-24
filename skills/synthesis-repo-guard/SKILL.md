@@ -5,12 +5,16 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.6.1"
+  version: "2.6.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Repo Guard
+
+Large manifests use one NUL-delimited status snapshot, exact literal selection,
+and NUL-delimited input for exact-file commits and resets. Command-line limits do not justify widening
+ownership, splitting one checkpoint into partial commits, or dropping entries.
 
 ## The Problem
 

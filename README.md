@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.145.1** fixes checkpoint publication for large session manifests while
+retaining exact-file ownership and ordinary commit protections.
+
 Release **4.145.0** adds autopilot 3.0.0: durable outcome contracts, adaptive
 workflows, shared resource budgets, verified repair and capability-based recovery.
 

@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.145.1] - 2026-09-24
+
+Large session manifests can publish without exceeding operating-system argument
+limits. Shared checkpoint status uses one NUL-delimited snapshot with exact literal
+selection; exact-path commits and resets use NUL-delimited input while retaining one guarded commit.
+Unrelated staged files, unpublished source and failed-publication records remain
+protected. Autopilot 3.0.0 and the existing Stop-loop repair remain included.
+
 ## [4.145.0] - 2026-09-24
 
 Autopilot 3.0.0 adds project-owned outcome contracts, immutable event journals,
