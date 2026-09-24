@@ -264,10 +264,20 @@ def test_integration_needs_independent_bound_evidence_and_accounts_worker_usage(
 
 
 def quality_context(state, context, *, passed=True, reviewer="independent", domain="software", calibrated=True):
+    observations = {
+        "software": {"expected": "ready", "observed": "ready" if passed else "broken", "consumer_verified": True},
+        "research": {"sources_verified": True, "decisive_claims_verified": passed, "counterevidence_checked": True},
+        "writing": {"source_fidelity": True, "reader_purpose": passed, "structure": True, "voice": True},
+        "data": {"expected_rows": 3, "observed_rows": 3 if passed else 4, "expected_total": "12.50", "observed_total": "12.50", "missing_explained": True},
+        "browser": {"expected_state": "saved", "observed_state": "saved" if passed else "unchanged", "independent_readback": True},
+        "knowledge": {"expected_hashes": {"record": "abc"}, "recovered_hashes": {"record": "abc" if passed else "bad"}, "foreign_preserved": True},
+        "operations": {"expected_state": "settled", "observed_state": "settled" if passed else "ambiguous", "effects_reconciled": True},
+    }[domain]
     return receipt(state, context, "q1", "quality_observation", {
         "domain": domain, "criterion_id": "c1", "artifact_id": "a1", "rubric": "behavior-v1", "passed": passed,
         "method": "consumer", "producer": "worker", "reviewer": reviewer, "calibrated": calibrated,
-        "findings": [] if passed else ["Consumer output disagrees with expected result"], "independent": True})
+        "findings": [] if passed else ["Consumer output disagrees with expected result"], "independent": True,
+        "observations": observations})
 
 
 def test_quality_pass_fail_and_unknown_are_distinct(wf, state, context):
@@ -277,6 +287,23 @@ def test_quality_pass_fail_and_unknown_are_distinct(wf, state, context):
         assert observed["extensions"]["workflow"]["quality"]["c1"]["verdict"] == verdict
     observed = call(wf, result, context, "grade", criterion_id="c1", receipt_ids=[], independent=True)
     assert observed["extensions"]["workflow"]["quality"]["c1"]["verdict"] == "UNKNOWN"
+
+
+@pytest.mark.parametrize("domain", ["software", "research", "writing", "data", "browser", "knowledge", "operations"])
+@pytest.mark.parametrize("passed", [True, False])
+def test_domain_evaluators_detect_seeded_defects_and_pass_sound_work(wf, state, context, domain, passed):
+    result = configured(wf, state, context, domain=domain)
+    context = quality_context(result, context, domain=domain, passed=passed)
+    result = call(wf, result, context, "grade", criterion_id="c1", receipt_ids=["q1"], independent=True)
+    assert result["extensions"]["workflow"]["quality"]["c1"]["verdict"] == ("PASS" if passed else "FAIL")
+
+
+def test_claimed_quality_pass_cannot_override_measured_consumer_failure(wf, state, context):
+    result = configured(wf, state, context)
+    context = quality_context(result, context, passed=False)
+    context["evidence"]["q1"]["data"]["passed"] = True
+    result = call(wf, result, context, "grade", criterion_id="c1", receipt_ids=["q1"], independent=True)
+    assert result["extensions"]["workflow"]["quality"]["c1"]["verdict"] == "FAIL"
 
 
 @pytest.mark.parametrize("changes", [{"reviewer": "worker"}, {"calibrated": False, "domain": "writing"}])
@@ -290,7 +317,7 @@ def test_consensus_or_uncalibrated_semantic_grade_cannot_certify(wf, state, cont
 def test_quality_disagreement_is_visible_and_resolution_is_bounded(wf, state, context):
     result = configured(wf, state, context)
     context = quality_context(result, context)
-    negative = {**context["evidence"]["q1"]["data"], "passed": False, "findings": ["Seeded defect"]}
+    negative = {**context["evidence"]["q1"]["data"], "passed": False, "findings": ["Seeded defect"], "observations": {"expected": "ready", "observed": "broken", "consumer_verified": True}}
     context = receipt(result, context, "q2", "quality_observation", negative)
     result = call(wf, result, context, "grade", criterion_id="c1", receipt_ids=["q1", "q2"], independent=True)
     assert result["extensions"]["workflow"]["quality"]["c1"]["verdict"] == "DISAGREEMENT"
@@ -344,3 +371,59 @@ def test_deadline_and_core_amendment_stop_admission_without_destroying_work(wf, 
 def test_unknown_payload_fields_cannot_smuggle_authority_or_bypass_checks(wf, state, context):
     with pytest.raises(ValueError):
         call(wf, state, context, "configure", dimensions=dimensions(), layers=[], publish=True)
+
+
+def test_measured_overrun_is_recorded_and_blocks_new_admission(wf, state, context):
+    result = call(wf, ledger(wf, state, context), context, "reserve", reservation_id="worker", amounts={"searches": 10}, category="work")
+    result = call(wf, result, context, "settle", reservation_id="worker", actual={"searches": 12})
+    assert wf.budget_summary(result)["searches"]["spent"] == 12
+    assert wf.budget_summary(result)["searches"]["available"] == -2
+    assert result["extensions"]["workflow"]["budget"]["breaches"]
+    with pytest.raises(ValueError):
+        call(wf, result, context, "task", task_id="build", action="start")
+
+
+def test_amendment_does_not_reset_spent_budget(wf, state, context):
+    result = call(wf, ledger(wf, state, context), context, "reserve", reservation_id="work", amounts={"searches": 10}, category="work")
+    result = call(wf, result, context, "settle", reservation_id="work", actual={"searches": 6})
+    result["profile_digest"] = "f" * 64
+    result["profile_revision"] += 1
+    result = call(wf, result, context, "configure", dimensions=dimensions(domain="research"), reason="Typed core amendment")
+    assert wf.budget_summary(result)["searches"]["spent"] == 6
+    assert wf.budget_summary(result)["searches"]["available"] == 4
+
+
+def test_child_cancellation_preserves_reservation_and_work_until_acknowledged(wf, state, context):
+    result, context, brief = dispatch_ready(wf, state, context)
+    result = call(wf, result, context, "dispatch", **brief)
+    result = call(wf, result, context, "cancel_child", child_id="child-a", reason="Owner requested stop")
+    child = result["extensions"]["workflow"]["children"]["child-a"]
+    assert child["cancellation_requested"] is True
+    assert child["disposition"] == "running"
+    assert wf.budget_summary(result)["searches"]["available"] == 3
+    result = call(wf, result, context, "return", child_id="child-a", disposition="cancelled", artifact_ids=["retained"], evidence_ids=[], reason="Stop acknowledged")
+    assert result["extensions"]["workflow"]["children"]["child-a"]["artifact_ids"] == ["retained"]
+
+
+def test_verified_changed_condition_unlocks_blocked_task_within_attempt_budget(wf, state, context):
+    result = graphed(wf, state, context)
+    for number in range(2):
+        result = call(wf, result, context, "progress", task_id="build", attempt_id=f"a{number}", input_digest="1" * 64,
+                      output_digest="2" * 64, evidence_ids=[], outcome="transient_failure", summary="Unavailable")
+    context = receipt(result, context, "clear", "retry_clearance", {"task_id": "build", "changed_condition": "Verified service recovery"})
+    result = call(wf, result, context, "task", task_id="build", action="retry", receipt_id="clear")
+    assert "build" in wf.ready_tasks(result)
+
+
+def test_profile_required_independence_cannot_be_disabled_per_grade(wf, state, context):
+    result = configured(wf, state, context, uncertainty="high")
+    context = quality_context(result, context, reviewer="worker")
+    result = call(wf, result, context, "grade", criterion_id="c1", receipt_ids=["q1"], independent=False)
+    assert result["extensions"]["workflow"]["quality"]["c1"]["verdict"] == "UNKNOWN"
+
+
+def test_forecast_overrun_is_measured_without_claiming_hard_enforcement(wf, state, context):
+    result = call(wf, ledger(wf, state, context), context, "reserve", reservation_id="worker", amounts={"tokens": 2}, category="work")
+    result = call(wf, result, context, "settle", reservation_id="worker", actual={"tokens": 20})
+    assert wf.budget_summary(result)["tokens"]["spent"] == 20
+    assert wf.budget_summary(result)["tokens"]["enforcement"] == "forecast"
