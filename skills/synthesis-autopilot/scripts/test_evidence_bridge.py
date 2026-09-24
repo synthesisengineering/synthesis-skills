@@ -674,14 +674,23 @@ def native_turn_end_probe(world, observed):
     return arguments, active, wake
 
 
-def native_renewal_fixture(bridge, observed, world):
+def native_renewal_fixture(bridge, observed, world, *, registration_expiry_seconds=None):
     """Authenticated temporary PM/native source, preserving admitted envelopes."""
     import capabilities as cap
     observed['now'] = datetime.fromisoformat(observed['now']).replace(second=45, microsecond=0).isoformat()
     args, active, wake = native_turn_end_probe(world, observed)
     records = {}; observed['evidence'] = records
-    observed['verify_receipt'] = lambda ref, kind, bindings: (ref in records and records[ref]['kind'] == kind
-        and bridge.verify_source(records[ref], observed))
+    verdicts = {}
+    def verified(ref, kind, bindings):
+        # Match the engine's once-per-immutable-context source evaluation;
+        # renewal links form a DAG, not repeated independent PM operations.
+        if ref not in records or records[ref]['kind'] != kind:
+            return False
+        key = (id(observed['state']), observed['now'], ref, json.dumps(records[ref], sort_keys=True))
+        if key not in verdicts:
+            verdicts[key] = bridge.verify_source(records[ref], observed)
+        return verdicts[key]
+    observed['verify_receipt'] = verified
     def save(kind, data, identity):
         records[identity] = {**record(kind, data, observed), 'id': identity}
         return identity
@@ -689,6 +698,8 @@ def native_renewal_fixture(bridge, observed, world):
     observed['state'] = cap.record_capability(observed['state'], {'surface': 'claude-code-cli', 'receipt': 'cap'}, observed)
     data = bridge.observe_native_registration(observed, 'active-create', 'active-list', capability_receipt='cap', monitor_create_call_id='active-monitor-create')
     save('continuation-registration', data, 'registered')
+    if registration_expiry_seconds is not None:
+        records['registered']['expires_at'] = (datetime.fromisoformat(observed['now']) + timedelta(seconds=registration_expiry_seconds)).isoformat()
     observed['state'] = cap.register_continuation(observed['state'], {'receipt': 'registered', 'horizon': 'turn_end'}, observed)
     original_rows = [json.loads(line) for line in world['transcript'].read_text().splitlines()]
     active_list = next(row for row in original_rows if any(p.get('tool_use_id') == 'active-list'
@@ -699,6 +710,14 @@ def native_renewal_fixture(bridge, observed, world):
         for row in rows[-2:]: row['timestamp'] = when.isoformat()
         world['transcript'].write_text(''.join(json.dumps(row) + '\n' for row in rows))
     return records, save, active, wake, readback
+
+
+def test_native_renewal_caps_original_registration_envelope_expiry(bridge, observed, world):
+    records, _, _, _, readback = native_renewal_fixture(bridge, observed, world, registration_expiry_seconds=310)
+    readback('short-original-renewal', datetime.fromisoformat(observed['now']) + timedelta(seconds=20))
+    observed['now'] = (datetime.fromisoformat(observed['now']) + timedelta(seconds=21)).isoformat()
+    data = bridge.observe_native_renewal(observed, 'short-original-renewal', 'registered')
+    assert data['lease_expires_at'] == bridge._time(records['registered']['expires_at'])
 
 
 def test_same_native_pair_can_renew_with_fresh_readbacks_and_wake_again_after_five_minutes(bridge, observed, world):
@@ -776,6 +795,54 @@ def test_renewal_registered_as_production_observer_source_and_nonterminal_reduce
     assert commands['continuation.renew']['terminal_safe'] is False
     assert observers['continuation-renewal']['terminal_safe'] is False
     assert 'continuation-renewal' in sources
+
+
+def test_engine_observation_and_reducer_retains_exact_native_intake_without_extending_expired_lease(bridge, observed, world, monkeypatch):
+    import autopilot
+    import capabilities as cap
+    engine = autopilot.engine()
+    clock = datetime.fromisoformat(observed['now']).replace(second=45, microsecond=0)
+    observed['now'] = clock.isoformat()
+    args, _, _ = native_turn_end_probe(world, observed)
+    monkeypatch.setattr(engine, '_now', lambda: clock.isoformat())
+    current = observed['state']
+    def observe(kind, arguments, identity):
+        nonlocal current
+        path = world['project'] / (identity + '.json')
+        path.write_text(json.dumps({'schema_version': 1, 'kind': kind, 'arguments': arguments}))
+        current = command(engine, world, current, 'artifact.register', {'id': identity + '-spec', 'path': str(path),
+            'role': 'input', 'required': False, 'retention': 'durable'})
+        current = engine.observe(world['project'], current['run_id'], kind, {'check_id': identity + '-spec'},
+            expected_revision=current['revision'], command_id=identity, actor=world['actor'], runtime_root=world['runtime'])
+    observe('capability', args, 'cap-native')
+    current = command(engine, world, current, 'capability.record', {'surface': 'claude-code-cli', 'receipt': 'cap-native'})
+    observe('continuation-registration', {'create_call_id': 'active-create', 'readback_call_id': 'active-list',
+        'capability_receipt': 'cap-native', 'monitor_create_call_id': 'active-monitor-create'}, 'registered-native')
+    current = command(engine, world, current, 'continuation.register', {'receipt': 'registered-native', 'horizon': 'turn_end'})
+    clock += timedelta(seconds=10)
+    native_rows = [json.loads(line) for line in world['transcript'].read_text().splitlines()]
+    listing = next(row['toolUseResult'] for row in native_rows if any(part.get('tool_use_id') == 'active-list'
+        for part in row.get('message', {}).get('content', []) if isinstance(part, dict)))
+    append_claude_tool(world, 'CronList', {}, listing, 'engine-renew-list')
+    native_rows = [json.loads(line) for line in world['transcript'].read_text().splitlines()]
+    for row in native_rows[-2:]: row['timestamp'] = clock.isoformat()
+    world['transcript'].write_text(''.join(json.dumps(row) + '\n' for row in native_rows))
+    clock += timedelta(seconds=1)
+    observe('continuation-renewal', {'readback_call_id': 'engine-renew-list', 'previous_lease_receipt': 'registered-native'}, 'renewed-native')
+    current = command(engine, world, current, 'continuation.renew', {'receipt': 'renewed-native'})
+    assert current['extensions']['capabilities']['continuation']['lease_receipt'] == 'renewed-native'
+    assert current['extensions']['capabilities']['continuation']['wakes'] == []
+    clock += timedelta(seconds=310)
+    context = engine.inspect_context(current, world['actor'], project=world['project'])
+    assert context['verify_receipt']('cap-native', 'capability', {}) is True
+    assert context['verify_receipt']('registered-native', 'continuation-registration', {}) is True
+    assert context['verify_receipt']('renewed-native', 'continuation-renewal', {}) is True
+    assert cap.continuation_status(current, context)['state'] == 'expired'
+    original = copy.deepcopy(current)
+    # The retained historical event cannot be repackaged as a new intake.
+    forged = copy.deepcopy(current['evidence']['cap-native']); forged['id'] = 'new-id'
+    assert bridge.verify_source(forged, {**context, 'state': current, 'project': world['project'], 'actor': world['actor']}) is False
+    assert current == original
 
 
 def test_native_turn_end_components_admit_actual_registration_with_computed_deadlines(bridge, observed, world):

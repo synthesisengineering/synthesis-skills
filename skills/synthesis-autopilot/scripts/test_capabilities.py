@@ -78,6 +78,7 @@ def configured():
 def renewal_fixture():
     current, records, _ = configured()
     records['cap']['expires_at'] = datetime.fromtimestamp(NOW + 1000, timezone.utc).isoformat()
+    records['registered']['expires_at'] = datetime.fromtimestamp(NOW + 1000, timezone.utc).isoformat()
     records['renew'] = receipt('continuation-renewal', observed_at=NOW + 10, expires_at=NOW + 1000,
         surface='codex-desktop', job_id='job-1', mechanism='codex-heartbeat',
         owner='native-host', observer_id='observer-1', lease_expires_at=NOW + 310,
@@ -105,7 +106,7 @@ def test_renewal_preserves_actual_wakes_and_next_deadline_without_claiming_a_wak
 
 @pytest.mark.parametrize('fault', ['expired', 'overdue', 'cancelled', 'cancellation_pending', 'terminal',
     'owner', 'job_id', 'observer_id', 'mechanism', 'surface', 'previous', 'registration', 'ttl',
-    'capability_expiry', 'no_extension', 'future_readback', 'foreign_binding'])
+    'capability_expiry', 'registration_expiry', 'no_extension', 'future_readback', 'foreign_binding'])
 def test_renewal_cannot_reset_or_weaken_current_authority_or_lease(fault):
     current, records, ctx = renewal_fixture()
     data = records['renew']['data']; job = current['extensions']['capabilities']['continuation']
@@ -118,6 +119,7 @@ def test_renewal_cannot_reset_or_weaken_current_authority_or_lease(fault):
     elif fault == 'registration': data['registration_receipt'] = 'another'
     elif fault == 'ttl': data['lease_expires_at'] = NOW + 311
     elif fault == 'capability_expiry': records['cap']['expires_at'] = datetime.fromtimestamp(NOW + 250, timezone.utc).isoformat()
+    elif fault == 'registration_expiry': records['registered']['expires_at'] = datetime.fromtimestamp(NOW + 250, timezone.utc).isoformat()
     elif fault == 'no_extension': data['lease_expires_at'] = NOW + 200
     elif fault == 'future_readback': data['readback_at'] = NOW + 11
     elif fault == 'foreign_binding': ctx['binding']['native_ref'] = 'foreign'
