@@ -237,8 +237,42 @@ def test_continuation_cancellation_requires_actual_native_readback(bridge, obser
 def test_authentic_negative_observation_is_not_passing_acceptance(bridge, observed):
     predicates = {}
     bridge.register_acceptance_predicates(lambda kind, fn: predicates.update({kind: fn}))
-    criterion = {"id": "accept", "method": "consumer-check", "required": True}
+    criterion = {"id": "accept", "method": "consumer-check", "required": True, "artifact_ids": ["output"]}
     for data in ({"passed": False, "returncode": 1}, {"passed": True, "returncode": 1}, {"passed": False, "returncode": 0}):
         assert not predicates["consumer-check"]({"kind": "consumer-check", "data": data}, observed["state"], criterion, observed)
-    assert predicates["consumer-check"]({"kind": "consumer-check", "data": {"passed": True, "returncode": 0}}, observed["state"], criterion, observed)
+    positive = {"criterion_id": "accept", "artifact_id": "output", "passed": True,
+                "execution": {"returncode": 0, "sandbox_verified": True, "timed_out": False, "output_exceeded": False}}
+    assert predicates["consumer-check"]({"kind": "consumer-check", "data": positive}, observed["state"], criterion, observed)
     assert not predicates["continuation-cancellation"]({"kind": "continuation-cancellation", "data": {"cancelled": False}}, observed["state"], criterion, observed)
+
+
+def test_local_and_recovery_observers_produce_real_core_event_evidence(bridge, observed, world):
+    engine = importlib.import_module("run_state")
+    cap = importlib.import_module("capabilities")
+    bridge.register_sources(engine.register_evidence_source)
+    bridge.register_observers(engine.register_observer)
+    bridge.register_acceptance_predicates(engine.register_acceptance)
+    cap.register_commands(engine.register_command)
+    current = observed["state"]
+    specs = {"resolver": {"kind": "project-resolution", "arguments": {}},
+             "native": {"kind": "native-identity", "arguments": {}},
+             "claim": {"kind": "claim-ownership", "arguments": {}},
+             "recovery": {"kind": "recovery", "arguments": {"resolver_receipt": "resolver-observation", "native_receipt": "native-observation",
+                 "claim_receipt": "claim-observation", "input_receipts": []}}}
+    for ident, data in specs.items():
+        path = world["project"] / (ident + ".json")
+        path.write_text(json.dumps({"schema_version": 1, **data}))
+        current = command(engine, world, current, "artifact.register", {"id": ident, "path": str(path), "role": "input", "retention": "durable", "required": False})
+    for ident, data in specs.items():
+        current = engine.observe(world["project"], current["run_id"], data["kind"], {"check_id": ident},
+            actor=world["actor"], command_id=ident + "-observation", expected_revision=current["revision"], runtime_root=world["runtime"])
+    ctx = engine.inspect_context(current, world["actor"], project=world["project"])
+    assert ctx["verify_receipt"]("recovery-observation", "recovery", {})
+    assert current["evidence"]["recovery-observation"]["data"]["remaining"] == ["accept"]
+    current = command(engine, world, current, "recovery.record", {"receipt": "recovery-observation"})
+    ctx = engine.inspect_context(current, world["actor"], project=world["project"])
+    assert cap.status_view(current, ctx)["recovery_status"] == "verified"
+    (world["repo"] / "projects/index.yaml").write_text("- id: alpha\n  status: paused\n")
+    ctx = engine.inspect_context(current, world["actor"], project=world["project"])
+    assert not ctx["verify_receipt"]("resolver-observation", "project-resolution", {})
+    assert not ctx["verify_receipt"]("recovery-observation", "recovery", {})
