@@ -258,3 +258,20 @@ def test_invalid_quality_score_refused_and_failed_baseline_not_erased():
     assert report["arms"]["baseline"]["failed"] == 1
     assert report["candidate_acceptance"]["mechanical"] == "PASS"
     assert report["arms"]["candidate"]["first_attempt_pass_rate"] == 1
+
+
+def test_baseline_semantic_failure_does_not_reject_verified_candidate_improvement():
+    reg = calibrated_registration()
+    rows = [trial(reg, i) for i in range(len(reg["schedule"]))]
+    for row in rows:
+        row["outcome"].update(semantic="FAIL" if row["arm"] == "baseline" else "PASS")
+    report = evaluation.compare(reg, rows)
+    assert report["semantic_status"] == "FAIL"  # Baseline failures remain visible.
+    assert report["candidate_acceptance"]["semantic"] == "PASS"
+    assert report["quality_regression_status"] == "PASS"
+    assert report["default_promotion_ready"] is True
+    candidate = next(row for row in rows if row["arm"] == "candidate")
+    candidate["outcome"]["semantic"] = "FAIL"
+    report = evaluation.compare(reg, rows)
+    assert report["candidate_acceptance"]["semantic"] == "FAIL"
+    assert report["default_promotion_ready"] is False
