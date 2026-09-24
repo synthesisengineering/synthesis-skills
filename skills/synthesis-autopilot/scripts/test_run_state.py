@@ -537,5 +537,23 @@ def test_corrupt_foreign_index_does_not_affect_selected_native(engine, world):
     root.mkdir(parents=True)
     engine.index_legacy(world["actor"], root)
     index_root = world["runtime"] / "legacy-index"
-    (index_root / "native" / "foreign.json").write_text("corrupt")
+    generation = json.loads((index_root / "manifest.json").read_text())["generation"]
+    (index_root / "generations" / generation / "native" / "foreign.json").write_text("corrupt")
     assert engine.legacy_for_stop(world["actor"], root)["health"] == "PASS"
+
+
+def test_stop_inspection_validates_each_owned_run_once_and_rejects_revocation(engine, world, monkeypatch):
+    state = create(engine, world)
+    calls = []
+    original = engine.admit_paths
+    def observed(*args, **kwargs):
+        calls.append(kwargs.get("readonly"))
+        return original(*args, **kwargs)
+    monkeypatch.setattr(engine, "admit_paths", observed)
+    inspected = engine.inspect_owned_runs(world["actor"], runtime_root=world["runtime"])
+    assert len(inspected) == 1 and inspected[0][0]["run_id"] == state["run_id"]
+    assert inspected[0][1]["binding"]["session_uuid"] == SEAT
+    assert calls == [True]
+    write_board(world, status="released")
+    with pytest.raises(ValueError):
+        engine.inspect_owned_runs(world["actor"], runtime_root=world["runtime"])

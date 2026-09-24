@@ -76,3 +76,29 @@ def test_execution_unavailable_is_not_a_result(checks, consumer, monkeypatch):
     monkeypatch.setattr(checks, "run_python_check", unavailable)
     with pytest.raises(ValueError, match="sandbox"):
         checks.observe(consumer, {"check_id": "spec"})
+
+
+@pytest.mark.parametrize("corruption", ["duplicate", "nonfinite", "boolean-schema"])
+def test_consumer_rejects_ambiguous_specification_json(checks, consumer, corruption):
+    path = consumer["project"] / "check.json"
+    raw = path.read_text()
+    if corruption == "duplicate":
+        raw = raw.replace('"schema_version": 1', '"schema_version": 9, "schema_version": 1')
+    elif corruption == "nonfinite":
+        raw = raw.replace('"answer": 5', '"answer": NaN')
+    else:
+        raw = raw.replace('"schema_version": 1', '"schema_version": true')
+    path.write_text(raw)
+    consumer["artifacts"]["spec"]["digest"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    with pytest.raises(ValueError):
+        checks.observe(consumer, {"check_id": "spec"})
+
+
+def test_boolean_does_not_satisfy_numeric_consumer_result(checks, consumer):
+    spec = consumer["project"] / "check.json"
+    spec.write_text(spec.read_text().replace('"answer": 5', '"answer": 1'))
+    program = consumer["project"] / "check.py"
+    program.write_text('print(\'{"answer":true}\')\n')
+    for identity, path in (("spec", spec), ("program", program)):
+        consumer["artifacts"][identity]["digest"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert checks.observe(consumer, {"check_id": "spec"})["passed"] is False
