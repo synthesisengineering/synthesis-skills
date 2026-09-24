@@ -58,6 +58,32 @@ def test_repeated_stop_still_evaluates_and_reports_healthy_checkpoint(verdict, c
     assert f'"status": "{verdict}"' in output["systemMessage"]
 
 
+def test_non_stop_checkpoint_failure_retains_nonzero_contract(capsys) -> None:
+    assert state._emit_checkpoint_hook("FAIL", ["fixture failure"], {"hook_event_name": "SessionStart"}) == 2
+    captured = capsys.readouterr()
+    assert '"checkpoint_accepted": false' in json.loads(captured.out)["systemMessage"]
+    assert "fixture failure" in captured.err
+
+
+def test_stop_failure_remains_terminal_when_shared_adapter_cannot_import(monkeypatch, capsys) -> None:
+    import builtins
+    original = builtins.__import__
+
+    def missing_adapter(name, *args, **kwargs):
+        if name == "release_runtime":
+            raise ImportError("fixture missing Stop adapter")
+        return original(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", missing_adapter)
+    payload = {"hook_event_name": "Stop", "session_id": "018f0000-0000-7000-8000-000000000001",
+               "stop_hook_active": False}
+    assert state._emit_checkpoint_hook("FAIL", ["fixture failure"], payload) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["continue"] is False
+    assert output.get("decision") != "block"
+    assert '"checkpoint_accepted": false' in output["systemMessage"]
+
+
 def run(*args: str, cwd: Path) -> str:
     result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=True)
     return result.stdout.strip()

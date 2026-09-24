@@ -186,7 +186,9 @@ def test_managed_public_cli_cannot_normalize_runtime_failure(active):
     data = replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
     launcher, _ = managed_fixture((pointer, root, data))
     result = subprocess.run([str(launcher), "exec-public", "--timeout-seconds", "0.01", "--success-exit-code", "1", SCRIPT], input=b"", capture_output=True)
-    assert result.returncode == 2 and b"failed to start or finish" in result.stderr
+    assert result.returncode == 2
+    assert any(reason in result.stderr for reason in
+               (b"failed to start or finish", b"exceeded its total deadline"))
     forbidden = subprocess.run([str(launcher), "exec-public", "--success-exit-code", "2", SCRIPT], input=b"", capture_output=True)
     assert forbidden.returncode == 2 and b"invalid choice" in forbidden.stderr
 

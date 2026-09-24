@@ -316,8 +316,10 @@ def test_missing_native_validator_fails_closed(observer: SimpleNamespace, monkey
     monkeypatch.setattr(builtins, "__import__", missing)
     verdict, issues = inspect(observer)
     assert verdict == "FAIL" and "validator is unavailable" in " ".join(issues)
-    assert state._emit_checkpoint_hook(verdict, issues, event(observer)) == 2
-    assert "remains FAIL" in capsys.readouterr().err
+    assert state._emit_checkpoint_hook(verdict, issues, event(observer)) == 0
+    wire, report = native_output(capsys.readouterr().out)
+    assert wire["decision"] == "block" and "remains FAIL" in wire["reason"]
+    assert report["checkpoint_accepted"] is False
     assert_no_receipt(observer)
 
 
@@ -581,14 +583,17 @@ def test_unverifiable_project_git_state_cannot_exonerate_observer(observer: Simp
     assert_no_receipt(observer)
 
 
-def test_claude_reentrant_stop_terminates_with_blocked_verdict(observer: SimpleNamespace, capsys: pytest.CaptureFixture) -> None:
+@pytest.mark.parametrize("client", ["claude", "codex"])
+def test_native_reentrant_stop_terminates_with_blocked_verdict(observer: SimpleNamespace, capsys: pytest.CaptureFixture, client: str) -> None:
     (observer.project / "REFERENCE.md").write_text("unattributed edit\n", encoding="utf-8")
-    payload = event(observer)
+    before = observer.board.read_bytes()
+    payload = event(observer, client)
     verdict, issues = inspect(observer, payload)
-    assert state._emit_checkpoint_hook(verdict, issues, payload) == 2
+    assert state._emit_checkpoint_hook(verdict, issues, payload) == 0
     first = capsys.readouterr()
-    assert "remains UNKNOWN" in first.err and "Preserve retained work" in first.err
     first_output, first_report = native_output(first.out)
+    assert first_output["decision"] == "block"
+    assert "remains UNKNOWN" in first_output["reason"] and "Preserve retained work" in first_output["reason"]
     assert "continue" not in first_output and first_report["status"] == "UNKNOWN"
     payload["stop_hook_active"] = True
     assert state._emit_checkpoint_hook(verdict, issues, payload) == 0
@@ -596,18 +601,26 @@ def test_claude_reentrant_stop_terminates_with_blocked_verdict(observer: SimpleN
     terminal, report = native_output(repeated.out)
     assert report["status"] == "UNKNOWN" and terminal["continue"] is False
     assert report["checkpoint_accepted"] is False
-    assert "remains UNKNOWN" in terminal["stopReason"] and repeated.err
+    assert "remains UNKNOWN" in terminal["stopReason"]
+    assert terminal.get("decision") != "block"
+    assert observer.board.read_bytes() == before
     assert_no_receipt(observer)
 
 
 @pytest.mark.parametrize("client,active,event_name", [("codex", True, "Stop"), ("claude", "true", "Stop"), ("claude", True, "PreCompact")])
-def test_codex_never_consumes_claude_terminal_control(observer: SimpleNamespace, capsys: pytest.CaptureFixture, client: str, active: object, event_name: str) -> None:
+def test_terminal_control_is_shared_by_stop_clients_but_not_other_events(observer: SimpleNamespace, capsys: pytest.CaptureFixture, client: str, active: object, event_name: str) -> None:
     payload = event(observer, client, stop_hook_active=active, hook_event_name=event_name)
-    assert state._emit_checkpoint_hook("FAIL", ["retained owner obligation"], payload) == 2
+    before = observer.board.read_bytes()
+    assert state._emit_checkpoint_hook("FAIL", ["retained owner obligation"], payload) == (0 if event_name == "Stop" else 2)
     output = capsys.readouterr()
     wire, report = native_output(output.out)
     assert report["checkpoint_accepted"] is False
-    assert "continue" not in wire and output.err
+    if event_name == "Stop":
+        assert wire["continue"] is False and wire.get("decision") != "block"
+        assert "retained owner obligation" in wire["stopReason"]
+    else:
+        assert "continue" not in wire and output.err
+    assert observer.board.read_bytes() == before
     assert_no_receipt(observer)
 
 
@@ -635,19 +648,23 @@ def test_real_hook_cli_uses_local_lease_and_actionable_failure(observer: SimpleN
     assert native_output(clean_codex.stdout)[1] == report
     (observer.project / "REFERENCE.md").write_text("retained edit\n", encoding="utf-8")
     first = cli(event(observer))
-    assert first.returncode == 2 and "remains UNKNOWN" in first.stderr
-    assert native_output(first.stdout)[1]["status"] == "UNKNOWN"
+    assert first.returncode == 0
+    wire, report = native_output(first.stdout)
+    assert wire["decision"] == "block" and "remains UNKNOWN" in wire["reason"]
+    assert report["status"] == "UNKNOWN" and report["checkpoint_accepted"] is False
     repeated = cli(event(observer, stop_hook_active=True))
     wire, report = native_output(repeated.stdout)
     assert repeated.returncode == 0 and wire["continue"] is False
     assert report["status"] == "UNKNOWN"
     codex = cli(event(observer, "codex", stop_hook_active=True))
     wire, report = native_output(codex.stdout)
-    assert codex.returncode == 2 and "continue" not in wire
+    assert codex.returncode == 0 and wire["continue"] is False
     assert report["status"] == "UNKNOWN" and not report["checkpoint_accepted"]
     malformed = cli([])
-    assert malformed.returncode == 2 and "not an object" in malformed.stderr
-    assert native_output(malformed.stdout)[1]["status"] == "UNKNOWN"
+    assert malformed.returncode == 0
+    wire, report = native_output(malformed.stdout)
+    assert wire["continue"] is False and "not an object" in wire["stopReason"]
+    assert report["status"] == "UNKNOWN" and report["checkpoint_accepted"] is False
     assert observer.board.read_bytes() == before
     assert_no_receipt(observer)
 
@@ -657,13 +674,16 @@ def test_stop_output_conforms_to_native_codex_consumer_schema(observer: SimpleNa
     result = state._emit_checkpoint_hook(verdict, ["bounded fixture evidence"], event(observer, "codex"))
     captured = capsys.readouterr()
     wire, report = native_output(captured.out)
-    assert set(wire) == {"systemMessage"}
+    assert set(wire) == ({"systemMessage"} if verdict in {"PASS", "NOT_APPLICABLE"}
+                         else {"systemMessage", "decision", "reason"})
+    if verdict not in {"PASS", "NOT_APPLICABLE"}:
+        assert wire["decision"] == "block" and "bounded fixture evidence" in wire["reason"]
     assert report["status"] == verdict
     assert report["issues"] == ["bounded fixture evidence"]
     assert report["checkpoint_accepted"] is (verdict == "PASS")
     assert report.get("no_receipt_issued") is (True if verdict == "NOT_APPLICABLE" else None)
-    assert result == (0 if verdict in {"PASS", "NOT_APPLICABLE"} else 2)
-    assert bool(captured.err) is (result == 2)
+    assert result == 0
+    assert not captured.err
 
 
 def test_old_diagnostic_stdout_is_rejected_by_native_codex_schema() -> None:

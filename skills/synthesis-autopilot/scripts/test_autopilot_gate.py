@@ -102,7 +102,7 @@ def test_native_repeated_stop_preserves_legitimate_wait_close_and_continuation(t
     assert record.read_bytes() == before
 
 
-def run_cli(tmp_path: Path, *args: str, stdin: str = "{}", env_extra=None):
+def run_cli(tmp_path: Path, *args: str, stdin: str | None = None, env_extra=None):
     board = tmp_path / "board.md"
     if not board.exists():
         board.write_text(
@@ -122,6 +122,8 @@ def run_cli(tmp_path: Path, *args: str, stdin: str = "{}", env_extra=None):
         "SYNTHESIS_CLIENT_SESSION_REF": "tool:session-a",
         **(env_extra or {}),
     }
+    if stdin is None:
+        stdin = json.dumps({"session_id": "session-a", "hook_event_name": "Stop", "stop_hook_active": False})
     return subprocess.run([sys.executable, str(MODULE_PATH), *args],
                           input=stdin, capture_output=True, text=True,
                           env=env)
@@ -141,10 +143,12 @@ def test_gate_blocks_active_engagement_without_continuation(tmp_path) -> None:
     """The overnight failure, encoded: active + unfinished + nothing
     scheduled must refuse the stop."""
     register(tmp_path)
-    done = run_cli(tmp_path, "--gate", stdin='{"session_id":"session-a"}')
-    assert done.returncode == 2
-    assert "silent-idle" in done.stderr
-    assert "continuation" in done.stderr
+    done = run_cli(tmp_path, "--gate")
+    assert done.returncode == 0
+    output = json.loads(done.stdout)
+    assert output["decision"] == "block"
+    assert "silent-idle" in output["reason"]
+    assert "continuation" in output["reason"]
 
 
 def test_gate_passes_once_continuation_recorded(tmp_path: Path) -> None:
@@ -185,8 +189,10 @@ def test_unreadable_record_fails_closed(tmp_path: Path) -> None:
     root.mkdir(parents=True)
     (root / "broken.json").write_text("{not json", encoding="utf-8")
     done = run_cli(tmp_path, "--gate")
-    assert done.returncode == 2
-    assert "unreadable" in done.stderr
+    assert done.returncode == 0
+    output = json.loads(done.stdout)
+    assert output["continue"] is False
+    assert "unreadable" in output["stopReason"]
 
 
 def test_registration_is_bound_to_session_project_claim_and_client_ref(tmp_path: Path) -> None:
@@ -205,7 +211,7 @@ def test_foreign_live_engagement_never_blocks_this_session(tmp_path: Path) -> No
     done = run_cli(
         tmp_path,
         "--gate",
-        stdin='{"session_id":"session-b"}',
+        stdin='{"session_id":"session-b","hook_event_name":"Stop","stop_hook_active":false}',
         env_extra={"SYNTHESIS_CLIENT_SESSION_REF": "tool:session-b"},
     )
     assert done.returncode == 0
@@ -287,9 +293,11 @@ def test_cron_continuation_blocks_gate_when_unverified_and_aged(
     payload["engaged_at"] = "2026-01-01T00:00:00+00:00"
     records[0].write_text(json.dumps(payload), encoding="utf-8")
     blocked = run_cli(tmp_path, "--gate")
-    assert blocked.returncode == 2
-    assert "UNVERIFIED" in blocked.stderr
-    assert "cron-fired" in blocked.stderr
+    assert blocked.returncode == 0
+    output = json.loads(blocked.stdout)
+    assert output["decision"] == "block"
+    assert "UNVERIFIED" in output["reason"]
+    assert "cron-fired" in output["reason"]
     assert run_cli(tmp_path, "cron-fired",
                    "--plan", "/tmp/p/plan.md").returncode == 0
     assert run_cli(tmp_path, "--gate").returncode == 0

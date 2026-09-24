@@ -54,6 +54,27 @@ def test_direct_repeated_stop_records_healthy_handoff_without_terminal_failure(m
     assert not capsys.readouterr().out.strip()
 
 
+def test_direct_stop_handoff_failure_is_terminal_without_losing_pending(monkeypatch, capsys):
+    raw = {"session_id": "018f0000-0000-7000-8000-000000000001", "hook_event_name": "Stop",
+           "stop_hook_active": False, "cwd": "/tmp/fixture"}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(raw)))
+    monkeypatch.setattr(sys, "argv", [str(MODULE_PATH), "--hook", "--quiet"])
+    monkeypatch.setattr(MODULE, "resolve_config", lambda _path: dict(MODULE.DEFAULTS))
+    MODULE.PENDING_DIR.mkdir(parents=True)
+    retained = MODULE.PENDING_DIR / "retained.json"
+    retained.write_text("fixture retained evidence", encoding="utf-8")
+
+    def unavailable(_payload, _cfg):
+        raise OSError("fixture storage unavailable")
+
+    monkeypatch.setattr(MODULE, "local_handoff_checkpoint", unavailable)
+    assert MODULE.main() == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["continue"] is False
+    assert "storage unavailable" in output["stopReason"]
+    assert retained.read_text(encoding="utf-8") == "fixture retained evidence"
+
+
 @pytest.fixture(autouse=True)
 def isolated_runtime(tmp_path: Path, monkeypatch):
     # Synthetic repositories and lifecycle events must never consult or update

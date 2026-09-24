@@ -110,6 +110,104 @@ def test_pretooluse_failure_stays_nonzero_and_never_terminalizes(active):
     assert b'"continue"' not in result.stdout
 
 
+@pytest.mark.parametrize("native_event", ["PreToolUse", "PermissionRequest"])
+def test_misconfigured_stop_route_cannot_weaken_native_tool_denial(active, native_event):
+    result = launch(active, json.dumps({"hook_event_name": native_event, "session_id": "fixture"}).encode())
+    assert result.returncode == 2
+    assert b'"continue"' not in result.stdout
+    assert b"event" in result.stderr
+
+
+@pytest.mark.parametrize("native_event", ["UnknownEvent", "", 42])
+@pytest.mark.parametrize("invalid_arguments", [False, True])
+def test_declared_stop_with_malformed_event_stays_terminal(active, native_event, invalid_arguments):
+    arguments = ["--unknown-option"] if invalid_arguments else []
+    assert_terminal(launch(active, json.dumps(event(hook_event_name=native_event)).encode(), *arguments))
+
+
+def test_parser_failure_cannot_weaken_native_permission_request(active):
+    result = launch(active, json.dumps({"hook_event_name": "PermissionRequest"}).encode(), "--unknown-option")
+    assert result.returncode == 2 and result.stdout == b""
+
+
+PARSE_FAILURE_ARGUMENTS = [
+    ("--unknown-option",),
+    ("--timeout-seconds", "not-a-number"),
+    ("--timeout-seconds", "nan"),
+    ("--timeout-seconds", "-1"),
+    ("--stdin-wait-seconds", "not-a-number"),
+    ("--stdin-wait-seconds", "nan"),
+    ("--stdin-wait-seconds", "-1"),
+    ("--success-exit-code", "2"),
+    ("--hook-event", "UnknownEvent"),
+]
+
+
+@pytest.mark.parametrize("arguments", PARSE_FAILURE_ARGUMENTS)
+@pytest.mark.parametrize("repeated", [False, True])
+def test_native_stop_parser_failure_is_terminal(active, arguments, repeated):
+    """Parser failures occur before child imports but still have native input."""
+    result = launch(active, json.dumps(event(stop_hook_active=repeated)).encode(), *arguments)
+    output = assert_terminal(result)
+    assert "argument" in output["stopReason"].lower()
+
+
+@pytest.mark.parametrize("arguments", PARSE_FAILURE_ARGUMENTS)
+def test_nonstop_parser_failure_stays_nonzero(active, arguments):
+    result = launch(active, json.dumps({"hook_event_name": "PreToolUse"}).encode(), *arguments)
+    assert result.returncode == 2
+    assert result.stdout == b""
+
+
+@pytest.mark.parametrize("arguments", [[], ["not-a-declared/script.py"], ["--timeout-seconds"]])
+def test_native_stop_parser_failure_without_declared_event_is_terminal(active, arguments):
+    _, _, data = active
+    result = subprocess.run([data["launcher"]["path"], "exec-public", *arguments],
+                            input=json.dumps(event()).encode(), capture_output=True, timeout=5)
+    assert_terminal(result)
+
+
+def test_declared_stop_parser_failure_with_bad_input_is_terminal(active):
+    assert_terminal(launch(active, b"unreadable input", "--unknown-option"))
+
+
+def test_parser_failure_cannot_infer_stop_from_child_arguments(active):
+    _, _, data = active
+    result = subprocess.run([data["launcher"]["path"], "exec-public", "unknown/script.py",
+                             "--hook-event", "Stop"], input=b"broken", capture_output=True, timeout=5)
+    assert result.returncode == 2 and result.stdout == b""
+
+
+def test_parser_failure_fallback_input_wait_is_bounded(active):
+    _, _, data = active
+    reader, writer = os.pipe()
+    try:
+        os.write(writer, b'{"hook_event_name":"Stop"')
+        started = time.monotonic()
+        result = subprocess.run([data["launcher"]["path"], "exec-public", "--hook-event", "Stop",
+                                 "--timeout-seconds", "0.03", "--unknown-option", SCRIPT],
+                                stdin=reader, capture_output=True, timeout=1)
+        assert time.monotonic() - started < 0.8
+        assert_terminal(result)
+    finally:
+        os.close(reader)
+        os.close(writer)
+
+
+def test_launcher_help_remains_zero_without_reading_native_input(active):
+    _, _, data = active
+    reader, writer = os.pipe()
+    try:
+        result = subprocess.run([data["launcher"]["path"], "exec-public", "--help"],
+                                stdin=reader, capture_output=True, timeout=1)
+        assert result.returncode == 0
+        assert result.stdout.startswith(b"usage:")
+        assert b'"continue"' not in result.stdout
+    finally:
+        os.close(reader)
+        os.close(writer)
+
+
 def test_stalled_pipe_is_bounded_and_never_runs_a_child(active):
     pointer, _, data = active
     reader, writer = os.pipe()

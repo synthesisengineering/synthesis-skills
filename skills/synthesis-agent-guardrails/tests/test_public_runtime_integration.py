@@ -142,9 +142,10 @@ def test_packaged_stop_executes_real_repo_detector_without_private_helpers(publi
     (workspace / "retained-work.txt").write_text("uncommitted work must survive\n")
     result = invoke(installation, STOP_HOOK, through_launcher=True, payload={
         "cwd": str(workspace), "session_id": "public-packaging-fixture", "hook_event_name": "Stop",
+        "stop_hook_active": False,
     })
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "", result.stdout
+    assert not result.stdout.strip() or json.loads(result.stdout) == {}, result.stdout
     report = installation["home"] / ".synthesis/repo-guard/last-report.json"
     assert report.is_file(), "a silent hook alone does not prove the detector executed"
     assert str(workspace) in report.read_text()
