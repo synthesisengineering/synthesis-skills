@@ -552,6 +552,19 @@ def test_retry_clearance_is_bound_to_current_block_and_consumed_once(wf,state,co
     with pytest.raises(ValueError):call(wf,result,context,'task',task_id='build',action='retry',receipt_id='alias')
 
 
+def test_retry_clearance_repackaging_cannot_change_consumption_identity(wf, state, context):
+    result = graphed(wf, state, context)
+    result = call(wf, result, context, "task", task_id="build", action="block", reason="Dependency unavailable")
+    data = {**wf.retry_binding(result, "build"), "changed_condition": "Observed repair", "source": {"kind": "native-user", "message_id": "original-message"}}
+    context = receipt(result, context, "clear", "retry_clearance", data)
+    result = call(wf, result, context, "task", task_id="build", action="retry", receipt_id="clear")
+    result = call(wf, result, context, "task", task_id="build", action="block", reason="Dependency unavailable")
+    context = receipt(result, context, "repackaged", "retry_clearance", data)
+    context["evidence"]["repackaged"].update(artifact_id="another-envelope", digest="f" * 64, observed_at="2026-01-01T00:01:00Z")
+    with pytest.raises(ValueError):
+        call(wf, result, context, "task", task_id="build", action="retry", receipt_id="repackaged")
+
+
 def test_profile_required_independence_cannot_be_disabled_per_grade(wf, state, context):
     result = configured(wf, state, context, uncertainty="high")
     context = quality_context(result, context, reviewer="worker")
