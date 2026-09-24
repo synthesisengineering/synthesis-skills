@@ -294,3 +294,34 @@ def test_interrupted_native_worker_keeps_partial_provider_evidence(boundary,role
     raw=(runtime/'worker/stdout.jsonl').read_text()
     assert 'began-provider' in raw
     assert data['usage']['usd_micros'] is None
+
+
+def test_worker_deadline_reaps_observed_detached_child_and_preserves_unrelated(boundary,roles,tmp_path,monkeypatch):
+    import subprocess, signal, time
+    state,context,runtime=worker_world(roles)
+    pidfile=Path(roles[0]['output_roots'][0])/'detached.pid'
+    script=tmp_path/'fixture-detached-cli'
+    script.write_text('#!/usr/bin/env python3\nimport subprocess,sys,time,json\nfrom pathlib import Path\nsys.stdin.read()\n'
+        +'p=subprocess.Popen([sys.executable,"-c","import time; time.sleep(20)"],start_new_session=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)\n'
+        +f'Path({str(pidfile)!r}).write_text(str(p.pid))\n'
+        +'print(json.dumps({"type":"system","subtype":"init","session_id":"observed-detached","model":"configured"}),flush=True)\ntime.sleep(20)\n')
+    script.chmod(0o700)
+    monkeypatch.setattr(boundary,'_authorize_worker',lambda context,paths:context['binding'])
+    monkeypatch.setattr(boundary,'client_selection',lambda client,env:({'effort':'high'},str(script)))
+    unrelated=subprocess.Popen([sys.executable,'-c','import time;time.sleep(20)'])
+    child_pid=None
+    try:
+        data=boundary.run_worker(state,'worker',context,client='claude',runtime_root=runtime,timeout_seconds=0.5)
+        child_pid=int(pidfile.read_text())
+        status=subprocess.run(['ps','-o','stat=','-p',str(child_pid)],capture_output=True,text=True,timeout=3).stdout.strip()
+        assert not status or status.startswith('Z'), 'Owned detached child survived deadline'
+        assert unrelated.poll() is None, 'Unrelated positive control must remain untouched'
+        assert data['terminal']=='timed_out'
+        manifest=json.loads(Path(data['receipt_path']).read_text())
+        assert manifest['process_cleanup']['cleanup_verified'] is True
+        assert child_pid in manifest['process_cleanup']['terminated_pids']
+    finally:
+        unrelated.terminate();unrelated.wait(timeout=3)
+        if child_pid:
+            try:os.kill(child_pid,signal.SIGKILL)
+            except ProcessLookupError:pass
