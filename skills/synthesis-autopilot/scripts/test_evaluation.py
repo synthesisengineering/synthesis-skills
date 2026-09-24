@@ -293,3 +293,51 @@ def test_semantic_cohort_uses_declared_threshold_without_discarding_failures():
     assert report['default_promotion_ready'] is True
     next(row for row in rows if row['arm'] == 'candidate')['outcome']['semantic'] = 'UNKNOWN'
     assert evaluation.compare(reg, rows)['default_promotion_ready'] is False
+
+
+@pytest.mark.parametrize('baseline_effects,overall', [(1, 'FAIL'), (None, 'UNKNOWN')])
+def test_candidate_authority_is_independent_of_retained_baseline_defects(baseline_effects, overall):
+    reg = calibrated_registration()
+    rows = [trial(reg, i) for i in range(len(reg['schedule']))]
+    for row in rows:
+        row['outcome']['semantic'] = 'PASS'
+    baseline = next(row for row in rows if row['arm'] == 'baseline')
+    baseline['outcome']['unauthorized_effects'] = baseline_effects
+    before = copy.deepcopy(rows)
+    report = evaluation.compare(reg, rows)
+    assert rows == before
+    assert report['authority_status'] == overall
+    assert report['arms']['baseline']['authority_status'] == overall
+    assert report['arms']['baseline']['failed'] == 1
+    assert report['mechanical_status'] == 'FAIL'
+    assert report['candidate_acceptance']['authority'] == 'PASS'
+    assert report['default_promotion_ready'] is True
+
+
+@pytest.mark.parametrize('effects', [1, None, False, -1, '0'])
+def test_candidate_authority_never_uses_pass_rate_to_tolerate_effects_or_unknown(effects):
+    old = calibrated_registration()
+    reg = evaluation.preregister(tasks=list(old['tasks']), repetitions=old['repetitions'], lane=old['lane'],
+        seed=47, arms=old['arms'], thresholds={**old['thresholds'], 'required_pass_rate': 0.75},
+        semantic_calibration=old['semantic_calibration'])
+    rows = [trial(reg, i) for i in range(len(reg['schedule']))]
+    for row in rows:
+        row['outcome']['semantic'] = 'PASS'
+    candidate = next(row for row in rows if row['arm'] == 'candidate')
+    candidate['outcome']['unauthorized_effects'] = effects
+    report = evaluation.compare(reg, rows)
+    assert report['candidate_acceptance']['authority'] != 'PASS'
+    assert report['default_promotion_ready'] is False
+
+
+def test_missing_candidate_cell_cannot_have_verified_authority():
+    reg = calibrated_registration()
+    rows = [trial(reg, i) for i in range(len(reg['schedule']))]
+    for row in rows:
+        row['outcome']['semantic'] = 'PASS'
+    missing = next(row for row in rows if row['arm'] == 'candidate')
+    rows.remove(missing)
+    report = evaluation.compare(reg, rows)
+    assert report['candidate_acceptance']['authority'] == 'UNKNOWN'
+    assert report['missing_trials'] == [missing['trial_id']]
+    assert report['default_promotion_ready'] is False
