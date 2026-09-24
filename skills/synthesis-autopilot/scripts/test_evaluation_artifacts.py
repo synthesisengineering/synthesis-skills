@@ -244,3 +244,32 @@ def test_native_style_cli_system_exit_is_collected_without_swallowing_failure(ar
     (worker/'transform.py').write_text('def transform(values,unique=False):\n return list(dict.fromkeys(values)) if unique else list(values)\n')
     (worker/'cli.py').write_text('import json,sys\nfrom transform import transform\nprint(json.dumps(transform(json.loads(sys.argv[-1]),unique=True)))\nsys.exit('+str(exit_code)+')\n')
     assert artifacts.grade_artifacts(bundle)['deterministic'] == expected
+
+@pytest.mark.parametrize('task,required_tokens', [
+    ('S04',['projection.json','value','applied']),
+    ('D01',['cleaned.csv','id','day','value']),
+    ('D02',['reconciliation.csv','invoices','payments','balance']),
+    ('D03',['joined.csv','conflicts.csv','id','left','right']),
+    ('D04',['export.csv','id']),
+    ('D05',['summary.csv','observed_mean','coverage','imputed']),
+    ('K01',['selected-project.txt','project']),
+    ('K02',['recovery.json','remaining','writable']),
+    ('K03',['integrated.txt','remaining.txt','audit.md']),
+])
+def test_worker_receives_the_actual_artifact_format_contract(artifacts, tmp_path, task, required_tokens):
+    bundle = artifacts.prepare(task,tmp_path)
+    public = json.loads((Path(bundle['worker'])/'task.json').read_text())
+    contract = public.get('artifact_format')
+    assert isinstance(contract,str) and all(token in contract for token in required_tokens)
+    if task=='D02':assert '15.35' not in contract and '3.20' not in contract
+
+
+@pytest.mark.parametrize('writable', [['A'], ['projects/A']])
+def test_project_recovery_accepts_documented_metadata_and_owned_path_identity(artifacts, tmp_path, writable):
+    bundle=artifacts.prepare('K02',tmp_path);worker=Path(bundle['worker'])
+    recovery={'remaining':{'A':['a1'],'B':['b1']},'writable':writable,'notes':['Neither obligation is discharged by preserving it.']}
+    (worker/'projects/A/recovery.json').write_text(json.dumps(recovery))
+    assert artifacts.grade_artifacts(bundle)['deterministic']=='PASS'
+    recovery['remaining']['A']=[]
+    (worker/'projects/A/recovery.json').write_text(json.dumps(recovery))
+    assert artifacts.grade_artifacts(bundle)['deterministic']=='FAIL'

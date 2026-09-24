@@ -4556,3 +4556,17 @@ def test_unverifiable_scope_keeps_pair_report_for_transients() -> None:
         problems, set(), scopes, left, left.claims[0], right, right.claims[0], other,
     ) is False
     assert problems == []
+
+
+def test_single_active_seat_validates_identity_and_role_without_pair_identity_probes(monkeypatch):
+    session = MODULE.Session(session_uuid="", compact_id="", speakable_id="", legacy_id="single",
+        agent="Fixture", machine="fixture", project="fixture", started="2026-01-01T00:00:00Z",
+        heartbeat="2026-01-01T00:00:00Z", mode="active", workspaces=[], goal="fixture",
+        claims=["/fixture/project/CONTEXT.md"], context_role="contributor", status="active")
+    def unexpected(*args, **kwargs):
+        raise AssertionError("no pair exists to require a native claim identity snapshot")
+    monkeypatch.setattr(MODULE.claim_scope.ClaimScopeResolver, "snapshot", unexpected)
+    problems = MODULE.validate_sessions([session])
+    assert any("contributor but claims context" in problem for problem in problems)
+    session.context_role = "none"
+    assert MODULE.validate_sessions([session]) == []

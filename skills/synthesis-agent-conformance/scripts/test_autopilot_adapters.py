@@ -112,6 +112,16 @@ def test_healthy_children_do_not_create_feedback():
     assert NATIVE.combined_result(payload(), checkpoint=lambda _: {}, autopilot_check=lambda _: {}) == {}
 
 
+def test_actual_autopilot_child_imports_and_runs_current_runtime(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(SCRIPT.parent))
+    monkeypatch.setenv("SYNTHESIS_AUTOPILOT_RUNTIME", str(tmp_path / "runtime"))
+    monkeypatch.setenv("SYNTHESIS_COORDINATION_BOARD", str(tmp_path / "missing-board"))
+    # No injected child: exercise the actual import and the production dispatcher.
+    result = NATIVE._autopilot_result(payload())
+    assert isinstance(result, dict)
+    assert "cannot import" not in result.get("systemMessage", "")
+
+
 def test_verified_checkpoint_execution_preserves_terminal_wire_result(monkeypatch):
     calls = []
     class Runtime:
