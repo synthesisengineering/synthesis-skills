@@ -2,10 +2,16 @@
 from __future__ import annotations
 
 import copy
+import importlib
 import importlib.util
 from pathlib import Path
+import sys
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "synthesis-project-management/scripts"))
+from test_run_admission import world  # noqa: F401
 
 
 @pytest.fixture
@@ -429,6 +435,36 @@ def test_forecast_overrun_is_measured_without_claiming_hard_enforcement(wf, stat
     assert wf.budget_summary(result)["tokens"]["enforcement"] == "forecast"
 
 
+def test_omitted_hard_usage_cannot_refund_a_reservation_as_zero(wf, state, context):
+    result = call(wf, ledger(wf, state, context), context, "reserve", reservation_id="worker", amounts={"searches": 10}, category="work")
+    result = call(wf, result, context, "settle", reservation_id="worker", actual={})
+    assert wf.budget_summary(result)["searches"]["available"] == 0
+    assert wf.budget_summary(result)["searches"]["spent"] is None
+    assert wf.budget_summary(result)["searches"]["unknown_reservations"] == ["worker"]
+    result = call(wf, result, context, "settle", reservation_id="worker", actual={"searches": 0})
+    assert wf.budget_summary(result)["searches"]["available"] == 10
+
+
+def test_unreported_provider_forecast_is_unknown_not_zero(wf, state, context):
+    result = call(wf, ledger(wf, state, context), context, "reserve", reservation_id="worker", amounts={"searches": 2, "tokens": 100}, category="work")
+    result = call(wf, result, context, "settle", reservation_id="worker", actual={"searches": 1})
+    summary = wf.budget_summary(result)
+    assert summary["searches"]["spent"] == 1
+    assert summary["tokens"]["spent"] is None
+    assert summary["tokens"]["known_spent"] == 0
+    assert summary["tokens"]["unknown_reservations"] == ["worker"]
+    assert result["extensions"]["workflow"]["budget"]["reservations"]["worker"]["status"] == "unknown"
+    result = call(wf, result, context, "settle", reservation_id="worker", actual={"searches": 1, "tokens": 150})
+    assert wf.budget_summary(result)["tokens"]["spent"] == 150
+
+
+def test_partial_usage_reconciliation_cannot_rewrite_known_usage(wf, state, context):
+    result = call(wf, ledger(wf, state, context), context, "reserve", reservation_id="worker", amounts={"searches": 2, "tokens": 100}, category="work")
+    result = call(wf, result, context, "settle", reservation_id="worker", actual={"searches": 1})
+    with pytest.raises(ValueError):
+        call(wf, result, context, "settle", reservation_id="worker", actual={"searches": 0, "tokens": 100})
+
+
 @pytest.mark.parametrize("condition", ["unfinished", "children", "quality", "usage", "stale_profile", "stale_quality"])
 def test_core_completed_close_cannot_bypass_workflow_obligations(wf, state, context, condition):
     result = graphed(wf, state, context)
@@ -471,3 +507,23 @@ def test_completion_guard_accepts_sound_fresh_outcomes(wf, state, context):
         context["evidence"][criterion]["artifact_id"] = typed["artifact_id"]
         flow["quality"][criterion] = {"verdict": "PASS", "receipt_ids": [criterion], "round": 1, "independent": True}
     wf.validate_command(result, "close", {"status": "completed"}, context)
+
+
+def test_real_engine_transactions_enforce_workflow_close_guard(wf, world, monkeypatch):
+    from test_run_state import create, command, output
+    engine = importlib.import_module("run_state")
+    monkeypatch.setattr(engine, "_COMMANDS", {})
+    monkeypatch.setattr(engine, "_CONSTRAINTS", {})
+    wf.register_commands(engine.register_command)
+    wf.register_constraints(engine.register_constraint)
+    state, _ = output(engine, world, create(engine, world))
+    state = command(engine, world, state, "workflow.configure", {"dimensions": dimensions()})
+    state = command(engine, world, state, "workflow.graph", {"nodes": [{"id": "work", "deps": [], "criteria": ["accept"], "estimate": 1}], "wip_limit": 1})
+    state = command(engine, world, state, "transition", {"status": "verifying"})
+    state = command(engine, world, state, "verify", {"criteria": ["accept"]})
+    before = engine.load_run(world["project"], state["run_id"])
+    with pytest.raises(ValueError, match="unfinished task"):
+        command(engine, world, state, "close", {"status": "completed"})
+    assert engine.load_run(world["project"], state["run_id"]) == before
+    state = command(engine, world, state, "close", {"status": "incomplete", "reason": "Retained unfinished work"})
+    assert state["extensions"]["workflow"]["graph"]["nodes"]["work"]["status"] == "pending"
