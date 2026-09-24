@@ -469,6 +469,17 @@ def test_partial_usage_reconciliation_cannot_rewrite_known_usage(wf, state, cont
         call(wf, result, context, "settle", reservation_id="worker", actual={"searches": 0, "tokens": 100})
 
 
+def test_known_hard_overrun_blocks_work_while_provider_usage_is_unknown(wf, state, context):
+    result=call(wf,ledger(wf,state,context),context,"reserve",reservation_id="worker",amounts={"searches":10,"tokens":100},category="work")
+    result=call(wf,result,context,"settle",reservation_id="worker",actual={"searches":12})
+    assert wf.budget_summary(result)["tokens"]["spent"] is None
+    assert result["extensions"]["workflow"]["budget"]["breaches"]
+    with pytest.raises(ValueError):
+        call(wf,result,context,"task",task_id="build",action="start")
+    result=call(wf,result,context,"settle",reservation_id="worker",actual={"tokens":150})
+    assert len(result["extensions"]["workflow"]["budget"]["breaches"])==1
+
+
 @pytest.mark.parametrize("condition", ["unfinished", "children", "quality", "usage", "stale_profile", "stale_quality"])
 def test_core_completed_close_cannot_bypass_workflow_obligations(wf, state, context, condition):
     result = graphed(wf, state, context)
