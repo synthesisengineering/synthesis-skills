@@ -437,3 +437,44 @@ def test_declared_hook_entrypoint_executes_from_the_verified_release(tmp_path, m
     result = runtime.execute(verified, hook, [], b"{}", timeout=10)
     assert result.returncode == 0
     assert result.stdout == b"hook-ok\n"
+@pytest.mark.parametrize("relative_root", [False, True])
+def test_stat_inventory_preserves_nested_names_and_exact_metadata(tmp_path, monkeypatch, relative_root):
+    root = tmp_path / "release tree"
+    root.mkdir()
+    (root / ".git").mkdir()
+    (root / ".git/ignored").write_text("outside release inventory")
+    expected = {}
+    for name, mode in [("top.py", 0o640), ("nested/.git/retained", 0o600),
+                       ("nested/space [x]/café.py", 0o755)]:
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(name)
+        path.chmod(mode)
+        meta = path.stat()
+        expected[name] = [meta.st_size, mode, meta.st_mtime_ns]
+    monkeypatch.chdir(tmp_path)
+    selected = Path("release tree") if relative_root else root
+    assert runtime.stat_walk(selected) == expected
+    (root / "added").write_text("new file")
+    assert set(runtime.stat_walk(selected)) == set(expected) | {"added"}
+
+
+@pytest.mark.parametrize("object_kind", ["file-link", "directory-link", "fifo"])
+def test_stat_inventory_refuses_nested_link_or_special_object(tmp_path, object_kind):
+    root = tmp_path / "release"
+    root.mkdir()
+    nested = root / "nested"
+    nested.mkdir()
+    target = nested / "untrusted"
+    if object_kind == "fifo":
+        import os
+        os.mkfifo(target)
+    else:
+        outside = tmp_path / "outside"
+        if object_kind == "directory-link":
+            outside.mkdir()
+        else:
+            outside.write_text("retained sentinel")
+        target.symlink_to(outside, target_is_directory=object_kind == "directory-link")
+    with pytest.raises(runtime.RuntimeContractError, match="link or special"):
+        runtime.stat_walk(root)
