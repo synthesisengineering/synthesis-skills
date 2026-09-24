@@ -264,3 +264,33 @@ def test_claude_parser_does_not_accept_error_or_changed_identity(boundary,field,
     raw='\n'.join(json.dumps(row) for row in [{'type':'system','subtype':'init','session_id':'native-1','model':'configured'},final])
     observed=boundary.parse_worker('claude',raw.encode())
     assert observed['terminal']!='completed'
+
+
+def test_inventory_bound_counts_empty_directories(boundary,roles,monkeypatch):
+    contract,_,_=roles
+    root=Path(contract['output_roots'][0])
+    for index in range(3):(root/str(index)).mkdir()
+    monkeypatch.setattr(boundary,'MAX_ENTRIES',2)
+    with pytest.raises(ValueError):boundary.inspect_files(contract)
+
+
+def test_inventory_bound_counts_aggregate_bytes(boundary,roles,monkeypatch):
+    contract,_,_=roles
+    root=Path(contract['output_roots'][0])
+    for index in range(3):(root/str(index)).write_bytes(b'x'*10)
+    monkeypatch.setattr(boundary,'MAX_TOTAL_BYTES',20,raising=False)
+    with pytest.raises(ValueError):boundary.inspect_files(contract)
+
+
+def test_interrupted_native_worker_keeps_partial_provider_evidence(boundary,roles,tmp_path,monkeypatch):
+    state,context,runtime=worker_world(roles)
+    script=tmp_path/'fixture-timeout-cli'
+    script.write_text('#!/usr/bin/env python3\nimport json,sys,time\nsys.stdin.read()\nprint(json.dumps({"type":"system","subtype":"init","session_id":"began-provider","model":"configured"}),flush=True)\ntime.sleep(10)\n')
+    script.chmod(0o700)
+    monkeypatch.setattr(boundary,'_authorize_worker',lambda context,paths:context['binding'])
+    monkeypatch.setattr(boundary,'client_selection',lambda client,env:({'effort':'high'},str(script)))
+    data=boundary.run_worker(state,'worker',context,client='claude',runtime_root=runtime,timeout_seconds=0.1)
+    assert data['terminal']=='timed_out'
+    raw=(runtime/'worker/stdout.jsonl').read_text()
+    assert 'began-provider' in raw
+    assert data['usage']['usd_micros'] is None
