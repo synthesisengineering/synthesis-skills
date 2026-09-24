@@ -221,7 +221,7 @@ def muse_runtime_log(tmp_path, toolsets):
     path.parent.mkdir(parents=True, exist_ok=True)
     events = [{'stream': {'kind': 'session', 'id': session}, 'sequence': i + 1,
                'payload_type': 'runtime.session', 'payload': {'event': {'kind': 'model_request_configured',
-               'toolset': toolset}}} for i, toolset in enumerate(toolsets)]
+               'toolset': toolset, 'reminder_roster': {'source': 'settings', 'agents': []}}}} for i, toolset in enumerate(toolsets)]
     path.write_text(''.join(json.dumps(e) + '\n' for e in events))
     return session
 
@@ -254,3 +254,13 @@ def test_muse_paid_request_never_starts_if_offline_boundary_preflight_fails(obse
     with pytest.raises(ValueError, match='tools remain available'):
         observer.execute_native('muse', 'private registered input', timeout_seconds=45, max_cost_usd=1)
     assert called == ['preflight']
+
+
+@pytest.mark.parametrize('roster', [None, {'source': 'runtime', 'agents': []}, {'source': 'settings', 'agents': [{'id': 'extra'}]}])
+def test_muse_boundary_rejects_unbounded_reminder_lane(observer, tmp_path, roster):
+    session = muse_runtime_log(tmp_path, [{'source': 'settings', 'mode': 'named', 'active_tools': []}])
+    path = next(tmp_path.rglob('session.jsonl'))
+    event = json.loads(path.read_text())
+    event['payload']['event']['reminder_roster'] = roster
+    path.write_text(json.dumps(event) + '\n')
+    with pytest.raises(ValueError): observer.verify_muse_boundary(tmp_path, session)

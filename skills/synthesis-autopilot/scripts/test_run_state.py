@@ -622,3 +622,39 @@ def test_central_sources_share_admission_only_during_one_current_inspection(engi
     write_board(world, status="released")
     with pytest.raises(ValueError):
         engine.inspect_context(state, world["actor"])
+
+
+@pytest.mark.parametrize("revoke", [False, True])
+def test_observer_keeps_current_operation_admission_through_slow_io_and_readmits_before_commit(engine, world, monkeypatch, revoke):
+    import evidence_bridge
+    import run_admission
+    state, _ = output(engine, world, create(engine, world))
+    clock = run_admission.time.monotonic
+    elapsed = [0.0]
+    monkeypatch.setattr(run_admission.time, "monotonic", lambda: clock() + elapsed[0])
+    def expired_passive_admission(*args, **kwargs):
+        raise ValueError("passive coordination lease receipt expired")
+    monkeypatch.setattr(evidence_bridge, "admit_paths", expired_passive_admission)
+    contexts = []
+    admitted = []
+    def observer(context, payload):
+        elapsed[0] += 2.0  # Beyond issuance age, within the admitted operation.
+        contexts.append(context)
+        assert evidence_bridge._fresh(context)["session_uuid"] == SEAT
+        admitted.append(SEAT)
+        if revoke:
+            write_board(world, status="released")
+        return {"passed": True}
+    engine.register_observer("fixture-current-operation", observer)
+    kwargs = {"expected_revision": state["revision"], "command_id": "current-operation", "actor": world["actor"], "runtime_root": world["runtime"]}
+    if revoke:
+        with pytest.raises(ValueError):
+            engine.observe(world["project"], state["run_id"], "fixture-current-operation", {"check_id": "output"}, **kwargs)
+        assert engine.load_run(world["project"], state["run_id"])["revision"] == state["revision"]
+    else:
+        observed = engine.observe(world["project"], state["run_id"], "fixture-current-operation", {"check_id": "output"}, **kwargs)
+        assert observed["observations"]["current-operation"]["data"] == {"passed": True}
+    assert len(contexts) == 1
+    assert admitted == [SEAT]
+    with pytest.raises(ValueError):
+        run_admission.read_admission_observation(contexts[0])
