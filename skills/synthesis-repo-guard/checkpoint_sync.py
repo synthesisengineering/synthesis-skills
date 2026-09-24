@@ -322,21 +322,42 @@ def lifecycle_lock():
 # ---------------------------------------------------------------------------
 
 def git(repo: Path, *args: str, timeout: int = 60, env: dict | None = None,
-        strip: bool = True) -> tuple[int, str, str]:
+        strip: bool = True, input_text: str | None = None,
+        literal_paths: bool = False) -> tuple[int, str, str]:
     merged_env = dict(os.environ)
     if env:
         merged_env.update(env)
+    if literal_paths:
+        merged_env.update(GIT_LITERAL_PATHSPECS="1", GIT_GLOB_PATHSPECS="0",
+                          GIT_NOGLOB_PATHSPECS="0", GIT_ICASE_PATHSPECS="0")
     try:
         r = subprocess.run(
             ["git", "-C", str(repo)] + list(args),
-            capture_output=True, text=True, timeout=timeout, env=merged_env,
+            capture_output=True,
+            input=os.fsencode(input_text) if input_text is not None else None,
+            timeout=timeout, env=merged_env,
         )
-        out = r.stdout.strip() if strip else r.stdout
-        return r.returncode, out, r.stderr.strip()
+        # Decode without universal newline translation: CR/LF are legal bytes
+        # inside NUL-delimited filenames, as are undecodable filesystem bytes.
+        out = os.fsdecode(r.stdout)
+        return r.returncode, out.strip() if strip else out, os.fsdecode(r.stderr).strip()
     except subprocess.TimeoutExpired:
         return -1, "", "timeout"
     except FileNotFoundError:
         return -1, "", "git not found"
+    except OSError as exc:
+        return -1, "", f"git could not start: {exc}"
+
+
+def git_pathspec(repo: Path, *args: str, paths: list[str],
+                 **kwargs) -> tuple[int, str, str]:
+    """Send one exact path set without placing its size in the process argv."""
+    if not paths or any(not isinstance(path, str) or not path or "\0" in path
+                        for path in paths):
+        return -1, "", "exact Git path list is empty or invalid"
+    return git(repo, *args, "--pathspec-from-file=-", "--pathspec-file-nul",
+               input_text="".join(path + "\0" for path in paths),
+               literal_paths=True, **kwargs)
 
 
 def remote_guard(repo: Path, allowed_prefixes: list[str]) -> tuple[bool, str]:
@@ -361,28 +382,37 @@ def remote_guard(repo: Path, allowed_prefixes: list[str]) -> tuple[bool, str]:
 
 
 def dirty_paths(repo: Path) -> list[str]:
-    # strip=False: porcelain lines for unstaged states begin with a SPACE
-    # (" M path"). A global strip() eats that space on the FIRST line and the
-    # fixed-width `line[3:]` slice then chops the path's first character.
-    # (Found live 2026-07-08: producer mode saw "rojects/…" and matched nothing.)
-    rc, out, _ = git(
-        repo, "status", "--porcelain", "--untracked-files=all", strip=False
+    # One constant-size argv works for arbitrarily many attributed paths.
+    # NUL records preserve literal whitespace/quotes; disabling rename folding
+    # exposes both changed endpoints as ordinary paths for exact selection.
+    rc, out, error = git(
+        repo, "status", "--porcelain=v1", "-z", "--untracked-files=all",
+        "--no-renames", strip=False
     )
-    if rc != 0 or not out.strip():
+    if rc != 0:
+        raise ValueError(f"git status failed: {error or out}")
+    if not out:
         return []
+    if not out.endswith("\0"):
+        raise ValueError("git status returned an incomplete NUL record")
     paths = []
-    for line in out.splitlines():
-        if len(line) < 4:
-            continue
-        # porcelain v1: two status chars, one space, then the path
-        # (or `old -> new` for renames)
-        p = line[3:]
-        if " -> " in p:
-            p = p.split(" -> ", 1)[1]
-        p = p.strip().strip('"')
-        if p:
-            paths.append(p)
+    for record in out[:-1].split("\0"):
+        if (len(record) < 4 or record[2] != " "
+                or any(char not in " MTADRCU?!" for char in record[:2])):
+            raise ValueError("git status returned a malformed NUL record")
+        path = record[3:]
+        if path.startswith("/") or any(part in {"", ".", ".."} for part in path.split("/")):
+            raise ValueError("git status returned an invalid repository-relative path")
+        paths.append(path)
     return paths
+
+
+def literal_path_selected(path: str, requested: set[str]) -> bool:
+    """Match an exact file or an explicitly requested directory descendant."""
+    if "." in requested or path in requested:
+        return True
+    parts = path.split("/")
+    return any("/".join(parts[:index]) in requested for index in range(1, len(parts)))
 
 
 def ahead_behind(repo: Path, branch: str) -> tuple[int, int]:
@@ -1211,14 +1241,18 @@ def checkpoint_explicit_paths(repo: Path, paths: list[Path], cfg: dict, *, dry_r
     relative: list[str] = []
     for path in paths:
         try:
-            rel = str(path.resolve(strict=False).relative_to(repo.resolve()))
+            rel = path.resolve(strict=False).relative_to(repo.resolve()).as_posix()
         except ValueError:
             rec.update(action="guard-rejected", alert=f"pending path is outside repository: {path}")
             return rec
         relative.append(rel)
     relative = sorted(set(relative))
 
-    dirty = set(dirty_paths(repo))
+    try:
+        dirty = set(dirty_paths(repo))
+    except ValueError as exc:
+        rec.update(action="status-unverifiable", alert=str(exc))
+        return rec
     changed = [path for path in relative if path in dirty]
     committed = False
     if changed:
@@ -1227,10 +1261,12 @@ def checkpoint_explicit_paths(repo: Path, paths: list[Path], cfg: dict, *, dry_r
             return rec
         intent_paths: list[str] = []
         for path in changed:
-            tracked_rc, _, _ = git(repo, "ls-files", "--error-unmatch", "--", path)
+            tracked_rc, _, _ = git(repo, "ls-files", "--error-unmatch", "--", path,
+                                    literal_paths=True)
             if tracked_rc == 0:
                 continue
-            add_rc, _, add_error = git(repo, "add", "--intent-to-add", "--", path)
+            add_rc, _, add_error = git(repo, "add", "--intent-to-add", "--", path,
+                                       literal_paths=True)
             if add_rc != 0:
                 rec.update(
                     action="failed",
@@ -1244,20 +1280,19 @@ def checkpoint_explicit_paths(repo: Path, paths: list[Path], cfg: dict, *, dry_r
             "GIT_COMMITTER_NAME": cfg["commit_author_name"],
             "GIT_COMMITTER_EMAIL": cfg["commit_author_email"],
         }
-        rc, out, err = git(
+        rc, out, err = git_pathspec(
             repo,
             "commit",
             "-m",
             "Update project context",
             "--only",
-            "--",
-            *changed,
+            paths=changed,
             env=author_env,
             timeout=120,
         )
         if rc != 0:
             if intent_paths:
-                git(repo, "reset", "--", *intent_paths)
+                git_pathspec(repo, "reset", paths=intent_paths)
             rec.update(action="hook-blocked", alert=f"commit blocked: {(err or out)[:300]}")
             return rec
         committed = True
@@ -1814,10 +1849,12 @@ def _retry_per_path_commit(
     intent_paths: list[str] = []
     refused: str | None = None
     for path in committable:
-        tracked_rc, _, _ = git(root, "ls-files", "--error-unmatch", "--", path)
+        tracked_rc, _, _ = git(root, "ls-files", "--error-unmatch", "--", path,
+                                literal_paths=True)
         if tracked_rc == 0:
             continue
-        add_rc, _, add_error = git(root, "add", "--intent-to-add", "--", path)
+        add_rc, _, add_error = git(root, "add", "--intent-to-add", "--", path,
+                                   literal_paths=True)
         if add_rc != 0:
             refused = f"could not prepare untracked context path: {add_error}"
             break
@@ -1829,14 +1866,13 @@ def _retry_per_path_commit(
             "GIT_COMMITTER_NAME": cfg["commit_author_name"],
             "GIT_COMMITTER_EMAIL": cfg["commit_author_email"],
         }
-        rc, out, err = git(
+        rc, out, err = git_pathspec(
             root,
             "commit",
             "-m",
             "Update project context",
             "--only",
-            "--",
-            *committable,
+            paths=committable,
             env=author_env,
             timeout=120,
         )
@@ -1844,7 +1880,7 @@ def _retry_per_path_commit(
             refused = f"commit blocked: {(err or out)[:300]}"
     if refused is not None:
         if intent_paths:
-            git(root, "reset", "--", *intent_paths)
+            git_pathspec(root, "reset", paths=intent_paths)
         prior = result.get("alert") or ""
         note = f"per-path subset retry also refused: {refused}"
         result["alert"] = f"{prior}; {note}" if prior else note
@@ -1928,7 +1964,9 @@ def retire_per_path_entries(
         if result is None:
             continue
         action = result.get("action")
-        if action in PUBLISHED_ACTIONS or action in ("guard-rejected", "skipped-lock-active"):
+        if action in PUBLISHED_ACTIONS or action in (
+            "guard-rejected", "skipped-lock-active", "status-unverifiable"
+        ):
             continue
         repo_base = root.resolve()
         rel_of: dict[Path, str] = {}
@@ -1939,7 +1977,11 @@ def retire_per_path_entries(
                 continue
         if not rel_of:
             continue
-        dirty = set(dirty_paths(root))
+        try:
+            dirty = set(dirty_paths(root))
+        except ValueError as exc:
+            result.update(action="status-unverifiable", alert=str(exc))
+            continue
         branch = current_branch(root)
         pushed = branch is not None and head_contained_in_origin(root, branch)
         verdicts: dict[Path, str] = {}
@@ -2433,19 +2475,20 @@ def source_groups_remote_ready(grouped: dict[Path, list[Path]]) -> dict[Path, di
     """
     results: dict[Path, dict] = {}
     for repo, repo_paths in sorted(grouped.items(), key=lambda item: str(item[0])):
-        relative = [str(path.resolve(strict=False).relative_to(repo.resolve())) for path in repo_paths]
-        status_rc, status, status_error = git(
-            repo, "status", "--porcelain", "--", *relative, strip=False
-        )
-        if status_rc != 0:
+        try:
+            relative = [path.resolve(strict=False).relative_to(repo.resolve()).as_posix()
+                        for path in repo_paths]
+            dirty = dirty_paths(repo)
+        except ValueError as exc:
             results[repo] = {
                 "repo": str(repo),
                 "name": repo.name,
                 "action": "source-unverifiable",
-                "alert": f"source status failed: {status_error}",
+                "alert": f"source status failed: {exc}",
             }
             continue
-        if status.strip():
+        requested = set(relative)
+        if any(literal_path_selected(path, requested) for path in dirty):
             results[repo] = {
                 "repo": str(repo),
                 "name": repo.name,
