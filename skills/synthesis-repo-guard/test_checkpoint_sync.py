@@ -1763,7 +1763,7 @@ def test_large_refused_commit_rolls_back_only_own_intent(
     assert manifest.read_bytes() == before_manifest
 
 
-@pytest.mark.parametrize("name", ["report[1].md", "question?.md", "star*.md", " leading.md", "line\nbreak.md", "quote\".md", "café.md", ":(glob)*.md"])
+@pytest.mark.parametrize("name", ["report[1].md", "question?.md", "star*.md", " leading.md", "line\nbreak.md", "quote\".md", "café.md", ":(glob)*.md", "cr\rname.md", "crlf\r\nname.md"])
 def test_exact_checkpoint_literal_names_do_not_capture_siblings(tmp_path, name):
     repo, _remote, cfg = repository(tmp_path)
     parent = repo / "projects" / "alpha"
@@ -1774,8 +1774,11 @@ def test_exact_checkpoint_literal_names_do_not_capture_siblings(tmp_path, name):
         sibling.write_text("foreign\n", encoding="utf-8")
     result = MODULE.checkpoint_explicit_paths(repo, [own], cfg, dry_run=False)
     assert result["action"] == "committed-pushed"
-    committed = set(command("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "-z", "HEAD", cwd=repo).split("\0")) - {""}
-    assert committed == {str(own.relative_to(repo))}
+    committed = set(subprocess.run(
+        ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "-z", "HEAD"],
+        cwd=repo, capture_output=True, check=True,
+    ).stdout.split(b"\0")) - {b""}
+    assert committed == {os.fsencode(own.relative_to(repo))}
     assert all(s.read_text() == "foreign\n" for s in siblings)
     assert all(command("git", "ls-files", "--", str(s.relative_to(repo)), cwd=repo) == "" for s in siblings)
 
@@ -1831,3 +1834,42 @@ def test_real_refusing_hook_preserves_manifest_worktree_and_foreign_index(tmp_pa
     assert command("git", "show", ":unrelated.md", cwd=repo) == "foreign staged"
     assert command("git", "ls-files", "--", str(own.relative_to(repo)), cwd=repo) == ""
     assert own.read_text() == "uncommitted own\n"
+
+
+
+@pytest.mark.parametrize("change", ["rename-out", "rename-in", "untracked", "prefix-sibling"])
+def test_source_requested_directory_uses_literal_descendants_and_rename_endpoints(tmp_path, change):
+    repo, _remote, _cfg = repository(tmp_path)
+    scope = repo / "projects" / "alpha"
+    if change == "rename-out":
+        command("git", "mv", "--", "projects/alpha/CONTEXT.md", "moved-out.md", cwd=repo)
+        assert {"projects/alpha/CONTEXT.md", "moved-out.md"} <= set(MODULE.dirty_paths(repo))
+    elif change == "rename-in":
+        command("git", "mv", "--", "unrelated.md", "projects/alpha/moved-in.md", cwd=repo)
+        assert {"unrelated.md", "projects/alpha/moved-in.md"} <= set(MODULE.dirty_paths(repo))
+    else:
+        target = scope / "deep" / "new.md" if change == "untracked" else scope.with_name("alpha-other") / "new.md"
+        target.parent.mkdir(parents=True)
+        target.write_text("dirty\n", encoding="utf-8")
+    result = MODULE.source_groups_remote_ready({repo: [scope]})[repo]
+    assert result["action"] == ("source-remote-ready" if change == "prefix-sibling" else "source-local-only")
+
+
+@pytest.mark.parametrize("failure,action", [
+    ("no-upstream", "source-local-only"),
+    ("local-remote", "source-local-only"),
+    ("fetch-refused", "source-unverifiable"),
+    ("unpushed", "source-not-remote-ready"),
+])
+def test_source_readiness_still_requires_fetchable_matching_upstream(tmp_path, failure, action):
+    repo, remote, _cfg = repository(tmp_path)
+    if failure == "no-upstream":
+        command("git", "branch", "--unset-upstream", cwd=repo)
+    elif failure == "local-remote":
+        command("git", "config", "branch.main.remote", ".", cwd=repo)
+    elif failure == "fetch-refused":
+        command("git", "remote", "set-url", "origin", str(remote) + "-missing", cwd=repo)
+    else:
+        command("git", "commit", "--allow-empty", "-qm", "unpublished", cwd=repo)
+    result = MODULE.source_groups_remote_ready({repo: [repo / "projects" / "alpha" / "CONTEXT.md"]})[repo]
+    assert result["action"] == action and result["alert"]
