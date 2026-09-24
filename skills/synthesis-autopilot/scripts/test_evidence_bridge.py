@@ -469,3 +469,23 @@ def test_native_cancellation_observer_requires_current_requested_job_and_readbac
     state["extensions"]["capabilities"]["continuation"]["cancel_requested_at"] = observed["now"]
     with pytest.raises(ValueError):
         bridge.observe_native_cleanup("continuation-cancellation", {"job_id": "abcd1234"}, observed)
+
+
+def test_native_scheduler_wake_requires_unique_registered_prompt_and_host_queue(bridge, observed, world):
+    bindings = {key: observed["state"][key] for key in ("run_id", "contract_digest", "profile_digest")}
+    args = {"cron": "* * * * *", "prompt": json.dumps({"autopilot_continuation": {"schema_version": 1, "bindings": bindings}}), "recurring": False}
+    append_claude_tool(world, "CronCreate", args, {"id": "abcd1234", "recurring": False}, "native-create")
+    append_claude_tool(world, "CronList", {}, {"jobs": [{"id": "abcd1234", "cron": args["cron"], "prompt": args["prompt"]}]}, "native-list")
+    timestamp = (datetime.fromisoformat(observed["now"]) - timedelta(milliseconds=100)).isoformat()
+    session = world["actor"]["native_payload"]["session_id"]
+    queued = {"type": "queue-operation", "operation": "enqueue", "sessionId": session, "timestamp": timestamp, "content": args["prompt"]}
+    wake = {"type": "user", "sessionId": session, "isMeta": True, "queueSkipAttachments": True, "promptSource": "sdk", "promptId": "wake-prompt", "uuid": "wake-event", "timestamp": timestamp,
+            "message": {"role": "user", "content": args["prompt"]}}
+    with world["transcript"].open("a") as handle:
+        handle.write(json.dumps(queued) + "\n" + json.dumps(wake) + "\n")
+    data = bridge.observe_native_wake(observed, "native-create", "native-list", "wake-event")
+    assert data["job_id"] == "abcd1234" and data["event_id"] == "wake-event"
+    assert data["next_wake_status"] == "unknown" and "next_wake_at" not in data
+    assert bridge.verify_source(record("continuation-wake", data, observed), observed)
+    world["transcript"].write_text(world["transcript"].read_text().replace('"isMeta": true', '"isMeta": false'))
+    assert not bridge.verify_source(record("continuation-wake", data, observed), observed)

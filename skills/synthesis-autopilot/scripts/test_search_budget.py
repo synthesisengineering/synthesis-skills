@@ -107,9 +107,9 @@ def test_search_cli_reaches_durable_reservation(world, monkeypatch, capsys):
         state = runtime.apply_command(world["project"], state["run_id"], name, payload,
             expected_revision=state["revision"], command_id=name, actor=world["actor"],
             runtime_root=world["runtime"])
-    actor = world["project"] / "actor.json"
+    actor = world["scratch"] / "actor.json"
     actor.write_text(json.dumps(world["actor"]))
-    monkeypatch.setenv("SYNTHESIS_AUTOPILOT_ROOT", str(world["runtime"]))
+    monkeypatch.setenv("SYNTHESIS_AUTOPILOT_RUNTIME", str(world["runtime"]))
     assert search_budget.main(["reserve", "--project", str(world["project"]), "--actor", str(actor),
         "--run-id", state["run_id"], "--reservation-id", "cli-batch", "--command-id", "cli-reserve",
         "--expected-revision", str(state["revision"]), "--agents", "2", "--per-agent", "3"]) == 0
