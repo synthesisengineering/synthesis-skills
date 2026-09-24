@@ -998,3 +998,31 @@ def test_worker_failed_preservation_cannot_be_reported_complete(wf,state,context
     result=call(wf,result,context,'worker_record',child_id='child-a',receipt_id='worker-observed')
     with pytest.raises(ValueError):
         call(wf,result,context,'return',child_id='child-a',disposition='complete',artifact_ids=[],evidence_ids=[],reason='worker said done')
+
+
+def test_failed_launch_observation_is_retained_without_claiming_enforcement(wf,state,context):
+    result,context,data=launched_native_child(wf,state,context)
+    context['evidence']['worker-observed']['data'].update(producer=None,terminal='failed',native_exit_code=None,
+        boundary={'status':'UNKNOWN','mechanism':'not-started','configuration_digest':'f'*64})
+    result=call(wf,result,context,'worker_record',child_id='child-a',receipt_id='worker-observed')
+    child=result['extensions']['workflow']['children']['child-a']
+    assert child['worker_receipt_id']=='worker-observed' and child['write_enforcement']=='UNKNOWN'
+    with pytest.raises(ValueError):call(wf,result,context,'return',child_id='child-a',disposition='complete',artifact_ids=[],evidence_ids=[],reason='cannot complete failed work')
+
+
+def test_native_worker_cannot_claim_unproduced_returned_artifact(wf,state,context):
+    result,context,data=launched_native_child(wf,state,context)
+    context['artifacts']['unrelated']={'path':'unrelated.txt','digest':'e'*64}
+    result=call(wf,result,context,'worker_record',child_id='child-a',receipt_id='worker-observed')
+    with pytest.raises(ValueError):call(wf,result,context,'return',child_id='child-a',disposition='complete',artifact_ids=['unrelated'],evidence_ids=['worker-observed'],reason='claimed existing artifact')
+
+
+def test_native_worker_cannot_integrate_contradictory_known_usage(wf,state,context):
+    result,context,data=launched_native_child(wf,state,context)
+    result=call(wf,result,context,'worker_record',child_id='child-a',receipt_id='worker-observed')
+    result=call(wf,result,context,'return',child_id='child-a',disposition='complete',artifact_ids=[],evidence_ids=['worker-observed'],reason='actual launch')
+    audit={'child_id':'child-a','task_id':'build','producer':'claude:actual-child','reviewer':'codex:independent',
+        'integration_owner':'root-seat','accepted':True,'criteria':['c1'],'artifact_ids':[],
+        'artifact_digests':{},'actual':{'searches':1}}
+    context=receipt(result,context,'review','child_integration',audit)
+    with pytest.raises(ValueError):call(wf,result,context,'integrate',child_id='child-a',receipt_id='review')

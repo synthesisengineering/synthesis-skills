@@ -325,3 +325,51 @@ def test_worker_deadline_reaps_observed_detached_child_and_preserves_unrelated(b
         if child_pid:
             try:os.kill(child_pid,signal.SIGKILL)
             except ProcessLookupError:pass
+
+
+def test_worker_prompt_retains_child_role_and_exact_checks(boundary,roles):
+    text=boundary.worker_prompt('Produce an artifact',roles[0],deadline='2026-09-24T12:00:00Z',
+        reservation={'id':'work','amounts':{'wall_millis':1000}},checks=[{'id':'output','description':'Exact output bytes'}])
+    assert 'parent owns' in text.lower()
+    assert 'exact output bytes' in text.lower()
+    assert 'do not run a new session start' in text.lower()
+    assert 'aggregate reporting' in text.lower()
+
+
+def test_partial_native_start_keeps_identity_without_inventing_usage(boundary):
+    raw=b'{"type":"system","subtype":"init","session_id":"started-before-timeout","model":"configured"}\n'
+    parsed=boundary.parse_worker('claude',raw,allow_incomplete=True)
+    assert parsed['producer']=='claude:started-before-timeout'
+    assert parsed['terminal']=='failed'
+    assert parsed['usage']=={'tokens':None,'usd_micros':None}
+
+
+def test_claude_boundary_requires_exact_native_init_readback(boundary,roles):
+    contract,_,_=roles
+    init={'type':'system','subtype':'init','session_id':'started','model':'model',
+        'tools':['Read','Write','Edit','Bash'],'permissionMode':'default','cwd':contract['scratch_root']}
+    config={'client':'claude','file_contract':contract,'selected':{'model':'model','effort':'high'}}
+    assert boundary.native_boundary_readback(config,[init])['status']=='ENFORCED'
+    for field,value in [('tools',['Read','Write','Bash','Agent']),('permissionMode','bypassPermissions'),('cwd','/foreign')]:
+        bad={**init,field:value}
+        assert boundary.native_boundary_readback(config,[bad])['status']!='ENFORCED'
+    assert boundary.native_boundary_readback(config,[])['status']=='UNKNOWN'
+
+
+def test_native_environment_failure_cannot_claim_healthy_enforcement(boundary,roles):
+    contract,_,_=roles
+    config={'client':'claude','file_contract':contract,'selected':{'model':'model','effort':'high'}}
+    rows=[{'type':'system','subtype':'init','session_id':'started','model':'model','tools':['Read','Write','Edit','Bash'],'permissionMode':'default','cwd':contract['scratch_root']},
+        {'type':'user','message':{'content':[{'type':'tool_result','is_error':True,'content':'sandbox enforcement unavailable'}]}}]
+    assert boundary.native_boundary_readback(config,rows)['status']=='UNKNOWN'
+
+
+def test_codex_readback_requires_exact_native_turn_permissions(boundary,roles):
+    contract,_,_=roles
+    config={'client':'codex','file_contract':contract,'selected':{'model':'model','model_reasoning_effort':'high'}}
+    turn={'type':'turn_context','payload':{'cwd':contract['scratch_root'],'model':'model','effort':'high',
+        'approval_policy':'never','sandbox_policy':{'type':'workspace-write','writable_roots':contract['output_roots'],
+        'network_access':False,'exclude_slash_tmp':True,'exclude_tmpdir_env_var':True}}}
+    assert boundary.native_boundary_readback(config,[turn])['status']=='ENFORCED'
+    turn['payload']['sandbox_policy']['writable_roots'].append('/foreign')
+    assert boundary.native_boundary_readback(config,[turn])['status']=='UNKNOWN'
