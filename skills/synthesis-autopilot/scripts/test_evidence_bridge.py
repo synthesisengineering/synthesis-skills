@@ -306,6 +306,9 @@ def test_delivery_survives_evidence_bookkeeping_but_not_a_new_wait(bridge, obser
     monkeypatch.setattr(engine, "_now", lambda: later.isoformat())
     pure = engine.inspect_context(current, world["actor"], project=world["project"])
     assert cap.wait_delivery_status(current, pure)["delivered"]
+    current = command(engine, world, current, "delivery.record", {"receipt": "delivery"})
+    pure = engine.inspect_context(current, world["actor"], project=world["project"])
+    assert cap.wait_delivery_status(current, pure)["delivered"]
     for envelope in ("fresh", "backdated"):
         incoming = record("delivery", data, {**ctx, "now": later.isoformat()} if envelope == "fresh" else ctx)
         new_path = world["project"] / (envelope + "-delivery.json")
