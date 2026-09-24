@@ -375,7 +375,7 @@ def add_passive_peer(world, claim, *, number=33, workspace=None, **changes):
     from copy import deepcopy
     import coordination
     sessions = coordination.rows(world["board"].read_text())
-    peer = deepcopy(sessions[0])
+    peer = deepcopy(next(session for session in sessions if session.session_uuid == SEAT))
     peer.session_uuid = f"01990000-0000-7000-8000-{number:012d}"
     identity = identity_from_uuid(peer.session_uuid)
     peer.compact_id, peer.speakable_id = identity.compact_id, identity.speakable_id
@@ -488,6 +488,52 @@ def test_passive_virtual_claim_is_not_path_authority_but_own_alias_still_refuses
                      compact_id=identity_from_uuid(SEAT).compact_id)
     with pytest.raises(ValueError, match="ambiguous|selector"):
         passive_inspection(world)
+
+
+def passive_foreign_checkout(world):
+    foreign = world["scratch"] / "foreign-checkout"
+    foreign.mkdir()
+    git(foreign, "init", "-b", "main")
+    git(foreign, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+        "-c", "core.hooksPath=/dev/null", "commit", "--allow-empty", "-m", "Fixture")
+    add_passive_peer(world, foreign, workspace=f"{foreign} @ main")
+    return foreign
+
+
+def test_passive_foreign_broad_identity_uses_two_fresh_negative_native_queries(world, monkeypatch):
+    import claim_scope
+    foreign = passive_foreign_checkout(world)
+    original, calls = claim_scope.native_git.run, []
+    def observed(argv, **kwargs):
+        if "-C" in argv and argv[argv.index("-C") + 1] == str(foreign):
+            calls.append(tuple(argv[argv.index("-C") + 2:]))
+        return original(argv, **kwargs)
+    monkeypatch.setattr(claim_scope.native_git, "run", observed)
+    for count in (2, 4):
+        assert passive_inspection(world)["purpose"] == "passive-stop"
+        assert calls == [("rev-parse", "--path-format=absolute", "--git-common-dir", "--show-toplevel")] * count
+
+
+@pytest.mark.parametrize("mutation", ["same-common-pointer", "invalid-config"])
+def test_passive_negative_native_classification_is_bracketed_and_cannot_hide_alias(world, monkeypatch, mutation):
+    import claim_scope
+    foreign = passive_foreign_checkout(world)
+    original, changed = claim_scope.native_git.run, []
+    def observed(argv, **kwargs):
+        result = original(argv, **kwargs)
+        if (not changed and "-C" in argv and argv[argv.index("-C") + 1] == str(foreign)
+                and "rev-parse" in argv):
+            changed.append(True)
+            if mutation == "same-common-pointer":
+                (foreign / ".git").rename(world["scratch"] / "retained-foreign-git")
+                (foreign / ".git").write_text(f"gitdir: {world['repo'] / '.git'}\n")
+            else:
+                (foreign / ".git/config").write_text("[invalid fixture configuration\n")
+        return result
+    monkeypatch.setattr(claim_scope.native_git, "run", observed)
+    with pytest.raises(ValueError, match="identity|snapshot|changed|unverifiable"):
+        passive_inspection(world)
+    assert changed
 
 
 @pytest.mark.parametrize("change", ["claim", "branch", "released", "native", "duplicate", "context"])
