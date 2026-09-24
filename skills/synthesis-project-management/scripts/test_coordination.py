@@ -4570,3 +4570,22 @@ def test_single_active_seat_validates_identity_and_role_without_pair_identity_pr
     assert any("contributor but claims context" in problem for problem in problems)
     session.context_role = "none"
     assert MODULE.validate_sessions([session]) == []
+
+
+def test_repository_state_observes_committed_root_and_branch_in_one_native_call(tmp_path, monkeypatch):
+    root = staged_repository(tmp_path)
+    assert MODULE._repository_state(root) == (root.resolve(), "main")  # Unborn branch remains valid.
+    assert git(root, "commit", "--allow-empty", "-m", "Fixture").returncode == 0
+    calls = []
+    original = MODULE._git_bytes
+    def observed(*args):
+        calls.append(args)
+        return original(*args)
+    monkeypatch.setattr(MODULE, "_git_bytes", observed)
+    assert MODULE._repository_state(root) == (root.resolve(), "main")
+    assert len(calls) == 1
+    assert git(root, "checkout", "-b", "topic/sub").returncode == 0
+    assert MODULE._repository_state(root) == (root.resolve(), "topic/sub")
+    assert git(root, "checkout", "--detach").returncode == 0
+    with pytest.raises(RuntimeError, match="detached HEAD"):
+        MODULE._repository_state(root)
