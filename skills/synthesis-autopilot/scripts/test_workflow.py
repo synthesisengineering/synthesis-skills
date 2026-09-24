@@ -224,7 +224,9 @@ def dispatch_ready(wf, state, context):
                                                "native_ref": "fixture:child", "claim_hash": "f" * 64, "repository": "/fixture", "branch": "feature/fixture", "paths": ["/fixture/artifact"]}}
     brief = {"child_id": "child-a", "task_id": "build", "deliverables": ["Produce artifact"], "paths": ["/fixture/artifact"],
              "criteria": ["c1"], "reservation_id": "worker", "integration_reservation_id": "integrate", "integration_owner": "root-seat",
-             "admission_id": "child-admission", "return_contract": ["artifact_ids", "evidence_ids", "disposition"], "cancellation": "Preserve work and return disposition"}
+             "admission_id": "child-admission", "return_contract": ["artifact_ids", "evidence_ids", "disposition"], "cancellation": "Preserve work and return disposition",
+             "file_contract": {"schema_version":1,"immutable_inputs":[],"output_roots":[],"scratch_root":"/fixture/artifact"}}
+    context["binding"]["project_root"] = "/fixture/project"
     return result, context, brief
 
 
@@ -883,3 +885,73 @@ def test_repair_cannot_change_only_passing_artifact_and_discard_unchanged_failur
     }
     with pytest.raises(ValueError, match="failing artifact"):
         wf.quality_resolution_requirements(prior, "c1", new_bindings)
+
+
+def typed_dispatch(wf, state, context):
+    result, context, brief = dispatch_ready(wf, state, context)
+    context['binding']['project_root'] = '/fixture/project'
+    context['artifacts']['source'] = {'id':'source','path':'inputs/source.txt','digest':'d'*64}
+    brief['paths'] = ['/fixture/project/outputs','/fixture/project/scratch']
+    context['admissions']['child-admission']['paths'] = brief['paths']
+    brief['file_contract'] = {'schema_version':1,
+        'immutable_inputs':[{'artifact_id':'source','path':'/fixture/project/inputs/source.txt','digest':'d'*64}],
+        'output_roots':['/fixture/project/outputs'],'scratch_root':'/fixture/project/scratch'}
+    return result, context, brief
+
+
+def test_dispatch_requires_typed_input_and_output_roles(wf, state, context):
+    result, context, brief = dispatch_ready(wf, state, context)
+    brief.pop('file_contract')
+    with pytest.raises(ValueError, match='file_contract'):
+        call(wf, result, context, 'dispatch', **brief)
+
+
+def test_typed_dispatch_preserves_roles_without_claiming_host_enforcement(wf, state, context):
+    result, context, brief = typed_dispatch(wf, state, context)
+    outcome = call(wf, result, context, 'dispatch', **brief)
+    child = outcome['extensions']['workflow']['children']['child-a']
+    assert child['file_contract'] == brief['file_contract']
+    assert child['write_enforcement'] == 'UNVERIFIED'
+    assert child['authority_granted'] is False
+
+
+def test_dispatch_revalidates_exact_input_digest(wf, state, context):
+    result, context, brief = typed_dispatch(wf, state, context)
+    context['artifacts']['source']['digest'] = 'e'*64
+    with pytest.raises(ValueError): call(wf, result, context, 'dispatch', **brief)
+
+
+def native_cli_dispatch(wf, state, context):
+    result, context, brief = typed_dispatch(wf, state, context)
+    context['binding']['native_ref'] = 'codex:parent'
+    context['admissions']['child-admission'].update(session_uuid='root-seat',native_ref='codex:parent')
+    brief.update(mode='native-cli',client='claude')
+    return result, context, brief
+
+
+def test_native_cli_dispatch_does_not_fabricate_a_native_producer(wf, state, context):
+    result, context, brief = native_cli_dispatch(wf, state, context)
+    outcome = call(wf, result, context, 'dispatch', **brief)
+    child = outcome['extensions']['workflow']['children']['child-a']
+    assert child['producer'] is None
+    assert child['write_enforcement'] == 'UNVERIFIED'
+    assert child['authority_granted'] is False
+
+
+@pytest.mark.parametrize('change',[{'client':'invented'},{'dispatch_receipt_id':'fabricated'}])
+def test_native_cli_dispatch_rejects_unknown_client_and_collaboration_receipt(wf,state,context,change):
+    result,context,brief=native_cli_dispatch(wf,state,context)
+    with pytest.raises(ValueError):call(wf,result,context,'dispatch',**{**brief,**change})
+
+
+def test_native_cli_dispatch_requires_current_parent_admission(wf,state,context):
+    result,context,brief=native_cli_dispatch(wf,state,context)
+    context['admissions']['child-admission']['session_uuid']='foreign-seat'
+    with pytest.raises(ValueError):call(wf,result,context,'dispatch',**brief)
+
+
+def test_native_cli_completion_requires_actual_bound_launch_observation(wf,state,context):
+    result,context,brief=native_cli_dispatch(wf,state,context)
+    result=call(wf,result,context,'dispatch',**brief)
+    with pytest.raises(ValueError):
+        call(wf,result,context,'child_return',child_id='child-a',disposition='complete',artifact_ids=[],evidence_ids=[],reason='self reported')
