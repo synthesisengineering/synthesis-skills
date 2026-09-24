@@ -133,7 +133,7 @@ def test_muse_review_binds_native_spawn_and_ready_result_not_arbitrary_tool_text
         muse_event(native, {"kind": "assistant_tool_calls_committed", "tool_calls": [{"id": "read-item", "call_id": "read",
             "name": "subagent_read_result", "args": json.dumps({"subagent_id": child})}]}),
         muse_event(native, {"kind": "tool_result_batch_committed", "results": [{"tool_call_id": "read", "text": json.dumps({
-            "status": "ready", "subagent_id": child, "task_ref": "task/fixture#0", "summary": json.dumps({"autopilot_review": response}),
+            "status": "ready", "subagent_id": child, "task_ref": "task/fixture#5", "summary": json.dumps({"autopilot_review": response}),
             "workspace": None, "evidence_refs": [], "artifact_refs": []})}]})]
     source = {"kind": "native-muse-child", "spawn_call_id": "spawn", "result_call_id": "read"}
     assert review.parse_muse_review(calls, source, native)["response"] == response
@@ -143,6 +143,22 @@ def test_muse_review_binds_native_spawn_and_ready_result_not_arbitrary_tool_text
     assert review.parse_muse_review(changed, source, native) is None
     changed = deepcopy(calls)
     changed[-1]["stream"]["id"] = "foreign"
+    assert review.parse_muse_review(changed, source, native) is None
+    for invalid in ("task/foreign#5", "task/fixture#-1", "fixture#5"):
+        changed = deepcopy(calls)
+        output = json.loads(changed[-1]["payload"]["event"]["results"][0]["text"])
+        output["task_ref"] = invalid
+        changed[-1]["payload"]["event"]["results"][0]["text"] = json.dumps(output)
+        assert review.parse_muse_review(changed, source, native) is None
+    changed = deepcopy(calls)
+    output = json.loads(changed[1]["payload"]["event"]["results"][0]["text"])
+    output["task_ref"] = "task/fixture#6"
+    changed[1]["payload"]["event"]["results"][0]["text"] = json.dumps(output)
+    assert review.parse_muse_review(changed, source, native) is None
+    changed = deepcopy(calls)
+    changed.insert(2, muse_event(native, {"kind": "assistant_tool_calls_committed", "tool_calls": [{
+        "call_id": "followup", "name": "subagent_send_message", "args": json.dumps({
+            "subagent_id": child, "message": "Change the task", "mode": "followup"})}]}))
     assert review.parse_muse_review(changed, source, native) is None
 
 
