@@ -434,3 +434,38 @@ def test_terminal_delivery_observation_uses_predeclared_target_and_actual_native
     current = command(engine, world, current, "delivery.record", {"receipt": "observed-after-close"})
     assert current["status"] == "cancelled" and current["terminal"] == terminal
     assert current["extensions"]["capabilities"]["deliveries"]["delivered-after-close"]["status"] == "delivered"
+
+
+def test_claude_actual_structured_tool_result_and_list_shape(bridge, observed, world):
+    bindings = {key: observed["state"][key] for key in ("run_id", "contract_digest", "profile_digest")}
+    args = {"cron": "* * * * *", "prompt": json.dumps({"autopilot_continuation": {"schema_version": 1, "bindings": bindings}}), "recurring": False}
+    append_claude_tool(world, "CronCreate", args, {"id": "abcd1234", "humanSchedule": "Every minute", "recurring": False, "durable": False}, "native-create")
+    append_claude_tool(world, "CronList", {}, {"jobs": [{"id": "abcd1234", "cron": args["cron"], "prompt": args["prompt"], "humanSchedule": "Every minute", "durable": False}]}, "native-list")
+    records = [json.loads(line) for line in world["transcript"].read_text().splitlines()]
+    for event in records:
+        content = event.get("message", {}).get("content", [])
+        if event.get("type") == "user" and isinstance(content, list) and len(content) == 1 and content[0].get("type") == "tool_result":
+            event["tool_use_result"] = json.loads(content[0]["content"])
+            content[0]["content"] = "Native human readable result; no JSON in prose."
+    world["transcript"].write_text("".join(json.dumps(line) + "\n" for line in records))
+    observed_result = bridge.native_tool_observation(observed, "native-create")
+    assert observed_result["result"]["recurring"] is False
+    data = bridge.observe_native_registration(observed, "native-create", "native-list")
+    assert data["recurring"] is False and data["registration_status"] == "observed"
+
+
+def test_native_cancellation_observer_requires_current_requested_job_and_readback(bridge, observed, world):
+    state = observed["state"]
+    requested = (datetime.fromisoformat(observed["now"]) - timedelta(seconds=2)).isoformat()
+    state["extensions"]["capabilities"] = {"continuation": {"job_id": "abcd1234", "surface": "claude-code-cli", "cancel_requested_at": requested,
+        "binding": {**{key: observed["binding"][key] for key in bridge.BINDING_KEYS}, **{key: state[key] for key in ("run_id", "contract_digest", "profile_digest")}}}}
+    append_claude_tool(world, "CronDelete", {"id": "abcd1234"}, {"id": "abcd1234", "deleted": True}, "delete")
+    append_claude_tool(world, "CronList", {}, {"jobs": []}, "readback")
+    data = bridge.observe_native_cleanup("continuation-cancellation", {"job_id": "abcd1234"}, observed)
+    assert data["cancelled"] is True
+    assert bridge.verify_source(record("continuation-cancellation", data, observed), observed)
+    with pytest.raises(ValueError):
+        bridge.observe_native_cleanup("continuation-cancellation", {"job_id": "foreign1"}, observed)
+    state["extensions"]["capabilities"]["continuation"]["cancel_requested_at"] = observed["now"]
+    with pytest.raises(ValueError):
+        bridge.observe_native_cleanup("continuation-cancellation", {"job_id": "abcd1234"}, observed)

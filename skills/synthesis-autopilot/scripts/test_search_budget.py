@@ -95,3 +95,33 @@ def test_search_adapter_reserves_and_reconciles_the_actual_shared_run(world):
         expected_revision=settled["revision"], command_id="measured")
     assert measured["budget"]["spent"] == 3
     assert measured["budget"]["available"] == 7
+
+
+def test_search_cli_reaches_durable_reservation(world, monkeypatch, capsys):
+    state = create(world)
+    runtime = autopilot.engine()
+    for name, payload in (("workflow.configure", {"dimensions": {"domains": ["research"],
+            "uncertainty": "low", "effect": "none", "horizon": "turn", "parallelizable": True}}),
+            ("workflow.budget", {"limits": {"searches": {"limit": 10, "enforcement": "hard"}},
+                                "deadline": "2099-01-01T00:00:00Z"})):
+        state = runtime.apply_command(world["project"], state["run_id"], name, payload,
+            expected_revision=state["revision"], command_id=name, actor=world["actor"],
+            runtime_root=world["runtime"])
+    actor = world["project"] / "actor.json"
+    actor.write_text(json.dumps(world["actor"]))
+    monkeypatch.setenv("SYNTHESIS_AUTOPILOT_ROOT", str(world["runtime"]))
+    assert search_budget.main(["reserve", "--project", str(world["project"]), "--actor", str(actor),
+        "--run-id", state["run_id"], "--reservation-id", "cli-batch", "--command-id", "cli-reserve",
+        "--expected-revision", str(state["revision"]), "--agents", "2", "--per-agent", "3"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["budget"]["available"] == 4
+    assert result["admitted"] is True
+
+
+def test_search_cli_actor_errors_are_bounded(tmp_path, capsys):
+    with pytest.raises(SystemExit) as error:
+        search_budget.main(["reserve", "--project", str(tmp_path), "--actor", str(tmp_path / "missing"),
+            "--run-id", "run", "--reservation-id", "r", "--command-id", "c",
+            "--expected-revision", "0", "--agents", "1", "--per-agent", "1"])
+    assert error.value.code == 2
+    assert "search budget:" in capsys.readouterr().err

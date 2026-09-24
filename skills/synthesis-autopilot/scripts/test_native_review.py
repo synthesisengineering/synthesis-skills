@@ -113,3 +113,34 @@ def test_codex_delegation_requires_native_dispatch_ack_and_exact_canonical_targe
     assert review.parse_codex_dispatch([call, ack, ack], source) is None
     call["payload"]["arguments"] = json.dumps({"target": "/root/foreign", "message": json.dumps({"autopilot_delegation": envelope})})
     assert review.parse_codex_dispatch([call, ack], source) is None
+
+
+def muse_event(native, event):
+    return {"schema_version": 1, "stream": {"kind": "session", "id": native},
+            "record_type": "event", "payload_type": "runtime.session",
+            "payload": {"kind": "run", "run_id": "native-run", "event": event}}
+
+
+def test_muse_review_binds_native_spawn_and_ready_result_not_arbitrary_tool_text(review, observed):
+    native = "01990000-0000-7000-8000-000000000044"
+    child = "01990000-0000-7000-8000-000000000055"
+    request, response = package(observed, reviewer="muse-subagent:" + child)
+    calls = [muse_event(native, {"kind": "assistant_tool_calls_committed", "tool_calls": [{
+        "id": "spawn-item", "call_id": "spawn", "name": "subagent_spawn", "args": json.dumps({
+        "command_id": "spawn-command", "objective": json.dumps({"autopilot_review": request}), "role": "reviewer"})}]}),
+        muse_event(native, {"kind": "tool_result_batch_committed", "results": [{"tool_call_id": "spawn", "text": json.dumps({
+            "status": "accepted", "subagent_id": child, "task_ref": "task/fixture#0", "agent_path": "main/reviewer/1", "work_id": "fixture-work"})}]}),
+        muse_event(native, {"kind": "assistant_tool_calls_committed", "tool_calls": [{"id": "read-item", "call_id": "read",
+            "name": "subagent_read_result", "args": json.dumps({"subagent_id": child})}]}),
+        muse_event(native, {"kind": "tool_result_batch_committed", "results": [{"tool_call_id": "read", "text": json.dumps({
+            "status": "ready", "subagent_id": child, "task_ref": "task/fixture#0", "summary": json.dumps({"autopilot_review": response}),
+            "workspace": None, "evidence_refs": [], "artifact_refs": []})}]})]
+    source = {"kind": "native-muse-child", "spawn_call_id": "spawn", "result_call_id": "read"}
+    assert review.parse_muse_review(calls, source, native)["response"] == response
+    assert review.parse_muse_review(calls + [calls[-1]], source, native) is None
+    changed = deepcopy(calls)
+    changed[2]["payload"]["event"]["tool_calls"][0]["name"] = "bash"
+    assert review.parse_muse_review(changed, source, native) is None
+    changed = deepcopy(calls)
+    changed[-1]["stream"]["id"] = "foreign"
+    assert review.parse_muse_review(changed, source, native) is None
