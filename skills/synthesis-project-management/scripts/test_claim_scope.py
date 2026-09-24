@@ -181,3 +181,54 @@ def test_per_prefix_configuration_bracket_refuses_real_global_config_aba(checkou
             resolver._identity(claim)
     assert reads == 2
     assert config.read_text() == initial
+
+
+@pytest.mark.parametrize("bound", [1, 2], ids=["entry", "exit"])
+def test_passive_native_full_and_negative_observations_share_a_bounded_phase(checkouts, tmp_path, monkeypatch, bound):
+    from test_claim_scope_cache import git
+    root, _ = checkouts
+    peer = tmp_path / "independent"
+    peer.mkdir()
+    git(peer, "init", "-b", "main")
+    own = str(root / "projects" / "one")
+    claims = [(own, ()), (str(peer), ())]
+    original_full = claim_scope.ClaimScopeResolver._native_identity
+    original_negative = claim_scope.ClaimScopeResolver._native_location
+    rendezvous = threading.Barrier(2, timeout=2)
+    counts = Counter()
+    def full(self, pattern):
+        assert pattern == own
+        counts["full"] += 1
+        if counts["full"] == bound:
+            rendezvous.wait()
+        return original_full(self, pattern)
+    def negative(self, pattern):
+        assert pattern == str(peer)
+        counts["negative"] += 1
+        if counts["negative"] == bound:
+            rendezvous.wait()
+        return original_negative(self, pattern)
+    monkeypatch.setattr(claim_scope.ClaimScopeResolver, "_native_identity", full)
+    monkeypatch.setattr(claim_scope.ClaimScopeResolver, "_native_location", negative)
+    with claim_scope.ClaimScopeResolver().snapshot(claims, focus=[claims[0]]) as candidates:
+        assert candidates == {claims[0]}
+    assert counts == {"full": 2, "negative": 2}
+
+
+def test_passive_lexical_preview_cannot_promote_an_unrelated_native_failure(tmp_path, monkeypatch):
+    from test_claim_scope_cache import git
+    # "projects" in a checkout's parent is not repository-relative metadata.
+    root = tmp_path / "projects" / "outer" / "source"
+    root.mkdir(parents=True)
+    git(root, "init", "-b", "main")
+    (root / "ordinary").mkdir()
+    peer = tmp_path / "unrelated"
+    peer.mkdir()
+    own = (str(root / "ordinary"), ())
+    claims = [own, (str(peer), ())]
+    def unavailable(self, pattern):
+        assert pattern == str(peer)
+        raise claim_scope.ClaimIdentityError("fixture preview is unobservable")
+    monkeypatch.setattr(claim_scope.ClaimScopeResolver, "_native_location", unavailable)
+    with claim_scope.ClaimScopeResolver().snapshot(claims, focus=[own]) as candidates:
+        assert candidates == {own}
