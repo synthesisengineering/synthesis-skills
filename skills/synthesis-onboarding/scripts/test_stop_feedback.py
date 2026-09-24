@@ -4,6 +4,7 @@ import fcntl
 import os
 import subprocess
 import time
+from pathlib import Path
 
 import pytest
 
@@ -136,3 +137,47 @@ def test_stop_execution_budget_includes_input_and_verification(active, monkeypat
         return subprocess.CompletedProcess([], 0, b'{}', b'')
     monkeypatch.setattr(runtime, "execute", execute)
     assert runtime.exec_public_main(["--hook-event", "Stop", "--timeout-seconds", "0.2", SCRIPT], pointer) == 0
+
+
+def test_timeout_bounds_descendants_holding_output_pipes(active):
+    child(active, "import subprocess, sys, time\nsubprocess.Popen([sys.executable, '-c', 'import time; time.sleep(2)'])\ntime.sleep(2)\n")
+    started = time.monotonic()
+    assert_terminal(launch(active, json.dumps(event()).encode(), "--timeout-seconds", "0.15"))
+    assert time.monotonic() - started < 1.2
+
+
+@pytest.mark.parametrize("changes", [{"hook_event_name": []}, {"session_id": []},
+                                    {"session_id": 1}, {"stop_hook_active": {} }])
+def test_invalid_stop_field_types_are_terminal(active, changes):
+    assert_terminal(launch(active, json.dumps(event(**changes)).encode()))
+
+
+def test_configured_stop_launchers_have_explicit_event_and_deadline_margin():
+    root = Path(__file__).resolve().parents[3]
+    hooks = json.loads((root / "hooks/hooks.json").read_text())["hooks"]
+    import shlex
+    for group in hooks["Stop"]:
+        for hook in group["hooks"]:
+            argv = shlex.split(hook["command"])
+            assert argv[argv.index("--hook-event") + 1] == "Stop"
+            inner = float(argv[argv.index("--timeout-seconds") + 1])
+            assert 0 < inner <= hook["timeout"] - 2
+
+
+def test_slow_verification_is_interrupted_before_native_host_deadline(active, monkeypatch, capsys):
+    pointer, _, _ = active
+    monkeypatch.setattr(runtime, "read_payload", lambda _: json.dumps(event()).encode())
+    monkeypatch.setattr(runtime, "verified_release", lambda _: time.sleep(0.3))
+    started = time.monotonic()
+    assert runtime.exec_public_main(["--hook-event", "Stop", "--timeout-seconds", "0.03", SCRIPT], pointer) == 0
+    assert time.monotonic() - started < 0.2
+    assert json.loads(capsys.readouterr().out)["continue"] is False
+
+
+@pytest.mark.parametrize("output", [{'decision': 'approve'}, {'suppressOutput': 'true'},
+                                    {'hookSpecificOutput': {}}, {'decision': []}])
+def test_invalid_native_output_fields_terminalize_without_losing_failure(output):
+    result = subprocess.CompletedProcess([], 0, json.dumps(output).encode(), b'')
+    wire = runtime.stop_result(event(), result)
+    assert wire["continue"] is False
+    assert "UNRESOLVED" in wire["systemMessage"]
