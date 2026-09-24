@@ -27,6 +27,7 @@ CONFIG_PATH="$HOME/.synthesis/git-hook-config.yaml"
 for source in \
     "$COORDINATION_SOURCE/coordination.py" \
     "$COORDINATION_SOURCE/claim_scope.py" \
+    "$COORDINATION_SOURCE/native_git.py" \
     "$COORDINATION_SOURCE/coordination_schema.py" \
     "$COORDINATION_SOURCE/board_grammar.py" \
     "$COORDINATION_SOURCE/coordination_archive.py" \
@@ -56,6 +57,7 @@ cp -f "$SCRIPT_DIR/commit-msg" "$TARGET_DIR/commit-msg"
 cp -f "$SCRIPT_DIR/_load_config.py" "$TARGET_DIR/_load_config.py"
 cp -f "$COORDINATION_SOURCE/coordination.py" "$TARGET_DIR/coordination.py"
 cp -f "$COORDINATION_SOURCE/claim_scope.py" "$TARGET_DIR/claim_scope.py"
+cp -f "$COORDINATION_SOURCE/native_git.py" "$TARGET_DIR/native_git.py"
 cp -f "$COORDINATION_SOURCE/coordination_schema.py" "$TARGET_DIR/coordination_schema.py"
 cp -f "$COORDINATION_SOURCE/board_grammar.py" "$TARGET_DIR/board_grammar.py"
 cp -f "$COORDINATION_SOURCE/coordination_archive.py" "$TARGET_DIR/coordination_archive.py"
@@ -78,6 +80,7 @@ chmod 755 \
     "$TARGET_DIR/_load_config.py" \
     "$TARGET_DIR/coordination.py" \
     "$TARGET_DIR/claim_scope.py" \
+    "$TARGET_DIR/native_git.py" \
     "$TARGET_DIR/coordination_schema.py" \
     "$TARGET_DIR/board_grammar.py" \
     "$TARGET_DIR/coordination_archive.py" \

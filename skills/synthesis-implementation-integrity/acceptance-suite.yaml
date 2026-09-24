@@ -1,791 +1,1412 @@
 schema: 2
-suite: bounded-stop-runtime-4-144-1
+suite: autopilot-outcome-runtime-4-145-0
 membership: closed
-production_entry_point: Verified exec-public launcher and direct repository, project checkpoint, and autopilot Stop
-  entrypoints.
+production_entry_point: autopilot.py create/command/observe/status/doctor; shared run engine and capability-specific
+  Stop adapters; verified packaged runtime.
 enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing and client installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures establish script and packaged-launcher behavior. Native client honoring, source publication,
-  installed health, and private hook installation are separate evidence. No receipt grants publication or deployment
-  authority.
+unverified_remainder: Deterministic and actual isolated consumer fixtures establish their named behaviors.
+  Native model quality, comparative outcomes, installed runtime timing, observed continuation and client loading
+  require separately retained native evidence. This receipt grants no action authority.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
-  cases:
-  - release-metadata
+  cases: &id001
+  - ap-125
+  - ap-126
 - path: .codex-plugin/plugin.json
-  cases:
-  - release-metadata
+  cases: *id001
+- path: .github/workflows/validate.yml
+  cases: &id002
+  - ap-099
+- path: .muse-plugin/hooks/synthesis-session-stop.sh
+  cases: &id003
+  - ap-100
+  - ap-101
+  - ap-102
 - path: .muse-plugin/plugin.json
-  cases:
-  - release-metadata
+  cases: *id001
+- path: AGENTS.md
+  cases: *id002
 - path: CHANGELOG.md
-  cases:
-  - release-metadata
+  cases: *id001
 - path: README.md
+  cases: *id001
+- path: skills/synthesis-agent-conformance/scripts/conformance.py
+  cases: &id004
+  - ap-103
+  - ap-104
+- path: skills/synthesis-agent-conformance/scripts/test_autopilot_adapters.py
+  cases: *id003
+- path: skills/synthesis-agent-conformance/scripts/test_conformance.py
+  cases: *id004
+- path: skills/synthesis-agent-conformance/scripts/test_yaml_runtime.py
   cases:
-  - release-metadata
-- path: hooks/hooks.json
-  cases:
-  - launcher-stop-1
-  - launcher-stop-2
-  - launcher-stop-3
-  - launcher-stop-4
-  - launcher-stop-5
-  - launcher-stop-6
-  - launcher-stop-7
-  - launcher-stop-8
-  - launcher-stop-9
-  - launcher-stop-10
-  - launcher-stop-11
-  - launcher-stop-12
-  - launcher-stop-13
-  - launcher-stop-14
-  - launcher-stop-additional-50
-  - launcher-stop-additional-51
-  - onboarding-versions
-  - runtime-nonstop
-  - launcher-stop-uninterruptible-deadline
-  - launcher-argument-boundary-1
-  - launcher-argument-boundary-2
-  - launcher-argument-boundary-3
-  - launcher-argument-boundary-4
-  - launcher-argument-boundary-5
-  - launcher-argument-boundary-6
-  - launcher-argument-boundary-7
-  - launcher-argument-boundary-8
-  - launcher-argument-boundary-9
-  - launcher-malformed-event
-- path: skills/synthesis-agent-guardrails/SKILL.md
-  cases:
-  - packaged-runtime-1
-  - packaged-runtime-2
-  - packaged-runtime-3
-  - packaged-runtime-4
-  - packaged-runtime-5
-  - packaged-runtime-6
-  - repo-stop-1
-  - repo-stop-2
-  - repo-stop-3
-  - repo-stop-4
-  - repo-stop-5
-  - repo-stop-6
-  - repo-stop-7
-  - repo-stop-8
-  - repo-stop-9
-  - repo-stop-10
-  - repo-stop-11
-  - repo-stop-additional-52
-  - repo-stop-additional-53
-- path: skills/synthesis-agent-guardrails/guards/installed_artifact_guard.py
-  cases:
-  - packaged-runtime-1
-  - packaged-runtime-2
-  - packaged-runtime-3
-  - packaged-runtime-4
-  - packaged-runtime-5
-  - packaged-runtime-6
-  - repo-stop-1
-  - repo-stop-2
-  - repo-stop-3
-  - repo-stop-4
-  - repo-stop-5
-  - repo-stop-6
-  - repo-stop-7
-  - repo-stop-8
-  - repo-stop-9
-  - repo-stop-10
-  - repo-stop-11
-  - repo-stop-additional-52
-  - repo-stop-additional-53
-- path: skills/synthesis-agent-guardrails/hooks/codex/repo_guard_stop.py
-  cases:
-  - packaged-runtime-1
-  - packaged-runtime-2
-  - packaged-runtime-3
-  - packaged-runtime-4
-  - packaged-runtime-5
-  - packaged-runtime-6
-  - repo-stop-1
-  - repo-stop-2
-  - repo-stop-3
-  - repo-stop-4
-  - repo-stop-5
-  - repo-stop-6
-  - repo-stop-7
-  - repo-stop-8
-  - repo-stop-9
-  - repo-stop-10
-  - repo-stop-11
-  - repo-stop-additional-52
-  - repo-stop-additional-53
-- path: skills/synthesis-agent-guardrails/tests/test_public_runtime_integration.py
-  cases:
-  - packaged-runtime-1
-  - packaged-runtime-2
-  - packaged-runtime-3
-  - packaged-runtime-4
-  - packaged-runtime-5
-  - packaged-runtime-6
-  - repo-stop-1
-  - repo-stop-2
-  - repo-stop-3
-  - repo-stop-4
-  - repo-stop-5
-  - repo-stop-6
-  - repo-stop-7
-  - repo-stop-8
-  - repo-stop-9
-  - repo-stop-10
-  - repo-stop-11
-  - repo-stop-additional-52
-  - repo-stop-additional-53
-- path: skills/synthesis-agent-guardrails/tests/test_repo_guard_stop.py
-  cases:
-  - packaged-runtime-1
-  - packaged-runtime-2
-  - packaged-runtime-3
-  - packaged-runtime-4
-  - packaged-runtime-5
-  - packaged-runtime-6
-  - repo-stop-1
-  - repo-stop-2
-  - repo-stop-3
-  - repo-stop-4
-  - repo-stop-5
-  - repo-stop-6
-  - repo-stop-7
-  - repo-stop-8
-  - repo-stop-9
-  - repo-stop-10
-  - repo-stop-11
-  - repo-stop-additional-52
-  - repo-stop-additional-53
+  - ap-105
 - path: skills/synthesis-autopilot/SKILL.md
-  cases:
-  - autopilot-stop-1
-  - autopilot-stop-2
-  - autopilot-stop-3
-  - autopilot-stop-4
-  - autopilot-stop-5
-  - autopilot-stop-6
-  - autopilot-stop-7
-  - autopilot-stop-8
-  - autopilot-stop-9
-  - autopilot-stop-10
-  - autopilot-stop-11
+  cases: &id008
+  - ap-093
+  - ap-094
+  - ap-095
+- path: skills/synthesis-autopilot/references/clients-and-recovery.md
+  cases: &id006
+  - ap-047
+  - ap-048
+  - ap-049
+  - ap-050
+  - ap-051
+  - ap-052
+  - ap-053
+  - ap-054
+  - ap-055
+  - ap-056
+- path: skills/synthesis-autopilot/references/evaluation.md
+  cases: &id007
+  - ap-081
+  - ap-082
+  - ap-083
+  - ap-084
+  - ap-085
+  - ap-086
+- path: skills/synthesis-autopilot/references/run-contracts.md
+  cases: &id005
+  - ap-001
+  - ap-002
+  - ap-003
+- path: skills/synthesis-autopilot/references/workflow-and-evidence.md
+  cases: &id018
+  - ap-021
+  - ap-022
+  - ap-023
+  - ap-024
+  - ap-025
+  - ap-026
+  - ap-027
+  - ap-028
+  - ap-029
+  - ap-030
+  - ap-031
+  - ap-032
+  - ap-033
+  - ap-034
+  - ap-035
+  - ap-036
+  - ap-037
+  - ap-038
+  - ap-039
+  - ap-040
+  - ap-041
+  - ap-042
+  - ap-043
+  - ap-044
+  - ap-045
+  - ap-046
+- path: skills/synthesis-autopilot/scripts/autopilot.py
+  cases: *id005
 - path: skills/synthesis-autopilot/scripts/autopilot_gate.py
-  cases:
-  - autopilot-stop-1
-  - autopilot-stop-2
-  - autopilot-stop-3
-  - autopilot-stop-4
-  - autopilot-stop-5
-  - autopilot-stop-6
-  - autopilot-stop-7
-  - autopilot-stop-8
-  - autopilot-stop-9
-  - autopilot-stop-10
-  - autopilot-stop-11
+  cases: &id009
+  - ap-097
+  - ap-098
+- path: skills/synthesis-autopilot/scripts/capabilities.py
+  cases: *id006
+- path: skills/synthesis-autopilot/scripts/consumer_checks.py
+  cases: &id010
+  - ap-078
+  - ap-079
+  - ap-080
+- path: skills/synthesis-autopilot/scripts/delegation_boundary.py
+  cases: &id011
+  - ap-165
+  - ap-166
+  - ap-167
+  - ap-168
+  - ap-169
+  - ap-170
+  - ap-171
+  - ap-172
+  - ap-173
+  - ap-174
+  - ap-175
+  - ap-176
+  - ap-177
+  - ap-178
+  - ap-179
+  - ap-180
+  - ap-181
+  - ap-182
+  - ap-183
+  - ap-184
+  - ap-185
+  - ap-186
+  - ap-187
+  - ap-188
+  - ap-189
+  - ap-190
+  - ap-191
+  - ap-192
+  - ap-193
+  - ap-194
+  - ap-195
+  - ap-196
+  - ap-197
+  - ap-198
+  - ap-199
+  - ap-200
+  - ap-201
+  - ap-202
+  - ap-203
+  - ap-204
+  - ap-205
+  - ap-206
+  - ap-207
+  - ap-208
+- path: skills/synthesis-autopilot/scripts/evaluation.py
+  cases: *id007
+- path: skills/synthesis-autopilot/scripts/evaluation_artifacts.py
+  cases: &id012
+  - ap-087
+  - ap-088
+  - ap-089
+  - ap-090
+  - ap-091
+  - ap-092
+- path: skills/synthesis-autopilot/scripts/evidence_bridge.py
+  cases: &id013
+  - ap-057
+  - ap-058
+  - ap-059
+  - ap-060
+  - ap-061
+  - ap-062
+  - ap-063
+  - ap-064
+  - ap-065
+  - ap-066
+  - ap-067
+  - ap-068
+  - ap-069
+  - ap-070
+- path: skills/synthesis-autopilot/scripts/native_review.py
+  cases: &id014
+  - ap-071
+  - ap-072
+  - ap-073
+- path: skills/synthesis-autopilot/scripts/native_review_observer.py
+  cases: &id015
+  - ap-074
+  - ap-075
+  - ap-076
+  - ap-077
+- path: skills/synthesis-autopilot/scripts/native_stop.py
+  cases: *id006
+- path: skills/synthesis-autopilot/scripts/run_profile.py
+  cases: *id008
+- path: skills/synthesis-autopilot/scripts/run_state.py
+  cases: &id016
+  - ap-004
+  - ap-005
+  - ap-006
+  - ap-007
+  - ap-008
+  - ap-009
+  - ap-010
+  - ap-011
+  - ap-012
+  - ap-013
+  - ap-014
+  - ap-015
+  - ap-016
+  - ap-017
+  - ap-018
+  - ap-019
+  - ap-020
+- path: skills/synthesis-autopilot/scripts/search_budget.py
+  cases: &id017
+  - ap-096
+- path: skills/synthesis-autopilot/scripts/test_autopilot_cli.py
+  cases: *id005
 - path: skills/synthesis-autopilot/scripts/test_autopilot_gate.py
-  cases:
-  - autopilot-stop-1
-  - autopilot-stop-2
-  - autopilot-stop-3
-  - autopilot-stop-4
-  - autopilot-stop-5
-  - autopilot-stop-6
-  - autopilot-stop-7
-  - autopilot-stop-8
-  - autopilot-stop-9
-  - autopilot-stop-10
-  - autopilot-stop-11
+  cases: *id009
+- path: skills/synthesis-autopilot/scripts/test_capabilities.py
+  cases: *id006
+- path: skills/synthesis-autopilot/scripts/test_ci_wiring.py
+  cases: *id002
+- path: skills/synthesis-autopilot/scripts/test_consumer_checks.py
+  cases: *id010
+- path: skills/synthesis-autopilot/scripts/test_delegation_boundary.py
+  cases: *id011
+- path: skills/synthesis-autopilot/scripts/test_evaluation.py
+  cases: *id007
+- path: skills/synthesis-autopilot/scripts/test_evaluation_artifacts.py
+  cases: *id012
+- path: skills/synthesis-autopilot/scripts/test_evidence_bridge.py
+  cases: *id013
+- path: skills/synthesis-autopilot/scripts/test_native_review.py
+  cases: *id014
+- path: skills/synthesis-autopilot/scripts/test_native_review_observer.py
+  cases: *id015
+- path: skills/synthesis-autopilot/scripts/test_run_profile.py
+  cases: *id008
+- path: skills/synthesis-autopilot/scripts/test_run_state.py
+  cases: *id016
+- path: skills/synthesis-autopilot/scripts/test_search_budget.py
+  cases: *id017
+- path: skills/synthesis-autopilot/scripts/test_workflow.py
+  cases: *id018
+- path: skills/synthesis-autopilot/scripts/workflow.py
+  cases: *id018
+- path: skills/synthesis-git-hooks/scripts/_load_config.py
+  cases: &id019
+  - ap-127
+  - ap-128
+  - ap-129
+  - ap-130
+- path: skills/synthesis-git-hooks/scripts/install.sh
+  cases: *id019
+- path: skills/synthesis-git-hooks/scripts/pre-commit
+  cases: *id019
+- path: skills/synthesis-git-hooks/scripts/test_pre_commit.py
+  cases: *id019
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
-  - manifest-validates
-  - launcher-argument-boundary-1
-  - launcher-argument-boundary-2
-  - launcher-argument-boundary-3
-  - launcher-argument-boundary-4
-  - launcher-argument-boundary-5
-  - launcher-argument-boundary-6
-  - launcher-argument-boundary-7
-  - launcher-argument-boundary-8
-  - launcher-argument-boundary-9
-  - launcher-malformed-event
-- path: skills/synthesis-onboarding/SKILL.md
+  - ap-138
+- path: skills/synthesis-onboarding/references/release-capabilities.json
+  cases: &id020
+  - ap-106
+- path: skills/synthesis-onboarding/scripts/check_capabilities.py
+  cases: *id020
+- path: skills/synthesis-onboarding/scripts/modular.py
   cases:
-  - launcher-stop-1
-  - launcher-stop-2
-  - launcher-stop-3
-  - launcher-stop-4
-  - launcher-stop-5
-  - launcher-stop-6
-  - launcher-stop-7
-  - launcher-stop-8
-  - launcher-stop-9
-  - launcher-stop-10
-  - launcher-stop-11
-  - launcher-stop-12
-  - launcher-stop-13
-  - launcher-stop-14
-  - launcher-stop-additional-50
-  - launcher-stop-additional-51
-  - onboarding-versions
-  - runtime-nonstop
-  - launcher-stop-uninterruptible-deadline
-- path: skills/synthesis-onboarding/scripts/onboard.py
-  cases:
-  - launcher-stop-1
-  - launcher-stop-2
-  - launcher-stop-3
-  - launcher-stop-4
-  - launcher-stop-5
-  - launcher-stop-6
-  - launcher-stop-7
-  - launcher-stop-8
-  - launcher-stop-9
-  - launcher-stop-10
-  - launcher-stop-11
-  - launcher-stop-12
-  - launcher-stop-13
-  - launcher-stop-14
-  - launcher-stop-additional-50
-  - launcher-stop-additional-51
-  - onboarding-versions
-  - runtime-nonstop
-  - launcher-stop-uninterruptible-deadline
+  - ap-107
 - path: skills/synthesis-onboarding/scripts/release_runtime.py
-  cases:
-  - launcher-stop-1
-  - launcher-stop-2
-  - launcher-stop-3
-  - launcher-stop-4
-  - launcher-stop-5
-  - launcher-stop-6
-  - launcher-stop-7
-  - launcher-stop-8
-  - launcher-stop-9
-  - launcher-stop-10
-  - launcher-stop-11
-  - launcher-stop-12
-  - launcher-stop-13
-  - launcher-stop-14
-  - launcher-stop-additional-50
-  - launcher-stop-additional-51
-  - onboarding-versions
-  - runtime-nonstop
-  - launcher-stop-uninterruptible-deadline
-  - launcher-argument-boundary-1
-  - launcher-argument-boundary-2
-  - launcher-argument-boundary-3
-  - launcher-argument-boundary-4
-  - launcher-argument-boundary-5
-  - launcher-argument-boundary-6
-  - launcher-argument-boundary-7
-  - launcher-argument-boundary-8
-  - launcher-argument-boundary-9
-  - launcher-malformed-event
-- path: skills/synthesis-onboarding/scripts/synthesis_cli.py
-  cases:
-  - launcher-stop-1
-  - launcher-stop-2
-  - launcher-stop-3
-  - launcher-stop-4
-  - launcher-stop-5
-  - launcher-stop-6
-  - launcher-stop-7
-  - launcher-stop-8
-  - launcher-stop-9
-  - launcher-stop-10
-  - launcher-stop-11
-  - launcher-stop-12
-  - launcher-stop-13
-  - launcher-stop-14
-  - launcher-stop-additional-50
-  - launcher-stop-additional-51
-  - onboarding-versions
-  - runtime-nonstop
-  - launcher-stop-uninterruptible-deadline
+  cases: &id021
+  - ap-108
+  - ap-109
+  - ap-110
+  - ap-111
+- path: skills/synthesis-onboarding/scripts/runtime_payload.py
+  cases: &id022
+  - ap-131
+  - ap-132
+  - ap-133
+  - ap-134
+  - ap-135
+- path: skills/synthesis-onboarding/scripts/test_check_capabilities.py
+  cases: *id020
 - path: skills/synthesis-onboarding/scripts/test_release_runtime.py
+  cases: *id021
+- path: skills/synthesis-onboarding/scripts/test_runtime_integration.py
   cases:
-  - launcher-stop-1
-  - launcher-stop-2
-  - launcher-stop-3
-  - launcher-stop-4
-  - launcher-stop-5
-  - launcher-stop-6
-  - launcher-stop-7
-  - launcher-stop-8
-  - launcher-stop-9
-  - launcher-stop-10
-  - launcher-stop-11
-  - launcher-stop-12
-  - launcher-stop-13
-  - launcher-stop-14
-  - launcher-stop-additional-50
-  - launcher-stop-additional-51
-  - onboarding-versions
-  - runtime-nonstop
-  - launcher-stop-uninterruptible-deadline
-- path: skills/synthesis-onboarding/scripts/test_stop_feedback.py
-  cases:
-  - launcher-stop-1
-  - launcher-stop-2
-  - launcher-stop-3
-  - launcher-stop-4
-  - launcher-stop-5
-  - launcher-stop-6
-  - launcher-stop-7
-  - launcher-stop-8
-  - launcher-stop-9
-  - launcher-stop-10
-  - launcher-stop-11
-  - launcher-stop-12
-  - launcher-stop-13
-  - launcher-stop-14
-  - launcher-stop-additional-50
-  - launcher-stop-additional-51
-  - onboarding-versions
-  - runtime-nonstop
-  - launcher-stop-uninterruptible-deadline
-  - launcher-argument-boundary-1
-  - launcher-argument-boundary-2
-  - launcher-argument-boundary-3
-  - launcher-argument-boundary-4
-  - launcher-argument-boundary-5
-  - launcher-argument-boundary-6
-  - launcher-argument-boundary-7
-  - launcher-argument-boundary-8
-  - launcher-argument-boundary-9
-  - launcher-malformed-event
-- path: skills/synthesis-project-management/SKILL.md
-  cases:
-  - checkpoint-stop-1
-  - checkpoint-stop-2
-  - checkpoint-stop-3
-  - checkpoint-stop-4
-  - checkpoint-stop-5
-  - native-schema
+  - ap-136
+  - ap-137
+- path: skills/synthesis-onboarding/scripts/test_runtime_payload.py
+  cases: *id022
+- path: skills/synthesis-project-management/scripts/claim_scope.py
+  cases: &id023
+  - ap-112
+  - ap-113
+  - ap-114
+  - ap-115
+  - ap-116
+  - ap-117
+- path: skills/synthesis-project-management/scripts/coordination.py
+  cases: &id024
+  - ap-123
+  - ap-124
+- path: skills/synthesis-project-management/scripts/native_git.py
+  cases: &id025
+  - ap-118
+  - ap-119
+  - ap-120
 - path: skills/synthesis-project-management/scripts/project_state.py
+  cases: &id026
+  - ap-121
+  - ap-122
+- path: skills/synthesis-project-management/scripts/run_admission.py
+  cases: &id027
+  - ap-139
+  - ap-140
+  - ap-141
+  - ap-142
+  - ap-143
+  - ap-144
+  - ap-145
+  - ap-146
+  - ap-147
+  - ap-148
+  - ap-149
+  - ap-150
+  - ap-151
+  - ap-152
+  - ap-153
+  - ap-154
+  - ap-155
+- path: skills/synthesis-project-management/scripts/test_claim_scope.py
   cases:
-  - checkpoint-stop-1
-  - checkpoint-stop-2
-  - checkpoint-stop-3
-  - checkpoint-stop-4
-  - checkpoint-stop-5
-  - native-schema
-- path: skills/synthesis-project-management/scripts/test_checkpoint_observer.py
-  cases:
-  - checkpoint-stop-1
-  - checkpoint-stop-2
-  - checkpoint-stop-3
-  - checkpoint-stop-4
-  - checkpoint-stop-5
-  - native-schema
+  - ap-156
+  - ap-157
+  - ap-158
+  - ap-159
+  - ap-160
+  - ap-161
+  - ap-162
+  - ap-163
+  - ap-164
+- path: skills/synthesis-project-management/scripts/test_claim_scope_cache.py
+  cases: *id023
+- path: skills/synthesis-project-management/scripts/test_coordination.py
+  cases: *id024
+- path: skills/synthesis-project-management/scripts/test_native_git.py
+  cases: *id025
 - path: skills/synthesis-project-management/scripts/test_project_state.py
-  cases:
-  - checkpoint-stop-1
-  - checkpoint-stop-2
-  - checkpoint-stop-3
-  - checkpoint-stop-4
-  - checkpoint-stop-5
-  - native-schema
-- path: skills/synthesis-repo-guard/SKILL.md
-  cases:
-  - handoff-stop-1
-- path: skills/synthesis-repo-guard/checkpoint_sync.py
-  cases:
-  - handoff-stop-1
-- path: skills/synthesis-repo-guard/test_checkpoint_sync.py
-  cases:
-  - handoff-stop-1
+  cases: *id026
+- path: skills/synthesis-project-management/scripts/test_run_admission.py
+  cases: *id027
+- path: skills/synthesis-skills-manager/scripts/release.py
+  cases: *id001
+- path: skills/synthesis-skills-manager/scripts/test_release.py
+  cases: *id001
 cases:
-- id: release-metadata
+- id: ap-001
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_cli.py::test_cli_creates_durable_state_and_status_explains_remaining
+  motivating_defect: cli creates durable state and status explains remaining.
+- id: ap-002
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_cli.py::test_missing_native_identity_is_terminal_diagnostic_without_corrective_loop
+  motivating_defect: missing native identity is terminal diagnostic without corrective loop.
+- id: ap-003
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_cli.py::test_first_task_doctor_validates_real_registered_ownership
+  motivating_defect: first task doctor validates real registered ownership.
+- id: ap-004
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_event_commit_survives_interrupted_projection
+  motivating_defect: event commit survives interrupted projection.
+- id: ap-005
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_cas_and_idempotent_commands_prevent_lost_updates
+  motivating_defect: cas and idempotent commands prevent lost updates.
+- id: ap-006
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_complete_requires_every_criterion_and_required_artifact
+  motivating_defect: complete requires every criterion and required artifact.
+- id: ap-007
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_completion_receipt_cannot_survive_bound_input_change
+  motivating_defect: completion receipt cannot survive bound input change.
+- id: ap-008
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_owner_index_does_not_parse_corrupt_foreign_run
+  motivating_defect: owner index does not parse corrupt foreign run.
+- id: ap-009
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_effect_unknown_requires_reconciliation_before_new_attempt
+  motivating_defect: effect unknown requires reconciliation before new attempt.
+- id: ap-010
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_legacy_import_preserves_original_and_does_not_trust_old_receipt
+  motivating_defect: legacy import preserves original and does not trust old receipt.
+- id: ap-011
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_authentic_failed_observation_is_not_criterion_acceptance
+  motivating_defect: authentic failed observation is not criterion acceptance.
+- id: ap-012
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_command_keeps_exact_authority_fences_without_redundant_existing_lock_admission
+  motivating_defect: command keeps exact authority fences without redundant existing lock admission.
+- id: ap-013
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_existing_lock_disappearing_never_retries_creation
+  motivating_defect: existing lock disappearing never retries creation.
+- id: ap-014
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_lock_wait_revalidates_revoked_authority_before_mutations
+  motivating_defect: lock wait revalidates revoked authority before mutations.
+- id: ap-015
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_reducer_revocation_keeps_event_projection_and_index_unchanged
+  motivating_defect: reducer revocation keeps event projection and index unchanged.
+- id: ap-016
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_replayed_command_still_readmits_inside_existing_lock
+  motivating_defect: replayed command still readmits inside existing lock.
+- id: ap-017
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_handoff_official_pm_release_claim_and_fresh_target_acceptance
+  motivating_defect: handoff official pm release claim and fresh target acceptance.
+- id: ap-018
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_handoff_rejects_stale_revoked_or_wrong_authority
+  motivating_defect: handoff rejects stale revoked or wrong authority.
+- id: ap-019
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_handoff_rechecks_target_authority_after_reducer
+  motivating_defect: handoff rechecks target authority after reducer.
+- id: ap-020
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_handoff_prepare_and_revocation_boundaries
+  motivating_defect: handoff prepare and revocation boundaries.
+- id: ap-021
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_adaptive_domain_obligations_do_not_grant_authority
+  motivating_defect: adaptive domain obligations do not grant authority.
+- id: ap-022
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_graph_critical_path_wip_and_independent_ready_work
+  motivating_defect: graph critical path wip and independent ready work.
+- id: ap-023
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_nested_reservations_conserve_run_limit_and_integration_headroom
+  motivating_defect: nested reservations conserve run limit and integration headroom.
+- id: ap-024
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_all_child_returns_preserve_artifacts_and_require_integration_audit
+  motivating_defect: all child returns preserve artifacts and require integration audit.
+- id: ap-025
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_domain_evaluators_detect_seeded_defects_and_pass_sound_work
+  motivating_defect: domain evaluators detect seeded defects and pass sound work.
+- id: ap-026
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_reworded_progress_is_not_progress_and_retry_is_bounded
+  motivating_defect: reworded progress is not progress and retry is bounded.
+- id: ap-027
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_known_hard_overrun_blocks_work_while_provider_usage_is_unknown
+  motivating_defect: known hard overrun blocks work while provider usage is unknown.
+- id: ap-028
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_quality_repair_preserves_failed_fingerprints_and_history
+  motivating_defect: quality repair preserves failed fingerprints and history.
+- id: ap-029
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_repair_cannot_change_only_passing_artifact_and_discard_unchanged_failure
+  motivating_defect: repair cannot change only passing artifact and discard unchanged failure.
+- id: ap-030
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_live_reprofile_requires_typed_core_amendment_and_no_lost_work
+  motivating_defect: live reprofile requires typed core amendment and no lost work.
+- id: ap-031
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_domain_outcomes_use_typed_json_equality
+  motivating_defect: domain outcomes use typed json equality.
+- id: ap-032
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_dispatch_requires_typed_input_and_output_roles
+  motivating_defect: dispatch requires typed input and output roles.
+- id: ap-033
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_typed_dispatch_preserves_roles_without_claiming_host_enforcement
+  motivating_defect: typed dispatch preserves roles without claiming host enforcement.
+- id: ap-034
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_native_cli_dispatch_does_not_fabricate_a_native_producer
+  motivating_defect: native cli dispatch does not fabricate a native producer.
+- id: ap-035
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_native_cli_dispatch_rejects_unknown_client_and_collaboration_receipt
+  motivating_defect: native cli dispatch rejects unknown client and collaboration receipt.
+- id: ap-036
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_native_cli_dispatch_requires_current_parent_admission
+  motivating_defect: native cli dispatch requires current parent admission.
+- id: ap-037
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_native_cli_completion_requires_actual_bound_launch_observation
+  motivating_defect: native cli completion requires actual bound launch observation.
+- id: ap-038
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_worker_record_binds_actual_producer_without_quality_acceptance
+  motivating_defect: worker record binds actual producer without quality acceptance.
+- id: ap-039
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_worker_record_rejects_unbound_or_unenforced_observation
+  motivating_defect: worker record rejects unbound or unenforced observation.
+- id: ap-040
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_worker_failed_preservation_cannot_be_reported_complete
+  motivating_defect: worker failed preservation cannot be reported complete.
+- id: ap-041
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_failed_launch_observation_is_retained_without_claiming_enforcement
+  motivating_defect: failed launch observation is retained without claiming enforcement.
+- id: ap-042
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_native_worker_cannot_claim_unproduced_returned_artifact
+  motivating_defect: native worker cannot claim unproduced returned artifact.
+- id: ap-043
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_native_worker_cannot_integrate_contradictory_known_usage
+  motivating_defect: native worker cannot integrate contradictory known usage.
+- id: ap-044
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_muse_dispatch_never_silently_downgrades_requirements
+  motivating_defect: muse dispatch never silently downgrades requirements.
+- id: ap-045
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_muse_artifact_dispatch_declares_its_exact_requirements
+  motivating_defect: muse artifact dispatch declares its exact requirements.
+- id: ap-046
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_workflow.py::test_native_terminal_with_unknown_boundary_is_retained_but_cannot_complete
+  motivating_defect: native terminal with unknown boundary is retained but cannot complete.
+- id: ap-047
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_capabilities.py::test_registry_separates_native_portability_and_prospective_support
+  motivating_defect: registry separates native portability and prospective support.
+- id: ap-048
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_capabilities.py::test_explain_keeps_worker_operations_distinct_from_root_support
+  motivating_defect: explain keeps worker operations distinct from root support.
+- id: ap-049
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_capabilities.py::test_observed_wakes_are_deduplicated_and_not_replayed_after_close
+  motivating_defect: observed wakes are deduplicated and not replayed after close.
+- id: ap-050
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_capabilities.py::test_missed_wake_and_expiry_do_not_report_healthy_continuation
+  motivating_defect: missed wake and expiry do not report healthy continuation.
+- id: ap-051
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_capabilities.py::test_cancel_requested_is_not_cancelled_until_native_readback
+  motivating_defect: cancel requested is not cancelled until native readback.
+- id: ap-052
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_capabilities.py::test_old_notification_cannot_silence_new_or_changed_unresolved_waits
+  motivating_defect: old notification cannot silence new or changed unresolved waits.
+- id: ap-053
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_capabilities.py::test_renewal_preserves_actual_wakes_and_next_deadline_without_claiming_a_wake
+  motivating_defect: renewal preserves actual wakes and next deadline without claiming a wake.
+- id: ap-054
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_capabilities.py::test_renewal_cannot_reset_or_weaken_current_authority_or_lease
+  motivating_defect: renewal cannot reset or weaken current authority or lease.
+- id: ap-055
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_capabilities.py::test_renewed_job_rejects_wake_bound_to_superseded_lease_and_keeps_duplicates_idempotent
+  motivating_defect: renewed job rejects wake bound to superseded lease and keeps duplicates idempotent.
+- id: ap-056
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_capabilities.py::test_renewal_cannot_outlive_its_previous_renewal_receipt
+  motivating_defect: renewal cannot outlive its previous renewal receipt.
+- id: ap-057
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evidence_bridge.py::test_native_worker_observer_registered_without_completion_acceptance
+  motivating_defect: native worker observer registered without completion acceptance.
+- id: ap-058
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evidence_bridge.py::test_native_worker_observer_uses_owned_runtime_and_dispatched_client
+  motivating_defect: native worker observer uses owned runtime and dispatched client.
+- id: ap-059
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evidence_bridge.py::test_native_worker_observer_rejects_caller_execution_overrides
+  motivating_defect: native worker observer rejects caller execution overrides.
+- id: ap-060
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evidence_bridge.py::test_native_worker_receipt_file_cannot_claim_engine_execution
+  motivating_defect: native worker receipt file cannot claim engine execution.
+- id: ap-061
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evidence_bridge.py::test_ordinary_local_artifact_task_completes_through_cli_without_verifier_configuration
+  motivating_defect: ordinary local artifact task completes through cli without verifier configuration.
+- id: ap-062
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evidence_bridge.py::test_quality_resolution_derives_changed_output_from_real_consumer_attempts
+  motivating_defect: quality resolution derives changed output from real consumer attempts.
+- id: ap-063
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evidence_bridge.py::test_quality_resolution_rejects_unchanged_or_forged_repair
+  motivating_defect: quality resolution rejects unchanged or forged repair.
+- id: ap-064
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evidence_bridge.py::test_later_native_wake_reuses_live_registration_after_its_first_deadline
+  motivating_defect: later native wake reuses live registration after its first deadline.
+- id: ap-065
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evidence_bridge.py::test_native_renewal_caps_original_registration_envelope_expiry
+  motivating_defect: native renewal caps original registration envelope expiry.
+- id: ap-066
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evidence_bridge.py::test_same_native_pair_can_renew_with_fresh_readbacks_and_wake_again_after_five_minutes
+  motivating_defect: same native pair can renew with fresh readbacks and wake again after five minutes.
+- id: ap-067
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evidence_bridge.py::test_native_renewal_requires_fresh_same_pair_readback_before_expiry
+  motivating_defect: native renewal requires fresh same pair readback before expiry.
+- id: ap-068
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evidence_bridge.py::test_historical_native_intake_requires_identical_admitted_envelope_and_current_authority
+  motivating_defect: historical native intake requires identical admitted envelope and current authority.
+- id: ap-069
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evidence_bridge.py::test_renewal_registered_as_production_observer_source_and_nonterminal_reducer
+  motivating_defect: renewal registered as production observer source and nonterminal reducer.
+- id: ap-070
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evidence_bridge.py::test_engine_observation_and_reducer_retains_exact_native_intake_without_extending_expired_lease
+  motivating_defect: engine observation and reducer retains exact native intake without extending expired lease.
+- id: ap-071
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_review.py::test_native_review_rejects_self_certification_and_ambiguous_or_failed_calls
+  motivating_defect: native review rejects self certification and ambiguous or failed calls.
+- id: ap-072
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_review.py::test_native_user_amendment_is_exact_instruction_not_assistant_or_tool_text
+  motivating_defect: native user amendment is exact instruction not assistant or tool text.
+- id: ap-073
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_review.py::test_native_calibration_rederives_blind_positive_and_negative_controls
+  motivating_defect: native calibration rederives blind positive and negative controls.
+- id: ap-074
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_review_observer.py::test_observer_hides_gold_and_derives_calibration
+  motivating_defect: observer hides gold and derives calibration.
+- id: ap-075
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_review_observer.py::test_bad_blind_control_remains_authentic_failed_calibration
+  motivating_defect: bad blind control remains authentic failed calibration.
+- id: ap-076
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_review_observer.py::test_interrupted_attempt_cannot_repeat_provider_call
+  motivating_defect: interrupted attempt cannot repeat provider call.
+- id: ap-077
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_review_observer.py::test_muse_paid_request_never_starts_if_offline_boundary_preflight_fails
+  motivating_defect: muse paid request never starts if offline boundary preflight fails.
+- id: ap-078
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_consumer_checks.py::test_consumer_observes_actual_subprocess_and_target
+  motivating_defect: consumer observes actual subprocess and target.
+- id: ap-079
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_consumer_checks.py::test_failed_actual_consumer_stays_failed
+  motivating_defect: failed actual consumer stays failed.
+- id: ap-080
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_consumer_checks.py::test_execution_unavailable_is_not_a_result
+  motivating_defect: execution unavailable is not a result.
+- id: ap-081
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evaluation.py::test_semantic_grader_calibration_requires_independent_controls
+  motivating_defect: semantic grader calibration requires independent controls.
+- id: ap-082
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evaluation.py::test_quality_regression_threshold_is_applied_per_domain
+  motivating_defect: quality regression threshold is applied per domain.
+- id: ap-083
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evaluation.py::test_comparison_exposes_uncertainty_and_does_not_infer_first_attempt_from_rescues
+  motivating_defect: comparison exposes uncertainty and does not infer first attempt from rescues.
+- id: ap-084
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evaluation.py::test_candidate_authority_is_independent_of_retained_baseline_defects
+  motivating_defect: candidate authority is independent of retained baseline defects.
+- id: ap-085
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evaluation.py::test_candidate_authority_never_uses_pass_rate_to_tolerate_effects_or_unknown
+  motivating_defect: candidate authority never uses pass rate to tolerate effects or unknown.
+- id: ap-086
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evaluation.py::test_missing_candidate_cell_cannot_have_verified_authority
+  motivating_defect: missing candidate cell cannot have verified authority.
+- id: ap-087
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evaluation_artifacts.py::test_every_case_accepts_real_positive_work_products
+  motivating_defect: every case accepts real positive work products.
+- id: ap-088
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evaluation_artifacts.py::test_actual_sandbox_denies_private_reads_host_writes_and_network
+  motivating_defect: actual sandbox denies private reads host writes and network.
+- id: ap-089
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evaluation_artifacts.py::test_document_structure_does_not_require_evaluator_phrases
+  motivating_defect: document structure does not require evaluator phrases.
+- id: ap-090
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evaluation_artifacts.py::test_keyword_stuffing_cannot_claim_document_semantic_acceptance
+  motivating_defect: keyword stuffing cannot claim document semantic acceptance.
+- id: ap-091
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evaluation_artifacts.py::test_concise_document_fulfilling_complete_revision_has_no_invented_length_floor
+  motivating_defect: concise document fulfilling complete revision has no invented length floor.
+- id: ap-092
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_evaluation_artifacts.py::test_concise_document_acceptance_retains_readability_and_preservation_guards
+  motivating_defect: concise document acceptance retains readability and preservation guards.
+- id: ap-093
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_profile.py::test_default_is_adaptive_and_domain_neutral_without_blog_obligation
+  motivating_defect: default is adaptive and domain neutral without blog obligation.
+- id: ap-094
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_profile.py::test_required_adaptive_check_cannot_be_disabled_by_profile
+  motivating_defect: required adaptive check cannot be disabled by profile.
+- id: ap-095
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_run_profile.py::test_profile_adapter_matches_engine_schema_without_authority
+  motivating_defect: profile adapter matches engine schema without authority.
+- id: ap-096
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_search_budget.py::test_search_adapter_reserves_and_reconciles_the_actual_shared_run
+  motivating_defect: search adapter reserves and reconciles the actual shared run.
+- id: ap-097
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_native_feedback_is_bounded_and_preserves_durable_run
+  motivating_defect: native feedback is bounded and preserves durable run.
+- id: ap-098
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_invalid_native_input_terminates_without_corrective_loop
+  motivating_defect: invalid native input terminates without corrective loop.
+- id: ap-099
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_ci_wiring.py::test_all_release_contracts_run_the_whole_autopilot_suite
+  motivating_defect: all release contracts run the whole autopilot suite.
+- id: ap-100
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_autopilot_adapters.py::test_actual_autopilot_child_imports_and_runs_current_runtime
+  motivating_defect: actual autopilot child imports and runs current runtime.
+- id: ap-101
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_autopilot_adapters.py::test_both_checkpoint_and_autopilot_run_even_when_one_is_terminal
+  motivating_defect: both checkpoint and autopilot run even when one is terminal.
+- id: ap-102
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_autopilot_adapters.py::test_composed_feedback_uses_native_repeat_budget
+  motivating_defect: composed feedback uses native repeat budget.
+- id: ap-103
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_conformance.py::test_capability_surface_inventory_is_shared_with_autopilot
+  motivating_defect: capability surface inventory is shared with autopilot.
+- id: ap-104
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_conformance.py::test_capability_native_binary_inventory_includes_muse
+  motivating_defect: capability native binary inventory includes muse.
+- id: ap-105
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_yaml_runtime.py::test_projected_claim_identity_executes_its_native_git_dependency
+  motivating_defect: projected claim identity executes its native git dependency.
+- id: ap-106
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_check_capabilities.py::test_release_client_inventory_tracks_native_registry_and_portability_levels
+  motivating_defect: release client inventory tracks native registry and portability levels.
+- id: ap-107
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_modular.py::test_real_checkpoint_script_runs_from_physically_isolated_closure
+  motivating_defect: real checkpoint script runs from physically isolated closure.
+- id: ap-108
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_stat_inventory_preserves_nested_names_and_exact_metadata
+  motivating_defect: stat inventory preserves nested names and exact metadata.
+- id: ap-109
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_stat_inventory_refuses_nested_link_or_special_object
+  motivating_defect: stat inventory refuses nested link or special object.
+- id: ap-110
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_stat_walk_catches_a_modified_helper
+  motivating_defect: stat walk catches a modified helper.
+- id: ap-111
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_modular_projection_pays_one_stat_walk
+  motivating_defect: modular projection pays one stat walk.
+- id: ap-112
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_invalid_included_configuration_cannot_reuse_identity
+  motivating_defect: invalid included configuration cannot reuse identity.
+- id: ap-113
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_bounded_comparison_snapshot_probes_each_scope_at_both_bounds
+  motivating_defect: bounded comparison snapshot probes each scope at both bounds.
+- id: ap-114
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_nested_repository_is_never_absorbed_by_cached_ancestor
+  motivating_defect: nested repository is never absorbed by cached ancestor.
+- id: ap-115
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_snapshot_survives_routine_git_activity
+  motivating_defect: snapshot survives routine git activity.
+- id: ap-116
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_linked_index_write_during_native_discovery_preserves_identity
+  motivating_defect: linked index write during native discovery preserves identity.
+- id: ap-117
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope_cache.py::test_linked_registry_identity_changes_still_refuse
+  motivating_defect: linked registry identity changes still refuse.
+- id: ap-118
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_native_git.py::test_fixed_native_queries_match_ordinary_subprocess_byte_for_byte
+  motivating_defect: fixed native queries match ordinary subprocess byte for byte.
+- id: ap-119
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_native_git.py::test_inheritable_secret_fd_is_closed_with_concurrent_descriptor_creation
+  motivating_defect: inheritable secret fd is closed with concurrent descriptor creation.
+- id: ap-120
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_native_git.py::test_missing_ctypes_uses_the_same_isolated_subprocess_fallback
+  motivating_defect: missing ctypes uses the same isolated subprocess fallback.
+- id: ap-121
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_local_only_board_refresh_uses_existing_coordination_authority
+  motivating_defect: local only board refresh uses existing coordination authority.
+- id: ap-122
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_board_refresh_still_rejects_unproven_or_failed_authority
+  motivating_defect: board refresh still rejects unproven or failed authority.
+- id: ap-123
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_repository_init_obeys_existing_git_deadline
+  motivating_defect: lease repository init obeys existing git deadline.
+- id: ap-124
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_single_active_seat_validates_identity_and_role_without_pair_identity_probes
+  motivating_defect: single active seat validates identity and role without pair identity probes.
+- id: ap-125
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
-  motivating_defect: All manifests and release notes agree on the patch release.
-- id: manifest-validates
+  motivating_defect: deduplicated archive release contract is public and coherent.
+- id: ap-126
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
+  motivating_defect: agents verification list matches ci workflow.
+- id: ap-127
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_installer_copies_coordination_runtime
+  motivating_defect: r4 installer copies coordination runtime.
+- id: ap-128
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_configured_hook_blocks_outside_claim
+  motivating_defect: r4 configured hook blocks outside claim.
+- id: ap-129
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_r4_configured_hook_consumes_bound_receipt
+  motivating_defect: r4 configured hook consumes bound receipt.
+- id: ap-130
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_installer_and_drift_check_cover_the_same_files
+  motivating_defect: installer and drift check cover the same files.
+- id: ap-131
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_pre_helper_bundle_upgrade_proves_old_pointer_and_executes_new_closure
+  motivating_defect: pre helper bundle upgrade proves old pointer and executes new closure.
+- id: ap-132
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_claim_helper_introduction_requires_released_companion_anchors
+  motivating_defect: claim helper introduction requires released companion anchors.
+- id: ap-133
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_failed_claim_helper_introduction_restores_old_bundle_and_absence
+  motivating_defect: failed claim helper introduction restores old bundle and absence.
+- id: ap-134
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_new_helper_never_overwrites_an_unowned_local_file
+  motivating_defect: new helper never overwrites an unowned local file.
+- id: ap-135
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_actual_immutable_git_hooks_installer_reconciles_runtime_modes
+  motivating_defect: actual immutable git hooks installer reconciles runtime modes.
+- id: ap-136
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_runtime_integration.py::test_public_update_refreshes_independently_wired_runtime_and_preserves_personal_state
+  motivating_defect: public update refreshes independently wired runtime and preserves personal state.
+- id: ap-137
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_runtime_integration.py::test_real_protective_doctor_failure_rolls_back_update_payload_and_receipts
+  motivating_defect: real protective doctor failure rolls back update payload and receipts.
+- id: ap-138
   control_class: acceptance-test
   expected_status: pass
   fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
-  motivating_defect: The release consumes a closed changed-file universe.
-- id: packaged-runtime-1
+  motivating_defect: shipped manifest validates.
+- id: ap-139
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_public_runtime_integration.py::test_packaged_stop_executes_real_repo_detector_without_private_helpers
-  motivating_defect: Actual packaged imports, descriptor trust, detector execution, parser protection, and doctor
-    failures are exercised without successful helper mocks.
-- id: packaged-runtime-2
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_passive_snapshot_ignores_read_access_time_but_rejects_actual_content_change
+  motivating_defect: passive snapshot ignores read access time but rejects actual content change.
+- id: ap-140
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_public_runtime_integration.py::test_enabled_packaged_stop_doctor_checks_valid_public_runtime
-  motivating_defect: Actual packaged imports, descriptor trust, detector execution, parser protection, and doctor
-    failures are exercised without successful helper mocks.
-- id: packaged-runtime-3
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_passive_snapshot_remains_nonblocking_while_mutation_owner_holds_lock
+  motivating_defect: passive snapshot remains nonblocking while mutation owner holds lock.
+- id: ap-141
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_public_runtime_integration.py::test_enabled_stop_doctor_refuses_broken_execution_prerequisites
-  motivating_defect: Actual packaged imports, descriptor trust, detector execution, parser protection, and doctor
-    failures are exercised without successful helper mocks.
-- id: packaged-runtime-4
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_passive_inspection_is_scoped_not_mutation_authority
+  motivating_defect: passive inspection is scoped not mutation authority.
+- id: ap-142
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_public_runtime_integration.py::test_unconfigured_packaged_stop_remains_inert_without_a_runtime
-  motivating_defect: Actual packaged imports, descriptor trust, detector execution, parser protection, and doctor
-    failures are exercised without successful helper mocks.
-- id: packaged-runtime-5
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_passive_foreign_conflict_is_isolated_but_full_read_and_mutation_still_refuse
+  motivating_defect: passive foreign conflict is isolated but full read and mutation still refuse.
+- id: ap-143
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_public_runtime_integration.py::test_packaged_artifact_guard_parses_shell_with_verified_public_parser
-  motivating_defect: Actual packaged imports, descriptor trust, detector execution, parser protection, and doctor
-    failures are exercised without successful helper mocks.
-- id: packaged-runtime-6
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_passive_does_not_probe_unrelated_unreadable_foreign_claim_identity
+  motivating_defect: passive does not probe unrelated unreadable foreign claim identity.
+- id: ap-144
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_public_runtime_integration.py::test_packaged_artifact_guard_refuses_changed_parser_without_executing_it
-  motivating_defect: Actual packaged imports, descriptor trust, detector execution, parser protection, and doctor
-    failures are exercised without successful helper mocks.
-- id: repo-stop-1
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_passive_rejects_each_relevant_physical_or_logical_claim
+  motivating_defect: passive rejects each relevant physical or logical claim.
+- id: ap-145
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_repo_guard_stop.py::test_non_git_directory_is_a_clean_noop
-  motivating_defect: Repo and nested checkpoint failures preserve unresolved evidence and terminate repeated feedback.
-- id: repo-stop-2
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_passive_nested_repository_is_not_a_metadata_alias
+  motivating_defect: passive nested repository is not a metadata alias.
+- id: ap-146
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_repo_guard_stop.py::test_git_repo_blocks_when_verified_runtime_is_unavailable
-  motivating_defect: Repo and nested checkpoint failures preserve unresolved evidence and terminate repeated feedback.
-- id: repo-stop-3
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_passive_unregistered_linked_claim_remains_an_unresolved_possible_alias
+  motivating_defect: passive unregistered linked claim remains an unresolved possible alias.
+- id: ap-147
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_repo_guard_stop.py::test_git_repo_blocks_when_guard_execution_fails
-  motivating_defect: Repo and nested checkpoint failures preserve unresolved evidence and terminate repeated feedback.
-- id: repo-stop-4
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_passive_virtual_claim_is_not_path_authority_but_own_alias_still_refuses
+  motivating_defect: passive virtual claim is not path authority but own alias still refuses.
+- id: ap-148
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_repo_guard_stop.py::test_git_repo_passes_after_successful_guard
-  motivating_defect: Repo and nested checkpoint failures preserve unresolved evidence and terminate repeated feedback.
-- id: repo-stop-5
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_passive_foreign_broad_identity_uses_two_fresh_negative_native_queries
+  motivating_defect: passive foreign broad identity uses two fresh negative native queries.
+- id: ap-149
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_repo_guard_stop.py::test_git_repo_allows_reported_local_only_state
-  motivating_defect: Repo and nested checkpoint failures preserve unresolved evidence and terminate repeated feedback.
-- id: repo-stop-6
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_passive_negative_native_classification_is_bracketed_and_cannot_hide_alias
+  motivating_defect: passive negative native classification is bracketed and cannot hide alias.
+- id: ap-150
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_repo_guard_stop.py::test_pending_context_runs_checkpoint_before_repo_detector
-  motivating_defect: Repo and nested checkpoint failures preserve unresolved evidence and terminate repeated feedback.
-- id: repo-stop-7
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_passive_cannot_hide_own_admission_or_ambiguity_failure
+  motivating_defect: passive cannot hide own admission or ambiguity failure.
+- id: ap-151
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_repo_guard_stop.py::test_pending_context_blocks_when_local_receipt_cannot_be_written
-  motivating_defect: Repo and nested checkpoint failures preserve unresolved evidence and terminate repeated feedback.
-- id: repo-stop-8
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_passive_scope_verdict_cannot_escape_changed_observation_bounds
+  motivating_defect: passive scope verdict cannot escape changed observation bounds.
+- id: ap-152
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_repo_guard_stop.py::test_invalid_stop_payload_fails_closed
-  motivating_defect: Repo and nested checkpoint failures preserve unresolved evidence and terminate repeated feedback.
-- id: repo-stop-9
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_noncreating_lock_never_creates_or_truncates_paths
+  motivating_defect: noncreating lock never creates or truncates paths.
+- id: ap-153
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_repo_guard_stop.py::test_dangling_pending_manifest_symlink_fails_closed
-  motivating_defect: Repo and nested checkpoint failures preserve unresolved evidence and terminate repeated feedback.
-- id: repo-stop-10
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_noncreating_lock_rejects_nonregular_or_absent_paths
+  motivating_defect: noncreating lock rejects nonregular or absent paths.
+- id: ap-154
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_repo_guard_stop.py::test_pending_checkpoint_failure_payload_is_not_normalized_to_success
-  motivating_defect: Repo and nested checkpoint failures preserve unresolved evidence and terminate repeated feedback.
-- id: repo-stop-11
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_noncreating_lock_rejects_substitution_before_open
+  motivating_defect: noncreating lock rejects substitution before open.
+- id: ap-155
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_repo_guard_stop.py::test_repeated_failed_stop_halts_without_requesting_another_turn
-  motivating_defect: Repo and nested checkpoint failures preserve unresolved evidence and terminate repeated feedback.
-- id: launcher-stop-1
+  fixture: ../synthesis-project-management/scripts/test_run_admission.py::test_noncreating_lock_rejects_replacement_while_waiting
+  motivating_defect: noncreating lock rejects replacement while waiting.
+- id: ap-156
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_stop_failure_has_one_corrective_continuation_then_terminal
-  motivating_defect: Runtime startup and child failures cannot produce unbounded Stop feedback or wait beyond the
-    configured deadline; healthy and PreToolUse outcomes remain distinct.
-- id: launcher-stop-2
+  fixture: ../synthesis-project-management/scripts/test_claim_scope.py::test_plain_cells_preserve_markup_and_glob_grammar_without_regex_for_plain_input
+  motivating_defect: plain cells preserve markup and glob grammar without regex for plain input.
+- id: ap-157
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_unidentifiable_stop_is_terminal
-  motivating_defect: Runtime startup and child failures cannot produce unbounded Stop feedback or wait beyond the
-    configured deadline; healthy and PreToolUse outcomes remain distinct.
-- id: launcher-stop-3
+  fixture: ../synthesis-project-management/scripts/test_claim_scope.py::test_independent_prefixes_observe_in_parallel_with_isolated_resolvers_at_both_bounds
+  motivating_defect: independent prefixes observe in parallel with isolated resolvers at both bounds.
+- id: ap-158
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_embedded_launcher_dependency_failure_is_terminal
-  motivating_defect: Runtime startup and child failures cannot produce unbounded Stop feedback or wait beyond the
-    configured deadline; healthy and PreToolUse outcomes remain distinct.
-- id: launcher-stop-4
+  fixture: ../synthesis-project-management/scripts/test_claim_scope.py::test_snapshot_pair_math_reuses_exact_observed_paths_and_rechecks_on_exit
+  motivating_defect: snapshot pair math reuses exact observed paths and rechecks on exit.
+- id: ap-159
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_embedded_launcher_bad_native_input_is_terminal
-  motivating_defect: Runtime startup and child failures cannot produce unbounded Stop feedback or wait beyond the
-    configured deadline; healthy and PreToolUse outcomes remain distinct.
-- id: launcher-stop-5
+  fixture: ../synthesis-project-management/scripts/test_claim_scope.py::test_snapshot_reuses_only_exact_lexical_properties_within_one_operation
+  motivating_defect: snapshot reuses only exact lexical properties within one operation.
+- id: ap-160
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_embedded_launcher_repeated_child_failure_is_terminal
-  motivating_defect: Runtime startup and child failures cannot produce unbounded Stop feedback or wait beyond the
-    configured deadline; healthy and PreToolUse outcomes remain distinct.
-- id: launcher-stop-6
+  fixture: ../synthesis-project-management/scripts/test_claim_scope.py::test_registry_phase_brackets_shared_common_directory_without_reducing_native_config_reads
+  motivating_defect: registry phase brackets shared common directory without reducing native config reads.
+- id: ap-161
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_embedded_launcher_timeout_is_terminal_on_first_failure
-  motivating_defect: Runtime startup and child failures cannot produce unbounded Stop feedback or wait beyond the
-    configured deadline; healthy and PreToolUse outcomes remain distinct.
-- id: launcher-stop-7
+  fixture: ../synthesis-project-management/scripts/test_claim_scope.py::test_registry_phase_refuses_mid_phase_mutation_before_exposing_pair_math
+  motivating_defect: registry phase refuses mid phase mutation before exposing pair math.
+- id: ap-162
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_healthy_repeated_stop_preserves_child_result
-  motivating_defect: Runtime startup and child failures cannot produce unbounded Stop feedback or wait beyond the
-    configured deadline; healthy and PreToolUse outcomes remain distinct.
-- id: launcher-stop-8
+  fixture: ../synthesis-project-management/scripts/test_claim_scope.py::test_per_prefix_configuration_bracket_refuses_real_global_config_aba
+  motivating_defect: per prefix configuration bracket refuses real global config aba.
+- id: ap-163
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_pretooluse_failure_stays_nonzero_and_never_terminalizes
-  motivating_defect: Runtime startup and child failures cannot produce unbounded Stop feedback or wait beyond the
-    configured deadline; healthy and PreToolUse outcomes remain distinct.
-- id: launcher-stop-9
+  fixture: ../synthesis-project-management/scripts/test_claim_scope.py::test_passive_native_full_and_negative_observations_share_a_bounded_phase
+  motivating_defect: passive native full and negative observations share a bounded phase.
+- id: ap-164
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_stalled_pipe_is_bounded_and_never_runs_a_child
-  motivating_defect: Runtime startup and child failures cannot produce unbounded Stop feedback or wait beyond the
-    configured deadline; healthy and PreToolUse outcomes remain distinct.
-- id: launcher-stop-10
+  fixture: ../synthesis-project-management/scripts/test_claim_scope.py::test_passive_lexical_preview_cannot_promote_an_unrelated_native_failure
+  motivating_defect: passive lexical preview cannot promote an unrelated native failure.
+- id: ap-165
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_held_activation_lock_is_terminal_without_waiting_for_host_timeout
-  motivating_defect: Runtime startup and child failures cannot produce unbounded Stop feedback or wait beyond the
-    configured deadline; healthy and PreToolUse outcomes remain distinct.
-- id: launcher-stop-11
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_contract_binds_current_artifacts_and_all_writable_roots
+  motivating_defect: contract binds current artifacts and all writable roots.
+- id: ap-166
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_stop_execution_budget_includes_input_and_verification
-  motivating_defect: Runtime startup and child failures cannot produce unbounded Stop feedback or wait beyond the
-    configured deadline; healthy and PreToolUse outcomes remain distinct.
-- id: launcher-stop-12
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_contract_rejects_role_confusion_or_unbound_input
+  motivating_defect: contract rejects role confusion or unbound input.
+- id: ap-167
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_timeout_bounds_descendants_holding_output_pipes
-  motivating_defect: Runtime startup and child failures cannot produce unbounded Stop feedback or wait beyond the
-    configured deadline; healthy and PreToolUse outcomes remain distinct.
-- id: launcher-stop-13
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_readonly_worker_has_no_forced_mutable_output
+  motivating_defect: readonly worker has no forced mutable output.
+- id: ap-168
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_invalid_stop_field_types_are_terminal
-  motivating_defect: Runtime startup and child failures cannot produce unbounded Stop feedback or wait beyond the
-    configured deadline; healthy and PreToolUse outcomes remain distinct.
-- id: launcher-stop-14
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_physical_intake_rejects_aliases_and_stale_bytes
+  motivating_defect: physical intake rejects aliases and stale bytes.
+- id: ap-169
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_configured_stop_launchers_have_explicit_event_and_deadline_margin
-  motivating_defect: Runtime startup and child failures cannot produce unbounded Stop feedback or wait beyond the
-    configured deadline; healthy and PreToolUse outcomes remain distinct.
-- id: checkpoint-stop-1
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_effect_readback_reports_input_change_without_repair
+  motivating_defect: effect readback reports input change without repair.
+- id: ap-170
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_stop_feedback_is_bounded_without_accepting_failed_checkpoint
-  motivating_defect: Failed checkpoints retain their verdict while repeated native feedback terminates.
-- id: checkpoint-stop-2
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_effect_readback_rejects_output_symlink_alias
+  motivating_defect: effect readback rejects output symlink alias.
+- id: ap-171
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_stop_unidentifiable_failure_is_terminal
-  motivating_defect: Failed checkpoints retain their verdict while repeated native feedback terminates.
-- id: checkpoint-stop-3
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_worker_prompt_exposes_real_roles_and_resource_envelope
+  motivating_defect: worker prompt exposes real roles and resource envelope.
+- id: ap-172
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_repeated_stop_still_evaluates_and_reports_healthy_checkpoint
-  motivating_defect: Failed checkpoints retain their verdict while repeated native feedback terminates.
-- id: checkpoint-stop-4
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_collaboration_does_not_claim_an_enforced_native_boundary
+  motivating_defect: collaboration does not claim an enforced native boundary.
+- id: ap-173
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_non_stop_checkpoint_failure_retains_nonzero_contract
-  motivating_defect: Failed checkpoints retain their verdict while repeated native feedback terminates.
-- id: checkpoint-stop-5
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_native_argv_bounds_cwd_temp_roots_and_retains_model
+  motivating_defect: native argv bounds cwd temp roots and retains model.
+- id: ap-174
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_stop_failure_remains_terminal_when_shared_adapter_cannot_import
-  motivating_defect: Failed checkpoints retain their verdict while repeated native feedback terminates.
-- id: autopilot-stop-1
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_claude_compiler_requires_native_sandbox_and_exact_edit_rules
+  motivating_defect: claude compiler requires native sandbox and exact edit rules.
+- id: ap-175
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_native_stop_feedback_is_bounded_and_preserves_engagement
-  motivating_defect: Unfinished engagement feedback is bounded while legitimate continuation and retained state
-    remain intact.
-- id: autopilot-stop-2
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_muse_compiler_never_calls_default_workspace_policy_enforced
+  motivating_defect: muse compiler never calls default workspace policy enforced.
+- id: ap-176
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_native_stop_invalid_input_terminates_without_retry_or_false_success
-  motivating_defect: Unfinished engagement feedback is bounded while legitimate continuation and retained state
-    remain intact.
-- id: autopilot-stop-3
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_native_worker_parser_requires_real_completion_and_identity
+  motivating_defect: native worker parser requires real completion and identity.
+- id: ap-177
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_native_stop_unreadable_registry_is_terminal_and_preserved
-  motivating_defect: Unfinished engagement feedback is bounded while legitimate continuation and retained state
-    remain intact.
-- id: autopilot-stop-4
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_native_worker_unknown_cost_is_not_zero
+  motivating_defect: native worker unknown cost is not zero.
+- id: ap-178
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_native_repeated_stop_preserves_legitimate_wait_close_and_continuation
-  motivating_defect: Unfinished engagement feedback is bounded while legitimate continuation and retained state
-    remain intact.
-- id: autopilot-stop-5
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_worker_observation_cannot_be_forged_from_status_words
+  motivating_defect: worker observation cannot be forged from status words.
+- id: ap-179
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_gate_passes_with_no_engagements
-  motivating_defect: Unfinished engagement feedback is bounded while legitimate continuation and retained state
-    remain intact.
-- id: autopilot-stop-6
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_owned_worker_runs_once_and_verifier_rederives_native_artifacts
+  motivating_defect: owned worker runs once and verifier rederives native artifacts.
+- id: ap-180
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_gate_blocks_active_engagement_without_continuation
-  motivating_defect: Unfinished engagement feedback is bounded while legitimate continuation and retained state
-    remain intact.
-- id: autopilot-stop-7
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_worker_rejects_invalid_admission_before_native_selection
+  motivating_defect: worker rejects invalid admission before native selection.
+- id: ap-181
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_gate_passes_once_continuation_recorded
-  motivating_defect: Unfinished engagement feedback is bounded while legitimate continuation and retained state
-    remain intact.
-- id: autopilot-stop-8
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_worker_authority_uses_active_pm_token_and_fresh_exact_paths
+  motivating_defect: worker authority uses active pm token and fresh exact paths.
+- id: ap-182
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_gate_passes_with_alerted_blocker
-  motivating_defect: Unfinished engagement feedback is bounded while legitimate continuation and retained state
-    remain intact.
-- id: autopilot-stop-9
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_worker_cannot_make_controller_state_writable
+  motivating_defect: worker cannot make controller state writable.
+- id: ap-183
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_gate_passes_after_honest_close
-  motivating_defect: Unfinished engagement feedback is bounded while legitimate continuation and retained state
-    remain intact.
-- id: autopilot-stop-10
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_claude_parser_does_not_accept_error_or_changed_identity
+  motivating_defect: claude parser does not accept error or changed identity.
+- id: ap-184
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_cron_continuation_passes_gate_within_grace
-  motivating_defect: Unfinished engagement feedback is bounded while legitimate continuation and retained state
-    remain intact.
-- id: autopilot-stop-11
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_inventory_bound_counts_empty_directories
+  motivating_defect: inventory bound counts empty directories.
+- id: ap-185
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_autopilot_gate.py::test_cron_continuation_blocks_gate_when_unverified_and_aged
-  motivating_defect: Unfinished engagement feedback is bounded while legitimate continuation and retained state
-    remain intact.
-- id: handoff-stop-1
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_inventory_bound_counts_aggregate_bytes
+  motivating_defect: inventory bound counts aggregate bytes.
+- id: ap-186
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_direct_repeated_stop_records_healthy_handoff_without_terminal_failure
-  motivating_defect: Malformed Stop and failed local storage terminate without erasing handoff evidence.
-- id: launcher-stop-additional-50
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_interrupted_native_worker_keeps_partial_provider_evidence
+  motivating_defect: interrupted native worker keeps partial provider evidence.
+- id: ap-187
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_slow_verification_is_interrupted_before_native_host_deadline
-  motivating_defect: Exercise discovered Stop deadline, malformed native input, dependency failure, and nested result
-    boundaries without weakening healthy behavior.
-- id: launcher-stop-additional-51
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_worker_deadline_reaps_observed_detached_child_and_preserves_unrelated
+  motivating_defect: worker deadline reaps observed detached child and preserves unrelated.
+- id: ap-188
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_invalid_native_output_fields_terminalize_without_losing_failure
-  motivating_defect: Exercise discovered Stop deadline, malformed native input, dependency failure, and nested result
-    boundaries without weakening healthy behavior.
-- id: repo-stop-additional-52
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_worker_prompt_retains_child_role_and_exact_checks
+  motivating_defect: worker prompt retains child role and exact checks.
+- id: ap-189
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_repo_guard_stop.py::test_direct_stop_refuses_invalid_native_identity_before_repository_inspection
-  motivating_defect: Exercise discovered Stop deadline, malformed native input, dependency failure, and nested result
-    boundaries without weakening healthy behavior.
-- id: repo-stop-additional-53
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_partial_native_start_keeps_identity_without_inventing_usage
+  motivating_defect: partial native start keeps identity without inventing usage.
+- id: ap-190
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-agent-guardrails/tests/test_repo_guard_stop.py::test_checkpoint_execution_exception_is_terminal_infrastructure_failure
-  motivating_defect: Exercise discovered Stop deadline, malformed native input, dependency failure, and nested result
-    boundaries without weakening healthy behavior.
-- id: onboarding-versions
-  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_engine_versions_and_skill_contract_agree
-  motivating_defect: Installed command and skill metadata identify one engine version.
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_claude_boundary_requires_exact_native_init_readback
+  motivating_defect: claude boundary requires exact native init readback.
+- id: ap-191
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_native_environment_failure_cannot_claim_healthy_enforcement
+  motivating_defect: native environment failure cannot claim healthy enforcement.
+- id: ap-192
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_codex_readback_requires_exact_native_turn_permissions
+  motivating_defect: codex readback requires exact native turn permissions.
+- id: ap-193
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_observed_process_group_change_does_not_erase_identity
+  motivating_defect: observed process group change does not erase identity.
+- id: ap-194
+  control_class: acceptance-test
   expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_initial_process_inventory_cannot_extend_native_deadline
+  motivating_defect: initial process inventory cannot extend native deadline.
+- id: ap-195
   control_class: acceptance-test
-- id: runtime-nonstop
-  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_managed_public_cli_cannot_normalize_runtime_failure
-  motivating_defect: Non-Stop execution failure cannot be normalized to success.
   expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_worker_deadline_reaps_child_that_changes_group_after_observation
+  motivating_defect: worker deadline reaps child that changes group after observation.
+- id: ap-196
   control_class: acceptance-test
-- id: native-schema
-  fixture: ../synthesis-project-management/scripts/test_checkpoint_observer.py::test_stop_output_conforms_to_native_codex_consumer_schema
-  motivating_defect: Checkpoint verdicts use the native strict JSON schema while retaining their diagnostic protocol.
   expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_claude_usage_includes_reported_cache_tokens
+  motivating_defect: claude usage includes reported cache tokens.
+- id: ap-197
   control_class: acceptance-test
-- id: launcher-stop-uninterruptible-deadline
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_deadline_cannot_be_swallowed_by_dependency_value_error_recovery
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_worker_capability_distinguishes_artifact_and_shell_lanes
+  motivating_defect: worker capability distinguishes artifact and shell lanes.
+- id: ap-198
   control_class: acceptance-test
   expected_status: pass
-  motivating_defect: A ValueError deadline could be swallowed by receipt JSON recovery and exceed the native host
-    deadline.
-- id: launcher-argument-boundary-1
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_misconfigured_stop_route_cannot_weaken_native_tool_denial
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_muse_shell_request_rejects_before_native_selection
+  motivating_defect: muse shell request rejects before native selection.
+- id: ap-199
   control_class: acceptance-test
   expected_status: pass
-  motivating_defect: Malformed launcher arguments and native input must terminate Stop feedback while retaining
-    non-Stop denial and normal help behavior.
-- id: launcher-argument-boundary-2
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_parser_failure_cannot_weaken_native_permission_request
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_failed_prelaunch_receipt_keeps_honest_unknown
+  motivating_defect: failed prelaunch receipt keeps honest unknown.
+- id: ap-200
   control_class: acceptance-test
   expected_status: pass
-  motivating_defect: Malformed launcher arguments and native input must terminate Stop feedback while retaining
-    non-Stop denial and normal help behavior.
-- id: launcher-argument-boundary-3
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_native_stop_parser_failure_is_terminal
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_unresolved_cleanup_cannot_report_worker_completion
+  motivating_defect: unresolved cleanup cannot report worker completion.
+- id: ap-201
   control_class: acceptance-test
   expected_status: pass
-  motivating_defect: Malformed launcher arguments and native input must terminate Stop feedback while retaining
-    non-Stop denial and normal help behavior.
-- id: launcher-argument-boundary-4
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_nonstop_parser_failure_stays_nonzero
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_interrupted_partial_last_frame_preserves_prior_native_identity
+  motivating_defect: interrupted partial last frame preserves prior native identity.
+- id: ap-202
   control_class: acceptance-test
   expected_status: pass
-  motivating_defect: Malformed launcher arguments and native input must terminate Stop feedback while retaining
-    non-Stop denial and normal help behavior.
-- id: launcher-argument-boundary-5
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_native_stop_parser_failure_without_declared_event_is_terminal
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_worker_environment_does_not_transfer_unrelated_secrets
+  motivating_defect: worker environment does not transfer unrelated secrets.
+- id: ap-203
   control_class: acceptance-test
   expected_status: pass
-  motivating_defect: Malformed launcher arguments and native input must terminate Stop feedback while retaining
-    non-Stop denial and normal help behavior.
-- id: launcher-argument-boundary-6
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_declared_stop_parser_failure_with_bad_input_is_terminal
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_muse_artifact_exchange_preserves_inputs_and_materializes_declared_output
+  motivating_defect: muse artifact exchange preserves inputs and materializes declared output.
+- id: ap-204
   control_class: acceptance-test
   expected_status: pass
-  motivating_defect: Malformed launcher arguments and native input must terminate Stop feedback while retaining
-    non-Stop denial and normal help behavior.
-- id: launcher-argument-boundary-7
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_parser_failure_cannot_infer_stop_from_child_arguments
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_muse_artifact_exchange_rejects_unsafe_materialization
+  motivating_defect: muse artifact exchange rejects unsafe materialization.
+- id: ap-205
   control_class: acceptance-test
   expected_status: pass
-  motivating_defect: Malformed launcher arguments and native input must terminate Stop feedback while retaining
-    non-Stop denial and normal help behavior.
-- id: launcher-argument-boundary-8
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_parser_failure_fallback_input_wait_is_bounded
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_muse_artifact_input_budget_fails_before_provider
+  motivating_defect: muse artifact input budget fails before provider.
+- id: ap-206
   control_class: acceptance-test
   expected_status: pass
-  motivating_defect: Malformed launcher arguments and native input must terminate Stop feedback while retaining
-    non-Stop denial and normal help behavior.
-- id: launcher-argument-boundary-9
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_launcher_help_remains_zero_without_reading_native_input
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_materialization_does_not_truncate_late_hardlink
+  motivating_defect: materialization does not truncate late hardlink.
+- id: ap-207
   control_class: acceptance-test
   expected_status: pass
-  motivating_defect: Malformed launcher arguments and native input must terminate Stop feedback while retaining
-    non-Stop denial and normal help behavior.
-- id: launcher-malformed-event
-  fixture: ../synthesis-onboarding/scripts/test_stop_feedback.py::test_declared_stop_with_malformed_event_stays_terminal
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_materialization_cannot_follow_late_parent_symlink
+  motivating_defect: materialization cannot follow late parent symlink.
+- id: ap-208
   control_class: acceptance-test
   expected_status: pass
-  motivating_defect: Malformed or unknown event identities cannot escape terminal handling on a declared Stop route.
+  fixture: ../synthesis-autopilot/scripts/test_delegation_boundary.py::test_interrupted_utf8_tail_keeps_complete_native_prefix
+  motivating_defect: interrupted utf8 tail keeps complete native prefix.

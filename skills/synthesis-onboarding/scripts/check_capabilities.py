@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import re
 import sys
 from datetime import datetime, timedelta, timezone
@@ -43,11 +44,28 @@ def _frontmatter_description(text: str) -> str:
     return match.group(1)
 
 
+def validate_client_inventory(repo_root: Path, document: dict) -> None:
+    """The public inventory is a checked projection of the native registry."""
+    path = Path(repo_root) / "skills/synthesis-autopilot/scripts/capabilities.py"
+    spec = importlib.util.spec_from_file_location("synthesis_release_surfaces", path)
+    if spec is None or spec.loader is None:
+        raise CapabilityError("client surface registry is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    surfaces = module.supported_surfaces()["surfaces"]
+    clients = sorted({item["dialect"] for item in surfaces.values() if item["level"] == "native"})
+    if document.get("clients") != clients:
+        raise CapabilityError("native client inventory drifted from the supported-surface registry")
+    if document.get("agent_surfaces") != surfaces:
+        raise CapabilityError("agent surface support levels drifted from the supported-surface registry")
+
+
 def validate(repo_root: Path) -> None:
     root = Path(repo_root).resolve()
     refs = root / "skills" / "synthesis-onboarding" / "references"
     contracts = load_contract_documents(root)
     capabilities = contracts["capabilities"]
+    validate_client_inventory(root, capabilities)
     layers = _json(refs / "layers.json")
     components = _json(refs / "components.json")
 

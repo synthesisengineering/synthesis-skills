@@ -59,6 +59,7 @@ python3 skills/synthesis-agent-conformance/scripts/conformance.py instructions -
 python3 -m pytest skills/synthesis-agent-conformance/scripts/test_*.py -q
 python3 -m pytest skills/synthesis-project-management/scripts/ -q
 python3 -m pytest skills/synthesis-checkpoint/scripts/ -q
+python3 -m pytest skills/synthesis-autopilot/scripts/ -q
 python3 -m pytest skills/synthesis-promotion-gate/scripts/ -q
 python3 -m pytest skills/synthesis-context-lifecycle/scripts/ skills/synthesis-implementation-integrity/scripts/ -q
 python3 -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q
@@ -80,9 +81,13 @@ sh skills/synthesis-inbox-cleanup/tests/test_runtime_installer.sh
 
 This fenced list and the `conformance` job in
 `.github/workflows/validate.yml` are held equal (modulo the CI-only
-`pip install` and env-bound acceptance steps) by
+dependency installation and env-bound acceptance steps) by
 `test_release.py::test_agents_verification_list_matches_ci_workflow` —
 change them together, or CI fails.
+
+The executable autopilot consumers require OS isolation: native macOS sandbox
+or bubblewrap on Linux. CI installs bubblewrap explicitly. Missing isolation is
+a test failure; do not skip or execute the consumers without it.
 
 For a cross-client release, also run:
 

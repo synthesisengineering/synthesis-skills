@@ -4,6 +4,27 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.145.0] - 2026-09-24
+
+Autopilot 3.0.0 adds project-owned outcome contracts, immutable event journals,
+current artifact evidence, adaptive domain profiles and bounded task graphs.
+Shared resource reservations, child acceptance audits and explicit effect
+reconciliation retain unfinished work and unknown outcomes across interruptions.
+Calibrated native writing and research reviews preserve failed attempts and
+require verified artifact repair before renewed acceptance. Status, explanation,
+doctor and migration commands expose the same state used by completion checks.
+
+Capability observations distinguish portable skills, supported native Stop
+adapters, observed wakes and unproved survival guarantees. Claude Code, Codex
+and Muse use shared bounded Stop handling with their own native envelopes.
+Ownership and artifact evidence remain required for mutations. The controlled
+evaluation tooling retains failed attempts, unknown measurements, domain
+outcomes and reviewed improvement proposals without activating learned policy.
+Native workers declare immutable inputs and separate outputs, with observed
+client-specific operation boundaries. Continuation renewal retains the same
+worker and backstop, wake history and receipt expiry limits. Installed Git-hook
+bundles now include and verify the native Git identity dependency.
+
 ## [4.144.1] - 2026-09-23
 
 Fix the public repository Stop hook and installed-artifact parser to use the

@@ -261,18 +261,21 @@ def stat_walk(root):
     activation, in doctor, and once per session at SessionStart catches
     what the walk cannot.
     """
-    root = Path(root)
+    root = os.fspath(Path(root))
+    # os.walk retains this literal root prefix in every yielded directory.
+    # Carry names through the traversal instead of reconstructing all parents
+    # with Path.relative_to for every file in each hook invocation.
+    prefix_size = len(root) + (not root.endswith(os.sep))
     snapshot = {}
     try:
         for directory, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
-            current = Path(directory)
+            relative_directory = "" if directory == root else directory[prefix_size:].replace(os.sep, "/")
             kept = []
             for name in sorted(dirnames + filenames):
-                path = current / name
-                relative = path.relative_to(root).as_posix()
+                relative = relative_directory + "/" + name if relative_directory else name
                 if relative == ".git":
                     continue
-                meta = path.lstat()
+                meta = os.lstat(os.path.join(directory, name))
                 if stat.S_ISLNK(meta.st_mode) or not (stat.S_ISDIR(meta.st_mode) or stat.S_ISREG(meta.st_mode)):
                     raise RuntimeContractError("release tree contains a link or special object")
                 if stat.S_ISDIR(meta.st_mode):

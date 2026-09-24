@@ -374,6 +374,7 @@ def test_agents_verification_list_matches_ci_workflow() -> None:
         for step in workflow["jobs"]["conformance"]["steps"]
         if "run" in step
         and "pip install" not in step["run"]
+        and step.get("name") != "Install OS isolation for executable consumer acceptance"
         and "--acceptance-only" not in step["run"]
         and "GITHUB_ENV" not in step["run"]
     ]

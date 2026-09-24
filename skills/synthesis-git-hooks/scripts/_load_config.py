@@ -79,6 +79,7 @@ CORE_ENGINE_FILES = ("pre-commit", "commit-msg", "_load_config.py")
 COORDINATION_ENGINE_FILES = (
     "coordination.py",
     "claim_scope.py",
+    "native_git.py",
     "coordination_schema.py",
     "board_grammar.py",
     "coordination_archive.py",

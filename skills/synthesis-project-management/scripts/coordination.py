@@ -381,6 +381,8 @@ def _emit_check_staged(args, payload: dict) -> None:
 
 
 def _git_bytes(repository: Path, *arguments: str) -> subprocess.CompletedProcess:
+    if arguments in claim_scope.native_git._QUERIES:
+        return claim_scope.native_git.run(["git", *arguments], cwd=repository, capture_output=True)
     return subprocess.run(
         ["git", *arguments],
         cwd=repository,
@@ -393,6 +395,17 @@ def _repository_state(repository: Path) -> tuple[Path, str]:
     requested = repository.expanduser()
     if not requested.is_dir():
         raise RuntimeError(f"repository is not a directory: {requested}")
+    combined = _git_bytes(requested, "rev-parse", "--show-toplevel", "--symbolic-full-name", "HEAD")
+    if combined.returncode == 0:
+        lines = combined.stdout.decode("utf-8", errors="strict").splitlines()
+        if len(lines) != 2 or not Path(lines[0]).is_absolute():
+            raise RuntimeError("Git returned ambiguous repository and branch identity")
+        if not lines[1].startswith("refs/heads/") or not lines[1][len("refs/heads/"):]:
+            raise RuntimeError("detached HEAD has no exact branch identity for a board workspace claim")
+        return Path(lines[0]).resolve(), lines[1][len("refs/heads/"):]
+    # An unborn branch has no resolvable HEAD commit. Git's branch command
+    # still owns its name; retain that explicit path without inferring it from
+    # administrative files or a previously observed checkout.
     top = _git_bytes(requested, "rev-parse", "--show-toplevel")
     if top.returncode != 0:
         detail = top.stderr.decode("utf-8", errors="replace").strip()
@@ -806,10 +819,16 @@ def find_session(sessions: list[Session], selector: str) -> Session | None:
 
 
 def rows(text: str, *, strict: bool = False) -> list[Session]:
-    return [
-        session_from_cells(list(row.values()))
-        for row in parse_table_rows(text, strict=strict)
-    ]
+    return sessions_from_parsed_rows(parse_table_rows(text, strict=strict))
+
+
+def sessions_from_parsed_rows(parsed_rows) -> list[Session]:
+    """Convert a complete grammar-validated snapshot without parsing it twice.
+
+    This conversion confers no authority. Callers still validate identities,
+    active claims and the current native event on every board observation.
+    """
+    return [session_from_cells(list(row.values())) for row in parsed_rows]
 
 
 def active(session: Session) -> bool:
@@ -1614,12 +1633,16 @@ def lease_repository(config: dict) -> Path:
     repository = config["repository"]
     if not (repository / "HEAD").is_file():
         repository.mkdir(parents=True, exist_ok=True)
-        created = subprocess.run(
-            ["git", "init", "--bare", "--quiet", str(repository)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        try:
+            created = subprocess.run(
+                ["git", "init", "--bare", "--quiet", str(repository)],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=LEASE_GIT_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("coordination lease repository initialization timed out") from exc
         if created.returncode != 0:
             raise RuntimeError(
                 f"coordination lease repository init failed: {created.stderr.strip()}"
@@ -1968,9 +1991,50 @@ def _validate_with_snapshot(
     notices: list[dict[str, object]] | None,
 ) -> list[str]:
     scopes = claim_scope.ClaimScopeResolver()
-    claims = [(claim, tuple(session.workspaces)) for session in sessions if active(session) for claim in session.claims]
+    live = [session for session in sessions if active(session)]
+    if len(live) < 2:
+        # Identity, role and selector checks still run. Native scope discovery
+        # only supports pair comparisons, which cannot occur for one seat.
+        return _validate_sessions(sessions, scopes, notices=notices)
+    claims = [(claim, tuple(session.workspaces)) for session in live for claim in session.claims]
     with scopes.snapshot(claims):
         return _validate_sessions(sessions, scopes, notices=notices)
+
+
+def validate_passive_paths(sessions: list[Session], owner: Session, paths: list[Path]) -> list[str]:
+    """Validate only the current lifecycle's paths, without conferring writes.
+
+    Global doctor and every mutating admission still use validate_sessions.
+    Complete board grammar is parsed before this function; foreign semantic
+    defects only matter here when they can alias this owner or these targets.
+    """
+    from dataclasses import replace
+    scopes = claim_scope.ClaimScopeResolver()
+    problems = _validate_sessions([owner], scopes)
+    own_keys = set(identity_lookup_keys(owner.identity))
+    for peer in sessions:
+        if peer is owner:
+            continue
+        if own_keys.intersection(identity_lookup_keys(peer.identity)):
+            problems.append("duplicate or ambiguous passive owner selector")
+        if active(peer) and owner.client_ref and peer.client_ref == owner.client_ref:
+            problems.append("duplicate active native session reference")
+    live = [peer for peer in sessions if peer is not owner and active(peer)]
+    targets = [(str(path), tuple(owner.workspaces)) for path in paths]
+    claims = targets + [(claim, tuple(peer.workspaces)) for peer in live for claim in peer.claims]
+    try:
+        with scopes.snapshot(claims, focus=targets) as candidates:
+            scoped_owner = replace(owner, claims=[str(path) for path in paths])
+            for peer in live:
+                relevant = [claim for claim in peer.claims if (claim, tuple(peer.workspaces)) in candidates]
+                context_peer = peer.project == owner.project and peer.context_role == "owner"
+                if relevant or context_peer:
+                    # Reuse exact role, identity, advisory/parked and overlap
+                    # policy. Only unrelated peer-to-peer pairs are absent.
+                    problems.extend(_validate_sessions([scoped_owner, replace(peer, claims=relevant)], scopes))
+    except claim_scope.ClaimIdentityError as exc:
+        problems.append(f"unverifiable passive claim identity snapshot: {exc}")
+    return list(dict.fromkeys(problems))
 
 
 def validate_sessions(
@@ -2084,6 +2148,9 @@ def _validate_sessions(
                 f"{session.context_role}"
             )
     live = [session for session in sessions if active(session)]
+    # The board rows are immutable for this validation. Derive advisory age
+    # once per row, rather than re-reading the clock for every peer pair.
+    advisory = {id(session): downgraded(session) for session in live}
     seen_refs: dict[str, Session] = {}
     for session in live:
         if not session.client_ref:
@@ -2105,8 +2172,8 @@ def _validate_sessions(
                         f"session {_tag(left)} is a contributor but claims context: {claim}"
                     )
         for right in live[index + 1 :]:
-            left_advisory = downgraded(left)
-            right_advisory = downgraded(right)
+            left_advisory = advisory[id(left)]
+            right_advisory = advisory[id(right)]
             advisory_pair = left_advisory or right_advisory
             parked_sides = [
                 session.compact_id

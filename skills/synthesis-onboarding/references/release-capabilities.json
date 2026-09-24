@@ -108,7 +108,8 @@
   },
   "clients": [
     "claude",
-    "codex"
+    "codex",
+    "muse"
   ],
   "truth_planes": [
     "desired",
@@ -416,5 +417,99 @@
     "official_npm_packages": [
       "ownwords"
     ]
+  },
+  "agent_surfaces": {
+    "claude-code-cli": {
+      "level": "native",
+      "dialect": "claude",
+      "mechanisms": [
+        "claude-session-cron"
+      ],
+      "terminal_precedence": true,
+      "native_acceptance": "observation-required"
+    },
+    "claude-code-desktop": {
+      "level": "native",
+      "dialect": "claude",
+      "mechanisms": [
+        "claude-desktop-schedule",
+        "claude-session-cron"
+      ],
+      "terminal_precedence": true,
+      "native_acceptance": "observation-required"
+    },
+    "codex-cli": {
+      "level": "native",
+      "dialect": "codex",
+      "mechanisms": [],
+      "terminal_precedence": true,
+      "native_acceptance": "observation-required"
+    },
+    "codex-desktop": {
+      "level": "native",
+      "dialect": "codex",
+      "mechanisms": [
+        "codex-heartbeat",
+        "codex-automation"
+      ],
+      "terminal_precedence": true,
+      "native_acceptance": "observation-required"
+    },
+    "muse-cli": {
+      "level": "native",
+      "dialect": "muse",
+      "mechanisms": [],
+      "terminal_precedence": true,
+      "native_acceptance": "observation-required"
+    },
+    "cursor-ide": {
+      "level": "skill-only",
+      "dialect": "cursor",
+      "mechanisms": [],
+      "terminal_precedence": false,
+      "native_acceptance": "observation-required"
+    },
+    "cursor-cli": {
+      "level": "skill-only",
+      "dialect": "cursor",
+      "mechanisms": [],
+      "terminal_precedence": false,
+      "native_acceptance": "observation-required"
+    },
+    "cursor-cloud": {
+      "level": "skill-only",
+      "dialect": "cursor",
+      "mechanisms": [],
+      "terminal_precedence": false,
+      "native_acceptance": "observation-required"
+    },
+    "copilot-cli": {
+      "level": "skill-only",
+      "dialect": "copilot",
+      "mechanisms": [],
+      "terminal_precedence": false,
+      "native_acceptance": "observation-required"
+    },
+    "copilot-vscode": {
+      "level": "skill-only",
+      "dialect": "copilot",
+      "mechanisms": [],
+      "terminal_precedence": false,
+      "native_acceptance": "observation-required"
+    },
+    "copilot-cloud": {
+      "level": "skill-only",
+      "dialect": "copilot",
+      "mechanisms": [],
+      "terminal_precedence": false,
+      "native_acceptance": "observation-required"
+    },
+    "hermes": {
+      "level": "prospective",
+      "dialect": null,
+      "mechanisms": [],
+      "terminal_precedence": false,
+      "native_acceptance": "observation-required"
+    }
   }
 }

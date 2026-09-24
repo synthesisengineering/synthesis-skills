@@ -16,6 +16,8 @@ import re
 import stat
 import subprocess
 
+import native_git
+
 
 class ClaimIdentityError(ValueError):
     """A possible logical metadata conflict lacks unambiguous Git identity."""
@@ -31,6 +33,8 @@ NoVerifiedCheckout = _NoVerifiedCheckout
 
 
 def plain(value: str) -> str:
+    if "**" not in value and "`" not in value:
+        return value.strip()
     guarded = value.replace("/**", "/\0GLOB\0").replace("**/", "\0GLOB\0/")
     unbolded = re.sub(r"\*\*(.+?)\*\*", r"\1", guarded)
     return re.sub(r"`(.+?)`", r"\1", unbolded).replace("\0GLOB\0", "**").strip()
@@ -186,6 +190,56 @@ def _ordinary_nonrepo_scope(pattern: str) -> bool:
     return True
 
 
+class _RegistryPhase:
+    """Bracket all native observations of a common registry before exposure.
+
+    A common registry is read before its first dependent query and again
+    after every worker has finished. This interval contains each individual
+    discovery interval. Inode, ctime and bytes detect replacement and ABA;
+    effective Git configuration is still checked per prefix independently.
+    """
+    def __init__(self, read):
+        from threading import Lock
+        self.read = read
+        self.before = {}
+        self.lock = Lock()
+
+    def observe(self, common):
+        with self.lock:
+            if common not in self.before:
+                self.before[common] = self.read(common)
+            return self.before[common]
+
+    def finish(self):
+        for common, before in self.before.items():
+            if self.read(common) != before:
+                raise ClaimIdentityError("claim identity snapshot registry changed during observation phase")
+
+
+def _relative_path(pattern, root):
+    return Path(pattern).relative_to(root).as_posix()
+
+
+def _possible_metadata_alias(pattern, metadata_targets):
+    """Conservative candidate inclusion, never native identity evidence.
+
+    A retired linked checkout can retain a pointer into the current common
+    directory while no longer appearing in worktree list. Matching possible
+    metadata suffixes and broad directory/recursive reservations therefore
+    still require native validation; registration projection is not enough.
+    """
+    if not metadata_targets:
+        return False
+    parts = _parts(pattern)
+    if "**" in pattern.split("/") or Path(pattern).is_dir():
+        return True
+    for offset, part in enumerate(parts[:-1] if not any(c in pattern for c in "*?[") else parts):
+        if fnmatch.fnmatchcase("projects", part):
+            if any(_patterns_intersect(parts[offset + 1:], target) for target in metadata_targets):
+                return True
+    return False
+
+
 class ClaimScopeResolver:
     """One-operation registration cache; native identity is always revalidated."""
     def __init__(self):
@@ -193,6 +247,24 @@ class ClaimScopeResolver:
         self.registry_stamps = {}
         self._observations = {}
         self._snapshot = None
+        self._snapshot_physical = None
+        self._snapshot_prefixes = None
+        self._snapshot_lexical = None
+        self._registry_phase = None
+
+    def _lexical(self, function, *arguments):
+        """Reuse only pure string/Path calculations in this exact snapshot."""
+        if self._snapshot_lexical is None:
+            return function(*arguments)
+        key = (function, arguments)
+        if key not in self._snapshot_lexical:
+            self._snapshot_lexical[key] = function(*arguments)
+        return self._snapshot_lexical[key]
+
+    def _registry_observation(self, common):
+        if self._registry_phase is not None:
+            return self._registry_phase.observe(common)
+        return self._registry_stamp(common)
 
     @staticmethod
     def _identity_prefix(pattern: str) -> str:
@@ -228,7 +300,7 @@ class ClaimScopeResolver:
         return (key, "ok", result, self._observations[key], self.registered[result[0]])
 
     @contextmanager
-    def snapshot(self, claims):
+    def snapshot(self, claims, *, focus=None):
         """Compare a bounded set provisionally, then revalidate before return.
 
         Only pure pair comparisons may run inside this context. A caller must
@@ -239,21 +311,150 @@ class ClaimScopeResolver:
         if self._snapshot is not None:
             raise ClaimIdentityError("nested claim identity snapshots are forbidden")
         physical = []
+        focused = None if focus is None else {(claim, tuple(workspaces)) for claim, workspaces in focus}
         observations = {}
         claimants = {}
+        targets = {}
         for claim, workspaces in claims:
             if re.match(r"^[A-Za-z][A-Za-z0-9_-]*:", plain(claim)):
                 continue
             target = self._physical(claim, workspaces)
-            key = self._identity_prefix(target) if Path(target).is_absolute() else None
+            key = self._identity_prefix(target) if Path(target).is_absolute() and (focused is None or (claim, tuple(workspaces)) in focused) else None
             physical.append((claim, workspaces, target, key))
-            if Path(target).is_absolute():
-                if key not in observations:
-                    observations[key] = (target, self._observe(target))
+            if key is not None:
+                if key not in targets:
+                    targets[key] = target
                     claimants[key] = claim
+        # Each prefix owns its resolver. Native Git calls are independent;
+        # sharing mutable registration caches between workers is forbidden.
+        # These workers live only for this one entry/exit snapshot pair.
+        workers = {key: ClaimScopeResolver() for key in targets}
+        def observe_phase(selected, negative_selected=None):
+            negative_selected = {} if negative_selected is None else negative_selected
+            phase = _RegistryPhase(self._registry_stamp)
+            for key in selected:
+                workers[key]._registry_phase = phase
+            def read(kind, key, target):
+                if kind == "full":
+                    return (target, workers[key]._observe(target))
+                try:
+                    return workers[key]._native_location(target)
+                except ClaimIdentityError:
+                    return None  # Uncertainty falls through to full validation.
+            try:
+                requests = [("full", key, target) for key, target in selected.items()]
+                requests.extend(("negative", key, target) for key, target in negative_selected.items())
+                if len(requests) < 2:
+                    result = {(kind, key): read(kind, key, target) for kind, key, target in requests}
+                else:
+                    from concurrent.futures import ThreadPoolExecutor
+                    with ThreadPoolExecutor(max_workers=min(8, len(requests))) as executor:
+                        pending = {(kind, key): executor.submit(read, kind, key, target) for kind, key, target in requests}
+                        result = {key: future.result() for key, future in pending.items()}
+                # No provisional identity leaves this phase before the shared
+                # registry post-read. Every native config post-read has also
+                # completed; none is replaced by a registry-only observation.
+                phase.finish()
+                return ({key: result[("full", key)] for key in selected},
+                        {key: result[("negative", key)] for key in negative_selected})
+            finally:
+                for key in selected:
+                    workers[key]._registry_phase = None
+        preview = {}
+        if focused is not None:
+            # Prefetch disjoint possible metadata peers while own native
+            # discovery runs. An ancestor named projects can over-select here;
+            # only the completed native-root projection below can use a result.
+            # These lexical hints never exclude a claim or establish identity.
+            own_targets = [target for claim, workspaces, target, _ in physical
+                           if (claim, tuple(workspaces)) in focused]
+            possible_suffixes = [suffix for target in own_targets
+                                for offset in range(len(_parts(target)))
+                                for suffix in _metadata_suffixes(_parts(target)[offset:])]
+            for _, _, target, _ in physical:
+                if (not Path(target).is_absolute() or
+                    not _possible_metadata_alias(target, possible_suffixes) or
+                    any(_patterns_intersect(_parts(target), _parts(own)) for own in own_targets)):
+                    continue
+                try:
+                    key = self._identity_prefix(target)
+                except ClaimIdentityError:
+                    continue  # A speculative read cannot introduce a refusal.
+                if key not in targets:
+                    preview.setdefault(key, target)
+                    workers.setdefault(key, ClaimScopeResolver())
+        observations, prefetched = observe_phase(targets, preview)
+        negative = {}
+        candidates = None
+        if focused is not None:
+            # This projection narrows a read-only question, never write
+            # authority. Git's fresh complete registration defines every
+            # sibling where an exact projects/ target can alias. A peer
+            # outside both physical and projected targets cannot conflict
+            # with those targets; it remains a concern for global PM doctor.
+            projections, metadata_targets, own_commons, actual_targets = [], [], set(), []
+            found = set()
+            for claim, workspaces, target, key in physical:
+                if (claim, tuple(workspaces)) not in focused:
+                    continue
+                found.add((claim, tuple(workspaces)))
+                if key is None or observations[key][1][1] != "ok":
+                    raise ClaimIdentityError("passive target has no verified native identity")
+                observed = observations[key][1]
+                common, root = observed[2]
+                own_commons.add(common)
+                actual_targets.append(target)
+                relative = Path(target).relative_to(root).as_posix()
+                projections.append(target)
+                suffixes = _metadata_suffixes(_parts(relative))
+                metadata_targets.extend(suffixes)
+                if suffixes:
+                    projections.extend(str(Path(checkout) / relative) for checkout in observed[4])
+            if found != focused or not found:
+                raise ClaimIdentityError("passive target snapshot requires exact observed targets")
+            candidates, additional, revised = set(), {}, []
+            for claim, workspaces, target, key in physical:
+                relevant = _possible_metadata_alias(target, metadata_targets) or any(
+                    _patterns_intersect(_parts(projection), _parts(target)) if Path(target).is_absolute()
+                    else _mixed_paths_intersect(_parts(projection), _parts(target))
+                    for projection in projections
+                )
+                if relevant:
+                    candidates.add((claim, tuple(workspaces)))
+                    if Path(target).is_absolute():
+                        key = self._identity_prefix(target)
+                        if key not in targets:
+                            targets[key], claimants[key] = target, claim
+                            workers.setdefault(key, ClaimScopeResolver())
+                            additional[key] = target
+                revised.append((claim, workspaces, target, key))
+            physical = revised
+            # Negative-only native classification answers a narrower question
+            # than authority: a disjoint peer in a distinct Git common dir
+            # cannot alias these metadata targets. No registration/permission
+            # verdict is issued for that peer. Errors, same-common roots and
+            # physical overlaps still receive the complete native checks.
+            physical_overlap = {key for _, _, target, key in physical if any(
+                _patterns_intersect(_parts(target), _parts(own)) for own in actual_targets
+            )}
+            eligible = {key: target for key, target in additional.items() if key not in physical_overlap}
+            _, missing = observe_phase({}, {key: target for key, target in eligible.items() if key not in prefetched})
+            for key, location in {**prefetched, **missing}.items():
+                if key not in eligible:
+                    continue
+                if location is not None and location[0] not in own_commons:
+                    negative[key] = (additional.pop(key), location)
+                    targets.pop(key)
+            candidates = {(claim, tuple(workspaces)) for claim, workspaces, _, key in physical
+                          if (claim, tuple(workspaces)) in candidates and key not in negative}
+            additional_observations, _ = observe_phase(additional)
+            observations.update(additional_observations)
+        self._snapshot_physical = {(claim, tuple(workspaces)): target for claim, workspaces, target, _ in physical}
+        self._snapshot_prefixes = {target: key for _, _, target, key in physical}
+        self._snapshot_lexical = {}
         self._snapshot = observations
         try:
-            yield
+            yield candidates
             self._snapshot = None
             for claim, workspaces, target, key in physical:
                 if self._physical(claim, workspaces) != target:
@@ -266,15 +467,22 @@ class ClaimScopeResolver:
                         "claim identity snapshot administrative boundary changed: "
                         f"claim {claim} (prefix {key})"
                     )
+            current, current_negative = observe_phase(targets, {key: item[0] for key, item in negative.items()})
             for key, (target, observed) in observations.items():
-                if self._observe(target) != observed:
+                if current[key][1] != observed:
                     raise ClaimIdentityError(
                         "claim identity snapshot changed or became unreadable: "
                         f"claim {claimants.get(key, target)} ({target}); "
                         "re-run when git-quiet"
                     )
+            for key, location in current_negative.items():
+                if location != negative[key][1]:
+                    raise ClaimIdentityError("passive negative native identity snapshot changed or became unreadable")
         finally:
             self._snapshot = None
+            self._snapshot_physical = None
+            self._snapshot_prefixes = None
+            self._snapshot_lexical = None
 
     @staticmethod
     def _marker(path: Path):
@@ -289,14 +497,15 @@ class ClaimScopeResolver:
 
     @staticmethod
     def _dir_marker(path: Path):
-        """Identity marker for the bare .git directory: device, inode, mode.
+        """Identity marker for a Git administrative directory: device, inode, mode.
 
         mtime/ctime are deliberately excluded: every git command churns them
         (index writes go through .git/index.lock), so they track activity,
         not identity, and a snapshot that observes them trips on routine
-        `git status` / `git add` (BUG-1/F2). Replacement is still caught via
-        inode + config bytes; worktree add/remove/move still trip via the
-        worktrees/ registry markers below, which keep their times.
+        `git status` / `git add` (BUG-1/F2). Linked worktrees churn their own
+        administrative directory the same way when writing index/HEAD locks.
+        Replacement is still caught by device/inode/mode; worktree membership
+        and gitdir/commondir/config markers below retain times and bytes.
         """
         try:
             info = path.lstat()
@@ -312,13 +521,18 @@ class ClaimScopeResolver:
         try:
             entries = sorted(directory.iterdir()) if directory.is_dir() else []
             return (self._dir_marker(root), self._marker(root / "config"), self._marker(root / "config.worktree"),
-                    self._marker(directory), tuple((entry.name, self._marker(entry),
+                    self._marker(directory), tuple((entry.name, self._dir_marker(entry),
                         self._marker(entry / "gitdir"), self._marker(entry / "commondir"),
                         self._marker(entry / "config.worktree")) for entry in entries))
         except OSError as exc:
             raise ClaimIdentityError("metadata claim worktree registry is unavailable") from exc
 
     def _physical(self, claim: str, workspaces) -> str:
+        if self._snapshot is not None:
+            key = (claim, tuple(workspaces))
+            if key not in self._snapshot_physical:
+                raise ClaimIdentityError("claim identity snapshot encountered an unobserved physical path")
+            return self._snapshot_physical[key]
         raw = os.path.expanduser(plain(claim))
         if not raw or "\x00" in raw:
             raise ClaimIdentityError("claim path is empty or invalid")
@@ -342,7 +556,7 @@ class ClaimScopeResolver:
     def _identity(self, pattern: str) -> tuple[str, str]:
         if self._snapshot is None:
             return self._native_identity(pattern)
-        key = self._identity_prefix(pattern)
+        key = self._snapshot_prefixes.get(pattern)
         if key not in self._snapshot:
             raise ClaimIdentityError("claim identity snapshot encountered an unobserved scope")
         observed = self._snapshot[key][1]
@@ -352,6 +566,26 @@ class ClaimScopeResolver:
         self.registered[result[0]] = observed[4]
         return result
 
+    def _native_location(self, pattern: str) -> tuple[str, str]:
+        """Native negative classifier only; never registration or authority."""
+        key = self._identity_prefix(pattern)
+        env = os.environ.copy()
+        for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE"):
+            env.pop(name, None)
+        try:
+            done = native_git.run(["git", "--no-optional-locks", "-C", key, "rev-parse",
+                                   "--path-format=absolute", "--git-common-dir", "--show-toplevel"],
+                                  env=env, capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise ClaimIdentityError("negative native Git identity is unavailable") from exc
+        lines = done.stdout.splitlines()
+        if done.returncode or len(lines) != 2 or not all(Path(line).is_absolute() and Path(line).is_dir() for line in lines):
+            raise ClaimIdentityError("negative native Git identity is ambiguous")
+        common, root = (str(Path(line).resolve()) for line in lines)
+        if not Path(_prefix(pattern)).is_relative_to(root):
+            raise ClaimIdentityError("negative native claim escapes its observed root")
+        return common, root
+
     def _native_identity(self, pattern: str) -> tuple[str, str]:
         key = self._identity_prefix(pattern)
         env = os.environ.copy()
@@ -359,7 +593,7 @@ class ClaimScopeResolver:
             env.pop(name, None)
         def git(*args):
             try:
-                done = subprocess.run(["git", "--no-optional-locks", "-C", key, *args], env=env, capture_output=True, text=True, timeout=10)
+                done = native_git.run(["git", "--no-optional-locks", "-C", key, *args], env=env, capture_output=True, text=True, timeout=10)
             except (OSError, subprocess.SubprocessError) as exc:
                 raise ClaimIdentityError("metadata claim Git identity is unavailable") from exc
             if done.returncode:
@@ -385,13 +619,13 @@ class ClaimScopeResolver:
         if len(lines) != 2 or not all(Path(line).is_absolute() and Path(line).is_dir() for line in lines):
             raise ClaimIdentityError("metadata claim Git identity is ambiguous")
         common, root = (str(Path(line).resolve()) for line in lines)
-        before = self._registry_stamp(common)
+        before = self._registry_observation(common)
         binding = (before, configuration)
         if self.registry_stamps.get(common) == binding:
             registered = self.registered[common]
         else:
             registered = tuple(str(Path(item[len("worktree "):]).resolve()) for item in git("worktree", "list", "--porcelain", "-z").split("\0") if item.startswith("worktree "))
-        if self._registry_stamp(common) != before or git("config", "--null", "--show-origin", "--list") != configuration:
+        if self._registry_observation(common) != before or git("config", "--null", "--show-origin", "--list") != configuration:
             raise ClaimIdentityError("metadata claim worktree identity changed during discovery")
         if registered.count(root) != 1:
             raise ClaimIdentityError("metadata claim checkout is not uniquely registered")
@@ -409,22 +643,24 @@ class ClaimScopeResolver:
             raise
 
     def conflicts(self, left: str, right: str, *, left_workspaces=(), right_workspaces=()) -> bool:
-        raw_left, raw_right = plain(left), plain(right)
+        raw_left, raw_right = self._lexical(plain, left), self._lexical(plain, right)
         virtual_left = re.match(r"^[A-Za-z][A-Za-z0-9_-]*:", raw_left) is not None
         virtual_right = re.match(r"^[A-Za-z][A-Za-z0-9_-]*:", raw_right) is not None
         if virtual_left or virtual_right:
             return virtual_left and virtual_right and _segments_intersect(raw_left, raw_right)
         a, b = self._physical(left, left_workspaces), self._physical(right, right_workspaces)
-        if Path(a).is_absolute() == Path(b).is_absolute() and _patterns_intersect(_parts(a), _parts(b)):
+        path_a, path_b = self._lexical(Path, a), self._lexical(Path, b)
+        parts_a, parts_b = self._lexical(_parts, a), self._lexical(_parts, b)
+        if path_a.is_absolute() == path_b.is_absolute() and _patterns_intersect(parts_a, parts_b):
             return True
-        if not Path(a).is_absolute() or not Path(b).is_absolute():
+        if not path_a.is_absolute() or not path_b.is_absolute():
             # No absolute context was supplied for these ordinary source
             # paths. The invoking process's checkout is not their identity.
-            if Path(a).is_absolute() == Path(b).is_absolute():
+            if path_a.is_absolute() == path_b.is_absolute():
                 return False
-            absolute, relative = (_parts(a), _parts(b)) if Path(a).is_absolute() else (_parts(b), _parts(a))
+            absolute, relative = (parts_a, parts_b) if path_a.is_absolute() else (parts_b, parts_a)
             return _mixed_paths_intersect(absolute, relative)
-        left_hint, right_hint = _hint(a), _hint(b)
+        left_hint, right_hint = self._lexical(_hint, a), self._lexical(_hint, b)
         try:
             left_identity = self._scope_identity(a)
             right_identity = self._scope_identity(b)
@@ -440,18 +676,19 @@ class ClaimScopeResolver:
                 raise
             # No project metadata is implicated and no repository identity is
             # available. Preserve physical/lexical source-path behavior only.
-            raw_a, raw_b = _parts(plain(left)), _parts(plain(right))
-            if Path(plain(left)).is_absolute() == Path(plain(right)).is_absolute():
+            raw_a, raw_b = self._lexical(_parts, raw_left), self._lexical(_parts, raw_right)
+            left_absolute = self._lexical(Path, raw_left).is_absolute()
+            if left_absolute == self._lexical(Path, raw_right).is_absolute():
                 return _patterns_intersect(raw_a, raw_b)
-            absolute, relative = (raw_a, raw_b) if Path(plain(left)).is_absolute() else (raw_b, raw_a)
+            absolute, relative = (raw_a, raw_b) if left_absolute else (raw_b, raw_a)
             return _mixed_paths_intersect(absolute, relative)
         if left_identity is None or right_identity is None:
             if left_identity is None and right_identity is None:
                 return False
             ordinary, metadata, identity = (a, b, right_identity) if left_identity is None else (b, a, left_identity)
             common, root = identity
-            relative = Path(metadata).relative_to(root).as_posix()
-            if not _metadata_suffixes(_parts(relative)):
+            relative = self._lexical(_relative_path, metadata, root)
+            if not _metadata_suffixes(self._lexical(_parts, relative)):
                 return False
             return any(Path(checkout).is_relative_to(_prefix(ordinary)) for checkout in self.registered[common])
         left_common, left_root = left_identity
@@ -459,11 +696,11 @@ class ClaimScopeResolver:
         if left_common != right_common:
             return False
         try:
-            relative_a = Path(a).relative_to(left_root).as_posix()
-            relative_b = Path(b).relative_to(right_root).as_posix()
+            relative_a = self._lexical(_relative_path, a, left_root)
+            relative_b = self._lexical(_relative_path, b, right_root)
         except ValueError as exc:
             raise ClaimIdentityError("metadata claim escapes its verified checkout") from exc
-        return any(_patterns_intersect(x, y) for x in _metadata_suffixes(_parts(relative_a)) for y in _metadata_suffixes(_parts(relative_b)))
+        return any(_patterns_intersect(x, y) for x in _metadata_suffixes(self._lexical(_parts, relative_a)) for y in _metadata_suffixes(self._lexical(_parts, relative_b)))
 
 
 def claim_conflicts(left: str, right: str, *, left_workspaces=(), right_workspaces=()) -> bool:

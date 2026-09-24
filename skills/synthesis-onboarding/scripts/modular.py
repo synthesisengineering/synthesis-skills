@@ -144,6 +144,10 @@ def runtime_files(source):
             # Runtime imports and data remain together; no service installer
             # or hook is executed merely because its bytes are available.
             result.add(relative.as_posix())
+    # Conformance imports the shared supported-surface registry. Include its
+    # stdlib-only module without activating or exposing the autopilot skill.
+    if "skills/synthesis-agent-conformance/scripts/conformance.py" in result:
+        result.add("skills/synthesis-autopilot/scripts/capabilities.py")
     return {name: _entry(source / name) for name in sorted(result)}
 
 

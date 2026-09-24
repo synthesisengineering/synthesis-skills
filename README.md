@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.145.0** adds autopilot 3.0.0: durable outcome contracts, adaptive
+workflows, shared resource budgets, verified repair and capability-based recovery.
+
 Release **4.144.1** repairs public guard runtime dependencies and bounds repeated
 Stop feedback while retaining failed health and unfinished work.
 

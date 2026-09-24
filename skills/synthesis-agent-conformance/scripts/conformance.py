@@ -7,6 +7,7 @@ import argparse
 import ast
 import hashlib
 import json
+import importlib.util
 import os
 import re
 import subprocess
@@ -2453,7 +2454,18 @@ CAPABILITY_NAMES = (
     "workspace",
     "browser",
 )
-CAPABILITY_CLIENTS = ("claude-code", "codex-desktop", "codex-cli")
+def supported_agent_surfaces() -> dict:
+    """Read support levels from the same registry used for run admission."""
+    path = Path(__file__).resolve().parents[2] / "synthesis-autopilot/scripts/capabilities.py"
+    spec = importlib.util.spec_from_file_location("synthesis_conformance_surfaces", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("supported agent surface registry is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.supported_surfaces()["surfaces"]
+
+
+CAPABILITY_CLIENTS = tuple(key for key, item in supported_agent_surfaces().items() if item["level"] == "native")
 CAPABILITY_EVIDENCE_KINDS = (
     "live-read-only",
     "client-health",
@@ -2468,7 +2480,8 @@ def capability_checks(
 ) -> list[Check]:
     """Report capability outcomes from timestamped read-only evidence."""
     checks: list[Check] = []
-    for client in ("claude", "codex"):
+    clients = sorted({item["dialect"] for item in supported_agent_surfaces().values() if item["level"] == "native"})
+    for client in clients:
         binary = resolve_client_binary(client)
         add(
             checks,

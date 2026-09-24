@@ -372,7 +372,11 @@ def _refresh_coordination_board(path: Path, *, passive_stop: bool = False) -> st
     if problems:
         return "coordination board is invalid after refresh: " + "; ".join(map(str, problems))
     passive_hit = passive_stop and lease.get("cache_hit") is True and isinstance(lease.get("age_seconds"), (int, float)) and 0 <= lease["age_seconds"] < 300
-    if not lease.get("configured") or not (lease.get("refreshed") or passive_hit) or lease.get("error"):
+    # Match coordination.require_fresh_board: a valid local-only board has
+    # no remote authority to refresh. Declared but missing/unreadable lease
+    # configuration is reported by coordination as an error, never local-only.
+    if (type(lease.get("configured")) is not bool or lease.get("error")
+            or (lease["configured"] and not (lease.get("refreshed") is True or passive_hit))):
         return "coordination lease refresh failed: " + str(
             lease.get("error") or "remote authority was not refreshed"
         )
@@ -1917,7 +1921,8 @@ def _parser() -> argparse.ArgumentParser:
     hook.add_argument(
         "--coordination-board",
         type=Path,
-        default=Path.home() / ".synthesis" / "coordination" / "active-sessions.md",
+        default=Path(os.environ.get("SYNTHESIS_COORDINATION_BOARD") or
+                     Path.home() / ".synthesis" / "coordination" / "active-sessions.md"),
     )
     hook.add_argument(
         "--receipt-root",
