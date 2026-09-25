@@ -90,7 +90,16 @@ def _child_admission(context, child_id):
 
 
 def _child_path(context, client, root, child_id):
-    _child_admission(context, child_id)
+    child = _child_admission(context, child_id)
+    parent_id = child.get("parent_child_id")
+    parent_thread = root
+    if parent_id is not None:
+        _child_admission(context, parent_id)
+        parent = _extension(context["state"])["sources"].get("child:" + parent_id)
+        if parent is None:
+            raise ValueError("Grandchild source requires the enrolled admitted parent")
+        _admitted_source(context, "child:" + parent_id, parent)
+        parent_thread = parent["binding"]["producer"]["thread_id"]
     if client != "codex":
         raise ValueError("this client lacks an owner-qualified child dispatch-to-source locator")
     # This searches bounded headers once at enrollment, never source history.
@@ -126,18 +135,68 @@ def _child_path(context, client, root, child_id):
                 continue
             declared = row.get("payload", {})
             if (row.get("type") == "session_meta" and declared.get("session_id") == root
-                    and declared.get("parent_thread_id") == root and declared.get("agent_path") == child_id):
+                    and declared.get("parent_thread_id") == parent_thread and declared.get("agent_path") == child_id):
                 thread = declared.get("id")
-                native._producer(row, client, root, thread, root, child_id)
+                native._producer(row, client, root, thread, parent_thread, child_id)
                 matches.append((candidate, thread))
     if len(matches) != 1:
         raise ValueError("child source native header join is absent or ambiguous")
     return *matches[0], {"root": str(directory), "entries": count, "header_bytes": read_bytes,
-                         "complete_within_root": True, "authority_granted": False}
+                         "complete_within_root": True, "parent_thread_id": parent_thread, "authority_granted": False}
+
+
+def _worker_source(context, handle):
+    """Join captured bytes through the existing admitted native worker receipt."""
+    proof = read_admission_observation(context)
+    child_id = handle.removeprefix("worker:")
+    run_state._id(child_id, "worker child")
+    child = context["state"].get("extensions", {}).get("workflow", {}).get("children", {}).get(child_id)
+    if (not child or child.get("mode") != "native-cli" or child.get("integration_owner") != proof["session_uuid"]
+            or child.get("owner", {}).get("native_ref") != proof["native_ref"]):
+        raise ValueError("transport source needs its admitted native CLI child and current parent")
+    receipt_id = child.get("worker_receipt_id")
+    bindings = {key: context["state"][key] for key in ("run_id", "contract_digest", "profile_digest")}
+    if not receipt_id or not context["verify_receipt"](receipt_id, "native_worker", bindings):
+        raise ValueError("transport source requires a current owner-issued worker receipt")
+    data = child.get("worker_observation")
+    if not isinstance(data, dict): raise ValueError("worker observation is absent")
+    from delegation_boundary import verify_worker_observation
+    if not verify_worker_observation(data, context):
+        raise ValueError("worker transport custody no longer matches its current raw bytes")
+    client, producer = child.get("client"), data.get("producer")
+    if client not in {"codex", "claude", "muse"} or not isinstance(producer, str) or not producer.startswith(client + ":"):
+        raise ValueError("worker transport has no native session identity; startup remains unresolved")
+    session = producer.split(":", 1)[1]
+    receipt = safe_path(data["receipt_path"], Path(context["project"]))
+    manifest = native._json(receipt.read_bytes())
+    dialect = {"codex": "codex.exec_json", "claude": "claude.print_stream"}.get(client)
+    path = receipt.parent / "stdout.jsonl"
+    if client == "muse":
+        # CLI --json is a projection and is not the durable raw record stream.
+        startup = manifest.get("startup")
+        if not isinstance(startup, dict) or startup.get("session_id") != session:
+            raise ValueError("Muse worker lacks a retained durable source join; CLI projection cannot substitute")
+        root = safe_path(Path(startup["data_root"]) / "muse" / "sessions", Path(context["project"]))
+        paths = list(root.glob("*/*/*/" + session + "/session.jsonl"))
+        if len(paths) != 1: raise ValueError("Muse worker durable source is missing or ambiguous")
+        path = safe_path(paths[0], Path(context["project"]))
+    custody = {"kind": "owner-issued-native-worker", "child_id": child_id, "task_id": child["task_id"],
+        "receipt_id": receipt_id, "receipt_digest": data["receipt_digest"], "parent_native_ref": proof["native_ref"],
+        "dialect": dialect, "invocation_id": native._digest([context["state"]["run_id"], child_id, data["receipt_digest"]]),
+        "native_permission_boundary": deepcopy(data["boundary"]), "external_native_acceptance": "UNKNOWN",
+        "authority_granted": False}
+    return proof, client, session, session, None, None, path, custody
 
 
 def _admitted_source(context, handle, source):
     proof, client, root, current_path = _root(context)
+    if handle.startswith("worker:"):
+        owner, client, session, _, _, _, path, custody = _worker_source(context, handle)
+        if (source["qualification"]["session_uuid"] != owner["session_uuid"] or
+                source["qualification"].get("discovery") != custody or source["binding"]["path"] != str(path.absolute()) or
+                source["binding"]["producer"]["client"] != client or source["binding"]["producer"]["thread_id"] != session):
+            raise ValueError("worker transport differs from its admitted custody")
+        return
     if (source["binding"]["producer"]["root_session_id"] != root
             or source["binding"]["producer"]["client"] != client
             or source["qualification"]["session_uuid"] != proof["session_uuid"]):
@@ -145,18 +204,29 @@ def _admitted_source(context, handle, source):
     if handle == "root" and str(current_path.absolute()) != source["binding"]["path"]:
         raise ValueError("native root source locator changed; explicit recovery is required")
     if handle != "root":
-        _child_admission(context, handle[6:])
+        child = _child_admission(context, handle[6:])
+        stream, info = native._open(Path(source["binding"]["path"]))
+        with stream:
+            native._header(stream, source["binding"], info.st_size)
+        parent_id = child.get("parent_child_id")
+        if parent_id is not None:
+            parent = _extension(context["state"])["sources"].get("child:" + parent_id)
+            if parent is None or source["binding"]["producer"]["parent_thread_id"] != parent["binding"]["producer"]["thread_id"]:
+                raise ValueError("Grandchild native parent identity changed")
+            _admitted_source(context, "child:" + parent_id, parent)
 
 
 def _source(context, handle):
     proof, client, root, path = _root(context)
+    if isinstance(handle, str) and handle.startswith("worker:"):
+        return _worker_source(context, handle)
     if handle == "root":
         return proof, client, root, root, None, None, path, None
     if not isinstance(handle, str) or not handle.startswith("child:") or len(handle) > 512:
         raise ValueError("source handle must name root or an admitted workflow child")
     child = handle.removeprefix("child:")
     path, thread, discovery = _child_path(context, client, root, child)
-    return proof, client, root, thread, root, child, path, discovery
+    return proof, client, root, thread, discovery["parent_thread_id"], child, path, discovery
 
 
 def _frontier(path):
@@ -183,7 +253,9 @@ def _enroll(context, handle, mode, *, start_at_frontier=True, start_offset=None,
         frontier, anchor = start_offset, None
     binding, cursor = native.enroll_source(path, client=client, expected_root_session_id=root,
         expected_thread_id=thread, expected_parent_thread_id=parent, expected_agent_id=agent,
-        source_handle=handle, mode=mode, start_offset=frontier, source_epoch=source_epoch)
+        source_handle=handle, mode=mode, start_offset=frontier, source_epoch=source_epoch,
+        dialect=discovery.get("dialect") if discovery else None,
+        invocation_id=discovery.get("invocation_id") if discovery and discovery.get("dialect") else None)
     return {"binding": binding, "cursor": cursor, "coverage": None, "history": [], "ranges": [],
             "enrollment": {"generation": binding["generation"], "offset": frontier, "anchor": anchor,
                            "digest": native._digest([binding["generation"], frontier, anchor])},
@@ -198,6 +270,9 @@ def _prepare_enroll(context, payload):
     _fields(payload, {"source_handle", "mode"})
     extension = _extension(context["state"])
     handle = payload["source_handle"]
+    if handle != "root" and ("root" not in extension["sources"]
+            or payload["mode"] != extension["sources"]["root"]["binding"]["mode"]):
+        raise ValueError("subordinate source must retain the admitted root provenance mode")
     if handle in extension["sources"]:
         existing = extension["sources"][handle]
         if existing["binding"]["mode"] != payload["mode"]:
@@ -233,6 +308,10 @@ def _prepare_observe(context, payload):
     for field in ("task_id", "attempt_id"):
         if payload[field] is not None:
             run_state._id(payload[field], field)
+    if isinstance(handle, str) and handle.startswith("worker:"):
+        child = context["state"]["extensions"]["workflow"]["children"][handle.removeprefix("worker:")]
+        if payload["task_id"] != child["task_id"] or payload["attempt_id"] is not None:
+            raise ValueError("worker observations must bind the admitted task; attempt outcome remains owner-derived")
     target = payload["through_event"]
     if target is not None:
         _fields(target, {"generation", "offset", "length", "sha256"})
@@ -274,6 +353,8 @@ def _reduce_observe(state, prepared, context):
                 "offset": event["native"]["offset"]}
     extension["latest_batch"] = batch
     result["extensions"]["native_observations"] = extension
+    from resource_policy import ingest_native
+    ingest_native(result, prepared["handle"], batch)
     return result
 
 
@@ -653,7 +734,36 @@ def _accepted_rearm_message(context, event):
     return False
 
 
+def current_muse_page(context, source_handle, message, connection_binding, locators):
+    """Fresh owner admission plus current raw ranges; page JSON stays a hint."""
+    read_admission_observation(context)
+    head = _current_head(context)
+    source = _extension(context["state"])["sources"].get(source_handle)
+    if source is None: raise ValueError("page source is not enrolled")
+    _admitted_source(context, source_handle, source)
+    if (not isinstance(locators, dict) or any(not isinstance(row, dict)
+            or type(row.get("offset")) is not int or row["offset"] < source["cursor"]["enrolled_from"]
+            for row in locators.values())):
+        raise ValueError("page ranges precede enrolled scope; explicit historical reconciliation required")
+    result = native.revalidate_muse_page(source["binding"], message, connection_binding, locators)
+    if head != _current_head(context): raise ValueError("journal changed during page reconciliation")
+    return {**result, "run_id": context["state"]["run_id"], "revision": context["state"]["revision"]}
+
+
+def _prepare_page(context, payload):
+    _fields(payload, {"source_handle", "message", "connection_binding", "locators", "task_id", "attempt_id"})
+    checked = current_muse_page(context, payload["source_handle"], payload["message"], payload["connection_binding"], payload["locators"])
+    # The ordinary source reader is the only cursor owner. Wire cursors cannot
+    # skip source bytes, reset a generation, or turn unknown history into clear.
+    prepared = _prepare_observe(context, {"source_handle": payload["source_handle"], "through_event": None,
+        "task_id": payload["task_id"], "attempt_id": payload["attempt_id"]})
+    prepared["batch"]["page_reconciliation"] = {key: value for key, value in checked.items() if key != "raw_events"}
+    return prepared
+
+
 def register(engine):
+    engine.register_command("native.page", _reduce_observe, terminal_safe=True)
+    engine.register_preparer("native.page", _prepare_page)
     engine.register_command("native.enroll", _reduce_enroll)
     engine.register_preparer("native.enroll", _prepare_enroll)
     engine.register_command("native.observe", _reduce_observe, terminal_safe=True)

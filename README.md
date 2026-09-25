@@ -18,11 +18,15 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
-Release **4.147.0** adds autopilot 3.2.0: the native-observation controller,
-productive persistence, current cancellation gates and verified project closure.
+Release **4.148.0** adds autopilot 3.3.0: current native transport evidence,
+consumer-bound domain quality, decisive uncertainty and explicit resource accounting.
+It also delivers the native-observation controller, productive persistence,
+current cancellation gates, verified project closure, qualified outcome
+evaluation, shared decision ownership and verified decision pages. The reviewed
+4.146.0 and 4.147.0 development candidates are included in this release.
 
-Release **4.146.0** adds autopilot 3.1.0: qualified outcome evaluation,
-current domain evidence, shared decision ownership and verified decision pages.
+Release **4.145.7** preserves each new native cache generation between refresh
+commands and restores verified history when a native command is interrupted.
 
 Release **4.145.6** preserves retained native Git recovery outside client-owned
 cache trees and verifies the quiet window after mandatory restoration.

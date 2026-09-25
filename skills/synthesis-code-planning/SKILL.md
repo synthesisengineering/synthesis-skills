@@ -6,7 +6,7 @@ user-invocable: false
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -59,6 +59,8 @@ Compare distinct viable approaches only when a real choice remains. If the const
   - [Drawback 2]
 
 Investigate the uncertainty that could change the selection. Generate more approaches when they add a materially different tradeoff, not to meet an option quota.
+
+For diagnosis, record the hypothesis, a falsifiable prediction and the observation that would change the approach before editing code. Use the thinking framework's [decisive-uncertainty method](../synthesis-thinking-framework/references/decisive-uncertainty.md); preserve refuted predictions and re-open only their affected acceptance closure. Inspect the actual consumer program as well as its result so a test that prints a fixed answer cannot certify the fix.
 
 ### Step 3: Evaluate and select
 

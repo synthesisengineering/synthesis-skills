@@ -14,7 +14,7 @@ import json
 import math
 
 
-ADAPTER_VERSION = "codex-dialect-v1"
+ADAPTER_VERSION = "codex-dialect-v2"
 SUPPORTED_SCHEMAS = (
     "session_meta", "turn_context", "token_usage_record", "event_msg.token_count",
     "event_msg.task_started", "event_msg.task_complete", "event_msg.turn_aborted",
@@ -273,7 +273,85 @@ def _goal(goal, producer):
             "counter_scope": "native_goal_epoch_only", "portable_completion": False}
 
 
+def qualify_transport(header, *, expected_session_id, invocation_id):
+    """A CLI header binds only this captured invocation, never the PM parent."""
+    _bounded(header); _text(expected_session_id, "expected session"); _text(invocation_id, "invocation")
+    if header != {"type": "thread.started", "thread_id": expected_session_id}:
+        raise DialectError("exec stream lacks the expected thread header")
+    return {"client": "codex", "surface": "captured-transport", "thread_id": expected_session_id,
+            "root_session_id": expected_session_id, "parent_thread_id": None, "agent_path": None,
+            "dialect": "codex.exec_json", "invocation_id": invocation_id,
+            "adapter_version": ADAPTER_VERSION, "authentication": "owner_admission_required", "root_authority": False}
+
+
+def _exec_json(message, binding):
+    """Codex exec --json has no app-server request IDs or response usage IDs."""
+    producer = _producer(binding.get("producer"))
+    invocation = _text(binding.get("invocation_id", producer.get("invocation_id")), "invocation identity")
+    mode, locator = binding.get("mode", "synthetic"), binding.get("source_locator")
+    kind = message.get("type")
+    item = _object(message["item"], "exec item") if "item" in message else {}
+    if "thread_id" in message and message["thread_id"] != producer["thread_id"]:
+        raise DialectError("exec stream thread changed")
+    def fact(kind, status, data, *, call=None, index=0):
+        row = {**message, "uuid": item.get("id")}
+        value = _fact(kind, status, {**data, "dialect": "codex.exec_json", "invocation_id": invocation},
+                      row, mode=mode, source_locator=locator, call_id=call, subrecord=index)
+        value["native"]["turn_identity"] = None
+        return value
+    if kind == "thread.started":
+        _text(message.get("thread_id"), "thread identity")
+        return [fact("session.started", "observed", {"native_status": "started", "portable_completion": False})]
+    if kind == "turn.started":
+        return [fact("lifecycle.started", "observed", {"native_status": "started", "portable_completion": False})]
+    if kind in {"error", "turn.failed"}:
+        return [fact("runtime.error" if kind == "error" else "lifecycle.completed", "failed", {
+            "native_status": "failed", "native_error": message.get("error", message.get("message")),
+            "portable_completion": False})]
+    if kind == "turn.completed":
+        counters = _counts(message.get("usage"))
+        if counters is None: raise DialectError("completed exec turn lacks usage")
+        data = _usage(producer, grammar="codex.exec_turn_usage", last=counters)
+        data.update(phase="aggregate", aggregation="turn_aggregate", countable=False,
+                    raw_usage=deepcopy(message["usage"]), counters_digest=_digest(counters),
+                    missingness=["no_native_turn_or_response_id", "aggregate_not_additive_to_response_usage", "full_execution_tree_not_proven"])
+        return [fact("lifecycle.completed", "observed", {"native_status": "completed", "portable_completion": False}),
+                fact("usage.snapshot", "observed", data, index=1)]
+    if kind not in {"item.started", "item.updated", "item.completed"}:
+        raise DialectError("unsupported exec JSON event")
+    item = _object(message.get("item"), "exec item")
+    item_id = _text(item.get("id"), "exec item identity")
+    if item.get("type") in {"agent_message", "reasoning"}:
+        if not isinstance(item.get("text"), str): raise DialectError("text item lacks text")
+        return []
+    if item.get("type") != "command_execution":
+        raise DialectError("unsupported exec item; retain a coverage gap")
+    command = _text(item.get("command"), "command")
+    output, status, code = item.get("aggregated_output"), item.get("status"), item.get("exit_code")
+    if not isinstance(output, str): raise DialectError("command output must be text")
+    call = invocation + ":" + item_id
+    if kind == "item.started":
+        if status != "in_progress" or code is not None:
+            raise DialectError("contradictory command start")
+        return [fact("tool.call", "observed", {"name": "command_execution", "namespace": "codex.exec",
+            "arguments": {"command": command}, "interpretation": "native_command_observation"}, call=call)]
+    if kind == "item.updated":
+        if status != "in_progress" or code is not None: raise DialectError("contradictory command update")
+        return [fact("tool.progress", "observed", {"command": command, "output": output,
+                     "native_status": status, "portable_completion": False}, call=call)]
+    if status not in {"completed", "failed"} or type(code) is not int:
+        raise DialectError("command terminal lacks exact process result")
+    if status == "completed" and code != 0: raise DialectError("successful command has nonzero exit")
+    return [fact("tool.result", "failed" if code != 0 or status == "failed" else "observed", {
+        "output": {"exit_code": code, "output": output}, "command": command,
+        "native_status": status, "is_error": code != 0 or status == "failed",
+        "portable_completion": False}, call=call)]
+
+
 def decode_wire(message, connection_binding):
+    if connection_binding.get("dialect") == "codex.exec_json":
+        _bounded(message); _object(message, "exec record")
+        return _exec_json(message, connection_binding)
     _bounded(message); _object(message, "wire message")
     producer = _producer(connection_binding.get("producer"))
     mode = connection_binding.get("mode", "synthetic")
@@ -370,7 +448,7 @@ def request_shape(operation, native_target, payload):
 
 
 def describe_contract():
-    return {"adapter_version": ADAPTER_VERSION, "client": "codex", "supported_schemas": list(SUPPORTED_SCHEMAS),
+    return {"adapter_version": ADAPTER_VERSION, "client": "codex", "supported_schemas": list(SUPPORTED_SCHEMAS), "transport_dialects": ["codex.exec_json", "codex.app_server"],
             "wire_methods": list(WIRE_METHODS), "wire_schema_build": "0.155.0-alpha.16.4",
             "request_operations": sorted(REQUESTS), "transport_reachability": "unqualified",
             "authentication": "owner_admission_required", "portable_completion": False,

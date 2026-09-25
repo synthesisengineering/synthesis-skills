@@ -102,3 +102,34 @@ def test_boolean_does_not_satisfy_numeric_consumer_result(checks, consumer):
     for identity, path in (("spec", spec), ("program", program)):
         consumer["artifacts"][identity]["digest"] = hashlib.sha256(path.read_bytes()).hexdigest()
     assert checks.observe(consumer, {"check_id": "spec"})["passed"] is False
+
+
+@pytest.mark.parametrize("stdout,expected_pass", [("null", True), ("self-reported PASS", False), ("", False), ("NaN", False)])
+def test_null_result_requires_successfully_decoded_json(checks, consumer, stdout, expected_pass):
+    spec = consumer["project"] / "check.json"
+    value = json.loads(spec.read_text()); value["expected"] = None
+    spec.write_text(json.dumps(value))
+    program = consumer["project"] / "check.py"
+    program.write_text("print(" + repr(stdout) + ")\n")
+    for identity, path in (("spec", spec), ("program", program)):
+        consumer["artifacts"][identity]["digest"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    result = checks.observe(consumer, {"check_id": "spec"})
+    assert result["execution"]["returncode"] == 0
+    assert result["observations"]["observed"] is None
+    assert result["passed"] is expected_pass
+    assert result["observations"]["consumer_verified"] is expected_pass
+
+
+def test_ambiguous_historical_null_needs_fresh_decoding_proof(checks, consumer):
+    spec = consumer["project"] / "check.json"
+    value = json.loads(spec.read_text()); value["expected"] = None; spec.write_text(json.dumps(value))
+    program = consumer["project"] / "check.py"; program.write_text('print("null")\n')
+    for identity, path in (("spec", spec), ("program", program)):
+        consumer["artifacts"][identity]["digest"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    data = checks.observe(consumer, {"check_id": "spec"})
+    criterion = consumer["state"]["contract"]["criteria"][0]
+    assert checks.accept({"data": data}, consumer["state"], criterion, consumer)
+    # Simulated historical format lacks the decoding fact; old observers used
+    # the same null value for a parse failure. Preserve it but require a rerun.
+    data["execution"].pop("json_decoded")
+    assert not checks.accept({"data": data}, consumer["state"], criterion, consumer)

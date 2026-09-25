@@ -411,7 +411,7 @@ def _observe_domain_review(context, arguments):
                 if isinstance(ref, dict) and ref.get("artifact_id") == opaque:
                     ref["artifact_id"] = original
         controls.append(normalized)
-    result = derive(package, response["assessment"], controls)
+    result = derive(package, response["assessment"], controls, context=context)
     reviewer = arguments["client"] + "-cli:" + execution["session_id"]
     manifest = package["manifest"]
     data = {"criterion_id": arguments["criterion_id"], "artifact_id": arguments["artifact_id"],
@@ -421,7 +421,8 @@ def _observe_domain_review(context, arguments):
             "findings": [finding["description"] for row in response["assessment"]["criteria"] for finding in row["findings"]],
             "calibrated": result["calibrated"], "passed": result["calibrated"] and result["observations"]["verdict"] == "PASS",
             "reservation_id": arguments["reservation_id"], "execution": execution,
-            "domain_review": {"assessment": response["assessment"], "input_digests": package["input_digests"]},
+            "domain_review": {"assessment": response["assessment"], "input_digests": package["input_digests"],
+                              "method_provenance": package["method_provenance"]},
             "calibration": {"manifest_id": arguments["calibration_manifest_id"], "manifest_digest": package["manifest_digest"],
                 "reviewer": reviewer, "rubric_artifact_id": manifest["rubric_artifact_id"], "rubric_digest": manifest["rubric_digest"],
                 "observations": controls, "result": result["calibration_result"]}}

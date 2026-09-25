@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 
 DOMAINS = {"software": "behavior", "research": "sources", "writing": "reader",
-           "data": "reconcile", "browser": "outcome", "knowledge": "recovery", "operations": "reconcile"}
+           "data": "reconcile", "browser": "outcome", "project": "recovery", "knowledge": "recovery", "operations": "reconcile"}
 CORE_CHECKS = ("core.outcome", "core.authority", "core.evidence", "core.recovery")
 MAX_NODES = 256
 TERMINAL_CHILD = {"complete", "partial", "failed", "blocked", "cancelled"}
@@ -86,6 +86,8 @@ def _base(state, context, *, current=True):
 
 
 def _admission_open(flow, context):
+    from resource_policy import require_native_headroom
+    require_native_headroom(flow)
     ledger = flow.get("budget")
     if ledger and ledger.get("breaches"):
         raise ValueError("Observed resource overrun blocks further work admission")
@@ -118,8 +120,10 @@ def _evidence(state, context, ident, kind):
 
 def resolve_profile(dimensions, layers=None):
     """Resolve explainable workflow preferences; never infer an action grant."""
-    _object(dimensions, {"domains", "uncertainty", "effect", "horizon", "parallelizable"},
+    _object(dimensions, {"domains", "uncertainty", "effect", "horizon", "parallelizable", "classification"},
             {"domains", "uncertainty", "effect", "horizon", "parallelizable"})
+    from resource_policy import classify_dimensions
+    classify_dimensions(dimensions.get("classification"))
     _strings(dimensions["domains"], nonempty=True)
     if set(dimensions["domains"]) - DOMAINS.keys():
         raise ValueError("Unknown domain")
@@ -199,6 +203,8 @@ def configure(state, payload, context):
         if "budget" in old:
             flow["budget"] = old["budget"]  # Amendments never reset the total-run ledger.
         flow["retained_children"] = old.get("retained_children", []) + list(old["children"].values())
+        if "execution_policy" in old:
+            flow["execution_policy"] = copy.deepcopy(old["execution_policy"])
     extensions["workflow"] = flow
     return result
 
@@ -259,7 +265,9 @@ def ready_tasks(state, now=None):
         return []
     graph = flow.get("graph", {"nodes": {}, "wip_limit": 1})
     nodes = graph["nodes"]
-    available = graph["wip_limit"] - sum(n["status"] == "running" for n in nodes.values())
+    policy = flow.get("execution_policy", {})
+    limit = min(graph["wip_limit"], policy.get("preferences", {}).get("wip_limit", graph["wip_limit"]))
+    available = limit - sum(n["status"] == "running" for n in nodes.values())
     if available <= 0:
         return []
     downstream = {ident: [] for ident in nodes}
@@ -313,6 +321,8 @@ def task(state, payload, context):
         raise ValueError("Delegated work requires integration disposition")
     action = payload["action"]
     if action == "start":
+        from resource_policy import require_execution_capabilities
+        require_execution_capabilities(state, context)
         _admission_open(flow, context)
         if node["id"] not in ready_tasks(result, context["now"]):
             raise ValueError("Task is not dependency, budget, retry and WIP ready")
@@ -363,7 +373,7 @@ def task(state, payload, context):
 
 
 def budget(state, payload, context):
-    _object(payload, {"limits", "deadline"}, {"limits", "deadline"})
+    _object(payload, {"limits", "deadline", "native_token_resource"}, {"limits", "deadline"})
     result, flow = _base(state, context)
     if not isinstance(payload["limits"], dict) or not payload["limits"] or len(payload["limits"]) > 16:
         raise ValueError("Invalid resource dimensions")
@@ -377,13 +387,17 @@ def budget(state, payload, context):
                 raise ValueError("Unknown provider usage cannot have a hard cap")
         else:
             _integer(limit["limit"])
+    token_resource = payload.get("native_token_resource", "model_tokens" if "model_tokens" in payload["limits"] else None)
+    if token_resource is not None and (token_resource not in payload["limits"] or token_resource not in {"tokens", "model_tokens"}):
+        raise ValueError("Native token resource must name a declared limit")
     if _time(payload["deadline"]) <= _time(context["now"]):
         raise ValueError("Deadline must be in the future")
     if "budget" in flow:
-        if any(flow["budget"][k] != payload[k] for k in ("limits", "deadline")):
+        if any(flow["budget"][k] != payload[k] for k in ("limits", "deadline")) or flow["budget"].get("native_token_resource") != token_resource:
             raise ValueError("Run budget cannot be silently reset or expanded")
         return result
-    flow["budget"] = {"limits": copy.deepcopy(payload["limits"]), "deadline": payload["deadline"], "reservations": {}}
+    flow["budget"] = {"limits": copy.deepcopy(payload["limits"]), "deadline": payload["deadline"], "reservations": {},
+                      "native_token_resource": token_resource}
     return result
 
 
@@ -445,7 +459,7 @@ def reserve(state, payload, context):
         if parent is None or parent["status"] != "reserved":
             raise ValueError("Parent reservation unavailable")
         for name, amount in amounts.items():
-            remaining = parent["amounts"][name] - sum(_committed(ledger, child, name) for child in _children(ledger, parent_id))
+            remaining = parent["amounts"][name] - (parent["actual"] or {}).get(name, 0) - sum(_committed(ledger, child, name) for child in _children(ledger, parent_id))
             if amount > remaining:
                 raise ValueError("Nested reservation exceeds parent envelope")
     else:
@@ -527,7 +541,7 @@ def _settle(ledger, ident, actual):
 def settle(state, payload, context):
     _object(payload, {"reservation_id", "actual"}, {"reservation_id", "actual"})
     result, flow = _base(state, context, current=False)
-    if any(child["reservation_id"] == payload["reservation_id"] and child["audit_status"] == "required" for child in flow["children"].values()) and payload["actual"] is not None:
+    if any(payload["reservation_id"] in {child.get(key) for key in ("reservation_id", "integration_reservation_id", "verification_reservation_id", "recovery_reservation_id")} and child["audit_status"] == "required" for child in flow["children"].values()) and payload["actual"] is not None:
         raise ValueError("Child usage needs verified integration audit")
     _settle(flow["budget"], payload["reservation_id"], payload["actual"])
     return result
@@ -536,9 +550,12 @@ def settle(state, payload, context):
 def dispatch(state, payload, context):
     fields = {"child_id", "task_id", "deliverables", "paths", "criteria", "reservation_id", "integration_reservation_id",
               "integration_owner", "admission_id", "return_contract", "cancellation", "file_contract"}
-    _object(payload, fields | {"admission_requests", "mode", "dispatch_receipt_id", "client", "required_capabilities"}, fields)
+    _object(payload, fields | {"admission_requests", "mode", "dispatch_receipt_id", "client", "required_capabilities",
+                              "verification_reservation_id", "recovery_reservation_id", "parent_child_id"}, fields)
     result, flow = _base(state, context)
     _admission_open(flow, context)
+    from resource_policy import require_execution_capabilities
+    require_execution_capabilities(state, context)
     mode = payload.get("mode", "peer")
     if mode not in {"peer", "artifact-only", "native-cli"}:
         raise ValueError("Unknown delegation mode")
@@ -548,8 +565,8 @@ def dispatch(state, payload, context):
             raise ValueError("Artifact-only delegation needs the observed canonical child identity")
     else:
         _id(ident)
-    if ident in flow["children"]:
-        raise ValueError("Child identity already exists")
+    if ident in flow["children"] or any(row["child_id"] == ident for row in flow.get("retained_children", [])):
+        raise ValueError("Child identity already exists in the retained execution tree")
     node = _node(flow, payload["task_id"])
     if node["id"] not in ready_tasks(result, context["now"]):
         raise ValueError("Delegation task is not ready")
@@ -604,6 +621,8 @@ def dispatch(state, payload, context):
         raise ValueError("Worker budget reservation unavailable")
     if not integration or integration["status"] != "reserved" or integration["category"] != "integration" or not any(integration["amounts"].values()):
         raise ValueError("Reserve integration headroom before dispatch")
+    from resource_policy import require_completion_reserves
+    require_completion_reserves(flow, payload)
     if any(c["reservation_id"] == worker["id"] for c in flow["children"].values()):
         raise ValueError("Worker reservation already assigned")
     flow["children"][ident] = {key: copy.deepcopy(value) for key, value in payload.items() if key != "admission_requests"}
@@ -1026,10 +1045,132 @@ def register_constraints(register_constraint):
     register_constraint("workflow.native_admission", validate_native_command)
 
 
+def resource_plan(state, payload, context):
+    """Atomically reserve the owner's declared work/closure estimates."""
+    _object(payload, {"reservations"}, {"reservations"})
+    rows = payload["reservations"]
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 64:
+        raise ValueError("Resource plan requires a bounded nonempty reservation list")
+    result = state
+    for row in rows:
+        result = reserve(result, row, context)
+    return result
+
+
+def prepare_human_effort(context, payload):
+    """Retain explicit operator reports without pretending to measure people."""
+    from consumer_checks import _json
+    from resource_policy import HUMAN_FIELDS
+    from pathlib import Path
+    import math
+    import os
+    import stat
+    _object(payload, {"artifact_id"}, {"artifact_id"})
+    artifact = context["artifacts"].get(_id(payload["artifact_id"]))
+    if not isinstance(artifact, dict) or artifact.get("role") != "input":
+        raise ValueError("Human effort report must be a registered input")
+    relative = Path(artifact["path"])
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("Human effort report escapes the project")
+    path = Path(context["project"]) / relative
+    if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
+        raise ValueError("Human effort report path is unsafe")
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 65536:
+            raise ValueError("Human effort report exceeds the bounded regular input size")
+        with os.fdopen(fd, 'rb', closefd=False) as stream:
+            raw = stream.read(65537)
+        after = path.lstat()
+        if (len(raw) > 65536 or (info.st_dev, info.st_ino) != (after.st_dev, after.st_ino)
+                or path.is_symlink() or any(parent.is_symlink() for parent in path.parents)
+                or hashlib.sha256(raw).hexdigest() != artifact["digest"]):
+            raise ValueError("Human effort report changed or exceeds its input bound")
+    finally:
+        os.close(fd)
+    row = _json(raw)
+    fields = {"schema_version", "id", "kind", "run_id", "start_revision", "end_revision", "metrics"}
+    _object(row, fields, fields)
+    if row["schema_version"] != 1 or type(row["schema_version"]) is not int or row["kind"] != "operator_reported_human_effort" or row["run_id"] != context["state"]["run_id"]:
+        raise ValueError("Human effort reports grant no measurement or foreign-run authority")
+    _id(row["id"])
+    start = _integer(row["start_revision"])
+    end = _integer(row["end_revision"], 1, context["state"]["revision"])
+    if start >= end or not isinstance(row["metrics"], dict) or not row["metrics"] or set(row["metrics"]) - set(HUMAN_FIELDS):
+        raise ValueError("Human effort report needs a bounded nonempty journal interval and known metrics")
+    for name, amount in row["metrics"].items():
+        if amount is not None and (type(amount) not in {int, float} or not math.isfinite(amount) or not 0 <= amount <= 10**12):
+            raise ValueError("Human effort values are explicit nonnegative numbers or unknown")
+        if amount is not None and not name.endswith('minutes') and type(amount) is not int:
+            raise ValueError("Human interaction counts require integer units")
+    return {**row, "metrics": {name: row["metrics"].get(name) for name in HUMAN_FIELDS},
+            "artifact_id": payload["artifact_id"], "artifact_digest": artifact["digest"],
+            "provenance": "operator_reported; not independently measured", "authority_granted": False}
+
+
+def human_effort(state, prepared, context):
+    result, flow = _base(state, context, current=False)
+    ledger = flow.get("budget")
+    if ledger is None:
+        raise ValueError("Human effort accounting requires a configured resource envelope")
+    rows = ledger.setdefault("human_effort_reports", {})
+    old = rows.get(prepared["id"])
+    if old is not None:
+        if old != prepared:
+            raise ValueError("Human effort report identity is immutable")
+        return result
+    if len(rows) >= 256:
+        raise ValueError("Human effort report capacity reached")
+    if any(prepared["start_revision"] < row["end_revision"] and row["start_revision"] < prepared["end_revision"] for row in rows.values()):
+        raise ValueError("Human effort report intervals overlap; do not double count")
+    rows[prepared["id"]] = copy.deepcopy(prepared)
+    return result
+
+
+def prepare_resource_observe(context, payload):
+    from observation_bridge import current_events
+    _object(payload, {"event_ids"}, {"event_ids"})
+    observed = current_events(context, payload["event_ids"])
+    if observed["status"] != "current" or any(row["kind"] != "usage.snapshot" for row in observed["events"]):
+        raise ValueError("Resource reconciliation requires current admitted native usage observations")
+    groups = {}
+    index = context["state"]["extensions"]["native_observations"]["event_index"]
+    for event in sorted(observed["events"], key=lambda row: (index[row["event_id"]]["revision"], index[row["event_id"]]["position"])):
+        groups.setdefault(index[event["event_id"]]["source_handle"], []).append(event)
+    return {"groups": groups, "bindings": _bindings(context["state"])}
+
+
+def resource_observe(state, prepared, context):
+    from resource_policy import ingest_native
+    result, flow = _base(state, context)
+    if "budget" not in flow or prepared["bindings"] != _bindings(state):
+        raise ValueError("Resource observation requires the current configured budget")
+    for handle, events in prepared["groups"].items():
+        ingest_native(result, handle, {"events": events})
+    return result
+
+
+def prepare_execution_policy(context, payload):
+    from run_admission import read_admission_observation
+    from resource_policy import select_policy
+    _object(payload, {"preference"})
+    read_admission_observation(context)
+    return select_policy(context["state"], payload.get("preference"), context)
+
+
+def execution_policy(state, prepared, context):
+    result, flow = _base(state, context)
+    if {key: prepared["invariants"][key] for key in _bindings(state)} != _bindings(state):
+        raise ValueError("Execution selection is bound to another contract/profile")
+    flow["execution_policy"] = copy.deepcopy(prepared)
+    return result
+
+
 def register_commands(register_command):
     """Register reducers with the engine; the engine owns all writes/admission."""
     for name, reducer in {"configure": configure, "graph": graph, "task": task, "budget": budget,
-                          "reserve": reserve, "settle": settle, "dispatch": dispatch, "return": child_return,
+                          "reserve": reserve, "settle": settle, "resource_plan": resource_plan, "human_effort": human_effort, "resource_observe": resource_observe, "execution_policy": execution_policy, "dispatch": dispatch, "return": child_return,
                           "cancel_child": cancel_child, "worker_record": worker_record, "integrate": integrate, "grade": grade, "progress": progress, "attempt": attempt, "rearm": rearm, "stop_feedback": stop_feedback, "stop_emit": stop_emit}.items():
         register_command("workflow." + name, reducer, allowed_fields=("extensions",))
 
@@ -1626,6 +1767,9 @@ def prepare_grade(state, payload, context):
 
 
 def register_preparers(register_preparer):
+    register_preparer("workflow.execution_policy", prepare_execution_policy)
+    register_preparer("workflow.resource_observe", prepare_resource_observe)
+    register_preparer("workflow.human_effort", prepare_human_effort)
     register_preparer("workflow.attempt", prepare_attempt)
     register_preparer("workflow.progress", prepare_progress)
     register_preparer("workflow.rearm", prepare_rearm)

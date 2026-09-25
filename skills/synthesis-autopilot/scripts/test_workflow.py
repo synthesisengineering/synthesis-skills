@@ -219,11 +219,13 @@ def dispatch_ready(wf, state, context):
     result = ledger(wf, state, context)
     result = call(wf, result, context, "reserve", reservation_id="integrate", amounts={"searches": 2}, category="integration")
     result = call(wf, result, context, "reserve", reservation_id="worker", amounts={"searches": 5}, category="work")
+    for category in ("verification", "recovery"):
+        result = call(wf, result, context, "reserve", reservation_id=category, amounts={"searches": 1}, category=category)
     context = copy.deepcopy(context)
     context["admissions"] = {"child-admission": {"project_id": "project-a", "project_root": "/fixture/project", "session_uuid": "child-seat",
                                                "native_ref": "fixture:child", "claim_hash": "f" * 64, "repository": "/fixture", "branch": "feature/fixture", "paths": ["/fixture/artifact"]}}
     brief = {"child_id": "child-a", "task_id": "build", "deliverables": ["Produce artifact"], "paths": ["/fixture/artifact"],
-             "criteria": ["c1"], "reservation_id": "worker", "integration_reservation_id": "integrate", "integration_owner": "root-seat",
+             "criteria": ["c1"], "reservation_id": "worker", "integration_reservation_id": "integrate", "verification_reservation_id": "verification", "recovery_reservation_id": "recovery", "integration_owner": "root-seat",
              "admission_id": "child-admission", "return_contract": ["artifact_ids", "evidence_ids", "disposition"], "cancellation": "Preserve work and return disposition",
              "file_contract": {"schema_version":1,"immutable_inputs":[],"output_roots":[],"scratch_root":"/fixture/artifact"}}
     context["binding"]["project_root"] = "/fixture/project"
@@ -483,7 +485,7 @@ def test_child_cancellation_preserves_reservation_and_work_until_acknowledged(wf
     child = result["extensions"]["workflow"]["children"]["child-a"]
     assert child["cancellation_requested"] is True
     assert child["disposition"] == "running"
-    assert wf.budget_summary(result)["searches"]["available"] == 3
+    assert wf.budget_summary(result)["searches"]["available"] == 1
     result = call(wf, result, context, "return", child_id="child-a", disposition="cancelled", artifact_ids=["retained"], evidence_ids=[], reason="Stop acknowledged")
     assert result["extensions"]["workflow"]["children"]["child-a"]["artifact_ids"] == ["retained"]
 
@@ -1499,12 +1501,12 @@ def test_real_dispatch_owner_joins_native_source_without_weakening_verifier(worl
     runtime, current, _ = _native_process_fixture(world, monkeypatch)
     current = command(runtime, world, current, "workflow.budget", {"limits": {"units": {"limit": 10, "enforcement": "hard"}},
         "deadline": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})
-    for ident, category, units in (("worker", "work", 5), ("audit", "integration", 1)):
+    for ident, category, units in (("worker", "work", 5), ("audit", "integration", 1), ("verify", "verification", 1), ("recover", "recovery", 1)):
         current = command(runtime, world, current, "workflow.reserve", {"reservation_id": ident, "amounts": {"units": units}, "category": category})
     root = world["project"] / "delegated"
     for sub in ("output", "scratch"): (root / sub).mkdir(parents=True)
     brief = {"child_id": "/root/worker", "task_id": "work", "deliverables": ["Produce reviewed output"],
-        "paths": [str(root)], "criteria": ["accept"], "reservation_id": "worker", "integration_reservation_id": "audit",
+        "paths": [str(root)], "criteria": ["accept"], "reservation_id": "worker", "integration_reservation_id": "audit", "verification_reservation_id": "verify", "recovery_reservation_id": "recover",
         "integration_owner": current["owner"]["session_uuid"], "return_contract": ["artifact_ids", "evidence_ids", "disposition"],
         "cancellation": "Retain partial evidence and return", "mode": "artifact-only",
         "file_contract": {"schema_version": 1, "immutable_inputs": [], "output_roots": [str(root / "output")], "scratch_root": str(root / "scratch")}}

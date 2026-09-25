@@ -13,11 +13,11 @@ import json
 import math
 
 
-ADAPTER_VERSION = "claude-dialect-v1"
+ADAPTER_VERSION = "claude-dialect-v2"
 SUPPORTED_SCHEMAS = ("assistant.message.content.tool_use", "user.message.content.tool_result",
                      "assistant.message.usage", "assistant.message.content.text",
                      "assistant.message.content.thinking", "user.message.content.text")
-PRINT_SCHEMAS = ("system.init", "assistant", "user", "result")
+PRINT_SCHEMAS = ("system.init", "system.hook_started", "system.hook_response", "system.informational", "rate_limit_event", "assistant", "user", "result")
 FINAL_REASONS = {"end_turn", "tool_use", "max_tokens", "stop_sequence"}
 COUNTERS = {"input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"}
 REQUESTS = {"CronCreate", "CronList", "CronDelete"}
@@ -168,6 +168,14 @@ def decode_record(row, producer, *, mode="synthetic", source_locator=None):
     if kind not in {"assistant", "user"}:
         raise DialectError("unsupported Claude interactive record; do not reinterpret as print stream")
     message = _object(row.get("message"), "message")
+    generated = row.get("is_api_error_message") is True or message.get("model") == "<synthetic>"
+    if "is_api_error_message" in row and type(row["is_api_error_message"]) is not bool:
+        raise DialectError("API error marker is not boolean")
+    if generated:
+        # This is genuine client output but not a provider-generated response.
+        return [_fact("runtime.error", "failed", {"error": row.get("error"),
+            "client_generated": True, "provider_response": False, "provider_usage": "UNKNOWN",
+            "raw_usage": deepcopy(message.get("usage")), "portable_completion": False}, row, mode, source_locator)]
     content = message.get("content")
     if isinstance(content, str):
         content = [{"type": "text", "text": content}]
@@ -209,6 +217,18 @@ def decode_record(row, producer, *, mode="synthetic", source_locator=None):
     return facts
 
 
+def qualify_transport(header, *, expected_session_id, invocation_id):
+    _bounded(header); _text(expected_session_id, "expected session"); _text(invocation_id, "invocation")
+    if header.get("session_id") != expected_session_id or header.get("type") != "system":
+        raise DialectError("print stream lacks an expected system identity")
+    if header.get("subtype") not in {"init", "hook_started", "hook_response"}:
+        raise DialectError("unqualified print stream preamble")
+    return {"client": "claude", "surface": "captured-transport", "thread_id": expected_session_id,
+            "root_session_id": expected_session_id, "parent_thread_id": None, "agent_id": None,
+            "dialect": "claude.print_stream", "invocation_id": invocation_id,
+            "adapter_version": ADAPTER_VERSION, "authentication": "owner_admission_required", "root_authority": False}
+
+
 def decode_wire(message, connection_binding):
     """CLI print JSON is a separate dialect, not a general SDK control protocol."""
     _bounded(message); _object(message, "print record")
@@ -224,6 +244,18 @@ def decode_wire(message, connection_binding):
     if kind == "system" and message.get("subtype") == "init":
         return [_fact("runtime.configuration", "observed", {"tools": message.get("tools"),
             "native_model": message.get("model"), "grants_authority": False}, message, mode, locator)]
+    if kind == "rate_limit_event":
+        info = _object(message.get("rate_limit_info"), "rate limit observation")
+        return [_fact("capacity.snapshot", "observed", {"native_rate_limit": info,
+            "usage_semantics": "account_limit_not_expenditure", "grants_authority": False}, message, mode, locator)]
+    if kind == "system" and message.get("subtype") == "informational":
+        if not isinstance(message.get("content"), str): raise DialectError("informational record lacks text")
+        return [_fact("runtime.notice", "observed", {"content": message["content"], "level": message.get("level"),
+            "interpretation": "opaque_native_notice", "grants_authority": False}, message, mode, locator)]
+    if kind == "system" and message.get("subtype") in {"hook_started", "hook_response"}:
+        return [_fact("runtime.hook", "observed", {"native_subtype": message["subtype"],
+            "hook_id": message.get("hook_id"), "hook_name": message.get("hook_name"),
+            "exit_code": message.get("exit_code"), "grants_authority": False}, message, mode, locator)]
     if kind in {"assistant", "user"}:
         if "sessionId" in message and message["sessionId"] != producer["root_session_id"]:
             raise DialectError("contradictory interactive identity inside print stream")
@@ -233,13 +265,17 @@ def decode_wire(message, connection_binding):
     subtype = _text(message.get("subtype"), "result subtype")
     if type(message.get("is_error")) is not bool:
         raise DialectError("result lacks native error flag")
-    if subtype == "success" and message["is_error"]:
-        raise DialectError("contradictory print terminal")
     status = "failed" if message["is_error"] else "observed" if subtype == "success" else "terminal_unknown"
     facts = [_fact("lifecycle.completed", status, {"native_status": subtype, "is_error": message["is_error"],
-                   "result": message.get("result"), "portable_completion": False}, message, mode, locator)]
+                   "result": message.get("result"), "terminal_reason": message.get("terminal_reason"),
+                   "native_stop_reason": message.get("stop_reason"), "api_error_status": message.get("api_error_status"),
+                   "provider_usage": "UNKNOWN" if message["is_error"] else "aggregate_only",
+                   "portable_completion": False}, message, mode, locator)]
     if message.get("usage") is not None:
-        facts.append(_fact("usage.snapshot", "observed", _usage(message["usage"], producer, aggregate=True),
+        data = _usage(message["usage"], producer, aggregate=True)
+        if message["is_error"]:
+            data.update(phase="unknown", countable=False, missingness=data["missingness"] + ["client_error_provider_usage_unknown"])
+        facts.append(_fact("usage.snapshot", "unknown" if message["is_error"] else "observed", data,
                            message, mode, locator, 1))
     return facts
 

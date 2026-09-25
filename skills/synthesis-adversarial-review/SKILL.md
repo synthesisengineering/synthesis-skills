@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-grounding-discipline", "synthesis-anti-shortcuts", "synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -19,6 +19,8 @@ from different blind spots. It is not an invitation to maximize rounds. The revi
 to deliver the principal's outcome: the artifacts and enforced boundaries the principal
 asked to ship, at the accepted quality bar. Reviewer satisfaction, control growth, and a
 large finding count are not completion criteria.
+
+For [typed domain review](../synthesis-autopilot/references/domain-quality.md), freeze the accepted requirement, source universe, domain method and rubric before the attempt. Use sound controls that preserve legitimate creative variation and seeded defects that change the user's outcome. Keep semantic calibration, actual consumer execution and target readback separate. Recheck the original evidence after a repair; replacing a reviewer without changed work or a concrete open risk does not justify another round.
 
 This skill governs the review protocol. It does not grant publication, deployment,
 communication, or repair authority. Those approval boundaries survive the review.

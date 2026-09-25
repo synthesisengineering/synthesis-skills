@@ -146,11 +146,11 @@ def validate_request(value) -> Request:
     if operation == "start":
         if "run_id" in value or "expected_revision" in value:
             raise ValueError("start obtains its deterministic run identity from the existing owner")
-        _object(data, {"plan_ref", "outcome_contract", "dimensions", "resource_envelope"}, {"preference_layer_refs", "graph"})
+        _object(data, {"plan_ref", "outcome_contract", "dimensions", "resource_envelope"}, {"preference_layer_refs", "graph", "execution_policy"})
         _text(data["plan_ref"], "plan reference")
         run_state._contract(data["outcome_contract"])
         workflow.resolve_profile(data["dimensions"])
-        _object(data["resource_envelope"], {"limits", "deadline"})
+        _object(data["resource_envelope"], {"limits", "deadline"}, {"native_token_resource"})
         if "graph" in data:
             _object(data["graph"], {"nodes", "wip_limit"})
             if not isinstance(data["graph"]["nodes"], list) or not 1 <= len(data["graph"]["nodes"]) <= 256:
@@ -182,11 +182,44 @@ def validate_request(value) -> Request:
                 run_state._id(data["observer_kind"], "observer kind")
                 if not isinstance(data["arguments"], dict):
                     raise ValueError("observer arguments must be an object")
+            elif kind == "uncertainty":
+                _object(data, {"kind", "question"})
+                import decision_uncertainty
+                decision_uncertainty.validate_question(data["question"])
+            elif kind == "uncertainty_revise":
+                _object(data, {"kind", "id", "expected_question_digest", "question", "reason"})
+                import decision_uncertainty
+                decision_uncertainty.validate_question(data["question"])
+                run_state._id(data["id"], "question ID")
+                _text(data["reason"], "question revision reason")
+                _text(data["expected_question_digest"], "question revision digest")
+            elif kind == "uncertainty_observe":
+                _object(data, {"kind", "id", "receipt_id"})
+                run_state._id(data["id"], "question ID")
+                run_state._id(data["receipt_id"], "receipt ID")
             elif kind == "native":
                 _object(data, {"kind", "source_handle", "through_event", "task_id", "attempt_id"})
                 _text(data["source_handle"], "source handle", 512)
                 if data["through_event"] is not None and not isinstance(data["through_event"], dict):
                     raise ValueError("native locator must be an object or null")
+            elif kind == "resource_plan":
+                _object(data, {"kind", "reservations"})
+                if not isinstance(data["reservations"], list) or not 1 <= len(data["reservations"]) <= 64:
+                    raise ValueError("resource plan requires bounded declared reservations")
+            elif kind == "resource_settle":
+                _object(data, {"kind", "reservation_id", "actual"})
+                run_state._id(data["reservation_id"], "reservation ID")
+                if data["actual"] is not None and not isinstance(data["actual"], dict):
+                    raise ValueError("settlement is a resource report or explicit unknown")
+            elif kind == "human_effort":
+                _object(data, {"kind", "artifact_id"})
+                run_state._id(data["artifact_id"], "human effort report artifact ID")
+            elif kind == "resource_observe":
+                _object(data, {"kind", "event_ids"})
+                if not isinstance(data["event_ids"], list) or not 1 <= len(data["event_ids"]) <= 512:
+                    raise ValueError("resource observation needs bounded committed native event IDs")
+            elif kind == "execution_policy":
+                _object(data, {"kind"})
             elif kind == "profile_obligation":
                 _object(data, {"kind", "obligation_id", "obligation_kind", "artifact_ids", "criterion_ids", "reason"})
                 run_state._id(data["obligation_id"], "profile obligation ID")
@@ -410,7 +443,10 @@ def _start(tx, mode):
     graph = data.get("graph", {"nodes": [{"id": "work", "deps": [],
         "criteria": [row["id"] for row in data["outcome_contract"]["criteria"]], "estimate": 1}], "wip_limit": 1})
     tx.step("graph", "workflow.graph", graph)
+    tx.step("execution_policy", "workflow.execution_policy", {"preference": data.get("execution_policy", {"mode": "adaptive"})})
     tx.step("running", "transition", {"status": "running"})
+    if "project" in data["dimensions"]["domains"]:
+        tx.observe("project-ownership", "claim-ownership", {})
 
 
 def _catch_up(tx, prefix):
@@ -427,8 +463,24 @@ def _record(tx, data):
             key: data[key] for key in ("path", "role", "required", "retention")}})
     elif kind == "check":
         tx.observe("check", data["observer_kind"], data["arguments"])
+    elif kind == "uncertainty":
+        tx.step("uncertainty", "decision.question", data["question"])
+    elif kind == "uncertainty_revise":
+        tx.step("uncertainty_revise", "decision.revise", {key: value for key, value in data.items() if key != "kind"})
+    elif kind == "uncertainty_observe":
+        tx.step("uncertainty_observe", "decision.resolve", {key: data[key] for key in ("id", "receipt_id")})
     elif kind == "native":
         tx.step("native", "native.observe", {key: value for key, value in data.items() if key != "kind"})
+    elif kind == "resource_plan":
+        tx.step("resource_plan", "workflow.resource_plan", {"reservations": data["reservations"]})
+    elif kind == "resource_settle":
+        tx.step("resource_settle", "workflow.settle", {key: data[key] for key in ("reservation_id", "actual")})
+    elif kind == "human_effort":
+        tx.step("human_effort", "workflow.human_effort", {"artifact_id": data["artifact_id"]})
+    elif kind == "resource_observe":
+        tx.step("resource_observe", "workflow.resource_observe", {"event_ids": data["event_ids"]})
+    elif kind == "execution_policy":
+        tx.step("execution_policy", "workflow.execution_policy", {})
     elif kind == "note":
         tx.step("note", "progress", {"summary": data["summary"]})
     elif kind == "profile_obligation":
@@ -590,6 +642,8 @@ def _checkpoint_reducer(state, prepared, context):
 
 
 def register(engine):
+    import decision_uncertainty
+    decision_uncertainty.register(engine)
     engine.register_command("controller.checkpoint", _checkpoint_reducer)
     engine.register_preparer("controller.checkpoint", _prepare_checkpoint)
     engine.register_command("controller.profile_obligation", _profile_obligation_reducer)
@@ -625,6 +679,11 @@ def _fresh_evidence(tx, criterion, kind):
     return values
 
 
+def _typed_quality(identities, evidence):
+    """Keep semantic and actual-consumer dimensions joined in their typed owner."""
+    return [identity for identity in identities if isinstance(evidence[identity].get("data", {}).get("domain_review"), dict)]
+
+
 def _finish(tx, data):
     if data["disposition"] == "incomplete":
         tx.step("close", "close", {"status": "incomplete", "reason": data["reason"]})
@@ -652,7 +711,14 @@ def _finish(tx, data):
             continue
         quality = _fresh_evidence(tx, criterion, "quality_observation")
         consumers = _fresh_evidence(tx, criterion, "consumer-check")
-        if consumers:
+        typed = _typed_quality(quality, tx.context()["evidence"])
+        if typed:
+            # An executed check must never erase a task-specific semantic grade.
+            # Fresh contradictory execution also cannot disappear behind it.
+            if any(tx.context()["evidence"][identity]["data"].get("passed") is not True for identity in consumers):
+                raise ValueError("current consumer contradicts the typed domain review; retain and repair the failed evidence")
+            quality = typed
+        elif consumers:
             quality = [tx.observe("quality:" + criterion["id"], "quality_observation", {"observation_id": consumers[-1]})]
         if quality:
             grade = {"criterion_id": criterion["id"], "receipt_ids": quality, "independent": False}
@@ -721,7 +787,7 @@ def _require_current_native(tx):
     return result
 
 
-def _next(state):
+def _next(state, context=None):
     result = []
     if state["status"] in run_state.TERMINAL:
         flow = state.get("extensions", {}).get("workflow", {})
@@ -731,9 +797,14 @@ def _next(state):
         if continuation:
             result.append({"owner": "capabilities", "kind": "native_cleanup_readback", "job_id": continuation.get("job_id")})
         return result
+    import decision_uncertainty
+    uncertainty = decision_uncertainty.status_view(state, context)
+    blocked = set(uncertainty["affected_criteria"])
+    nodes = state.get("extensions", {}).get("workflow", {}).get("graph", {}).get("nodes", {})
+    result.extend({"owner": "decision_uncertainty", "kind": "decisive_observation", **row} for row in uncertainty["open"])
     try:
         result.extend({"owner": "workflow", "kind": "ready_task", "task_id": identity}
-                      for identity in workflow.ready_tasks(state))
+                      for identity in workflow.ready_tasks(state) if not blocked.intersection(nodes[identity].get("criteria", [])))
     except (KeyError, ValueError):
         result.append({"owner": "workflow", "kind": "configure_or_reconcile"})
     result.extend({"owner": "run_state", "kind": "wait", "wait_id": identity, "reason": item["reason"]}
@@ -752,7 +823,14 @@ def _response(request, state, status, *, context=None, diagnostics=None):
     if state is not None:
         entry = state.get("extensions", {}).get("controller", {}).get("requests", {}).get(request["request_id"], {})
         events = [row["command_id"] for row in sorted(entry.get("steps", {}).values(), key=lambda row: row["revision"])]
-        next_steps = _next(state)
+        next_steps = _next(state, context)
+        import domain_quality
+        import decision_uncertainty
+        from resource_policy import summary
+        coverage["domain_quality"] = domain_quality.route_view(state)
+        coverage["decision_uncertainty"] = decision_uncertainty.status_view(state, context)
+        coverage["resources"] = summary(state, context)
+        coverage["execution_policy"] = deepcopy(state.get("extensions", {}).get("workflow", {}).get("execution_policy"))
         extension = state.get("extensions", {}).get("native_observations", {})
         for handle, source in extension.get("sources", {}).items():
             coverage["native"][handle] = {"enrollment": source["enrollment"], "coverage": source.get("coverage"),
@@ -827,7 +905,9 @@ def handle(request: Request, *, project: Path, actor=None, runtime_root=None, so
         elif readonly:
             pass
         elif operation == "next":
-            ready = workflow.ready_tasks(tx.state)
+            _catch_up(tx, "resource-frontier")
+            tx.step("execution-policy", "workflow.execution_policy", {})
+            ready = [row["task_id"] for row in _next(tx.state, tx.context()) if row["kind"] == "ready_task"]
             selected = data.get("task_id") or (ready[0] if ready else None)
             if selected not in ready:
                 raise ValueError("no requested dependency, budget, retry and WIP ready task")

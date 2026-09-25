@@ -81,7 +81,10 @@ def checkpoint_basis(context):
         'waits': deepcopy(state['waits']), 'effects': deepcopy(state['effects']),
         'graph': deepcopy(flow.get('graph', {})), 'children': deepcopy(flow.get('children', {})),
         'quality': deepcopy(flow.get('quality', {})),
-        'profile_obligations': deepcopy(state.get('extensions', {}).get('controller', {}).get('profile_obligations', {}))}
+        'resource_budget': deepcopy(flow.get('budget', {})),
+        'execution_policy': deepcopy(flow.get('execution_policy')),
+        'profile_obligations': deepcopy(state.get('extensions', {}).get('controller', {}).get('profile_obligations', {})),
+        'decision_uncertainty': deepcopy(state.get('extensions', {}).get('decision_uncertainty', {}))}
 
 
 def _quality(context, statuses):
@@ -143,6 +146,8 @@ def _trigger_accepted(trigger, statuses, quality):
 def _decision_triggers(state, dimensions):
     flow = state.get('extensions', {}).get('workflow', {})
     reasons = []
+    if state.get('extensions', {}).get('decision_uncertainty', {}).get('items'):
+        reasons.append('registered decisive uncertainty')
     if dimensions.get('uncertainty') == 'high':
         reasons.append('declared material uncertainty')
     if 'research' in dimensions.get('domains', []):
@@ -245,6 +250,10 @@ def observe_profile(context, report):
             trigger_unresolved.add(identity)
         trigger_rows[trigger['kind']].append(trigger)
     decision_reasons = _decision_triggers(state, dimensions)
+    from decision_uncertainty import status_view as uncertainty_view
+    decisions = uncertainty_view(state, context)
+    observed_decisions = (decisions['status'] == 'clear' and bool(decisions['resolved'])
+        and all(statuses.get(identity) == 'PASS' for row in decisions['resolved'] for identity in row['affected_criteria']))
     if trigger_rows['decision']:
         decision_reasons.append('recorded material decision')
     semantic_required = {key for key in required if _semantic({key}, statuses, quality)}
@@ -298,6 +307,9 @@ def observe_profile(context, report):
                 refs = set(semantic_required)
             if not needed:
                 status, reason = 'NOT_APPLICABLE', 'Direct admitted work has no recorded material choice, amendment, competing strategy, or selected decision obligation.'
+            elif (identity == 'framework-decisions' and decision_reasons == ['registered decisive uncertainty']
+                  and observed_decisions and not refs and not _selected(item) and not applicable_triggers):
+                status, reason = 'SATISFIED', 'The journal retains each decisive question, distinct prediction, actual current observation and resulting branch; no general semantic accuracy is claimed.'
             elif _semantic(refs, statuses, quality) and not any(row['id'] in trigger_stale | trigger_unresolved for row in applicable_triggers):
                 status, reason = 'SATISFIED', 'Current calibrated semantic evidence assesses the bound decision or investigation.'
             else:
@@ -326,7 +338,8 @@ def observe_profile(context, report):
         rows[identity] = {'status': status, 'reason': reason, 'criterion_ids': sorted(refs),
             'evidence_ids': sorted({ref for key in refs for ref in quality.get(key, {})})}
     contractual = []
-    if decision_reasons and not _semantic(decision_refs, statuses, quality):
+    if decision_reasons and not _semantic(decision_refs, statuses, quality) and not (
+            decision_reasons == ['registered decisive uncertainty'] and observed_decisions and not decision_refs):
         contractual.append('material-decision:substantive-reasoning')
     for identity, refs in mapped.items():
         if identity in {'framework-decisions', 'completion-report', 'blog-seeds'} and not _semantic(refs, statuses, quality):
@@ -342,7 +355,8 @@ def observe_profile(context, report):
                      for row in state['contract']['outcomes']],
         'criteria': [{'id': key, 'description': row['description'], 'status': statuses.get(key, 'UNKNOWN'),
                       'evidence_ids': sorted(quality.get(key, {}))} for key, row in criteria.items()],
-        'remaining': remaining, 'profile_dispositions': deepcopy(rows), 'authority_granted': False}
+        'remaining': remaining, 'profile_dispositions': deepcopy(rows), 'authority_granted': False,
+        'decision_observations': decisions}
     return {'satisfied_items': sorted(key for key, row in rows.items() if row['status'] == 'SATISFIED'),
             'dispositions': rows, 'artifact_digests': basis['artifact_digests'], 'completion_report': completion,
             'owner_binding': owner, 'recovery_basis_digest': _digest(basis)}

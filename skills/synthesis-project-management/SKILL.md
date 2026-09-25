@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.18.5"
+  version: "2.18.6"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -484,6 +484,7 @@ When a user mentions a project:
 
 | Mistake | Consequence | Prevention |
 |---------|-------------|------------|
+| Treating a valid claim as completed project recovery | Retained obligations or recipient usability remain unverified | Apply [project outcome review](references/autopilot-project-quality.md): obligation preservation, causal recovery, exact current ownership and handoff usability are separate checks |
 | Not updating CONTEXT.md | Lost progress after compaction | Update after EVERY task |
 | Deferring updates to "session end" | Forget to update | Update immediately |
 | Putting management files in project repos | Exposes internal process | Keep in ai-knowledge-{workspace} |

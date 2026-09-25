@@ -4697,10 +4697,22 @@ def test_lease_repository_init_obeys_existing_git_deadline(tmp_path, monkeypatch
     fake_git.chmod(0o755)
     monkeypatch.setenv('PATH', str(bin_dir) + os.pathsep + os.environ.get('PATH', ''))
     monkeypatch.setattr(MODULE, 'LEASE_GIT_TIMEOUT', .2)
+    calls = []
+    real_run = MODULE.subprocess.run
+    def observed_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        return real_run(*args, **kwargs)
+    monkeypatch.setattr(MODULE.subprocess, 'run', observed_run)
     started = time.monotonic()
     with pytest.raises(RuntimeError, match='initialization timed out'):
         MODULE.lease_repository({'repository': tmp_path / 'lease.git'})
-    assert started_marker.read_text() == 'started'
+    # The deadline also covers interpreter startup. On a loaded host the child
+    # can be killed before its first instruction; the caller must still refuse.
+    assert len(calls) == 1
+    assert calls[0][0][0] == ['git', 'init', '--bare', '--quiet', str(tmp_path / 'lease.git')]
+    assert calls[0][1]['timeout'] == .2
+    if started_marker.exists():
+        assert started_marker.read_text() == 'started'
     assert time.monotonic() - started < 1.5
 
 

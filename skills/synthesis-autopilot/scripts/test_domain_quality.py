@@ -95,7 +95,8 @@ def complete_data(context, defects, *, target_assessment=None):
             "producer": "producer", "reviewer": "distinct-synthetic-reviewer", "independent": True,
             "observations": result["observations"], "calibrated": result["calibrated"],
             "passed": result["calibrated"] and result["observations"]["verdict"] == "PASS", "findings": [],
-            "domain_review": {"assessment": target, "input_digests": package["input_digests"]},
+            "domain_review": {"assessment": target, "input_digests": package["input_digests"],
+                              "method_provenance": package["method_provenance"]},
             "calibration": {"manifest_id": "gold", "manifest_digest": package["manifest_digest"],
                 "reviewer": "distinct-synthetic-reviewer", "rubric_artifact_id": "rubric",
                 "rubric_digest": package["manifest"]["rubric_digest"], "observations": controls, "result": result["calibration_result"]}}

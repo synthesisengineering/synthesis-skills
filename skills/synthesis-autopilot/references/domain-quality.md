@@ -6,7 +6,7 @@ checks coverage and exact quotations; a qualified reviewer still determines
 whether the quoted evidence supports the claim. A valid quote is evidence of
 presence, not entailment.
 
-The writing and research route runs through the existing native CLI observer.
+All six family routes run through the existing native CLI observer.
 It preserves the user's configured model, resource reservation, immutable
 attempt, native identity, artifact registry, and source-verification boundaries.
 Select it by registering a **schema 2 calibration manifest** with the existing
@@ -73,8 +73,12 @@ criterion. Mechanical coverage alone cannot establish semantic completeness.
 The calibration manifest has exactly `schema_version: 2`, `domain`, `rubric`
 (a readable name), `rubric_artifact_id`, `rubric_digest`, and `controls`.
 Each control has `artifact_id`, `artifact_digest`, and an `expected` object
-mapping **every family dimension** to `PASS` or `FAIL`. Supply one sound control
-and seeded defects covering every dimension. For writing, the sound control
+mapping **every family dimension** to its expected result. Source and judgment
+dimensions use `PASS` or `FAIL`; consumer and readback dimensions must use
+`UNKNOWN`, because a blind semantic control cannot certify execution or an
+external account. Supply one sound control and seeded defects covering every
+source/judgment dimension. Executed negative cases exercise the consumer
+dimensions separately. For writing, the sound control
 must retain the desired voice; a generic preference for more standardized prose
 must not make it fail. The example writing rubric therefore normally uses one
 sound artifact and four distinct defective artifacts.
@@ -110,6 +114,14 @@ Defects name requirement violations or concrete reader harm. Preferences name
 optional taste; they do not veto supported work. An explicit task voice
 requirement remains enforceable as a defect when it is violated.
 
+For target consumer and readback dimensions, the reviewer judges whether the
+method and supplied evidence adequately cover this task. That judgment never
+attests execution or account state. The evaluator separately obtains the actual
+result from the authenticated consumer or readback owner and requires both
+adequacy and execution to pass. Explicitly unresolved adequacy remains
+`UNKNOWN`; an actual failed execution remains `FAIL`. A successful check cannot
+erase uncertainty about whether it tests the required outcome.
+
 Each returned control has `artifact_id`, `artifact_digest`, and its own complete
 `assessment`. The engine translates only its issued control alias, computes
 dimension verdicts, and compares them with the withheld labels. It retains
@@ -126,7 +138,7 @@ not general native-judge accuracy or quality improvement on unseen tasks.
 validate_rubric(rubric, criterion_id="accept", artifact_id="draft")
 package = load_package(context, "gold", "accept", "draft")
 prompt, control_aliases = review_prompt(package, bindings)
-result = derive(package, target_assessment, normalized_control_assessments)
+result = derive(package, target_assessment, normalized_control_assessments, context=context)
 verdict = rederive_review(quality_data, context, native_request)
 ```
 
@@ -138,11 +150,20 @@ existing receipt verifier, checks current specification/program/output bytes,
 requires the execution's input digests to cover those same assessed documents,
 and recomputes the executed expected-versus-observed comparison. A consumer
 receipt cannot certify a different target or a source added after execution.
-A process result
-does not prove independent test design or that the check covers the task.
+The native prompt also carries each available consumer program and specification
+from the current registry. Review their adequacy: a hard-coded result or a check
+that never reaches the requested entry point is a substantive defect even if
+its comparison passes. Such a finding can cite the exact program/specification.
+A process result does not prove independent test design or task coverage.
+
+Each rich review binds the selected method resource in its existing owning
+skill by owner name and content digest. The prompt uses that exact method; a
+changed method invalidates the old review instead of silently adopting a new
+standard. This provenance appears as `domain_review.method_provenance`.
 
 Live source verification and workflow grading rederive the target assessment
-and calibration from current registered bytes. A `calibrated` or `passed` flag
+and calibration from current registered bytes, including actual consumer
+context. Semantic control results never replace executed acceptance. A `calibrated` or `passed` flag
 cannot substitute for this work. Distinct native reviewer identity establishes
 role separation; shared sources, rubric, or model can still produce correlated
 errors. Source authenticity and factual correctness remain separate questions.
@@ -166,22 +187,42 @@ historical observation during repair; it does not try to revalidate old output
 as current bytes. Old grades, fingerprints, and negative evidence remain intact.
 The existing retry and quality-round limits are unchanged.
 
-## Remaining integration and evidence limits
+## Controller routing and evidence limits
 
-Writing/research native routing and rich workflow grading are connected in
-this package. Six-family rubric validation and direct consumer assessment are
-available. General task admission, automatic rubric selection, six-family
-controller routing and closure, and evidence-based repair policy remain A2/A3
-integration obligations.
+The ordinary controller reports the selected family, method owner, required
+dimensions and accepted criteria in `coverage.domain_quality`. The agent builds
+the task-specific rubric from the user's accepted requirement and brief; it
+must not populate generic requirements merely to satisfy a schema. The selected
+method is loaded from the existing owner rather than duplicating domain
+methodology in autopilot. Availability in this view is not native qualification.
 
-Target/account readback has no connected owner in this domain interface. Those
-criteria return `UNKNOWN`; a no-tools reviewer cannot certify them. Completion
-requires the appropriate native readback adapter to bind actual target identity,
-stored state, current receipt provenance, and preservation evidence. A local
-file readback cannot stand in for a browser account result.
+The `project` workflow family is admitted alongside software, research, writing,
+data and browser. At project-domain start, the controller obtains the existing
+PM claim-ownership observation. Its receipt is revalidated by the exact active
+native seat and claims before project ownership can pass. Obligation preservation
+and causal recovery still require their declared consumers; a valid claim alone
+does not establish whole-project readiness.
 
-The retained tests exercise synthetic task judgments, actual native event
-parsers, source verification, workflow grade/repair boundaries, and an actual
-sandboxed Python consumer that catches a wrong denominator. They do not run a
-paid model experiment or establish native judgment quality. Held-out native
-acceptance and comparative benefit remain evaluation obligations.
+During finish, typed domain reviews remain attached to their actual consumer
+checks. A later generic consumer projection cannot replace semantic acceptance.
+Fresh contradictory execution prevents closure and retains the failure. Repairs
+use the existing workflow quality-resolution owner: exact prior grade and
+receipt fingerprints, changed relevant artifact, current re-observation,
+remaining resources and preserved history. A new reviewer or renamed receipt
+does not justify another round. Productive evidence can continue within the
+existing budget; unchanged failures cannot reset it.
+
+Browser account readback has no connected authenticated owner in this package.
+Target identity, stored target state and excluded-item preservation therefore
+remain `UNKNOWN`, even when the interaction-usability controls pass. A local
+file, a success banner or synthetic account data cannot certify those results.
+A target adapter must supply actual current account/object-bound evidence and
+positive/negative acceptance for its declared surface before closure can pass.
+
+The retained tests use synthetic semantic judgments and native event shapes,
+real isolated PM/Git ownership, and actual OS-sandboxed consumers. They exercise
+all six controller routes, currentness, source and method tampering, preserved
+negative evidence, substantive seeded defects and false rejection of sound
+creative voice. These source-level checks do not establish native reviewer
+accuracy, production browser account state, held-out task-quality gains or
+comparative superiority. Those remain explicit qualification obligations.

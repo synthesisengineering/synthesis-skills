@@ -2,10 +2,10 @@
 name: synthesis-autopilot
 description: "Execute an explicitly delegated whole task autonomously using the thinking framework, durable plan and context, checkpoints, anti-shortcut discipline, and implementation-integrity gate — and, for unattended runs, a verified continuation mechanism with budget and runaway control, so overnight and multi-day engagements keep producing turns instead of idling silently. Activate only for clear end-to-end delegation such as 'autopilot this,' 'take care of this for me,' 'handle this end to end,' 'run overnight,' or 'complete all phases autonomously'; never infer it from a single-step approval, discussion of autonomy, or ambiguous wording."
 license: "Apache-2.0"
-depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet"]
+depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet", "synthesis-fact-checking", "synthesis-writing-craft", "synthesis-agent-conformance"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.2.0"
+  version: "3.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -78,6 +78,8 @@ node waits. Describe near-term work concretely and elaborate later nodes when
 their inputs become known. Change the approach when evidence warrants it;
 changing promised outcomes or weakening required checks needs the owning
 approval, a versioned amendment and fresh verification.
+
+Use the thinking framework's [decisive-uncertainty method](../synthesis-thinking-framework/references/decisive-uncertainty.md) for facts that could change the next decision. The controller reports six-family domain requirements and open discriminating observations. Register a task-specific question only when it matters; resolve it with the existing evidence owner, preserve refuted predictions, and continue independent criteria while its dependent work waits. An empty uncertainty register adds no investigation requirement.
 
 Use `next`, `record`, `checkpoint`, `explain`, `cancel`, `recover` and `finish`
 for the normal execution loop. Stable request identities bind the complete

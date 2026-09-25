@@ -250,8 +250,12 @@ def test_authentic_negative_observation_is_not_passing_acceptance(bridge, observ
     criterion = {"id": "accept", "method": "consumer-check", "required": True, "artifact_ids": ["output"]}
     for data in ({"passed": False, "returncode": 1}, {"passed": True, "returncode": 1}, {"passed": False, "returncode": 0}):
         assert not predicates["consumer-check"]({"kind": "consumer-check", "data": data}, observed["state"], criterion, observed)
+    # Synthetic predicate shape only; real execution/decoding is exercised by
+    # test_consumer_checks. A positive result must retain its actual observation.
     positive = {"criterion_id": "accept", "artifact_id": "output", "passed": True,
-                "execution": {"returncode": 0, "sandbox_verified": True, "timed_out": False, "output_exceeded": False}}
+                "observations": {"expected": {"answer": 5}, "observed": {"answer": 5}, "consumer_verified": True},
+                "execution": {"returncode": 0, "sandbox_verified": True, "timed_out": False,
+                              "output_exceeded": False, "json_decoded": True}}
     assert predicates["consumer-check"]({"kind": "consumer-check", "data": positive}, observed["state"], criterion, observed)
     assert not predicates["continuation-cancellation"]({"kind": "continuation-cancellation", "data": {"cancelled": False}}, observed["state"], criterion, observed)
 

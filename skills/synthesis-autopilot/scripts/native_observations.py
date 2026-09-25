@@ -44,7 +44,7 @@ import native_claude
 import native_muse
 
 
-ADAPTER_VERSION = "native-observations-v2"
+ADAPTER_VERSION = "native-observations-v3"
 ADAPTER_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 MAX_INDEX_ENTRIES = 10000
 MAX_PROJECTION_BYTES = 2 * 1024 * 1024
@@ -178,7 +178,9 @@ def _json(raw: bytes, depth: int = 32):
 _STRING_RUN = re.compile(r'[^"\\\x00-\x1f]+')
 _NUMBER = re.compile(r'-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\Z')
 _IGNORED_PROJECTION = {("type",), ("ordinal",), ("payload", "type"), ("thread_id",), ("session_id",),
-                       ("payload", "thread_id"), ("payload", "session_id")}
+                       ("payload", "thread_id"), ("payload", "session_id"), ("sequence",), ("schema_version",),
+                       ("payload_schema_version",), ("payload_type",), ("stream", "kind"), ("stream", "id"),
+                       ("payload", "kind"), ("payload", "event", "kind")}
 
 
 class _StreamJSON:
@@ -388,13 +390,19 @@ def _stable_read(stream, path, start, length, identity, minimum_size):
     return raw
 
 
-def _producer(row, client, root, thread, parent=None, agent=None):
+def _producer(row, client, root, thread, parent=None, agent=None, dialect=None, invocation_id=None):
     module = _DIALECTS.get(client)
     if module is None:
         raise SourceError("unsupported native client source grammar")
     try:
-        producer = module.qualify_source(row, expected_root_session_id=root,
-            expected_thread_id=thread, expected_parent_thread_id=parent, expected_agent_id=agent)
+        if dialect is not None:
+            if dialect != {"codex": "codex.exec_json", "claude": "claude.print_stream"}.get(client) or thread != root or parent is not None or agent is not None:
+                raise SourceError("unsupported captured transport identity or dialect")
+            producer = module.qualify_transport(row, expected_session_id=root, invocation_id=invocation_id)
+        else:
+            if invocation_id is not None: raise SourceError("invocation identity requires an explicit transport dialect")
+            producer = module.qualify_source(row, expected_root_session_id=root,
+                expected_thread_id=thread, expected_parent_thread_id=parent, expected_agent_id=agent)
     except ValueError as exc:
         raise SourceError(str(exc)) from exc
     return {**producer, "adapter_sha256": _DIALECT_HASHES[client],
@@ -434,6 +442,8 @@ def _validate_cursor(binding, cursor, limits):
     if cursor.get("first_gap") is not None and (type(cursor["first_gap"]) is not int
                                                or cursor["first_gap"] != cursor["trusted_through"]):
         raise SourceError("invalid source cursor gap")
+    if cursor.get("transport_state") not in {None, "ready", "running", "terminal"}:
+        raise SourceError("invalid transport phase")
     if not isinstance(cursor.get("pending"), str) or len(cursor["pending"]) > 4 * (limits.payload_bytes // 3 + 2):
         raise SourceError("pending cursor exceeds retention bound")
     try:
@@ -451,7 +461,7 @@ def _validate_cursor(binding, cursor, limits):
 
 def enroll_source(path, *, client, expected_root_session_id, expected_thread_id=None,
                   expected_parent_thread_id=None, expected_agent_id=None,
-                  source_handle=None, mode="synthetic", start_offset=0, source_epoch=None, limits=Limits()):
+                  source_handle=None, mode="synthetic", start_offset=0, source_epoch=None, limits=Limits(), dialect=None, invocation_id=None):
     """Validate source/header consistency, not native authenticity or admission."""
     path = Path(path).absolute()
     thread = expected_thread_id or expected_root_session_id
@@ -465,7 +475,8 @@ def enroll_source(path, *, client, expected_root_session_id, expected_thread_id=
             raise SourceError("incomplete or oversized source header")
         raw = _stable_read(stream, path, 0, len(raw), (info.st_dev, info.st_ino), info.st_size)
         producer = _producer(_json(raw, limits.depth), client, expected_root_session_id, thread,
-                             expected_parent_thread_id, expected_agent_id)
+                             expected_parent_thread_id, expected_agent_id, dialect,
+                             invocation_id or (_digest([str(path), info.st_dev, info.st_ino, _sha(raw)]) if dialect else None))
         if start_offset > info.st_size:
             raise SourceError("enrollment boundary exceeds source")
         if start_offset:
@@ -483,7 +494,7 @@ def enroll_source(path, *, client, expected_root_session_id, expected_thread_id=
     _validate_binding(binding)
     cursor = {"schema_version": 1, "generation": binding["generation"], "enrolled_from": start_offset,
               "offset": start_offset, "frame_start": start_offset, "ordinal": 0, "trusted_through": start_offset,
-              "first_gap": None, "pending": "", "oversized": False, "validator": None, "last_sequence": None}
+              "first_gap": None, "pending": "", "oversized": False, "validator": None, "last_sequence": None, "transport_state": None}
     return binding, cursor
 
 
@@ -495,7 +506,8 @@ def _header(stream, binding, size):
     producer = binding["producer"]
     if _producer(_json(raw), producer["client"], producer["root_session_id"], producer["thread_id"],
                  producer.get("expected_parent_thread_id", producer.get("parent_thread_id")),
-                 producer.get("agent_id") if producer["client"] == "claude" else producer.get("agent_path")) != producer:
+                 producer.get("agent_id") if producer["client"] == "claude" else producer.get("agent_path"),
+                 producer.get("dialect"), producer.get("invocation_id")) != producer:
         raise SourceError("source producer binding changed")
 
 
@@ -506,8 +518,13 @@ def _events(row, binding, start, length, digest, ordinal, *, run_id=None, task_i
     events = []
     locator = {"source_handle": binding["source_handle"], "generation": binding["generation"],
                "offset": start, "length": length, "sha256": digest}
-    candidates = _DIALECTS[binding["producer"]["client"]].decode_record(
-        row, binding["producer"], mode=binding["mode"], source_locator=locator)
+    module = _DIALECTS[binding["producer"]["client"]]
+    if binding["producer"].get("dialect"):
+        candidates = module.decode_wire(row, {"producer": binding["producer"], "mode": binding["mode"],
+            "source_locator": locator, "dialect": binding["producer"]["dialect"],
+            "invocation_id": binding["producer"]["invocation_id"]})
+    else:
+        candidates = module.decode_record(row, binding["producer"], mode=binding["mode"], source_locator=locator)
     for candidate in candidates:
         kind, status, data = (candidate[key] for key in ("kind", "status", "data"))
         native = {**candidate["native"], **locator}
@@ -553,6 +570,46 @@ def _sequence_gap(cursor, sequence, start):
                 "sha256": None, "after_sequence": previous, "before_sequence": sequence,
                 "obligation": "source sequence reconciliation required"}
     return None
+
+
+def _row_sequence_gap(cursor, row, producer, start):
+    sequences = native_muse.source_sequences(row) if producer["client"] == "muse" else [row.get("ordinal")]
+    gap = None
+    for sequence in sequences:
+        observed = _sequence_gap(cursor, sequence, start)
+        gap = gap or observed
+    return gap
+
+
+def _transport_transition(cursor, row, producer):
+    dialect = producer.get("dialect")
+    if dialect is None: return
+    phase = cursor.get("transport_state")
+    kind = row.get("type")
+    if dialect == "codex.exec_json":
+        if kind == "thread.started":
+            if phase is not None: raise SourceError("duplicate transport thread initialization")
+            phase = "ready"
+        elif kind == "turn.started":
+            if phase != "ready": raise SourceError("exec turn start has no unique invocation")
+            phase = "running"
+        elif kind in {"turn.completed", "turn.failed"}:
+            if phase != "running": raise SourceError("exec terminal outside the admitted invocation")
+            phase = "terminal"
+        elif kind == "error":
+            if phase is None: raise SourceError("exec error has no session")
+        elif phase != "running": raise SourceError("exec item outside its running invocation")
+    elif dialect == "claude.print_stream":
+        if kind == "system" and row.get("subtype") in {"hook_started", "hook_response"}:
+            if phase == "terminal": raise SourceError("hook event after print terminal")
+        elif kind == "system" and row.get("subtype") == "init":
+            if phase is not None: raise SourceError("duplicate print initialization")
+            phase = "running"
+        elif kind == "result":
+            if phase != "running": raise SourceError("print terminal outside initialized session")
+            phase = "terminal"
+        elif phase != "running": raise SourceError("print message outside initialized session")
+    cursor["transport_state"] = phase
 
 
 def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=None, attempt_id=None,
@@ -618,7 +675,7 @@ def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=No
                 ignored = valid and _ignored_projection(validator.s["projection"], binding["producer"])
                 if ignored:
                     try:
-                        gap = _sequence_gap(next_cursor, validator.s["projection"].get("ordinal"), start)
+                        gap = _sequence_gap(next_cursor, validator.s["projection"].get("sequence") if binding["producer"]["client"] == "muse" else validator.s["projection"].get("ordinal"), start)
                     except SourceError as exc:
                         ignored = False
                         validator.s["error"] = str(exc)
@@ -643,8 +700,8 @@ def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=No
                             raise SourceError("frame changed between source pages")
                         ranges.append([start, start + length])
                     row = _json(pending, limits.depth)
-                    sequence = row.get("ordinal")
-                    sequence_gap = _sequence_gap(next_cursor, sequence, start)
+                    sequence_gap = _row_sequence_gap(next_cursor, row, binding["producer"], start)
+                    _transport_transition(next_cursor, row, binding["producer"])
                     events = _events(row, binding, start, length, _sha(pending), next_cursor["ordinal"],
                                      run_id=run_id, task_id=task_id, attempt_id=attempt_id, now=now)
                     if len(result["events"]) + len(events) > limits.events:
@@ -906,12 +963,13 @@ def revalidate_observations(binding, events, *, projection=None, required_interv
                 interval_events = []
                 if prior_sequence is not None and (type(prior_sequence) is not int or prior_sequence < 0):
                     raise SourceError("invalid prior interval sequence")
-                sequence_cursor = {"last_sequence": prior_sequence}
+                sequence_cursor = {"last_sequence": prior_sequence, "transport_state": None}
                 for ordinal, line in enumerate(raw.splitlines(keepends=True)):
                     if len(line) > Limits().payload_bytes:
                         raise SourceError("interval contains oversized payload requiring owner readback")
                     row = _json(line)
-                    gap = _sequence_gap(sequence_cursor, row.get("ordinal"), offset)
+                    gap = _row_sequence_gap(sequence_cursor, row, binding["producer"], offset)
+                    if start == 0: _transport_transition(sequence_cursor, row, binding["producer"])
                     if gap is not None:
                         result["diagnostics"].append(gap)
                         raise SourceError("current interval contains a native sequence gap")
@@ -942,3 +1000,91 @@ def revalidate_observations(binding, events, *, projection=None, required_interv
         result["diagnostics"].append({"code": "source_bytes_changed" if str(exc) == "source_bytes_changed" else "source_invalid",
                                       "detail": str(exc), "obligation": "preserve prior evidence and reconcile current source"})
     return result
+
+
+def revalidate_muse_page(binding, message, connection_binding, locators, *, max_bytes=1024 * 1024):
+    """Corroborate opaque page ranges from current raw bytes; no wire authenticity.
+
+    Locators are lookup hints, never proof. The entire bounded interval between
+    each pair of endpoints is reopened and parsed. A page does not grant absence
+    coverage, cursor advancement, native permission, or a semantic outcome.
+    """
+    _validate_binding(binding)
+    if binding["producer"]["client"] != "muse" or binding["producer"].get("dialect"):
+        raise SourceError("MSP range joins require a durable Muse raw source")
+    if (not isinstance(locators, dict) or len(locators) > 512 or type(max_bytes) is not int
+            or not 1 <= max_bytes <= 16 * 1024 * 1024):
+        raise SourceError("invalid bounded source range locator inventory")
+    if not isinstance(connection_binding, dict):
+        raise SourceError("page connection binding must be an object")
+    supplied = deepcopy(connection_binding)
+    if (not isinstance(supplied.get("producer"), dict)
+            or supplied["producer"].get("thread_id") != binding["producer"]["thread_id"]):
+        raise SourceError("page producer does not match enrolled source")
+    supplied.update(producer=binding["producer"], mode=binding["mode"])
+    candidates = native_muse.decode_wire(message, supplied)
+    pages = [value for value in candidates if value["kind"] == "coverage.page"]
+    if len(pages) != 1: raise SourceError("range reconciliation needs one exact view/page response")
+    # This call alone owns the cache. Every later call must reopen current
+    # bytes. Charge each interval's header and each distinct endpoint so the
+    # requested byte bound covers actual corroboration work, not just the
+    # union of page hints.
+    by_interval, endpoint_rows, joins, total, bytes_read = {}, {}, [], 0, 0
+    for candidate in candidates[1:]:
+        span = candidate["native"].get("source_range")
+        if span is None:
+            joins.append({"subrecord": candidate["native"]["subrecord"], "status": "UNKNOWN", "reason": "source_range_absent"})
+            continue
+        bounds = []
+        for endpoint in ("first", "last"):
+            point = span[endpoint]; locator = locators.get(point["id"])
+            if (not isinstance(locator, dict) or set(locator) != {"offset", "length", "sha256"}
+                    or type(locator["offset"]) is not int or locator["offset"] < 0
+                    or type(locator["length"]) is not int or not 0 < locator["length"] <= Limits().payload_bytes
+                    or not isinstance(locator["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", locator["sha256"])):
+                raise SourceError("page endpoint lacks an exact bounded source locator")
+            bounds.append(locator)
+        first, last = bounds
+        interval = (first["offset"], last["offset"] + last["length"])
+        if interval[0] > last["offset"]: raise SourceError("page endpoint source positions are reversed")
+        if interval not in by_interval:
+            total += binding["header_length"] + interval[1] - interval[0]
+            if total > max_bytes: raise SourceError("page source ranges exceed bounded current read; paginate")
+            verdict = revalidate_observations(binding, [], required_interval=interval, max_bytes=max_bytes)
+            if verdict["status"] != "current": raise SourceError("page source range is not current and complete")
+            bytes_read += verdict["bytes_read"] + int(interval[0] > 0)
+            by_interval[interval] = verdict
+        for endpoint, locator in zip(("first", "last"), bounds):
+            key = locator["offset"], locator["length"], locator["sha256"]
+            if key not in endpoint_rows:
+                total += locator["length"]
+                if total > max_bytes: raise SourceError("page endpoint corroboration exceeds bounded current read; paginate")
+                stream, info = _open(binding["path"], binding)
+                with stream:
+                    raw = _stable_read(stream, binding["path"], locator["offset"], locator["length"],
+                                       (binding["device"], binding["inode"]), info.st_size)
+                bytes_read += 2 * locator["length"]
+                if _sha(raw) != locator["sha256"]:
+                    raise SourceError("page source range endpoint differs from current raw bytes")
+                endpoint_rows[key] = _json(raw)
+            row = endpoint_rows[key]
+            if (row.get("id") != span[endpoint]["id"] or row.get("sequence") != span[endpoint]["sequence"]
+                    or row.get("stream") != span["stream"]):
+                raise SourceError("page source range endpoint differs from current raw bytes")
+        actual = by_interval[interval]["interval_events"]
+        semantic = "NOT_ASSERTED"
+        if candidate["kind"] == "usage.snapshot":
+            measurements = [event for event in actual if event["kind"] == "usage.snapshot"
+                and event["data"]["measurement_id"] == candidate["data"]["measurement_id"]]
+            if len(measurements) != 1 or measurements[0]["data"]["counters_digest"] != candidate["data"]["counters_digest"]:
+                raise SourceError("page usage differs from its raw native measurement")
+            semantic = "CURRENT_RESPONSE_COUNTERS"
+        joins.append({"subrecord": candidate["native"]["subrecord"], "status": "CURRENT_RAW_RANGE",
+                      "source_range": deepcopy(span), "interval": list(interval), "semantic_match": semantic})
+    return {"schema_version": 1, "status": "current" if all(row["status"] != "UNKNOWN" for row in joins) else "unknown",
+        "source_generation": binding["generation"], "status_scope": "raw_range_currentness",
+        "wire_authentication": "UNKNOWN", "page_candidates_are_evidence": False, "authority_granted": False,
+        "negative_coverage": "UNKNOWN", "page": deepcopy(pages[0]["data"]), "range_joins": joins,
+        "raw_events": list({event["event_id"]: event for value in by_interval.values()
+                            for event in value["interval_events"]}.values()), "required_bytes": total,
+        "bytes_read": bytes_read, "physical_read_bound": 2 * total + sum(start > 0 for start, _ in by_interval)}

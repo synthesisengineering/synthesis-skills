@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -17,6 +17,8 @@ A discipline for keeping AI-agent output anchored to external evidence. The fail
 The shapes in this catalog are universal to LLM agents, not quirks of one model or one workflow. A language model generates the most plausible continuation. Most of the time the plausible and the true coincide, which is exactly what makes the divergent cases dangerous: a fabricated reply reads like a real one, a stale cached fact reads like a fresh one, a null result from a broken probe reads like a verified absence. None of these announce themselves. The only defense is procedural — a set of checks applied at the moments where plausibility and truth come apart.
 
 This skill is that set. Each catalog entry names the rule, the failure shape it prevents (with one anonymized incident vignette — every entry here was paid for in production), and the compliance procedure. A closing self-check compresses the catalog into the questions to ask before any output ships.
+
+For [decisive uncertainty](../synthesis-thinking-framework/references/decisive-uncertainty.md), bind the question to the source that can change the decision. Exact quotes establish presence; a reviewer must still establish support. An executed observation can refute a prediction without becoming a successful acceptance result. Preserve those negative results, source generations and limitations when the plan changes.
 
 ## When to Apply
 

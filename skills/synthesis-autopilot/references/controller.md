@@ -32,7 +32,7 @@ exact journal reference when further pagination is required.
 | --- | --- |
 | `start` | Supply `plan_ref`, `outcome_contract`, task `dimensions`, and `resource_envelope` containing `limits` and an actual authorized `deadline`. Optional preference references and task graph use their existing owner schemas. Resolve the profile, create the run, configure workflow and enroll the current native source. |
 | `next` | Inspect ready work with `mode: inspect`, or admit a selected task with `mode: start`. Dependency, current authority, resources, history and native instructions constrain admission. A readiness result does not itself execute a task. |
-| `record` | Register a durable artifact, invoke a supported observer, ingest a bounded native page, record a task attempt, or bind a real profile obligation. The specific kind has a closed input schema. Caller PASS fields are never evidence. |
+| `record` | Register a durable artifact, invoke a supported observer, ingest a bounded native page, record a task attempt, bind a real profile obligation, or register/revise/resolve a decisive uncertainty. The specific kind has a closed input schema. Caller PASS fields are never evidence. |
 | `checkpoint` | Preserve current progress and, when requested and applicable, obtain the existing PM execution-basis observation. This observation does not certify a normal whole-project clean checkpoint. |
 | `explain` | Inspect contract, profile, coverage, ready work and unresolved obligations. Without a native actor, this is a historical read-only snapshot. Current ownership and acceptance require authenticated readback. |
 | `cancel` | Record the user's cancellation while retaining partial work, effects and child obligations. A requested child or schedule cancellation still requires observed disposition. |
@@ -42,6 +42,25 @@ exact journal reference when further pagination is required.
 The response contains `status`, `run_id`, `revision`, `committed_event_ids`,
 `next`, `coverage` and `diagnostics`. Read those fields rather than equating
 process exit zero with completion. A missing capability is UNKNOWN, not PASS.
+
+## Domain evidence and decisive observations
+
+`coverage.domain_quality` reports all selected domain families, their existing
+method owners and required dimensions. A method's availability is not a
+qualification claim. Rich reviews combine task-specific semantic calibration
+with actual consumer or readback requirements; `finish` preserves that combined
+review instead of replacing it with a generic process result. Read
+[domain quality](domain-quality.md) for the six family contracts.
+
+The `record` kinds `uncertainty`, `uncertainty_observe` and
+`uncertainty_revise` use the thinking framework's
+[decisive-uncertainty contract](../../synthesis-thinking-framework/references/decisive-uncertainty.md).
+`coverage.decision_uncertainty` reports current open/resolved questions, exact
+source evidence and affected criteria. `next` suggests the declared cheapest
+credible observations before dependent task work. The same current-evidence
+guard applies to direct task admission, verification and completed closure.
+Independent criteria, cancellation and incomplete closure remain available.
+A registered question does not grant action authority or reset retry budgets.
 
 ## Native evidence and currentness
 

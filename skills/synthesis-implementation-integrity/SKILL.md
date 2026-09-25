@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.0"
+  version: "1.3.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -19,6 +19,8 @@ This skill is an adversarial self-review protocol. It challenges you — human o
 "Tests pass" is not proof of correctness. Tests create their own world — fresh databases, mocked dependencies, controlled inputs. Production is a different world with persistent state, real external services, cached assets, and environment configurations that no test suite reproduces. The gap between "tests pass" and "production works" is where the worst failures live, because everyone has stopped looking.
 
 This protocol exists to keep looking.
+
+For autopilot task contracts, use the owning [software](references/autopilot-software-quality.md) and [data/document](references/autopilot-data-quality.md) methods. Inspect the executed consumer's code and expectation as well as its result; a disconnected or fixed-answer check is a substantive defect. Semantic calibration cannot certify execution, and execution cannot certify that the chosen check answers the user's question.
 
 ---
 

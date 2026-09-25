@@ -276,14 +276,14 @@ def test_child_enrollment_requires_actual_dispatch_and_revalidates_it_on_consump
     runtime, state, _ = _native_process_fixture(world, monkeypatch)
     state = command(runtime, world, state, 'workflow.budget', {'limits': {'units': {'limit': 10, 'enforcement': 'hard'}},
         'deadline': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})
-    for identity, category, units in [('worker', 'work', 5), ('audit', 'integration', 1)]:
+    for identity, category, units in [('worker', 'work', 5), ('audit', 'integration', 1), ('verify', 'verification', 1), ('recover', 'recovery', 1)]:
         state = command(runtime, world, state, 'workflow.reserve', {'reservation_id': identity,
             'amounts': {'units': units}, 'category': category})
     root = world['project'] / 'delegated'
     for name in ('output', 'scratch'):
         (root / name).mkdir(parents=True)
     brief = {'child_id': '/root/worker', 'task_id': 'work', 'deliverables': ['Produce reviewed output'],
-        'paths': [str(root)], 'criteria': ['accept'], 'reservation_id': 'worker', 'integration_reservation_id': 'audit',
+        'paths': [str(root)], 'criteria': ['accept'], 'reservation_id': 'worker', 'integration_reservation_id': 'audit', 'verification_reservation_id': 'verify', 'recovery_reservation_id': 'recover',
         'integration_owner': state['owner']['session_uuid'], 'return_contract': ['artifact_ids', 'evidence_ids', 'disposition'],
         'cancellation': 'Retain partial evidence and return', 'mode': 'artifact-only',
         'file_contract': {'schema_version': 1, 'immutable_inputs': [], 'output_roots': [str(root / 'output')],

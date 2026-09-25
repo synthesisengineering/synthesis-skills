@@ -11,7 +11,7 @@ license: CC0-1.0
 depends_on: []
 metadata:
   author: Rajiv Pant
-  version: 1.1.0
+  version: "1.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -177,6 +177,8 @@ When pressed for time, these are the principles that produce the largest improve
 9. Make every edit earn its place
 
 ## Working with the Sibling Skills
+
+For autonomous review, apply [writing outcome review](references/autopilot-writing-quality.md). Preserve distinctive sound prose in positive controls, distinguish reader harm from optional taste, and retain false-rejection findings alongside missed substantive defects.
 
 This skill is the positive half of a pair:
 

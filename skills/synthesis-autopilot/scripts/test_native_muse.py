@@ -178,7 +178,7 @@ class MuseTests(unittest.TestCase):
     def test_raw_native_terminal_controls_preserve_failed_run(self):
         wrapper = {"schema_version": 1, "payload_schema_version": 1, "id": "record", "sequence": 2,
             "stream": {"kind": "session", "id": "session"}, "payload_type": "runtime.session",
-            "payload": {"run_id": "run", "event": {"kind": "terminal", "terminal": "failed"}}}
+            "payload": {"kind": "run", "run_id": "run", "event": {"kind": "terminal", "terminal": "failed"}}}
         event = adapter.decode_record(wrapper, PRODUCER)[0]
         self.assertEqual(event["status"], "failed")
         self.assertFalse(event["data"]["portable_completion"])

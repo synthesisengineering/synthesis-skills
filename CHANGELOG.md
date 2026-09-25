@@ -4,9 +4,26 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [4.147.0] - 2026-09-25
+## [4.148.0] - 2026-09-25
 
-Autopilot 3.2.0 makes the eight-operation controller the ordinary execution path.
+Autopilot 3.3.0 connects domain judgments to current consumer results, preserves
+unknown adequacy and blocks task admission when decisive evidence is unresolved.
+Connected planning, writing, factual, grounding and review skills share these
+boundaries. A successful process does not by itself establish useful output.
+
+Native Codex, Claude and Muse observations retain their transport grammar,
+worker custody and exact current source ranges. Malformed nested payloads fail
+with typed refusals, and Muse endpoint reads share a bounded per-call cache.
+
+Resource accounting separates response counters, cumulative lower bounds,
+forecasts and unknown bills. Capture aliases cannot hide a producer's observed
+usage. Delegation reserves verification, integration and recovery capacity;
+adaptive policy preserves outcome and authority requirements. These guarantees
+do not assert measured comparative superiority or complete provider billing.
+
+### Controller and project integration
+
+The eight-operation controller becomes the ordinary execution path.
 Requests bind identity, current ownership, exact input and journal revision.
 Native observations retain verifiable source ranges and cursor continuity.
 Current cancellation and unresolved instructions constrain task admission,
@@ -27,9 +44,9 @@ identity through the transaction and uses compare-and-swap for heartbeat updates
 These source guarantees do not establish installed native scheduling, complete
 usage accounting, or comparative superiority.
 
-## [4.146.0] - 2026-09-25
+### Evaluation and shared decisions
 
-Autopilot 3.1.0 binds comparative evaluations to qualified task configurations
+Comparative evaluations bind to qualified task configurations
 and current artifacts. Domain checks distinguish evidence of behavioral quality
 from artifact existence, and native review observations retain their current
 source and input bindings. Completion requires accepted outcomes at the declared
@@ -41,6 +58,27 @@ their actual approval boundary. Generated decision packets bind rulings to the
 reviewed specification and escape hostile HTML, comment and control identifiers.
 Full-page Chromium tests verify the rendered consumer and fail if the required
 browser is unavailable.
+
+The reviewed 4.146.0 and 4.147.0 development candidates are consolidated into
+this release; they were not separately published.
+
+## [4.145.7] - 2026-09-25
+
+Native marketplace refresh can create or replace the current version before
+plugin installation. Each newly observed current generation is now verified
+against its pinned release and preserved outside the client cache before the
+next destructive native command. Earlier sealed generations remain retained;
+new unrelated roots, redirected ownership and damaged recovery still refuse.
+
+The complete cache-parent boundary now includes unrecognized names and
+materialized historical roots without Git metadata. Changed history refuses
+the next native command without overwriting it during recovery. Final repair
+retains changed materialized bytes in verified external bundles before restoring
+the historical release; ordinary runtime bytecode remains supported.
+
+Native command timeouts and transport errors remain failed installations while
+attempting the existing verified restoration of historical roots needed by
+active sessions. Recovery does not convert an unresolved command into success.
 
 ## [4.145.6] - 2026-09-25
 

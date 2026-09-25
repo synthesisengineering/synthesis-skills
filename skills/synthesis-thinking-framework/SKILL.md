@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.0"
+  version: "2.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -146,6 +146,8 @@ Use the shared [decision-ownership contract](references/decision-ownership.md) b
 Execute an already-decided or delegated technical choice after checking its consequences. Preserve an explicitly requested review cadence. Ask about a principal-owned ambiguity with the concrete alternatives and consequence that make the answer necessary. A human-only dependency blocks its dependent action; continue independent authorized work and retain the unresolved obligation.
 
 For mixed-domain work, evaluate every promised outcome in its own terms. A software test does not establish writing quality, and an eloquent explanation does not establish a deployment. Define what observation would discriminate a useful result from a plausible but wrong one before implementation.
+
+Use the [decisive-uncertainty method](references/decisive-uncertainty.md) when a missing fact could change the next decision. Prefer the cheapest credible discriminating observation, retain refuted predictions, and stop when the required decision is supported. Its autopilot journal adapter binds actual local execution to the affected acceptance closure; unsupported semantic and external-state questions remain explicit.
 
 ## Relationship to Other Skills
 
