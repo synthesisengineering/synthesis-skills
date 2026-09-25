@@ -20,6 +20,12 @@ generations remain intact. Disabled, modular or conflicting pinned selections
 are refused before mutation, and absent desired state is not invented. Doctor
 remains strict; successful installation does not fabricate native live loading.
 
+Muse bundle refresh now admits only owned version directories under its configured
+bundle root. It stages and verifies replacements before renaming, retains previous
+bytes for recovery, and refuses redirected paths or competing transitions.
+Interrupted copies and swaps preserve retained work. Existing pinned source
+directory names remain usable when their verified manifests advance versions.
+
 ## [4.145.3] - 2026-09-24
 
 Project content hashing resolves the canonical project root once per pass and

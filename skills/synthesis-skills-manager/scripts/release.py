@@ -58,6 +58,7 @@ import sys
 import tarfile
 import tempfile
 import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
@@ -1078,55 +1079,141 @@ def _remove_transition_backup(backup: Path) -> None:
     shutil.rmtree(resolved)
 
 
+def _cache_transition_parent_identity(parent: Path) -> tuple[int, int]:
+    """Reject ancestor redirects before a tree mutation or cleanup."""
+    if not parent.is_absolute() or any(p.is_symlink() for p in (parent, *parent.parents)):
+        raise OSError(f"unsafe cache-transition parent: {parent}")
+    if not parent.is_dir() or parent.resolve() != parent:
+        raise OSError(f"unsafe cache-transition parent: {parent}")
+    info = parent.stat()
+    return info.st_dev, info.st_ino
+
+
 def _remove_cache_transition_tree(path: Path, parent: Path, prefix: str) -> None:
+    parent_identity = _cache_transition_parent_identity(parent)
     if not path.exists() and not path.is_symlink():
         return
-    if path.parent != parent or not path.name.startswith(prefix) or path.is_symlink():
+    protected = {Path.home().resolve(), Path.cwd().resolve(), SCRIPT_DIR.parents[2]}
+    if (
+        path.parent != parent or not prefix.startswith(".release-")
+        or not path.name.startswith(prefix) or path.is_symlink() or not path.is_dir()
+        or any(p == path or p.is_relative_to(path) for p in protected)
+        or any(child.name == ".git" for child in path.rglob("*"))
+    ):
         raise OSError(f"refusing unsafe cache-transition cleanup target: {path}")
-    shutil.rmtree(path)
+    # Bind recursive removal to the verified parent, including if its pathname
+    # is concurrently replaced. Python's fd-based rmtree never follows links.
+    descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(descriptor)
+        if (info.st_dev, info.st_ino) != parent_identity:
+            raise OSError(f"cache-transition parent changed before cleanup: {parent}")
+        if not shutil.rmtree.avoids_symlink_attacks:
+            raise OSError("safe descriptor-based tree cleanup is unavailable")
+        shutil.rmtree(path.name, dir_fd=descriptor)
+    finally:
+        os.close(descriptor)
 
 
-def _replace_cache_root(source: Path, destination: Path, parent: Path) -> None:
-    """Replace a differing root without following any destination entry."""
+def _replace_cache_root(
+    source: Path, destination: Path, parent: Path, *,
+    retain_displaced: bool = False,
+    validate_destination: Callable[[], None] | None = None,
+) -> Path | None:
+    """Stage and verify before swapping; retain Muse's old source for recovery.
+
+    The optional boundary check runs again after copying, immediately before
+    either rename. Recovery examines the filesystem, not flags set after a
+    syscall: an interruption can arrive after rename succeeds but before its
+    next Python statement executes.
+    """
     if destination.parent != parent or parent.is_symlink():
         raise OSError(f"refusing unsafe cache-repair boundary: {destination}")
+    parent_identity = _cache_transition_parent_identity(parent)
     staging_prefix = f".release-repair-{destination.name}-"
     displaced_prefix = f".release-displaced-{destination.name}-"
-    nonce = f"{os.getpid()}-{time.time_ns()}"
+    nonce = secrets.token_hex(16)
     staging = parent / f"{staging_prefix}{nonce}"
     displaced = parent / f"{displaced_prefix}{nonce}"
-    moved = False
-    installed = False
+    had_destination = destination.exists()
+    move_attempted = False
+    prior_identity: tuple[int, int] | None = None
+    replacement_identity: tuple[int, int] | None = None
+
+    def identity(path: Path) -> tuple[int, int]:
+        info = path.lstat()
+        if not stat.S_ISDIR(info.st_mode):
+            raise OSError(f"cache-transition tree is not a real directory: {path}")
+        return info.st_dev, info.st_ino
+
     try:
+        if displaced.exists() or displaced.is_symlink():
+            raise OSError(f"cache-transition recovery path already exists: {displaced}")
         shutil.copytree(source, staging, symlinks=True)
+        replacement_identity = identity(staging)
         if _tree_digest(source) != _tree_digest(staging):
             raise OSError(f"staged repair differs from snapshot: {source}")
-        if destination.is_symlink() or not destination.is_dir():
+        if _cache_transition_parent_identity(parent) != parent_identity:
+            raise OSError(f"cache-transition parent changed before replacement: {parent}")
+        if validate_destination is not None:
+            validate_destination()
+        if destination.is_symlink() or (destination.exists() and not destination.is_dir()):
             raise OSError(f"version root has an unsafe type: {destination}")
-        os.rename(destination, displaced)
-        moved = True
+        if destination.exists():
+            prior_identity = identity(destination)
+            move_attempted = True
+            os.rename(destination, displaced)
+        if _cache_transition_parent_identity(parent) != parent_identity:
+            raise OSError(f"cache-transition parent changed before promotion: {parent}")
+        if destination.exists() or destination.is_symlink():
+            raise OSError(f"cache-transition destination appeared before promotion: {destination}")
         os.rename(staging, destination)
-        installed = True
+        if (_cache_transition_parent_identity(parent) != parent_identity
+                or identity(destination) != replacement_identity):
+            raise OSError(f"cache-transition identity changed after promotion: {destination}")
         if _tree_digest(source) != _tree_digest(destination):
             raise OSError(f"atomically repaired root differs from snapshot: {destination}")
-    except OSError as exc:
+    except BaseException as exc:
         rollback_error: OSError | None = None
-        if moved:
+        if move_attempted and displaced.exists() and not displaced.is_symlink():
             try:
-                if installed and (destination.exists() or destination.is_symlink()):
+                if _cache_transition_parent_identity(parent) != parent_identity:
+                    raise OSError(f"cache-transition parent changed before rollback: {parent}")
+                if identity(displaced) != prior_identity:
+                    raise OSError(f"recovery tree changed identity: {displaced}")
+                if destination.exists() or destination.is_symlink():
+                    if staging.exists() or staging.is_symlink():
+                        raise OSError("destination and staging both exist; refusing to overwrite either")
+                    if identity(destination) != replacement_identity:
+                        raise OSError(f"destination changed identity; retained without moving: {destination}")
                     os.rename(destination, staging)
-                if displaced.exists() or displaced.is_symlink():
-                    os.rename(displaced, destination)
+                os.rename(displaced, destination)
+            except OSError as rollback_exc:
+                rollback_error = rollback_exc
+        elif not had_destination and not staging.exists() and destination.exists():
+            try:
+                if _cache_transition_parent_identity(parent) != parent_identity:
+                    raise OSError(f"cache-transition parent changed before rollback: {parent}")
+                if identity(destination) != replacement_identity:
+                    raise OSError(f"destination changed identity; retained without moving: {destination}")
+                os.rename(destination, staging)
             except OSError as rollback_exc:
                 rollback_error = rollback_exc
         if rollback_error is not None:
             raise OSError(
-                f"cache-root repair failed ({exc}); rollback failed ({rollback_error})"
+                f"cache-root repair failed ({exc}); rollback failed ({rollback_error}); "
+                f"recovery trees retained at {displaced} and {staging}"
             ) from exc
         raise
     finally:
-        _remove_cache_transition_tree(staging, parent, staging_prefix)
+        # A failed Muse transition must never discard bytes that may be the
+        # only remaining recovery evidence. Successful renames consume staging.
+        if not retain_displaced:
+            _remove_cache_transition_tree(staging, parent, staging_prefix)
+    if retain_displaced:
+        return displaced if displaced.exists() else None
     _remove_cache_transition_tree(displaced, parent, displaced_prefix)
+    return None
 
 
 def _restore_codex_caches_once(
@@ -1300,10 +1387,12 @@ def _muse_bundle_completeness(root: Path, version: str) -> tuple[bool, str]:
     if not root.is_dir() or root.is_symlink():
         return False, "bundle is absent, not a directory, or a symlink"
     try:
+        if not (root / ".muse-plugin" / "plugin.json").resolve().is_relative_to(root.resolve()):
+            return False, "bundle manifest escapes its root"
         manifest = json.loads(
             (root / ".muse-plugin" / "plugin.json").read_text(encoding="utf-8")
         )
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         return False, f"bundle manifest unreadable: {exc}"
     if not isinstance(manifest, dict):
         return False, "bundle manifest is not an object"
@@ -1315,22 +1404,116 @@ def _muse_bundle_completeness(root: Path, version: str) -> tuple[bool, str]:
     if not isinstance(capabilities, dict):
         return False, "bundle manifest capabilities is not an object"
     skills = capabilities.get("skills") or []
-    if not skills:
+    if not isinstance(skills, list) or not skills:
         return False, "bundle manifest declares no skills"
+
+    def owned_file(value: object) -> bool:
+        if not isinstance(value, str) or not value:
+            return False
+        relative = PurePosixPath(value)
+        if relative.is_absolute() or ".." in relative.parts:
+            return False
+        candidate = root / value
+        try:
+            return candidate.is_file() and candidate.resolve().is_relative_to(root.resolve())
+        except (OSError, RuntimeError):
+            return False
+
     for entry in skills:
         path = entry.get("path") if isinstance(entry, dict) else None
-        if not path or not (root / str(path)).is_file():
+        if not owned_file(path):
             return False, f"bundle skill missing: {path!r}"
-    for hook in capabilities.get("hooks") or []:
+    hooks = capabilities.get("hooks") or []
+    if not isinstance(hooks, list):
+        return False, "bundle manifest hooks is not an array"
+    for hook in hooks:
         if not isinstance(hook, dict):
             return False, "bundle hook entry is not an object"
         command = hook.get("command") or []
-        script = root / str(command[1]) if len(command) > 1 else None
-        if script is None or not script.is_file():
+        if not isinstance(command, list) or len(command) < 2 or not owned_file(command[1]):
             return False, f"bundle hook script missing: {hook.get('id')}"
+        script = root / command[1]
         if not os.access(script, os.X_OK):
             return False, f"bundle hook script not executable: {hook.get('id')}"
     return True, f"bundle stages {len(skills)} skills for {version}"
+
+
+def _validate_muse_bundle_path(path: Path, *, repo: Path | None = None) -> None:
+    """Authorize only direct owned version roots, never an arbitrary CLI path.
+
+    An environment override selects the bundle parent, not permission to erase
+    a checkout. Existing trees also need a Muse ownership manifest. Its version
+    need not match the directory name: Muse pins the original install path.
+    """
+    parent = MUSE_BUNDLE_ROOT
+    protected = {Path.home().resolve(), Path.cwd().resolve(), SCRIPT_DIR.parents[2]}
+    if repo is not None:
+        protected.add(repo.resolve())
+    try:
+        resolved_parent, resolved_path = parent.resolve(), path.resolve()
+    except (OSError, RuntimeError) as exc:
+        raise OSError(f"cannot resolve Muse bundle ownership boundary: {path}") from exc
+    if (
+        not parent.is_absolute() or not path.is_absolute()
+        or ".." in parent.parts or ".." in path.parts
+        or path.parent != parent
+        or not path.name.startswith("v")
+        or RELEASE_VERSION_RE.fullmatch(path.name[1:]) is None
+        or parent == Path(parent.anchor)
+        or resolved_parent != parent or resolved_path != path
+        or any(p == parent or p == path or p.is_relative_to(path) for p in protected)
+    ):
+        raise OSError(f"refusing unowned or unsafe Muse bundle path: {path}")
+    for ancestor in (parent, *parent.parents):
+        if ancestor.is_symlink() or (ancestor.exists() and not ancestor.is_dir()):
+            raise OSError(f"unsafe Muse bundle ancestor: {ancestor}")
+        if (ancestor / ".git").exists() or (ancestor / ".git").is_symlink():
+            raise OSError(f"Muse bundle parent is inside a repository: {ancestor}")
+        if (ancestor / ".agents" / "repos.yaml").exists():
+            raise OSError(f"Muse bundle parent is inside a workspace: {ancestor}")
+    if not path.exists():
+        # A killed rename can leave the previous tree at a recovery path.
+        # Never silently create a fresh source over that unresolved transition.
+        recoveries = sorted(parent.glob(f".release-displaced-{path.name}-*"))
+        if recoveries:
+            raise OSError(f"Muse bundle is absent; retained recovery tree(s): {recoveries}")
+        return
+    if not path.is_dir() or path.is_symlink():
+        raise OSError(f"Muse bundle root is not a real directory: {path}")
+    for child in path.rglob("*"):
+        if child.name == ".git":
+            raise OSError(f"refusing to replace a repository inside a Muse bundle: {child}")
+        if child.is_symlink():
+            try:
+                contained = child.resolve().is_relative_to(path)
+            except (OSError, RuntimeError) as exc:
+                raise OSError(f"Muse bundle symlink cannot be resolved: {child}") from exc
+            if not contained:
+                raise OSError(f"Muse bundle symlink escapes its owned tree: {child}")
+    try:
+        manifest = json.loads((path / ".muse-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise OSError(f"existing Muse bundle has no readable ownership manifest: {path}") from exc
+    if (not isinstance(manifest, dict) or manifest.get("name") != PLUGIN_NAME
+            or not isinstance(manifest.get("version"), str)
+            or RELEASE_VERSION_RE.fullmatch(manifest["version"]) is None):
+        raise OSError(f"existing tree is not an owned Muse bundle: {path}")
+
+
+@contextlib.contextmanager
+def _muse_bundle_lock(path: Path, *, repo: Path | None = None) -> Iterator[None]:
+    """Serialize bundle swaps and reject redirected lock/parent paths."""
+    _validate_muse_bundle_path(path, repo=repo)
+    MUSE_BUNDLE_ROOT.mkdir(parents=True, exist_ok=True)
+    lock_path = MUSE_BUNDLE_ROOT / ".release.lock"
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(lock_path, flags, 0o600)
+    with os.fdopen(descriptor, "a+") as handle:
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            raise OSError(f"Muse bundle lock is not a regular file: {lock_path}")
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _validate_muse_bundle_path(path, repo=repo)
+        yield
 
 
 def _materialize_muse_bundle(
@@ -1338,43 +1521,52 @@ def _materialize_muse_bundle(
 ) -> Path | None:
     """Export the release tree to the version-stamped Muse bundle directory.
 
-    Re-runs are idempotent: a present bundle that already stages this
-    version is reused, anything else is removed and re-exported from the
-    source tree so a stale or partial directory can never be installed.
+    Export and verify in a fresh sibling before replacing an owned bundle.
+    Keep displaced bytes for recovery; they may include retained local work.
     """
     destination = muse_bundle_dir(version)
-    if dry_run:
-        result.add("install.muse.bundle", True, f"dry-run: stage bundle at {destination}")
-        return destination
-    if destination.exists() or destination.is_symlink():
-        ok, detail = _muse_bundle_completeness(destination, version)
-        if ok:
-            # Version labels do not move across same-version commits, so a
-            # structurally complete bundle is only reusable when its bytes
-            # still equal the source tree — otherwise a re-run would
-            # reinstall stale content under a matching version.
-            content_ok, content_detail = content_digest_report(repo, destination)
-            if content_ok:
-                result.add("install.muse.bundle", True, f"reusing complete bundle at {destination}")
-                return destination
-            detail = f"bundle content drifted from source ({content_detail})"
-        result.add("install.muse.bundle-replace", True, f"replacing incomplete bundle ({detail})")
-        if destination.is_symlink() or destination.is_file():
-            destination.unlink()
-        else:
-            shutil.rmtree(destination)
     try:
-        _export_release_tag(repo, version, destination, current_version=version)
-    except OSError as exc:
+        _validate_muse_bundle_path(destination, repo=repo)
+        if dry_run:
+            result.add("install.muse.bundle", True, f"dry-run: stage bundle at {destination}")
+            return destination
+        with _muse_bundle_lock(destination, repo=repo):
+            if destination.exists():
+                ok, detail = _muse_bundle_completeness(destination, version)
+                content_ok, content_detail = content_digest_report(repo, destination)
+                if ok and content_ok:
+                    result.add("install.muse.bundle", True, f"reusing complete bundle at {destination}")
+                    return destination
+                result.add("install.muse.bundle-replace", True,
+                           f"staging replacement ({detail}; {content_detail})")
+            staging_prefix = f".release-export-{destination.name}-"
+            staging = MUSE_BUNDLE_ROOT / f"{staging_prefix}{secrets.token_hex(16)}"
+            try:
+                _export_release_tag(repo, version, staging, current_version=version)
+                ok, detail = _muse_bundle_completeness(staging, version)
+                if not ok:
+                    raise OSError(f"exported bundle incomplete: {detail}")
+                content_ok, content_detail = content_digest_report(repo, staging)
+                if not content_ok:
+                    raise OSError(f"exported bundle differs from source: {content_detail}")
+                recovery = _replace_cache_root(
+                    staging, destination, MUSE_BUNDLE_ROOT, retain_displaced=True,
+                    validate_destination=lambda: _validate_muse_bundle_path(destination, repo=repo),
+                )
+            finally:
+                _remove_cache_transition_tree(staging, MUSE_BUNDLE_ROOT, staging_prefix)
+            if recovery is not None:
+                detail += f"; previous bytes retained at {recovery}"
+            result.add("install.muse.bundle", True, detail)
+            return destination
+    except (OSError, subprocess.SubprocessError, tarfile.TarError) as exc:
         result.add("install.muse.bundle", False, str(exc))
         return None
-    ok, detail = _muse_bundle_completeness(destination, version)
-    result.add("install.muse.bundle", ok, detail)
-    return destination if ok else None
 
 
 def _sync_muse_recorded_source(
-    recorded: Path, staged: Path, version: str, result: Result, dry_run: bool
+    recorded: Path, staged: Path, version: str, result: Result, dry_run: bool,
+    *, repo: Path | None = None,
 ) -> bool:
     """Copy the versioned export over the bundle path Muse's record points at.
 
@@ -1383,22 +1575,29 @@ def _sync_muse_recorded_source(
     ``plugins update`` re-caches from it. The versioned export is left
     untouched as the retry source if the copy is interrupted.
     """
-    if recorded == staged:
-        return result.add("install.muse.sync", True, "recorded source already stages this version")
-    if dry_run:
-        return result.add("install.muse.sync", True, f"dry-run: sync {staged} into {recorded}")
-    if recorded.is_symlink():
-        return result.add("install.muse.sync", False, f"recorded source is a symlink: {recorded}")
     try:
-        if recorded.exists():
-            if not recorded.is_dir():
-                return result.add("install.muse.sync", False, f"recorded source is not a directory: {recorded}")
-            shutil.rmtree(recorded)
-        shutil.copytree(staged, recorded)
+        _validate_muse_bundle_path(recorded, repo=repo)
+        _validate_muse_bundle_path(staged, repo=repo)
+        if dry_run:
+            return result.add("install.muse.sync", True, f"dry-run: sync {staged} into {recorded}")
+        with _muse_bundle_lock(recorded, repo=repo):
+            _validate_muse_bundle_path(staged, repo=repo)
+            ok, detail = _muse_bundle_completeness(staged, version)
+            if not ok:
+                raise OSError(f"staged tree incomplete: {detail}")
+            if recorded == staged:
+                return result.add("install.muse.sync", True, "recorded source already stages this version")
+            if recorded.exists() and _tree_digest(recorded) == _tree_digest(staged):
+                return result.add("install.muse.sync", True, "recorded source already matches staged bytes")
+            recovery = _replace_cache_root(
+                staged, recorded, MUSE_BUNDLE_ROOT, retain_displaced=True,
+                validate_destination=lambda: _validate_muse_bundle_path(recorded, repo=repo),
+            )
+            if recovery is not None:
+                detail += f"; previous bytes retained at {recovery}"
     except OSError as exc:
         return result.add("install.muse.sync", False, str(exc))
-    ok, detail = _muse_bundle_completeness(recorded, version)
-    return result.add("install.muse.sync", ok, detail if ok else f"synced tree incomplete: {detail}")
+    return result.add("install.muse.sync", True, detail)
 
 
 def refresh_client(
@@ -1428,7 +1627,7 @@ def refresh_client(
             recorded = Path(str(source_path))
             if not recorded.is_absolute():
                 return result.add("install.muse.record", False, f"recorded source is not absolute: {source_path}")
-            if not _sync_muse_recorded_source(recorded, bundle, version, result, dry_run):
+            if not _sync_muse_recorded_source(recorded, bundle, version, result, dry_run, repo=repo):
                 return False
             commands = [[binary, "plugins", "update", PLUGIN_NAME, "--json"]]
     elif client == "claude":

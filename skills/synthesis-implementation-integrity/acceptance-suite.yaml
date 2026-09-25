@@ -62,6 +62,24 @@ changed_surfaces:
   - readiness-033
   - readiness-034
   - readiness-035
+  - readiness-036
+  - readiness-037
+  - readiness-038
+  - readiness-039
+  - readiness-040
+  - readiness-041
+  - readiness-042
+  - readiness-043
+  - readiness-044
+  - readiness-045
+  - readiness-046
+  - readiness-047
+  - readiness-048
+  - readiness-049
+  - readiness-050
+  - readiness-051
+  - readiness-052
+  - readiness-053
   - release-metadata
   - runtime-version
 - path: README.md
@@ -74,7 +92,6 @@ changed_surfaces:
   - readiness-004
   - readiness-005
   - readiness-006
-  - readiness-017
   - readiness-018
   - readiness-019
   - readiness-020
@@ -83,6 +100,7 @@ changed_surfaces:
   - readiness-023
   - readiness-024
   - readiness-025
+  - readiness-026
 - path: skills/synthesis-agent-conformance/scripts/conformance.py
   cases: *id002
 - path: skills/synthesis-agent-conformance/scripts/session_context.py
@@ -117,7 +135,7 @@ changed_surfaces:
   - readiness-014
   - readiness-015
   - readiness-016
-  - readiness-026
+  - readiness-017
   - readiness-027
   - readiness-028
   - readiness-029
@@ -127,6 +145,24 @@ changed_surfaces:
   - readiness-033
   - readiness-034
   - readiness-035
+  - readiness-036
+  - readiness-037
+  - readiness-038
+  - readiness-039
+  - readiness-040
+  - readiness-041
+  - readiness-042
+  - readiness-043
+  - readiness-044
+  - readiness-045
+  - readiness-046
+  - readiness-047
+  - readiness-048
+  - readiness-049
+  - readiness-050
+  - readiness-051
+  - readiness-052
+  - readiness-053
   - release-metadata
   - runtime-version
 - path: skills/synthesis-onboarding/scripts/bootstrap.py
@@ -141,7 +177,7 @@ changed_surfaces:
   - readiness-014
   - readiness-015
   - readiness-016
-  - readiness-026
+  - readiness-017
   - readiness-027
   - readiness-028
   - readiness-029
@@ -151,6 +187,24 @@ changed_surfaces:
   - readiness-033
   - readiness-034
   - readiness-035
+  - readiness-036
+  - readiness-037
+  - readiness-038
+  - readiness-039
+  - readiness-040
+  - readiness-041
+  - readiness-042
+  - readiness-043
+  - readiness-044
+  - readiness-045
+  - readiness-046
+  - readiness-047
+  - readiness-048
+  - readiness-049
+  - readiness-050
+  - readiness-051
+  - readiness-052
+  - readiness-053
   - release-metadata
   - runtime-version
 - path: skills/synthesis-onboarding/scripts/onboard.py
@@ -165,7 +219,7 @@ changed_surfaces:
   - readiness-014
   - readiness-015
   - readiness-016
-  - readiness-026
+  - readiness-017
   - readiness-027
   - readiness-028
   - readiness-029
@@ -175,6 +229,24 @@ changed_surfaces:
   - readiness-033
   - readiness-034
   - readiness-035
+  - readiness-036
+  - readiness-037
+  - readiness-038
+  - readiness-039
+  - readiness-040
+  - readiness-041
+  - readiness-042
+  - readiness-043
+  - readiness-044
+  - readiness-045
+  - readiness-046
+  - readiness-047
+  - readiness-048
+  - readiness-049
+  - readiness-050
+  - readiness-051
+  - readiness-052
+  - readiness-053
   - release-metadata
   - runtime-version
 - path: skills/synthesis-onboarding/scripts/synthesis_cli.py
@@ -189,7 +261,7 @@ changed_surfaces:
   - readiness-014
   - readiness-015
   - readiness-016
-  - readiness-026
+  - readiness-017
   - readiness-027
   - readiness-028
   - readiness-029
@@ -199,6 +271,24 @@ changed_surfaces:
   - readiness-033
   - readiness-034
   - readiness-035
+  - readiness-036
+  - readiness-037
+  - readiness-038
+  - readiness-039
+  - readiness-040
+  - readiness-041
+  - readiness-042
+  - readiness-043
+  - readiness-044
+  - readiness-045
+  - readiness-046
+  - readiness-047
+  - readiness-048
+  - readiness-049
+  - readiness-050
+  - readiness-051
+  - readiness-052
+  - readiness-053
   - release-metadata
   - runtime-version
 - path: skills/synthesis-onboarding/scripts/system_contract.py
@@ -213,7 +303,7 @@ changed_surfaces:
   - readiness-014
   - readiness-015
   - readiness-016
-  - readiness-026
+  - readiness-017
   - readiness-027
   - readiness-028
   - readiness-029
@@ -223,6 +313,24 @@ changed_surfaces:
   - readiness-033
   - readiness-034
   - readiness-035
+  - readiness-036
+  - readiness-037
+  - readiness-038
+  - readiness-039
+  - readiness-040
+  - readiness-041
+  - readiness-042
+  - readiness-043
+  - readiness-044
+  - readiness-045
+  - readiness-046
+  - readiness-047
+  - readiness-048
+  - readiness-049
+  - readiness-050
+  - readiness-051
+  - readiness-052
+  - readiness-053
   - release-metadata
   - runtime-version
 - path: skills/synthesis-onboarding/scripts/test_bootstrap.py
@@ -231,25 +339,27 @@ changed_surfaces:
 - path: skills/synthesis-onboarding/scripts/test_instruction_adversarial.py
   cases:
   - readiness-008
-- path: skills/synthesis-onboarding/scripts/test_synthesis_cli.py
+- path: skills/synthesis-onboarding/scripts/test_onboard.py
   cases:
   - readiness-009
+- path: skills/synthesis-onboarding/scripts/test_synthesis_cli.py
+  cases:
   - readiness-010
   - readiness-011
   - readiness-012
   - readiness-013
   - readiness-014
   - readiness-015
+  - readiness-016
 - path: skills/synthesis-onboarding/scripts/test_system_contract.py
   cases:
-  - readiness-016
+  - readiness-017
 - path: skills/synthesis-project-management/SKILL.md
   cases: *id002
 - path: skills/synthesis-project-management/scripts/project_state.py
   cases: *id002
 - path: skills/synthesis-project-management/scripts/test_project_state.py
   cases:
-  - readiness-017
   - readiness-018
   - readiness-019
   - readiness-020
@@ -258,6 +368,7 @@ changed_surfaces:
   - readiness-023
   - readiness-024
   - readiness-025
+  - readiness-026
 - path: skills/synthesis-skills-manager/SKILL.md
   cases:
   - readiness-007
@@ -270,7 +381,7 @@ changed_surfaces:
   - readiness-014
   - readiness-015
   - readiness-016
-  - readiness-026
+  - readiness-017
   - readiness-027
   - readiness-028
   - readiness-029
@@ -280,6 +391,24 @@ changed_surfaces:
   - readiness-033
   - readiness-034
   - readiness-035
+  - readiness-036
+  - readiness-037
+  - readiness-038
+  - readiness-039
+  - readiness-040
+  - readiness-041
+  - readiness-042
+  - readiness-043
+  - readiness-044
+  - readiness-045
+  - readiness-046
+  - readiness-047
+  - readiness-048
+  - readiness-049
+  - readiness-050
+  - readiness-051
+  - readiness-052
+  - readiness-053
   - release-metadata
   - runtime-version
 - path: skills/synthesis-skills-manager/scripts/release.py
@@ -294,7 +423,7 @@ changed_surfaces:
   - readiness-014
   - readiness-015
   - readiness-016
-  - readiness-026
+  - readiness-017
   - readiness-027
   - readiness-028
   - readiness-029
@@ -304,11 +433,28 @@ changed_surfaces:
   - readiness-033
   - readiness-034
   - readiness-035
+  - readiness-036
+  - readiness-037
+  - readiness-038
+  - readiness-039
+  - readiness-040
+  - readiness-041
+  - readiness-042
+  - readiness-043
+  - readiness-044
+  - readiness-045
+  - readiness-046
+  - readiness-047
+  - readiness-048
+  - readiness-049
+  - readiness-050
+  - readiness-051
+  - readiness-052
+  - readiness-053
   - release-metadata
   - runtime-version
 - path: skills/synthesis-skills-manager/scripts/test_release.py
   cases:
-  - readiness-026
   - readiness-027
   - readiness-028
   - readiness-029
@@ -318,6 +464,24 @@ changed_surfaces:
   - readiness-033
   - readiness-034
   - readiness-035
+  - readiness-036
+  - readiness-037
+  - readiness-038
+  - readiness-039
+  - readiness-040
+  - readiness-041
+  - readiness-042
+  - readiness-043
+  - readiness-044
+  - readiness-045
+  - readiness-046
+  - readiness-047
+  - readiness-048
+  - readiness-049
+  - readiness-050
+  - readiness-051
+  - readiness-052
+  - readiness-053
 cases:
 - id: readiness-001
   control_class: acceptance-test
@@ -364,144 +528,237 @@ cases:
 - id: readiness-009
   control_class: acceptance-test
   expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_onboard.py::test_source_fixture_suppresses_automatic_maintenance_before_first_commit
+  motivating_defect: source fixture suppresses automatic maintenance before first
+    commit
+- id: readiness-010
+  control_class: acceptance-test
+  expected_status: pass
   fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_release_bound_repair_rejects_another_release_before_recovery
   motivating_defect: release bound repair rejects another release before recovery
-- id: readiness-010
+- id: readiness-011
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_release_bound_repair_preserves_a_changed_desired_selection
   motivating_defect: release bound repair preserves a changed desired selection
-- id: readiness-011
+- id: readiness-012
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_release_bound_repair_rechecks_inside_first_lock_before_recovery
   motivating_defect: release bound repair rechecks inside first lock before recovery
-- id: readiness-012
+- id: readiness-013
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_release_native_verification_rejects_complete_inventory_drift
   motivating_defect: release native verification rejects complete inventory drift
-- id: readiness-013
+- id: readiness-014
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_release_native_verification_accepts_only_known_runtime_cache_artifacts
   motivating_defect: release native verification accepts only known runtime cache
     artifacts
-- id: readiness-014
+- id: readiness-015
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_release_bound_bootstrap_carries_the_original_exact_commit
   motivating_defect: release bound bootstrap carries the original exact commit
-- id: readiness-015
+- id: readiness-016
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_release_bound_repair_preserves_selection_and_requires_engine_doctor
   motivating_defect: release bound repair preserves selection and requires engine
     doctor
-- id: readiness-016
+- id: readiness-017
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_live_load_binds_client_root_to_the_release_content_digest
   motivating_defect: live load binds client root to the release content digest
-- id: readiness-017
+- id: readiness-018
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_json_shared_size_boundary
   motivating_defect: state json shared size boundary
-- id: readiness-018
+- id: readiness-019
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_json_rejects_malformed_objects
   motivating_defect: state json rejects malformed objects
-- id: readiness-019
+- id: readiness-020
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_json_depth_boundary_ignores_escaped_string_content
   motivating_defect: state json depth boundary ignores escaped string content
-- id: readiness-020
+- id: readiness-021
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_json_refuses_nonregular_inputs
   motivating_defect: state json refuses nonregular inputs
-- id: readiness-021
+- id: readiness-022
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_json_refuses_symlink_raced_after_lstat
   motivating_defect: state json refuses symlink raced after lstat
-- id: readiness-022
+- id: readiness-023
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_json_actual_read_is_bounded_when_input_grows
   motivating_defect: state json actual read is bounded when input grows
-- id: readiness-023
+- id: readiness-024
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_json_refuses_changed_read_snapshot
   motivating_defect: state json refuses changed read snapshot
-- id: readiness-024
+- id: readiness-025
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_compiler_refuses_oversize_before_changing_project
   motivating_defect: state compiler refuses oversize before changing project
-- id: readiness-025
+- id: readiness-026
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_broken_state_symlink_is_invalid_evidence_not_legacy_absence
   motivating_defect: broken state symlink is invalid evidence not legacy absence
-- id: readiness-026
+- id: readiness-027
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_stable_consumer_revalidates_full_inventory_and_preserves_previous_pointer
   motivating_defect: stable consumer revalidates full inventory and preserves previous
     pointer
-- id: readiness-027
+- id: readiness-028
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_refuses_completion_when_lifecycle_transaction_is_not_reconciled
   motivating_defect: release refuses completion when lifecycle transaction is not
     reconciled
-- id: readiness-028
+- id: readiness-029
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_native_effects_honor_saved_client_selection
   motivating_defect: release native effects honor saved client selection
-- id: readiness-029
+- id: readiness-030
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_binds_original_selection_before_native_mutation
   motivating_defect: release binds original selection before native mutation
-- id: readiness-030
+- id: readiness-031
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_stable_consumer_uses_actual_verified_client_root
   motivating_defect: release stable consumer uses actual verified client root
-- id: readiness-031
+- id: readiness-032
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_reconciliation_keeps_original_publisher_selection_binding
   motivating_defect: release reconciliation keeps original publisher selection binding
-- id: readiness-032
+- id: readiness-033
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_selection_preserves_explicit_profile_and_policy
   motivating_defect: release selection preserves explicit profile and policy
-- id: readiness-033
+- id: readiness-034
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_commits_real_lifecycle_generation_only_after_exact_native_and_engine_checks
   motivating_defect: release commits real lifecycle generation only after exact native
     and engine checks
-- id: readiness-034
+- id: readiness-035
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deep_verify_checks_complete_reported_native_inventory
   motivating_defect: deep verify checks complete reported native inventory
-- id: readiness-035
+- id: readiness-036
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_native_inventory_uses_git_release_membership_not_checkout_build_noise
   motivating_defect: native inventory uses git release membership not checkout build
     noise
+- id: readiness-037
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_refresh_rejects_foreign_tree_without_touching_bytes
+  motivating_defect: muse owned refresh rejects foreign tree without touching bytes
+- id: readiness-038
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_refresh_preserves_old_tree_when_copy_fails
+  motivating_defect: muse owned refresh preserves old tree when copy fails
+- id: readiness-039
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_refresh_restores_old_tree_on_interruption
+  motivating_defect: muse owned refresh restores old tree on interruption
+- id: readiness-040
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_refresh_retains_old_bytes_and_accepts_pinned_old_dirname
+  motivating_defect: muse owned refresh retains old bytes and accepts pinned old dirname
+- id: readiness-041
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_materialize_keeps_previous_bundle_on_export_failure
+  motivating_defect: muse owned materialize keeps previous bundle on export failure
+- id: readiness-042
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_refresh_rejects_redirects_without_modifying_targets
+  motivating_defect: muse owned refresh rejects redirects without modifying targets
+- id: readiness-043
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_materialize_refuses_protected_boundaries
+  motivating_defect: muse owned materialize refuses protected boundaries
+- id: readiness-044
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_materialize_preserves_unowned_existing_version
+  motivating_defect: muse owned materialize preserves unowned existing version
+- id: readiness-045
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_refresh_retains_previous_tree_across_failed_transitions
+  motivating_defect: muse owned refresh retains previous tree across failed transitions
+- id: readiness-046
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_refresh_preserves_recovery_after_process_death
+  motivating_defect: muse owned refresh preserves recovery after process death
+- id: readiness-047
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_materialize_verifies_export_before_displacing_old_tree
+  motivating_defect: muse owned materialize verifies export before displacing old
+    tree
+- id: readiness-048
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_refresh_rechecks_ancestor_after_copy
+  motivating_defect: muse owned refresh rechecks ancestor after copy
+- id: readiness-049
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_refresh_preserves_intruding_tree_between_renames
+  motivating_defect: muse owned refresh preserves intruding tree between renames
+- id: readiness-050
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_refresh_refuses_concurrent_writer
+  motivating_defect: muse owned refresh refuses concurrent writer
+- id: readiness-051
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_bundle_completeness_rejects_capability_escape
+  motivating_defect: muse owned bundle completeness rejects capability escape
+- id: readiness-052
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_owned_native_update_observes_verified_source_and_retained_old_work
+  motivating_defect: muse owned native update observes verified source and retained
+    old work
+- id: readiness-053
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_cache_transition_cleanup_refuses_unsafe_target
+  motivating_defect: cache transition cleanup refuses unsafe target
 - id: release-metadata
   control_class: acceptance-test
   expected_status: pass

@@ -11,6 +11,12 @@ metadata:
 ---
 
 # Synthesis Skills Manager
+**Version 2.8.2** binds installed lifecycle reconciliation to the exact verified
+release and existing desired state. Muse refresh admits only owned bundle roots,
+verifies staged content before replacement and retains displaced bytes for
+recovery. A missing source with a retained interrupted transition remains blocked
+until its recovery is resolved; an arbitrary recorded path is never erased.
+
 **Version 2.7.0** (2026-09-04) deduplicates historical payloads in a SQLite
 content-addressed archive. Immutable per-version manifests preserve paths,
 types, modes and metadata; restoration creates independent files. SHA-256
