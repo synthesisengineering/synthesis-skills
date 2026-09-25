@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.149.3] - 2026-09-25
+
+Project resolution shares immutable Git metadata within one read while keeping
+physical worktree and dirty-file checks fresh. Ref, worktree and Git history
+interpretation changes invalidate selection. This reduces repeated work in
+operator views without extending timeouts or caching state across requests.
+
+Autopilot recognizes typed Codex inter-agent routing metadata as an observation.
+It cannot grant authority or prove delivery, wake, completion or worker cleanup;
+unknown shapes and contradictory identities remain explicit source gaps.
+
 ## [4.149.2] - 2026-09-25
 
 Native identity and SessionStart now share canonical transcript validation

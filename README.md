@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.149.3** reduces repeated Git metadata work during project resolution
+and recognizes typed Codex routing metadata without granting execution authority.
+
 Release **4.149.2** aligns native transcript and SessionStart identity checks,
 rejects contradictory inbox routing, and recognizes observed Codex activity
 and compaction records without granting execution or completion authority.
