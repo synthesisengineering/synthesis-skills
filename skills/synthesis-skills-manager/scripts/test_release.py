@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -1733,6 +1734,403 @@ def test_repeated_archive_admission_preserves_root_identity_across_umask(tmp_pat
             release._remove_transition_backup(snapshot.backup)
 
 
+def _native_codex_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                          versions=("4.74.0", "4.75.0")):
+    source = tmp_path / "publisher"
+    source.mkdir()
+    (source / "install.sh").write_text("#!/bin/sh\nexit 0\n")
+    (source / "install.sh").chmod(0o755)
+    commit_release(source, "4.74.0", "historical")
+    commit_release(source, "4.75.0", "current")
+    subprocess.run(["git", "-C", str(source), "config", "tar.umask", "0002"], check=True)
+    parent = tmp_path / "codex-cache"
+    parent.mkdir()
+    for version in versions:
+        root = parent / version
+        subprocess.run(["git", "clone", "--no-local", "--branch", "v" + version,
+                        str(source), str(root)], check=True, capture_output=True, umask=0o022)
+        subprocess.run(["git", "-C", str(root), "config", "remote.origin.url",
+                        "https://github.com/synthesisengineering/synthesis-skills.git"],
+                       check=True, capture_output=True)
+        head = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+        (root / ".codex-marketplace-install.json").write_text(json.dumps({
+            "source_type": "git", "source": "https://github.com/synthesisengineering/synthesis-skills.git",
+            "ref_name": "stable", "sparse_paths": [], "revision": head,
+        }))
+    monkeypatch.setattr(release, "plugin_cache_parent", lambda _client: parent)
+    monkeypatch.setattr(release, "codex_cache_archive", lambda: tmp_path / "archive")
+    snapshot = release.snapshot_codex_caches(release.Result(), repo=source)
+    assert snapshot is not None
+    return source, parent, snapshot
+
+
+def _all_cache_bytes(root: Path):
+    result = {}
+    for path in (root, *root.rglob("*")):
+        mode = path.lstat().st_mode
+        value = os.readlink(path) if stat.S_ISLNK(mode) else path.read_bytes() if stat.S_ISREG(mode) else None
+        result[str(path.relative_to(root))] = (mode, value)
+    return result
+
+
+def test_codex_native_current_mode_difference_preserves_real_git_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    current = parent / "4.75.0"
+    before = _all_cache_bytes(current)
+    identity = current.stat().st_ino
+    assert release._tree_digest(current) != release._tree_digest(snapshot.backup / "4.75.0")
+    result = release.Result()
+    assert release.restore_codex_caches(snapshot, result), result.steps
+    assert current.stat().st_ino == identity
+    assert _all_cache_bytes(current) == before
+    assert not list(parent.glob(".release-displaced-4.75.0-*"))
+
+
+def test_codex_native_historical_repair_retains_verified_git_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch)
+    historical = parent / "4.74.0"
+    (historical / "skills/example/SKILL.md").write_text("damaged historical payload")
+    before = _all_cache_bytes(historical)
+    result = release.Result()
+    assert release.restore_codex_caches(snapshot, result), result.steps
+    recoveries = list(parent.glob(".release-displaced-4.74.0-*"))
+    assert len(recoveries) == 1
+    assert _all_cache_bytes(recoveries[0]) == before
+    assert (historical / "skills/example/SKILL.md").read_text() == "version: 4.74.0\nhistorical\n"
+    assert any(str(recoveries[0]) in step.detail for step in result.steps)
+
+
+@pytest.mark.parametrize("change", ["content", "executable", "extra", "nested-git", "git-file",
+                                  "git-link", "alternates", "commondir", "config-redirect", "foreign-head"])
+def test_codex_native_current_refuses_drift_without_mutating_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str,
+) -> None:
+    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    current = parent / "4.75.0"
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "sentinel").write_text("foreign bytes")
+    if change == "content":
+        (current / "skills/example/SKILL.md").write_text("retained local content")
+    elif change == "executable":
+        (current / "install.sh").chmod(0o644)
+    elif change == "extra":
+        (current / "retained-work").write_text("retained local work")
+    elif change == "nested-git":
+        (current / "retained/.git").mkdir(parents=True)
+    elif change in {"git-file", "git-link"}:
+        (current / ".git").rename(external / "metadata")
+        if change == "git-file":
+            (current / ".git").write_text("gitdir: " + str(external / "metadata") + "\n")
+        else:
+            (current / ".git").symlink_to(external / "metadata", target_is_directory=True)
+    elif change == "alternates":
+        (current / ".git/objects/info/alternates").write_text(str(external) + "\n")
+    elif change == "commondir":
+        (current / ".git/commondir").write_text(str(external) + "\n")
+    elif change == "config-redirect":
+        subprocess.run(["git", "-C", str(current), "config", "core.worktree", str(external)], check=True)
+    else:
+        subprocess.run(["git", "-C", str(current), "checkout", "--detach", "v4.74.0"], check=True, capture_output=True)
+    before, foreign_before = _all_cache_bytes(current), _all_cache_bytes(external)
+    result = release.Result()
+    assert not release.restore_codex_caches(snapshot, result)
+    assert _all_cache_bytes(current) == before
+    assert _all_cache_bytes(external) == foreign_before
+    assert snapshot.backup.is_dir()
+    assert not list(parent.glob(".release-*-4.75.0-*"))
+
+
+def test_codex_native_current_needs_no_client_marker_or_particular_origin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    current = parent / "4.75.0"
+    (current / ".codex-marketplace-install.json").unlink()
+    subprocess.run(["git", "-C", str(current), "config", "remote.origin.url", str(source)], check=True)
+    before = _all_cache_bytes(current)
+    assert release.restore_codex_caches(snapshot, release.Result())
+    assert _all_cache_bytes(current) == before
+
+
+def test_codex_native_identity_never_executes_partial_clone_helper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    current = parent / "4.75.0"
+    commit = snapshot.native_sources["4.75.0"][0]
+    marker = tmp_path / "remote-helper-executed"
+    (current / ".git/objects").rename(current / ".git/preserved-objects")
+    (current / ".git/objects").mkdir()
+    for key, value in {
+        "core.repositoryformatversion": "1", "extensions.partialclone": "origin",
+        "remote.origin.promisor": "true", "remote.origin.partialclonefilter": "blob:none",
+        "protocol.ext.allow": "always", "remote.origin.url": "ext::/usr/bin/touch " + str(marker),
+    }.items():
+        subprocess.run(["git", "-C", str(current), "config", "--local", key, value], check=True)
+    before = _all_cache_bytes(current)
+    with pytest.raises(OSError):
+        release._codex_native_git_identity(current, commit)
+    assert not marker.exists(), "identity read executed the repository's remote helper"
+    assert _all_cache_bytes(current) == before
+
+
+@pytest.mark.parametrize("kind", ["include", "partial-race", "include-race", "hooks-and-monitor"])
+def test_codex_native_identity_does_not_load_checkout_execution_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str,
+) -> None:
+    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    current = parent / "4.75.0"
+    commit = snapshot.native_sources["4.75.0"][0]
+    marker = tmp_path / "execution-marker"
+    hook = tmp_path / "harmless-hook"
+    hook.write_text("#!/bin/sh\n/usr/bin/touch " + str(marker) + "\n")
+    hook.chmod(0o755)
+    included = tmp_path / "unsafe-included-config"
+    included.write_text("this is intentionally not valid Git config\n")
+    config = current / ".git/config"
+
+    def change_config():
+        if kind == "partial-race":
+            (current / ".git/objects").rename(current / ".git/preserved-objects")
+            (current / ".git/objects").mkdir()
+            config.write_text(config.read_text() + "\n[extensions]\npartialClone=origin\n"
+                              "[remote \"origin\"]\npromisor=true\nurl=ext::/usr/bin/touch " + str(marker)
+                              + "\n[protocol \"ext\"]\nallow=always\n")
+        else:
+            config.write_text(config.read_text() + "\n[include]\npath=" + str(included) + "\n")
+
+    actual_run = subprocess.run
+    observed = []
+    def inspect_run(arguments, **kwargs):
+        output = actual_run(arguments, **kwargs)
+        if arguments[0] == "git":
+            observed.append((arguments, kwargs))
+            if kind.endswith("-race") and "config" in arguments and "--file" in arguments:
+                change_config()
+        return output
+
+    if kind == "include":
+        change_config()
+    elif kind == "hooks-and-monitor":
+        config.write_text(config.read_text() + "\n[core]\nfsmonitor=" + str(hook)
+                          + "\nhooksPath=" + str(tmp_path) + "\n[pager]\nconfig=" + str(hook) + "\n")
+        (tmp_path / "reference-transaction").write_bytes(hook.read_bytes())
+        (tmp_path / "reference-transaction").chmod(0o755)
+    before = _all_cache_bytes(current)
+    monkeypatch.setattr(release.subprocess, "run", inspect_run)
+    if kind == "hooks-and-monitor":
+        release._codex_native_git_identity(current, commit)
+        assert _all_cache_bytes(current) == before
+    else:
+        with pytest.raises(OSError) as error:
+            release._codex_native_git_identity(current, commit)
+        assert "bad config" not in str(error.value), "unsafe include was expanded"
+    assert not marker.exists()
+    assert observed
+    for _arguments, kwargs in observed:
+        assert kwargs["env"]["GIT_NO_LAZY_FETCH"] == "1"
+        assert kwargs["env"]["GIT_ALLOW_PROTOCOL"] == ""
+        assert Path(kwargs["cwd"]) != current
+
+
+def test_codex_native_tracked_relative_link_obeys_release_inventory_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    # Establish the actual source contract, rather than assuming Git's ability
+    # to track a relative link means the native release inventory permits it.
+    (source / "relative-link").symlink_to("install.sh")
+    subprocess.run(["git", "-C", str(source), "add", "relative-link"], check=True)
+    with pytest.raises(release.ContractError, match="symbolic link"):
+        release.canonical_tree_digest(source)
+    files = set(subprocess.check_output(["git", "-C", str(source), "ls-files"], text=True).splitlines())
+    with pytest.raises(release.ContractError, match="link|type"):
+        digest = release.canonical_tracked_tree_digest(source, files)
+        release.verify_native_release_inventory(source, source, digest, source_files=files)
+    current = parent / "4.75.0"
+    (current / "relative-link").symlink_to("install.sh")
+    before = _all_cache_bytes(current)
+    assert not release.restore_codex_caches(snapshot, release.Result())
+    assert _all_cache_bytes(current) == before
+
+
+@pytest.mark.parametrize("kind", ["missing", "content-change"])
+def test_codex_current_without_git_metadata_is_verified_without_repair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str,
+) -> None:
+    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    current = parent / "4.75.0"
+    retained = tmp_path / "native-original"
+    current.rename(retained)
+    if kind == "content-change":
+        shutil.copytree(snapshot.backup / "4.75.0", current)
+        (current / "skills/example/SKILL.md").write_text("retained current content")
+        before = _all_cache_bytes(current)
+    result = release.Result()
+    assert not release.restore_codex_caches(snapshot, result)
+    if kind == "missing":
+        assert not current.exists()
+    else:
+        assert _all_cache_bytes(current) == before
+    assert (retained / ".git").is_dir()
+    assert snapshot.backup.is_dir()
+
+
+def test_codex_current_materialized_root_requires_immutable_source_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    current = parent / "4.75.0"
+    current.rename(tmp_path / "retained-native")
+    shutil.copytree(snapshot.backup / "4.75.0", current)
+    before = _all_cache_bytes(current)
+    unbound = release.CodexCacheSnapshot(snapshot.backup, snapshot.versions, client_owned_version="4.75.0")
+    result = release.Result()
+    assert not release.restore_codex_caches(unbound, result)
+    assert "immutable source binding" in result.steps[-1].detail
+    assert _all_cache_bytes(current) == before
+
+
+def test_codex_native_repair_repeats_without_more_displacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch)
+    retained = set()
+    assert release._restore_codex_caches_once(snapshot, retained) == (set(), {"4.74.0"})
+    assert len(retained) == 1
+    before = {path: _all_cache_bytes(path) for path in [parent / "4.74.0", parent / "4.75.0", *retained]}
+    assert release._restore_codex_caches_once(snapshot, retained) == (set(), set())
+    assert {path: _all_cache_bytes(path) for path in before} == before
+    assert set(parent.glob(".release-displaced-*")) == retained
+
+
+@pytest.mark.parametrize("after_rename", [1, 2])
+def test_codex_native_repair_process_death_preserves_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, after_rename: int,
+) -> None:
+    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch)
+    before = _all_cache_bytes(parent / "4.74.0")
+    input_path = tmp_path / "snapshot.json"
+    input_path.write_text(json.dumps({
+        "backup": str(snapshot.backup), "versions": snapshot.versions,
+        "client_owned_version": snapshot.client_owned_version,
+        "native_sources": {version: [head, sorted(files)] for version, (head, files) in snapshot.native_sources.items()},
+    }))
+    script = """
+import json, os, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import release
+data = json.loads(Path(sys.argv[3]).read_text())
+snapshot = release.CodexCacheSnapshot(Path(data['backup']), tuple(data['versions']),
+    client_owned_version=data['client_owned_version'],
+    native_sources={version: (value[0], frozenset(value[1])) for version, value in data['native_sources'].items()})
+release.plugin_cache_parent = lambda client: Path(sys.argv[2])
+original = os.rename
+calls = 0
+def crash(source, destination):
+    global calls
+    original(source, destination)
+    calls += 1
+    if calls == int(sys.argv[4]): os._exit(77)
+release.os.rename = crash
+release._restore_codex_caches_once(snapshot)
+"""
+    proc = subprocess.run([sys.executable, "-B", "-c", script, str(Path(release.__file__).parent),
+                           str(parent), str(input_path), str(after_rename)], capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 77, proc.stdout + proc.stderr
+    recoveries = list(parent.glob(".release-displaced-4.74.0-*"))
+    assert len(recoveries) == 1 and _all_cache_bytes(recoveries[0]) == before
+    result = release.Result()
+    assert release.restore_codex_caches(snapshot, result) is (after_rename == 2)
+    assert _all_cache_bytes(recoveries[0]) == before
+    if after_rename == 1:
+        assert "interrupted transition" in result.steps[-1].detail
+        assert not (parent / "4.74.0").exists()
+        assert snapshot.backup.is_dir()
+        assert len(list(parent.glob(".release-repair-4.74.0-*"))) == 1
+    else:
+        assert any(str(recoveries[0]) in step.detail for step in result.steps)
+
+
+@pytest.mark.parametrize("change", ["nested-git", "git-link"])
+def test_codex_native_repair_rechecks_ownership_after_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str,
+) -> None:
+    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch)
+    historical = parent / "4.74.0"
+    original_copy = release.shutil.copytree
+    external = tmp_path / "retained-git"
+
+    def copy_and_change(source, destination, *args, **kwargs):
+        value = original_copy(source, destination, *args, **kwargs)
+        if Path(source) == snapshot.backup / "4.74.0":
+            if change == "nested-git":
+                (historical / "foreign/.git").mkdir(parents=True)
+            else:
+                (historical / ".git").rename(external)
+                (historical / ".git").symlink_to(external, target_is_directory=True)
+        return value
+
+    monkeypatch.setattr(release.shutil, "copytree", copy_and_change)
+    assert not release.restore_codex_caches(snapshot, release.Result())
+    assert (historical / "skills/example/SKILL.md").read_text() == "version: 4.74.0\nhistorical\n"
+    assert not list(parent.glob(".release-displaced-*"))
+    assert (historical / "foreign/.git").is_dir() if change == "nested-git" else (historical / ".git").is_symlink()
+
+
+def test_codex_native_current_rechecks_identity_after_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    current = parent / "4.75.0"
+    retained = tmp_path / "retained-current"
+    before = _all_cache_bytes(current)
+    original = release.verify_native_release_inventory
+
+    def replace_after_verification(*args, **kwargs):
+        value = original(*args, **kwargs)
+        current.rename(retained)
+        current.mkdir()
+        (current / "foreign").write_text("intruding tree")
+        return value
+
+    monkeypatch.setattr(release, "verify_native_release_inventory", replace_after_verification)
+    assert not release.restore_codex_caches(snapshot, release.Result())
+    assert (current / "foreign").read_text() == "intruding tree"
+    assert _all_cache_bytes(retained) == before
+
+
+@pytest.mark.parametrize("boundary", ["parent-link", "repository-parent", "workspace-parent", "cwd", "traversal"])
+def test_codex_native_restore_refuses_unowned_boundaries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str,
+) -> None:
+    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    current = parent / "4.75.0"
+    before = _all_cache_bytes(current)
+    if boundary == "parent-link":
+        alias = tmp_path / "alias"
+        alias.symlink_to(parent, target_is_directory=True)
+        monkeypatch.setattr(release, "plugin_cache_parent", lambda _client: alias)
+    elif boundary == "repository-parent":
+        (parent / ".git").mkdir()
+    elif boundary == "workspace-parent":
+        (parent / ".agents").mkdir()
+        (parent / ".agents/repos.yaml").write_text("workspace sentinel")
+    elif boundary == "cwd":
+        monkeypatch.chdir(current)
+    else:
+        snapshot = release.CodexCacheSnapshot(snapshot.backup, ("../publisher",))
+    assert not release.restore_codex_caches(snapshot, release.Result())
+    assert _all_cache_bytes(current) == before
+    assert snapshot.backup.is_dir()
+
+
 def test_snapshot_imports_complete_untagged_peer_root_missing_from_codex(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1740,7 +2138,7 @@ def test_snapshot_imports_complete_untagged_peer_root_missing_from_codex(
     source.mkdir()
     commit_release(source, "4.74.0", "tagged")
     codex_cache = tmp_path / "codex-cache"
-    (codex_cache / "4.74.0").mkdir(parents=True)
+    release._export_release_tag(source, "4.74.0", codex_cache / "4.74.0", current_version="4.74.0")
     claude_cache = tmp_path / "claude-cache"
     peer = claude_cache / "4.73.0"
     seed_complete_cache_root(peer, "4.73.0")

@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.145.5** preserves Codex's current native checkout during cache
+recovery. Published content verification remains required, historical roots keep
+their exact recovery checks, and displaced Git-backed trees remain available.
+
 Release **4.145.4** fixes large-project checkpoint refresh and reconciles the
 lifecycle transaction after each gated release, preserving adoption preferences
 and strict source verification. Muse refresh verifies owned paths and staged
