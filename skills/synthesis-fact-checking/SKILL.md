@@ -12,7 +12,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-content-quality"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.0"
+  version: "2.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -35,8 +35,6 @@ The companion skill, [synthesis-content-quality](../synthesis-content-quality/SK
 
 The methodology in v1.1.0 (the tier system, the confidence-based evaluation process, the verification hierarchy) is preserved. v2.0 refreshes the catalog under the same methodology.
 
----
-
 ## Process Overview
 
 1. Claim Extraction
@@ -51,8 +49,6 @@ The methodology in v1.1.0 (the tier system, the confidence-based evaluation proc
 10. Translation-Pass Re-Verification
 11. Documentation
 12. Pre-Publish Checklist
-
----
 
 ## 1. Claim Extraction
 
@@ -80,8 +76,6 @@ Before verifying anything, extract every verifiable claim from the draft into a 
 3. Record each claim in a checklist (see Documentation Template below).
 4. Do not skip claims that "sound right": those are often the ones subtly wrong.
 
----
-
 ## 2. Multi-Source Confidence Framework (REVISED for v2.0)
 
 When synthesizing from multiple research sources, the degree of agreement between sources provides a useful signal: but only when the sources are graph-independent. Three "sources" that all trace back to a single AI-generated upstream are single-sourced, regardless of count.
@@ -108,8 +102,6 @@ A convergence case the graph must catch: the "supporting source" is a document t
 
 Per Topaz et al. May 2026 Lancet letter (cited; verification flagged), 1 in 277 PubMed papers in 2026 referenced a fabricated paper, a twelvefold rise from 2023. The laundering mechanism through indexed academic databases is real. Multi-source confidence in v1.1.0 assumed graph independence implicitly; v2.0 makes it explicit.
 
----
-
 ## 3. Verification Hierarchy
 
 ### Source Quality Ranking
@@ -132,8 +124,6 @@ Per Topaz et al. May 2026 Lancet letter (cited; verification flagged), 1 in 277 
 **For organization names:** verify exact name; check for parent/subsidiary confusion; verify organization exists and is described accurately.
 
 **For causal claims:** verify the cited source actually asserts causation, not correlation; check whether the source's hedged language ("may," "could," "associated with") has been strengthened in the draft.
-
----
 
 ## 4. Common Error Patterns (REFRESHED for v2.0)
 
@@ -497,6 +487,7 @@ Is the claim verifiable?
 Detailed catalog content lives in the [references/](references/) subfolder:
 
 - [detailed-protocols.md](references/detailed-protocols.md): All nine C1 protocol sections with full failure modes, worked examples, and detection procedures.
+- [autopilot-research-quality.md](references/autopilot-research-quality.md): Decision-changing primary evidence, counterevidence and task-specific research acceptance.
 - [per-family-hallucination-signatures.md](references/per-family-hallucination-signatures.md): Detailed per-family signature catalog with empirical anchors.
 - [citation-laundering-detection.md](references/citation-laundering-detection.md): Graph-traversal protocol for detecting citation laundering chains.
 - [production-incident-archive.md](references/production-incident-archive.md): Documented 2024-2026 production incidents (Mostafavi, Goldberg Segalla, Chicago Sun-Times, Springer book, BBC/EBU, Topaz Lancet, and others) with detection lessons.

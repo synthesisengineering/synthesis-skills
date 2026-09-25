@@ -2,10 +2,10 @@
 name: synthesis-anti-shortcuts
 description: "Discipline for catching the lazy-shortcut antipattern in AI-assistant output. Makes the costume vocabulary explicit so agents recognize when their drafts have slid into deferral, dismissal, or false consultation. Includes the constraint-first protocol, sub-agent dispatch and acceptance hygiene, and a pre-response self-check. Use when asked to: avoid shortcuts, audit for laziness, check for deferral, enforce best solution, no shortcuts, anti-shortcut, constraint-first, sub-agent hygiene, costume vocabulary."
 license: "Apache-2.0"
-depends_on: []
+depends_on: ["synthesis-thinking-framework"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.1"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -62,13 +62,13 @@ A worked example, including the constraint-extraction order and the forbidden-cr
 
 ### 2. The Decision-vs-Asking Distinction
 
-Two question shapes look alike but behave differently. The decision is whether the user's stated constraints determine the answer.
+Two question shapes look alike but behave differently. Check both whether the user's stated constraints determine the answer and who owns the remaining choice. The shared [decision-ownership contract](../synthesis-thinking-framework/references/decision-ownership.md) distinguishes already-decided choices, delegated technical choices, material principal ambiguity and human-only actions.
 
-**Asking is appropriate when constraints leave a real choice open.** Sequencing, scope, product direction, stakeholder facts the agent cannot know — these deserve a real question, asked briefly.
+**Asking is appropriate when an unresolved choice belongs to the user.** Examples include material product direction outside the delegated outcome, a preference that changes the promised result, and stakeholder facts that available evidence cannot establish. Preserve the user's requested review cadence. An open technical tradeoff within delegated scope belongs to the agent: evaluate it, decide and record the reason. Whole-task delegation ordinarily includes sequencing the authorized work.
 
 **Asking is the lazy-shortcut pattern when constraints already determine the answer.** "Should I remove the backward-compat re-export?" after the user has said "backward compatibility is not a goal" is the shortcut. The polite framing — "Recommendation: X. Your call?" — is the costume.
 
-The protocol: before drafting any question to the user, scan recent conversation, project context, and global rules for constraints that might determine the answer. If a constraint determines it, do not draft the question. Execute on the constraint. Report what was done.
+The protocol: before drafting any question to the user, scan recent conversation, project context, and global rules for constraints, existing decisions and delegation. Verify the source and scope of authority rather than relying on a summary. If the answer is determined or delegated, execute and report what was done. Otherwise, explain the concrete consequence that makes the user's answer necessary. A real gate remains open until satisfied; continue independent authorized work while it waits.
 
 ### 3. The Costume Vocabulary
 
@@ -124,7 +124,7 @@ The scanner at `scripts/scan_output.py` automates step 1. The classification at 
 
 When a tool call fails, classify the failure before reporting it. There are two kinds, and they call for opposite responses.
 
-- A **guardrail** is deliberate: a permission the user withheld, a safety gate, an approval step, an action reserved for a human. Never route around it. Reporting it and stopping is the correct outcome.
+- A **guardrail** is deliberate: a permission the user withheld, a safety gate, an approval step, an action reserved for a human. Never route around it. Stop the dependent action, record what is needed and continue independent authorized work when available.
 - A **capability gap** is incidental: an unconfigured app, an ungranted scope, an unset credential, a feature the current transport does not expose. It is a problem to solve, not a boundary to respect.
 
 Treating the second like the first is the shortcut. It wears the costume of discipline - "I won't work around that" sounds principled - while delivering less than the task required. Agents holding strong, correct rules about not bypassing governance gates are the most prone to it, because the rule generalizes itself onto plumbing where it does not belong.
@@ -133,8 +133,8 @@ On a capability gap, before reporting:
 
 1. **Name the exact mechanism that failed** - the error, the missing scope, the absent configuration. "It didn't work" is not a diagnosis.
 2. **Enumerate the alternative paths.** Another tool that reaches the same surface; another transport; an interface the user is already authenticated to; a configuration change that would unblock the primary path permanently rather than once.
-3. **Separate what you can do from what only the user can do.** Console changes, credential grants and admin approvals belong to the user; determining precisely which change is needed belongs to you. Handing over a diagnosis is help; handing over the problem is not.
-4. **Report options with a recommendation, never the limitation alone.** If a workaround carries risk, surface it and let the user decide. Silently considering and discarding a workaround is the same failure in a quieter form.
+3. **Separate what you can do from what only the user can do.** Password entry, a physical security key, withheld administrator consent and principal-owned decisions require the user. Routine configuration already covered by the user's authorization does not become a new approval gate because it occurs in a console. Determine the exact missing capability and prepare the authorized repair before presenting any human action.
+4. **Choose an authorized remedy and verify it.** Use the user's constraints and delegated authority to choose among technical alternatives. When a remedy changes a material boundary or needs a new grant, present the concrete repair, risk and required decision. Do not bypass a protective control or silently lower the required result to avoid that gate.
 
 The test: would a capable colleague, told "the connector can't send," have stopped there? If the honest answer is that they would have asked "then what else can?", the report was premature.
 

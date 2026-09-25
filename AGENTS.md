@@ -89,6 +89,11 @@ The executable autopilot consumers require OS isolation: native macOS sandbox
 or bubblewrap on Linux. CI installs bubblewrap explicitly. Missing isolation is
 a test failure; do not skip or execute the consumers without it.
 
+Complete-page decision-packet acceptance requires Chromium on PATH or the
+`SYNTHESIS_TEST_CHROMIUM` executable path. CI binds its available browser before
+running acceptance. A missing browser fails the required checks; HTML parsing
+and DOM behavior cannot be certified by extracted JavaScript tests alone.
+
 For a cross-client release, also run:
 
 ```bash

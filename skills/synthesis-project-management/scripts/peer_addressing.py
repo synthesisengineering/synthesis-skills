@@ -26,12 +26,14 @@ harness registry; nothing sends.
 from __future__ import annotations
 
 import hashlib
+import fcntl
 import json
 import os
 import sys
 import re
 import socket
-from dataclasses import asdict, dataclass
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -284,6 +286,38 @@ def seat_path(board: Path, session_uuid: str) -> Path:
     return seats_dir(board) / f"{safe_name(session_uuid)}.json"
 
 
+@contextmanager
+def _seat_write_lock(path: Path):
+    """Serialize every supported writer and removal of one seat sidecar."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.with_suffix('.lock').open('a+') as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        yield
+
+
+def _write_seat_locked(path: Path, seat: Seat) -> None:
+    staging = path.with_suffix('.json.tmp')
+    staging.write_text(json.dumps(asdict(seat), indent=2) + '\n', encoding='utf-8')
+    os.replace(staging, path)
+
+
+def update_seat_heartbeat(board: Path, *, expected: Seat, last_heartbeat: str) -> bool:
+    """Advance only the unchanged seat captured by a successful board mutation.
+
+    A concurrent claim, release or identity update wins. Delivery handles,
+    process identity and status are preserved rather than reconstructed from
+    a later hook's environment.
+    """
+    path = seat_path(board, expected.session_uuid)
+    with _seat_write_lock(path):
+        current = read_seat(board, expected.session_uuid, strict=True)
+        if current != expected or current.status != 'active':
+            return False
+        _write_seat_locked(path, replace(current, last_heartbeat=last_heartbeat,
+                                        updated_at=iso(utcnow())))
+    return True
+
+
 def write_seat(
     board: Path,
     *,
@@ -320,10 +354,8 @@ def write_seat(
         status=status,
     )
     path = seat_path(board, session_uuid)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    staging = path.with_suffix(".json.tmp")
-    staging.write_text(json.dumps(asdict(seat), indent=2) + "\n", encoding="utf-8")
-    os.replace(staging, path)
+    with _seat_write_lock(path):
+        _write_seat_locked(path, seat)
     return path
 
 
@@ -386,10 +418,11 @@ def _read_seat_path(path: Path, *, expected_uuid: str | None = None, strict: boo
 
 def remove_seat(board: Path, session_uuid: str) -> bool:
     path = seat_path(board, session_uuid)
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        return False
+    with _seat_write_lock(path):
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            return False
     return True
 
 

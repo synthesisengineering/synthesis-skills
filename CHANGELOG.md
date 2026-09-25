@@ -4,6 +4,93 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.149.0] - 2026-09-25
+
+Autopilot 3.4.0 connects domain judgments to current consumer results, preserves
+unknown adequacy and blocks task admission when decisive evidence is unresolved.
+Connected planning, writing, factual, grounding and review skills share these
+boundaries. A successful process does not by itself establish useful output.
+
+Native Codex, Claude and Muse observations retain their transport grammar,
+worker custody and exact current source ranges. Malformed nested payloads fail
+with typed refusals, and Muse endpoint reads share a bounded per-call cache.
+
+Resource accounting separates response counters, cumulative lower bounds,
+forecasts and unknown bills. Capture aliases cannot hide a producer's observed
+usage. Delegation reserves verification, integration and recovery capacity;
+adaptive policy preserves outcome and authority requirements. These guarantees
+do not assert measured comparative superiority or complete provider billing.
+
+### Recovery, additional clients and operator visibility
+
+Same-native restart recovery connects a released seat to its authenticated new
+seat without resetting the run, costs, deadlines or unfinished obligations.
+Codex and Claude recovery verify the actual direct-user record; unsupported
+text-custody contracts refuse explicitly. A restart acknowledgment preserves
+the original wait and grants no new action authority.
+
+Cold-process Stop discovery loads its canonical identity owner before checking
+applicability. Explicit client hints cannot substitute for native evidence.
+Claude desktop legacy indexing retains verified native aliases across release;
+erased pre-index bindings remain explicitly unqualified during recovery.
+
+Recovery capsules preserve unfinished obligations, instructions and exact input
+bindings. Owner-prepared one-use continuation checks current authority and
+journal state before the supported native transport acts. Bounded supervision
+state retains cancellation and uncertainty without inventing a new authority
+store. Service enrollment and each survival horizon require separate acceptance.
+
+Cursor, Copilot and OpenCode adapters preserve native call identity, child scope
+and generation boundaries. Qualification distinguishes discovery and observed
+source bytes from permission, continuation and outcome evidence. An unsupported
+or unqualified capability remains explicit.
+
+The read-only operator interface selects the project through its causal resolver,
+paginates retained runs, and shows measured task progress, child delivery and
+integration acceptance separately. Human questions remain available through a
+local durable view when the primary agent UI is unavailable.
+
+### Controller and project integration
+
+The eight-operation controller becomes the ordinary execution path.
+Requests bind identity, current ownership, exact input and journal revision.
+Native observations retain verifiable source ranges and cursor continuity.
+Current cancellation and unresolved instructions constrain task admission,
+Stop continuation and completion; explicit resume retains the earlier evidence.
+Historical negative coverage remains unknown outside the declared append-only
+producer boundary.
+
+Productive work can continue without the former fixed observation and grading
+ceilings. Repeated causal failures, unresolved effects, hard resources and
+current authority still bound execution. Stop reserves one correction and
+revalidates before emission. Adaptive profile checks require the selected
+domain outcomes, and terminal retry rechecks current acceptance while retaining
+the original terminal record.
+
+Project checkpoint integration separates a narrowly verified execution basis
+from the full terminal checkpoint. Native inbox processing retains decoded
+identity through the transaction and uses compare-and-swap for heartbeat updates.
+These source guarantees do not establish installed native scheduling, complete
+usage accounting, or comparative superiority.
+
+### Evaluation and shared decisions
+
+Comparative evaluations bind to qualified task configurations
+and current artifacts. Domain checks distinguish evidence of behavioral quality
+from artifact existence, and native review observations retain their current
+source and input bindings. Completion requires accepted outcomes at the declared
+consumer boundary; these checks do not establish comparative superiority.
+
+Planning, review and decision skills share explicit decision ownership. Choices
+already determined by delegated authority proceed; principal-only choices retain
+their actual approval boundary. Generated decision packets bind rulings to the
+reviewed specification and escape hostile HTML, comment and control identifiers.
+Full-page Chromium tests verify the rendered consumer and fail if the required
+browser is unavailable.
+
+The reviewed 4.146.0, 4.147.0 and 4.148.0 development candidates are consolidated
+into this release; they were not separately published.
+
 ## [4.145.7] - 2026-09-25
 
 Native marketplace refresh can create or replace the current version before

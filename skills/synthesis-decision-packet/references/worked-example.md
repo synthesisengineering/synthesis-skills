@@ -1,6 +1,6 @@
 # Worked example — a dependency-upgrade packet
 
-A small, complete spec and what it produces. Copy it, replace the rows, generate, file.
+A complete synthetic example of the current format. The package versions and consequences illustrate the interface; they are not current dependency advice or a real authorization record.
 
 ## The situation
 
@@ -27,22 +27,56 @@ example stays short; the paste and the rulings file below are what those two row
   "audience": "The service owner, who has not read the sweep and does not track upstream release notes.",
   "storage_key": "dep-sweep-2026-q3",
   "options": [
-    {"value": "take",  "label": "Upgrade to the new version",             "tone": "ok"},
-    {"value": "hold",  "label": "Keep the current version this quarter",  "tone": "warn"},
-    {"value": "pin",   "label": "Pin the current version and record why", "tone": "muted"}
+    {
+      "value": "take",
+      "label": "Upgrade to the new version",
+      "tone": "ok"
+    },
+    {
+      "value": "hold",
+      "label": "Keep the current version this quarter",
+      "tone": "warn"
+    },
+    {
+      "value": "pin",
+      "label": "Pin the current version and record why",
+      "tone": "muted"
+    }
   ],
   "filters": [
-    {"id": "sec",       "label": "Security",        "tags": ["security"]},
-    {"id": "breaking",  "label": "Breaking change", "tags": ["breaking"]},
-    {"id": "disputed",  "label": "We disagreed",    "disagreement": true},
-    {"id": "undecided", "label": "Not yet decided", "undecided": true}
+    {
+      "id": "sec",
+      "label": "Security",
+      "tags": [
+        "security"
+      ]
+    },
+    {
+      "id": "breaking",
+      "label": "Breaking change",
+      "tags": [
+        "breaking"
+      ]
+    },
+    {
+      "id": "disputed",
+      "label": "We disagreed",
+      "disagreement": true
+    },
+    {
+      "id": "undecided",
+      "label": "Not yet decided",
+      "undecided": true
+    }
   ],
   "rows": [
     {
       "id": "D-01",
       "label": "cryptography 41.0.3 → 43.0.1",
       "severity": "high",
-      "tags": ["security"],
+      "tags": [
+        "security"
+      ],
       "context": "Patches a padding-oracle issue in the current pin. No API change on the surface we use.",
       "reasoning": "Upgrade. Security patch, no call-site changes, and our own tests cover the two functions involved.",
       "impact": {
@@ -50,13 +84,20 @@ example stays short; the paste and the rulings file below are what those two row
         "decline": "The service keeps shipping with a known, published vulnerability."
       },
       "recommendation": "take",
-      "links": [{"label": "advisory", "href": "https://example.invalid/advisory"}]
+      "links": [
+        {
+          "label": "advisory",
+          "href": "https://example.invalid/advisory"
+        }
+      ]
     },
     {
       "id": "D-02",
       "label": "pydantic 1.10 → 2.9",
       "severity": "medium",
-      "tags": ["breaking"],
+      "tags": [
+        "breaking"
+      ],
       "context": "Major. Validators change signature; 34 models across 9 modules use the v1 style.",
       "reasoning": "Keep the current version this quarter. The upgrade is right eventually, but it is a week of work and it lands in the same files as the launch changes. Take it after the freeze lifts.",
       "impact": {
@@ -64,20 +105,39 @@ example stays short; the paste and the rulings file below are what those two row
         "decline": "A week of model rewrites lands in the launch files during the freeze."
       },
       "options": [
-        {"value": "take", "label": "Upgrade to the new version", "tone": "ok",
-         "consequence": "A week of model rewrites lands in the launch files now, behind a branch."},
-        {"value": "hold", "label": "Keep the current version this quarter", "tone": "warn",
-         "consequence": "Nothing changes before the launch; v1 support ends in four months."},
-        {"value": "pin",  "label": "Pin the current version and record why", "tone": "muted",
-         "consequence": "The service stays on v1 past end of support until someone unpins it."}
+        {
+          "value": "take",
+          "label": "Upgrade to the new version",
+          "tone": "ok",
+          "consequence": "A week of model rewrites lands in the launch files now, behind a branch."
+        },
+        {
+          "value": "hold",
+          "label": "Keep the current version this quarter",
+          "tone": "warn",
+          "consequence": "Nothing changes before the launch; v1 support ends in four months."
+        },
+        {
+          "value": "pin",
+          "label": "Pin the current version and record why",
+          "tone": "muted",
+          "consequence": "The service stays on v1 past end of support until someone unpins it."
+        }
       ],
       "recommendation": "hold",
       "disagreement": {
-        "a": {"who": "Reviewer A", "view": "Stay on the current version. Two large changes in one file set is how a rollback becomes impossible."},
-        "b": {"who": "Reviewer B", "view": "Upgrade now. v1 loses support in four months and the freeze keeps getting extended."}
+        "a": {
+          "who": "Reviewer A",
+          "view": "Stay on the current version. Two large changes in one file set is how a rollback becomes impossible."
+        },
+        "b": {
+          "who": "Reviewer B",
+          "view": "Upgrade now. v1 loses support in four months and the freeze keeps getting extended."
+        }
       }
     }
-  ]
+  ],
+  "scope": "Synthetic dependency choices for this example; no deployment authority."
 }
 ```
 
@@ -122,6 +182,7 @@ D-02  pydantic 1.10 → 2.9
 I would rather eat the conflict than the deprecation.
 
 Decided 2 of 2.
+Decision packet binding v2: {"schema_version":2,"spec_sha256":"1083c7b8660aa75fadec429cb038ebd79f379098cba1160f35c806993404ec15","selections":[{"id":"D-01","choice":"take","note":"","bulk":false},{"id":"D-02","choice":"take","note":"Do it now behind a branch. Reviewer B is right about the support window and\nI would rather eat the conflict than the deprecation.","bulk":false}],"storage_blocked":false}
 ```
 
 Three things that make this output useful to the agent that receives it:
@@ -137,7 +198,9 @@ Three things that make this output useful to the agent that receives it:
 Save the paste to a file and file it beside the spec and page:
 
 ```bash
-python3 scripts/record_rulings.py paste.txt --file-into PROJECT/resources/artifacts/
+python3 scripts/record_rulings.py paste.txt \
+    --spec PROJECT/resources/artifacts/2026-09-14-dependency-sweep-q3-spec.json \
+    --file-into PROJECT/resources/artifacts/
 ```
 
 That writes `2026-09-14-dependency-sweep-q3-rulings.json`:
@@ -145,13 +208,13 @@ That writes `2026-09-14-dependency-sweep-q3-rulings.json`:
 ```json
 {
   "packet": "Dependency sweep — Q3",
-  "ruled_on": "2026-09-14",
   "decided": 2,
   "total": 2,
   "rulings": [
     {
       "id": "D-01",
       "label": "cryptography 41.0.3 → 43.0.1",
+      "choice_value": "take",
       "choice_label": "Upgrade to the new version",
       "took_recommendation": true,
       "accepted_in_bulk": false,
@@ -161,23 +224,56 @@ That writes `2026-09-14-dependency-sweep-q3-rulings.json`:
     {
       "id": "D-02",
       "label": "pydantic 1.10 → 2.9",
+      "choice_value": "take",
       "choice_label": "Upgrade to the new version",
       "took_recommendation": false,
       "accepted_in_bulk": false,
       "recommended_label": "Keep the current version this quarter",
       "note": "Do it now behind a branch. Reviewer B is right about the support window and\nI would rather eat the conflict than the deprecation."
     }
-  ]
+  ],
+  "schema_version": 2,
+  "binding": {
+    "status": "spec-bound",
+    "spec_sha256": "1083c7b8660aa75fadec429cb038ebd79f379098cba1160f35c806993404ec15"
+  },
+  "ruled_on": "2026-09-14",
+  "spec": {
+    "file": "2026-09-14-dependency-sweep-q3-spec.json",
+    "file_sha256": "1083c7b8660aa75fadec429cb038ebd79f379098cba1160f35c806993404ec15",
+    "canonical_sha256": "1083c7b8660aa75fadec429cb038ebd79f379098cba1160f35c806993404ec15"
+  },
+  "summary_sha256": "eb862170b00ae2f1b67b37f9d13dad7ee4147205ef4c35ebf3f4ae6c6dd05b07",
+  "provenance": {
+    "status": "unattributed-paste",
+    "authority_ref": null,
+    "principal": null,
+    "received_at": null,
+    "scope": null,
+    "source_ref": null
+  },
+  "authorization": {
+    "granted": false,
+    "authentication": "unverified",
+    "owner": "existing action owner must verify trusted authority and exact operation"
+  }
 }
 ```
 
-The script refuses a paste that is not in the button's format and names the line that failed,
-the form it expected there and the text it received; it refuses a paste whose row count
-disagrees with its own `Decided n of m.` line; and it keeps an existing rulings file for the
-same date and packet unless `--replace` is passed. `scripts/test_build_packet.py` parses the
-paste above and compares the result with the rulings JSON above, so this document and the
-parser cannot drift apart. Commit the three files with the project so the next session, and
-any other agent, reads the decisions from the repository.
+The recorder verifies the full spec digest, every option value and the displayed text.
+The final binding line belongs to the copy output; include it with the paste. Changed
+meaning or mismatched rows refuse before filing. Identical imports are idempotent;
+revised specs, pages and responses receive separate names while earlier bytes survive.
+
+The unknown provenance and `authorization.granted: false` fields are deliberate: this
+synthetic record does not authenticate a principal. A real action owner must verify the
+trusted user instruction and exact operation. The format does not revoke grants already
+supplied by the user. Historical unbound summaries remain readable through
+`--legacy-unbound --stdout` without rewriting their records.
+
+`scripts/test_build_packet.py` exercises this exact example through the recorder CLI.
+Retain all versions in the owning project so another session can inspect the source,
+response and authority separately.
 
 ## Notes on writing good rows
 

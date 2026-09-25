@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.4.0"
+  version: "1.5.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -14,6 +14,8 @@ metadata:
 
 Choose the narrowest matching workflow, then read its sibling `SKILL.md` completely before acting. Resolve every path relative to this skill's directory. Load multiple skills when the request crosses categories; their `depends_on` declarations remain authoritative.
 
+Route by the requested outcome and the current stage. Load operative references when their task shape applies, without copying entire catalogs into each run. Preserve mandatory evidence, authority, coordination and domain checks. Loading a skill does not reopen a settled decision or turn delegated implementation choices into user approval gates; use the [decision-ownership contract](../synthesis-thinking-framework/references/decision-ownership.md) when instructions appear to disagree.
+
 ## Route by outcome
 
 ### Projects, context, and agent ecosystems
@@ -21,7 +23,7 @@ Choose the narrowest matching workflow, then read its sibling `SKILL.md` complet
 - Create, find, resume, or manage a project: `../synthesis-project-management/SKILL.md`
 - Compact, archive, or repair project context: `../synthesis-context-lifecycle/SKILL.md`
 - Refresh state during a long session: `../synthesis-checkpoint/SKILL.md`
-- Execute explicit end-to-end delegation: `../synthesis-autopilot/SKILL.md`
+- Execute explicit end-to-end delegation: `../synthesis-autopilot/SKILL.md`. Engage for a whole task or explicit invocation, not a single-step approval, an autonomy keyword or a discussion about the skill. Retain normal supervised work when delegation is ambiguous.
 - Install or upgrade the ecosystem: `../synthesis-onboarding/SKILL.md`, `../synthesis-skills-manager/SKILL.md`
 - Audit Claude, Codex, hooks, plugins, catalogs, or capability parity: `../synthesis-agent-conformance/SKILL.md`
 - Configure an LLM workspace or agent: `../synthesis-llm-setup/SKILL.md`, `../synthesis-technical-advisor/SKILL.md`
@@ -32,7 +34,7 @@ Choose the narrowest matching workflow, then read its sibling `SKILL.md` complet
 
 - AGENT HEURISTIC — Conduct a bounded adversarial review, rotate differently shaped
   reviewers, or maintain a finding ledger: `../synthesis-adversarial-review/SKILL.md`
-- Plan implementation: `../synthesis-code-planning/SKILL.md`; for unresolved architecture choices also load `../synthesis-preplan/SKILL.md`
+- Plan implementation: `../synthesis-code-planning/SKILL.md`; for material unresolved architecture choices also load `../synthesis-preplan/SKILL.md`. Determine the decision owner before requesting review; delegated technical choices can be evaluated and executed by the agent.
 - Audit code or a codebase: `../synthesis-code-audit/SKILL.md`, `../synthesis-codebase-review/SKILL.md`
 - Integrate multi-contributor work: `../synthesis-code-integration/SKILL.md`
 - Review, prioritize, or merge a change request: `../synthesis-pr-review/SKILL.md`, `../synthesis-review-triage/SKILL.md`, `../synthesis-bitbucket/SKILL.md` as applicable

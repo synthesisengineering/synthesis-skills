@@ -4348,6 +4348,83 @@ def test_honor_refuses_a_foreign_row(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert MODULE.parse_release_replies(board.read_text(encoding="utf-8")) == {}
 
 
+def test_hook_honor_does_not_borrow_ambient_owner_identity(tmp_path, monkeypatch):
+    board = tmp_path / "coordination" / "active-sessions.md"
+    root = staged_repository(tmp_path)
+    holder, _requester = _claim_holder_requester(board, root, monkeypatch)
+    area = f"{root}/claimed/**"
+    assert _request(board, holder.compact_id, area) == 0
+    before = board.read_bytes()
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:holder-seat")
+    foreign = MODULE.SelfIdentity(client=MODULE.CLIENT_CODEX, harness_session_id="foreign", explicit_ref="codex:foreign")
+    result = MODULE.honor_open_requests(board, holder.session_uuid, root, caller_identity=foreign)
+    assert result == ["honor pass refused: hook identity does not own this row"]
+    assert board.read_bytes() == before
+
+
+def test_hook_honor_rechecks_native_owner_at_commit_boundary(tmp_path, monkeypatch):
+    import json
+    from peer_addressing import seat_path
+    board = tmp_path / "coordination" / "active-sessions.md"
+    root = staged_repository(tmp_path)
+    holder, _requester = _claim_holder_requester(board, root, monkeypatch)
+    area = f"{root}/claimed/**"
+    assert _request(board, holder.compact_id, area) == 0
+    before = board.read_bytes()
+    native = MODULE.SelfIdentity(client=MODULE.CLIENT_CODEX, harness_session_id="holder-seat", explicit_ref="codex:holder-seat")
+    original = MODULE.locked_update
+
+    def replace_seat_then_lock(path, operation):
+        seat = seat_path(path, holder.session_uuid)
+        value = json.loads(seat.read_text())
+        value['harness_session_id'] = 'replacement-owner'
+        seat.write_text(json.dumps(value))
+        return original(path, operation)
+
+    monkeypatch.setattr(MODULE, 'locked_update', replace_seat_then_lock)
+    result = MODULE.honor_open_requests(board, holder.session_uuid, root, caller_identity=native)
+    assert result == ["honor pass failed to record: hook identity no longer owns this row"]
+    assert board.read_bytes() == before
+    assert _row_by_project(board, 'project-h').claims == [area]
+
+
+def test_hook_honor_uses_hook_identity_for_seat_heartbeat(tmp_path, monkeypatch):
+    board = tmp_path / "coordination" / "active-sessions.md"
+    root = staged_repository(tmp_path)
+    holder, _requester = _claim_holder_requester(board, root, monkeypatch)
+    area = f"{root}/claimed/**"
+    assert _request(board, holder.compact_id, area) == 0
+    native = MODULE.SelfIdentity(client=MODULE.CLIENT_CODEX, harness_session_id="holder-seat", explicit_ref="codex:holder-seat")
+    # The ambient process still names requester-seat. It must never overwrite
+    # the hook holder's sidecar after a valid narrowing.
+    result = MODULE.honor_open_requests(board, holder.session_uuid, root, caller_identity=native)
+    assert len(result) == 1 and result[0].startswith('honored ')
+    seat = MODULE.read_seat(board, holder.session_uuid)
+    assert seat.harness_session_id == 'holder-seat'
+    assert seat.last_heartbeat == _row_by_project(board, 'project-h').heartbeat
+
+
+def test_hook_honor_preserves_owner_changed_after_board_commit(tmp_path, monkeypatch):
+    board = tmp_path / 'coordination/active-sessions.md'
+    root = staged_repository(tmp_path)
+    holder, _requester = _claim_holder_requester(board, root, monkeypatch)
+    assert _request(board, holder.compact_id, f'{root}/claimed/**') == 0
+    native = MODULE.SelfIdentity(client=MODULE.CLIENT_CODEX, harness_session_id='holder-seat', explicit_ref='codex:holder-seat')
+    original = MODULE.locked_update
+    def replace_after_commit(path, operation):
+        original(path, operation)
+        seat = MODULE.read_seat(path, holder.session_uuid)
+        MODULE.write_seat(path, session_uuid=seat.session_uuid, compact_id=seat.compact_id,
+                          machine=seat.machine, identity=MODULE.SelfIdentity(client=MODULE.CLIENT_CODEX,
+                              harness_session_id='replacement-owner'), status='released')
+    monkeypatch.setattr(MODULE, 'locked_update', replace_after_commit)
+    result = MODULE.honor_open_requests(board, holder.session_uuid, root, caller_identity=native)
+    seat = MODULE.read_seat(board, holder.session_uuid)
+    assert seat.harness_session_id == 'replacement-owner'
+    assert seat.status == 'released'
+    assert any('preserved a concurrent seat change' in line for line in result)
+
+
 def test_working_state_counts_unpushed_commits(tmp_path: Path) -> None:
     origin = tmp_path / "origin.git"
     assert git(tmp_path, "init", "--bare", str(origin)).returncode == 0
@@ -4620,10 +4697,22 @@ def test_lease_repository_init_obeys_existing_git_deadline(tmp_path, monkeypatch
     fake_git.chmod(0o755)
     monkeypatch.setenv('PATH', str(bin_dir) + os.pathsep + os.environ.get('PATH', ''))
     monkeypatch.setattr(MODULE, 'LEASE_GIT_TIMEOUT', .2)
+    calls = []
+    real_run = MODULE.subprocess.run
+    def observed_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        return real_run(*args, **kwargs)
+    monkeypatch.setattr(MODULE.subprocess, 'run', observed_run)
     started = time.monotonic()
     with pytest.raises(RuntimeError, match='initialization timed out'):
         MODULE.lease_repository({'repository': tmp_path / 'lease.git'})
-    assert started_marker.read_text() == 'started'
+    # The deadline also covers interpreter startup. On a loaded host the child
+    # can be killed before its first instruction; the caller must still refuse.
+    assert len(calls) == 1
+    assert calls[0][0][0] == ['git', 'init', '--bare', '--quiet', str(tmp_path / 'lease.git')]
+    assert calls[0][1]['timeout'] == .2
+    if started_marker.exists():
+        assert started_marker.read_text() == 'started'
     assert time.monotonic() - started < 1.5
 
 

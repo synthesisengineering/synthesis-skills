@@ -11,7 +11,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Emil Peñaló"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -42,9 +42,9 @@ Code-audit produces findings. PR-review produces a verdict that may consume thos
 
 2. **Read files in full, not just diff hunks.** A diff hunk shows what changed. The surrounding file shows whether the change makes sense in context. Always read changed files in their entirety.
 
-3. **Context isolation.** The best audit comes from fresh eyes. If possible, evaluate the diff without prior knowledge of the planning decisions, trade-offs, or rationale that produced it. Confirmation bias is the default mode — you see what you expect to see. An isolated audit overrides that.
+3. **Independent judgment with complete requirements.** Give the reviewer the frozen artifact universe, user outcome, acceptance criteria, exclusions and applicable decisions. Avoid priming the verdict with the producer's preferred explanation. Independence means rederiving the result against the actual requirements, not hiding the requirements. Challenge a mistaken premise with evidence and route any amendment to its decision owner.
 
-4. **Grade only what changed.** If a serious pre-existing issue is discovered in unchanged code (security vulnerability, data loss risk, race condition), note it as informational but do not let it affect the dimension's grade for this diff.
+4. **State the reviewed scope and consequences.** Grade the changed behavior and its affected consumers. A defect that prevents the promised outcome remains a blocker even when its lines predate the diff. Record unrelated findings separately without claiming that unreviewed code is clean. Apply stronger project rules, including fix-while-touching requirements, where present.
 
 ---
 
@@ -56,7 +56,7 @@ Determine what to audit:
 - **Branch has commits ahead of base** — audit the range from base to HEAD.
 - **Nothing to diff** — report that and stop.
 
-**Large diffs (40+ files):** Prioritize files with logic changes (source code, tests) over config, generated, and lock files. If the diff exceeds practical single-pass review scope, note this in the report and focus depth on the highest-risk changes.
+**Large diffs (40+ files):** Prioritize investigation by consequence, including configuration, generated assets and lock files when they affect execution or supply-chain integrity. Divide the frozen universe into bounded review assignments with one integration owner. Track reviewed and unreviewed paths explicitly. Partial coverage produces an incomplete audit, never an unqualified Clean verdict; finish required coverage before the package can pass.
 
 ---
 
@@ -67,6 +67,7 @@ For each dimension, evaluate the changed code and assign one of:
 - **PASS** — no issues, or only trivial stylistic preferences
 - **WARNING** — potential problem that deserves attention but does not block shipping (missing edge-case test, minor inconsistency, could-be-better pattern)
 - **FAIL** — concrete defect, security hole, convention violation, or missing coverage that should be fixed before merge
+- **UNKNOWN** — a required judgment cannot be established from the available evidence or completed review coverage
 
 ### 1. Project Convention Compliance
 
@@ -153,9 +154,10 @@ Present findings as a table:
 
 Below the table, add a one-line verdict:
 
-- **"Clean"** — all dimensions PASS
+- **"Clean"** — all applicable dimensions PASS for the complete declared universe, with exact source/base bindings
 - **"Has warnings"** — one or more WARNING, no FAIL
 - **"Has blockers"** — one or more FAIL
+- **"Incomplete"** — any required dimension or part of the declared universe is UNKNOWN or unreviewed; this cannot satisfy a readiness gate
 
 Then list actionable findings with file and line references. For each issue, state what is wrong and how to fix it.
 
@@ -186,5 +188,6 @@ This mode does not change which dimensions are checked or how issues are evaluat
 - Read changed files in full, not just diff hunks — context matters
 - Check project convention documentation and apply project-specific rules explicitly
 - Do not flag style nits in code that was not changed by this diff
-- Pre-existing issues in unchanged code are informational only — they do not affect dimension grades
+- Retain outcome-blocking defects regardless of introduction date; distinguish unrelated findings and honor stronger project maintenance rules
+- Bind reused findings to the actual diff, required consumer and evidence inputs. Changed material reopens the affected judgment; a new report is unnecessary when those bindings remain current.
 - If the audit is invoked by another workflow (preflight, PR review), return findings to that workflow for decision-making

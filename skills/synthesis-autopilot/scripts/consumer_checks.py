@@ -87,9 +87,11 @@ def observe(context, payload):
                      stderr_digest=hashlib.sha256(stderr.encode()).hexdigest())
     try:
         observed = _json(stdout)
+        decoded = True
     except (ValueError, TypeError):
-        observed = None
-    successful = (execution["returncode"] == 0 and execution["sandbox_verified"] is True
+        observed, decoded = None, False
+    execution["json_decoded"] = decoded
+    successful = (decoded and execution["returncode"] == 0 and execution["sandbox_verified"] is True
                   and not execution["timed_out"] and not execution["output_exceeded"])
     return {"check_id": payload["check_id"], "criterion_id": spec["criterion_id"],
             "artifact_id": spec["artifact_id"], "artifact_digest": output["digest"],
@@ -111,5 +113,48 @@ def accept(record, state, criterion, context):
     execution = data.get("execution", {})
     return (data.get("criterion_id") == criterion["id"] and data.get("artifact_id") in criterion["artifact_ids"]
             and data.get("passed") is True and execution.get("returncode") == 0
+            and (data.get("observations", {}).get("observed") is not None or execution.get("json_decoded") is True)
             and execution.get("sandbox_verified") is True and not execution.get("timed_out")
             and not execution.get("output_exceeded"))
+
+
+def current_observation(context, receipt_id, check_id):
+    """Read an authentic current execution, including a disproved prediction.
+
+    This is an evidence read, not a new execution or a success attestation.
+    Its result may disprove the consumer's expected output. That distinction
+    lets diagnostic decisions use negative evidence without relabeling FAIL.
+    """
+    record = context.get("evidence", {}).get(receipt_id)
+    verify = context.get("verify_receipt")
+    bindings = {key: context["state"][key] for key in ("run_id", "contract_digest", "profile_digest")}
+    if (not record or record.get("kind") != "consumer-check" or not callable(verify)
+            or not verify(receipt_id, "consumer-check", bindings)):
+        raise ValueError("observation is not current authenticated consumer evidence")
+    spec_path, specification = _registered(context, check_id)
+    spec = _json(spec_path.read_bytes())
+    fields = {"schema_version", "kind", "criterion_id", "artifact_id", "script_artifact_id", "expected", "argv", "timeout_seconds"}
+    if (not isinstance(spec, dict) or set(spec) != fields or spec.get("schema_version") != 1
+            or spec.get("kind") != "python-consumer" or specification.get("role") != "input"):
+        raise ValueError("observation specification is not a registered consumer input")
+    data = record.get("data", {})
+    inputs = data.get("input_digests")
+    if (data.get("check_id") != check_id or data.get("criterion_id") != spec["criterion_id"]
+            or data.get("artifact_id") != spec["artifact_id"] or not isinstance(inputs, dict)
+            or not {check_id, spec["script_artifact_id"], spec["artifact_id"]} <= inputs.keys()):
+        raise ValueError("observation does not bind this check, program and target")
+    if any(_registered(context, key)[1]["digest"] != value for key, value in inputs.items()):
+        raise ValueError("observation dependency is no longer current")
+    _, output = _registered(context, spec["artifact_id"])
+    if data.get("artifact_digest") != output["digest"]:
+        raise ValueError("observation target changed")
+    execution, observation = data.get("execution", {}), data.get("observations", {})
+    if (execution.get("sandbox_verified") is not True or type(execution.get("returncode")) is not int
+            or execution["returncode"] != 0 or execution.get("timed_out") is not False
+            or execution.get("output_exceeded") is not False or observation.get("consumer_verified") is not True
+            or (observation.get("observed") is None and execution.get("json_decoded") is not True)
+            or not _same_json(observation.get("expected"), spec["expected"])):
+        raise ValueError("observation has no healthy bounded execution result")
+    # Decode/encode enforces the same finite JSON boundary as the execution.
+    _same_json(observation.get("observed"), observation.get("observed"))
+    return record, spec, observation.get("observed")

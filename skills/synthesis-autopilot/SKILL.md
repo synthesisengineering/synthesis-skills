@@ -2,10 +2,10 @@
 name: synthesis-autopilot
 description: "Execute an explicitly delegated whole task autonomously using the thinking framework, durable plan and context, checkpoints, anti-shortcut discipline, and implementation-integrity gate — and, for unattended runs, a verified continuation mechanism with budget and runaway control, so overnight and multi-day engagements keep producing turns instead of idling silently. Activate only for clear end-to-end delegation such as 'autopilot this,' 'take care of this for me,' 'handle this end to end,' 'run overnight,' or 'complete all phases autonomously'; never infer it from a single-step approval, discussion of autonomy, or ambiguous wording."
 license: "Apache-2.0"
-depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet"]
+depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet", "synthesis-fact-checking", "synthesis-writing-craft", "synthesis-agent-conformance"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.0.0"
+  version: "3.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -42,18 +42,21 @@ user remains usable within its stated scope.
    deliverables, exclusions, existing decisions, authority references and
    acceptance methods. Map every deliverable to a criterion and an integration
    owner. A mixed writing/software request needs both kinds of acceptance.
-3. **Resolve the workflow.** Use `scripts/run_profile.py resolve` with the task's
+3. **Resolve the workflow.** The `start` controller operation resolves the task's
    domains, uncertainty, effect class, horizon and available parallelism. Inspect
    the explanation and provenance. Public defaults preserve outcome, authority,
    evidence and recovery checks; domain checks follow the actual work. Blog
    material is opt-in, lessons depend on reusable evidence, and the completion
    report fits the domain. Existing active profiles do not change on upgrade.
-4. **Create durable state.** Use `scripts/autopilot.py create` with the selected
-   project, plan, contract, effective profile and native actor. The engine admits
-   exact paths through PM, creates a stable run ID and projects its event log
-   into readable state. Read [run contracts](references/run-contracts.md) for the
-   command interface and a working example. The agent prepares these inputs;
-   the user does not need to learn the configuration format.
+4. **Create durable state.** Use `scripts/autopilot.py start --request` with the
+   selected project, plan, contract, dimensions, resource envelope and native
+   actor. This admitted controller resolves the profile, configures the existing
+   workflow and enrolls the native source in the same journal. It resumes only
+   the exact committed request prefix after interruption. Read the
+   [controller contract](references/controller.md); the agent prepares its
+   inputs, so the user need not learn the configuration format. The underlying
+   [run owners](references/run-contracts.md) remain available for specialized
+   operations without creating a second source of authority.
 5. **Bound execution.** Configure the adaptive workflow and, when there are
    separable tasks, its dependency graph. Set a resource envelope, deadline and
    reserved integration/verification capacity. Distinguish enforceable limits
@@ -76,6 +79,16 @@ their inputs become known. Change the approach when evidence warrants it;
 changing promised outcomes or weakening required checks needs the owning
 approval, a versioned amendment and fresh verification.
 
+Use the thinking framework's [decisive-uncertainty method](../synthesis-thinking-framework/references/decisive-uncertainty.md) for facts that could change the next decision. The controller reports six-family domain requirements and open discriminating observations. Register a task-specific question only when it matters; resolve it with the existing evidence owner, preserve refuted predictions, and continue independent criteria while its dependent work waits. An empty uncertainty register adds no investigation requirement.
+
+Use `next`, `record`, `checkpoint`, `explain`, `cancel`, `recover` and `finish`
+for the normal execution loop. The Console and read-only operator view provide
+[status, durable questions and exact-owner handoffs](references/operator-experience.md). Stable request identities bind the complete
+input and expected revision. Read the returned status, coverage and diagnostics;
+a successfully invoked CLI can still report unresolved work. An interrupted
+request may already have committed steps. Inspect that prefix before choosing
+a new action, and never change its input while reusing its identity.
+
 At every checkpoint, phase boundary, wake and re-entry:
 
 - Read the board/inbox and handle intake on the existing coordination lane.
@@ -86,6 +99,11 @@ At every checkpoint, phase boundary, wake and re-entry:
   Narration alone is not progress. Identical transient failures have a bounded
   retry allowance; permanent failures and ambiguous writes require different
   handling. See [workflow and evidence](references/workflow-and-evidence.md).
+- Consume fresh native instructions and cancellation before admitting work,
+  issuing corrective feedback or declaring completion. Missing enrollment,
+  truncated history, changed observed bytes and incomplete intervals are
+  explicit gaps. Root and child sources have separate scopes. A native success
+  label alone neither proves the user's outcome nor overrides a later cancel.
 - Persist required scripts, inputs and findings in the project at the boundary.
   Temporary files and chat context cannot be the only recovery copy. Refresh
   project records through context lifecycle and its compiler.
@@ -104,9 +122,13 @@ wait for a clear window. Do not write through overlapping claims.
 
 ## Decisions and delegation
 
-Execute choices determined by the user's constraints. For an open technical
-choice, apply the thinking framework, decide and record why. Batch user-only
-questions while continuing independent work. Use the existing structured
+Use the shared [decision-ownership contract](../synthesis-thinking-framework/references/decision-ownership.md).
+Execute choices already decided by the user or determined by the user's
+constraints. For a delegated technical choice, apply the thinking framework,
+decide and record why. Preserve an explicitly requested review cadence. Batch
+material principal ambiguity and human-only actions while continuing independent
+authorized work. Existing valid user grants retain their stated scope; a packet
+record or reviewer verdict does not grant permission. Use the existing structured
 question tool for concise questions and the decision-packet skill for complex
 review packages. Generate packets with that skill's `scripts/build_packet.py`,
 never reimplemented inline. Prepare the concrete artifact before requesting
@@ -156,6 +178,13 @@ termination and scheduler deletion need observation, not inference.
 Use actual domain acceptance: software consumers, source-grounded research,
 reader purpose and factual fidelity for writing, data reconciliation, target
 read-back for browser operations, and cold recovery for project knowledge.
+Freeze the task's required dimensions, source universe and acceptance methods
+before observing outcomes. Use the [domain-quality contract](references/domain-quality.md)
+for task-specific rubrics and calibrated judgments. Preserve PASS, FAIL and
+UNKNOWN: missing evidence cannot become a pass, and a stylistic preference
+cannot veto valid work unless the task made that preference a requirement.
+Keep objective consumer observations separate from model judgments; neither
+substitutes for the other when both are required.
 Independence means a distinct reviewer or evidence source, not multiple votes
 from the same assumptions. A test process is not automatically an independent
 test design. Budget exploration where uncertainty justifies it, then assess the
@@ -192,11 +221,26 @@ or unknown. A previous notification cannot satisfy a new question. Audio and
 banners carry only generic counts and a private-detail pointer; respect the
 user's mute setting. A written report remains required when audio is muted.
 
-The Stop boundary requests at most the supported bounded correction. Repeated
+The Stop boundary reserves and consumes at most one owner-verified correction
+for the same current condition, including across new processes and repeat-bit
+changes. Productive observations do not consume failed-attempt allowances;
+renamed tasks, new receipt labels and unchanged strategies do not reset failure
+history. Unknown or ambiguous external effects require their existing owner's
+reconciliation before another attempt. Repeated
 or infrastructure failures end feedback with an explicit unresolved diagnostic;
 that is not completed work and does not relax pre-mutation guards. Preserve
 state and foreign evidence. Resume through the registry, then fresh ownership,
 current run journal, outstanding effects and the next ready task.
+Use the [capsule and cold-resume protocol](../synthesis-context-lifecycle/references/autopilot-recovery.md)
+for every interrupted run. Read [optional supervision and owner-prepared native continuation](references/supervision.md)
+before enrolling it; a queue lease and a recovery capsule do not establish a wake.
+
+Completion requires a current outcome readback even when the journal already
+contains a completed tombstone. Changed artifacts or expired proof make the
+current result unresolved. For an adopted PM project, the active execution basis
+is deliberately narrower than the normal whole-project checkpoint. The latter
+is created after terminal journal writes; interrupted closure retries only that
+postamble, without replaying effects or rewriting historical success.
 
 ## Close
 
@@ -226,7 +270,13 @@ current run journal, outstanding effects and the next ready task.
 - [Clients and recovery](references/clients-and-recovery.md): supported surfaces,
   native Stop behavior, continuation evidence, migration and diagnosis.
 - [Evaluation](references/evaluation.md): artifact corpus, calibration, controlled
-  and system comparisons, fault matrix and reviewed improvement proposals.
+  and strongest-native comparisons, frozen task clusters, complete episode and
+  cost accounting, uncertainty and reviewed improvement proposals.
+- [Domain quality](references/domain-quality.md): frozen task-specific rubrics,
+  source-grounded judgments, calibration and tri-state acceptance.
+- [Decision ownership](../synthesis-thinking-framework/references/decision-ownership.md):
+  delegated choices, material principal ambiguity, human-only dependencies and
+  the boundary between a decision record and an actual grant.
 
 Dependencies retain their ownership: project management admits paths and peers;
 context lifecycle/checkpoint preserve project state; thinking chooses approaches;

@@ -28,8 +28,11 @@ def engine():
     import evidence_bridge
     import consumer_checks
     import workflow
+    import observation_bridge
+    import controller
     capabilities.register_commands(run_state.register_command)
     workflow.register_commands(run_state.register_command)
+    workflow.register_preparers(run_state.register_preparer)
     capabilities_guard = capabilities.validate_command
     run_state.register_constraint("capabilities", capabilities_guard)
     workflow.register_constraints(run_state.register_constraint)
@@ -37,20 +40,25 @@ def engine():
     evidence_bridge.register_acceptance_predicates(run_state.register_acceptance)
     evidence_bridge.register_observers(run_state.register_observer)
     consumer_checks.register_observers(run_state.register_observer)
+    observation_bridge.register(run_state)
+    controller.register(run_state)
     return run_state
 
 
 def read_json(path):
     if path is None:
         raise ValueError("required input file is missing")
-    def unique(pairs):
-        result = {}
-        for key, value in pairs:
-            if key in result:
-                raise ValueError(f"duplicate JSON key {key}")
-            result[key] = value
-        return result
-    value = json.loads(Path(path).read_text(), object_pairs_hook=unique)
+    from controller import _read_json_bytes
+    return _decode_json(_read_json_bytes(Path(path)))
+
+
+def _decode_json(raw):
+    from controller import MAX_REQUEST_BYTES, _bounded, _unique
+    if not isinstance(raw, bytes) or len(raw) > MAX_REQUEST_BYTES:
+        raise ValueError("input exceeds the strict JSON size bound")
+    value = json.loads(raw, object_pairs_hook=_unique,
+        parse_constant=lambda _: (_ for _ in ()).throw(ValueError("input must be finite JSON")))
+    _bounded(value)
     if not isinstance(value, dict):
         raise ValueError("input must be a JSON object")
     return value
@@ -61,10 +69,23 @@ def actor_from_hook(payload):
             "native_payload": payload}
 
 
+def _observer_identity(payload):
+    # Combined Stop calls this before engine() or a CLI request decoder has
+    # imported PM. Resolve the canonical owner explicitly; import order and
+    # optional harness environment hints must not decide whether it exists.
+    scripts = HERE.parents[1] / "synthesis-project-management/scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from project_state import observer_native_identity
+    return observer_native_identity(payload)
+
+
 def surface_for(payload):
+    from capabilities import supported_surfaces
     explicit = payload.get("synthesis_surface") if isinstance(payload, dict) else None
     if explicit:
-        return explicit
+        entry = supported_surfaces()["surfaces"].get(explicit) if isinstance(explicit, str) else None
+        return explicit if entry and entry["dialect"] in {"claude", "codex", "muse", "cursor", "copilot"} else None
     if os.environ.get("SYNTHESIS_HOOK_CLIENT") == "muse":
         return "muse-cli"
     native = os.environ.get("SYNTHESIS_CLIENT_SESSION_REF", "")
@@ -79,15 +100,14 @@ def surface_for(payload):
     # Discover only a family established by the PM-native transcript validator.
     # Desktop vs CLI capabilities still require an explicit surface observation.
     try:
-        from run_admission import observer_native_identity
-        family, _ = observer_native_identity(payload)
+        family, _ = _observer_identity(payload)
         return {"codex": "codex-cli", "claude": "claude-code-cli", "muse": "muse-cli"}[family]
     except (ValueError, OSError, ImportError, KeyError, TypeError, RuntimeError):
         return None
 
 
-def stop_result(actor, *, runtime_root=None):
-    from capabilities import normalize_event, stop_response, continuation_status, wait_delivery_status
+def stop_result(actor, *, runtime_root=None, reserve_feedback=True):
+    from capabilities import normalize_event, stop_response, continuation_status, wait_delivery_status, supported_surfaces
     payload = actor.get("native_payload", {}) if isinstance(actor, dict) else {}
     surface = surface_for(payload)
     if surface is None:
@@ -95,6 +115,12 @@ def stop_result(actor, *, runtime_root=None):
         return {"continue": False, "stopReason": message, "systemMessage": message}
     try:
         normalize_event(surface, payload)
+        # A surface/ref hint chooses a wire dialect, never ownership. Prove
+        # native identity even when no runtime index exists, so an absent or
+        # invalid transcript cannot be mistaken for an inactive engagement.
+        family, _ = _observer_identity(payload)
+        if family != supported_surfaces()["surfaces"][surface]["dialect"]:
+            raise ValueError("native transcript does not bind the selected Stop surface")
         runtime = engine()
         root = runtime_root if runtime_root is not None else default_runtime_root()
         legacy = runtime.legacy_for_stop(actor, Path(root) / "engagements", runtime_root=root)
@@ -108,6 +134,7 @@ def stop_result(actor, *, runtime_root=None):
         runs = runtime.inspect_owned_runs(actor, runtime_root=runtime_root)
         unresolved = [f"legacy engagement requires explicit import or verified closure: {item['source']}"
                       for item in legacy["owned_active"]]
+        unresolved_runs = []
         for state, context in runs:
             continuation = continuation_status(state, context)
             if continuation.get("continuation_verified"):
@@ -118,10 +145,24 @@ def stop_result(actor, *, runtime_root=None):
             if state.get("status") == "waiting_user" and alerted:
                 continue
             unresolved.append(f"run {state['run_id']}: {state['status']}; continuation {continuation['state']}")
+            unresolved_runs.append((state, context))
         if unresolved:
-            return stop_response(surface, payload,
-                "Autopilot remains incomplete. Preserve the run, establish verified continuation, "
-                "or record an honest incomplete/cancelled disposition. " + "; ".join(unresolved))
+            import workflow
+            message = "Autopilot remains incomplete. " + "; ".join(unresolved)
+            if reserve_feedback is not True:
+                return stop_response(surface, payload, message + "; sibling checkpoint vetoed corrective emission", terminal=True)
+            if legacy["owned_active"] or not unresolved_runs:
+                return stop_response(surface, payload, message, terminal=True)
+            screens = [workflow.stop_feedback_status(state, context) for state, context in unresolved_runs]
+            if any(screen.get("action") != "eligible" for screen in screens):
+                return stop_response(surface, payload, message + "; " + "; ".join(
+                    screen.get("reason_code", "unverified_policy_state") for screen in screens), terminal=True)
+            # Read-only screens cannot spend a correction. Reserve exactly one
+            # only after all unresolved runs have passed the deny-only screen.
+            selected = unresolved_runs[0][0]
+            disposition = workflow.reserve_stop_feedback(runtime, selected, actor,
+                project=Path(selected["owner"]["project_root"]), runtime_root=root)
+            return stop_response(surface, payload, message, policy_disposition=disposition)
         return stop_response(surface, payload)
     except (ValueError, OSError, ImportError, KeyError, TypeError, RuntimeError) as exc:
         return stop_response(surface, payload, f"Autopilot state or native ownership cannot be verified: {exc}", terminal=True)
@@ -146,16 +187,32 @@ def summary(state, context=None):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("create", "command", "observe", "status", "rebuild", "import", "explain", "doctor", "stop"))
+    parser.add_argument("action", choices=("create", "command", "observe", "status", "rebuild", "import", "explain", "doctor", "stop",
+        "start", "next", "record", "checkpoint", "cancel", "recover", "finish"))
     for name in ("project", "plan", "contract", "profile", "actor", "payload", "legacy"):
         parser.add_argument("--" + name, type=Path)
     for name in ("project-id", "run-id", "command-id", "name", "surface"):
         parser.add_argument("--" + name)
     parser.add_argument("--expected-revision", type=int)
+    parser.add_argument("--request", help="Strict bounded operation request file, or - for stdin")
+    parser.add_argument("--source-mode", choices=("native", "synthetic"), default="native",
+                        help="Declared source mode; never proof of native qualification")
     parser.add_argument("--index-legacy", action="store_true",
                         help="Prepare host-local ownership discovery outside Stop; preserve source records")
     args = parser.parse_args(argv)
     try:
+        if args.request is not None or args.action in {"start", "next", "record", "checkpoint", "cancel", "recover", "finish"}:
+            import controller
+            if args.action not in controller.OPERATIONS or args.project is None or args.request is None:
+                raise ValueError("facade operation requires --project and --request")
+            request = controller.read_request(args.request)
+            if request["operation"] != args.action:
+                raise ValueError("request operation does not match CLI action")
+            output = controller.handle(request, project=args.project,
+                actor=read_json(args.actor) if args.actor else None,
+                runtime_root=default_runtime_root(), source_mode=args.source_mode)
+            print(controller.encode_response(output).decode("utf-8"))
+            return 0
         if args.action == "explain":
             from capabilities import supported_surfaces
             from delegation_boundary import capability as worker_capability
@@ -172,7 +229,8 @@ def main(argv=None):
             else:
                 output = registry
         elif args.action == "stop":
-            payload = json.load(sys.stdin)
+            from controller import MAX_REQUEST_BYTES
+            payload = _decode_json(sys.stdin.buffer.read(MAX_REQUEST_BYTES + 1))
             output = stop_result(actor_from_hook(payload), runtime_root=default_runtime_root())
         else:
             runtime = engine()
@@ -221,10 +279,27 @@ def main(argv=None):
                 elif args.action in {"command", "observe"}:
                     if not args.run_id or not args.name or args.expected_revision is None or not args.command_id:
                         raise ValueError("command requires run-id, name, expected-revision and command-id")
-                    mutate = runtime.observe if args.action == "observe" else runtime.apply_command
-                    output = mutate(args.project, args.run_id, args.name, read_json(args.payload),
-                        expected_revision=args.expected_revision, command_id=args.command_id, actor=actor,
-                        runtime_root=default_runtime_root())
+                    payload = read_json(args.payload)
+                    if args.action == "command" and args.name == "workflow.grade":
+                        import workflow
+                        current = runtime.load_run(args.project, args.run_id)
+                        request_id = "cli-grade." + runtime._digest(args.command_id)
+                        binding = {"request_id": request_id, "request_digest": runtime._digest({"command": args.name, "payload": payload}),
+                            "operation": "record", "step": "grade", "initial_revision": args.expected_revision}
+                        runtime._check_request(current, binding)
+                        rearm = workflow.prepare_grade(current, payload, runtime.inspect_context(current, actor))
+                        if rearm is not None:
+                            current = runtime.apply_command(args.project, args.run_id, "workflow.rearm", rearm,
+                                expected_revision=current["revision"], command_id="rearm." + runtime._digest(args.command_id),
+                                actor=actor, runtime_root=default_runtime_root(), request_binding={**binding, "step": "rearm"})
+                        output = runtime.apply_command(args.project, args.run_id, args.name, payload,
+                            expected_revision=current["revision"], command_id=args.command_id, actor=actor,
+                            runtime_root=default_runtime_root(), request_binding=binding)
+                    else:
+                        mutate = runtime.observe if args.action == "observe" else runtime.apply_command
+                        output = mutate(args.project, args.run_id, args.name, payload,
+                            expected_revision=args.expected_revision, command_id=args.command_id, actor=actor,
+                            runtime_root=default_runtime_root())
                 elif args.action == "rebuild":
                     if not args.run_id:
                         raise ValueError("rebuild requires run-id")

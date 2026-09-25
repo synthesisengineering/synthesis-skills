@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.5.0"
+  version: "1.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -14,8 +14,8 @@ metadata:
 
 **Version 1.5.0** (2026-09-20)
 
-An agent that has analysed N items needs N decisions from its principal. Every default shape
-fails at scale, and the measurement that produced this skill is blunt: **26 rounds of per-item
+When N unresolved decisions belong to the principal, collecting them one at a time
+scales poorly. The measurement that produced this skill is blunt: **26 rounds of per-item
 conversation produced 0 of 30 decisions. One packet produced 30 of 30, in one pass, in one
 paste.**
 
@@ -33,6 +33,13 @@ the burden of structuring the response falls on the person, every time, for ever
 *sittings*, not the number of *items*.**
 
 ## When to use it
+
+First apply [decision ownership](../synthesis-thinking-framework/references/decision-ownership.md).
+Packets collect decisions that actually belong to the principal. Execute choices
+already determined by constraints and resolve delegated technical choices without
+putting them back into a questionnaire. Honor an explicit supervised review request.
+Existing user grants remain usable within their scope; the new record format does
+not require the user to repeat them.
 
 Load when you owe your principal **five or more parallel decisions of the same shape**, each
 needing supporting context, where you have a defensible recommendation per item and the decisions
@@ -66,15 +73,17 @@ Requirements, not suggestions. Each is why it worked.
    "I agreed" from "I never looked", and would report decisions nobody made.
 3. **A free-text box on every row, beside the buttons.** Never force a principal into your option
    set. In the origin run one such note, on one row, carried information no button could have.
-4. **Local persistence keyed per item.** Thirty decisions is more than one sitting for anyone doing
+4. **Local persistence keyed by exact spec and item.** Thirty decisions is more than one sitting for anyone doing
    it properly. Storage access is guarded: where a browser blocks it the packet still works and
-   says so in the summary.
+   says so in the summary. A change anywhere in the canonical spec starts fresh choices;
+   an old click cannot silently acquire a new meaning.
 5. **A paste-able summary the tool generates.** *This is the property that closes the loop.* The
    structure you need is produced by the packet, not composed by the person.
 6. **Filed in the owning project, never only as a chat artifact.** The spec, the generated page,
    and the rulings the principal pastes back live in the owning synthesis project's
    `resources/artifacts/` as `<date>-<slug>-spec.json`, `<date>-<slug>.html`, and
-   `<date>-<slug>-rulings.json`. A packet that exists only as a published Claude artifact is
+   `<date>-<slug>-rulings.json`. Later versions receive a digest suffix; earlier
+   bytes are preserved. A packet that exists only as a published Claude artifact is
    readable by one client in one conversation; the project directory is readable by every agent
    working the project, ChatGPT Codex included, and by the next session after this one is gone.
    `build_packet.py --file-into` files the first two; `record_rulings.py` files the third.
@@ -156,6 +165,7 @@ python3 scripts/build_packet.py spec.json --stdout    # to a pipe
 python3 scripts/build_packet.py spec.json --strict-reader \
     --file-into PROJECT/resources/artifacts/         # + <date>-<slug>-spec.json, <date>-<slug>.html
 python3 scripts/record_rulings.py paste.txt \
+    --spec PROJECT/resources/artifacts/<date>-<slug>-spec.json \
     --file-into PROJECT/resources/artifacts/         # -> <date>-<slug>-rulings.json
 ```
 
@@ -170,26 +180,62 @@ not mean. `--date YYYY-MM-DD` sets the date in the names (default: today). Publi
 an artifact too if that is how the principal will open it; the filed copy is the one other
 agents read.
 
-**Record what came back.** When the principal pastes the summary, save the paste to a file and
-run `record_rulings.py paste.txt --file-into DIR`. It parses the exact text the packet's "Copy
-summary" button emits and writes `<date>-<slug>-rulings.json` beside the spec and page: `packet`,
-`ruled_on`, `decided`, `total`, and one ruling per row with `id`, `label`, `choice_label`,
-`took_recommendation` (true, false for an override, null when undecided or when the row carried
-no recommendation), `accepted_in_bulk` (the packet keeps bulk acceptance distinct from a
-considered click, and so does the file), `recommended_label`, and `note`. It refuses text that
-is not in that format, naming the line that failed, the form expected there and the text it
-received; it reads a whitespace-only line as blank, since chat surfaces pad empty lines; it
-refuses a paste whose row count or decided count disagrees with its own `Decided n of m.` line;
-and it keeps an existing rulings file for the same date and packet unless `--replace` is passed.
-Commit all three files with the project.
+**Record what came back.** Save the complete returned summary, including its final
+binding line. Run `record_rulings.py paste.txt --spec CURRENT-SPEC --file-into DIR`.
+The current spec is selected explicitly; omitting `--spec` works only when the
+directory has one matching candidate. Multiple versions require an explicit choice.
+The recorder refuses a changed spec, duplicate/missing/reordered rows, unknown
+option values, mismatched displayed text and malformed bindings before writing.
+
+Schema-2 records retain `packet`, `ruled_on`, `decided`, `total`, and per-row
+`id`, `label`, `choice_value`, `choice_label`, recommendation/bulk status and
+`note`. They add the complete canonical spec SHA-256, actual filed-spec byte
+digest, summary digest, claimed provenance and an explicit non-authorizing status.
+Canonical bytes are UTF-8 JSON with sorted object keys, compact separators and one
+final newline. Every field participates, including context, consequences and scope;
+duplicate JSON keys and nonfinite numbers are refused. Whitespace in an input JSON
+file does not change meaning; any change in its canonical content changes the binding.
+
+Identical imports are idempotent. A changed response receives a distinct filename;
+there is no destructive `--replace`. Preserve and commit the spec, page, original
+response and recorded versions in the owning project. An explicit `--out` path also
+preserves existing bytes; give a revised page a new path or use versioned filing.
+
+## Provenance and action authority
+
+The parser records a response; it does not authenticate a principal or authorize
+an action. Every output has `authorization.granted: false` and
+`authentication: unverified`, including a byte-perfect synthetic or forged paste.
+This describes the tool's authority, not the validity of an existing user grant.
+
+When the trusted conversation supplies attribution, pass `--provenance FILE` with
+exactly five nonempty strings: `principal`, `source_ref`, `received_at` (an ISO
+timestamp with timezone), `scope`, and `authority_ref`. The recorder preserves
+these claims and the provenance-file digest as `claimed-unverified`; it cannot
+verify an identity merely because a local file names one. Missing provenance stays
+`unattributed-paste`, with unknown fields explicit. `ruled_on` is the supplied
+record date, not proof of when the principal acted.
+
+The existing action owner reads the authentic source and checks the principal,
+current scope, exact target/payload, validity and restrictions before acting.
+Put the concrete target, payload revision and decision boundary in the displayed
+`scope` or row context. A technical selection or preference cannot authorize a
+new deployment, disclosure, spend or other consequential effect.
+
+Historical text remains readable with `--legacy-unbound --stdout`; historical
+records remain untouched. This read does not produce a new bound filing. An old
+record's lack of a schema-2 binding neither authenticates it nor erases authority
+already supplied in a trusted user instruction. Resolve that authority through
+its actual owner and source.
 
 ## Enforcement (v1.5.0) — generator output is verified, not trusted
 
-Prose above tells the agent to generate; this section is what happens when
-one freelances instead. Every page `build_packet.py` emits carries a
-provenance marker pinning its embedded spec (`synthesis-decision-packet
-spec-sha256`). `record_rulings.py` refuses a paste whose packet has no
-filed `-spec.json`. And the context doctor's `skill-outputs` check fails
+Every page `build_packet.py` emits carries an integrity marker pinning its
+embedded payload (`synthesis-decision-packet spec-sha256`) and a separate
+canonical input-spec digest used by the summary and browser persistence.
+These are integrity checks, not proof of generator authorship or user identity.
+`record_rulings.py` validates the current spec and every selected value before
+filing. The context doctor's existing `skill-outputs` check fails
 any packet page under a project's `resources/artifacts/` that is not
 verifiable generator output: unmarked with no filed rulings is a defect
 (rebuild with the generator or remove it); a marker that disagrees with
@@ -231,8 +277,8 @@ regression-tested in `scripts/test_build_packet.py`.
 
 ## Relationship to other skills
 
-- **`synthesis-autopilot`** should *call* this, not reimplement it. Autopilot requires "batched
-  questions for the user"; this is the concrete artifact that requirement was missing. A
+- **`synthesis-autopilot`** should *call* this for actual principal-owned gates, not
+  reimplement it or return delegated decisions to the user. A
   round-trip budget only means something if one round-trip can carry many decisions.
 - **The adversarial review family** — this is where an engagement surfaces its unresolved
   disagreements. Pair it with a status for findings that are not open, not conceded, and not the

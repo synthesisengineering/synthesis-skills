@@ -11,6 +11,11 @@ has drifted every time one has been made.
 
 ## The routing test
 
+The [decision ownership contract](../../synthesis-thinking-framework/references/decision-ownership.md)
+applies in this lane too. Carry the controlling instruction and existing grants;
+honor explicit supervised pauses and continue delegated technical work without
+new approval. Lane changes retain required review, tests and action boundaries.
+
 Two conditions, both required:
 
 1. **One commit.** The change is a single coherent, independently reviewable
@@ -92,7 +97,9 @@ small" is this rule being broken.
 ### Step 1 — Brief
 
 One paragraph: what the commit does and why this seam. Where a decisions file
-from the pre-planning skill exists, its rows are non-negotiable inputs. Where
+from the pre-planning skill exists, follow its rows and recorded owners. New
+factual counterevidence reopens a premise through that owner, never by silent
+substitution. Where
 none exists, the ticket plus the nearest already-shipped sibling is sufficient
 grounding — do not manufacture a decisions file for work this lane already
 judged decision-free.

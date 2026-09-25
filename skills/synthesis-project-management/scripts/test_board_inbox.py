@@ -167,6 +167,47 @@ def test_diagnostic_inbox_survives_a_stale_schema1_seat_file(board, monkeypatch,
 MUSE_SID = "muse-probe-001"
 
 
+@pytest.mark.parametrize("client", ["codex", "muse", "claude-cli", "claude-desktop"])
+def test_hook_payload_identity_honors_without_shell_session_export(tmp_path, monkeypatch, client):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    board = tmp_path / "board.md"
+    area = f"{repo}/claimed/**"
+    sid = "11111111-1111-4111-8111-111111111111"
+    if client == "codex":
+        claim_env = {"SYNTHESIS_CLIENT_SESSION_REF": "codex:" + sid}
+        hook_env = {"CODEX_HOME": str(tmp_path / "codex")}
+    elif client == "muse":
+        claim_env = {"SYNTHESIS_CLIENT_SESSION_REF": "muse:" + sid}
+        hook_env = {"SYNTHESIS_HOOK_CLIENT": "muse"}
+    else:
+        claim_env = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": sid}
+        hook_env = {"CLAUDECODE": "1"}
+        if client == "claude-desktop":
+            claim_env["CLAUDE_CODE_HOST_SESSION_ID"] = "local_holder"
+            hook_env["CLAUDE_CODE_HOST_SESSION_ID"] = "local_holder"
+    for key, value in claim_env.items():
+        monkeypatch.setenv(key, value)
+    assert ENGINE.command_claim(args(
+        board, id=None, agent="agent", machine="m1", project="project-h",
+        mode="interactive", goal="g", workspace=[f"{repo} @ main"],
+        area=[area], context_role="owner",
+    )) == 0
+    holder = [row for row in ENGINE.rows(board.read_text()) if row.project == "project-h"][0]
+    claim(board, "project-q", {"SYNTHESIS_CLIENT_SESSION_REF": "codex:requester"}, monkeypatch)
+    assert ENGINE.command_request_narrow(args(board, holder=holder.compact_id, area=[area], reason="need it")) == 0
+    [request] = ENGINE.open_release_requests(board.read_text())
+    for key in ("SYNTHESIS_CLIENT_SESSION_REF", "CLAUDE_CODE_HOST_SESSION_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDECODE", "SYNTHESIS_HOOK_CLIENT"):
+        monkeypatch.delenv(key, raising=False)
+    # This is the actual native-hook shape: identity is in the host payload,
+    # and the shell-only session export is absent.
+    text = INBOX.inbox_text({"session_id": sid, "cwd": str(repo)}, board=board, environ=hook_env)
+    assert f"honored {request.id}: narrowed {area}" in text
+    assert ENGINE.parse_release_replies(board.read_text()) == {request.id: "narrowed"}
+    assert "SYNTHESIS_CLIENT_SESSION_REF" not in os.environ
+
+
 def test_per_turn_inbox_honors_open_requests(tmp_path, monkeypatch) -> None:
     # S13 layer 2: the holder's next prompt narrows clean requested areas
     # and says so in the injected text.

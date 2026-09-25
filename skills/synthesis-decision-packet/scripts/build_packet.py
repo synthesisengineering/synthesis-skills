@@ -27,9 +27,11 @@ import datetime
 import hashlib
 import html
 import json
+import math
 import pathlib
 import re
 import sys
+import urllib.parse
 
 SCHEMA = """\
 Decision-packet spec (JSON)
@@ -39,8 +41,10 @@ Decision-packet spec (JSON)
   "title":       "Code review — CSA content pipeline",     REQUIRED, one line
   "subtitle":    "12 findings from an adversarial pass",    optional
   "intro":       "Markdown-free prose shown under the title.",  optional
+  "scope":       "Exact target, payload and limits of these choices.", optional
   "storage_key": "csa-review-2026-09",   optional; defaults to a slug of the title.
-                                         Change it to reset everyone's saved state.
+                                         Saved state also binds the complete spec
+                                         digest, so changed meaning starts empty.
   "summary_intro": "Paste this back to the agent.",  optional
   "audience":    "One sentence: who reads this and what they already know.",
                                           optional in the format, REQUIRED by the
@@ -115,6 +119,68 @@ Decision-packet spec (JSON)
 
 TONES = {"danger", "warn", "ok", "muted", "info"}
 SEVERITIES = {"high", "medium", "low", "none"}
+
+
+def strict_json(raw: str):
+    """Reject ambiguous JSON instead of silently taking its last duplicate key."""
+    def pairs(items):
+        obj = {}
+        for key, value in items:
+            if key in obj:
+                raise ValueError(f"duplicate JSON key: {key!r}")
+            obj[key] = value
+        return obj
+
+    def constant(value):
+        raise ValueError(f"nonfinite JSON number: {value}")
+
+    return json.loads(raw, object_pairs_hook=pairs, parse_constant=constant)
+
+
+def canonical_spec_bytes(spec: dict) -> bytes:
+    """The complete spec as sorted, compact UTF-8 JSON plus one LF.
+
+    Every field participates, including context, consequences and scope. No
+    normalization of Unicode or defaults silently changes the presented spec.
+    """
+    return (json.dumps(spec, sort_keys=True, separators=(",", ":"),
+                       ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
+
+
+def spec_digest(spec: dict) -> str:
+    return hashlib.sha256(canonical_spec_bytes(spec)).hexdigest()
+
+
+def write_preserved(path: pathlib.Path, payload: bytes) -> None:
+    """Create or verify identical bytes; never replace a historical artifact."""
+    if path.is_symlink():
+        raise ValueError(f"refusing symlink output: {path}")
+    try:
+        with path.open("xb") as stream:
+            stream.write(payload)
+    except FileExistsError:
+        if not path.is_file() or path.read_bytes() != payload:
+            raise ValueError(f"existing artifact differs; preserved without replacement: {path}")
+
+
+def _json_shape_problems(value, where="spec") -> list[str]:
+    """Reject values the browser cannot faithfully consume."""
+    if isinstance(value, dict):
+        return [problem for key, item in value.items()
+                for problem in _json_shape_problems(item, f"{where}.{key}")]
+    if isinstance(value, list):
+        return [problem for index, item in enumerate(value)
+                for problem in _json_shape_problems(item, f"{where}[{index}]")]
+    if isinstance(value, float) and not math.isfinite(value):
+        return [f"{where} must not contain a nonfinite number"]
+    if isinstance(value, int) and not isinstance(value, bool) and abs(value) > 2**53 - 1:
+        return [f"{where} integer is outside the browser's exact range"]
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            return [f"{where} contains an unpaired Unicode surrogate"]
+    return []
 
 # Option labels must say what pressing the button DOES. Fixture of the failure,
 # 2026-09-14: on a 9-row packet, three rows carrying the options
@@ -205,10 +271,12 @@ def _validate_option_set(opts: list, where: str, problems: list[str]) -> None:
                 f"{prefix}[{i}].value {o['value']!r} must be a non-empty string - the button's "
                 "pressed state is keyed through a DOM dataset, which stores strings only")
             continue
+        if not isinstance(o["label"], str) or not o["label"].strip():
+            problems.append(f"{prefix}[{i}].label must be a non-empty string")
         if LINE_BREAK.search(str(o["label"])):
             problems.append(
                 f"{prefix}[{i}] label {o['label']!r} contains a line break - {SINGLE_LINE_FORM}")
-        if o.get("tone") and o["tone"] not in TONES:
+        if "tone" in o and (not isinstance(o["tone"], str) or o["tone"] not in TONES):
             problems.append(f"{prefix}[{i}].tone {o['tone']!r} not in {sorted(TONES)}")
         if "consequence" in o and (not isinstance(o["consequence"], str)
                                    or not o["consequence"].strip()):
@@ -250,8 +318,11 @@ def validate(spec: dict) -> list[str]:
 
     if not isinstance(spec, dict):
         return ["spec must be a JSON object"]
+    problems.extend(_json_shape_problems(spec))
     if not spec.get("title"):
         problems.append("missing required field: title")
+    elif not isinstance(spec["title"], str) or not spec["title"].strip():
+        problems.append("title must be a non-empty string")
     elif LINE_BREAK.search(str(spec["title"])):
         problems.append(
             f"title {spec['title']!r} contains a line break - {SINGLE_LINE_FORM}")
@@ -307,11 +378,13 @@ def validate(spec: dict) -> list[str]:
             seen.add(rid)
         if not r.get("label"):
             problems.append(f"rows[{i}] ({rid}) missing required field: label")
+        elif not isinstance(r["label"], str) or not r["label"].strip():
+            problems.append(f"rows[{i}] ({rid}) label must be a non-empty string")
         elif LINE_BREAK.search(str(r["label"])):
             problems.append(
                 f"rows[{i}] ({rid}) label {r['label']!r} contains a line break - {SINGLE_LINE_FORM}")
         sev = r.get("severity")
-        if sev and sev not in SEVERITIES:
+        if "severity" in r and (not isinstance(sev, str) or sev not in SEVERITIES):
             problems.append(f"rows[{i}] ({rid}) severity {sev!r} not in {sorted(SEVERITIES)}")
         row_opts = r.get("options")
         if row_opts is None:
@@ -321,20 +394,64 @@ def validate(spec: dict) -> list[str]:
             row_opts = opts
         else:
             _validate_option_set(row_opts, f"rows[{i}] ({rid})", problems)
-        values = {o.get("value") for o in row_opts if isinstance(o, dict)}
+        values = {o.get("value") for o in row_opts if isinstance(o, dict)
+                  and isinstance(o.get("value"), str)}
         rec = r.get("recommendation")
-        if rec and rec not in values:
+        if rec is not None and (not isinstance(rec, str) or rec not in values):
             problems.append(
                 f"rows[{i}] ({rid}) recommendation {rec!r} is not one of its options {sorted(v for v in values if v)}"
             )
         dis = r.get("disagreement")
         if dis is not None:
-            if not isinstance(dis, dict) or not dis.get("a") or not dis.get("b"):
+            if (not isinstance(dis, dict) or
+                    any(not isinstance(dis.get(side), dict) or
+                        not all(isinstance(dis[side].get(k), str) and dis[side][k]
+                                for k in ("who", "view")) for side in ("a", "b"))):
                 problems.append(f"rows[{i}] ({rid}) disagreement needs both 'a' and 'b'")
         imp = r.get("impact")
-        if imp is not None and (not isinstance(imp, dict)
-                                or not imp.get("accept") or not imp.get("decline")):
+        if imp is not None and (not isinstance(imp, dict) or
+                                not all(isinstance(imp.get(k), str) and imp[k]
+                                        for k in ("accept", "decline"))):
             problems.append(f"rows[{i}] ({rid}) impact needs both 'accept' and 'decline'")
+        for key in ("context", "reasoning"):
+            if key in r and not isinstance(r[key], str):
+                problems.append(f"rows[{i}] ({rid}) {key} must be a string")
+        links = r.get("links", [])
+        if not isinstance(links, list):
+            problems.append(f"rows[{i}] ({rid}) links must be a list")
+        else:
+            for link in links:
+                if (not isinstance(link, dict) or not isinstance(link.get("href"), str)
+                        or not isinstance(link.get("label"), str)):
+                    problems.append(f"rows[{i}] ({rid}) link needs string href and label")
+                    continue
+                href = link["href"]
+                try:
+                    scheme = urllib.parse.urlsplit(href).scheme.lower()
+                except ValueError:
+                    scheme = "invalid"
+                if (any(ord(c) < 32 for c in href) or
+                        scheme not in ("", "http", "https", "file")):
+                    problems.append(f"rows[{i}] ({rid}) link scheme is not permitted")
+        if "tags" in r and (not isinstance(r["tags"], list) or
+                             not all(isinstance(tag, str) for tag in r["tags"])):
+            problems.append(f"rows[{i}] ({rid}) tags must be a list of strings")
+
+    for key in ("subtitle", "intro", "summary_intro", "audience", "scope", "storage_key"):
+        if key in spec and not isinstance(spec[key], str):
+            problems.append(f"{key} must be a string")
+    filters = spec.get("filters", [])
+    if not isinstance(filters, list):
+        problems.append("filters must be a list")
+    else:
+        for filt in filters:
+            if not isinstance(filt, dict) or not all(isinstance(filt.get(k), str) for k in ("id", "label")):
+                problems.append("each filter needs string id and label")
+                continue
+            for key in ("tags", "severity"):
+                if key in filt and (not isinstance(filt[key], list) or
+                                    not all(isinstance(v, str) for v in filt[key])):
+                    problems.append(f"filter {filt['id']} {key} must be a list of strings")
 
     gl = spec.get("glossary")
     if gl is not None:
@@ -553,6 +670,7 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
   <h1>__TITLE__</h1>
   __SUBTITLE__
   __INTRO__
+  __SCOPE__
   __AUDIENCE__
   __GLOSSARY__
 </header>
@@ -584,17 +702,30 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
 (function () {
   "use strict";
   var SPEC = JSON.parse(document.getElementById("spec").textContent);
-  var KEY = "decision-packet:" + SPEC.storage_key;
+  var SPEC_DIGEST = "__CANONICAL_SPEC_SHA256__";
+  var KEY = "decision-packet:" + SPEC.storage_key + ":" + SPEC_DIGEST;
   var rowsEl = document.getElementById("rows");
+  var rowElements = [];
 
   // ---- state -------------------------------------------------------------
   // localStorage can throw outright (private mode, blocked site data), so every
   // access is guarded and the packet stays fully usable with no persistence.
-  var state = {};
+  var state = Object.create(null);
   var persists = true;
   try {
-    state = JSON.parse(localStorage.getItem(KEY) || "{}") || {};
-  } catch (e) { state = {}; persists = false; }
+    var stored = JSON.parse(localStorage.getItem(KEY) || "{}");
+    if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+      SPEC.rows.forEach(function (r) {
+        if (!Object.prototype.hasOwnProperty.call(stored, r.id)) return;
+        var s = stored[r.id];
+        if (!s || typeof s !== "object" || Array.isArray(s)) return;
+        var valid = optionsFor(r).some(function (o) { return o.value === s.choice; });
+        state[r.id] = { choice: valid ? s.choice : undefined,
+          note: typeof s.note === "string" ? s.note : "",
+          bulk: valid && s.choice === r.recommendation && s.bulk === true };
+      });
+    }
+  } catch (e) { state = Object.create(null); persists = false; }
 
   function save() {
     if (!persists) return;
@@ -775,11 +906,16 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
   function render() {
     renderFilters(); syncFilters(); renderCounts();
     if (!rowsEl.childElementCount) {
-      SPEC.rows.forEach(function (r) { rowsEl.appendChild(buildRow(r)); });
+      rowElements = SPEC.rows.map(function (r) {
+        var el = buildRow(r);
+        rowsEl.appendChild(el);
+        return el;
+      });
     }
-    SPEC.rows.forEach(function (r) {
-      var el = rowsEl.querySelector('[data-id="' + cssEsc(r.id) + '"]');
-      if (!el) return;
+    SPEC.rows.forEach(function (r, index) {
+      // IDs remain exact data, including control characters. Retain the DOM
+      // reference instead of converting an ID into CSS selector source.
+      var el = rowElements[index];
       el.hidden = !matches(r);
       var d = decisionOf(r);
       el.dataset.decided = d === null ? "no" : "yes";
@@ -795,7 +931,7 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
     var lines = [SPEC.title, "=".repeat(SPEC.title.length), ""];
     var decided = 0;
     SPEC.rows.forEach(function (r) {
-      var s = get(r.id), d = s.choice !== undefined ? s.choice : null;
+      var s = get(r.id), d = decisionOf(r);
       if (d !== null) decided++;
       var mark = d === null ? "— not yet decided" : labelFor(r, d);
       if (d !== null && r.recommendation) {
@@ -819,6 +955,13 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
                  "weight them accordingly.");
     }
     if (!persists) lines.push("(This browser blocked local storage, so nothing was saved between sittings.)");
+    lines.push("Decision packet binding v2: " + JSON.stringify({
+      schema_version: 2, spec_sha256: SPEC_DIGEST,
+      selections: SPEC.rows.map(function (r) {
+        var s = get(r.id);
+        return {id: r.id, choice: decisionOf(r), note: (s.note || "").trim(), bulk: s.bulk === true};
+      }), storage_blocked: !persists
+    }));
     document.getElementById("summary").value = lines.join("\\n");
     document.getElementById("progress").textContent =
       decided + " of " + SPEC.rows.length + " decided";
@@ -910,7 +1053,7 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
   });
   document.getElementById("reset").addEventListener("click", function () {
     if (!window.confirm("Clear every saved answer in this packet?")) return;
-    state = {};
+    state = Object.create(null);
     try { localStorage.removeItem(KEY); } catch (e) {}
     rowsEl.innerHTML = "";
     document.getElementById("copystatus").textContent = "Cleared.";
@@ -922,8 +1065,6 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
   }
-  function cssEsc(s) { return String(s).replace(/["\\\\]/g, "\\\\$&"); }
-
   render();
 })();
 </script>
@@ -933,73 +1074,72 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
 
 
 def build(spec: dict) -> str:
-    title = str(spec["title"])
-    sub = spec.get("subtitle")
-    intro = spec.get("intro")
+    hard = [p for p in validate(spec) if not p.startswith(("NOTE:", "READER:"))]
+    if hard:
+        raise ValueError("invalid spec: " + "; ".join(hard))
+    canonical_digest = spec_digest(spec)
+    title = spec["title"]
     spec = dict(spec)
     spec.setdefault("storage_key", slugify(title))
     spec.setdefault("filters", [])
-
-    payload = json.dumps(spec, ensure_ascii=False)
-    # A literal "</script>" inside the JSON would close the host block early.
-    payload = payload.replace("</", "<\\/")
-
-    out = TEMPLATE
-    out = out.replace("__TITLE__", html.escape(title))
-    out = out.replace("__SUBTITLE__", f'<p class="sub">{html.escape(str(sub))}</p>' if sub else "")
-    out = out.replace("__INTRO__", f'<p class="intro">{html.escape(str(intro))}</p>' if intro else "")
-    aud = spec.get("audience")
-    out = out.replace("__AUDIENCE__",
-                      f'<p class="aud">Written for: {html.escape(str(aud))}</p>' if aud else "")
+    # Script data is parsed by HTML before JSON. Escaping every '<' prevents
+    # both closing tags and the <!--<script> double-escaped tokenizer state.
+    # JSON.parse restores the exact values; canonical-spec binding is unchanged.
+    payload = json.dumps(spec, ensure_ascii=False, allow_nan=False).replace("<", "\\u003c")
+    fields = {"__TITLE__": html.escape(title), "__SPEC_JSON__": payload,
+              "__CANONICAL_SPEC_SHA256__": canonical_digest}
+    for slot, key, cls in (("__SUBTITLE__", "subtitle", "sub"),
+                           ("__INTRO__", "intro", "intro"),
+                           ("__SCOPE__", "scope", "intro"),
+                           ("__AUDIENCE__", "audience", "aud")):
+        value = spec.get(key)
+        prefix = "Written for: " if key == "audience" else "Scope: " if key == "scope" else ""
+        fields[slot] = f'<p class="{cls}">{prefix}{html.escape(value)}</p>' if value else ""
     gl = spec.get("glossary") or []
-    if gl:
-        items = "".join(
-            f"<dt>{html.escape(str(g['term']))}</dt><dd>{html.escape(str(g['meaning']))}</dd>"
-            for g in gl if isinstance(g, dict))
-        out = out.replace(
-            "__GLOSSARY__",
-            f'<details class="gloss"><summary>Terms used below ({len(gl)})</summary><dl>{items}</dl></details>')
-    else:
-        out = out.replace("__GLOSSARY__", "")
-    out = out.replace(
-        "__SUMMARY_INTRO__",
-        html.escape(str(spec.get("summary_intro")
-                        or "Work through the rows, then copy this and paste it back in one message.")),
-    )
-    out = out.replace("__SPEC_JSON__", payload)
-    # Provenance marker: proves generator authorship and pins the embedded
-    # spec. skill_outputs.check verifies it; the context doctor runs the check
-    # on every project. A hand-authored packet has no marker and fails as a
-    # defect — that is the enforcement, not prose in this skill. It sits
-    # after </title> so the first-200-bytes charset fixture is untouched.
+    items = "".join(f"<dt>{html.escape(str(g['term']))}</dt><dd>{html.escape(str(g['meaning']))}</dd>"
+                    for g in gl)
+    fields["__GLOSSARY__"] = (f'<details class="gloss"><summary>Terms used below ({len(gl)})</summary>'
+                               f'<dl>{items}</dl></details>') if gl else ""
+    fields["__SUMMARY_INTRO__"] = html.escape(spec.get("summary_intro") or
+        "Work through the rows, then copy this and paste it back in one message.")
+    # Single substitution pass: data containing a template token stays data.
+    out = re.sub("|".join(re.escape(key) for key in fields), lambda m: fields[m.group()], TEMPLATE)
+    # This existing marker checks embedded-payload integrity, not authorship or
+    # user authority. The separate canonical digest binds the filed input spec.
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
     marker = f"<!-- synthesis-decision-packet spec-sha256:{digest} -->\n"
     head, sep, tail = out.partition("</title>\n")
     if not sep:
-        raise RuntimeError("build_packet: template lost its </title> close; refusing to emit unmarked output")
+        raise RuntimeError("build_packet: template lost its </title> close")
     return head + sep + marker + tail
 
 
 def file_packet(spec: dict, page: str, directory: pathlib.Path, date: str) -> tuple[pathlib.Path, pathlib.Path]:
-    """Write <date>-<slug>-spec.json and <date>-<slug>.html into `directory`.
-
-    The slug is the title's, the same slug record_rulings.py derives from the
-    summary's first line, so the spec, the page and the rulings share a stem.
-    A same-day rebuild replaces the same-day copies: the spec is the source and
-    the page is generated from it, so neither copy is a record in its own right.
-    """
-    slug = slugify(spec["title"])
-    spec_copy = directory / f"{date}-{slug}-spec.json"
-    page_copy = directory / f"{date}-{slug}.html"
-    spec_copy.write_text(json.dumps(spec, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    page_copy.write_text(page, encoding="utf-8")
+    """File canonical spec bytes and page, preserving every previous version."""
+    stem = f"{date}-{slugify(spec['title'])}"
+    spec_bytes, page_bytes = canonical_spec_bytes(spec), page.encode("utf-8")
+    spec_copy, page_copy = directory / f"{stem}-spec.json", directory / f"{stem}.html"
+    if spec_copy.is_symlink() or page_copy.is_symlink():
+        raise ValueError("refusing symlink packet output")
+    if any(path.exists() and path.read_bytes() != data for path, data in
+           ((spec_copy, spec_bytes), (page_copy, page_bytes))):
+        # Include the page digest too: a generator upgrade can change the page
+        # without changing the spec. Neither historic representation is replaced.
+        revision = hashlib.sha256(spec_bytes + page_bytes).hexdigest()
+        stem += "-" + revision
+        spec_copy, page_copy = directory / f"{stem}-spec.json", directory / f"{stem}.html"
+    for path in (spec_copy, page_copy):
+        if path.is_symlink():
+            raise ValueError(f"refusing symlink output: {path}")
+    write_preserved(spec_copy, spec_bytes)
+    write_preserved(page_copy, page_bytes)
     return spec_copy, page_copy
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("spec", nargs="?", help="path to the JSON spec ('-' for stdin)")
-    ap.add_argument("-o", "--out", help="output .html path")
+    ap.add_argument("-o", "--out", help="output .html path; an existing different file is preserved")
     ap.add_argument("--stdout", action="store_true", help="write the HTML to stdout")
     ap.add_argument("--schema", action="store_true", help="print the spec schema and exit")
     ap.add_argument("--allow-small", action="store_true",
@@ -1033,11 +1173,11 @@ def main() -> int:
                   "project's resources/artifacts/ directory and create it first", file=sys.stderr)
             return 2
 
-    raw = sys.stdin.read() if args.spec == "-" else pathlib.Path(args.spec).read_text(encoding="utf-8")
     try:
-        spec = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        print(f"spec is not valid JSON: {exc}", file=sys.stderr)
+        raw = sys.stdin.read() if args.spec == "-" else pathlib.Path(args.spec).read_text(encoding="utf-8")
+        spec = strict_json(raw)
+    except (OSError, ValueError, UnicodeError) as exc:
+        print(f"cannot read valid spec JSON: {exc}", file=sys.stderr)
         return 2
 
     problems = validate(spec)
@@ -1056,20 +1196,26 @@ def main() -> int:
             print("  - " + p, file=sys.stderr)
         return 2
 
-    out = build(spec)
-    # With the page on stdout, every status line goes to stderr.
+    try:
+        out = build(spec)
+        reports = []
+        if args.out:
+            dest = pathlib.Path(args.out)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            write_preserved(dest, out.encode("utf-8"))
+            reports.append(f"{dest}  ({len(out.encode('utf-8')):,} bytes, {len(spec['rows'])} rows)")
+        if filing_dir is not None:
+            date = parse_iso_date(args.date) if args.date else datetime.date.today().isoformat()
+            reports.extend(f"filed {copy}" for copy in file_packet(spec, out, filing_dir, date))
+    except (OSError, ValueError, UnicodeError) as exc:
+        print(f"packet build refused: {exc}", file=sys.stderr)
+        return 2
+    # Do not emit a successful page or status before all requested writes finish.
     report = sys.stderr if args.stdout else sys.stdout
     if args.stdout or (not args.out and filing_dir is None):
         sys.stdout.write(out)
-    if args.out:
-        dest = pathlib.Path(args.out)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(out, encoding="utf-8")
-        print(f"{dest}  ({len(out):,} bytes, {len(spec['rows'])} rows)", file=report)
-    if filing_dir is not None:
-        date = parse_iso_date(args.date) if args.date else datetime.date.today().isoformat()
-        for copy in file_packet(spec, out, filing_dir, date):
-            print(f"filed {copy}", file=report)
+    for message in reports:
+        print(message, file=report)
     return 0
 
 

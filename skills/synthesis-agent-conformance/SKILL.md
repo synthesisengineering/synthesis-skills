@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.12.2"
+  version: "1.12.3"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -289,6 +289,8 @@ runs it on every machine via install, upgrade, and doctor; run it directly
 with `--project <dir>` for one project or `--doctor` for the whole corpus.
 
 ## Detailed architecture
+
+For external-target work, use [browser outcome review](references/autopilot-browser-quality.md). Actual account identity, stored-state readback and excluded-item preservation need an authenticated target owner; local fixtures and success banners cannot certify them.
 
 Read [references/architecture.md](references/architecture.md) when designing or
 changing an installation, plugin package, hook set, or cross-machine sync.

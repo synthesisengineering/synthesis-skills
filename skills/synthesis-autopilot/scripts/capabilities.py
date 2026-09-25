@@ -62,6 +62,8 @@ _REGISTRY = {
         "copilot-cli": _surface("skill-only", "copilot"),
         "copilot-vscode": _surface("skill-only", "copilot"),
         "copilot-cloud": _surface("skill-only", "copilot"),
+        "opencode-cli": _surface("observation-only", "opencode"),
+        "opencode-sdk-v2": _surface("observation-only", "opencode"),
         "hermes": _surface("prospective", None),
     },
 }
@@ -69,7 +71,13 @@ _REGISTRY = {
 
 def supported_surfaces() -> dict:
     """Return independent data suitable for doctor, installers and docs."""
-    return copy.deepcopy(_REGISTRY)
+    result = copy.deepcopy(_REGISTRY)
+    for entry in result["surfaces"].values():
+        if entry["dialect"] in {"cursor", "copilot", "opencode"}:
+            entry["observation_contract"] = {"sdk": "native-adapter-sdk-v1",
+                "authority_granted": False, "native_acceptance": "UNKNOWN",
+                "permission_enforcement": "FAIL_OPEN_PATHS" if entry["dialect"] == "copilot" else "qualification-required"}
+    return result
 
 
 def _entry(surface: str) -> dict:
@@ -101,7 +109,7 @@ def _time(value: Any) -> float:
 def normalize_event(surface: str, payload: dict) -> NativeEvent:
     """Translate native syntax, without claiming authenticated ownership."""
     dialect = _entry(surface)["dialect"]
-    if not isinstance(payload, dict) or dialect is None:
+    if not isinstance(payload, dict) or dialect is None or dialect == "opencode":
         raise ValueError("native Stop adapter or payload unavailable")
     if dialect == "cursor":
         if payload.get("hook_event_name", "stop") not in {"stop", "subagentStop"}:
@@ -135,7 +143,7 @@ def normalize_event(surface: str, payload: dict) -> NativeEvent:
 
 
 def stop_response(surface: str, payload: dict, reason: str | None = None,
-                  *, terminal: bool = False) -> dict:
+                  *, terminal: bool = False, policy_disposition: dict | None = None) -> dict:
     """Bound Synthesis-owned feedback using only the native output dialect.
 
     Cursor and Copilot do not gain a global terminal override from this adapter.
@@ -144,7 +152,12 @@ def stop_response(surface: str, payload: dict, reason: str | None = None,
     dialect = _entry(surface)["dialect"]
     try:
         event = normalize_event(surface, payload)
-        terminal = terminal or event["repeat_count"] > 0 or event["status"] != "completed"
+        eligible = (isinstance(policy_disposition, dict) and policy_disposition.get("action") == "corrective"
+                    and policy_disposition.get("allow_attempt") is True
+                    and policy_disposition.get("authority_granted") is False
+                    and policy_disposition.get("completion_granted") is False
+                    and isinstance(policy_disposition.get("reservation"), dict))
+        terminal = terminal or not eligible or event["status"] != "completed"
     except ValueError:
         terminal = True
         reason = reason or "Native Stop input is unverified; protection remains unresolved."
@@ -161,7 +174,7 @@ def stop_response(surface: str, payload: dict, reason: str | None = None,
     if terminal:
         result.update({"continue": False, "stopReason": reason})
     else:
-        result.update({"decision": "block", "reason": reason})
+        result.update({"decision": "block", "reason": reason, "_synthesis_policy": policy_disposition["reservation"]})
     return result
 
 
@@ -432,6 +445,10 @@ def observe_wake(state: dict, payload: dict, context: dict) -> dict:
         reason = job["status"]
     elif _time(context["now"]) >= job["lease_expires_at"]:
         reason = "lease_expired"
+    elif state.get("extensions", {}).get("workflow_persistence", {}).get("decisions"):
+        from workflow import stop_feedback_status
+        if stop_feedback_status(state, context)["action"] != "eligible":
+            reason = "policy_wait"
     if reason:
         _append(ext.setdefault("ignored_wakes", []), {**entry, "reason": reason})
         return result
@@ -462,6 +479,12 @@ def continuation_status(state: dict, context: dict) -> dict:
     except ValueError as exc:
         return {"state": "ownership_changed", "continuation_verified": False, "reason": str(exc)}
     status = job["status"]
+    if (status not in {"cancelled", "cancellation_pending", "cancellation_failed"}
+            and state.get("extensions", {}).get("workflow_persistence", {}).get("decisions")):
+        from workflow import stop_feedback_status
+        if stop_feedback_status(state, context)["action"] != "eligible":
+            return {"state": "policy_wait", "continuation_verified": False,
+                    "cleanup_required": True, "cleanup_state": status, "job_id": job["job_id"]}
     if status not in {"cancelled", "cancellation_pending", "cancellation_failed"}:
         now = _time(context["now"])
         if now >= job["lease_expires_at"]:

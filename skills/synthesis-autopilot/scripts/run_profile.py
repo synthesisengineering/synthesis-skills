@@ -31,13 +31,13 @@ DEFAULT_PROFILE = {
     "_comment": "Workflow preferences only. Action authority stays with existing action owners. Blog seeds are opt-in; lessons apply when reusable evidence emerges.",
     "items": {
         "end-to-end": {"text": "Complete the authorized outcome or report honestly incomplete work.", "evidence_hint": "Bound outcome criteria and retained obligations."},
-        "framework-decisions": {"text": "Record important decisions with reasoning and evidence.", "evidence_hint": "Decision artifacts or justified non-applicability."},
+        "framework-decisions": {"text": "Record important decisions with reasoning and evidence.", "evidence_hint": "Bound accepted reasoning or justified direct-task non-applicability.", "applicability": "if_material_decision"},
         "plan-current": {"text": "Keep the controlling plan current at material boundaries.", "evidence_hint": "Current plan and run projection."},
         "project-files-current": {"text": "Keep project recovery records current.", "evidence_hint": "Current checkpoint evidence."},
         "verify-before-done": {"text": "Verify actual outcomes before reporting completion.", "evidence_hint": "Fresh criterion-bound outcome evidence."},
-        "lessons-filed": {"text": "Capture reusable lessons when evidence supports one.", "evidence_hint": "Lesson artifact or explicit no-reusable-evidence disposition.", "applicability": "if_reusable_evidence"},
+        "lessons-filed": {"text": "Capture reusable lessons when evidence supports one.", "evidence_hint": "Accepted capture evidence when selected or triggered by a recorded reusable finding.", "applicability": "if_reusable_evidence"},
         "blog-seeds": {"text": "Capture user-requested blog material.", "evidence_hint": "Seed artifact.", "enabled": False, "reason": "Optional personal preference; opt in explicitly."},
-        "completion-report": {"text": "Provide the domain-appropriate outcome, evidence, remaining obligations and decisions.", "evidence_hint": "Completion report artifact."},
+        "completion-report": {"text": "Provide the domain-appropriate outcome, evidence, remaining obligations and decisions.", "evidence_hint": "Factual report derived from current accepted owner evidence; explicit report criteria add semantic requirements."},
     },
 }
 
@@ -107,11 +107,11 @@ def migrate_profile(data, label="profile"):
         for key in ("text", "evidence_hint", "reason"):
             if key in spec:
                 _text(spec[key], key)
-        if "applicability" in spec and spec["applicability"] not in {"always", "if_reusable_evidence"}:
+        if "applicability" in spec and spec["applicability"] not in {"always", "if_reusable_evidence", "if_material_decision"}:
             raise ValueError("Unknown profile applicability")
         if "criterion_ids" in spec:
             refs = spec["criterion_ids"]
-            if not isinstance(refs, list) or not refs or len(refs) != len(set(refs)):
+            if not isinstance(refs, list) or not refs or len(refs) > 256 or any(not isinstance(ref, str) for ref in refs) or len(refs) != len(set(refs)):
                 raise ValueError("Profile criterion references must be nonempty unique IDs")
             for ref in refs:
                 _id(ref)
@@ -146,7 +146,8 @@ def _merge_items(items, changes, source):
         if not current.get("text") or not current.get("evidence_hint"):
             raise ValueError("A new profile item needs text and evidence_hint")
         history = copy.deepcopy(old.get("history", []))
-        history.append({"source": source, "enabled": current["enabled"], "reason": current.get("reason", "Explicit preference")})
+        history.append({"source": source, "enabled": current["enabled"], "applicability": current["applicability"], "reason": current.get("reason", "Explicit preference"),
+                        "fields": sorted(spec)})
         current["history"] = history
         current["provenance"] = source
         items[ident] = current
@@ -216,9 +217,47 @@ def resolve_layers(user=None, project=None, deltas=None, *, dimensions=None):
             effective.append(item)
         else:
             disabled.append(item)
-    return {"schema": EFFECTIVE_SCHEMA, "source_schema": SCHEMA, "layers": layers, "migrations": migrations,
+    result = {"schema": EFFECTIVE_SCHEMA, "source_schema": SCHEMA, "layers": layers, "migrations": migrations,
             "deploy_grant": {"text": "none", "provenance": "none"}, "authority_granted": False,
             "disabled": disabled, "items": effective, "adaptive": adaptive}
+    validate_profile_contract(result)
+    return result
+
+
+def validate_profile_contract(profile, contract=None):
+    """Custom preferences need concrete criteria; canonical meaning stays fixed.
+
+    A contract criterion may declare profile_item_ids to make a decision,
+    report or lesson part of the accepted outcome without another preference
+    file. These references select obligations, never action authority.
+    """
+    from profile_evidence import CANONICAL_IDS
+    declared = {row["id"] for row in contract["criteria"]} if contract is not None else None
+    items = {row["id"]: row for row in profile["items"]}
+    mapped = {}
+    if contract is not None:
+        for criterion in contract["criteria"]:
+            if "profile_item_ids" not in criterion:
+                continue
+            refs = criterion["profile_item_ids"]
+            if not isinstance(refs, list) or not refs or len(refs) > 32 or any(not isinstance(ref, str) for ref in refs) or len(refs) != len(set(refs)):
+                raise ValueError("Criterion profile item references must be bounded unique IDs")
+            for identity in refs:
+                _id(identity)
+                if identity not in CANONICAL_IDS and identity not in items:
+                    raise ValueError("Criterion maps an unknown profile item")
+                mapped.setdefault(identity, set()).add(criterion["id"])
+    for identity, item in items.items():
+        refs = item.get("criterion_ids", [])
+        if (not isinstance(refs, list) or len(refs) > 256 or any(not isinstance(ref, str) for ref in refs) or len(refs) != len(set(refs))):
+            raise ValueError("Profile criterion mapping must be bounded and unique")
+        for reference in refs:
+            _id(reference)
+        if declared is not None and set(refs) - declared:
+            raise ValueError("Profile item maps an undeclared criterion: " + identity)
+        if identity not in CANONICAL_IDS and not refs and not mapped.get(identity):
+            raise ValueError("Custom profile item requires concrete criterion_ids: " + identity)
+    return profile
 
 
 def resolve(project: Path, user_profile: Path, deltas=None, *, dimensions=None):

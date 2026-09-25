@@ -41,15 +41,19 @@ def assert_terminal(result):
     return output
 
 
-def test_stop_failure_has_one_corrective_continuation_then_terminal():
+def test_stop_failure_without_owner_reservation_is_terminal_across_turns():
     first = runtime.stop_failure(event(), "unfinished", "status=UNKNOWN")
-    assert first["decision"] == "block"
+    assert first["continue"] is False
+    assert "UNKNOWN" in first["systemMessage"]
+    assert "decision" not in first
     for reason in ("unfinished", "changed error family"):
         repeated = runtime.stop_failure(event(stop_hook_active=True), reason, "status=UNKNOWN")
         assert repeated["continue"] is False
         assert "UNKNOWN" in repeated["systemMessage"]
         assert "decision" not in repeated
-    assert runtime.stop_failure(event(turn_id="new-human-turn"), "unfinished")["decision"] == "block"
+    fresh = runtime.stop_failure(event(turn_id="new-human-turn"), "unfinished")
+    assert fresh["continue"] is False
+    assert "decision" not in fresh
 
 
 @pytest.mark.parametrize("payload", [None, {}, [], event(session_id=""), event(stop_hook_active="false")])

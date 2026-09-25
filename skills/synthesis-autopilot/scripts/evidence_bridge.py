@@ -571,15 +571,8 @@ def observe_workflow(kind, context, *, task_id=None):
     statuses = {item["id"]: item["status"] for item in report["criteria"]}
     criteria = {item["id"]: item for item in state["contract"]["criteria"]}
     if kind == "profile":
-        satisfied = []
-        covered = set()
-        for item in state["profile"]["items"]:
-            ids = item.get("criterion_ids", [])
-            if ids and all(statuses.get(key) == "PASS" for key in ids):
-                satisfied.append(item["id"])
-                covered.update(ids)
-        artifacts = {key for ident in covered for key in criteria[ident].get("artifact_ids", [])}
-        return {"satisfied_items": sorted(satisfied), "artifact_digests": _current_artifacts(context, artifacts)}
+        from profile_evidence import observe_profile
+        return observe_profile(context, report)
     node = state["extensions"]["workflow"]["graph"]["nodes"][task_id]
     ids = sorted(node["criteria"])
     artifacts = {key for ident in ids for key in criteria[ident].get("artifact_ids", [])}
@@ -657,7 +650,7 @@ def _historical_quality_attempt(state, identity, binding):
 
 
 def _quality_resolution(context, arguments, *, historical=False):
-    from workflow import MAX_QUALITY_ROUNDS, quality_receipt_verdict, quality_resolution_requirements
+    from workflow import quality_receipt_verdict, quality_resolution_requirements
     if (not isinstance(arguments, dict) or set(arguments) != {"criterion_id", "prior_grade_digest", "receipt_ids"}
             or not isinstance(arguments["criterion_id"], str) or not isinstance(arguments["prior_grade_digest"], str)
             or not isinstance(arguments["receipt_ids"], list) or not arguments["receipt_ids"]
@@ -681,8 +674,6 @@ def _quality_resolution(context, arguments, *, historical=False):
     if len(matches) != 1:
         raise ValueError("Quality resolution does not identify one retained prior grade")
     prior = matches[0]
-    if not historical and (type(prior.get("round")) is not int or prior["round"] >= MAX_QUALITY_ROUNDS):
-        raise ValueError("Quality resolution round budget is exhausted")
     fingerprints = prior.get("receipt_bindings")
     if not isinstance(fingerprints, dict) or not fingerprints:
         raise ValueError("Historical quality grade lacks its accepted receipt fingerprints")
@@ -823,7 +814,8 @@ def _accept(record, state, criterion, context):
         if kind == "progress_observation":
             return bool(data.get("artifact_digests"))
         if kind == "profile":
-            return all(item["id"] in data.get("satisfied_items", []) for item in state["profile"]["items"] if item.get("required", True))
+            from profile_evidence import accept_profile
+            return accept_profile(data, state)
         if kind == "delivery":
             return data.get("status") in {"delivered", "acknowledged"}
         if kind == "continuation-cancellation":
@@ -836,15 +828,11 @@ def _accept(record, state, criterion, context):
             caps = data.get("capabilities", {})
             return all(caps.get(key) is True for key in ("native_identity", "registration_readback", "wake_observation", "cancellation_readback", "independent_observer"))
         if kind == "quality_observation":
-            from workflow import _observed_quality
+            from workflow import quality_receipt_verdict
             if data.get("criterion_id") != criterion["id"] or data.get("artifact_id") not in criterion.get("artifact_ids", []):
                 return False
             independent = state.get("extensions", {}).get("workflow", {}).get("profile", {}).get("checks", {}).get("evidence.independent", {}).get("status") == "required"
-            if independent and (data.get("independent") is not True or data.get("reviewer") == data.get("producer")):
-                return False
-            if data.get("domain") in {"writing", "research"} and data.get("calibrated") is not True:
-                return False
-            return _observed_quality(data["domain"], data["observations"]) is True
+            return quality_receipt_verdict(data, independent, {**context, "state": state}) == "PASS"
         if kind == "child_integration":
             return data.get("accepted") is True
         if kind == "quality_resolution":

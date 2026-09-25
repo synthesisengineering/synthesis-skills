@@ -73,7 +73,8 @@ def test_hook_uses_scoped_owner_lookup_and_bounded_failure(world):
     state = create(world)
     module = importlib.import_module("autopilot")
     first = module.stop_result(world["actor"], runtime_root=world["runtime"])
-    assert first["decision"] == "block"
+    assert first["continue"] is False
+    assert first.get("decision") != "block"
     repeated = json.loads(json.dumps(world["actor"]))
     repeated["native_payload"]["stop_hook_active"] = True
     second = module.stop_result(repeated, runtime_root=world["runtime"])
@@ -81,7 +82,36 @@ def test_hook_uses_scoped_owner_lookup_and_bounded_failure(world):
     assert "UNRESOLVED" in second["systemMessage"]
     foreign = world["runtime"] / "owners/foreign.json"
     foreign.write_text("corrupt foreign data")
-    assert module.stop_result(world["actor"], runtime_root=world["runtime"])["decision"] == "block"
+    assert module.stop_result(world["actor"], runtime_root=world["runtime"])["continue"] is False
+
+
+def test_checkpoint_terminal_veto_cannot_spend_autopilot_correction(world, monkeypatch):
+    state = create(world)
+    import run_state
+    import workflow
+    module = importlib.import_module("autopilot")
+    before = run_state.load_run(world['project'], state['run_id'])
+    def forbidden(*args, **kwargs):
+        pytest.fail('a sibling terminal veto must never reserve a correction')
+    monkeypatch.setattr(workflow, 'reserve_stop_feedback', forbidden)
+    result = module.stop_result(world['actor'], runtime_root=world['runtime'], reserve_feedback=False)
+    assert result['continue'] is False
+    assert result.get('decision') != 'block'
+    assert 'sibling checkpoint' in result['systemMessage']
+    assert run_state.load_run(world['project'], state['run_id']) == before
+
+
+@pytest.mark.parametrize('raw', [b'{"session_id":"one","session_id":"two"}',
+                               b'{"counter":NaN}', b'{"body":"' + b'x' * (256 * 1024) + b'"}'], ids=['duplicate-identity', 'nonfinite-counter', 'oversized-body'])
+def test_stop_stdin_is_bounded_strict_json_before_owner_discovery(world, raw):
+    before = world['board'].read_bytes()
+    done = subprocess.run([sys.executable, str(SCRIPT), 'stop'], input=raw,
+        capture_output=True, env=dict(os.environ, SYNTHESIS_AUTOPILOT_RUNTIME=str(world['runtime'])))
+    assert done.returncode == 0
+    assert json.loads(done.stdout)['continue'] is False
+    assert 'UNRESOLVED' in json.loads(done.stdout)['systemMessage']
+    assert world['board'].read_bytes() == before
+    assert not world['runtime'].exists()
 
 
 def test_missing_native_identity_is_terminal_diagnostic_without_corrective_loop(world):
@@ -162,3 +192,60 @@ def test_first_task_doctor_validates_real_registered_ownership(world):
     report = json.loads(done.stdout)
     assert report["durable_admission"]["status"] == "PASS"
     assert report["unattended_admitted"] is False
+
+
+"""Actual CLI processes for the bounded facade, with synthetic native fixtures."""
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+import pytest
+
+SCRIPTS = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS))
+from test_run_state import world  # noqa: F401
+from test_controller import request, start_request
+
+
+def facade_cli(world, action, raw):
+    actor = world['scratch'] / 'controller-actor.json'
+    actor.write_text(json.dumps(world['actor']))
+    env = {**os.environ, 'SYNTHESIS_AUTOPILOT_RUNTIME': str(world['runtime']), 'PYTHONDONTWRITEBYTECODE': '1'}
+    return subprocess.run([sys.executable, str(SCRIPTS / 'autopilot.py'), action,
+                           '--project', str(world['project']), '--actor', str(actor),
+                           '--request', '-', '--source-mode', 'synthetic'],
+                          input=raw, text=True, capture_output=True, timeout=20, env=env)
+
+
+def test_facade_cli_runs_real_start_inspect_and_cancel(world):
+    start = facade_cli(world, 'start', json.dumps(start_request(world)))
+    assert start.returncode == 0, start.stderr
+    state = json.loads(start.stdout)
+    assert state['status'] == 'READY'
+    inspect = facade_cli(world, 'next', json.dumps(request('next', {'mode': 'inspect'}, state)))
+    assert inspect.returncode == 0, inspect.stderr
+    assert json.loads(inspect.stdout)['revision'] == state['revision']
+    cancel = facade_cli(world, 'cancel', json.dumps(request('cancel', {'target': 'run', 'reason': 'Synthetic CLI end'}, state)))
+    assert cancel.returncode == 0, cancel.stderr
+    assert json.loads(cancel.stdout)['status'] == 'CANCELLED'
+
+
+@pytest.mark.parametrize('raw,diagnostic', [('{"request_id":"one","request_id":"two"}', 'duplicate'),
+                                          ('{"x":NaN}', 'finite'), ('[]', 'object'),
+                                          (' ' * (256 * 1024 + 1), 'size')],
+                         ids=['duplicate', 'nan', 'array', 'oversize'])
+def test_facade_cli_refuses_invalid_bounded_json(world, raw, diagnostic):
+    result = facade_cli(world, 'start', raw)
+    assert result.returncode == 2
+    assert diagnostic in result.stderr.lower()
+    assert len(result.stderr.encode()) < 4096
+    assert not (world['project'] / 'resources/autopilot-runs').exists()
+
+
+def test_facade_cli_operation_must_match_request(world):
+    result = facade_cli(world, 'cancel', json.dumps(start_request(world)))
+    assert result.returncode == 2
+    assert 'operation' in result.stderr.lower()
+    assert not (world['project'] / 'resources/autopilot-runs').exists()

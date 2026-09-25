@@ -477,6 +477,59 @@ def _write_live_seat(board: Path) -> PA.Seat:
     return PA.read_seat(board, LIVE_SEAT, strict=True)
 
 
+def test_seat_heartbeat_cas_preserves_identity_status_and_process(tmp_path):
+    from dataclasses import asdict
+    board = tmp_path / 'board.md'
+    before = _write_live_seat(board)
+    assert PA.update_seat_heartbeat(board, expected=before, last_heartbeat='2026-09-25T00:00:00+00:00')
+    after = PA.read_seat(board, LIVE_SEAT, strict=True)
+    assert after.last_heartbeat == '2026-09-25T00:00:00+00:00'
+    ignored = {'last_heartbeat', 'updated_at'}
+    assert {k:v for k,v in asdict(before).items() if k not in ignored} == {k:v for k,v in asdict(after).items() if k not in ignored}
+
+
+@pytest.mark.parametrize('change', ['identity', 'released', 'removed'])
+def test_seat_heartbeat_cas_preserves_concurrent_change(tmp_path, change):
+    board = tmp_path / 'board.md'
+    before = _write_live_seat(board)
+    path = PA.seat_path(board, LIVE_SEAT)
+    if change == 'removed':
+        assert PA.remove_seat(board, LIVE_SEAT)
+        current = None
+    else:
+        PA.write_seat(board, session_uuid=before.session_uuid, compact_id=before.compact_id,
+                      machine=before.machine, identity=PA.SelfIdentity(client=before.client,
+                          harness_session_id='replacement' if change == 'identity' else before.harness_session_id),
+                      status='released' if change == 'released' else 'active')
+        current = path.read_bytes()
+    assert not PA.update_seat_heartbeat(board, expected=before, last_heartbeat='2026-09-25T00:00:00+00:00')
+    assert (path.read_bytes() if path.exists() else None) == current
+
+
+@pytest.mark.parametrize('operation', ['write', 'remove'])
+def test_all_seat_mutations_serialize_with_heartbeat_cas(tmp_path, operation):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    board = tmp_path / 'board.md'
+    before = _write_live_seat(board)
+    entered = Event()
+    def mutate():
+        entered.set()
+        if operation == 'remove':
+            return PA.remove_seat(board, LIVE_SEAT)
+        return PA.write_seat(board, session_uuid=before.session_uuid, compact_id=before.compact_id,
+                             machine=before.machine, identity=PA.SelfIdentity(client=before.client,
+                                 harness_session_id='replacement'))
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with PA._seat_write_lock(PA.seat_path(board, LIVE_SEAT)):
+            future = executor.submit(mutate)
+            assert entered.wait(2)
+            assert not future.done()
+            assert PA.read_seat(board, LIVE_SEAT, strict=True) == before
+        assert future.result(timeout=2)
+    assert not PA.update_seat_heartbeat(board, expected=before, last_heartbeat='2026-09-25T00:00:00+00:00')
+
+
 def test_strict_directory_read_contains_a_stale_schema1_seat_and_names_it(tmp_path, capsys) -> None:
     # Regression 2026-09-20: one pre-migration seat file made every strict
     # read of the directory (the SessionStart diagnostic, the doctor) fail

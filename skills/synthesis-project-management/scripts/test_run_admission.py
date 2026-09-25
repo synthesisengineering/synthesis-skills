@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 import pytest
 
@@ -23,7 +24,11 @@ def git(repo, *args):
 
 
 def write_board(world, *, claims=None, workspace=None, status="active", native=NATIVE,
-                heartbeat="2026-09-23T12:00:00Z", duplicate=False):
+                heartbeat=None, duplicate=False):
+    # Ordinary active claims must not silently become advisory when the
+    # calendar crosses the production staleness horizon.
+    if heartbeat is None:
+        heartbeat = datetime.now(timezone.utc).isoformat()
     identity = identity_from_uuid(SEAT)
     values = [SEAT, identity.compact_id, identity.speakable_id, "", "claude", "fixture-machine",
               f"cc:{native}", "alpha", "2026-09-23T12:00:00Z", heartbeat, "interactive",
@@ -204,7 +209,7 @@ def test_passive_snapshot_ignores_read_access_time_but_rejects_actual_content_ch
 
 def test_claim_digest_changes_on_revocation_but_not_heartbeat(world):
     first = admission(world)
-    write_board(world, heartbeat="2026-09-23T13:00:00Z")
+    write_board(world)
     assert admission(world, expected_claim_hash=first["claim_hash"])["claim_hash"] == first["claim_hash"]
     write_board(world, claims=f"{world['project']}/plan.md")
     with pytest.raises(ValueError):
@@ -237,7 +242,7 @@ def test_readonly_admission_never_fetches_or_creates_lock_and_requires_valid_cac
     config = coordination.lease_configuration(world["board"])
     coordination._write_lease_stamp(world["board"], config, "a" * 40)
     assert admission(world, readonly=True)
-    write_board(world, heartbeat="2026-09-23T15:00:00Z")
+    write_board(world)
     with pytest.raises(ValueError):
         admission(world, readonly=True)
 

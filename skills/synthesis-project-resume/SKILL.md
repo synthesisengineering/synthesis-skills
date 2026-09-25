@@ -73,8 +73,9 @@ False continuity corrupts; false caution costs one question.
 
 ## 3. Fresh-resume load (R3, R5, R8)
 
-1. Pull the knowledge repo (fast-forward only; divergence is
-   reported, never force-resolved).
+1. Resolve the project through the PM registry and causal resolver before
+   reading project prose or choosing a checkout. Use its selected path and
+   exact local attribution roots; do not pull over unresolved local work.
 2. Read the index entry, `RESUME_STATE.json` (v2; verify the
    skeleton when present), `CURRENT_STATE.json` (operational
    handoff, when present), `CONTEXT.md`, `REFERENCE.md`, the two
@@ -93,6 +94,12 @@ False continuity corrupts; false caution costs one question.
    it stands, the newest three facts, open loops with owners, the
    suggested next action. State what was loaded and the newest
    item's date.
+
+For an interrupted autopilot run, apply the
+[capsule and cold-resume protocol](../synthesis-context-lifecycle/references/autopilot-recovery.md)
+after project selection and fresh ownership. Recover from the authoritative
+journal, reconcile effects and child output, and report unknown survival
+boundaries. A saved capsule cannot grant a claim or replay an external action.
 
 ## 4. Cross-machine surfacing (R5)
 

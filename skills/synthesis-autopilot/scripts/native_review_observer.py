@@ -76,11 +76,21 @@ def parse_native(client, events):
         ends = [e for e in events if e.get("type") == "turn.completed"]
         if len(starts) != 1 or len(ends) != 1 or events.index(starts[0]) >= events.index(ends[0]) or any(e.get("type") in {"error", "turn.failed"} for e in events):
             raise ValueError("native review lacks successful turn completion")
+        start_index, end_index = events.index(starts[0]), events.index(ends[0])
+        turns = [index for index, event in enumerate(events) if event.get("type") == "turn.started"]
+        if len(turns) > 1 or (turns and not start_index < turns[0] < end_index):
+            raise ValueError("native review turn start is outside its single completed session")
+        # Some retained streams omit turn.started. Their explicit thread and
+        # completion still bound all items; when present, the turn start is the
+        # tighter lower bound. No answer can be borrowed from another interval.
+        lower_bound = turns[0] if turns else start_index
         identity = starts[0].get("thread_id")
         usage = {key: value for key, value in ends[0].get("usage", {}).items()
                  if key in {"input_tokens", "cached_input_tokens", "output_tokens"}}
-        for event in events:
+        for index, event in enumerate(events):
             item = event.get("item", {})
+            if event.get("type", "").startswith("item.") and not lower_bound < index < end_index:
+                raise ValueError("native review item is outside its completed turn")
             if event.get("type") == "item.completed" and item.get("type") == "agent_message":
                 final.append(item.get("text"))
             elif event.get("type", "").startswith("item.") and item.get("type") not in {"reasoning", "agent_message"}:
@@ -347,8 +357,82 @@ def execute_native(client, prompt, *, timeout_seconds, max_cost_usd):
             **({"native_boundary": boundary} if client == "muse" else {})}
 
 
-def observe_native_cli_review(context, arguments):
+def _execute_review_attempt(context, arguments, prompt, bindings, input_digests):
+    """One durable intent per reserved native invocation, for either schema."""
     from run_state import safe_path
+    root = Path(context["project"]).resolve()
+    attempt_dir = safe_path(root / "resources" / "autopilot-runs" / context["state"]["run_id"] / "native-review-attempts", root)
+    attempt_dir.mkdir(parents=True, exist_ok=True)
+    attempt = safe_path(attempt_dir / (arguments["reservation_id"] + ".json"), root)
+    try:
+        with attempt.open("x") as stream:
+            json.dump({"status": "started", "bindings": bindings, "reservation_id": arguments["reservation_id"],
+                       "input_digests": input_digests, "prompt_digest": hashlib.sha256(prompt.encode()).hexdigest()}, stream)
+            stream.flush(); os.fsync(stream.fileno())
+    except FileExistsError as exc:
+        raise ValueError("native review attempt already exists; reconcile usage before another reservation") from exc
+    return execute_native(arguments["client"], prompt, timeout_seconds=arguments["timeout_seconds"], max_cost_usd=arguments["max_cost_usd"])
+
+
+def _observe_domain_review(context, arguments):
+    from domain_quality import load_package, review_prompt, derive, rederive_review
+    package = load_package(context, arguments["calibration_manifest_id"], arguments["criterion_id"], arguments["artifact_id"])
+    bindings = {key: context["state"][key] for key in ("run_id", "contract_digest", "profile_digest")}
+    prompt, mapping = review_prompt(package, bindings)
+    execution = _execute_review_attempt(context, arguments, prompt, bindings, package["input_digests"])
+    response = execution.pop("response")
+    if (execution.get("returncode") != 0 or execution.get("tool_calls") != []
+            or execution.get("client") != arguments["client"] or not isinstance(execution.get("session_id"), str)
+            or not execution["session_id"]):
+        raise ValueError("native domain review lacks an independent completed observation")
+    target_digest = package["documents"][arguments["artifact_id"]]["digest"]
+    if (not isinstance(response, dict) or set(response) != {"bindings", "artifact_digest", "assessment", "controls"}
+            or response["bindings"] != bindings or response["artifact_digest"] != target_digest
+            or not isinstance(response["controls"], list) or len(response["controls"]) != len(mapping)):
+        raise ValueError("native domain review does not bind the frozen request")
+    controls, seen = [], set()
+    for row in response["controls"]:
+        if (not isinstance(row, dict) or set(row) != {"artifact_id", "artifact_digest", "assessment"}
+                or not isinstance(row["artifact_id"], str) or row["artifact_id"] not in mapping or row["artifact_id"] in seen):
+            raise ValueError("invalid blind domain assessment")
+        opaque, original = row["artifact_id"], mapping[row["artifact_id"]]
+        seen.add(opaque)
+        # Translate only the engine-issued alias. Source references and bytes
+        # keep their original identities; an arbitrary provider alias is invalid.
+        normalized = json.loads(json.dumps(row))
+        normalized["artifact_id"] = original
+        assessment = normalized["assessment"]
+        if not isinstance(assessment, dict) or not isinstance(assessment.get("criteria"), list):
+            raise ValueError("blind control lacks criterion assessments")
+        for criterion in assessment["criteria"]:
+            if not isinstance(criterion, dict) or not isinstance(criterion.get("evidence"), list):
+                raise ValueError("blind control lacks criterion evidence")
+            for ref in criterion["evidence"]:
+                if isinstance(ref, dict) and ref.get("artifact_id") == opaque:
+                    ref["artifact_id"] = original
+        controls.append(normalized)
+    result = derive(package, response["assessment"], controls, context=context)
+    reviewer = arguments["client"] + "-cli:" + execution["session_id"]
+    manifest = package["manifest"]
+    data = {"criterion_id": arguments["criterion_id"], "artifact_id": arguments["artifact_id"],
+            "artifact_digest": target_digest, "domain": manifest["domain"], "rubric": manifest["rubric"],
+            "method": "bounded native CLI task-rubric review", "producer": context["binding"]["session_uuid"],
+            "reviewer": reviewer, "independent": True, "observations": result["observations"],
+            "findings": [finding["description"] for row in response["assessment"]["criteria"] for finding in row["findings"]],
+            "calibrated": result["calibrated"], "passed": result["calibrated"] and result["observations"]["verdict"] == "PASS",
+            "reservation_id": arguments["reservation_id"], "execution": execution,
+            "domain_review": {"assessment": response["assessment"], "input_digests": package["input_digests"],
+                              "method_provenance": package["method_provenance"]},
+            "calibration": {"manifest_id": arguments["calibration_manifest_id"], "manifest_digest": package["manifest_digest"],
+                "reviewer": reviewer, "rubric_artifact_id": manifest["rubric_artifact_id"], "rubric_digest": manifest["rubric_digest"],
+                "observations": controls, "result": result["calibration_result"]}}
+    # A second complete read after the provider returns detects mutation of
+    # source text, controls, rubric and manifest, not only the output artifact.
+    rederive_review(data, context)
+    return data
+
+
+def observe_native_cli_review(context, arguments):
     fields = {"mode", "client", "criterion_id", "artifact_id", "calibration_manifest_id", "reservation_id", "timeout_seconds", "max_cost_usd"}
     if not isinstance(arguments, dict) or set(arguments) != fields or arguments["mode"] != "native-cli" or arguments["client"] not in {"claude", "codex", "muse"}:
         raise ValueError("invalid native review arguments")
@@ -368,6 +452,8 @@ def observe_native_cli_review(context, arguments):
     if criterion is None or arguments["artifact_id"] not in criterion["artifact_ids"]:
         raise ValueError("native review expands the outcome contract")
     manifest, manifest_record = _registered_json(context, arguments["calibration_manifest_id"])
+    if isinstance(manifest, dict) and type(manifest.get("schema_version")) is int and manifest["schema_version"] == 2:
+        return _observe_domain_review(context, arguments)
     if set(manifest) != {"schema_version", "domain", "rubric", "rubric_artifact_id", "rubric_digest", "controls"} or type(manifest["schema_version"]) is not int or manifest["schema_version"] != 1 or manifest["domain"] not in {"writing", "research"}:
         raise ValueError("native semantic review needs a writing or research calibration manifest")
     before = {}
@@ -405,20 +491,7 @@ def observe_native_cli_review(context, arguments):
         "bindings (unchanged), artifact_digest (unchanged), observations (boolean fields " + ", ".join(dimensions) + "), "
         "findings (array of concise strings), and controls (one artifact_id, artifact_digest and PASS/FAIL verdict per supplied control). "
         "Judge every control independently; control identifiers reveal no expected result.\nREQUEST\n" + json.dumps(request, ensure_ascii=False))
-    # This durable intent survives a process crash before the event journal can
-    # record an observation. A new attempt requires explicit resource accounting.
-    root = Path(context["project"]).resolve()
-    attempt_dir = safe_path(root / "resources" / "autopilot-runs" / state["run_id"] / "native-review-attempts", root)
-    attempt_dir.mkdir(parents=True, exist_ok=True)
-    attempt = safe_path(attempt_dir / (reservation_id + ".json"), root)
-    try:
-        with attempt.open("x") as stream:
-            json.dump({"status": "started", "bindings": bindings, "reservation_id": reservation_id,
-                       "input_digests": before, "prompt_digest": hashlib.sha256(prompt.encode()).hexdigest()}, stream)
-            stream.flush(); os.fsync(stream.fileno())
-    except FileExistsError as exc:
-        raise ValueError("native review attempt already exists; reconcile usage before another reservation") from exc
-    execution = execute_native(arguments["client"], prompt, timeout_seconds=timeout, max_cost_usd=cost)
+    execution = _execute_review_attempt(context, arguments, prompt, bindings, before)
     response = execution.pop("response")
     for identity in before: _registered(context, identity)
     _registered(context, arguments["calibration_manifest_id"])

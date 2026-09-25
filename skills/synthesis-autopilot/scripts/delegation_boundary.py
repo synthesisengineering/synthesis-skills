@@ -400,6 +400,8 @@ def _integer_observation(value):
 
 
 def parse_worker(client, raw, *, allow_incomplete=False):
+    if not isinstance(raw, bytes):
+        raise ValueError('Native worker transport must be captured bytes')
     rows = _event_rows(raw, allow_incomplete=allow_incomplete)
     if not rows or any(not isinstance(row, dict) for row in rows):
         raise ValueError('Native worker did not emit a structured event stream')
@@ -411,13 +413,21 @@ def parse_worker(client, raw, *, allow_incomplete=False):
         if len(starts) != 1 or not starts[0].get('session_id') or (not ends and not allow_incomplete):
             raise ValueError('Claude worker lacks actual initialization or terminal event')
         session, final = starts[0]['session_id'], ends[-1] if ends else {}
+        assistant_messages = [row.get('message') for row in rows if row.get('type') == 'assistant']
+        if any(not isinstance(message, dict) for message in assistant_messages):
+            raise ValueError('Claude worker assistant message must be an object')
         terminal = 'completed' if (len(ends) == 1 and final.get('subtype') == 'success' and final.get('is_error', False) is False
                                    and final.get('session_id') == session) else 'failed'
-        observed = final.get('usage', {})
+        generated_error = (final.get('is_error') is True or final.get('terminal_reason') == 'api_error'
+            or any(row.get('is_api_error_message') is True for row in rows)
+            or any(message.get('model') == '<synthetic>' for message in assistant_messages))
+        observed = {} if generated_error else final.get('usage', {})
+        if not isinstance(observed, dict):
+            raise ValueError('Claude worker terminal usage must be an object')
         counts = [_integer_observation(observed.get(k)) for k in ('input_tokens', 'output_tokens')]
         counts += [_integer_observation(observed.get(k, 0)) for k in ('cache_read_input_tokens', 'cache_creation_input_tokens')]
         if all(value is not None for value in counts): usage['tokens'] = sum(counts)
-        value = final.get('total_cost_usd')
+        value = None if generated_error else final.get('total_cost_usd')
         if type(value) in (int, float) and value >= 0 and value < 10**6:
             usage['usd_micros'] = round(value * 10**6)
     elif client == 'codex':
@@ -428,6 +438,8 @@ def parse_worker(client, raw, *, allow_incomplete=False):
         session, final = starts[0]['thread_id'], ends[0] if ends else {}
         terminal = 'completed' if final.get('type') == 'turn.completed' else 'failed'
         observed = final.get('usage', {})
+        if not isinstance(observed, dict):
+            raise ValueError('Codex worker terminal usage must be an object')
         counts = [_integer_observation(observed.get(k)) for k in ('input_tokens', 'output_tokens')]
         if all(value is not None for value in counts): usage['tokens'] = sum(counts)
     elif client == 'muse':

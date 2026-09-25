@@ -23,6 +23,10 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y bubblewrap
           python .github/scripts/check-ci-sandbox.py
+          synthesis_ci_chromium="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          test -n "$synthesis_ci_chromium"
+          "$synthesis_ci_chromium" --version
+          echo "SYNTHESIS_TEST_CHROMIUM=$synthesis_ci_chromium" >> "$GITHUB_ENV"
       - run: python skills/synthesis-agent-conformance/scripts/conformance.py source
       - run: python skills/synthesis-agent-conformance/scripts/conformance.py instructions --repo-root .
       - run: python -m pytest skills/synthesis-agent-conformance/scripts/test_*.py -q

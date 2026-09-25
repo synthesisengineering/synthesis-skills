@@ -29,6 +29,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import sys
 import tempfile
 import uuid
@@ -49,12 +50,15 @@ MAX_JSON_BYTES = 4 * 1024 * 1024
 MAX_EVENTS = 10000
 MAX_HANDOFF_SECONDS = 3600
 _COMMANDS = {}
+_PREPARERS = {}
 _VERIFIERS = {}
 _CONSTRAINTS = {}
 _TERMINAL_COMMANDS = set()
 _EVIDENCE_SOURCES = {}
 _OBSERVERS = {}
 _ACCEPTANCE = {}
+REQUEST_OPERATIONS = frozenset({"start", "next", "record", "checkpoint", "explain", "cancel", "recover", "finish"})
+MAX_INPUT_BYTES = 256 * 1024
 
 
 class RunStateError(ValueError):
@@ -70,6 +74,83 @@ def _json(value):
 
 def _digest(value):
     return hashlib.sha256(_json(value)).hexdigest()
+
+
+def _request_binding(value):
+    """Request metadata binds replay; it never supplies action authority."""
+    if value is None:
+        return None
+    fields = {"request_id", "request_digest", "operation", "step", "initial_revision"}
+    if (not isinstance(value, dict) or set(value) != fields
+            or value["operation"] not in REQUEST_OPERATIONS
+            or not isinstance(value["request_digest"], str)
+            or not re.fullmatch(r"[0-9a-f]{64}", value["request_digest"])
+            or type(value["initial_revision"]) is not int or value["initial_revision"] < 0):
+        raise RunStateError("invalid controller request binding")
+    _id(value["request_id"], "request ID")
+    _id(value["step"], "request step")
+    return deepcopy(value)
+
+
+def _check_request(state, binding):
+    if binding is None:
+        return
+    saved = state.get("extensions", {}).get("controller", {}).get("requests", {}).get(binding["request_id"])
+    if saved is not None:
+        if any(saved.get(key) != binding[key] for key in ("request_digest", "operation", "initial_revision")):
+            raise RunStateError("request ID was already used with different input")
+    elif binding["initial_revision"] != state["revision"]:
+        raise RunStateError("new request does not bind its initial revision")
+
+
+def _record_request(state, binding, command_id, command_digest):
+    if binding is None:
+        return
+    controller = state.setdefault("extensions", {}).setdefault("controller", {"schema_version": 1})
+    requests = controller.setdefault("requests", {})
+    if len(requests) >= MAX_EVENTS and binding["request_id"] not in requests:
+        raise RunStateError("controller request journal capacity reached")
+    entry = requests.setdefault(binding["request_id"], {
+        key: binding[key] for key in ("request_digest", "operation", "initial_revision")})
+    steps = entry.setdefault("steps", {})
+    step = {"command_id": command_id, "revision": state["revision"], "command_digest": command_digest}
+    if binding["step"] in steps and steps[binding["step"]] != step:
+        raise RunStateError("request step identity already has a committed effect")
+    steps[binding["step"]] = step
+
+
+def _input_bytes(value):
+    if (not isinstance(value, dict) or type(value.get("schema_version")) is not int
+            or value["schema_version"] not in {1, 2}):
+        raise RunStateError("managed input requires a typed schema 1 or 2 JSON object")
+    pending = [(value, 0)]
+    nodes = 0
+    while pending:
+        item, depth = pending.pop()
+        nodes += 1
+        if depth > 32 or nodes > 32768:
+            raise RunStateError("managed input exceeds depth or node bound")
+        if isinstance(item, dict):
+            if len(item) > 1024 or any(not isinstance(key, str) for key in item):
+                raise RunStateError("managed input has invalid object keys")
+            pending.extend((key, depth + 1) for key in item)
+            pending.extend((child, depth + 1) for child in item.values())
+        elif isinstance(item, list):
+            if len(item) > 4096:
+                raise RunStateError("managed input exceeds array bound")
+            pending.extend((child, depth + 1) for child in item)
+        elif isinstance(item, str):
+            try:
+                if len(item.encode("utf-8")) > MAX_INPUT_BYTES:
+                    raise RunStateError("managed input string exceeds size bound")
+            except UnicodeError as exc:
+                raise RunStateError("managed input has invalid Unicode") from exc
+        elif item is not None and type(item) not in {bool, int, float}:
+            raise RunStateError("managed input must be finite JSON")
+    raw = _json(value) + b"\n"
+    if len(raw) > MAX_INPUT_BYTES:
+        raise RunStateError("managed input exceeds size bound")
+    return raw
 
 
 def _now():
@@ -99,6 +180,58 @@ def _uuid(value):
     except (ValueError, TypeError, AttributeError) as exc:
         raise RunStateError("run/owner identity must be a canonical UUID") from exc
     return value
+
+
+def _install_input(path, raw):
+    """Install immutable bounded bytes through no-follow directory handles."""
+    path = Path(path)
+    descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    staged = None
+    try:
+        for part in path.parent.parts[1:]:
+            if part == "inputs":
+                try:
+                    os.mkdir(part, 0o700, dir_fd=descriptor)
+                except FileExistsError:
+                    pass
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        def existing():
+            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
+            with os.fdopen(fd, "rb") as stream:
+                before = os.fstat(stream.fileno())
+                if not stat.S_ISREG(before.st_mode) or before.st_size != len(raw):
+                    raise RunStateError("digest-addressed managed input bytes changed")
+                if stream.read(MAX_INPUT_BYTES + 1) != raw:
+                    raise RunStateError("digest-addressed managed input bytes changed")
+                present = path.lstat()
+                if (present.st_dev, present.st_ino) != (before.st_dev, before.st_ino):
+                    raise RunStateError("managed input path changed during materialization")
+        try:
+            existing()
+            return
+        except FileNotFoundError:
+            pass
+        staged = ".stage-" + uuid.uuid4().hex
+        fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=descriptor)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(staged, path.name, src_dir_fd=descriptor, dst_dir_fd=descriptor, follow_symlinks=False)
+            os.fsync(descriptor)
+        except FileExistsError:
+            pass  # Concurrent install must have the same exact bytes.
+        existing()
+    finally:
+        if staged is not None:
+            try:
+                os.unlink(staged, dir_fd=descriptor)
+            except FileNotFoundError:
+                pass
+        os.close(descriptor)
 
 
 def _read(path):
@@ -313,6 +446,16 @@ def _pending_handoff(project, state, payload):
 
 
 def _command_binding(project, state, actor, command, payload):
+    if command == "owner.resume":
+        # This is same-native seat renewal only. A different native owner still
+        # needs the predecessor's two-phase transfer, never this recovery seam.
+        if any(
+                row.get("request_digest") == _digest(payload)
+                and row.get("target", {}).get("session_uuid") == state["owner"]["session_uuid"]
+                for row in state.get("ownership_recoveries", [])):
+            return _binding(project, state, actor)  # Exact replay is checked below.
+        proof = _resume_binding(project, state, actor, payload)
+        return proof
     if command != "owner.transfer.accept" or state.get("handoff", {}).get("status") == "accepted":
         return _binding(project, state, actor)
     intent = _pending_handoff(project, state, payload)
@@ -326,6 +469,202 @@ def _command_binding(project, state, actor, command, payload):
     for key in ("project_id", "project_root", "repository", "branch"):
         if proof[key] != state["owner"][key]:
             raise RunStateError("handoff target changed the project or workspace binding")
+    return proof
+
+
+def _resume_user_message(actor, proof, spec, released_at):
+    """Observe a native root-user paragraph; never manufacture an approval.
+
+    Source/type/currentness are mechanical facts. Interpreting the user's prose
+    remains the admitted agent's responsibility. This observation cannot clear
+    a wait, amend authority, or rearm a cancelled run.
+    """
+    import native_observations as native
+    from html.parser import HTMLParser
+
+    class MarkupRegions(HTMLParser):
+        """Conservative exclusion of HTML containers and pending markup."""
+        def __init__(self):
+            super().__init__(convert_charrefs=False)
+            self.stack, self.seen = [], False
+
+        def handle_starttag(self, tag, attrs):
+            self.seen = True
+            if tag not in {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}:
+                self.stack.append(tag)
+
+        def handle_startendtag(self, tag, attrs):
+            self.seen = True
+
+        def handle_endtag(self, tag):
+            self.seen = True
+            if self.stack and self.stack[-1] == tag:
+                self.stack.pop()
+
+        def handle_comment(self, data):
+            self.seen = True
+    _fields(spec, {"offset", "length", "sha256", "excerpt"}, {"offset", "length", "sha256", "excerpt"})
+    if (type(spec["offset"]) is not int or spec["offset"] < 0 or type(spec["length"]) is not int
+            or not 0 < spec["length"] <= native.Limits().payload_bytes
+            or not isinstance(spec["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", spec["sha256"])
+            or not isinstance(spec["excerpt"], str) or not 0 < len(spec["excerpt"]) <= 4096):
+        raise RunStateError("resume requires a bounded exact native user locator and excerpt")
+    client, identity = observer_native_identity(actor["native_payload"])
+    if (client, identity) != (proof["client"], proof["native_session_id"]):
+        raise RunStateError("resume user source changed native identity")
+    path = actor["native_payload"].get("transcript_path")
+    if client == "muse":
+        from live_receipt import resolve_muse_transcript
+        path = resolve_muse_transcript(identity)
+    if not path:
+        raise RunStateError("resume user source is unavailable")
+    binding, _ = native.enroll_source(path, client=client, expected_root_session_id=identity,
+        expected_thread_id=identity, source_handle="owner-resume", mode="native")
+    stream, info = native._open(binding["path"], binding)
+    with stream:
+        native._header(stream, binding, info.st_size)
+        if spec["offset"] and native._stable_read(stream, binding["path"], spec["offset"] - 1, 1,
+                (binding["device"], binding["inode"]), info.st_size) != b"\n":
+            raise RunStateError("resume user locator is not a record boundary")
+        raw = native._stable_read(stream, binding["path"], spec["offset"], spec["length"],
+            (binding["device"], binding["inode"]), info.st_size)
+    if hashlib.sha256(raw).hexdigest() != spec["sha256"] or not raw.endswith(b"\n") or raw.count(b"\n") != 1:
+        raise RunStateError("resume user source bytes or record framing changed")
+    row = native._json(raw)
+    if any(row.get(key, False) is not False for key in ("isMeta", "isSidechain")):
+        raise RunStateError("generated or child user records cannot renew an owner")
+    events = native._events(row, binding, spec["offset"], spec["length"], spec["sha256"], 0)
+    if not events or any(event["kind"] != "message.user" for event in events):
+        raise RunStateError("resume locator is not a direct native root-user record")
+    times = {_time(event["native_timestamp"]) for event in events}
+    if any(moment <= _time(released_at) or moment > _time(_now()) for moment in times):
+        raise RunStateError("resume user evidence must follow the previous release and not be future dated")
+    # Use explicit textual content only: no serialized tool input, peer output,
+    # metadata, recursively discovered strings, or opaque future client payload.
+    if client == "claude":
+        message = row.get("message", {})
+        if message.get("role") != "user":
+            raise RunStateError("resume record has no explicit user role")
+        content = message.get("content")
+    elif client == "codex":
+        value = row.get("payload", {})
+        content = value.get("message") if row.get("type") == "event_msg" else value.get("content")
+    else:
+        # The current Muse raw adapter identifies accepted user intents, but its
+        # opaque intent bodies are not a text-custody contract. Refuse until that
+        # client provides a qualified direct-user text reader.
+        raise RunStateError("native client has no qualified direct-user text reader for owner renewal")
+    texts = [content] if isinstance(content, str) else [block["text"] for block in content or []
+        if isinstance(block, dict) and block.get("type") in {"text", "input_text"} and isinstance(block.get("text"), str)]
+    paragraphs = []
+    for text in texts:
+        if any(marker in text for marker in ("<hook_prompt", "<heartbeat", "<send_user_message_question_reply")):
+            raise RunStateError("injected lifecycle feedback is not direct-user restart evidence")
+        current, fence, quoted_paragraph = [], None, False
+        markup = MarkupRegions()
+        for line in text.splitlines() + [""]:
+            stripped = line.strip()
+            expanded = line.expandtabs(4)
+            # A fence is closed only by the same character, at least its
+            # opening length, no more than three leading spaces, and no info
+            # suffix. Other marker runs remain quoted contents, not toggles.
+            if fence is not None:
+                char, length = fence
+                if re.fullmatch(r" {0,3}" + re.escape(char) + "{" + str(length) + r",}[ \t]*", expanded):
+                    fence = None
+                continue
+            # Markdown permits lazy continuation lines inside block quotes.
+            # A missing '>' on the next line does not make it user prose.
+            if not stripped:
+                quoted_paragraph = False
+            elif stripped.startswith(">"):
+                quoted_paragraph = True
+            if quoted_paragraph:
+                if current:
+                    paragraphs.append("\n".join(current).strip()); current = []
+                continue
+            opening = re.fullmatch(r" {0,3}(`{3,}|~{3,})(.*)", expanded)
+            if opening and (opening[1][0] != "`" or "`" not in opening[2]):
+                fence = (opening[1][0], len(opening[1]))
+                if current:
+                    paragraphs.append("\n".join(current).strip()); current = []
+                continue
+            # Indented code remains data. Expand tabs using Markdown's four
+            # column stops; stripping first would erase this provenance.
+            indented = expanded.startswith("    ")
+            in_markup = bool(markup.stack or markup.rawdata)
+            markup.seen = False
+            if not indented:
+                markup.feed(line + "\n")
+                in_markup = in_markup or bool(markup.stack or markup.rawdata or markup.seen)
+            if not stripped or indented or in_markup or stripped.startswith((">", "<", "```", "~~~")):
+                if current:
+                    paragraphs.append("\n".join(current).strip()); current = []
+                continue
+            current.append(line)
+    if spec["excerpt"] not in paragraphs:
+        raise RunStateError("resume excerpt must be an exact unquoted direct-user paragraph")
+    return {**deepcopy(spec), "path": binding["path"], "generation": binding["generation"],
+        "native_timestamp": min(times).isoformat(), "event_ids": [event["event_id"] for event in events],
+        "scope": "Native root-user text provenance; interpretation is the admitted agent's recorded judgment",
+        "authority_granted": False}
+
+
+def _resume_binding(project, state, actor, payload):
+    required = {"previous_owner", "basis_revision", "basis_digest", "plan_digest", "user_message", "reason"}
+    _fields(payload, required | {"restart_wait"}, required)
+    prior = payload["previous_owner"]
+    if (not isinstance(prior, dict) or set(prior) != {"session_uuid", "native_ref"}
+            or prior != {key: state["owner"][key] for key in prior}
+            or type(payload["basis_revision"]) is not int or payload["basis_revision"] != state["revision"]
+            or payload["basis_digest"] != _digest(state) or payload["plan_digest"] != _plan_digest(project, state)
+            or not isinstance(payload["reason"], str) or not 0 < len(payload["reason"].strip()) <= 4096):
+        raise RunStateError("owner renewal requires the exact previous owner, state, plan and recorded interpretation")
+    if state["status"] in TERMINAL or state.get("handoff", {}).get("status") == "pending":
+        raise RunStateError("terminal runs or pending native transfers cannot use owner renewal")
+    if not isinstance(actor, dict) or set(actor) != {"board", "native_payload"} or str(Path(actor["board"]).expanduser().absolute()) != state["owner"]["board"]:
+        raise RunStateError("owner renewal requires the original coordination board")
+    if observer_native_identity(actor["native_payload"]) != (state["owner"]["client"], state["owner"]["native_session_id"]):
+        raise RunStateError("owner renewal requires the same native session; different native owners require prepared transfer")
+    # Finish authoritative predecessor and native-source observations before
+    # issuing PM's short-lived, unused mutation proof. A network lease read
+    # after issuance can spend that proof's lifetime; a passive stamp is not an
+    # authority substitute. Missing/archived predecessors still cannot resume.
+    from run_admission import _snapshot
+    board = Path(actor["board"])
+    board_snapshot = _snapshot(board)
+    rows = coordination.rows(board_snapshot)
+    previous = coordination.find_session(rows, prior["session_uuid"])
+    if (previous is None or previous.status.lower() not in coordination.TERMINAL_STATUSES
+            or previous.client_ref != prior["native_ref"] or previous.project != state["project_id"]
+            or previous.machine != state["owner"]["machine"]):
+        raise RunStateError("previous exact native seat has no current terminal proof")
+    message = _resume_user_message(actor, state["owner"], payload["user_message"], previous.heartbeat)
+    restart_wait = payload.get("restart_wait")
+    if restart_wait is not None:
+        _fields(restart_wait, {"id", "sha256"}, {"id", "sha256"})
+        wait = state["waits"].get(restart_wait["id"])
+        if (state["status"] != "waiting_user" or not wait or wait.get("kind") != "user"
+                or wait.get("status") != "pending" or _digest(wait) != restart_wait["sha256"]
+                or _time(message["native_timestamp"]) <= _time(wait["at"])):
+            raise RunStateError("restart acknowledgment requires the exact pending user wait and a later native user message")
+    proof = _binding(project, {**state, "owner": None}, actor)
+    if proof["session_uuid"] == prior["session_uuid"] or any(proof[key] != state["owner"][key] for key in
+            ("native_ref", "client", "native_session_id", "machine", "project_id", "project_root", "repository", "branch")):
+        raise RunStateError("owner renewal requires a new exclusive seat for the same native session and project")
+    # The just-issued proof re-fenced PM's authoritative board. Match its local
+    # mirror to the predecessor observation without another network operation;
+    # changed evidence refuses rather than renewing or extending a stale proof.
+    if board.is_symlink() or board.parent.is_symlink() or board.read_text(encoding="utf-8") != board_snapshot:
+        raise RunStateError("coordination predecessor changed during owner renewal")
+    proof._owner_resume_observation = {"previous": deepcopy(prior),
+        "target": {key: proof[key] for key in ("session_uuid", "native_ref")},
+        "previous_status": previous.status, "released_at": previous.heartbeat,
+        "basis_revision": state["revision"], "basis_digest": payload["basis_digest"],
+        "plan_digest": payload["plan_digest"], "user_message": message,
+        "interpretation": payload["reason"], "request_digest": _digest(payload),
+        "authority_granted": False, "restart_wait": deepcopy(restart_wait),
+        "waits_resolved": [restart_wait["id"]] if restart_wait else [], "effects_replayed": False}
     return proof
 
 
@@ -360,6 +699,14 @@ def _events(project, run_id):
         yield event
 
 
+def _last_event(project, run_id):
+    """Validate the complete chain while retaining only its latest full state."""
+    last = None
+    for last in _events(project, run_id):
+        pass
+    return last
+
+
 def load_run(project: Path, run_id: str) -> dict:
     """Read only the selected journal; projections and other runs confer no truth."""
     last = None
@@ -368,32 +715,38 @@ def load_run(project: Path, run_id: str) -> dict:
     return deepcopy(last["state"])
 
 
-def _project(project, state):
+def _projection_bytes(project, state, plan_text):
+    """Pure bytes shared by the projection writer and delegated attribution."""
     home = _home(project, state["run_id"])
-    _write(home / "current.json", _json(state) + b"\n")
+    output = {home / "current.json": _json(state) + b"\n"}
     summary = f"Run: {state['run_id']}\nRevision: {state['revision']}\nStatus: {state['status']}\n"
     summary += f"Contract: {state['contract_revision']} ({state['contract_digest']})\n"
     summary += f"Profile: {state['profile_revision']} ({state['profile_digest']})\n"
     if state.get("progress"):
         summary += "Progress: " + state["progress"]["summary"].replace("\n", " ") + "\n"
-    _write(home / "summary.md", ("# Autopilot run\n\n" + summary).encode())
+    output[home / "summary.md"] = ("# Autopilot run\n\n" + summary).encode()
     if state["status"] in TERMINAL:
-        _write(home / "terminal.json", _json({"schema_version": SCHEMA, "run_id": state["run_id"],
-               "revision": state["revision"], "status": state["status"], "terminal": state["terminal"]}) + b"\n")
+        output[home / "terminal.json"] = _json({"schema_version": SCHEMA, "run_id": state["run_id"],
+            "revision": state["revision"], "status": state["status"], "terminal": state["terminal"]}) + b"\n"
+    start, end = (f"<!-- autopilot:{state['run_id']}:{edge} -->" for edge in ("start", "end"))
+    block = start + "\n" + summary + end
+    if plan_text.count(start) != plan_text.count(end) or plan_text.count(start) > 1:
+        raise RunStateError("plan ledger markers are ambiguous; human repair required")
+    if start in plan_text:
+        plan_text = plan_text[:plan_text.index(start)] + block + plan_text[plan_text.index(end) + len(end):]
+    else:
+        plan_text = plan_text.rstrip() + "\n\n" + block + "\n"
+    output[_plan(project, state["plan"]).resolved] = plan_text.encode()
+    return output
+
+
+def _project(project, state):
     plan = _plan(project, state["plan"]).resolved
-    # Different runs may project into the same plan. Share one lock so their
-    # read/replace steps never erase each other's ledger or human prose.
+    # Different runs share the plan lock; render preserves all other ledger
+    # blocks and human prose. Attribution uses the same pure byte compiler.
     with bounded_lock(_plan_lock(project, plan)):
-        text = plan.read_text(encoding="utf-8")
-        start, end = (f"<!-- autopilot:{state['run_id']}:{edge} -->" for edge in ("start", "end"))
-        block = start + "\n" + summary + end
-        if text.count(start) != text.count(end) or text.count(start) > 1:
-            raise RunStateError("plan ledger markers are ambiguous; human repair required")
-        if start in text:
-            text = text[:text.index(start)] + block + text[text.index(end) + len(end):]
-        else:
-            text = text.rstrip() + "\n\n" + block + "\n"
-        _write(plan, text.encode())
+        for path, raw in _projection_bytes(project, state, plan.read_text(encoding="utf-8")).items():
+            _write(path, raw)
 
 
 def _plan_lock(project, plan):
@@ -411,11 +764,48 @@ def rebuild_projections(project, run_id, *, actor):
     return state
 
 
-def _append(project, state, command_id, command_digest, command, previous_digest, proof):
+def replay_request_step(project, run_id, *, request_binding, actor, command=None):
+    """Readmit and restore a committed facade prefix without repeating effects.
+
+    The request binding is a replay key, never permission. The selected step's
+    identity and command digest must still agree with the immutable journal.
+    """
+    binding = _request_binding(request_binding)
+    if binding is None:
+        raise RunStateError("request replay requires an exact binding")
+    project = Path(project).resolve(strict=True)
+    home = _home(project, run_id)
+    with bounded_lock(home / ".run.lock", create=False):
+        events = _events(project, run_id)
+        selected = None
+        last = None
+        for event in events:
+            last = event
+            entry = event["state"].get("extensions", {}).get("controller", {}).get("requests", {}).get(binding["request_id"], {})
+            step = entry.get("steps", {}).get(binding["step"])
+            if step and step["revision"] == event["revision"]:
+                selected = event
+        state = deepcopy(last["state"])
+        _binding(project, state, actor)
+        _check_request(state, binding)
+        step = state.get("extensions", {}).get("controller", {}).get("requests", {}).get(binding["request_id"], {}).get("steps", {}).get(binding["step"])
+        if (not selected or not step or step["command_id"] != selected["command_id"]
+                or step["command_digest"] != selected["command_digest"]
+                or command is not None and selected["command"] != command):
+            raise RunStateError("request step does not bind its committed journal event")
+        if state["status"] not in TERMINAL:
+            _project(project, state)
+        return state
+
+
+def _append(project, state, command_id, command_digest, command, previous_digest, proof, *, prepared_authority=None):
     home = _home(project, state["run_id"])
     event = {"schema_version": SCHEMA, "revision": state["revision"], "previous_digest": previous_digest,
              "command_id": command_id, "command_digest": command_digest, "command": command,
              "actor": {key: proof[key] for key in ("session_uuid", "native_ref", "claim_hash")}, "state": state}
+    if prepared_authority is not None:
+        # A deterministic grant consumer is never represented as its native issuer.
+        event["actor"] = {"kind": "prepared-native-launch", **deepcopy(prepared_authority)}
     event["digest"] = _digest(event)
     raw = _json(event) + b"\n"
     if len(raw) > MAX_JSON_BYTES or state["revision"] > MAX_EVENTS:
@@ -426,18 +816,96 @@ def _append(project, state, command_id, command_digest, command, previous_digest
     _write(path, raw)
 
 
+def prepared_native_launch_step(project, run_id, permit_id, token, phase, *, runtime_root=None, send=None, outcome=None):
+    """Closed owner-prepared capability seam sharing the sole run lock/writer.
+
+    This does not accept an actor or general run command. Only reservation,
+    an admitted transport send, or its bounded diagnostic observation can be
+    committed. Native work must separately authenticate through ordinary PM.
+    """
+    import prepared_native_launch as launch
+    project=Path(project).absolute();_id(run_id);_id(permit_id)
+    if phase not in {"reserve","submit","observe"}:
+        raise RunStateError("unsupported prepared launch phase")
+    home=_home(project,run_id)
+    with bounded_lock(home/".run.lock",create=False):
+        previous=_last_event(project,run_id);state=previous["state"]
+        grant=launch._grant(state,permit_id,token)
+        if phase in {"reserve","submit"}:
+            required="prepared" if phase=="reserve" else "consumed"
+            if grant["status"]!=required:
+                raise RunStateError("one-shot launch is "+grant["status"]+"; no replay")
+            proof=launch.current_fence(project,state,grant,runtime_root=runtime_root)
+        else:
+            if grant["status"] not in {"consumed","submitted","cancelled"}:
+                raise RunStateError("no outstanding transport observation")
+            import native_resume
+            if not native_resume.is_observation(outcome) or len(_json(outcome))>65536 or outcome.get("task_accepted") is not False or outcome.get("native_session_id")!=grant["native_session_id"]:
+                raise RunStateError("invalid bounded native transport observation")
+            proof=_binding(project,state,grant["issuer_selector"],readonly=True,passive=True)
+            if any(proof.get(key)!=grant['issuer'].get(key) for key in ('session_uuid','native_ref','claim_hash','repository','branch')):
+                raise RunStateError('native launch observation issuer changed')
+            import recovery_capsule
+            recovery_capsule.resolve(project,state['project_id'],grant['issuer_selector'],runtime_root)
+        plan_before=_plan(project,state["plan"]).resolved.read_text(encoding="utf-8")
+        before=launch.attribution_snapshot(project,grant)
+        updated=deepcopy(state);row=updated["extensions"]["prepared_native_launch"]["permits"][permit_id]
+        result=None
+        if phase=="reserve":
+            row.update(status="consumed",consumed_at=_now(),consumed_revision=state["revision"]+1)
+        elif phase=="submit":
+            if not callable(send):raise RunStateError("native submission requires the owned transport operation")
+            result=send()
+            row.update(status="submitted",submitted_at=_now(),admission=deepcopy(result))
+        else:
+            row["outcome"]=deepcopy(outcome);row["observed_at"]=_now()
+            if row["status"]!="cancelled":
+                row["status"]="observed" if outcome.get("status")=="native_terminal" else "unknown"
+        updated["revision"]=state["revision"]+1;updated["updated_at"]=_now()
+        projection_hashes={str(path):hashlib.sha256(raw).hexdigest()
+            for path,raw in _projection_bytes(project,updated,plan_before).items()}
+        if phase in {"reserve","submit"}:
+            # Recheck issuer claim revocation after a slow native handshake.
+            proof=launch.current_fence(project,state,grant,runtime_root=runtime_root)
+        else:
+            # A terminal or cancelled transport may still report its outcome,
+            # but slow filesystem reads cannot carry a revoked owner's grant
+            # across the append boundary. Keep this separate from launch
+            # eligibility so cancellation diagnostics remain recordable.
+            proof=_binding(project,state,grant["issuer_selector"],readonly=True,passive=True)
+            if any(proof.get(key)!=grant['issuer'].get(key) for key in ('session_uuid','native_ref','claim_hash','repository','branch')):
+                raise RunStateError('native launch observation issuer changed before append')
+        identity="launch-"+permit_id+"-"+phase
+        _id(identity)
+        authority={"permit_id":permit_id,"prepared_revision":grant["prepared_revision"],
+            "issuer_session_uuid":grant["issuer"]["session_uuid"],"phase":phase,
+            "ownership_transfer":False,"native_actor_authenticated":False,"edit_basis":before,
+            "projection_hashes":projection_hashes,"plan_basis_sha256":hashlib.sha256(plan_before.encode()).hexdigest()}
+        _append(project,updated,identity,_digest({"phase":phase,"permit_id":permit_id,"result":result,"outcome":outcome}),
+            "native.launch."+phase,previous["digest"],proof,prepared_authority=authority)
+        _project(project,updated)
+        _index_update(runtime_root,state["owner"]["session_uuid"],run_id,_index_entry(project,updated))
+        launch.attribute_owned_append(project,updated,grant,token,runtime_root=runtime_root)
+        return deepcopy(result if phase=="submit" else updated)
+
+
 def create_run(project: Path, *, project_id: str, plan: Path, contract: dict, profile: dict,
                actor: dict, command_id: str, run_id: str | None = None,
-               runtime_root: Path | None = None) -> dict:
+               runtime_root: Path | None = None, request_binding: dict | None = None) -> dict:
     return _create(project, project_id=project_id, plan=plan, contract=contract, profile=profile,
-                   actor=actor, command_id=command_id, run_id=run_id, runtime_root=runtime_root)
+                   actor=actor, command_id=command_id, run_id=run_id, runtime_root=runtime_root,
+                   request_binding=request_binding)
 
 
 def _create(project, *, project_id, plan, contract, profile, actor, command_id, run_id=None,
-            runtime_root=None, migration=None):
+            runtime_root=None, migration=None, request_binding=None):
     project = Path(project).resolve(strict=True)
     _id(project_id, "project ID")
     _id(command_id, "command ID")
+    request_binding = _request_binding(request_binding)
+    if request_binding and (request_binding["operation"] != "start" or request_binding["step"] != "create"
+                            or request_binding["initial_revision"] != 0):
+        raise RunStateError("creation request must be the initial start step")
     contract, profile = _contract(contract), _profile(profile)
     reference = _plan(project, plan)
     identity = native_binding(Path(actor["board"]), actor["native_payload"])
@@ -450,9 +918,13 @@ def _create(project, *, project_id, plan, contract, profile, actor, command_id, 
              "waits": {}, "effects": {}, "observations": {}, "extensions": {}, "progress": {}, "created_at": _now(), "updated_at": _now()}
     proof = _binding(project, state, actor)
     state["owner"] = proof
-    creation_digest = _digest({"project_id": project_id, "plan": reference.relative_path, "contract": contract,
+    creation_material = {"project_id": project_id, "plan": reference.relative_path, "contract": contract,
                                "profile": profile, "migration": migration[1] if migration else None,
-                               "owner": proof["session_uuid"], "native_ref": proof["native_ref"]})
+                               "owner": proof["session_uuid"], "native_ref": proof["native_ref"]}
+    if request_binding is not None:
+        creation_material["request_binding"] = request_binding
+    creation_digest = _digest(creation_material)
+    _record_request(state, request_binding, command_id, creation_digest)
     home = _home(project, run_id)
     with bounded_lock(home / ".run.lock"):
         if (home / "events").exists() and any((home / "events").iterdir()):
@@ -497,6 +969,20 @@ def register_command(name, reducer, *, allowed_fields=("extensions",), terminal_
         _TERMINAL_COMMANDS.add(name)
     else:
         _TERMINAL_COMMANDS.discard(name)
+
+
+def register_preparer(name, callback):
+    """Install trusted observation code inside the existing admitted command.
+
+    This is an in-process code registration, never a JSON callback. Its bounded
+    result is passed to the already registered pure extension reducer. Replay
+    checks use the original requested payload and do not repeat observation.
+    """
+    if name not in _COMMANDS or not callable(callback):
+        raise RunStateError("preparer requires a registered extension command")
+    if name in _PREPARERS and _PREPARERS[name] is not callback:
+        raise RunStateError("command preparer is already registered")
+    _PREPARERS[name] = callback
 
 
 def register_verifier(kind, verifier):
@@ -567,11 +1053,46 @@ def unregister_constraint(name):
 def inspect_context(state, actor, *, project=None):
     """Read-only fresh state/admission/evidence view for trusted owner modules."""
     project = Path(project or state["owner"]["project_root"])
-    current = load_run(project, state["run_id"])
+    last = None
+    for last in _events(project, state["run_id"]):
+        pass
+    current = last["state"]
     if current != state:
         raise RunStateError("inspection state is stale; reload the current journal")
     proof = _binding(project, current, actor, readonly=True)
-    return _context(project, current, {}, proof, actor=actor)
+    context = _context(project, current, {}, proof, actor=actor)
+    context["journal_head"] = {"revision": current["revision"], "digest": last["digest"], "scope": "full_run"}
+    context["current_native_events"] = _native_readback(project, current, actor, context["journal_head"])
+    context["current_native_invalidation"] = _native_readback(project, current, actor, context["journal_head"], invalidation=True)
+    return context
+
+
+def _native_readback(project, state, actor, journal_head, *, passive=False, invalidation=False):
+    """An ephemeral fresh-read operation, never a reusable admission token.
+
+    The closure binds an already chain-verified state. Each invocation acquires
+    fresh native/PM admission and rejects an intervening journal append before
+    and after the selected current source ranges are read.
+    """
+    selected, principal, head = deepcopy(state), deepcopy(actor), deepcopy(journal_head)
+    project = Path(project)
+    def read(event_ids=None, interval=None, *, source_handle="root"):
+        import observation_bridge
+        base = {"project": project, "state": selected, "actor": principal}
+        if observation_bridge._current_head(base) != head["digest"]:
+            raise RunStateError("native readback journal head changed")
+        proof = _binding(project, selected, principal, readonly=True, passive=passive)
+        purpose = "passive-stop" if passive else "mutation"
+        with admission_scope(proof, principal, project, purpose=purpose) as token:
+            context = ({"binding": deepcopy(proof)} if invalidation and source_handle == "root" else
+                _context_observed(project, selected, {}, proof, actor=principal, observation=token))
+            context.update(base, admission_observation=token, journal_head=deepcopy(head))
+            result = (observation_bridge.current_invalidation(context, source_handle=source_handle) if invalidation
+                else observation_bridge.current_events(context, event_ids, required_interval=interval))
+        if observation_bridge._current_head(base) != head["digest"]:
+            raise RunStateError("native readback journal head changed")
+        return result
+    return read
 
 
 def completion_report(project, run_id, *, actor):
@@ -788,11 +1309,16 @@ def _complete(project, state, context):
     verified = {row["id"] for row in report["criteria"] if row["status"] == "PASS"}
     for item in state["profile"]["items"]:
         refs = item.get("criterion_ids")
-        if refs and all(ref in verified for ref in refs):
+        from profile_evidence import CANONICAL_IDS
+        if item["id"] not in CANONICAL_IDS and refs and all(ref in verified for ref in refs):
             continue
         record = _receipt(context, state, state.get("profile_evidence"), "profile")
-        if item["id"] not in record["data"].get("satisfied_items", []):
-            raise RunStateError("standing profile item lacks validated disposition")
+        if "dispositions" in record["data"]:
+            from profile_evidence import accept_profile
+            if not accept_profile(record["data"], state):
+                raise RunStateError("standing profile dispositions contain unresolved or invalid obligations")
+        elif item["id"] in CANONICAL_IDS or item["id"] not in record["data"].get("satisfied_items", []):
+            raise RunStateError("standing profile item lacks validated disposition: " + item["id"])
     return {"at": context["now"], "run_id": state["run_id"], "contract_digest": state["contract_digest"],
             "profile_digest": state["profile_digest"], "criteria": sorted(verified), "verifier_version": VERIFIER_VERSION}
 
@@ -877,6 +1403,24 @@ def _reduce(project, state, name, payload, context):
         state["artifacts"][key] = {**payload, "path": str(path.relative_to(Path(project).resolve())),
                                     "digest": hashlib.sha256(path.read_bytes()).hexdigest(), "registered_at": context["now"]}
         state["verification"] = {}
+    elif name == "input.materialize":
+        if set(payload) != {"id", "value"}:
+            raise RunStateError("managed input accepts only an ID and typed JSON value")
+        key = _id(payload["id"])
+        raw = _input_bytes(payload["value"])
+        digest = hashlib.sha256(raw).hexdigest()
+        home = _home(project, state["run_id"])
+        path = safe_path(home / "inputs" / (digest + ".json"), Path(project))
+        previous = state["artifacts"].get(key)
+        if previous and (previous.get("managed_input") is not True or previous.get("digest") != digest):
+            raise RunStateError("managed input ID is immutable")
+        _install_input(path, raw)
+        safe_path(path, Path(project))
+        if path.read_bytes() != raw:
+            raise RunStateError("managed input changed during materialization")
+        state["artifacts"][key] = {"id": key, "path": str(path.relative_to(Path(project).resolve())),
+            "role": "input", "retention": "durable", "required": False, "digest": digest,
+            "managed_input": True, "registered_at": context["now"]}
     elif name == "evidence.record":
         _fields(payload, {"id", "kind", "artifact_id"}, {"id", "kind", "artifact_id"})
         key, kind = _id(payload["id"]), _id(payload["kind"])
@@ -1003,6 +1547,21 @@ def _reduce(project, state, name, payload, context):
             "prepared_at": context["now"], "expires_at": payload["expires_at"],
             "prepared_revision": state["revision"] + 1, "state_digest": _handoff_snapshot(state),
             "plan_digest": context["plan_digest"]}
+    elif name == "owner.resume":
+        observation = context.get("owner_resume")
+        if not observation or observation["basis_digest"] != _digest(state):
+            raise RunStateError("owner renewal lacks its fresh production observation")
+        state.setdefault("ownership_recoveries", []).append({**deepcopy(observation), "at": context["now"]})
+        if observation["restart_wait"] is not None:
+            wait = state["waits"][observation["restart_wait"]["id"]]
+            prior = deepcopy(wait)
+            wait.update(status="resolved", resolved_at=context["now"],
+                restart_acknowledgment={"prior": prior, "prior_digest": _digest(prior),
+                    "ownership_recovery_digest": _digest(observation),
+                    "interpretation": payload["reason"], "native_user_message": deepcopy(observation["user_message"]),
+                    "authority_granted": False, "scope": "Agent-interpreted restart-pause acknowledgment only; no action approval"})
+        state["owner"] = context["binding"]
+        state["status"] = "recovering"
     elif name == "owner.transfer.revoke":
         _fields(payload, {"id"}, {"id"})
         intent = state.get("handoff")
@@ -1023,13 +1582,15 @@ def _reduce(project, state, name, payload, context):
 
 
 CORE_COMMANDS = frozenset({"transition", "progress", "wait.add", "wait.resolve", "contract.amend", "profile.amend",
-    "artifact.register", "evidence.record", "criterion.evidence.bind", "verify", "close", "effect.prepare", "effect.observe", "effect.reconcile",
-    "owner.transfer.prepare", "owner.transfer.accept", "owner.transfer.revoke"})
+    "artifact.register", "input.materialize", "evidence.record", "criterion.evidence.bind", "verify", "close", "effect.prepare", "effect.observe", "effect.reconcile",
+    "owner.transfer.prepare", "owner.transfer.accept", "owner.transfer.revoke", "owner.resume"})
 
 
 def apply_command(project: Path, run_id: str, command: str, payload: dict, *, expected_revision: int,
-                  command_id: str, actor: dict, runtime_root: Path | None = None) -> dict:
+                  command_id: str, actor: dict, runtime_root: Path | None = None,
+                  request_binding: dict | None = None) -> dict:
     _id(command_id, "command ID")
+    request_binding = _request_binding(request_binding)
     if type(expected_revision) is not int or expected_revision < 1 or not isinstance(payload, dict):
         raise RunStateError("mutation requires an integer expected revision and object payload")
     project = Path(project).resolve(strict=True)
@@ -1054,7 +1615,11 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
                 matching = event
         state = deepcopy(previous["state"])
         proof = _command_binding(project, state, actor, command, payload)
-        digest = _digest({"command": command, "payload": payload, "session_uuid": proof["session_uuid"], "native_ref": proof["native_ref"]})
+        material = {"command": command, "payload": payload, "session_uuid": proof["session_uuid"], "native_ref": proof["native_ref"]}
+        if request_binding is not None:
+            material["request_binding"] = request_binding
+        digest = _digest(material)
+        _check_request(state, request_binding)
         if matching is not None:
             if matching["command_digest"] != digest:
                 raise RunStateError("command ID was already used with different input")
@@ -1069,6 +1634,10 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
         # scope ends before the fresh mutation admission below.
         with admission_scope(proof, actor, project) as operation:
             context = _context_observed(project, state, payload, proof, actor=actor, observation=operation)
+            if command == "owner.resume":
+                context["owner_resume"] = deepcopy(getattr(proof, "_owner_resume_observation", None))
+            context["journal_head"] = {"revision": state["revision"], "digest": previous["digest"], "scope": "full_run"}
+            context["current_native_invalidation"] = _native_readback(project, state, actor, context["journal_head"], invalidation=True)
             updated = deepcopy(state)
             if command.startswith("observe:") and command.split(":", 1)[1] in _OBSERVERS:
                 if command_id in state["evidence"] or command_id in state.get("observations", {}):
@@ -1101,11 +1670,21 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
                 reducer = _COMMANDS.get(command)
                 if reducer is None:
                     raise RunStateError("unknown run command")
-                updated = reducer(updated, deepcopy(payload), context)
+                prepared = deepcopy(payload)
+                if command in _PREPARERS:
+                    observer_context = {**context, "state": deepcopy(state), "project": project,
+                        "actor": deepcopy(actor), "admission_observation": operation,
+                        "command_id": command_id, "command_digest": digest, "runtime_root": _runtime(runtime_root)}
+                    observer_context["criterion_report"] = lambda: criterion_report(state, context)
+                    prepared = _PREPARERS[command](observer_context, prepared)
+                    if not isinstance(prepared, dict) or len(_json(prepared)) > MAX_JSON_BYTES:
+                        raise RunStateError("command preparer returned invalid or oversized data")
+                updated = reducer(updated, prepared, context)
                 if not isinstance(updated, dict) or {k: v for k, v in updated.items() if k != "extensions"} != {k: v for k, v in state.items() if k != "extensions"} or not isinstance(updated.get("extensions"), dict):
                     raise RunStateError("extension reducer attempted to modify protected core fields")
         updated["revision"] = state["revision"] + 1
         updated["updated_at"] = _now()
+        _record_request(updated, request_binding, command_id, digest)
         for check in _CONSTRAINTS.values():
             check(deepcopy(updated), command, deepcopy(payload), context)
         # Re-admit after reducer work: a revoked seat must not commit after a
@@ -1141,7 +1720,16 @@ def inspect_owned_runs(actor, *, runtime_root=None):
             continue
         project = Path(state["owner"]["project_root"])
         proof = _binding(project, state, actor, readonly=True, passive=True)
-        result.append((state, _context(project, state, {}, proof, actor=actor, purpose="passive-stop")))
+        context = _context(project, state, {}, proof, actor=actor, purpose="passive-stop")
+        head = _read(_home(project, state["run_id"]) / "events" / f"{state['revision']:012d}.json")
+        if (head.get("state") != state or head.get("digest") != _digest({key: value for key, value in head.items() if key != "digest"})):
+            raise RunStateError("journal head changed after passive owner discovery")
+        # _owned_records already verified this chain; a later append only makes
+        # this deny/candidate screen stale. Reservation re-admits under CAS.
+        context["journal_head"] = {"revision": state["revision"], "digest": head["digest"], "scope": "full_run"}
+        context["current_native_events"] = _native_readback(project, state, actor, context["journal_head"], passive=True)
+        context["current_native_invalidation"] = _native_readback(project, state, actor, context["journal_head"], passive=True, invalidation=True)
+        result.append((state, context))
     return result
 
 
@@ -1179,7 +1767,7 @@ def _owned_records(actor, *, runtime_root=None, require_admission=True):
     return result
 
 
-def discover_legacy(actor, legacy_root, *, plan=None, runtime_root=None, _paths=None):
+def discover_legacy(actor, legacy_root, *, plan=None, runtime_root=None, _paths=None, _desktop_bindings=None):
     """Bounded read-only upgrade inventory, scoped before semantic validation.
 
     Foreign or unattributed bytes are retained. A corrupt candidate containing
@@ -1231,8 +1819,9 @@ def discover_legacy(actor, legacy_root, *, plan=None, runtime_root=None, _paths=
     total = 0
     for path in paths:
         result["scanned"] += 1
+        selected_desktop = path.name in (_desktop_bindings or {})
         if path.is_symlink() or not path.is_file():
-            result["unattributed"].append({"source": str(path), "reason": "unsafe record", "blocking": path == exact})
+            result["unattributed"].append({"source": str(path), "reason": "unsafe record", "blocking": path == exact or selected_desktop})
             continue
         size = path.stat().st_size
         total += min(size, MAX_JSON_BYTES)
@@ -1241,7 +1830,7 @@ def discover_legacy(actor, legacy_root, *, plan=None, runtime_root=None, _paths=
             break
         with path.open("rb") as stream:
             raw = stream.read(MAX_JSON_BYTES + 1)
-        identity_hint = any(marker.encode() in raw for marker in refs | owners)
+        identity_hint = selected_desktop or any(marker.encode() in raw for marker in refs | owners)
         try:
             if len(raw) > MAX_JSON_BYTES:
                 raise ValueError("oversized record")
@@ -1251,12 +1840,29 @@ def discover_legacy(actor, legacy_root, *, plan=None, runtime_root=None, _paths=
         except (ValueError, UnicodeError) as exc:
             result["unattributed"].append({"source": str(path), "reason": str(exc), "blocking": identity_hint or path == exact})
             continue
-        if legacy.get("client_session_ref") not in refs and legacy.get("session_id") not in owners:
-            if legacy.get("client_session_ref") or legacy.get("session_id"):
-                result["foreign_count"] += 1
-            else:
-                result["unattributed"].append({"source": str(path), "reason": "record has no bound native owner", "blocking": path == exact})
+        # Validate retained identity before accepting any alternative selector.
+        # A matching modern seat/native reference cannot erase a contradiction
+        # in this record's previously observed desktop host and seat binding.
+        desktop = (_desktop_bindings or {}).get(path.name)
+        if desktop is not None and (legacy.get("client_session_ref") != desktop["host_ref"]
+                or legacy.get("session_id") != desktop["session_uuid"]):
+            result["unattributed"].append({"source": str(path), "reason": "Indexed desktop legacy binding changed", "blocking": True})
             continue
+        if desktop is None and legacy.get("client_session_ref") not in refs and legacy.get("session_id") not in owners:
+            # Historical binding is discovery only. A released seat never
+            # regains mutation authority, even when this record is selected.
+            if path == exact and str(legacy.get("client_session_ref", "")).startswith("ccd:"):
+                # Explicit plan selection is causal relevance, not proof of
+                # identity. Closed records need no continued execution.
+                if legacy.get("status") not in {"closed", "completed", "incomplete", "cancelled"}:
+                    result["unattributed"].append({"source": str(path), "reason": "Selected desktop legacy native binding is unavailable", "blocking": True})
+                continue
+            else:
+                if legacy.get("client_session_ref") or legacy.get("session_id"):
+                    result["foreign_count"] += 1
+                else:
+                    result["unattributed"].append({"source": str(path), "reason": "record has no bound native owner", "blocking": path == exact})
+                continue
         digest = hashlib.sha256(raw).hexdigest()
         item = {"source": str(path), "sha256": digest, "plan": legacy.get("plan"), "project_id": legacy.get("project_id")}
         if digest in imported:
@@ -1276,6 +1882,52 @@ def _legacy_selector_path(home, kind, identity):
     return home / kind / (hashlib.sha256(identity.encode()).hexdigest() + ".json")
 
 
+def _desktop_legacy_binding(board, value):
+    """Observe one exact PM sidecar before release removes its native mapping."""
+    from peer_addressing import CLIENT_CLAUDE, read_seat, seat_path
+    session = _uuid(value.get("session_id"))
+    path = seat_path(Path(board), session)
+    if path.is_symlink() or path.parent.is_symlink() or not path.is_file() or path.stat().st_size > MAX_JSON_BYTES:
+        raise RunStateError("Desktop legacy native binding is unavailable or unsafe")
+    raw = path.read_bytes()
+    seat = read_seat(Path(board), session, strict=True)
+    if (seat is None or seat.client != CLIENT_CLAUDE or not seat.host_session_id
+            or "ccd:" + seat.host_session_id != value.get("client_session_ref")
+            or path.read_bytes() != raw):
+        raise RunStateError("Desktop legacy native binding does not match its PM sidecar")
+    native = _uuid(seat.harness_session_id)
+    return {"native_ref": "cc:" + native, "host_ref": "ccd:" + seat.host_session_id,
+            "session_uuid": session, "sidecar_sha256": hashlib.sha256(raw).hexdigest()}
+
+
+def _validate_desktop_binding(name, binding):
+    if (not isinstance(name, str) or Path(name).name != name or not name.endswith(".json")
+            or not isinstance(binding, dict)
+            or set(binding) != {"native_ref", "host_ref", "session_uuid", "sidecar_sha256"}
+            or not isinstance(binding["native_ref"], str) or not binding["native_ref"].startswith("cc:")
+            or not isinstance(binding["host_ref"], str) or not binding["host_ref"].startswith("ccd:")
+            or not 4 < len(binding["host_ref"]) <= 4096
+            or not isinstance(binding["sidecar_sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", binding["sidecar_sha256"])):
+        raise RunStateError("invalid retained desktop legacy binding")
+    _uuid(binding["session_uuid"])
+    _uuid(binding["native_ref"][3:])
+
+
+def _retained_desktop_bindings(home, root):
+    path = home / "manifest.json"
+    if not path.exists():
+        return {}
+    prior = _read(path)
+    if prior.get("schema_version") != SCHEMA or prior.get("root") != str(root):
+        raise RunStateError("legacy inventory manifest does not bind this registry")
+    retained = prior.get("desktop_bindings", {})
+    if not isinstance(retained, dict):
+        raise RunStateError("invalid retained desktop legacy bindings")
+    for name, binding in retained.items():
+        _validate_desktop_binding(name, binding)
+    return retained
+
+
 def index_legacy(actor, legacy_root, *, runtime_root=None):
     """Explicit migration preparation, outside Stop. Preserve all source bytes.
 
@@ -1289,7 +1941,14 @@ def index_legacy(actor, legacy_root, *, runtime_root=None):
     if root.is_symlink() or (root.exists() and not root.is_dir()):
         raise RunStateError("legacy registry directory is unsafe")
     home = _legacy_index_home(root, runtime_root)
-    selectors, unknown, scanned = {}, [], 0
+    selectors, desktop_bindings, unknown, scanned = {}, {}, [], 0
+    retained = _retained_desktop_bindings(home, root)
+    for name, binding in retained.items():
+        identity = binding["native_ref"]
+        selectors.setdefault(("native", identity), set()).add(name)
+        desktop_bindings.setdefault(identity, {})[name] = binding
+        if not (root / name).exists():
+            unknown.append({"source": str(root / name), "reason": "Previously indexed desktop source disappeared", "status": "UNKNOWN"})
     identity_pattern = re.compile(rb"(?:cc:|codex:|muse:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
     for path in sorted(root.glob("*.json")):
         scanned += 1
@@ -1310,6 +1969,19 @@ def index_legacy(actor, legacy_root, *, runtime_root=None):
                     if isinstance(value.get(field), str) and value[field]]
                 if not identities:
                     raise ValueError("record has no bound owner")
+                if str(value.get("client_session_ref", "")).startswith("ccd:"):
+                    try:
+                        binding = _desktop_legacy_binding(actor["board"], value)
+                        if path.name in retained and any(retained[path.name][key] != binding[key]
+                                for key in ("native_ref", "host_ref", "session_uuid")):
+                            raise RunStateError("Previously indexed desktop binding changed; retained original discovery evidence")
+                        identity = binding["native_ref"]
+                        identities.append(("native", identity))
+                        desktop_bindings.setdefault(identity, {})[path.name] = binding
+                        retained[path.name] = binding
+                    except (OSError, ValueError) as exc:
+                        if value.get("status") not in {"closed", "completed", "incomplete", "cancelled"}:
+                            unknown.append({"source": str(path), "reason": str(exc), "status": "UNKNOWN"})
             except (ValueError, UnicodeError) as exc:
                 unknown.append({"source": str(path), "reason": str(exc), "status": "UNKNOWN"})
                 # A malformed own record must remain discoverable. Hints only
@@ -1322,16 +1994,29 @@ def index_legacy(actor, legacy_root, *, runtime_root=None):
             unknown.append({"source": str(path), "reason": str(exc), "status": "UNKNOWN"})
     generation = str(uuid.uuid4())
     with bounded_lock(home / ".index.lock"):
+        # Another explicit index operation may have observed the last sidecar
+        # before release. Do not erase its proof with our older scan snapshot.
+        for name, binding in _retained_desktop_bindings(home, root).items():
+            if name in retained and any(retained[name][key] != binding[key]
+                    for key in ("native_ref", "host_ref", "session_uuid")):
+                raise RunStateError("Concurrent desktop legacy binding changed; preserve the committed inventory")
+            retained.setdefault(name, binding)
+            identity = retained[name]["native_ref"]
+            selectors.setdefault(("native", identity), set()).add(name)
+            desktop_bindings.setdefault(identity, {})[name] = retained[name]
         generation_home = home / "generations" / generation
         for directory in ("native", "seats"):
             (generation_home / directory).mkdir(parents=True, exist_ok=True)
         for (kind, identity), names in selectors.items():
-            _write(_legacy_selector_path(generation_home, kind, identity), _json({"schema_version": SCHEMA,
-                   "generation": generation, "identity": identity, "sources": sorted(names)}) + b"\n")
+            selected = {"schema_version": SCHEMA, "generation": generation, "identity": identity, "sources": sorted(names)}
+            if kind == "native" and identity in desktop_bindings:
+                selected["desktop_bindings"] = desktop_bindings[identity]
+            _write(_legacy_selector_path(generation_home, kind, identity), _json(selected) + b"\n")
         # A complete generation commits through one manifest replacement;
         # concurrent Stop readers cannot mix old and newly built selectors.
         _write(home / "manifest.json", _json({"schema_version": SCHEMA, "root": str(root),
-               "generation": generation, "scanned": scanned, "unattributed_count": len(unknown)}) + b"\n")
+               "generation": generation, "scanned": scanned, "unattributed_count": len(unknown),
+               "desktop_bindings": retained}) + b"\n")
     return {"health": "PASS", "scanned": scanned, "unattributed": unknown, "index": str(home)}
 
 
@@ -1364,7 +2049,7 @@ def legacy_for_stop(actor, legacy_root, *, plan=None, runtime_root=None):
         row = row_for_event(parse_table_rows(board.read_text(encoding="utf-8")), actor["native_payload"], board=board)
         if row:
             owners.add(row["session uuid"])
-    paths = set()
+    paths, desktop_bindings = set(), {}
     if plan is None and board.is_file() and row:
         from project_state import _project_from_claim, _load_json, STATE_FILE
         from plan_reference import locate_plan
@@ -1386,6 +2071,16 @@ def legacy_for_stop(actor, legacy_root, *, plan=None, runtime_root=None):
             raise RunStateError("selected legacy owner index is invalid")
         if selected.get("generation") != manifest["generation"]:
             raise RunStateError("selected legacy generation does not match manifest")
+        bindings = selected.get("desktop_bindings", {})
+        if not isinstance(bindings, dict):
+            raise RunStateError("invalid desktop legacy bindings")
+        for name, binding in bindings.items():
+            _validate_desktop_binding(name, binding)
+            if (kind != "native" or identity != native_ref or client != "claude"
+                    or binding["native_ref"] != native_ref
+                    or name not in selected.get("sources", [])):
+                raise RunStateError("desktop legacy binding does not select this native observer")
+            desktop_bindings[name] = binding
         for name in selected.get("sources", []):
             if not isinstance(name, str) or Path(name).name != name or not name.endswith(".json"):
                 raise RunStateError("unsafe indexed legacy source")
@@ -1399,7 +2094,7 @@ def legacy_for_stop(actor, legacy_root, *, plan=None, runtime_root=None):
         path = root / f"{target.stem[:40]}-{key}.json"
         if path.exists():
             paths.add(path)
-    return {**discover_legacy(actor, root, plan=plan, runtime_root=runtime, _paths=paths), "health": "PASS",
+    return {**discover_legacy(actor, root, plan=plan, runtime_root=runtime, _paths=paths, _desktop_bindings=desktop_bindings), "health": "PASS",
             "inventory_unattributed": manifest.get("unattributed_count", 0)}
 
 

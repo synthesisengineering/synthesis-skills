@@ -81,7 +81,22 @@ def test_real_checkpoint_script_runs_from_physically_isolated_closure(modular_so
     plan = modular.resolve_selection(source, ["synthesis-checkpoint"], False)
     target = tmp_path / "isolated"
     modular.materialize_payload(source, target, plan["files"])
-    assert not (target / "skills/synthesis-writing-craft").exists()
+    # The runtime reads domain-method references from their owning skills.
+    # Those support bytes must work without exposing unrelated entrypoints.
+    assert not (target / "skills/synthesis-writing-craft/SKILL.md").exists()
+    assert not (target / "skills/synthesis-article-writing").exists()
+    assert not (target / "hooks/hooks.json").exists()
+    assert plan["skills"] == ["synthesis-checkpoint"]
+    assert plan["optional_core_files"] == {}
+    domain = subprocess.run(
+        [sys.executable, "-B", "-c",
+         "import sys; sys.path.insert(0, sys.argv[1]); "
+         "from domain_quality import DIMENSIONS, family_route; "
+         "assert all(family_route(f)['guidance'] for f in DIMENSIONS)",
+         str(target / "skills/synthesis-autopilot/scripts")],
+        cwd=home, env=environment, capture_output=True, text=True, timeout=30,
+    )
+    assert domain.returncode == 0, domain.stdout + domain.stderr
     run = subprocess.run([sys.executable, "-B", str(target / "skills/synthesis-checkpoint/scripts/refresh.py"), "--help"],
                          cwd=home, env=environment, capture_output=True, text=True, timeout=30)
     assert run.returncode == 0, run.stderr

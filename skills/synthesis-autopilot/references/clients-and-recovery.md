@@ -74,6 +74,14 @@ inventory. Current PM admission and evidence remain required. Released terminal
 runs retain their stop-safe tombstones; released unfinished ownership cannot
 authorize continued mutations.
 
+The combined Stop entry loads PM's native identity observer directly, including
+in a fresh process with no session-reference environment hint. Surface labels
+select the response dialect; they never establish ownership. Native transcript
+evidence is required before treating an empty runtime as having no owned work.
+A verified native identity with only closed indexed engagements produces no
+autopilot warning. Missing identity, conflicting surface hints and unfinished
+owned work remain unresolved without creating repeated corrective turns.
+
 ## Continuation is observed
 
 Capability records name the exact surface, version and survival horizon. Native
@@ -157,6 +165,14 @@ An immutable index generation commits atomically. Stop subsequently reads only
 the selected native/seat records. Unknown/unassignable legacy records remain
 visible in the inventory report without blocking an unrelated owner's run.
 Corrupt selected records remain a fail-closed recovery problem.
+
+Explicit indexing also preserves Claude desktop host-to-native bindings observed
+from exact PM seat sidecars. These discovery records survive sidecar removal on
+release and later inventory refreshes; they never restore active claim authority.
+If release erased the only binding before indexing, the inventory reports the
+unfinished record as unattributable. Only an explicitly selected plan makes that
+unbound record a blocking recovery question; unrelated Stop events do not adopt
+it. Closed legacy records need no continued execution and remain quiet.
 
 A nonempty legacy registry without an index produces one terminal unresolved
 health message naming this doctor action. The agent performs it within existing

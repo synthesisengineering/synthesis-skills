@@ -10,7 +10,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-code-audit"]
 metadata:
   author: "Emil Peñaló"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -33,7 +33,7 @@ A branch can contain perfectly good code and still fail preflight: tests broken,
 
 **The natural flow:** Implement → self-verify (implementation-integrity) → quality scan (code-audit) → branch gate (preflight) → create PR → peer review (pr-review).
 
-Preflight assumes implementation-integrity was already run during development. It does not re-check whether the code is complete — it checks whether the *branch* is ready to leave your machine.
+Preflight consumes current implementation-integrity and audit evidence. It checks that the evidence covers the exact proposed branch state and required consumers; it does not repeat an unchanged review merely to produce another report. A readiness verdict does not grant merge, release or deployment authority. Apply the shared [decision-ownership contract](../synthesis-thinking-framework/references/decision-ownership.md) and the action owner's existing gate.
 
 ---
 
@@ -44,8 +44,10 @@ Preflight evaluates six orthogonal dimensions. Each is graded independently:
 - **Pass** — no issues
 - **Warning** — potential concern, does not block
 - **Fail** — blocks the PR until resolved
+- **Unknown** — required evidence is unavailable, incomplete or stale; blocks readiness
+- **N/A** — the dimension does not apply, with a concrete reason tied to the project contract
 
-A single FAIL in any dimension means the branch is NOT READY. The verdict is mechanical — no human override of FAIL dimensions. Warnings are surfaced for awareness but do not block.
+A single FAIL or UNKNOWN in a required dimension means the branch is NOT READY. Warnings are surfaced for awareness but do not block. An approved contract amendment may change a requirement; it cannot relabel a failed or missing observation as a pass.
 
 ---
 
@@ -83,7 +85,7 @@ For each tracked entry:
 
 1. **Run its resolution verification check.** Each temporary consideration should define criteria for when it can be removed (a flag is deleted, a migration is complete, a dependency is upgraded).
 2. **Resolved entries** — remove them from tracking. Report the resolution in the preflight output.
-3. **Still-active entries** — list them in the preflight output. Ensure other preflight checks (audit, test runs) respect any exclusions described in active entries.
+3. **Still-active entries** — list them in the preflight output. Verify each proposed exclusion against the governing contract and its actual decision owner. A tracked workaround or known failure is not permission to skip a required check. Keep unresolved required checks blocking and preserve the original evidence.
 
 If the project does not track temporary considerations, grade this dimension as N/A.
 
@@ -92,7 +94,7 @@ If the project does not track temporary considerations, grade this dimension as 
 Review the commits on this branch (from the base branch to HEAD):
 
 - **Secrets or credentials in commit messages** — FAIL. Even if the secret is not in the code, its presence in a commit message means it will persist in git history.
-- **Vague messages** — WARNING for messages like "fix," "update," "wip," or single-word subjects that give no context. These should be reworded or squashed before PR.
+- **Message clarity within repository policy** — flag unclear messages when the repository calls for descriptive subjects. Explicit disclosure rules may require generic messages; do not demand sensitive detail or history rewriting to satisfy a generic style preference.
 - **Convention compliance** — check that commit messages follow the project's documented format (conventional commits, imperative mood, character limits, or whatever the project specifies). Flag violations.
 
 ---
@@ -104,19 +106,19 @@ Present findings as a status report:
 ```
 PREFLIGHT REPORT — {branch-name}
 
-Branch:           pass/warning/fail (details)
-Clean tree:       pass/warning/fail (details)
-Tests & types:    pass/warning/fail (X passed, Y failed)
-Code audit:       pass/warning/fail (X issues: N FAIL, N WARNING)
-Temp items:       pass/skipped (N resolved, N still active)
-Commit history:   pass/warning/fail (details)
+Branch:           pass/warning/fail/unknown (details)
+Clean tree:       pass/warning/fail/unknown (details)
+Tests & types:    pass/fail/unknown/N/A (X passed, Y failed; applicability)
+Code audit:       pass/warning/fail/unknown (coverage and findings)
+Temp items:       pass/fail/unknown/N/A (N resolved, N still active)
+Commit history:   pass/warning/fail/unknown (details)
 
 VERDICT: READY / NOT READY (with blockers listed)
 ```
 
-**READY** — all dimensions pass. Warnings are acceptable and listed for awareness.
+**READY** — all required dimensions have current passing evidence; genuine N/A dimensions and nonblocking warnings are explained.
 
-**NOT READY** — one or more FAIL. List blockers in priority order. For each blocker, state what is wrong and what needs to happen to resolve it.
+**NOT READY** — one or more required dimensions are FAIL or UNKNOWN. List blockers in priority order. For each blocker, state what is wrong or missing and what observation will resolve it.
 
 ---
 
@@ -139,7 +141,7 @@ Each tracked consideration should include:
 - **Description** — what the workaround does and why it exists
 - **Reason it is temporary** — what event or change will make it unnecessary
 - **Resolution verification** — a concrete, checkable condition (a file is deleted, a config key exists, a dependency version is above X, a feature flag is removed)
-- **Exclusions** — if the workaround causes known test failures or audit warnings, document them so preflight does not double-count the issue
+- **Proposed exclusions** — identify the affected requirement, its decision owner and any applicable grant. Record failures once without suppressing their blocking consequence. No exclusion arises merely from being listed here.
 
 ### Why Preflight Checks This
 
@@ -149,8 +151,8 @@ Workarounds that are not tracked and not checked tend to become permanent. Prefl
 
 ## Rules
 
-- Never skip a dimension. If a check cannot run (no test suite, no type checker), grade it as N/A with explanation — not as PASS.
-- The verdict is mechanical. If any dimension is FAIL, the verdict is NOT READY. No exceptions.
+- Never skip a dimension. A genuinely inapplicable check may be N/A with evidence of why it does not apply. A missing tool, absent required suite, inaccessible environment or failed check is UNKNOWN or FAIL, never N/A.
+- The verdict is mechanical. Any required FAIL or UNKNOWN makes it NOT READY.
 - Warnings are informational. They surface concerns but do not block.
 - If preflight is invoked by another workflow (a shipping or CI pipeline), return the full report to that workflow for decision-making.
-- Do not re-run checks that were already run in the current session. If a code audit was just completed, reference its results rather than running a second audit.
+- Reuse evidence only while its source/base hashes, relevant inputs, tool/environment assumptions and criterion remain valid. After a change, rerun the affected checks and every check the repository explicitly requires; retain unaffected evidence. A same-session timestamp alone does not establish validity.
