@@ -124,3 +124,47 @@ def test_execution_scope_or_head_cannot_be_substituted(engine, world):
     for key, value in [('scope', 'LOCAL_READY'), ('authority_granted', True), ('journal_head', {'revision': 1, 'digest': 'f' * 64})]:
         wrong = deepcopy(receipt); wrong[key] = value
         assert checkpoint.validate_execution_basis(view(engine, world, state), wrong)[0] == 'FAIL'
+
+
+@pytest.mark.parametrize('size', [0, 1024, 256 * 1024])
+def test_execution_read_requests_observed_size_plus_one_not_global_maximum(tmp_path, monkeypatch, size):
+    import os
+    path = tmp_path / 'bounded-read.bin'
+    path.write_bytes(b'x' * size)
+    actual = os.fdopen
+    requested = []
+    class TracedFile:
+        def __init__(self, stream): self.stream = stream
+        def __enter__(self): self.stream.__enter__(); return self
+        def __exit__(self, *args): return self.stream.__exit__(*args)
+        def fileno(self): return self.stream.fileno()
+        def read(self, count): requested.append(count); return self.stream.read(count)
+    monkeypatch.setattr(checkpoint.os, 'fdopen', lambda *args, **kwargs: TracedFile(actual(*args, **kwargs)))
+    assert checkpoint._read(path) == b'x' * size
+    assert requested == [size + 1]
+
+
+@pytest.mark.parametrize('damage', ['growth', 'replacement', 'oversized', 'symlink'])
+def test_execution_observed_size_bound_preserves_inode_and_growth_refusal(tmp_path, monkeypatch, damage):
+    import os
+    path = tmp_path / 'bounded-read.bin'
+    path.write_bytes(b'initial')
+    if damage == 'oversized':
+        with path.open('wb') as stream: stream.truncate(checkpoint.MAX_FILE_BYTES + 1)
+    elif damage == 'symlink':
+        target = tmp_path / 'actual'; path.rename(target); path.symlink_to(target)
+    actual = os.fdopen
+    class ChangingFile:
+        def __init__(self, stream): self.stream = stream
+        def __enter__(self): self.stream.__enter__(); return self
+        def __exit__(self, *args): return self.stream.__exit__(*args)
+        def fileno(self): return self.stream.fileno()
+        def read(self, count):
+            if damage == 'growth':
+                with path.open('ab') as writer: writer.write(b'grew')
+            elif damage == 'replacement':
+                replacement = path.with_name('replacement'); replacement.write_bytes(b'initial'); replacement.replace(path)
+            return self.stream.read(count)
+    monkeypatch.setattr(checkpoint.os, 'fdopen', lambda *args, **kwargs: ChangingFile(actual(*args, **kwargs)))
+    with pytest.raises(ValueError): checkpoint._read(path)
+    assert path.exists()

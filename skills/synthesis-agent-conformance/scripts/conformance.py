@@ -2475,6 +2475,35 @@ CAPABILITY_EVIDENCE_KINDS = (
 )
 
 
+def native_adapter_qualification_checks(repo_root: Path) -> list[Check]:
+    """Source adapter vectors remain separate from native/outcome acceptance."""
+    directory = repo_root / "skills/synthesis-autopilot/scripts"
+    checks: list[Check] = []
+    prior_path = list(sys.path)
+    try:
+        sys.path.insert(0, str(directory))
+        import native_adapter_sdk
+        if Path(native_adapter_sdk.__file__).resolve().parent != directory.resolve():
+            raise ValueError("qualification SDK loaded from another source tree")
+        for surface, entry in supported_agent_surfaces().items():
+            if "observation_contract" not in entry:
+                continue
+            report = native_adapter_sdk.assess(surface, required=["native_identity", "permission_enforcement", "tool_outcome"])
+            add(checks, f"capability.{surface}.adapter-source", True,
+                "implemented passive source schemas: " + ", ".join(report["contract"]["supported_schemas"]))
+            for name, cell in report["capabilities"].items():
+                detail = (f"documented={cell['documented']}; implemented={cell['implemented']}; "
+                          "installed=UNKNOWN; native=UNKNOWN; outcome=UNKNOWN")
+                if cell.get("reason"):
+                    detail += "; " + cell["reason"]
+                add(checks, f"capability.{surface}.native.{name}", None, detail, outcome="UNKNOWN")
+    except (ValueError, OSError, ImportError, KeyError) as exc:
+        add(checks, "capability.additional-adapter-source", False, str(exc))
+    finally:
+        sys.path[:] = prior_path
+    return checks
+
+
 def capability_checks(
     repo_root: Path, evidence_path: Path = DEFAULT_CAPABILITY_EVIDENCE
 ) -> list[Check]:
@@ -2562,6 +2591,7 @@ def capability_checks(
                 f"checked_at={checked_at}; age_seconds={int(age)}",
                 outcome=status,
             )
+    checks.extend(native_adapter_qualification_checks(repo_root))
     return checks
 
 

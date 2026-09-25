@@ -250,6 +250,20 @@ def validate_request(value) -> Request:
                     raise ValueError("attempt needs bounded unique existing observation references")
                 if data["rationale_ref"] is not None:
                     run_state._id(data["rationale_ref"], "rationale artifact ID")
+            elif kind == "supervision":
+                import supervision
+                supervision.validate({key:value for key,value in data.items() if key!='kind'})
+            elif kind == "launch_prepare":
+                import prepared_native_launch
+                prepared_native_launch.validate({key:value for key,value in data.items() if key!='kind'})
+            elif kind == "launch_cancel":
+                _object(data, {'kind','permit_id','reason'})
+                run_state._id(data['permit_id'],'launch permit')
+                _text(data['reason'],'launch cancellation reason')
+            elif kind == "recovery_instructions":
+                _object(data, {'kind','plan_digest','contract_digest','reason'})
+                for key in ('plan_digest','contract_digest','reason'):
+                    _text(data[key],key)
             else:
                 raise ValueError("unsupported record kind")
         elif operation == "checkpoint":
@@ -449,9 +463,11 @@ def _start(tx, mode):
         tx.observe("project-ownership", "claim-ownership", {})
 
 
-def _catch_up(tx, prefix):
+def _catch_up(tx, prefix, *, retain_unreconciled=False):
     sources = tx.state.get("extensions", {}).get("native_observations", {}).get("sources", {})
     for handle in sorted(sources):
+        if retain_unreconciled and sources[handle].get('recovery'):
+            continue
         tx.step(prefix + ":" + handle, "native.observe", {"source_handle": handle,
             "through_event": None, "task_id": None, "attempt_id": None})
 
@@ -488,6 +504,12 @@ def _record(tx, data):
             "kind": data["obligation_kind"], **{key: data[key] for key in ("artifact_ids", "criterion_ids", "reason")}})
     elif kind == "attempt":
         tx.step("attempt", "workflow.attempt", {key: value for key, value in data.items() if key != "kind"})
+    elif kind == "supervision":
+        tx.step("supervision", "supervision.action", {key:value for key,value in data.items() if key!='kind'})
+    elif kind in {"launch_prepare", "launch_cancel"}:
+        tx.step(kind, "native.launch."+('prepare' if kind=='launch_prepare' else 'cancel'), {key:value for key,value in data.items() if key!='kind'})
+    elif kind == "recovery_instructions":
+        tx.step("recovery_instructions", "recovery.instructions", {key:value for key,value in data.items() if key!='kind'})
 
 
 def _prepare_profile_obligation(context, payload):
@@ -557,6 +579,8 @@ def _prepare_checkpoint(context, payload):
         data["pm"] = execution_checkpoint.observe_execution_basis(context)
     import profile_evidence
     data["basis"] = profile_evidence.checkpoint_basis(context)
+    import recovery_capsule
+    data["recovery_capsule"] = recovery_capsule.capture(context)
     return data
 
 
@@ -644,6 +668,12 @@ def _checkpoint_reducer(state, prepared, context):
 def register(engine):
     import decision_uncertainty
     decision_uncertainty.register(engine)
+    import recovery_capsule
+    recovery_capsule.register(engine)
+    import supervision
+    supervision.register(engine)
+    import prepared_native_launch
+    prepared_native_launch.register(engine)
     engine.register_command("controller.checkpoint", _checkpoint_reducer)
     engine.register_preparer("controller.checkpoint", _prepare_checkpoint)
     engine.register_command("controller.profile_obligation", _profile_obligation_reducer)
@@ -652,8 +682,8 @@ def register(engine):
     engine.register_preparer("controller.closure_intent", _prepare_closure)
 
 
-def _checkpoint(tx, data):
-    _catch_up(tx, "catch-up")
+def _checkpoint(tx, data, *, recovering=False):
+    _catch_up(tx, "catch-up", retain_unreconciled=recovering)
     tx.step("checkpoint", "controller.checkpoint", data)
 
 
@@ -821,6 +851,26 @@ def _response(request, state, status, *, context=None, diagnostics=None):
                 "native": {}, "interpretation": "Historical ingestion is separate from current positive ranges and negative interval coverage."}
     next_steps = []
     if state is not None:
+        import recovery_capsule
+        coverage["recovery_capsule"] = recovery_capsule.reference(state, Path(state["owner"]["project_root"]))
+        recovery = state.get("extensions", {}).get("recovery")
+        if recovery is not None:
+            # A committed request is replayable; external cancellation and
+            # changed inputs are not frozen by that replay key. Read the same
+            # owner report freshly without appending or replaying any effect.
+            current_recovery = recovery_capsule._report(context) if context is not None else {
+                **deepcopy(recovery["report"]), "status": "unverified",
+                "pending": [{"owner": "recovery", "kind": "current_owner_readback_required"}]}
+            coverage["recovery"] = current_recovery
+            coverage["recovery"].update(observed_revision=recovery['admitted_revision'],
+                recorded_status=recovery['report']['status'],
+                current_journal=recovery['admitted_revision']==state['revision'],
+                external_currentness='CURRENT_OWNER_READBACK' if context is not None else 'UNKNOWN',
+                interpretation='Fresh owner readback is separate from the retained journal admission observation')
+        import supervision
+        coverage['supervision']=supervision.status_view(state)
+        import prepared_native_launch
+        coverage['prepared_native_launch']=prepared_native_launch.status_view(state)
         entry = state.get("extensions", {}).get("controller", {}).get("requests", {}).get(request["request_id"], {})
         events = [row["command_id"] for row in sorted(entry.get("steps", {}).values(), key=lambda row: row["revision"])]
         next_steps = _next(state, context)
@@ -831,6 +881,11 @@ def _response(request, state, status, *, context=None, diagnostics=None):
         coverage["decision_uncertainty"] = decision_uncertainty.status_view(state, context)
         coverage["resources"] = summary(state, context)
         coverage["execution_policy"] = deepcopy(state.get("extensions", {}).get("workflow", {}).get("execution_policy"))
+        if recovery is not None and coverage["recovery"]["status"] != "clear":
+            next_steps = [item for item in next_steps if item["kind"] != "ready_task"]
+            next_steps.extend(deepcopy(coverage["recovery"]["pending"]))
+            if status == "READY":
+                status = "RECONCILE" if context is not None else "UNRESOLVED"
         extension = state.get("extensions", {}).get("native_observations", {})
         for handle, source in extension.get("sources", {}).items():
             coverage["native"][handle] = {"enrollment": source["enrollment"], "coverage": source.get("coverage"),
@@ -881,7 +936,11 @@ def handle(request: Request, *, project: Path, actor=None, runtime_root=None, so
     tx = None
     current_acceptance = None
     native_current = None
+    recovery_resolution = None
     try:
+        if request["operation"] == "recover":
+            import recovery_capsule
+            recovery_resolution = recovery_capsule.resolve(project, request["project_id"], actor, runtime_root)
         tx = _Transaction(request, project, actor, runtime_root, source_mode)
         operation, data = request["operation"], request["input"]
         readonly = operation == "explain" or operation == "next" and data["mode"] == "inspect"
@@ -890,7 +949,7 @@ def handle(request: Request, *, project: Path, actor=None, runtime_root=None, so
         if not readonly and tx.state is not None:
             run_state._check_request(tx.state, tx.binding("admission"))
             run_state._binding(tx.project, tx.state, actor)
-        last_step = {"next": "start-task", "checkpoint": "checkpoint", "recover": "checkpoint",
+        last_step = {"next": "start-task", "checkpoint": "checkpoint", "recover": "recovery-readback",
                      "finish": "close"}.get(operation)
         if operation == "record":
             last_step = "observe:check" if data["kind"] == "check" else data["kind"]
@@ -924,10 +983,7 @@ def handle(request: Request, *, project: Path, actor=None, runtime_root=None, so
             else:
                 tx.step("cancel-child", "workflow.cancel_child", {"child_id": data["target_id"], "reason": data["reason"]})
         elif operation == "recover":
-            if "capsule_ref" in data:
-                capsule = _reference(tx.project, data["capsule_ref"])
-                if capsule.get("run_id") != tx.run_id or capsule.get("project_id") != request["project_id"]:
-                    raise ValueError("recovery capsule does not name this run/project; it grants no ownership transfer")
+            tx.step("recovery-admit", "recovery.admit", {"capsule_ref": data.get("capsule_ref")})
             # Existing two-phase transfer remains mandatory for a new owner.
             if data["reconcile_sources"]:
                 sources = tx.state.get("extensions", {}).get("native_observations", {}).get("sources", {})
@@ -939,7 +995,8 @@ def handle(request: Request, *, project: Path, actor=None, runtime_root=None, so
                     if handle in specs:
                         payload["reconciliation"] = {key: value for key, value in specs[handle].items() if key != "source_handle"}
                     tx.step("reconcile:" + handle, "native.reconcile", payload)
-            _checkpoint(tx, {"reason": "Current owner reconstructed the authoritative journal", "include_pm": False})
+            _checkpoint(tx, {"reason": "Current owner reconstructed the authoritative journal", "include_pm": False}, recovering=True)
+            tx.step("recovery-readback", "recovery.admit", {"capsule_ref": None})
         elif operation == "finish":
             _finish(tx, data)
         finishing = operation == "finish" and data["disposition"] == "completed"
@@ -966,6 +1023,10 @@ def handle(request: Request, *, project: Path, actor=None, runtime_root=None, so
                     or any(row.get("code") == "requested_locator_not_observed" for row in source.get("last_diagnostics", [])) for source in sources.values()):
                 status = "WAIT"
         response = _response(request, tx.state, status, context=context)
+        if recovery_resolution is not None:
+            response["coverage"]["project_resolution"] = recovery_resolution
+        if operation == "recover" and response["coverage"].get("recovery", {}).get("status") == "reconcile":
+            response["status"] = "RECONCILE"
         if current_acceptance is not None:
             response["coverage"]["current_acceptance"] = current_acceptance
             response["coverage"]["journal_terminal"] = tx.state["status"]

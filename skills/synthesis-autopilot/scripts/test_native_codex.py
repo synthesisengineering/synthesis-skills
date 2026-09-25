@@ -27,6 +27,46 @@ def goal(objective="Synthetic objective", tokens=10):
 
 
 class CodexTests(unittest.TestCase):
+    def item_completed(self, item=None):
+        # Synthetic content retaining the genuine 0.155.0-alpha.16.4 rollout
+        # envelope. This is not the separate lower-case exec JSON dialect.
+        return {"type": "event_msg", "payload": {"type": "item_completed",
+            "thread_id": "root", "turn_id": "turn", "started_at_ms": 10,
+            "completed_at_ms": 20, "item": item or {"type": "CommandExecution",
+                "id": "item-1", "command": ["echo", "synthetic"], "cwd": "/tmp",
+                "status": "completed", "exit_code": 0, "stdout": "synthetic\n",
+                "stderr": "", "aggregated_output": "synthetic\n"}}}
+
+    def test_rollout_item_completion_is_observation_not_tool_or_task_completion(self):
+        for item in (None, {"type": "Reasoning", "id": "r", "summary_text": [], "raw_content": []},
+                     {"type": "AgentMessage", "id": "m", "content": [{"type": "text", "text": "synthetic"}], "phase": "commentary"}):
+            row = self.item_completed(item)
+            before = deepcopy(row)
+            result = adapter.decode_record(row, ROOT)[0]
+            self.assertEqual(result["kind"], "item.observation")
+            self.assertIsNone(result["native"]["call_id"])
+            self.assertFalse(result["data"]["portable_completion"])
+            self.assertFalse(result["data"]["grants_authority"])
+            self.assertEqual(row, before)
+
+    def test_rollout_item_completion_refuses_malformed_or_foreign_records(self):
+        valid = self.item_completed()
+        for field, value in (("thread_id", "foreign"), ("thread_id", None),
+                             ("turn_id", ""), ("completed_at_ms", 9),
+                             ("started_at_ms", True)):
+            row = deepcopy(valid); row["payload"][field] = value
+            with self.assertRaises(ValueError): adapter.decode_record(row, ROOT)
+        for field, value in (("type", "FutureItem"), ("id", ""),
+                             ("exit_code", True), ("command", "echo x"), ("stdout", {})):
+            row = deepcopy(valid); row["payload"]["item"][field] = value
+            with self.assertRaises(ValueError): adapter.decode_record(row, ROOT)
+
+    def test_rollout_item_unknown_status_and_failure_do_not_become_success(self):
+        row = self.item_completed(); row["payload"]["item"]["status"] = "futureStatus"
+        self.assertEqual(adapter.decode_record(row, ROOT)[0]["status"], "unknown")
+        row = self.item_completed(); row["payload"]["item"]["exit_code"] = -9
+        self.assertEqual(adapter.decode_record(row, ROOT)[0]["status"], "failed")
+
     def wire(self, value):
         return adapter.decode_wire(value, {"producer": ROOT, "mode": "synthetic"})[0]
 

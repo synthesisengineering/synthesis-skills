@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet", "synthesis-fact-checking", "synthesis-writing-craft", "synthesis-agent-conformance"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.3.0"
+  version: "3.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -82,7 +82,8 @@ approval, a versioned amendment and fresh verification.
 Use the thinking framework's [decisive-uncertainty method](../synthesis-thinking-framework/references/decisive-uncertainty.md) for facts that could change the next decision. The controller reports six-family domain requirements and open discriminating observations. Register a task-specific question only when it matters; resolve it with the existing evidence owner, preserve refuted predictions, and continue independent criteria while its dependent work waits. An empty uncertainty register adds no investigation requirement.
 
 Use `next`, `record`, `checkpoint`, `explain`, `cancel`, `recover` and `finish`
-for the normal execution loop. Stable request identities bind the complete
+for the normal execution loop. The Console and read-only operator view provide
+[status, durable questions and exact-owner handoffs](references/operator-experience.md). Stable request identities bind the complete
 input and expected revision. Read the returned status, coverage and diagnostics;
 a successfully invoked CLI can still report unresolved work. An interrupted
 request may already have committed steps. Inspect that prefix before choosing
@@ -230,6 +231,9 @@ or infrastructure failures end feedback with an explicit unresolved diagnostic;
 that is not completed work and does not relax pre-mutation guards. Preserve
 state and foreign evidence. Resume through the registry, then fresh ownership,
 current run journal, outstanding effects and the next ready task.
+Use the [capsule and cold-resume protocol](../synthesis-context-lifecycle/references/autopilot-recovery.md)
+for every interrupted run. Read [optional supervision and owner-prepared native continuation](references/supervision.md)
+before enrolling it; a queue lease and a recovery capsule do not establish a wake.
 
 Completion requires a current outcome readback even when the journal already
 contains a completed tombstone. Changed artifacts or expired proof make the

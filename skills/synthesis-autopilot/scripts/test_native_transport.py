@@ -161,28 +161,39 @@ def owned_worker(world, monkeypatch, client):
         'output_roots': [str(root / 'output')], 'scratch_root': str(root / 'scratch')}, 'admission_id': 'parent',
         'admission_requests': [{'id': 'parent', 'actor': world['actor'], 'paths': [str(root)]}]}
     state = command(runtime, world, state, 'workflow.dispatch', brief)
-    rows = exec_rows() if client == 'codex' else claude_rows()
-    emitter = root / 'fixture-cli.py'
-    emitter.write_text('import sys,json,errno,socket\nfrom pathlib import Path\nsys.stdin.read()\n'
-        + 'try:\n Path(' + repr(str(world['project']/'forbidden-fixture-write')) + ').write_text("must not write")\n raise RuntimeError("sandbox allowed protected write")\n'
-        + 'except PermissionError: pass\n'
-        + 'sock=socket.socket();sock.settimeout(1)\ntry:\n sock.connect(("127.0.0.1",9))\n raise RuntimeError("sandbox allowed network")\n'
-        + 'except OSError as exc:\n assert exc.errno in (errno.EPERM,errno.EACCES), str(exc)\nfinally: sock.close()\n'
-        + 'print("SYNTHETIC_OS_SANDBOX_DENIED",file=sys.stderr)\nrows=' + repr(rows) + '\nfor row in rows: print(json.dumps(row))\n')
-    # The substitution selects a wholly synthetic local executable; admission,
-    # manifest custody, receipt acceptance, journal and source reads stay real.
-    import sys
-    monkeypatch.setattr(boundary, 'client_selection', lambda client, env: ({}, sys.executable))
-    def isolated_argv(client, executable, contract, selection):
-        return _sandbox_command(world['project'], Path(contract['scratch_root']), emitter, [])[0] + ['-p']
-    monkeypatch.setattr(boundary, 'native_argv', isolated_argv)
-    # Native initialization explicitly does not claim host enforcement.
-    state = _owner_register(runtime, world, state, 'worker-spec', {'schema_version': 1,
-        'kind': 'native_worker', 'arguments': {'child_id': 'worker-one', 'timeout_seconds': 10}})
-    state = runtime.observe(world['project'], state['run_id'], 'native_worker', {'check_id': 'worker-spec'},
-        expected_revision=state['revision'], command_id='worker-executed', actor=world['actor'], runtime_root=world['runtime'])
-    state = command(runtime, world, state, 'workflow.worker_record', {'child_id': 'worker-one', 'receipt_id': 'worker-executed'})
-    return runtime, state
+    # A reachable outer listener is the positive control: a refused connection
+    # to an arbitrary closed port cannot prove network isolation. Linux bwrap
+    # uses a separate network namespace; macOS denies the connect syscall.
+    import socket
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(2)
+        address = listener.getsockname()
+        with socket.create_connection(address, timeout=1):
+            connection, _ = listener.accept()
+            connection.close()
+        rows = exec_rows() if client == 'codex' else claude_rows()
+        emitter = root / 'fixture-cli.py'
+        emitter.write_text('import sys,json,errno,socket\nfrom pathlib import Path\nsys.stdin.read()\n'
+            + 'try:\n Path(' + repr(str(world['project']/'forbidden-fixture-write')) + ').write_text("must not write")\n raise RuntimeError("sandbox allowed protected write")\n'
+            + 'except OSError as exc:\n assert exc.errno in (errno.EPERM,errno.EACCES,errno.EROFS), str(exc)\n'
+            + 'sock=socket.socket();sock.settimeout(1)\ntry:\n sock.connect(' + repr(address) + ')\n raise RuntimeError("sandbox allowed network")\n'
+            + 'except OSError as exc:\n assert exc.errno in (errno.EPERM,errno.EACCES,errno.ENETUNREACH,errno.EHOSTUNREACH,errno.ECONNREFUSED), str(exc)\nfinally: sock.close()\n'
+            + 'print("SYNTHETIC_OS_SANDBOX_DENIED",file=sys.stderr)\nrows=' + repr(rows) + '\nfor row in rows: print(json.dumps(row))\n')
+        # The substitution selects a wholly synthetic local executable; admission,
+        # manifest custody, receipt acceptance, journal and source reads stay real.
+        import sys
+        monkeypatch.setattr(boundary, 'client_selection', lambda client, env: ({}, sys.executable))
+        def isolated_argv(client, executable, contract, selection):
+            return _sandbox_command(world['project'], Path(contract['scratch_root']), emitter, [])[0] + ['-p']
+        monkeypatch.setattr(boundary, 'native_argv', isolated_argv)
+        # Native initialization explicitly does not claim host enforcement.
+        state = _owner_register(runtime, world, state, 'worker-spec', {'schema_version': 1,
+            'kind': 'native_worker', 'arguments': {'child_id': 'worker-one', 'timeout_seconds': 10}})
+        state = runtime.observe(world['project'], state['run_id'], 'native_worker', {'check_id': 'worker-spec'},
+            expected_revision=state['revision'], command_id='worker-executed', actor=world['actor'], runtime_root=world['runtime'])
+        state = command(runtime, world, state, 'workflow.worker_record', {'child_id': 'worker-one', 'receipt_id': 'worker-executed'})
+        return runtime, state
 
 
 @pytest.mark.parametrize('client', ['codex','claude'])

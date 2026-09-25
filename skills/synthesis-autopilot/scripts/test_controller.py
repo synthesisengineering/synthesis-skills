@@ -44,8 +44,33 @@ def start_request(world, identity='start'):
 
 
 def invoke(facade, world, value):
+    if value['operation'] == 'recover' and not world.get('skip_recovery_attribution'):
+        attribute_recovery_fixture(world)
     return facade.handle(value, project=world['project'], actor=world['actor'],
                          runtime_root=world['runtime'], source_mode='synthetic')
+
+
+def attribute_recovery_fixture(world):
+    """Synthetic guard attribution for actual isolated fixture writes only.
+
+    Production recovery never creates this evidence. The fixture has no live
+    repo guard; enumerate and hash its real dirty files to exercise PM's full
+    resolver instead of replacing it with a selected-path stub.
+    """
+    import hashlib
+    import project_state
+    import os
+    import tempfile
+    import run_state
+    directory=world['runtime'].parent/'repo-guard/pending'
+    directory.mkdir(parents=True,exist_ok=True)
+    dirty=project_state._dirty_project_files(world['repo'],'projects/alpha')
+    identity=run_state.native_binding(world['board'],world['actor']['native_payload'])['session_uuid']
+    fd,path=tempfile.mkstemp(prefix='.synthetic-',dir=directory)
+    with os.fdopen(fd,'w') as stream:
+        stream.write(json.dumps({'schema_version':2,'session_id':identity,
+            'paths':[row['path'] for row in dirty], 'path_hashes':{row['path']:row['sha256'] for row in dirty}}))
+    os.replace(path,directory/'synthetic-fixture.json')
 
 
 def state_of(world, response):

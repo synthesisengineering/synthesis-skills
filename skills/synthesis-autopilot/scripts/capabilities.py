@@ -62,6 +62,8 @@ _REGISTRY = {
         "copilot-cli": _surface("skill-only", "copilot"),
         "copilot-vscode": _surface("skill-only", "copilot"),
         "copilot-cloud": _surface("skill-only", "copilot"),
+        "opencode-cli": _surface("observation-only", "opencode"),
+        "opencode-sdk-v2": _surface("observation-only", "opencode"),
         "hermes": _surface("prospective", None),
     },
 }
@@ -69,7 +71,13 @@ _REGISTRY = {
 
 def supported_surfaces() -> dict:
     """Return independent data suitable for doctor, installers and docs."""
-    return copy.deepcopy(_REGISTRY)
+    result = copy.deepcopy(_REGISTRY)
+    for entry in result["surfaces"].values():
+        if entry["dialect"] in {"cursor", "copilot", "opencode"}:
+            entry["observation_contract"] = {"sdk": "native-adapter-sdk-v1",
+                "authority_granted": False, "native_acceptance": "UNKNOWN",
+                "permission_enforcement": "FAIL_OPEN_PATHS" if entry["dialect"] == "copilot" else "qualification-required"}
+    return result
 
 
 def _entry(surface: str) -> dict:
@@ -101,7 +109,7 @@ def _time(value: Any) -> float:
 def normalize_event(surface: str, payload: dict) -> NativeEvent:
     """Translate native syntax, without claiming authenticated ownership."""
     dialect = _entry(surface)["dialect"]
-    if not isinstance(payload, dict) or dialect is None:
+    if not isinstance(payload, dict) or dialect is None or dialect == "opencode":
         raise ValueError("native Stop adapter or payload unavailable")
     if dialect == "cursor":
         if payload.get("hook_event_name", "stop") not in {"stop", "subagentStop"}:

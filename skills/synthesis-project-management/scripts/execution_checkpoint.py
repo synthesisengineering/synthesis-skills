@@ -33,7 +33,9 @@ def _read(path):
         before = os.fstat(stream.fileno())
         if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_FILE_BYTES:
             raise ValueError('execution basis requires bounded regular files')
-        raw = stream.read(MAX_FILE_BYTES + 1)
+        # The inode size is already bounded. Retain one growth sentinel byte
+        # without allocating the global 16 MiB ceiling for every small file.
+        raw = stream.read(before.st_size + 1)
         after = os.fstat(stream.fileno())
     named = path.lstat()
     signature = lambda value: (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns)

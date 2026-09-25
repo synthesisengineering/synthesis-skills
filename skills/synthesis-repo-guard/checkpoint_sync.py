@@ -2610,6 +2610,117 @@ def record_producer_path(path: Path, cfg: dict) -> tuple[list[dict], Path | None
         )
 
 
+def record_prepared_native_launch(*, project: Path, run_id: str, permit_id: str,
+                                 token: str, revision: int, guard_root: Path) -> Path:
+    """Attribute only a committed one-use owner-grant consumer append.
+
+    There is no generic producer path, native actor, or caller-provided hash map
+    here. The authoritative journal contains the admitted pre-edit basis and
+    exact run. This existing attribution owner validates and serializes the
+    manifest mutation. Publication and claim transfer remain separate owners.
+    """
+    import hmac
+    scripts = Path(__file__).resolve().parents[1] / "synthesis-autopilot/scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    import run_state
+    import project_state
+    project = Path(project).absolute()
+    guard_root = Path(guard_root).absolute()
+    event = run_state._last_event(project, run_id)
+    state = event["state"]
+    authority = event.get("actor", {})
+    grant = state.get("extensions", {}).get("prepared_native_launch", {}).get("permits", {}).get(permit_id)
+    if (not isinstance(grant, dict) or not isinstance(token, str)
+            or not hmac.compare_digest(grant["token_sha256"], hashlib.sha256(token.encode()).hexdigest())
+            or type(revision) is not int or event["revision"] != revision
+            or event["command"] not in {"native.launch.reserve", "native.launch.submit", "native.launch.observe"}
+            or authority.get("kind") != "prepared-native-launch" or authority.get("permit_id") != permit_id
+            or authority.get("prepared_revision") != grant["prepared_revision"]
+            or authority.get("issuer_session_uuid") != grant["issuer"]["session_uuid"]
+            or authority.get("native_actor_authenticated") is not False
+            or grant.get("consumed_revision", revision+1) > revision):
+        raise ValueError("attribution requires the exact committed prepared-grant consumption")
+    proof = run_state._binding(project, state, grant["issuer_selector"], readonly=True, passive=True)
+    if guard_root != Path(grant['runtime_root']).parent / 'repo-guard':
+        raise ValueError('prepared grant cannot redirect the attribution root')
+    if any(proof.get(key) != grant["issuer"].get(key) for key in
+           ("session_uuid", "native_ref", "claim_hash", "repository", "branch")):
+        raise ValueError("prepared attribution issuer ownership changed")
+    before = authority.get("edit_basis")
+    if not isinstance(before, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k,v in before.items()):
+        raise ValueError("committed attribution pre-edit basis is absent")
+    repository = Path(proof["repository"])
+    relative = project.relative_to(repository).as_posix()
+    after = {row["path"]: row["sha256"] for row in project_state._dirty_project_files(repository, relative)}
+    home = run_state._home(project, run_id)
+    plan = run_state._plan(project, state["plan"]).resolved
+    # A filename is not proof that its bytes came from the projection writer.
+    # The committed owner event binds the exact pre-edit rendering; independently
+    # derive current/summary/terminal bytes and enforce the controlling prose.
+    if run_state._plan_digest(project, state) != grant["issuer"]["plan_digest"]:
+        raise ValueError("prepared attribution controlling human plan changed")
+    derived = {str(path): hashlib.sha256(raw).hexdigest() for path, raw in
+               run_state._projection_bytes(project, state, plan.read_text(encoding="utf-8")).items()}
+    recorded = authority.get("projection_hashes")
+    if not isinstance(recorded, dict) or set(recorded) != set(derived) or recorded != derived:
+        raise ValueError("prepared attribution projection differs from its committed owner rendering")
+    expected = {**derived, str(run_state._plan_lock(project, plan)): hashlib.sha256(b"").hexdigest(),
+                str(home / "events" / f"{revision:012d}.json"): hashlib.sha256(run_state._json(event) + b"\n").hexdigest()}
+    allowed = set(expected)
+    for path, digest in expected.items():
+        target_path = Path(path)
+        if target_path.is_symlink() or not target_path.is_file() or hashlib.sha256(target_path.read_bytes()).hexdigest() != digest:
+            raise ValueError("prepared attribution encountered non-derived projection bytes")
+    if any(path not in after for path in before):
+        raise ValueError("dirty baseline removal requires its actual producer attribution")
+    for path, digest in after.items():
+        if before.get(path) != digest and path not in allowed:
+            raise ValueError("prepared grant cannot attribute a cross-path producer edit")
+    pending = guard_root / "pending"
+    target = pending / (hashlib.sha256(grant["native_session_id"].encode()).hexdigest() + ".json")
+    lock = guard_root / "lifecycle.lock"
+    validate_state_paths(guard_root, pending, target, lock)
+    descriptor = open_lock_file(lock)
+    acquired = False
+    try:
+        end = time.monotonic() + 10
+        while not acquired:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB); acquired = True
+            except BlockingIOError:
+                if time.monotonic() >= end:
+                    raise ValueError("attribution lifecycle lock timeout")
+                time.sleep(.05)
+        # Do not overwrite a manifest which changed owner or any unrelated row.
+        old = json.loads(target.read_text()) if target.exists() else {
+            "schema_version": 2, "session_id": grant["native_session_id"], "paths": [], "path_hashes": {}}
+        if old.get("session_id") != grant["native_session_id"] or old.get("schema_version") != 2:
+            raise ValueError("existing attribution is foreign or unsupported; preserve it")
+        if not isinstance(old.get("paths"), list) or not isinstance(old.get("path_hashes", {}), dict):
+            raise ValueError("existing attribution is malformed; preserve it")
+        if run_state._last_event(project, run_id)["digest"] != event["digest"]:
+            raise ValueError("prepared attribution journal changed during admission")
+        current = {row["path"]: row["sha256"] for row in project_state._dirty_project_files(repository, relative)}
+        if current != after:
+            raise ValueError("prepared attribution bytes changed during admission")
+        result = dict(old)
+        result["paths"] = sorted(set(old["paths"]) | set(after))
+        result["path_hashes"] = {**old.get("path_hashes", {}), **after}
+        result["content_hashes"] = {**old.get("content_hashes", {}), **after}
+        result["prepared_native_launch"] = {"run_id": run_id, "permit_id": permit_id,
+            "prepared_revision": grant["prepared_revision"], "journal_revision": revision,
+            "event_digest": event["digest"], "issuer_session_uuid": proof["session_uuid"],
+            "native_actor_authenticated": False,
+            "scope": "Grant-owned journal/projection writes; unchanged attributed baseline retained"}
+        atomic_json(target, result)
+        return target
+    finally:
+        if acquired:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
 # ---------------------------------------------------------------------------
 # Generic attention ping (same confidentiality rule as repo_sync_check)
 # ---------------------------------------------------------------------------

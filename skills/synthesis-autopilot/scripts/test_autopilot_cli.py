@@ -102,7 +102,7 @@ def test_checkpoint_terminal_veto_cannot_spend_autopilot_correction(world, monke
 
 
 @pytest.mark.parametrize('raw', [b'{"session_id":"one","session_id":"two"}',
-                               b'{"counter":NaN}', b'{"body":"' + b'x' * (256 * 1024) + b'"}'])
+                               b'{"counter":NaN}', b'{"body":"' + b'x' * (256 * 1024) + b'"}'], ids=['duplicate-identity', 'nonfinite-counter', 'oversized-body'])
 def test_stop_stdin_is_bounded_strict_json_before_owner_discovery(world, raw):
     before = world['board'].read_bytes()
     done = subprocess.run([sys.executable, str(SCRIPT), 'stop'], input=raw,

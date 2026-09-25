@@ -493,6 +493,14 @@ def _events(project, run_id):
         yield event
 
 
+def _last_event(project, run_id):
+    """Validate the complete chain while retaining only its latest full state."""
+    last = None
+    for last in _events(project, run_id):
+        pass
+    return last
+
+
 def load_run(project: Path, run_id: str) -> dict:
     """Read only the selected journal; projections and other runs confer no truth."""
     last = None
@@ -501,32 +509,38 @@ def load_run(project: Path, run_id: str) -> dict:
     return deepcopy(last["state"])
 
 
-def _project(project, state):
+def _projection_bytes(project, state, plan_text):
+    """Pure bytes shared by the projection writer and delegated attribution."""
     home = _home(project, state["run_id"])
-    _write(home / "current.json", _json(state) + b"\n")
+    output = {home / "current.json": _json(state) + b"\n"}
     summary = f"Run: {state['run_id']}\nRevision: {state['revision']}\nStatus: {state['status']}\n"
     summary += f"Contract: {state['contract_revision']} ({state['contract_digest']})\n"
     summary += f"Profile: {state['profile_revision']} ({state['profile_digest']})\n"
     if state.get("progress"):
         summary += "Progress: " + state["progress"]["summary"].replace("\n", " ") + "\n"
-    _write(home / "summary.md", ("# Autopilot run\n\n" + summary).encode())
+    output[home / "summary.md"] = ("# Autopilot run\n\n" + summary).encode()
     if state["status"] in TERMINAL:
-        _write(home / "terminal.json", _json({"schema_version": SCHEMA, "run_id": state["run_id"],
-               "revision": state["revision"], "status": state["status"], "terminal": state["terminal"]}) + b"\n")
+        output[home / "terminal.json"] = _json({"schema_version": SCHEMA, "run_id": state["run_id"],
+            "revision": state["revision"], "status": state["status"], "terminal": state["terminal"]}) + b"\n"
+    start, end = (f"<!-- autopilot:{state['run_id']}:{edge} -->" for edge in ("start", "end"))
+    block = start + "\n" + summary + end
+    if plan_text.count(start) != plan_text.count(end) or plan_text.count(start) > 1:
+        raise RunStateError("plan ledger markers are ambiguous; human repair required")
+    if start in plan_text:
+        plan_text = plan_text[:plan_text.index(start)] + block + plan_text[plan_text.index(end) + len(end):]
+    else:
+        plan_text = plan_text.rstrip() + "\n\n" + block + "\n"
+    output[_plan(project, state["plan"]).resolved] = plan_text.encode()
+    return output
+
+
+def _project(project, state):
     plan = _plan(project, state["plan"]).resolved
-    # Different runs may project into the same plan. Share one lock so their
-    # read/replace steps never erase each other's ledger or human prose.
+    # Different runs share the plan lock; render preserves all other ledger
+    # blocks and human prose. Attribution uses the same pure byte compiler.
     with bounded_lock(_plan_lock(project, plan)):
-        text = plan.read_text(encoding="utf-8")
-        start, end = (f"<!-- autopilot:{state['run_id']}:{edge} -->" for edge in ("start", "end"))
-        block = start + "\n" + summary + end
-        if text.count(start) != text.count(end) or text.count(start) > 1:
-            raise RunStateError("plan ledger markers are ambiguous; human repair required")
-        if start in text:
-            text = text[:text.index(start)] + block + text[text.index(end) + len(end):]
-        else:
-            text = text.rstrip() + "\n\n" + block + "\n"
-        _write(plan, text.encode())
+        for path, raw in _projection_bytes(project, state, plan.read_text(encoding="utf-8")).items():
+            _write(path, raw)
 
 
 def _plan_lock(project, plan):
@@ -578,11 +592,14 @@ def replay_request_step(project, run_id, *, request_binding, actor, command=None
         return state
 
 
-def _append(project, state, command_id, command_digest, command, previous_digest, proof):
+def _append(project, state, command_id, command_digest, command, previous_digest, proof, *, prepared_authority=None):
     home = _home(project, state["run_id"])
     event = {"schema_version": SCHEMA, "revision": state["revision"], "previous_digest": previous_digest,
              "command_id": command_id, "command_digest": command_digest, "command": command,
              "actor": {key: proof[key] for key in ("session_uuid", "native_ref", "claim_hash")}, "state": state}
+    if prepared_authority is not None:
+        # A deterministic grant consumer is never represented as its native issuer.
+        event["actor"] = {"kind": "prepared-native-launch", **deepcopy(prepared_authority)}
     event["digest"] = _digest(event)
     raw = _json(event) + b"\n"
     if len(raw) > MAX_JSON_BYTES or state["revision"] > MAX_EVENTS:
@@ -591,6 +608,79 @@ def _append(project, state, command_id, command_digest, command, previous_digest
     if path.exists():
         raise RunStateError("refusing to overwrite a committed event")
     _write(path, raw)
+
+
+def prepared_native_launch_step(project, run_id, permit_id, token, phase, *, runtime_root=None, send=None, outcome=None):
+    """Closed owner-prepared capability seam sharing the sole run lock/writer.
+
+    This does not accept an actor or general run command. Only reservation,
+    an admitted transport send, or its bounded diagnostic observation can be
+    committed. Native work must separately authenticate through ordinary PM.
+    """
+    import prepared_native_launch as launch
+    project=Path(project).absolute();_id(run_id);_id(permit_id)
+    if phase not in {"reserve","submit","observe"}:
+        raise RunStateError("unsupported prepared launch phase")
+    home=_home(project,run_id)
+    with bounded_lock(home/".run.lock",create=False):
+        previous=_last_event(project,run_id);state=previous["state"]
+        grant=launch._grant(state,permit_id,token)
+        if phase in {"reserve","submit"}:
+            required="prepared" if phase=="reserve" else "consumed"
+            if grant["status"]!=required:
+                raise RunStateError("one-shot launch is "+grant["status"]+"; no replay")
+            proof=launch.current_fence(project,state,grant,runtime_root=runtime_root)
+        else:
+            if grant["status"] not in {"consumed","submitted","cancelled"}:
+                raise RunStateError("no outstanding transport observation")
+            import native_resume
+            if not native_resume.is_observation(outcome) or len(_json(outcome))>65536 or outcome.get("task_accepted") is not False or outcome.get("native_session_id")!=grant["native_session_id"]:
+                raise RunStateError("invalid bounded native transport observation")
+            proof=_binding(project,state,grant["issuer_selector"],readonly=True,passive=True)
+            if any(proof.get(key)!=grant['issuer'].get(key) for key in ('session_uuid','native_ref','claim_hash','repository','branch')):
+                raise RunStateError('native launch observation issuer changed')
+            import recovery_capsule
+            recovery_capsule.resolve(project,state['project_id'],grant['issuer_selector'],runtime_root)
+        plan_before=_plan(project,state["plan"]).resolved.read_text(encoding="utf-8")
+        before=launch.attribution_snapshot(project,grant)
+        updated=deepcopy(state);row=updated["extensions"]["prepared_native_launch"]["permits"][permit_id]
+        result=None
+        if phase=="reserve":
+            row.update(status="consumed",consumed_at=_now(),consumed_revision=state["revision"]+1)
+        elif phase=="submit":
+            if not callable(send):raise RunStateError("native submission requires the owned transport operation")
+            result=send()
+            row.update(status="submitted",submitted_at=_now(),admission=deepcopy(result))
+        else:
+            row["outcome"]=deepcopy(outcome);row["observed_at"]=_now()
+            if row["status"]!="cancelled":
+                row["status"]="observed" if outcome.get("status")=="native_terminal" else "unknown"
+        updated["revision"]=state["revision"]+1;updated["updated_at"]=_now()
+        projection_hashes={str(path):hashlib.sha256(raw).hexdigest()
+            for path,raw in _projection_bytes(project,updated,plan_before).items()}
+        if phase in {"reserve","submit"}:
+            # Recheck issuer claim revocation after a slow native handshake.
+            proof=launch.current_fence(project,state,grant,runtime_root=runtime_root)
+        else:
+            # A terminal or cancelled transport may still report its outcome,
+            # but slow filesystem reads cannot carry a revoked owner's grant
+            # across the append boundary. Keep this separate from launch
+            # eligibility so cancellation diagnostics remain recordable.
+            proof=_binding(project,state,grant["issuer_selector"],readonly=True,passive=True)
+            if any(proof.get(key)!=grant['issuer'].get(key) for key in ('session_uuid','native_ref','claim_hash','repository','branch')):
+                raise RunStateError('native launch observation issuer changed before append')
+        identity="launch-"+permit_id+"-"+phase
+        _id(identity)
+        authority={"permit_id":permit_id,"prepared_revision":grant["prepared_revision"],
+            "issuer_session_uuid":grant["issuer"]["session_uuid"],"phase":phase,
+            "ownership_transfer":False,"native_actor_authenticated":False,"edit_basis":before,
+            "projection_hashes":projection_hashes,"plan_basis_sha256":hashlib.sha256(plan_before.encode()).hexdigest()}
+        _append(project,updated,identity,_digest({"phase":phase,"permit_id":permit_id,"result":result,"outcome":outcome}),
+            "native.launch."+phase,previous["digest"],proof,prepared_authority=authority)
+        _project(project,updated)
+        _index_update(runtime_root,state["owner"]["session_uuid"],run_id,_index_entry(project,updated))
+        launch.attribute_owned_append(project,updated,grant,token,runtime_root=runtime_root)
+        return deepcopy(result if phase=="submit" else updated)
 
 
 def create_run(project: Path, *, project_id: str, plan: Path, contract: dict, profile: dict,

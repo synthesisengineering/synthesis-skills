@@ -573,3 +573,18 @@ def test_late_scheduler_wake_cannot_reinject_unverified_policy_or_erase_cancel()
     current = CAP.observe_wake(current, {'receipt': 'late2'}, context(records))
     assert current['extensions']['capabilities']['ignored_wakes'][-1]['reason'] == 'cancellation_pending'
     assert CAP.continuation_status(current, context(records))['state'] == 'cancellation_pending'
+
+
+def test_additional_client_observation_registry_does_not_admit_continuation():
+    import capabilities
+    """Source decoding and fresh native continuation remain separate owners."""
+    for name in ('cursor-ide','cursor-cli','cursor-cloud','copilot-cli','copilot-vscode','copilot-cloud','opencode-cli','opencode-sdk-v2'):
+        entry=capabilities.supported_surfaces()['surfaces'][name]
+        assert entry['level']!='native'
+        assert entry['observation_contract']['native_acceptance']=='UNKNOWN'
+        assert entry['observation_contract']['authority_granted'] is False
+
+
+def test_observation_only_opencode_cannot_be_normalized_as_claude_stop():
+    for name in ('opencode-cli','opencode-sdk-v2'):
+        with pytest.raises(ValueError):CAP.normalize_event(name,{'hook_event_name':'Stop','session_id':'foreign','stop_hook_active':False})

@@ -467,42 +467,104 @@
       "dialect": "cursor",
       "mechanisms": [],
       "terminal_precedence": false,
-      "native_acceptance": "observation-required"
+      "native_acceptance": "observation-required",
+      "observation_contract": {
+        "sdk": "native-adapter-sdk-v1",
+        "authority_granted": false,
+        "native_acceptance": "UNKNOWN",
+        "permission_enforcement": "qualification-required"
+      }
     },
     "cursor-cli": {
       "level": "skill-only",
       "dialect": "cursor",
       "mechanisms": [],
       "terminal_precedence": false,
-      "native_acceptance": "observation-required"
+      "native_acceptance": "observation-required",
+      "observation_contract": {
+        "sdk": "native-adapter-sdk-v1",
+        "authority_granted": false,
+        "native_acceptance": "UNKNOWN",
+        "permission_enforcement": "qualification-required"
+      }
     },
     "cursor-cloud": {
       "level": "skill-only",
       "dialect": "cursor",
       "mechanisms": [],
       "terminal_precedence": false,
-      "native_acceptance": "observation-required"
+      "native_acceptance": "observation-required",
+      "observation_contract": {
+        "sdk": "native-adapter-sdk-v1",
+        "authority_granted": false,
+        "native_acceptance": "UNKNOWN",
+        "permission_enforcement": "qualification-required"
+      }
     },
     "copilot-cli": {
       "level": "skill-only",
       "dialect": "copilot",
       "mechanisms": [],
       "terminal_precedence": false,
-      "native_acceptance": "observation-required"
+      "native_acceptance": "observation-required",
+      "observation_contract": {
+        "sdk": "native-adapter-sdk-v1",
+        "authority_granted": false,
+        "native_acceptance": "UNKNOWN",
+        "permission_enforcement": "FAIL_OPEN_PATHS"
+      }
     },
     "copilot-vscode": {
       "level": "skill-only",
       "dialect": "copilot",
       "mechanisms": [],
       "terminal_precedence": false,
-      "native_acceptance": "observation-required"
+      "native_acceptance": "observation-required",
+      "observation_contract": {
+        "sdk": "native-adapter-sdk-v1",
+        "authority_granted": false,
+        "native_acceptance": "UNKNOWN",
+        "permission_enforcement": "FAIL_OPEN_PATHS"
+      }
     },
     "copilot-cloud": {
       "level": "skill-only",
       "dialect": "copilot",
       "mechanisms": [],
       "terminal_precedence": false,
-      "native_acceptance": "observation-required"
+      "native_acceptance": "observation-required",
+      "observation_contract": {
+        "sdk": "native-adapter-sdk-v1",
+        "authority_granted": false,
+        "native_acceptance": "UNKNOWN",
+        "permission_enforcement": "FAIL_OPEN_PATHS"
+      }
+    },
+    "opencode-cli": {
+      "level": "observation-only",
+      "dialect": "opencode",
+      "mechanisms": [],
+      "terminal_precedence": false,
+      "native_acceptance": "observation-required",
+      "observation_contract": {
+        "sdk": "native-adapter-sdk-v1",
+        "authority_granted": false,
+        "native_acceptance": "UNKNOWN",
+        "permission_enforcement": "qualification-required"
+      }
+    },
+    "opencode-sdk-v2": {
+      "level": "observation-only",
+      "dialect": "opencode",
+      "mechanisms": [],
+      "terminal_precedence": false,
+      "native_acceptance": "observation-required",
+      "observation_contract": {
+        "sdk": "native-adapter-sdk-v1",
+        "authority_granted": false,
+        "native_acceptance": "UNKNOWN",
+        "permission_enforcement": "qualification-required"
+      }
     },
     "hermes": {
       "level": "prospective",

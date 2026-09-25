@@ -4,9 +4,9 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [4.148.0] - 2026-09-25
+## [4.149.0] - 2026-09-25
 
-Autopilot 3.3.0 connects domain judgments to current consumer results, preserves
+Autopilot 3.4.0 connects domain judgments to current consumer results, preserves
 unknown adequacy and blocks task admission when decisive evidence is unresolved.
 Connected planning, writing, factual, grounding and review skills share these
 boundaries. A successful process does not by itself establish useful output.
@@ -20,6 +20,24 @@ forecasts and unknown bills. Capture aliases cannot hide a producer's observed
 usage. Delegation reserves verification, integration and recovery capacity;
 adaptive policy preserves outcome and authority requirements. These guarantees
 do not assert measured comparative superiority or complete provider billing.
+
+### Recovery, additional clients and operator visibility
+
+Recovery capsules preserve unfinished obligations, instructions and exact input
+bindings. Owner-prepared one-use continuation checks current authority and
+journal state before the supported native transport acts. Bounded supervision
+state retains cancellation and uncertainty without inventing a new authority
+store. Service enrollment and each survival horizon require separate acceptance.
+
+Cursor, Copilot and OpenCode adapters preserve native call identity, child scope
+and generation boundaries. Qualification distinguishes discovery and observed
+source bytes from permission, continuation and outcome evidence. An unsupported
+or unqualified capability remains explicit.
+
+The read-only operator interface selects the project through its causal resolver,
+paginates retained runs, and shows measured task progress, child delivery and
+integration acceptance separately. Human questions remain available through a
+local durable view when the primary agent UI is unavailable.
 
 ### Controller and project integration
 
@@ -59,8 +77,8 @@ reviewed specification and escape hostile HTML, comment and control identifiers.
 Full-page Chromium tests verify the rendered consumer and fail if the required
 browser is unavailable.
 
-The reviewed 4.146.0 and 4.147.0 development candidates are consolidated into
-this release; they were not separately published.
+The reviewed 4.146.0, 4.147.0 and 4.148.0 development candidates are consolidated
+into this release; they were not separately published.
 
 ## [4.145.7] - 2026-09-25
 

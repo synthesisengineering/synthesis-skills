@@ -18,7 +18,7 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
-Release **4.148.0** adds autopilot 3.3.0: current native transport evidence,
+Release **4.149.0** adds autopilot 3.4.0: current native transport evidence,
 consumer-bound domain quality, decisive uncertainty and explicit resource accounting.
 It also delivers the native-observation controller, productive persistence,
 current cancellation gates, verified project closure, qualified outcome

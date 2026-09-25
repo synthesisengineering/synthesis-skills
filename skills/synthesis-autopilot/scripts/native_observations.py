@@ -42,6 +42,9 @@ from typing import Literal, TypedDict
 import native_codex
 import native_claude
 import native_muse
+import native_cursor
+import native_copilot
+import native_opencode
 
 
 ADAPTER_VERSION = "native-observations-v3"
@@ -50,7 +53,8 @@ MAX_INDEX_ENTRIES = 10000
 MAX_PROJECTION_BYTES = 2 * 1024 * 1024
 MAX_HEADER_BYTES = 1024 * 1024
 MAX_VALIDATOR_BYTES = 64 * 1024
-_DIALECTS = {"codex": native_codex, "claude": native_claude, "muse": native_muse}
+_DIALECTS = {"codex": native_codex, "claude": native_claude, "muse": native_muse,
+             "cursor": native_cursor, "copilot": native_copilot, "opencode": native_opencode}
 _DIALECT_HASHES = {client: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
                    for client, module in _DIALECTS.items()}
 SUPPORTED_SCHEMAS = {client: list(module.SUPPORTED_SCHEMAS) for client, module in _DIALECTS.items()}
@@ -432,6 +436,10 @@ def _validate_binding(binding):
 
 
 def _validate_cursor(binding, cursor, limits):
+    lanes = cursor.get("dialect_sequences", {})
+    if (not isinstance(lanes, dict) or len(lanes) > 8
+            or any(not isinstance(k, str) or len(k) > 64 or type(v) is not int or v < 0 for k, v in lanes.items())):
+        raise SourceError("invalid cursor dialect sequences")
     if cursor.get("schema_version") != 1 or cursor.get("generation") != binding["generation"]:
         raise SourceError("cursor generation mismatch")
     for key in ("enrolled_from", "offset", "frame_start", "ordinal", "trusted_through"):
@@ -531,6 +539,8 @@ def _events(row, binding, start, length, digest, ordinal, *, run_id=None, task_i
         record_id, subrecord, call_id = (native.get(key) for key in ("record_id", "subrecord", "call_id"))
         event_id = "sha256:" + _digest([binding["generation"], start, length, subrecord, record_id])
         semantic = [binding["producer"]["client"], binding["producer"]["thread_id"], call_id, kind] if call_id else None
+        if semantic is not None and native.get("call_scope") is not None:
+            semantic.append(native["call_scope"])
         if kind == "usage.snapshot" and data.get("measurement_id"):
             semantic = [data["measurement_id"], kind]
         event = {"schema_version": 1, "event_id": event_id, "run_id": run_id, "task_id": task_id, "attempt_id": attempt_id,
@@ -554,6 +564,27 @@ def _coverage(binding, cursor, size, ranges, now):
             "atomic_snapshot": False, "unobservable": ["effects outside observed interfaces", "owner admission not supplied",
                                                         "unlisted client schemas and counter scopes"]
             + (["work before enrollment"] if cursor["enrolled_from"] else [])}
+
+
+def _dialect_sequence_gaps(cursor, row, producer, start):
+    """Independent transport/native sequence lanes under the same journal cursor."""
+    module = _DIALECTS[producer["client"]]
+    decoder = getattr(module, "record_sequences", None)
+    if decoder is None:
+        return _row_sequence_gap(cursor, row, producer, start)
+    sequences = decoder(row, producer)
+    if (not isinstance(sequences, dict) or len(sequences) > 8
+            or any(not isinstance(key, str) or len(key) > 64 for key in sequences)):
+        raise SourceError("invalid dialect sequence lanes")
+    saved = cursor.setdefault("dialect_sequences", {})
+    first_gap = None
+    for lane, sequence in sequences.items():
+        one = {"last_sequence": saved.get(lane)}
+        gap = _sequence_gap(one, sequence, start)
+        saved[lane] = one["last_sequence"]
+        if gap is not None and first_gap is None:
+            first_gap = {**gap, "lane": lane}
+    return first_gap
 
 
 def _sequence_gap(cursor, sequence, start):
@@ -700,7 +731,7 @@ def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=No
                             raise SourceError("frame changed between source pages")
                         ranges.append([start, start + length])
                     row = _json(pending, limits.depth)
-                    sequence_gap = _row_sequence_gap(next_cursor, row, binding["producer"], start)
+                    sequence_gap = _dialect_sequence_gaps(next_cursor, row, binding["producer"], start)
                     _transport_transition(next_cursor, row, binding["producer"])
                     events = _events(row, binding, start, length, _sha(pending), next_cursor["ordinal"],
                                      run_id=run_id, task_id=task_id, attempt_id=attempt_id, now=now)
@@ -748,7 +779,11 @@ def _ref(event):
 
 def _pair_status(pair):
     calls, results = pair["calls"], pair["results"]
-    if len(calls) > 1 or len(results) > 1:
+    if any(not row["native"].get("call_id") for row in calls + results):
+        pair["status"] = "missing_identity"
+    elif len({_digest(row["native"].get("call_scope")) for row in calls + results}) > 1:
+        pair["status"] = "unlinked_native_scopes"
+    elif len(calls) > 1 or len(results) > 1:
         pair["status"] = "conflict" if any(len({r["digest"] for r in rows}) > 1 for rows in (calls, results)) else "duplicate"
     elif not calls:
         pair["status"] = "pending_call"
@@ -838,7 +873,13 @@ def reduce_observations(projection: dict, batch: ObservationBatch) -> dict:
         if semantic:
             result["semantic"].setdefault(semantic, []).append(_ref(event))
         if event["kind"] in {"tool.call", "tool.result"}:
-            key = _digest([event["producer"]["client"], event["producer"]["thread_id"], event["native"]["call_id"], event["mode"]])
+            # A missing native ID is retained as its own unresolved observation.
+            # Position, equal arguments, timestamps and adjacency cannot supply it.
+            native = event["native"]
+            identity = [event["producer"]["client"], event["producer"]["thread_id"], native.get("call_id"), event["mode"]]
+            if native.get("call_scope") is not None: identity.append(native["call_scope"])
+            if not native.get("call_id"): identity.append(ident)
+            key = _digest(identity)
             pair = result["pairs"].setdefault(key, {"calls": [], "results": [], "status": "pending_call"})
             pair["calls" if event["kind"] == "tool.call" else "results"].append(_ref(event))
             _pair_status(pair)
@@ -872,7 +913,7 @@ def _event_material(event):
 
 
 def revalidate_observations(binding, events, *, projection=None, required_interval=None,
-                            max_bytes=1024 * 1024, prior_sequence=None) -> dict:
+                            max_bytes=1024 * 1024, prior_sequence=None, prior_sequences=None) -> dict:
     """Re-read exact source bytes and re-derive every selected positive claim.
 
     ``current`` establishes selected current file bytes only. Known pair
@@ -880,7 +921,9 @@ def revalidate_observations(binding, events, *, projection=None, required_interv
     UNKNOWN unless the exact current interval is completely read and validated;
     even that is a bounded, non-atomic observation, never provider immutability.
     ``interval_events`` exposes cancellation/user/lifecycle observations to the
-    existing owners. Complete coverage never means those owners found no
+    existing owners. ``prior_sequences`` carries owner-verified dialect lanes at
+    the interval boundary; callers cannot derive it from an untrusted request.
+    Complete coverage never means those owners found no
     invalidation; interpreting those events is expressly not this parser's job.
     """
     result = {"status": "unknown", "current_verified_ranges": [], "diagnostics": [], "events": [],
@@ -963,12 +1006,17 @@ def revalidate_observations(binding, events, *, projection=None, required_interv
                 interval_events = []
                 if prior_sequence is not None and (type(prior_sequence) is not int or prior_sequence < 0):
                     raise SourceError("invalid prior interval sequence")
-                sequence_cursor = {"last_sequence": prior_sequence, "transport_state": None}
+                if prior_sequences is not None and (not isinstance(prior_sequences, dict) or len(prior_sequences) > 8
+                        or any(not isinstance(k, str) or len(k) > 64 or type(v) is not int or v < 0
+                               for k, v in prior_sequences.items())):
+                    raise SourceError("invalid prior dialect sequence lanes")
+                sequence_cursor = {"last_sequence": prior_sequence, "transport_state": None,
+                                   "dialect_sequences": deepcopy(prior_sequences or {})}
                 for ordinal, line in enumerate(raw.splitlines(keepends=True)):
                     if len(line) > Limits().payload_bytes:
                         raise SourceError("interval contains oversized payload requiring owner readback")
                     row = _json(line)
-                    gap = _row_sequence_gap(sequence_cursor, row, binding["producer"], offset)
+                    gap = _dialect_sequence_gaps(sequence_cursor, row, binding["producer"], offset)
                     if start == 0: _transport_transition(sequence_cursor, row, binding["producer"])
                     if gap is not None:
                         result["diagnostics"].append(gap)

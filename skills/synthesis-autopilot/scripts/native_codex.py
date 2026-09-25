@@ -14,11 +14,12 @@ import json
 import math
 
 
-ADAPTER_VERSION = "codex-dialect-v2"
+ADAPTER_VERSION = "codex-dialect-v3"
 SUPPORTED_SCHEMAS = (
     "session_meta", "turn_context", "token_usage_record", "event_msg.token_count",
     "event_msg.task_started", "event_msg.task_complete", "event_msg.turn_aborted",
     "event_msg.user_message", "event_msg.agent_message", "event_msg.agent_reasoning",
+    "event_msg.item_completed",
     "response_item.function_call", "response_item.custom_tool_call",
     "response_item.function_call_output", "response_item.custom_tool_call_output",
     "response_item.message", "response_item.agent_message", "response_item.reasoning",
@@ -190,6 +191,53 @@ def is_ignored_projection(projected, producer):
                 ("event_msg", "agent_message")})
 
 
+def _completed_item(value, producer):
+    """Read a native rollout item projection without inventing a tool pair.
+
+    These records accompany response_item records. Their item IDs are not
+    call IDs, and completing an item does not complete the enclosing turn.
+    Keep the bounded observation and digest without duplicating output bodies.
+    """
+    if value.get("thread_id") != producer["thread_id"]:
+        raise DialectError("item projection lacks the bound native thread")
+    turn = _text(value.get("turn_id"), "item turn identity")
+    start = _integer(value.get("started_at_ms"), "item start")
+    end = _integer(value.get("completed_at_ms"), "item end")
+    if end < start:
+        raise DialectError("item completion precedes start")
+    item = _object(value.get("item"), "completed item")
+    ident = _text(item.get("id"), "item identity")
+    kind, status = item.get("type"), "observed"
+    if kind == "CommandExecution":
+        command = item.get("command")
+        if not isinstance(command, list) or not command or any(not isinstance(x, str) for x in command):
+            raise DialectError("invalid item command")
+        _text(item.get("cwd"), "item cwd")
+        native_status = _text(item.get("status"), "item status")
+        code = item.get("exit_code")
+        if code is not None and type(code) is not int:
+            raise DialectError("invalid item exit code")
+        for field in ("stdout", "stderr", "aggregated_output"):
+            if not isinstance(item.get(field), str):
+                raise DialectError("invalid item output")
+        status = ("failed" if native_status == "failed" or code not in (None, 0)
+                  else "observed" if native_status == "completed" and code == 0 else "unknown")
+    elif kind == "Reasoning":
+        for field in ("summary_text", "raw_content"):
+            if not isinstance(item.get(field), list) or any(not isinstance(x, str) for x in item[field]):
+                raise DialectError("invalid item reasoning projection")
+    elif kind == "AgentMessage":
+        if not isinstance(item.get("content"), list) or any(not isinstance(x, dict) for x in item["content"]):
+            raise DialectError("invalid item message projection")
+        _text(item.get("phase"), "item message phase")
+    else:
+        raise DialectError("unsupported Codex completed item grammar")
+    return status, {"turn_id": turn, "item_id": ident, "native_type": kind,
+        "native_status": item.get("status"), "item_digest": _digest(item),
+        "started_at_ms": start, "completed_at_ms": end,
+        "portable_completion": False, "grants_authority": False}
+
+
 def decode_record(row, producer, *, mode="synthetic", source_locator=None):
     _bounded(row); _object(row, "record"); _producer(producer)
     if "ordinal" in row: _integer(row["ordinal"], "record ordinal")
@@ -246,6 +294,9 @@ def decode_record(row, producer, *, mode="synthetic", source_locator=None):
             return fact("message." + (role if role in {"user", "assistant", "peer"} else "unknown"),
                         "observed", {"content": value.get("content"), "role": role, "grants_authority": False})
     if outer == "event_msg":
+        if subtype == "item_completed":
+            status, data = _completed_item(value, producer)
+            return fact("item.observation", status, data)
         if subtype == "user_message":
             return fact("message.user", "observed", {"native": value, "grants_authority": False})
         kinds = {"task_started": "lifecycle.started", "task_complete": "lifecycle.completed", "turn_aborted": "lifecycle.cancelled"}

@@ -36,7 +36,7 @@ exact journal reference when further pagination is required.
 | `checkpoint` | Preserve current progress and, when requested and applicable, obtain the existing PM execution-basis observation. This observation does not certify a normal whole-project clean checkpoint. |
 | `explain` | Inspect contract, profile, coverage, ready work and unresolved obligations. Without a native actor, this is a historical read-only snapshot. Current ownership and acceptance require authenticated readback. |
 | `cancel` | Record the user's cancellation while retaining partial work, effects and child obligations. A requested child or schedule cancellation still requires observed disposition. |
-| `recover` | Re-admit the actual owner, recover a committed request prefix and reconcile native source generations explicitly. Rotation never silently resets a cursor. Skipped or unavailable history remains visible. |
+| `recover` | Run the full causal PM resolver, re-admit the actual owner, recover a committed request prefix and reconcile native source generations explicitly. An optional `capsule_ref` must name the current authentic checkpoint event. Rotation never silently resets a cursor. |
 | `finish` | Invoke actual outcome, quality, profile and completion owners. A completed tombstone is historical state; stale current artifacts, expired evidence or new native invalidations prevent a current completed result. |
 
 The response contains `status`, `run_id`, `revision`, `committed_event_ids`,
@@ -61,6 +61,12 @@ credible observations before dependent task work. The same current-evidence
 guard applies to direct task admission, verification and completed closure.
 Independent criteria, cancellation and incomplete closure remain available.
 A registered question does not grant action authority or reset retry budgets.
+
+Checkpoints retain a journal-owned recovery capsule; interrupted work follows
+[the cold-resume protocol](../../synthesis-context-lifecycle/references/autopilot-recovery.md).
+`record` also routes explicit `recovery_instructions` acknowledgement and the
+closed [optional supervision actions](supervision.md). These operations retain
+the existing authority and action-owner boundaries.
 
 ## Native evidence and currentness
 
@@ -138,3 +144,9 @@ The resulting clean-checkpoint successor is bound to the terminal head and
 unchanged operational meaning. Changed plan, project facts or unrelated bytes
 still invalidate it. Current completion rechecks both the outcome and applicable
 closure evidence before reporting success.
+
+Owner-prepared native continuation uses the same `record` operation with
+`kind: launch_prepare` or `kind: launch_cancel`; their exact fields and the
+stdin-only service consumer are defined in [supervision](supervision.md).
+Only an actual current native owner can prepare a grant. A transport observation
+is never a task acceptance receipt, and a service cannot supply a native actor.
