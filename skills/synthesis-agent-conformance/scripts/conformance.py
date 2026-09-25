@@ -67,7 +67,8 @@ from live_receipt import (
 )
 from project_context import next_actions, record_freshness
 from plan_reference import locate_plan
-from project_state import STATE_FILE, semantic_issues, resolve_project as resolve_durable_project
+from project_state import (STATE_FILE, ProjectStateError, read_operational_state,
+                           semantic_issues, resolve_project as resolve_durable_project)
 from pointer_lock import locked_pointer
 from coordination_schema import SCHEMA_VERSION as COORDINATION_SCHEMA_VERSION
 
@@ -1768,14 +1769,13 @@ def project_summary(project: Path) -> tuple[dict[str, object], list[Check]]:
         text = context.read_text(encoding="utf-8")
         state_path = project / STATE_FILE
         state: dict[str, object] = {}
-        if state_path.exists():
+        has_state = state_path.exists() or state_path.is_symlink()
+        if has_state:
             try:
-                state = json.loads(state_path.read_text(encoding="utf-8"))
-                if not isinstance(state, dict):
-                    raise ValueError("current operational state is not an object")
+                state = read_operational_state(state_path)
                 issues = semantic_issues(project)
                 add(checks, "handoff.semantic-current-state", not issues, "; ".join(issues) or str(state_path))
-            except (OSError, ValueError) as exc:
+            except (OSError, ValueError, ProjectStateError) as exc:
                 state = {}
                 add(checks, "handoff.semantic-current-state", False, str(exc))
         for key in ("Phase", "Status", "Last session"):
@@ -1784,7 +1784,7 @@ def project_summary(project: Path) -> tuple[dict[str, object], list[Check]]:
             summary[field] = state.get(field) or (match.group(1).strip() if match else "unknown")
         plan_ref = (
             locate_plan(project, text, controlling_plan=state.get("controlling_plan"))
-            if state_path.exists() else locate_plan(project, text)
+            if has_state else locate_plan(project, text)
         )
         summary["plan"] = plan_ref.value
         add(checks, "handoff.plan", plan_ref.resolved is not None, plan_ref.detail, required=plan_ref.declared is not None)

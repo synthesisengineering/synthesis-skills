@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import fnmatch
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -29,6 +30,11 @@ from plan_reference import PlanReference, resolve_plan_target
 STATE_FILE = "CURRENT_STATE.json"
 STATE_SCHEMA = 1
 RECEIPT_SCHEMA = 1
+# State contains the complete retained-file hash inventory, rather than a small
+# request/receipt envelope. This shared read/write ceiling admits inventories
+# of tens of thousands of paths while bounding encoded JSON input to 16 MiB.
+MAX_STATE_JSON_BYTES = 16 * 1024 * 1024
+MAX_JSON_DEPTH = 64
 _VERSION_RE = re.compile(r"(?<![0-9])v?(\d+)\.(\d+)\.(\d+)(?![0-9])", re.I)
 _DATE_RE = re.compile(r"\b(20\d{2}-\d{2}-\d{2})\b")
 
@@ -80,15 +86,29 @@ def _sha_bytes(value: bytes) -> str:
 
 
 def _sha_file(path: Path) -> str:
-    return _sha_bytes(path.read_bytes())
+    raw = read_json_bytes(path, max_bytes=MAX_STATE_JSON_BYTES) if path.name == STATE_FILE else path.read_bytes()
+    return _sha_bytes(raw)
+
+
+def _state_json_text(payload: dict[str, Any]) -> str:
+    try:
+        text = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    except (ValueError, RecursionError) as exc:
+        raise ProjectStateError(f"invalid structured state: {exc}") from exc
+    if len(text.encode("utf-8")) > MAX_STATE_JSON_BYTES:
+        raise ProjectStateError(f"structured state exceeds {MAX_STATE_JSON_BYTES}-byte limit")
+    try:
+        _check_json_depth(text)
+    except ValueError as exc:
+        raise ProjectStateError(f"invalid structured state: {exc}") from exc
+    return text
 
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
+    text = _state_json_text(payload) if path.name == STATE_FILE else json.dumps(payload, indent=2, sort_keys=True) + "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    temporary.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    temporary.write_text(text, encoding="utf-8")
     os.replace(temporary, path)
 
 
@@ -98,7 +118,66 @@ def _atomic_text(path: Path, value: str) -> None:
     os.replace(temporary, path)
 
 
-def _load_json(path: Path) -> dict[str, Any]:
+def read_json_bytes(path: Path, *, max_bytes: int) -> bytes:
+    """Read bounded, stable regular-file evidence without following a leaf link.
+
+    Check the opened descriptor as well as the pathname, cap the actual read
+    even if the file grows after stat, and refuse replacement or modification
+    during the read. O_NONBLOCK keeps a raced FIFO from waiting for a writer.
+    """
+    if type(max_bytes) is not int or max_bytes < 1:
+        raise ValueError("JSON byte limit must be a positive integer")
+
+    def signature(value):
+        return (value.st_dev, value.st_ino, value.st_mode, value.st_size,
+                value.st_mtime_ns, value.st_ctime_ns)
+
+    try:
+        initial = path.lstat()
+        if not stat.S_ISREG(initial.st_mode):
+            raise ValueError("JSON evidence must be a regular nonsymlink file")
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as handle:
+            before = os.fstat(handle.fileno())
+            if not stat.S_ISREG(before.st_mode) or signature(initial) != signature(before):
+                raise ValueError("JSON evidence changed before reading")
+            if before.st_size > max_bytes:
+                raise ValueError(f"JSON evidence exceeds {max_bytes}-byte limit")
+            raw = handle.read(max_bytes + 1)
+            after = os.fstat(handle.fileno())
+        if len(raw) > max_bytes:
+            raise ValueError(f"JSON evidence exceeds {max_bytes}-byte limit")
+        if signature(before) != signature(after) or signature(after) != signature(path.lstat()):
+            raise ValueError("JSON evidence changed during reading")
+        return raw
+    except (OSError, ValueError) as exc:
+        raise ProjectStateError(f"unreadable JSON evidence {path}: {exc}") from exc
+
+
+def _check_json_depth(text: str) -> None:
+    """Bound nesting before the JSON decoder, independently of Python's stack."""
+    depth = 0
+    quoted = escaped = False
+    for character in text:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                quoted = False
+        elif character == '"':
+            quoted = True
+        elif character in "[{":
+            depth += 1
+            if depth > MAX_JSON_DEPTH:
+                raise ValueError(f"JSON nesting exceeds {MAX_JSON_DEPTH}-level limit")
+        elif character in "]}":
+            depth -= 1
+
+
+def read_json_object(path: Path, *, max_bytes: int) -> dict[str, Any]:
+    """Shared strict object parser; callers choose the evidence-class ceiling."""
     def unique_pairs(pairs):
         result = {}
         for key, value in pairs:
@@ -106,11 +185,39 @@ def _load_json(path: Path) -> dict[str, Any]:
                 raise ValueError(f"duplicate JSON field: {key}")
             result[key] = value
         return result
+
+    def reject_constant(value):
+        raise ValueError(f"non-finite JSON value: {value}")
+
+    def finite_float(value):
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError("JSON number exceeds finite range")
+        return number
+
     try:
-        if path.name == STATE_FILE and (path.is_symlink() or not stat.S_ISREG(path.stat().st_mode)):
-            raise ValueError("structured state must be a regular nonsymlink file")
-        payload = json.loads(path.read_text(encoding="utf-8"),
-            **({"object_pairs_hook": unique_pairs} if path.name == STATE_FILE else {}))
+        raw = read_json_bytes(path, max_bytes=max_bytes)
+        text = raw.decode("utf-8")
+        _check_json_depth(text)
+        payload = json.loads(text, object_pairs_hook=unique_pairs,
+                             parse_constant=reject_constant, parse_float=finite_float)
+    except (ValueError, RecursionError) as exc:
+        raise ProjectStateError(f"unreadable JSON evidence {path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ProjectStateError(f"JSON evidence is not an object: {path}")
+    return payload
+
+
+def read_operational_state(path: Path) -> dict[str, Any]:
+    """Read CURRENT_STATE using the same finite contract as its compiler."""
+    return read_json_object(path, max_bytes=MAX_STATE_JSON_BYTES)
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    if path.name == STATE_FILE:
+        return read_operational_state(path)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise ProjectStateError(f"unreadable JSON evidence {path}: {exc}") from exc
     if not isinstance(payload, dict):
@@ -916,7 +1023,7 @@ def semantic_issues(project: Path) -> list[str]:
     issues: list[str] = []
     state_path = project / STATE_FILE
     state: dict[str, Any] | None = None
-    if state_path.exists():
+    if state_path.exists() or state_path.is_symlink():
         try:
             state = _load_json(state_path)
             if state.get("schema_version") != STATE_SCHEMA:
@@ -1044,8 +1151,13 @@ def build_operational_state(
         "content_hashes": {},
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    compile_context(project, payload)
+    context = _compiled_context(project, payload)
     payload["content_hashes"] = _content_hashes(project, controlling_plan)
+    payload["content_hashes"]["CONTEXT.md"] = _sha_bytes(context.encode("utf-8"))
+    # Refuse a state the shared reader cannot accept before changing either
+    # durable file. In particular, preserve the previous context on overflow.
+    _state_json_text(payload)
+    _atomic_text(project / "CONTEXT.md", context)
     _atomic_json(project / STATE_FILE, payload)
     return payload
 
@@ -1072,6 +1184,11 @@ def render_context_current_state(project: Path, state: dict[str, Any]) -> str:
 
 def compile_context(project: Path, state: dict[str, Any]) -> None:
     """Replace or introduce the generated current-state block atomically."""
+    _atomic_text(project.resolve() / "CONTEXT.md", _compiled_context(project, state))
+
+
+def _compiled_context(project: Path, state: dict[str, Any]) -> str:
+    """Prepare the compiled block without changing project evidence."""
     context_path = project.resolve() / "CONTEXT.md"
     context = context_path.read_text(encoding="utf-8")
     start = "<!-- synthesis-current-state:start -->"
@@ -1098,7 +1215,7 @@ def compile_context(project: Path, state: dict[str, Any]) -> None:
         updated = lines[0] + "\n\n" + block + "\n\n" + "\n".join(remaining)
         if context.endswith("\n"):
             updated += "\n"
-    _atomic_text(context_path, updated)
+    return updated
 
 
 def _working_digest(project: Path) -> str:

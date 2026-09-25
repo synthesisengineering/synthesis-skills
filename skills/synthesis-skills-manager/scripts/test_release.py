@@ -65,6 +65,11 @@ def hermetic_release_train(
     monkeypatch.setenv(
         "SYNTHESIS_ACTIVE_PROJECT_FILE", str(tmp_path / "absent-pointer.json")
     )
+    home = tmp_path / "lifecycle-home"
+    monkeypatch.setenv("SYNTHESIS_HOME", str(home))
+    for name, relative in {"XDG_CONFIG_HOME": ".config", "XDG_STATE_HOME": ".local/state",
+                           "XDG_CACHE_HOME": ".cache", "XDG_DATA_HOME": ".local/share"}.items():
+        monkeypatch.setenv(name, str(home / relative))
 
 
 # --- source of truth -------------------------------------------------------
@@ -134,13 +139,17 @@ def test_stable_path_points_at_the_verified_install_root(tmp_path, monkeypatch) 
     release atomically and never point at an unverified tree."""
     monkeypatch.setattr(release, "STABLE_ROOT", tmp_path / "plugins")
     first = _install_root(tmp_path, "4.82.0")
-    assert release.refresh_stable_path("4.82.0", release.Result(), False, target=first)
+    first_source = tmp_path / "source-first"
+    _seed_content(first_source, first)
+    assert release.refresh_stable_path("4.82.0", release.Result(), False, target=first, repo=first_source)
     link = release.stable_path()
     assert link.is_symlink()
     assert Path(os.path.realpath(link)) == first.resolve()
 
     second = _install_root(tmp_path, "4.83.0")
-    assert release.refresh_stable_path("4.83.0", release.Result(), False, target=second)
+    second_source = tmp_path / "source-second"
+    _seed_content(second_source, second)
+    assert release.refresh_stable_path("4.83.0", release.Result(), False, target=second, repo=second_source)
     assert Path(os.path.realpath(link)) == second.resolve()
     assert not link.with_name(link.name + ".tmp").exists()
 
@@ -156,6 +165,31 @@ def test_stable_path_refuses_an_unverified_or_mismatched_root(tmp_path, monkeypa
     other = _install_root(tmp_path, "4.81.0")
     assert not release.refresh_stable_path("4.82.0", release.Result(), False, target=other)
     assert not release.stable_path().exists()
+
+
+@pytest.mark.parametrize("mutation", ["before", "at-publication"])
+def test_stable_consumer_revalidates_full_inventory_and_preserves_previous_pointer(tmp_path, monkeypatch, mutation):
+    monkeypatch.setattr(release, "STABLE_ROOT", tmp_path / "plugins")
+    prior = _install_root(tmp_path, "4.82.0")
+    root = _install_root(tmp_path, "4.83.0")
+    source = tmp_path / "source"
+    _seed_content(source, root)
+    link = release.stable_path()
+    link.parent.mkdir(parents=True)
+    link.symlink_to(prior)
+    def corrupt():
+        (root / "unapproved-hook.py").write_text("Unexpected loadable content.\n")
+    real_replace = release.os.replace
+    def replace(src, dst):
+        real_replace(src, dst)
+        if Path(dst) == link and link.resolve() == root:
+            corrupt()
+    if mutation == "before":
+        corrupt()
+    else:
+        monkeypatch.setattr(release.os, "replace", replace)
+    assert not release.refresh_stable_path("4.83.0", release.Result(), False, target=root, repo=source)
+    assert link.resolve() == prior
 
 
 def test_stable_path_doc_states_the_two_caller_rule() -> None:
@@ -465,8 +499,211 @@ def test_release_establishes_required_launcher_before_exposing_new_hooks(repo, m
     monkeypatch.setattr(release, "deep_verify", lambda *args, **kwargs: True)
     monkeypatch.setattr(release, "refresh_stable_path", lambda *args, **kwargs: True)
     monkeypatch.setattr(release, "sync_commit_gate", lambda *args, **kwargs: True)
+    monkeypatch.setattr(release, "reconcile_published_lifecycle", lambda *args, **kwargs: True)
     assert release.main(["--repo-root", str(repo), "--install-only"]) == (0 if activation_ok else 1)
     assert observations == ([("claude", True), ("codex", True), ("muse", True)] if activation_ok else [])
+
+
+def test_release_refuses_completion_when_lifecycle_transaction_is_not_reconciled(repo, monkeypatch, capsys):
+    order = []
+    monkeypatch.setattr(release, "preflight", lambda *a: "9.9.9")
+    for name in ("activate_published_cli", "refresh_client", "install_codex_cache_guardian",
+                 "deep_verify", "refresh_stable_path", "sync_commit_gate"):
+        monkeypatch.setattr(release, name, lambda *a, _name=name, **k: order.append(_name) or True)
+    monkeypatch.setattr(release, "reconcile_published_lifecycle", lambda *a, **k: order.append("lifecycle") or False, raising=False)
+    assert release.main(["--repo-root", str(repo), "--install-only"]) == 1
+    assert order[-1] == "lifecycle"
+    output = capsys.readouterr().out
+    assert "RELEASE INCOMPLETE" in output and "RELEASED" not in output
+
+
+@pytest.mark.parametrize("selected", [None, ["claude"], ["codex"], ["claude", "codex"]])
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_release_native_effects_honor_saved_client_selection(repo, monkeypatch, selected, dry_run):
+    import system_contract as contract
+    state = contract.SystemState()
+    if selected is not None:
+        desired = contract.default_desired_state("skills-only", selected, "stable")
+        state.run_transaction("setup", desired, lambda _tx: {})
+    before = state.read_desired()
+    expected = selected if selected is not None else ["claude", "codex", "muse"]
+    calls = {name: [] for name in ("refresh", "verify", "guardian", "stable")}
+    monkeypatch.setattr(release, "preflight", lambda *a: "9.9.9")
+    for name in ("activate_published_cli", "sync_commit_gate", "reconcile_published_lifecycle"):
+        monkeypatch.setattr(release, name, lambda *a, **kw: True)
+    monkeypatch.setattr(release, "refresh_client", lambda client, *a, **kw: calls["refresh"].append(client) or True)
+    def verify(client, version, result, **kwargs):
+        calls["verify"].append(client)
+        result.verified_roots[client] = release.installed_root(client, version)
+        return True
+    monkeypatch.setattr(release, "deep_verify", verify)
+    monkeypatch.setattr(release, "install_codex_cache_guardian", lambda *a, **kw: calls["guardian"].append(True) or True)
+    monkeypatch.setattr(release, "refresh_stable_path", lambda *a, **kw: calls["stable"].append(kw.get("target")) or True)
+    command = ["--repo-root", str(repo), "--install-only"] + (["--dry-run"] if dry_run else [])
+    assert release.main(command) == 0
+    assert calls["refresh"] == expected
+    assert calls["verify"] == ([] if dry_run else expected)
+    assert bool(calls["guardian"]) == ("codex" in expected)
+    if not dry_run:
+        assert calls["stable"] == [release.installed_root(expected[0], "9.9.9")]
+    assert state.read_desired() == before
+
+
+@pytest.mark.parametrize("changed_at", ["activation", "before-native-lock"])
+def test_release_binds_original_selection_before_native_mutation(repo, monkeypatch, capsys, changed_at):
+    import contextlib
+    import system_contract as contract
+    state = contract.SystemState()
+    original = contract.default_desired_state("skills-only", ["codex"], "stable")
+    changed = contract.default_desired_state("skills-only", ["claude"], "stable")
+    state.run_transaction("setup", original, lambda _tx: {})
+    monkeypatch.setattr(release, "preflight", lambda *a: "9.9.9")
+    native_calls = []
+    activated = False
+    def activate(*a, **kw):
+        nonlocal activated
+        activated = True
+        if changed_at == "activation":
+            state.run_transaction("setup", changed, lambda _tx: {})
+        return True
+    real_lock = contract.SystemState.locked
+    @contextlib.contextmanager
+    def locked(instance):
+        with real_lock(instance):
+            if activated and changed_at == "before-native-lock":
+                contract.atomic_write_json(state.desired_path, changed)
+            yield
+    monkeypatch.setattr(contract.SystemState, "locked", locked)
+    monkeypatch.setattr(release, "activate_published_cli", activate)
+    monkeypatch.setattr(release, "refresh_client", lambda client, *a, **kw: native_calls.append(client) or True)
+    for name in ("deep_verify", "install_codex_cache_guardian", "sync_commit_gate", "refresh_stable_path", "reconcile_published_lifecycle"):
+        monkeypatch.setattr(release, name, lambda *a, **kw: True)
+    assert release.main(["--repo-root", str(repo), "--install-only"]) == 1
+    assert native_calls == []
+    assert state.read_desired() == changed
+    assert "RELEASED" not in capsys.readouterr().out
+
+
+def test_release_stable_consumer_uses_actual_verified_client_root(tmp_path, monkeypatch):
+    import system_contract as contract
+    from test_system_contract import release_repo
+    state = contract.SystemState()
+    state.run_transaction("setup", contract.default_desired_state("skills-only", ["codex"], "stable"), lambda _tx: {})
+    source = release_repo(tmp_path / "source", "9.9.9")
+    generation, _descriptor = release.materialize_release(source, tmp_path / "generations", channel="stable", ref="stable",
+        source_url="https://example.test/synthesis-skills.git")
+    conventional, loaded = tmp_path.resolve() / "conventional", tmp_path.resolve() / "reported"
+    shutil.copytree(generation, conventional)
+    shutil.copytree(generation, loaded)
+    conventional.chmod(0o755)
+    (conventional / "unapproved-hook.py").write_text("Unexpected loadable content.\n")
+    monkeypatch.setattr(release, "STABLE_ROOT", tmp_path / "stable")
+    monkeypatch.setattr(release, "preflight", lambda *a: "9.9.9")
+    monkeypatch.setattr(release, "installed_root", lambda *a: conventional)
+    monkeypatch.setattr(release, "client_reported_version", lambda *a: ("9.9.9", str(loaded)))
+    for name in ("activate_published_cli", "refresh_client", "install_codex_cache_guardian", "sync_commit_gate", "reconcile_published_lifecycle"):
+        monkeypatch.setattr(release, name, lambda *a, **kw: True)
+    assert release.main(["--repo-root", str(source), "--install-only"]) == 0
+    assert release.stable_path().resolve() == loaded
+    assert release.content_digest_report(source, release.stable_path().resolve())[0]
+
+
+def test_release_reconciliation_keeps_original_publisher_selection_binding(repo, monkeypatch):
+    import system_contract as contract
+    state = contract.SystemState()
+    original = contract.default_desired_state("skills-only", ["codex"], "stable")
+    changed = contract.default_desired_state("skills-only", ["claude"], "stable")
+    state.run_transaction("setup", changed, lambda _tx: {})
+    before = state.observation_path.read_bytes(), state.desired_path.read_bytes()
+    monkeypatch.setattr(release, "run", lambda *a, **kw: pytest.fail("repair ran with a recaptured selection"))
+    assert not release.reconcile_published_lifecycle(repo, "9.9.9", release.Result(), False,
+        expected_desired_digest=contract.json_digest(original))
+    assert (state.observation_path.read_bytes(), state.desired_path.read_bytes()) == before
+
+
+@pytest.mark.parametrize("selection", ["missing", "disabled", "modular", "other-pin", "selected"])
+def test_release_selection_preserves_explicit_profile_and_policy(tmp_path, monkeypatch, selection):
+    import system_contract as contract
+    state = contract.SystemState()
+    if selection != "missing":
+        desired = contract.default_desired_state("skills-only", ["codex"], "stable",
+            version_pin="8.0.0" if selection == "other-pin" else None,
+            enabled=selection != "disabled")
+        if selection == "modular":
+            desired = contract.default_desired_state("modular", ["codex"], "stable",
+                modular={"roots": ["synthesis-autopilot"], "stage_core": True})
+        state.run_transaction("setup", desired, lambda _tx: {})
+    before = {str(p): p.read_bytes() for p in state.home.rglob("*") if p.is_file()}
+    result = release.Result()
+    assert release.lifecycle_release_selection("9.9.9", result) == (selection in {"missing", "selected"})
+    after = {str(p): p.read_bytes() for p in state.home.rglob("*") if p.is_file()}
+    assert after == before
+
+
+@pytest.mark.parametrize("failure", [None, "engine", "doctor", "same-version-corruption", "unapproved-extra", "no-transaction"])
+def test_release_commits_real_lifecycle_generation_only_after_exact_native_and_engine_checks(tmp_path, monkeypatch, failure):
+    import contextlib
+    import io
+    import synthesis_cli as cli
+    import system_contract as contract
+    from bootstrap import materialize_release
+    from test_system_contract import release_repo
+
+    source = release_repo(tmp_path / "fixture-source", version="9.9.9")
+    state = contract.SystemState()
+    desired = contract.default_desired_state("skills-only", ["codex"], "stable")
+    state.run_transaction("setup", desired, lambda _tx: {})
+    old = state.read_observation()["transactions"][0]
+    generation, descriptor = materialize_release(source, state.cache_dir / "releases",
+        channel="stable", ref="stable", source_url="https://example.test/synthesis-skills.git")
+    pointer = state.state_dir / "active-release.json"
+    contract.activate_cli(generation, descriptor, state.launcher_path, pointer)
+    monkeypatch.setenv("SYNTHESIS_ACTIVE_DESCRIPTOR", str(pointer))
+    monkeypatch.setattr(cli, "REPO_ROOT", generation)
+    monkeypatch.setattr(cli.onboard, "source_root", lambda: generation)
+    native = tmp_path.resolve() / "native-plugin"
+    shutil.copytree(generation, native)
+    if failure == "same-version-corruption":
+        target = native / "skills/synthesis-onboarding/scripts/synthesis_cli.py"
+        target.chmod(0o644)
+        target.write_text("Corrupted runtime with unchanged version labels.\n")
+    if failure == "unapproved-extra":
+        (native / "skills").chmod(0o755)
+        target = native / "skills/unapproved-extra/SKILL.md"
+        target.parent.mkdir()
+        target.write_text("Additional loadable synthetic skill outside the release.\n")
+    monkeypatch.setattr(cli, "_release_native_root", lambda *_a: native)
+    engine_calls = []
+    def engine(args):
+        engine_calls.append(args[0])
+        return {"engine": "fixture", "counts": {"ok": 1}, "steps": [],
+                "exit": 1 if args[0] == failure or (failure == "engine" and args[0] == "repair") else 0}
+    real_run = release.run
+    def run(command, *args, **kwargs):
+        if command[0] != str(state.launcher_path):
+            return real_run(command, *args, **kwargs)
+        if failure == "no-transaction":
+            return subprocess.CompletedProcess(command, 0, '{"state":"committed"}', "")
+        output, error = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
+            code = cli.main(command[1:], state=state, engine_runner=engine)
+        return subprocess.CompletedProcess(command, code, output.getvalue(), error.getvalue())
+    monkeypatch.setattr(release, "run", run)
+    assert release.reconcile_published_lifecycle(source, "9.9.9", release.Result(), False) == (failure is None)
+    assert state.read_desired() == desired
+    observation = state.read_observation()
+    assert observation["transactions"][0] == old
+    if failure is None:
+        latest = observation["transactions"][-1]
+        assert observation["generation"] == 2 and latest["state"] == "committed"
+        assert latest["release"]["content_digest"] == descriptor["content_digest"]
+        assert latest["installed"]["native_plugins"]["codex"]["content_digest"] == descriptor["content_digest"]
+        assert latest["live-loaded"]["status"] == "restart-required"
+        assert engine_calls == ["repair", "doctor"]
+    else:
+        assert observation["generation"] == 1
+        if failure in {"same-version-corruption", "unapproved-extra"}:
+            assert engine_calls == []
 
 
 def test_publisher_activates_cli_through_public_release_verifier(
@@ -1116,6 +1353,7 @@ def test_main_carries_acceptance_authority_to_publish_boundary(
 
     monkeypatch.setattr(release, "publish", publish)
     monkeypatch.setattr(release, "refresh_client", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(release, "install_codex_cache_guardian", lambda *_args, **_kwargs: True)
 
     assert release.main(["--repo-root", str(repo), "--dry-run"]) == 0
     assert received == [(authority, "9.9.9")]
@@ -1155,6 +1393,13 @@ def test_deep_verify_fails_when_cli_reports_but_disk_is_stale(
 
 
 def _seed_content(source: Path, installed: Path, drift: bool = False) -> None:
+    # The fixture source is the whole release, including its native manifest.
+    for manifest in release.MANIFESTS:
+        path = installed / manifest
+        if path.is_file():
+            target = source / manifest
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
     for base in (source, installed):
         (base / "skills" / "demo" / "scripts").mkdir(parents=True, exist_ok=True)
         (base / "skills" / "demo" / "SKILL.md").write_text("# demo\n", encoding="utf-8")
@@ -1200,6 +1445,49 @@ def test_deep_verify_fails_on_content_drift_despite_version_parity(
     names = {s.name: s.ok for s in result.steps}
     assert names["verify.codex.on-disk"] is True
     assert names["verify.codex.content"] is False
+
+
+@pytest.mark.parametrize("client", ["claude", "codex", "muse"])
+@pytest.mark.parametrize("drift", ["extra-skill", "extra-directory", "hook-bytes", "loaded-root"])
+def test_deep_verify_checks_complete_reported_native_inventory(tmp_path, monkeypatch, client, drift):
+    source, conventional, loaded = (tmp_path / name for name in ("source", "conventional", "loaded"))
+    source.mkdir()
+    write_manifests(source, "9.9.9", "9.9.9", "9.9.9")
+    (source / "skills/demo").mkdir(parents=True)
+    (source / "skills/demo/SKILL.md").write_text("# fixture\n")
+    (source / "hooks").mkdir()
+    (source / "hooks/hooks.json").write_text('{"hooks": {}}\n')
+    shutil.copytree(source, conventional)
+    shutil.copytree(source, loaded)
+    target = loaded if drift == "loaded-root" else conventional
+    if drift in {"extra-skill", "loaded-root"}:
+        (target / "skills/unapproved-extra").mkdir()
+        (target / "skills/unapproved-extra/SKILL.md").write_text("# unexpected\n")
+    elif drift == "extra-directory":
+        (target / "unexpected").mkdir()
+    else:
+        (target / "hooks/hooks.json").write_text('{"hooks":{"extra":[]}}\n')
+    monkeypatch.setattr(release, "installed_root", lambda *a: conventional)
+    monkeypatch.setattr(release, "client_reported_version", lambda *a: ("9.9.9", str(target)))
+    assert not release.deep_verify(client, "9.9.9", release.Result(), repo=source)
+
+
+def test_native_inventory_uses_git_release_membership_not_checkout_build_noise(tmp_path):
+    from bootstrap import materialize_release
+    from test_system_contract import release_repo
+    source = release_repo(tmp_path / "source")
+    generation, _descriptor = materialize_release(source, tmp_path / "releases", channel="stable", ref="stable",
+        source_url="https://example.test/synthesis-skills.git")
+    native = tmp_path.resolve() / "native"
+    shutil.copytree(generation, native)
+    cache = source / ".pytest_cache"
+    cache.mkdir()
+    (cache / "lastfailed").write_text("{}\n")
+    assert release.content_digest_report(source, native)[0]
+    native.chmod(0o755)
+    (native / "unapproved-hook.py").write_text("Unexpected shipped file.\n")
+    ok, detail = release.content_digest_report(source, native)
+    assert not ok and "unexpected release entry" in detail
 
 
 def test_deep_verify_fails_closed_without_source_repo(
@@ -2134,6 +2422,542 @@ def _muse_list_payload(
     return json.dumps({"plugins": [{"record": record}]})
 
 
+@pytest.fixture()
+def muse_repo(tmp_path: Path) -> Path:
+    """Exercise the real Git archive and integrity check, outside the cache."""
+    source = tmp_path / "release-source"
+    write_manifests(source, "9.9.9", "9.9.9", "9.9.9")
+    _write_muse_bundle(source, "9.9.9")
+    subprocess.run(["git", "init", "-q", str(source)], check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=source, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=source, check=True)
+    subprocess.run(["git", "config", "core.hooksPath", "/dev/null"], cwd=source, check=True)
+    subprocess.run(["git", "add", "."], cwd=source, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=source, check=True)
+    return source
+
+
+@pytest.mark.parametrize("foreign_kind", ["repository", "plain", "nested", "same-path"])
+def test_muse_owned_refresh_rejects_foreign_tree_without_touching_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, foreign_kind: str
+) -> None:
+    bundles = tmp_path / "bundles"
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    staged = _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
+    foreign = (bundles / "nested" / "v9.9.8" if foreign_kind == "nested"
+               else tmp_path / "foreign")
+    foreign.mkdir(parents=True)
+    (foreign / "retained-work").write_bytes(b"retained work\x00\xff")
+    if foreign_kind == "repository":
+        (foreign / ".git").mkdir()
+        (foreign / ".git" / "config").write_text("repository sentinel\n")
+    before = release._tree_digest(foreign)
+
+    result = release.Result()
+    assert not release._sync_muse_recorded_source(
+        foreign, foreign if foreign_kind == "same-path" else staged,
+        "9.9.9", result, False,
+    )
+    assert release._tree_digest(foreign) == before
+    if foreign_kind == "repository":
+        assert (foreign / ".git" / "config").read_text() == "repository sentinel\n"
+    assert result.failed
+
+
+def test_muse_owned_refresh_preserves_old_tree_when_copy_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundles = tmp_path / "bundles"
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    staged = _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
+    recorded = _write_muse_bundle(bundles / "v4.103.0", "9.9.8")
+    (recorded / "retained-work").write_bytes(b"original retained work")
+    before = release._tree_digest(recorded)
+    original_copy = shutil.copytree
+
+    def fail_copy(source, destination, *args, **kwargs):
+        original_copy(source, destination, *args, **kwargs)
+        if Path(source) == staged:
+            raise OSError("injected full-disk failure after copy")
+
+    monkeypatch.setattr(release.shutil, "copytree", fail_copy)
+    assert not release._sync_muse_recorded_source(
+        recorded, staged, "9.9.9", release.Result(), False,
+    )
+    assert release._tree_digest(recorded) == before
+
+
+@pytest.mark.parametrize("after_rename", [1, 2])
+def test_muse_owned_refresh_restores_old_tree_on_interruption(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, after_rename: int
+) -> None:
+    bundles = tmp_path / "bundles"
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    staged = _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
+    recorded = _write_muse_bundle(bundles / "v4.103.0", "9.9.8")
+    (recorded / "retained-work").write_bytes(b"original retained work")
+    before = release._tree_digest(recorded)
+    original_rename = os.rename
+    calls = 0
+
+    def interrupt_rename(source, destination):
+        nonlocal calls
+        original_rename(source, destination)
+        calls += 1
+        if calls == after_rename:
+            raise KeyboardInterrupt("injected interruption after completed rename")
+
+    monkeypatch.setattr(release.os, "rename", interrupt_rename)
+    with pytest.raises(KeyboardInterrupt):
+        release._sync_muse_recorded_source(
+            recorded, staged, "9.9.9", release.Result(), False,
+        )
+    assert release._tree_digest(recorded) == before
+
+
+def test_muse_owned_refresh_retains_old_bytes_and_accepts_pinned_old_dirname(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundles = tmp_path / "bundles"
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    staged = _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
+    recorded = _write_muse_bundle(bundles / "v4.103.0", "9.9.8")
+    (recorded / "retained-work").write_bytes(b"original retained work")
+    before = release._tree_digest(recorded)
+    result = release.Result()
+
+    assert release._sync_muse_recorded_source(recorded, staged, "9.9.9", result, False)
+    assert release._tree_digest(recorded) == release._tree_digest(staged)
+    backups = list(bundles.glob(".release-displaced-v4.103.0-*"))
+    assert len(backups) == 1
+    assert release._tree_digest(backups[0]) == before
+    assert str(backups[0]) in result.steps[-1].detail
+
+
+def test_muse_owned_materialize_keeps_previous_bundle_on_export_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundles = tmp_path / "bundles"
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    recorded = _write_muse_bundle(bundles / "v9.9.9", "9.9.8")
+    (recorded / "retained-work").write_bytes(b"original retained work")
+    before = release._tree_digest(recorded)
+
+    def fail_export(*args, **kwargs):
+        raise OSError("injected archive failure")
+
+    monkeypatch.setattr(release, "_export_release_tag", fail_export)
+    assert release._materialize_muse_bundle(
+        tmp_path / "source", "9.9.9", release.Result(), False,
+    ) is None
+    assert release._tree_digest(recorded) == before
+
+
+@pytest.mark.parametrize("redirect", ["root", "ancestor", "recorded", "staged", "broken", "nested-link", "nested-loop"])
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_muse_owned_refresh_rejects_redirects_without_modifying_targets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, redirect: str, dry_run: bool
+) -> None:
+    original = tmp_path / "original"
+    bundles = original / "bundles"
+    staged = _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
+    recorded = _write_muse_bundle(bundles / "v4.103.0", "9.9.8")
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    (foreign / "sentinel").write_bytes(b"foreign retained work")
+    before = release._tree_digest(recorded)
+    if redirect == "root":
+        alias = tmp_path / "alias"
+        alias.symlink_to(bundles, target_is_directory=True)
+        bundles, recorded, staged = alias, alias / recorded.name, alias / staged.name
+    elif redirect == "ancestor":
+        alias = tmp_path / "alias"
+        alias.symlink_to(original, target_is_directory=True)
+        bundles = alias / "bundles"
+        recorded, staged = bundles / recorded.name, bundles / staged.name
+    elif redirect in {"recorded", "broken"}:
+        alias = bundles / "v1.0.0"
+        alias.symlink_to(recorded if redirect == "recorded" else foreign / "missing")
+        recorded = alias
+    elif redirect == "staged":
+        alias = bundles / "v1.0.0"
+        alias.symlink_to(staged)
+        staged = alias
+    elif redirect == "nested-loop":
+        (recorded / "loop").symlink_to("loop")
+        before = release._tree_digest(recorded)
+    else:
+        (recorded / "escape").symlink_to(foreign, target_is_directory=True)
+        before = release._tree_digest(recorded)
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    assert not release._sync_muse_recorded_source(
+        recorded, staged, "9.9.9", release.Result(), dry_run,
+    )
+    assert (foreign / "sentinel").read_bytes() == b"foreign retained work"
+    assert release._tree_digest(original / "bundles" / "v4.103.0") == before
+
+
+@pytest.mark.parametrize("protected", ["home", "cwd", "source", "repo", "workspace", "root", "relative", "traversal"])
+def test_muse_owned_materialize_refuses_protected_boundaries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, protected: str
+) -> None:
+    parent = tmp_path / "bundles"
+    destination = _write_muse_bundle(parent / "v9.9.9", "9.9.8")
+    (destination / "sentinel").write_bytes(b"protected bytes")
+    before = release._tree_digest(destination)
+    repo = tmp_path / "source"
+    if protected == "home":
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: parent))
+    elif protected == "cwd":
+        monkeypatch.chdir(destination)
+    elif protected == "source":
+        repo = destination
+    elif protected == "repo":
+        (destination / ".git").write_text("gitdir: retained elsewhere\n")
+    elif protected == "workspace":
+        (parent / ".agents").mkdir()
+        (parent / ".agents" / "repos.yaml").write_text("repos: []\n")
+    elif protected == "root":
+        parent = Path("/")
+    elif protected == "relative":
+        parent = Path("relative-bundles")
+    else:
+        parent = parent / "unused" / ".."
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", parent)
+    # Protected system paths are probed only in dry-run mode.
+    result = release.Result()
+    assert release._materialize_muse_bundle(repo, "9.9.9", result, True) is None
+    assert result.failed
+    assert release._tree_digest(destination) == before
+    assert (destination / "sentinel").read_bytes() == b"protected bytes"
+    if protected == "repo":
+        assert (destination / ".git").read_text() == "gitdir: retained elsewhere\n"
+
+
+@pytest.mark.parametrize("kind", ["plain", "file", "symlink", "repository", "nested-repository"])
+def test_muse_owned_materialize_preserves_unowned_existing_version(
+    muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    bundles = tmp_path / "bundles"
+    bundles.mkdir()
+    destination = bundles / "v9.9.9"
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    (foreign / "sentinel").write_bytes(b"retained foreign data")
+    if kind == "file":
+        destination.write_bytes(b"retained file")
+    elif kind == "symlink":
+        destination.symlink_to(foreign, target_is_directory=True)
+    else:
+        destination.mkdir()
+        (destination / "sentinel").write_bytes(b"retained owned-location data")
+        if kind in {"repository", "nested-repository"}:
+            _write_muse_bundle(destination, "9.9.8")
+            marker = destination / (".git" if kind == "repository" else "retained/.git")
+            marker.mkdir(parents=True)
+            (marker / "config").write_bytes(b"retained repository")
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    assert release._materialize_muse_bundle(muse_repo, "9.9.9", release.Result(), False) is None
+    assert (foreign / "sentinel").read_bytes() == b"retained foreign data"
+    if kind == "file":
+        assert destination.read_bytes() == b"retained file"
+    elif kind == "symlink":
+        assert destination.is_symlink()
+    else:
+        assert (destination / "sentinel").read_bytes() == b"retained owned-location data"
+        if kind in {"repository", "nested-repository"}:
+            assert (marker / "config").read_bytes() == b"retained repository"
+
+
+@pytest.mark.parametrize("failure", ["copy-corruption", "promote-failure", "installed-corruption", "rollback-failure"])
+def test_muse_owned_refresh_retains_previous_tree_across_failed_transitions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    bundles = tmp_path / "bundles"
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    staged = _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
+    recorded = _write_muse_bundle(bundles / "v4.103.0", "9.9.8")
+    (recorded / "retained-work").write_bytes(b"old work survives")
+    before = release._tree_digest(recorded)
+    original_copy = shutil.copytree
+    original_rename = os.rename
+    calls = 0
+
+    def copy_corrupt(source, destination, *args, **kwargs):
+        returned = original_copy(source, destination, *args, **kwargs)
+        if Path(source) == staged:
+            (Path(destination) / "skills/demo/SKILL.md").write_bytes(b"corrupt staged bytes")
+        return returned
+
+    def fail_rename(source, destination):
+        nonlocal calls
+        calls += 1
+        if failure in {"promote-failure", "rollback-failure"} and calls == 2:
+            raise OSError("injected promotion failure")
+        if failure == "rollback-failure" and calls == 3:
+            raise OSError("injected rollback failure")
+        original_rename(source, destination)
+        if failure == "installed-corruption" and calls == 2:
+            (Path(destination) / "skills/demo/SKILL.md").write_bytes(b"corrupt installed bytes")
+
+    if failure == "copy-corruption":
+        monkeypatch.setattr(release.shutil, "copytree", copy_corrupt)
+    else:
+        monkeypatch.setattr(release.os, "rename", fail_rename)
+    result = release.Result()
+    assert not release._sync_muse_recorded_source(recorded, staged, "9.9.9", result, False)
+    if failure == "rollback-failure":
+        backups = list(bundles.glob(".release-displaced-v4.103.0-*"))
+        assert len(backups) == 1 and release._tree_digest(backups[0]) == before
+        assert str(backups[0]) in result.steps[-1].detail
+    else:
+        assert release._tree_digest(recorded) == before
+
+
+@pytest.mark.parametrize("after_rename", [1, 2])
+def test_muse_owned_refresh_preserves_recovery_after_process_death(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, after_rename: int
+) -> None:
+    bundles = tmp_path / "bundles"
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    staged = _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
+    recorded = _write_muse_bundle(bundles / "v4.103.0", "9.9.8")
+    (recorded / "retained-work").write_bytes(b"old work survives process death")
+    before = release._tree_digest(recorded)
+    script = """
+import os, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import release
+release.MUSE_BUNDLE_ROOT = Path(sys.argv[2])
+original_rename = os.rename
+calls = 0
+def die_after_rename(source, destination):
+    global calls
+    original_rename(source, destination)
+    calls += 1
+    if calls == int(sys.argv[3]):
+        os._exit(77)
+release.os.rename = die_after_rename
+release._sync_muse_recorded_source(
+    release.MUSE_BUNDLE_ROOT / 'v4.103.0',
+    release.MUSE_BUNDLE_ROOT / 'v9.9.9', '9.9.9', release.Result(), False)
+"""
+    process = subprocess.run(
+        [sys.executable, "-B", "-c", script, str(Path(release.__file__).parent), str(bundles), str(after_rename)],
+        capture_output=True, text=True, timeout=20,
+    )
+    assert process.returncode == 77, process.stderr
+    backups = list(bundles.glob(".release-displaced-v4.103.0-*"))
+    assert len(backups) == 1 and release._tree_digest(backups[0]) == before
+    result = release.Result()
+    if after_rename == 1:
+        assert not recorded.exists()
+        assert not release._sync_muse_recorded_source(recorded, staged, "9.9.9", result, False)
+        assert "retained recovery tree" in result.steps[-1].detail
+    else:
+        assert release._tree_digest(recorded) == release._tree_digest(staged)
+        assert release._sync_muse_recorded_source(recorded, staged, "9.9.9", result, False)
+        assert release._tree_digest(backups[0]) == before
+
+
+@pytest.mark.parametrize("failure", ["wrong-bytes", "missing-hook", "interruption"])
+def test_muse_owned_materialize_verifies_export_before_displacing_old_tree(
+    muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    bundles = tmp_path / "bundles"
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    previous = _write_muse_bundle(bundles / "v9.9.9", "9.9.8")
+    (previous / "retained-work").write_bytes(b"old bundle work")
+    before = release._tree_digest(previous)
+    original_export = release._export_release_tag
+
+    def corrupted_export(repo, version, destination, **kwargs):
+        exported = original_export(repo, version, destination, **kwargs)
+        if failure == "interruption":
+            raise KeyboardInterrupt("injected interrupted export")
+        if failure == "wrong-bytes":
+            (destination / "skills/demo/SKILL.md").write_bytes(b"plausible but incorrect export")
+        else:
+            (destination / "hooks/muse/demo.sh").unlink()
+        return exported
+
+    monkeypatch.setattr(release, "_export_release_tag", corrupted_export)
+    if failure == "interruption":
+        with pytest.raises(KeyboardInterrupt):
+            release._materialize_muse_bundle(muse_repo, "9.9.9", release.Result(), False)
+    else:
+        assert release._materialize_muse_bundle(muse_repo, "9.9.9", release.Result(), False) is None
+    assert release._tree_digest(previous) == before
+    assert not list(bundles.glob(".release-displaced-*"))
+
+
+def test_muse_owned_refresh_rechecks_ancestor_after_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundles = tmp_path / "bundles"
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    staged = _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
+    recorded = _write_muse_bundle(bundles / "v4.103.0", "9.9.8")
+    (recorded / "retained-work").write_bytes(b"old tree")
+    before = release._tree_digest(recorded)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    (foreign / "sentinel").write_bytes(b"foreign tree")
+    moved = tmp_path / "retained-original-parent"
+    original_copy = shutil.copytree
+
+    def redirect_parent(source, destination, *args, **kwargs):
+        returned = original_copy(source, destination, *args, **kwargs)
+        if Path(source) == staged:
+            os.rename(bundles, moved)
+            bundles.symlink_to(foreign, target_is_directory=True)
+        return returned
+
+    monkeypatch.setattr(release.shutil, "copytree", redirect_parent)
+    assert not release._sync_muse_recorded_source(recorded, staged, "9.9.9", release.Result(), False)
+    assert release._tree_digest(moved / recorded.name) == before
+    assert list(foreign.iterdir()) == [foreign / "sentinel"]
+    assert (foreign / "sentinel").read_bytes() == b"foreign tree"
+
+
+@pytest.mark.parametrize("intrusion", ["parent-redirect", "new-destination", "replacement-destination"])
+def test_muse_owned_refresh_preserves_intruding_tree_between_renames(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, intrusion: str
+) -> None:
+    bundles = tmp_path / "bundles"
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    staged = _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
+    recorded = _write_muse_bundle(bundles / "v4.103.0", "9.9.8")
+    (recorded / "retained-work").write_bytes(b"original work")
+    before = release._tree_digest(recorded)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    foreign_recorded = foreign / recorded.name
+    foreign_recorded.mkdir()
+    (foreign_recorded / "foreign-work").write_bytes(b"foreign work")
+    moved = tmp_path / "retained-original-parent"
+    original_rename = os.rename
+    calls = 0
+
+    def intrude_after_rename(source, destination):
+        nonlocal calls
+        original_rename(source, destination)
+        calls += 1
+        if calls == 1 and intrusion == "parent-redirect":
+            original_rename(bundles, moved)
+            bundles.symlink_to(foreign, target_is_directory=True)
+        elif calls == 1 and intrusion == "new-destination":
+            original_rename(foreign_recorded, recorded)
+        elif calls == 2 and intrusion == "replacement-destination":
+            original_rename(recorded, tmp_path / "retained-proposed-install")
+            original_rename(foreign_recorded, recorded)
+
+    monkeypatch.setattr(release.os, "rename", intrude_after_rename)
+    assert not release._sync_muse_recorded_source(recorded, staged, "9.9.9", release.Result(), False)
+    preserved_parent = moved if intrusion == "parent-redirect" else bundles
+    recovery = list(preserved_parent.glob(".release-displaced-v4.103.0-*"))
+    assert len(recovery) == 1 and release._tree_digest(recovery[0]) == before
+    assert (recorded / "foreign-work").read_bytes() == b"foreign work"
+
+
+def test_muse_owned_refresh_refuses_concurrent_writer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundles = tmp_path / "bundles"
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    staged = _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
+    recorded = _write_muse_bundle(bundles / "v4.103.0", "9.9.8")
+    before = release._tree_digest(recorded)
+    with (bundles / ".release.lock").open("w") as handle:
+        release.fcntl.flock(handle.fileno(), release.fcntl.LOCK_EX | release.fcntl.LOCK_NB)
+        assert not release._sync_muse_recorded_source(recorded, staged, "9.9.9", release.Result(), False)
+    assert release._tree_digest(recorded) == before
+    assert not list(bundles.glob(".release-displaced-*"))
+
+
+@pytest.mark.parametrize("kind", ["absolute-skill", "traversing-skill", "absolute-hook", "escaping-link"])
+def test_muse_owned_bundle_completeness_rejects_capability_escape(tmp_path: Path, kind: str) -> None:
+    root = _write_muse_bundle(tmp_path / "bundle", "9.9.9")
+    external = tmp_path / "external"
+    external.write_text("#!/bin/sh\nexit 0\n")
+    external.chmod(0o755)
+    manifest_path = root / ".muse-plugin/plugin.json"
+    manifest = json.loads(manifest_path.read_text())
+    if kind == "absolute-hook":
+        manifest["capabilities"]["hooks"][0]["command"][1] = str(external)
+    elif kind == "escaping-link":
+        link = root / "external-skill"
+        link.symlink_to(external)
+        manifest["capabilities"]["skills"][0]["path"] = link.name
+    else:
+        manifest["capabilities"]["skills"][0]["path"] = str(external) if kind == "absolute-skill" else "../external"
+    manifest_path.write_text(json.dumps(manifest))
+    assert release._muse_bundle_completeness(root, "9.9.9")[0] is False
+    assert external.read_text() == "#!/bin/sh\nexit 0\n"
+
+
+def test_muse_owned_native_update_observes_verified_source_and_retained_old_work(
+    muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundles = tmp_path / "bundles"
+    monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
+    recorded = _write_muse_bundle(bundles / "v4.103.0", "9.9.8")
+    (recorded / "retained-work").write_bytes(b"local retained bytes")
+    calls = tmp_path / "native-calls.jsonl"
+    binary = tmp_path / "muse-fixture"
+    binary.write_text(
+        f"#!{sys.executable}\n"
+        "import json, sys\nfrom pathlib import Path\n"
+        f"recorded = Path({str(recorded)!r})\n"
+        f"with Path({str(calls)!r}).open('a') as handle: handle.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "if sys.argv[1:3] == ['plugins', 'list']:\n"
+        f"    print({_muse_list_payload(source_path=str(recorded), version='9.9.8')!r})\n"
+        "elif sys.argv[1:3] == ['plugins', 'update']:\n"
+        "    assert json.loads((recorded / '.muse-plugin/plugin.json').read_text())['version'] == '9.9.9'\n"
+        "    assert (recorded / 'skills/demo/SKILL.md').read_text() == '# demo\\n'\n"
+        "    backups = list(recorded.parent.glob('.release-displaced-v4.103.0-*'))\n"
+        "    assert len(backups) == 1\n"
+        "    assert (backups[0] / 'retained-work').read_bytes() == b'local retained bytes'\n"
+        "    print('{}')\n"
+        "else:\n    raise SystemExit(42)\n"
+    )
+    binary.chmod(0o755)
+    monkeypatch.setattr(release, "resolve_client_binary", lambda _name: str(binary))
+    source_git = (muse_repo / ".git" / "HEAD").read_bytes()
+    assert release.refresh_client("muse", release.Result(), False, repo=muse_repo)
+    assert [json.loads(line)[:2] for line in calls.read_text().splitlines()] == [
+        ["plugins", "list"], ["plugins", "update"],
+    ]
+    assert release.content_digest_report(muse_repo, recorded)[0]
+    assert (muse_repo / ".git" / "HEAD").read_bytes() == source_git
+
+
+@pytest.mark.parametrize("kind", ["parent-link", "target-link", "repository", "cwd"])
+def test_cache_transition_cleanup_refuses_unsafe_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    parent = tmp_path / "parent"
+    target = parent / ".release-export-fixture"
+    target.mkdir(parents=True)
+    (target / "sentinel").write_bytes(b"must survive")
+    original = target
+    if kind == "parent-link":
+        alias = tmp_path / "alias"
+        alias.symlink_to(parent, target_is_directory=True)
+        parent, target = alias, alias / target.name
+    elif kind == "target-link":
+        target = parent / ".release-export-link"
+        target.symlink_to(original, target_is_directory=True)
+    elif kind == "repository":
+        (target / ".git").mkdir()
+    else:
+        monkeypatch.chdir(target)
+    with pytest.raises(OSError):
+        release._remove_cache_transition_tree(target, parent, ".release-export-")
+    assert (original / "sentinel").read_bytes() == b"must survive"
+
+
 def _fake_muse_binary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: str, exit_code: int = 0
 ) -> Path:
@@ -2201,8 +3025,7 @@ def test_muse_reported_version_none_when_command_fails(
 def test_muse_refresh_dry_run_syncs_then_updates_when_recorded(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    recorded = tmp_path / "recorded"
-    recorded.mkdir()
+    recorded = tmp_path / "bundles" / "v9.9.8"
     _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(source_path=str(recorded)))
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
     result = release.Result()
@@ -2215,7 +3038,7 @@ def test_muse_refresh_dry_run_syncs_then_updates_when_recorded(
     update_detail = next(s.detail for s in result.steps if s.name == "install.muse.update")
     assert "plugins update" in update_detail
     assert not (tmp_path / "bundles").exists()
-    assert list(recorded.iterdir()) == []
+    assert not recorded.exists()
 
 
 def test_muse_refresh_dry_run_installs_fresh_when_no_record(
@@ -2257,18 +3080,13 @@ def test_muse_refresh_fails_closed_when_manifests_disagree(
 
 
 def test_muse_refresh_materializes_bundle_and_installs(
-    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _fake_muse_binary(tmp_path, monkeypatch, "{}")
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
 
-    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
-        _write_muse_bundle(destination, version)
-        return {"seeded"}
-
-    monkeypatch.setattr(release, "_export_release_tag", fake_export)
     result = release.Result()
-    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is True
+    assert release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is True
     bundle = tmp_path / "bundles" / "v9.9.9"
     assert (bundle / ".muse-plugin" / "plugin.json").is_file()
     names = {s.name: s.ok for s in result.steps}
@@ -2282,23 +3100,25 @@ def test_muse_refresh_reuses_complete_bundle(
     _fake_muse_binary(tmp_path, monkeypatch, "{}")
     bundles = tmp_path / "bundles"
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
-    _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
-    skill = repo / "skills" / "demo" / "SKILL.md"
-    skill.parent.mkdir(parents=True, exist_ok=True)
-    skill.write_text("# demo\n", encoding="utf-8")
+    source = _write_muse_bundle(tmp_path / "release-source", "9.9.9")
+    for manifest in release.MANIFESTS[:2]:
+        target = source / manifest
+        target.parent.mkdir()
+        shutil.copy2(repo / manifest, target)
+    shutil.copytree(source, bundles / "v9.9.9")
 
     def exploding_export(*args: object, **kwargs: object) -> set[str]:
         raise AssertionError("complete bundle must be reused, not re-exported")
 
     monkeypatch.setattr(release, "_export_release_tag", exploding_export)
     result = release.Result()
-    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is True
+    assert release.refresh_client("muse", result, dry_run=False, repo=source) is True
     names = [s.name for s in result.steps]
     assert "install.muse.bundle-replace" not in names
 
 
 def test_muse_refresh_replaces_complete_bundle_on_content_drift(
-    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Same-version commits move bytes without moving the label: a
     structurally complete bundle whose content drifted must be replaced."""
@@ -2306,38 +3126,28 @@ def test_muse_refresh_replaces_complete_bundle_on_content_drift(
     bundles = tmp_path / "bundles"
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
     _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
-    skill = repo / "skills" / "demo" / "SKILL.md"
+    skill = muse_repo / "skills" / "demo" / "SKILL.md"
     skill.parent.mkdir(parents=True, exist_ok=True)
     skill.write_text("# demo revised\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=muse_repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "fixture update"], cwd=muse_repo, check=True)
 
-    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
-        _write_muse_bundle(destination, version)
-        staged = destination / "skills" / "demo" / "SKILL.md"
-        staged.write_text("# demo revised\n", encoding="utf-8")
-        return {"seeded"}
-
-    monkeypatch.setattr(release, "_export_release_tag", fake_export)
     result = release.Result()
-    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is True
+    assert release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is True
     names = [s.name for s in result.steps]
     assert "install.muse.bundle-replace" in names
 
 
 def test_muse_refresh_replaces_incomplete_bundle(
-    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _fake_muse_binary(tmp_path, monkeypatch, "{}")
     bundles = tmp_path / "bundles"
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
     _write_muse_bundle(bundles / "v9.9.9", "9.9.8")
 
-    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
-        _write_muse_bundle(destination, version)
-        return {"seeded"}
-
-    monkeypatch.setattr(release, "_export_release_tag", fake_export)
     result = release.Result()
-    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is True
+    assert release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is True
     names = [s.name for s in result.steps]
     assert "install.muse.bundle-replace" in names
     ok, _ = release._muse_bundle_completeness(bundles / "v9.9.9", "9.9.9")
@@ -2345,18 +3155,13 @@ def test_muse_refresh_replaces_incomplete_bundle(
 
 
 def test_muse_refresh_fails_closed_when_install_command_fails(
-    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _fake_muse_binary(tmp_path, monkeypatch, "boom", exit_code=1)
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
 
-    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
-        _write_muse_bundle(destination, version)
-        return {"seeded"}
-
-    monkeypatch.setattr(release, "_export_release_tag", fake_export)
     result = release.Result()
-    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is False
+    assert release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is False
     names = {s.name: s.ok for s in result.steps}
     assert names["install.muse.bundle"] is True
     assert names["install.muse.install"] is False
@@ -2420,22 +3225,17 @@ def test_muse_deep_verify_reads_the_muse_manifest(
 
 
 def test_muse_refresh_syncs_recorded_source_then_updates(
-    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Muse refuses install-from-new-path over an existing record, so the
     stage syncs the staged export into the recorded path and updates."""
-    recorded = tmp_path / "recorded"
+    recorded = tmp_path / "bundles" / "v4.103.0"
     _write_muse_bundle(recorded, "9.9.8")
     _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(source_path=str(recorded)))
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
 
-    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
-        _write_muse_bundle(destination, version)
-        return {"seeded"}
-
-    monkeypatch.setattr(release, "_export_release_tag", fake_export)
     result = release.Result()
-    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is True
+    assert release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is True
     names = {s.name: s.ok for s in result.steps}
     assert names["install.muse.sync"] is True
     assert names["install.muse.update"] is True
@@ -2444,7 +3244,7 @@ def test_muse_refresh_syncs_recorded_source_then_updates(
 
 
 def test_muse_refresh_skips_sync_when_recorded_matches_staged(
-    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     bundles = tmp_path / "bundles"
     _fake_muse_binary(
@@ -2452,19 +3252,14 @@ def test_muse_refresh_skips_sync_when_recorded_matches_staged(
     )
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
 
-    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
-        _write_muse_bundle(destination, version)
-        return {"seeded"}
-
-    monkeypatch.setattr(release, "_export_release_tag", fake_export)
     result = release.Result()
-    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is True
+    assert release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is True
     sync_detail = next(s.detail for s in result.steps if s.name == "install.muse.sync")
     assert "already stages" in sync_detail
 
 
 def test_muse_refresh_refuses_symlinked_recorded_source(
-    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     target = tmp_path / "target"
     target.mkdir()
@@ -2473,48 +3268,33 @@ def test_muse_refresh_refuses_symlinked_recorded_source(
     _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(source_path=str(recorded)))
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
 
-    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
-        _write_muse_bundle(destination, version)
-        return {"seeded"}
-
-    monkeypatch.setattr(release, "_export_release_tag", fake_export)
     result = release.Result()
-    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is False
+    assert release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is False
     names = {s.name: s.ok for s in result.steps}
     assert names["install.muse.sync"] is False
     assert target.is_dir() and recorded.is_symlink()
 
 
 def test_muse_refresh_refuses_relative_recorded_source(
-    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(source_path="relative/bundle"))
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
 
-    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
-        _write_muse_bundle(destination, version)
-        return {"seeded"}
-
-    monkeypatch.setattr(release, "_export_release_tag", fake_export)
     result = release.Result()
-    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is False
+    assert release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is False
     names = {s.name: s.ok for s in result.steps}
     assert names["install.muse.record"] is False
 
 
 def test_muse_refresh_fails_closed_when_record_is_unreadable(
-    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(release, "resolve_client_binary", lambda name: str(tmp_path / "missing" / "muse"))
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
 
-    def fake_export(repo_path: Path, version: str, destination: Path, *, current_version: str) -> set[str]:
-        _write_muse_bundle(destination, version)
-        return {"seeded"}
-
-    monkeypatch.setattr(release, "_export_release_tag", fake_export)
     result = release.Result()
-    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is False
+    assert release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is False
     names = {s.name: s.ok for s in result.steps}
     assert names["install.muse.record"] is False
 

@@ -5,12 +5,18 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.8.1"
+  version: "2.8.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+**Version 2.8.2** binds installed lifecycle reconciliation to the exact verified
+release and existing desired state. Muse refresh admits only owned bundle roots,
+verifies staged content before replacement and retains displaced bytes for
+recovery. A missing source with a retained interrupted transition remains blocked
+until its recovery is resolved; an arbitrary recorded path is never erased.
+
 **Version 2.7.0** (2026-09-04) deduplicates historical payloads in a SQLite
 content-addressed archive. Immutable per-version manifests preserve paths,
 types, modes and metadata; restoration creates independent files. SHA-256
@@ -305,7 +311,7 @@ python3 .../release.py --install-only  # refresh + verify clients (new machine, 
 
 The sequence, each stage gating the next:
 
-**preflight → required checks → publish → install all three clients → verify → activate public CLI**
+**preflight → required checks → publish → activate public CLI → install selected clients → verify → reconcile lifecycle**
 
 - **Preflight** refuses to proceed unless all three plugin manifests agree, the
   newest CHANGELOG entry matches them, and the tree is clean. It also refuses
@@ -325,7 +331,15 @@ The sequence, each stage gating the next:
   branch name. A per-remote atomic push prevents a channel or pin from moving
   without the others. This is the PRINCIPAL RULE D4 repair for `R5-REV-002`
   extended to the release-channel contract.
-- **Install** uses each client's own commands, in the order each client
+- **Activate public CLI** resolves the newly published immutable tag back to the
+  accepted commit, Git tree, and canonical content digest, materializes that
+  generation under the synthesis-owned content-addressed release store, and
+  atomically switches the managed `synthesis` launcher and active descriptor.
+  This precedes native installation because new hooks depend on the verified
+  launcher. The descriptor records installation prerequisites, not live loading.
+- **Install** honors the saved desired client selection; an unconfigured
+  maintainer machine retains the explicit Claude, Codex and Muse publisher
+  targets. It uses each selected client's own commands, in the order each client
   requires. For Codex that means `plugin marketplace upgrade` **before**
   `plugin add`, because Codex installs *from* its git marketplace snapshot —
   skipping the upgrade installs the previous release while appearing to
@@ -361,17 +375,23 @@ The sequence, each stage gating the next:
   release closed. Transient verified migration copies are retired after the
   committed store contains their bytes and modes. Symlinked recovery roots and
   unsafe links are refused; client liveness markers are excluded.
-- **Verify** is the point of the whole script, and it checks each client
+- **Verify** is the point of the whole script, and it checks each selected client
   **twice**: what the CLI reports, and the plugin manifest at the path the CLI
-  says it loads. Agreement of both with the source version is the only pass.
-- **Activate public CLI** resolves the newly published immutable tag back to the
-  accepted commit, Git tree, and canonical content digest, materializes that
-  generation under the synthesis-owned content-addressed release store, and
-  atomically switches the managed `synthesis` launcher and active descriptor.
-  The release manager also writes the same immutable descriptor into the release
-  descriptor store, so the launcher cannot silently follow a mutable checkout or
-  disagree with the release that all three clients verified. User-selected desired
-  state remains owned by `synthesis setup` and later reconciliation commands.
+  says it loads. The complete immutable inventory must match; extra loadable
+  files and filesystem-type changes fail. Only the existing bounded client
+  metadata and Python-cache policy is exempt. Stable-path selection uses a
+  verified selected client, and the Codex guardian runs only when Codex is
+  selected. User-selected desired state remains owned by `synthesis setup`
+  and later reconciliation commands.
+- **Reconcile lifecycle** binds repair to the exact published release digest and
+  unchanged desired-state digest after native installation. Both bindings are
+  rechecked under acquired lifecycle locks before any recovery mutation. The repair verifies
+  each selected native root against the published source inventory, reconciles
+  owned instruction provenance and commits a new generation only after engine
+  doctor passes. It preserves the selected profile, clients, organization commit,
+  personal sources and prior generations. Disabled, modular or conflicting pinned
+  selections refuse before release mutation; absent desired state stays absent.
+  A generation records installation, not a fabricated native reload receipt.
 
 ### Why a client's own version report is not sufficient evidence
 
@@ -400,7 +420,7 @@ version-independent path:
 ```
 
 It lives outside the client-owned caches (which the clients replace on their
-own schedule), is repointed atomically by `release.py` only after both
+own schedule), is repointed atomically by `release.py` only after the selected
 clients verified the version, and is refused when the target root is not a
 verified install (`install.stable-path`). Reference it from instruction
 files and scripts instead of a version; `--install-only` repoints it on a

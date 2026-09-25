@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -65,6 +66,52 @@ def test_next_actions_is_empty_when_every_item_is_complete() -> None:
     )
 
     assert MODULE.next_actions(context) == []
+
+
+@pytest.mark.parametrize("kind", ["large", "oversize", "duplicate", "symlink", "broken-symlink"])
+def test_session_context_reads_state_through_shared_contract(tmp_path, monkeypatch, kind):
+    import project_state
+
+    project = tmp_path / "alpha"
+    project.mkdir()
+    (project / "CONTEXT.md").write_text("# Context\n")
+    (project / "plan.md").write_text("# Plan\n")
+    path = project / project_state.STATE_FILE
+    value = {"phase": "shared reader", "status": "active", "next_actions": ["Inspect"],
+             "controlling_plan": "plan.md"}
+    raw = json.dumps(value).encode()
+    if kind in {"symlink", "broken-symlink"}:
+        target = tmp_path / "target.json"
+        if kind == "symlink":
+            target.write_bytes(raw)
+        path.symlink_to(target)
+    elif kind == "duplicate":
+        path.write_text('{"status":"active","status":"paused"}')
+    else:
+        path.write_bytes(raw + b" " * (546_930 - len(raw)))
+    if kind == "oversize":
+        monkeypatch.setattr(project_state, "MAX_STATE_JSON_BYTES", 128)
+    # Isolate this consumer boundary: resolver and semantic checks have their
+    # own integration fixtures; the parser and on-disk inputs stay real.
+    monkeypatch.setattr(MODULE, "reconciled_project", lambda *args, **kwargs: (project, []))
+    monkeypatch.setattr(MODULE, "semantic_issues", lambda _project: [])
+    monkeypatch.setattr(MODULE, "record_freshness", lambda _project: (True, "fixture"))
+    original = Path.read_text
+
+    def no_unbounded_state_read(candidate, *args, **kwargs):
+        assert candidate != path, "state consumers must use the bounded shared reader"
+        return original(candidate, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", no_unbounded_state_read)
+    lines = []
+    if kind == "large":
+        MODULE.append_project_context(lines, project, label="Fixture")
+        assert "Current phase: shared reader." in lines
+        assert "- Inspect" in lines
+    else:
+        with pytest.raises(ValueError, match="structured current-state failure"):
+            MODULE.append_project_context(lines, project, label="Fixture")
+        assert not lines
 
 
 def test_build_includes_active_coordination(tmp_path: Path) -> None:
@@ -486,7 +533,21 @@ def test_live_receipt_records_real_sessionstart_shape(
         encoding="utf-8",
     )
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
-    monkeypatch.setenv("PLUGIN_ROOT", str(MODULE.SCRIPTS_DIR.parents[2]))
+    # The running source checkout is mutable (test caches and empty build
+    # directories differ between local worktrees and CI). Materialize the
+    # complete shipped file inventory as separate immutable source/native roots.
+    source_root = tmp_path / "release"
+    plugin_root = tmp_path / "native-plugin"
+    repo = MODULE.SCRIPTS_DIR.parents[2]
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=repo, check=True, capture_output=True,
+    ).stdout.decode().split("\0")
+    for relative in filter(None, tracked):
+        target = source_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(repo / relative, target)
+    shutil.copytree(source_root, plugin_root)
+    monkeypatch.setenv(MODULE.CLIENT_PLUGIN_ROOT_ENV, str(plugin_root))
     payload = {
         "hook_event_name": "SessionStart",
         "session_id": "019fff79-5858-7993-a329-b301bccf5d31",
@@ -514,16 +575,7 @@ def test_live_receipt_records_real_sessionstart_shape(
                 "ref": "v%s" % version,
                 "commit": "1" * 40,
                 "tree": "2" * 40,
-                    "content_digest": system_contract.canonical_tracked_tree_digest(
-                        MODULE.SCRIPTS_DIR.parents[2],
-                        {
-                            relative
-                            for relative, metadata, _path in system_contract._iter_tree(
-                                MODULE.SCRIPTS_DIR.parents[2]
-                            )
-                            if _path.is_file()
-                        },
-                    ),
+                "content_digest": system_contract.canonical_tree_digest(source_root),
                 "digest_algorithm": system_contract.DIGEST_ALGORITHM,
                 "tree_policy": system_contract.TREE_POLICY,
                 "source_url": "https://example.test/synthesis-skills.git",
@@ -531,7 +583,7 @@ def test_live_receipt_records_real_sessionstart_shape(
             },
             "source-provenance": {
                 "status": "verified",
-                "root": str(MODULE.SCRIPTS_DIR.parents[2]),
+                "root": str(source_root),
             },
             "live-loaded": {"status": "restart-required"},
         },
@@ -549,7 +601,7 @@ def test_live_receipt_records_real_sessionstart_shape(
     assert recorded["provenance_env"] == "codex-transcript"
     assert recorded["transcript_bound_at_record"] is True
     assert recorded["transcript_path"] == str(transcript)
-    assert Path(recorded["plugin_root"]).resolve() == MODULE.SCRIPTS_DIR.parents[2]
+    assert Path(recorded["plugin_root"]).resolve() == plugin_root
     assert Path(recorded["execution_root"]).resolve() == MODULE.SCRIPTS_DIR.parents[2]
     event_path = (
         receipt.parent

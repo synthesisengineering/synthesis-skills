@@ -60,6 +60,11 @@ def snapshot_current_source(source, target, env):
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(original, destination, follow_symlinks=False)
     sh(["git", "-C", str(target), "init", "-q", "-b", "main"], env=env)
+    # The snapshot is immediately cloned by real bootstrap fixtures. Detached
+    # maintenance can rename/remove tmp_pack files while a local clone links
+    # them. Keep this disposable repository quiescent from its first commit.
+    sh(["git", "-C", str(target), "config", "maintenance.auto", "false"], env=env)
+    sh(["git", "-C", str(target), "config", "gc.auto", "0"], env=env)
     sh(["git", "-c", "core.hooksPath=/dev/null", "-C", str(target), "add", "-A"], env=env)
     sh(["git", "-c", "core.hooksPath=/dev/null", "-C", str(target), "commit", "-qm", "Fixture source"], env=env)
     assert not sh(["git", "-C", str(target), "status", "--porcelain"], env=env)
@@ -103,6 +108,51 @@ def test_source_fixture_captures_pending_bytes_without_ignored_runtime_state(tmp
     assert (foreign / "retained.txt").read_text() == "retained foreign fixture\n"
     assert sh(["git", "-C", str(original), "rev-parse", "HEAD"], env=environment) == head_before
     assert sh(["git", "-C", str(original), "status", "--porcelain"], env=environment) == status_before
+
+
+def test_source_fixture_suppresses_automatic_maintenance_before_first_commit(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    # Enable maintenance in the isolated parent config to prove the snapshot
+    # owns its lifecycle. Run the positive control synchronously so the test
+    # itself never leaves a detached housekeeper behind.
+    config = home / ".gitconfig"
+    config.write_text("[maintenance]\n\tauto = true\n\tautoDetach = false\n[gc]\n\tauto = 1\n")
+    environment = {key: value for key, value in os.environ.items()
+                   if not key.startswith("GIT_")}
+    environment.update(
+        HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
+        GIT_CONFIG_GLOBAL=str(config), GIT_CONFIG_NOSYSTEM="1",
+        GIT_AUTHOR_NAME="Fixture", GIT_AUTHOR_EMAIL="fixture@example.invalid",
+        GIT_COMMITTER_NAME="Fixture", GIT_COMMITTER_EMAIL="fixture@example.invalid",
+    )
+
+    def automatic_children(trace):
+        events = [json.loads(line) for line in trace.read_text().splitlines()]
+        return [event for event in events if event.get("event") == "child_start"
+                and any(arg in {"maintenance", "gc"} for arg in event.get("argv", []))]
+
+    creation_trace = tmp_path / "creation.jsonl"
+    environment["GIT_TRACE2_EVENT"] = str(creation_trace)
+    snapshot = snapshot_current_source(REPO_ROOT, tmp_path / "snapshot", environment)
+    assert not automatic_children(creation_trace), automatic_children(creation_trace)
+
+    # A later fixture commit must remain quiescent, while explicitly turning
+    # maintenance back on must exercise the same Trace2 detector.
+    for positive_control in (True, False):
+        trace = tmp_path / ("enabled.jsonl" if positive_control else "disabled.jsonl")
+        environment["GIT_TRACE2_EVENT"] = str(trace)
+        overrides = ["-c", "maintenance.auto=true", "-c", "gc.auto=1"] if positive_control else []
+        sh(["git", "-c", "core.hooksPath=/dev/null", *overrides, "-C", str(snapshot),
+            "commit", "--allow-empty", "-qm", "Fixture lifecycle"], env=environment)
+        assert bool(automatic_children(trace)) is positive_control, automatic_children(trace)
+
+    mirror = tmp_path / "mirror.git"
+    sh(["git", "clone", "--bare", str(snapshot), str(mirror)], env=environment)
+    sh(["git", "--git-dir=" + str(mirror), "fsck", "--full"], env=environment)
+    fixture_path = "skills/synthesis-onboarding/scripts/test_onboard.py"
+    assert sh(["git", "--git-dir=" + str(mirror), "show", "HEAD:" + fixture_path],
+              env=environment) == (REPO_ROOT / fixture_path).read_text()
 
 
 FIXTURE_INSTALLER = """#!/bin/sh

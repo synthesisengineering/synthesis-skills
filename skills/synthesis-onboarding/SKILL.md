@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.8.1"
+  version: "2.8.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -185,6 +185,21 @@ do not choose desired policy.
 `synthesis update` refreshes only on an explicit user or agent request. A
 floating installation that is already ahead of the newest stable release is
 informational; it is never told to downgrade. Exact pins remain exact.
+
+The gated skills publisher completes a configured full or skills-only install
+with `synthesis repair --expected-release-digest SHA256
+--expected-desired-digest SHA256`. This release-driven repair holds the saved
+profile, clients, organization commit, personal sources and release policy.
+Native refresh, verification and stable-path selection use only those clients;
+the Codex guardian is installed only when Codex is selected. Both expected
+digests are rechecked under acquired locks before any recovery mutation. It
+checks the enabled native plugin roots against the complete immutable release
+inventory, reconciles owned resources without refreshing those plugins again,
+and runs the engine doctor before committing a new lifecycle generation. The
+bootstrap refuses a changed release before activation. Prior generations remain
+history; genuine fresh SessionStart evidence must establish live loading for the
+new generation separately. Disabled, modular or conflicting pinned selections
+are preserved; a missing desired profile is never inferred by the publisher.
 
 ## Tracked instructions for both clients
 
@@ -419,5 +434,6 @@ sh -n install.sh onboard.sh tests/test_installer.sh
 
 The gated publisher runs the same checks, atomically advances the release refs,
 materializes the published descriptor through the bootstrap verifier, refreshes
-both supported clients, and verifies installed bytes. Release claims remain
+the saved client selection (Claude, Codex and Muse on an unconfigured maintainer
+machine), and verifies the complete installed inventory. Release claims remain
 serialized by `release-train:synthesis-skills`.

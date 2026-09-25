@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import json
+import contextlib
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -83,6 +86,184 @@ def test_engine_versions_and_skill_contract_agree() -> None:
     )
     assert synthesis_cli.ENGINE_VERSION == synthesis_cli.onboard.ENGINE_VERSION
     assert 'version: "%s"' % synthesis_cli.ENGINE_VERSION in skill
+
+
+def test_release_bound_repair_rejects_another_release_before_recovery(tmp_path, monkeypatch, capsys):
+    state = system_contract.SystemState(home=tmp_path)
+    desired = system_contract.default_desired_state("skills-only", ["codex"], "stable")
+    state.run_transaction("setup", desired, lambda _tx: {})
+    before = state.observation_path.read_bytes(), state.desired_path.read_bytes()
+    monkeypatch.setattr(synthesis_cli, "_active_release", lambda: {"content_digest": "b" * 64})
+    monkeypatch.setattr(synthesis_cli, "recover_enrollments", lambda *_a: pytest.fail("recovery ran"))
+    assert synthesis_cli.main(["repair", "--expected-release-digest", "a" * 64], state=state,
+        engine_runner=lambda _a: pytest.fail("engine ran")) == 2
+    assert "expected release" in capsys.readouterr().err
+    assert (state.observation_path.read_bytes(), state.desired_path.read_bytes()) == before
+
+
+def test_release_bound_repair_preserves_a_changed_desired_selection(tmp_path, monkeypatch, capsys):
+    state = system_contract.SystemState(home=tmp_path)
+    first = system_contract.default_desired_state("skills-only", ["codex"], "stable")
+    current = system_contract.default_desired_state("skills-only", ["claude"], "stable")
+    state.run_transaction("setup", current, lambda _tx: {})
+    before = state.observation_path.read_bytes(), state.desired_path.read_bytes()
+    monkeypatch.setattr(synthesis_cli, "_require_expected_release", lambda *_a: {})
+    monkeypatch.setattr(synthesis_cli, "recover_enrollments", lambda *_a: pytest.fail("recovery ran"))
+    assert synthesis_cli.main(["repair", "--expected-release-digest", "a" * 64,
+        "--expected-desired-digest", system_contract.json_digest(first)], state=state,
+        engine_runner=lambda _a: pytest.fail("engine ran")) == 2
+    assert "desired selection changed" in capsys.readouterr().err
+    assert (state.observation_path.read_bytes(), state.desired_path.read_bytes()) == before
+
+
+@pytest.mark.parametrize("changed", ["desired", "release"])
+def test_release_bound_repair_rechecks_inside_first_lock_before_recovery(tmp_path, monkeypatch, capsys, changed):
+    state = system_contract.SystemState(home=tmp_path)
+    desired = system_contract.default_desired_state("skills-only", ["codex"], "stable")
+    other = system_contract.default_desired_state("skills-only", ["claude"], "stable")
+    state.run_transaction("setup", desired, lambda _tx: {})
+    original_lock = state.locked
+    acquired = False
+    @contextlib.contextmanager
+    def locked():
+        nonlocal acquired
+        with original_lock():
+            acquired = True
+            if changed == "desired":
+                system_contract.atomic_write_json(state.desired_path, other)
+            yield
+    def release_check(*args):
+        if acquired and changed == "release":
+            raise system_contract.ContractError("expected release changed while waiting")
+        return {"content_digest": "a" * 64}
+    monkeypatch.setattr(state, "locked", locked)
+    monkeypatch.setattr(synthesis_cli, "_require_expected_release", release_check)
+    for name in ("recover_copy_transactions", "recover_enrollments"):
+        monkeypatch.setattr(synthesis_cli, name, lambda *a: pytest.fail("recovery mutated before locked validation"))
+    monkeypatch.setattr(synthesis_cli.modular, "recover", lambda *a, **kw: pytest.fail("modular recovery mutated before locked validation"))
+    before = state.observation_path.read_bytes()
+    assert synthesis_cli.main(["repair", "--expected-release-digest", "a" * 64,
+        "--expected-desired-digest", system_contract.json_digest(desired)], state=state,
+        engine_runner=lambda _a: pytest.fail("engine ran")) == 2
+    assert ("desired selection changed" if changed == "desired" else "expected release changed") in capsys.readouterr().err
+    assert state.read_desired() == (other if changed == "desired" else desired)
+    assert state.observation_path.read_bytes() == before
+
+
+@pytest.mark.parametrize("addition", ["extra-skill", "extra-directory", "cache-source", "cache-symlink", "nested-cache", "loose-bytecode", "metadata-directory"])
+def test_release_native_verification_rejects_complete_inventory_drift(tmp_path, monkeypatch, addition):
+    import shutil
+    from bootstrap import materialize_release
+    from test_system_contract import release_repo
+    source = release_repo(tmp_path / "source")
+    generation, descriptor = materialize_release(source, tmp_path / "releases", channel="stable", ref="stable",
+        source_url="https://example.test/synthesis-skills.git")
+    native = tmp_path.resolve() / "native"
+    shutil.copytree(generation, native)
+    for path in [native, *(p for p in native.rglob("*") if p.is_dir())]:
+        path.chmod(0o755)
+    active = {**descriptor, "release_root": str(generation)}
+    desired = system_contract.default_desired_state("skills-only", ["codex"], "stable")
+    monkeypatch.setattr(synthesis_cli, "_release_native_root", lambda *a: native)
+    assert synthesis_cli._verify_release_native_clients(desired, active, tmp_path)["codex"]["content_digest"] == descriptor["content_digest"]
+    scripts = native / "skills/synthesis-onboarding/scripts"
+    if addition == "extra-skill":
+        path = native / "skills/unapproved-extra/SKILL.md"
+        path.parent.mkdir()
+        path.write_text("Additional loadable skill.\n")
+    elif addition == "extra-directory":
+        (native / "unexpected").mkdir()
+    elif addition == "cache-source":
+        (scripts / "__pycache__").mkdir()
+        (scripts / "__pycache__/entry.py").write_text("unexpected source\n")
+    elif addition == "cache-symlink":
+        (scripts / "__pycache__").symlink_to(tmp_path, target_is_directory=True)
+    elif addition == "nested-cache":
+        (scripts / "__pycache__/__pycache__").mkdir(parents=True)
+        (scripts / "__pycache__/__pycache__/entry.pyc").write_bytes(b"unexpected")
+    elif addition == "loose-bytecode":
+        (scripts / "entry.pyc").write_bytes(b"unexpected")
+    else:
+        (native / ".codex-marketplace-install.json").mkdir()
+        (native / ".codex-marketplace-install.json/entry.py").write_text("unexpected\n")
+    with pytest.raises(system_contract.ContractError):
+        synthesis_cli._verify_release_native_clients(desired, active, tmp_path)
+
+
+def test_release_native_verification_accepts_only_known_runtime_cache_artifacts(tmp_path, monkeypatch):
+    import shutil
+    from bootstrap import materialize_release
+    from test_system_contract import release_repo
+    source = release_repo(tmp_path / "source")
+    generation, descriptor = materialize_release(source, tmp_path / "releases", channel="stable", ref="stable",
+        source_url="https://example.test/synthesis-skills.git")
+    native = tmp_path.resolve() / "native"
+    shutil.copytree(generation, native)
+    native.chmod(0o755)
+    cache = native / "skills/synthesis-onboarding/scripts/__pycache__"
+    cache.parent.chmod(0o755)
+    cache.mkdir()
+    for name in ("synthesis_cli.cpython-313.pyc", "synthesis_cli.cpython-313.pyo", "synthesis_cli.cpython-313.pyc.12345"):
+        (cache / name).write_bytes(b"runtime bytecode")
+    (native / ".in_use").mkdir()
+    (native / ".in_use/123").touch()
+    (native / ".codex-marketplace-install.json").write_text('{"client":"fixture"}\n')
+    (native / ".git").mkdir()
+    (native / ".git/HEAD").write_text("ref: refs/heads/stable\n")
+    active = {**descriptor, "release_root": str(generation)}
+    desired = system_contract.default_desired_state("skills-only", ["codex"], "stable")
+    monkeypatch.setattr(synthesis_cli, "_release_native_root", lambda *a: native)
+    assert synthesis_cli._verify_release_native_clients(desired, active, tmp_path)["codex"]["content_digest"] == descriptor["content_digest"]
+
+
+def test_release_bound_bootstrap_carries_the_original_exact_commit(tmp_path, monkeypatch):
+    bootstrap = tmp_path / "onboard.sh"
+    bootstrap.write_text("#!/bin/sh\n")
+    active = {"release_root": str(tmp_path), "commit": "a" * 40}
+    calls = []
+    monkeypatch.setattr(synthesis_cli.subprocess, "call", lambda command, env: calls.append((command, env)) or 0)
+    arguments = ["repair", "--expected-release-digest", "b" * 64,
+                 "--expected-desired-digest", "c" * 64]
+    assert synthesis_cli._run_release_bootstrap(arguments, active, "stable", None) == 0
+    assert calls[0][0] == [str(bootstrap), *arguments]
+    assert calls[0][1]["SYNTHESIS_ONBOARD_EXPECTED_COMMIT"] == active["commit"]
+    assert calls[0][1]["SYNTHESIS_ONBOARD_CHANNEL"] == "stable"
+
+
+@pytest.mark.parametrize("doctor_fails", [False, True])
+def test_release_bound_repair_preserves_selection_and_requires_engine_doctor(tmp_path, monkeypatch, doctor_fails):
+    state = system_contract.SystemState(home=tmp_path)
+    desired = system_contract.default_desired_state("skills-only", ["codex"], "stable")
+    state.run_transaction("setup", desired, lambda _tx: {})
+    first = state.read_observation()["transactions"][0]
+    active = {"content_digest": "a" * 64, "channel": "stable", "ref": "stable"}
+    monkeypatch.setattr(synthesis_cli, "_require_expected_release", lambda args: active)
+    monkeypatch.setattr(synthesis_cli, "_active_release", lambda: active)
+    monkeypatch.setattr(synthesis_cli, "_verify_release_native_clients", lambda *a: None)
+    monkeypatch.setattr(synthesis_cli, "_planes", lambda selected, command: {
+        "desired": {"status": "verified", "sha256": system_contract.json_digest(selected)},
+        "installed": {"status": "verified", "command": command},
+        "live-loaded": {"status": "restart-required", "detail": "Fresh native receipt required."}})
+    calls = []
+
+    def engine(argv):
+        calls.append(argv[0])
+        assert ("--no-plugin-cli" in argv) == (argv[0] == "repair")
+        assert json.loads(Path(argv[argv.index("--desired-state") + 1]).read_text()) == desired
+        return {"engine": "fixture", "counts": {"ok": 1}, "steps": [],
+                "exit": 1 if doctor_fails and argv[0] == "doctor" else 0}
+
+    code = synthesis_cli.main(["repair", "--expected-release-digest", "a" * 64],
+                             state=state, engine_runner=engine)
+    assert calls == ["repair", "doctor"]
+    assert code == (1 if doctor_fails else 0)
+    assert state.read_desired() == desired
+    history = state.read_observation()
+    assert history["transactions"][0] == first
+    assert history["transactions"][-1]["state"] == ("aborted" if doctor_fails else "committed")
+    assert history["generation"] == (1 if doctor_fails else 2)
+    if not doctor_fails:
+        assert history["transactions"][-1]["live-loaded"]["status"] == "restart-required"
 
 
 def test_setup_routes_through_one_transaction_and_persists_desired(tmp_path: Path) -> None:

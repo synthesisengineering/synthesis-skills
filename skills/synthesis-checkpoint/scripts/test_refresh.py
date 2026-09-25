@@ -295,6 +295,65 @@ def test_malformed_state_reports_failure_without_repair(fixture):
     assert (project / "CURRENT_STATE.json").read_text() == "not-json"
 
 
+def test_refresh_accepts_valid_large_inventory_state_without_mutation(fixture):
+    args, project, _ = fixture
+    # Model a long-running project's retained inventory, without copying any
+    # real project data. Whitespace fixes the regression at the observed size.
+    for number in range(2000):
+        name = f"{number:04d}-" + "retained-evidence-" * 9 + ".md"
+        write(project / "resources" / "evidence" / name, "# Retained evidence\n")
+    state = refresh.project_state.build_operational_state(
+        project, project_id="alpha", phase="planning", status="active",
+        controlling_plan="resources/artifacts/plan.md", accepted_baseline="fixture",
+        next_actions=["Review evidence"], last_session="2026-09-06", session_id=NATIVE,
+    )
+    path = project / refresh.project_state.STATE_FILE
+    raw = path.read_bytes()
+    assert refresh.MAX_JSON < len(raw) < 546_930
+    path.write_bytes(raw + b" " * (546_930 - len(raw)))
+    git(project, "add", ".")
+    git(project, "commit", "-m", "Fixture inventory")
+    assert path.stat().st_size == 546_930
+    assert not refresh.project_state.semantic_issues(project)
+    assert state["content_hashes"] == refresh.project_state._content_hashes(
+        project, state["controlling_plan"])
+    before = tree(project)
+    report, _ = refresh.inspect(args)
+    assert report["overall"] == "READY"
+    assert report["checks"]["structured_hashes"]["status"] == "PASS"
+    assert report["checks"]["project_status"]["status"] == "PASS"
+    assert tree(project) == before
+
+
+def test_small_metadata_keeps_its_own_size_bound(fixture):
+    args, _, _ = fixture
+    value = enable_campaign(args)
+    raw = json.dumps(value).encode()
+    args.campaign.write_bytes(raw + b" " * (refresh.MAX_JSON + 1 - len(raw)))
+    with pytest.raises(refresh.RefreshError, match="524288-byte limit"):
+        refresh.inspect(args)
+
+
+def test_refresh_rejects_state_beyond_shared_limit_without_unbounded_evidence_read(fixture, monkeypatch):
+    args, project, _ = fixture
+    path = project / refresh.project_state.STATE_FILE
+    path.write_text('{"status": "active"}' + " " * 256)
+    git(project, "add", ".")
+    git(project, "commit", "-m", "Fixture oversized state")
+    monkeypatch.setattr(refresh.project_state, "MAX_STATE_JSON_BYTES", 128)
+    original = Path.read_bytes
+
+    def no_unbounded_state_read(candidate):
+        assert candidate != path, "structured evidence must use the bounded state reader"
+        return original(candidate)
+
+    monkeypatch.setattr(Path, "read_bytes", no_unbounded_state_read)
+    report, _ = refresh.inspect(args)
+    assert report["overall"] == "BLOCKED"
+    assert report["checks"]["structured_hashes"]["status"] == "FAIL"
+    assert next(row for row in report["read_targets"] if row["role"] == "structured_state")["status"] == "FAIL"
+
+
 def test_feedback_refuses_receipt_changed_after_inspection(fixture):
     args, _, live = fixture
     selected = enable_campaign(args)

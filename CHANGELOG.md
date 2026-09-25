@@ -4,6 +4,28 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.145.4] - 2026-09-24
+
+Checkpoint refresh, project management and conformance now share a bounded,
+strict reader for operational state. Large valid inventories are accepted up to
+16 MiB; small metadata retains its existing limit. Unsafe file types, symlinks,
+concurrent changes, duplicate keys and non-finite values are rejected. The
+compiler refuses oversized output before changing either durable record.
+
+The gated publisher now reconciles an exact-release lifecycle transaction after
+verified native installation. Release and desired-state digests bind repair;
+full installed source inventories are checked before admission. Existing
+profiles, selected clients, organization commits, personal sources and historical
+generations remain intact. Disabled, modular or conflicting pinned selections
+are refused before mutation, and absent desired state is not invented. Doctor
+remains strict; successful installation does not fabricate native live loading.
+
+Muse bundle refresh now admits only owned version directories under its configured
+bundle root. It stages and verifies replacements before renaming, retains previous
+bytes for recovery, and refuses redirected paths or competing transitions.
+Interrupted copies and swaps preserve retained work. Existing pinned source
+directory names remain usable when their verified manifests advance versions.
+
 ## [4.145.3] - 2026-09-24
 
 Project content hashing resolves the canonical project root once per pass and

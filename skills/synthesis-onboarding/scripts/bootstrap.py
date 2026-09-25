@@ -201,7 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _validate_cli_arguments(checkout: Path, cli_args: list[str]) -> None:
+def _validate_cli_arguments(checkout: Path, cli_args: list[str]) -> argparse.Namespace:
     """Refuse an invalid command line before any generation is activated.
 
     The public CLI that ships inside the checkout owns the argument
@@ -233,7 +233,7 @@ def _validate_cli_arguments(checkout: Path, cli_args: list[str]) -> None:
     if not callable(build):
         raise ContractError("release CLI has no argument parser")
     try:
-        build().parse_args(cli_args or ["onboard"])
+        return build().parse_args(cli_args or ["onboard"])
     except SystemExit as exc:
         raise ContractError(
             "invalid command line %r (parser exit %s)" % (cli_args, exc.code)
@@ -268,9 +268,13 @@ def main(argv: list[str] | None = None) -> int:
                     or source_descriptor["commit"] != os.environ.get("SYNTHESIS_ONBOARD_EXPECTED_COMMIT")):
                 raise ContractError("staged core does not match its package source binding")
         else:
-            release_descriptor_from_checkout(args.checkout, channel=args.channel,
+            source_descriptor_check = release_descriptor_from_checkout(args.checkout, channel=args.channel,
                                              ref=args.ref, source_url=args.source_url)
-        _validate_cli_arguments(args.checkout, cli_args)
+        parsed = _validate_cli_arguments(args.checkout, cli_args)
+        expected_digest = getattr(parsed, "expected_release_digest", None)
+        selected_descriptor = source_descriptor or source_descriptor_check
+        if expected_digest is not None and expected_digest != selected_descriptor["content_digest"]:
+            raise ContractError("resolved source differs from the expected release digest; active installation preserved")
     except (ContractError, ValueError, KeyError, OSError) as exc:
         print("Synthesis bootstrap refused: %s" % exc, file=sys.stderr)
         return 2
@@ -321,6 +325,8 @@ def main(argv: list[str] | None = None) -> int:
                     generation, descriptor = current_root, current_descriptor
             except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
                 raise ContractError("active release pointer is invalid: %s" % exc)
+        if expected_digest is not None and expected_digest != descriptor["content_digest"]:
+            raise ContractError("selected generation differs from the expected release digest; active installation preserved")
         activate_cli(generation, descriptor, args.launcher, args.active_descriptor)
     except (ContractError, OSError) as exc:
         print("Synthesis bootstrap refused: %s" % exc, file=sys.stderr)
