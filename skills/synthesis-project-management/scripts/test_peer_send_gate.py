@@ -24,9 +24,16 @@ SENDER_ENV = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": SENDER_SID, "CLAUDE_C
 TARGET_ENV = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": TARGET_SID, "CLAUDE_CODE_HOST_SESSION_ID": "local_target", "CLAUDE_PID": "2"}
 
 
+NATIVE_ENV_KEYS = (
+    "SYNTHESIS_CLIENT_SESSION_REF", "SYNTHESIS_HOOK_CLIENT", "CODEX_THREAD_ID",
+    "MUSE_SESSION_ID", "CLAUDECODE", "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_HOST_SESSION_ID", "CLAUDE_PID",
+)
+
+
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch):
-    for name in ("SYNTHESIS_CLIENT_SESSION_REF", "CLAUDE_CODE_HOST_SESSION_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID", "CLAUDECODE", "SYNTHESIS_PEER_REGISTRY"):
+    for name in (*NATIVE_ENV_KEYS, "SYNTHESIS_PEER_REGISTRY"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -35,7 +42,7 @@ def args(board: Path, **values):
 
 
 def claim(board: Path, project: str, env: dict, monkeypatch, *, machine: str = "m1", agent: str = "Claude Code"):
-    for key in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_HOST_SESSION_ID", "CLAUDE_PID", "SYNTHESIS_CLIENT_SESSION_REF"):
+    for key in NATIVE_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
@@ -561,3 +568,114 @@ def test_doctor_reports_seat_and_stores(world, capsys) -> None:
     assert "PASS peer-send-gate.board" in out and "PASS peer-send-gate.seat" in out
     assert GATE.doctor(world.board, {}) == 1
     assert "FAIL peer-send-gate.identity" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("extra", [
+    {"CODEX_THREAD_ID": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
+    {"MUSE_SESSION_ID": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"},
+    {"SYNTHESIS_HOOK_CLIENT": "invalid-client"},
+    {"SYNTHESIS_CLIENT_SESSION_REF": "muse:foreign-session"},
+])
+def test_gate_process_identity_failure_blocks_without_sender_attribution(world, extra):
+    env = dict(os.environ)
+    for key in ("SYNTHESIS_CLIENT_SESSION_REF", "SYNTHESIS_HOOK_CLIENT", "CODEX_THREAD_ID",
+                "MUSE_SESSION_ID", "CLAUDECODE", "CLAUDE_CODE_SESSION_ID",
+                "CLAUDE_CODE_HOST_SESSION_ID", "CLAUDE_PID"):
+        env.pop(key, None)
+    env.update(SENDER_ENV)
+    env.update(extra)
+    env["SYNTHESIS_PEER_REGISTRY"] = str(world.registry)
+    data = payload("SendMessage", {"to": "uds:/tmp/cc-socks/777.sock", "message": body(world)})
+    result = subprocess.run([sys.executable, str(SCRIPTS_DIR / "peer_send_gate.py"),
+                             "--board", str(world.board), "--gate"], input=json.dumps(data),
+                            capture_output=True, text=True, env=env, timeout=10)
+    assert result.returncode == 2, result.stderr
+    assert "peer-send-gate BLOCKED" in result.stderr and "Traceback" not in result.stderr
+    entries = [json.loads(line) for line in PA.send_log_path(world.board).read_text().splitlines()]
+    assert len(entries) == 1
+    assert entries[0]["decision"] == "deny" and entries[0]["sender_key"] == ""
+    assert entries[0]["identity_status"] == "unresolved"
+    assert "ValueError" in entries[0]["identity_error"]
+
+
+@pytest.mark.parametrize("allow", [False, True])
+@pytest.mark.parametrize("error", [OSError("disk full"), ValueError("invalid log"), RuntimeError("log unavailable")])
+def test_gate_audit_failure_always_blocks(world, monkeypatch, capsys, allow, error):
+    def fail(*args, **kwargs):
+        raise error
+    monkeypatch.setattr(GATE, "evaluate", lambda *args, **kwargs: GATE.Decision(allow, "harness", "uds:/fixture"))
+    monkeypatch.setattr(GATE, "append_send_log", fail)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload("SendMessage", {"to": "uds:/fixture"}))))
+    assert GATE.gate(world.board) == 2
+    stderr = capsys.readouterr().err
+    assert "peer-send-gate BLOCKED" in stderr and "audit" in stderr and type(error).__name__ in stderr
+    assert not PA.send_log_path(world.board).exists()
+
+
+def test_record_never_logs_an_allow_with_unresolved_identity(world):
+    with pytest.raises(ValueError, match="contradictory"):
+        GATE.record(world.board, payload("SendMessage", {"to": "uds:/fixture"}),
+                    GATE.Decision(True, "harness", "uds:/fixture"),
+                    {**SENDER_ENV, "CODEX_THREAD_ID": "foreign"})
+    assert not PA.send_log_path(world.board).exists()
+
+
+def test_gate_real_unwritable_audit_blocks_otherwise_valid_receipt(world):
+    resolve(world)
+    # A directory at the log filename deterministically refuses append even as root.
+    PA.send_log_path(world.board).mkdir()
+    env = dict(os.environ)
+    for key in ("SYNTHESIS_CLIENT_SESSION_REF", "SYNTHESIS_HOOK_CLIENT", "CODEX_THREAD_ID", "MUSE_SESSION_ID"):
+        env.pop(key, None)
+    env.update(SENDER_ENV)
+    env["SYNTHESIS_PEER_REGISTRY"] = str(world.registry)
+    data = payload("SendMessage", {"to": "uds:/tmp/cc-socks/777.sock", "message": body(world)})
+    result = subprocess.run([sys.executable, str(SCRIPTS_DIR / "peer_send_gate.py"),
+                             "--board", str(world.board), "--gate"], input=json.dumps(data),
+                            capture_output=True, text=True, env=env, timeout=10)
+    assert result.returncode == 2, result.stderr
+    assert "audit" in result.stderr and "Traceback" not in result.stderr
+
+
+def test_doctor_identity_error_is_deterministic_diagnosis(world, capsys):
+    assert GATE.doctor(world.board, {**SENDER_ENV, "MUSE_SESSION_ID": "foreign"}) == 1
+    output = capsys.readouterr().out
+    assert "FAIL peer-send-gate.identity: ValueError: contradictory native hook client hints" in output
+    assert "peer-send-gate.seat:" not in output
+    assert "peer-send-gate.receipts:" in output
+
+
+def test_doctor_seat_lookup_error_is_a_diagnostic(world, monkeypatch, capsys):
+    def fail(*args, **kwargs):
+        raise ValueError("invalid seat")
+    monkeypatch.setattr(GATE, "seat_for_identity", fail)
+    assert GATE.doctor(world.board, SENDER_ENV) == 1
+    assert "FAIL peer-send-gate.seat: ValueError: invalid seat" in capsys.readouterr().out
+
+
+def test_doctor_process_mixed_identity_has_no_traceback(world):
+    env = {**os.environ, **SENDER_ENV, "CODEX_THREAD_ID": "foreign"}
+    env.pop("SYNTHESIS_HOOK_CLIENT", None)
+    env.pop("SYNTHESIS_CLIENT_SESSION_REF", None)
+    result = subprocess.run([sys.executable, str(SCRIPTS_DIR / "peer_send_gate.py"),
+                             "--board", str(world.board), "--doctor"],
+                            capture_output=True, text=True, env=env, timeout=10)
+    assert result.returncode == 1
+    assert "FAIL peer-send-gate.identity:" in result.stdout
+    assert "contradictory native hook client hints" in result.stdout
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize("tool, tool_input", [
+    ("Read", {"file_path": "/fixture"}),
+    ("Bash", {"command": "git status"}),
+    ("SendMessage", {"to": "main", "message": "local worker status"}),
+])
+def test_non_peer_process_controls_remain_allowed_with_mixed_hints(world, tool, tool_input):
+    env = {**os.environ, **SENDER_ENV, "CODEX_THREAD_ID": "foreign", "MUSE_SESSION_ID": "another"}
+    data = payload(tool, tool_input)
+    result = subprocess.run([sys.executable, str(SCRIPTS_DIR / "peer_send_gate.py"),
+                             "--board", str(world.board), "--gate"], input=json.dumps(data),
+                            capture_output=True, text=True, env=env, timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert not PA.send_log_path(world.board).exists()

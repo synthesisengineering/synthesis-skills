@@ -1824,3 +1824,62 @@ def test_hash_traversal_rejects_queued_directory_replaced_by_link(tmp_path, monk
         getattr(state, consumer)(project)
     assert changed == [child]
     assert child not in scanned
+
+
+@pytest.fixture
+def native_identity_contract(tmp_path, monkeypatch):
+    """Synthetic native stores; no installed hooks or live sessions are used."""
+    session = "01990000-0000-7000-8000-000000000111"
+    roots = {client: tmp_path / client for client in ("claude", "codex", "muse")}
+    for variable, client in (("CLAUDE_CONFIG_DIR", "claude"), ("CODEX_HOME", "codex"), ("MUSE_SESSIONS_DIR", "muse")):
+        monkeypatch.setenv(variable, str(roots[client]))
+    paths = {
+        "claude": roots["claude"] / "projects/synthetic" / f"{session}.jsonl",
+        "codex": roots["codex"] / "sessions/synthetic.jsonl",
+        "muse": roots["muse"] / "2026/09/25" / session / "session.jsonl",
+    }
+    headers = {"claude": {"sessionId": session}, "codex": {"type": "session_meta", "payload": {"id": session}}, "muse": {"stream": {"kind": "session", "id": session}}}
+    for client, path in paths.items():
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(headers[client]) + "\n")
+    return session, roots, paths
+
+
+@pytest.mark.parametrize("client", ["claude", "codex", "muse"])
+def test_native_identity_contract_accepts_each_canonical_explicit_path(native_identity_contract, client):
+    session, _, paths = native_identity_contract
+    before = paths[client].read_bytes()
+    assert state.observer_native_identity({"session_id": session, "transcript_path": str(paths[client])}) == (client, session)
+    assert paths[client].read_bytes() == before
+
+
+@pytest.mark.parametrize("damage", ["relative", "nonstring", "foreign", "missing", "symlink", "parent-symlink", "header", "duplicate"])
+def test_native_identity_contract_muse_supplied_path_never_falls_back(native_identity_contract, damage):
+    session, roots, paths = native_identity_contract
+    path = paths["muse"]
+    supplied = str(path)
+    if damage == "relative": supplied = "session.jsonl"
+    elif damage == "nonstring": supplied = {"path": str(path)}
+    elif damage == "foreign":
+        foreign = roots["muse"].parent / "foreign.jsonl"
+        foreign.write_bytes(path.read_bytes()); supplied = str(foreign)
+    elif damage == "missing": supplied = str(path.parent / "missing.jsonl")
+    elif damage == "symlink":
+        saved = path.with_suffix(".retained"); path.rename(saved); path.symlink_to(saved)
+    elif damage == "parent-symlink":
+        parent = path.parent; saved = parent.with_name("retained"); parent.rename(saved); parent.symlink_to(saved)
+    elif damage == "header": path.write_text(json.dumps({"stream": {"id": "01990000-0000-7000-8000-000000000222"}}) + "\n")
+    else:
+        duplicate = roots["muse"] / "2026/09/24" / session / "session.jsonl"
+        duplicate.parent.mkdir(parents=True); duplicate.write_bytes(path.read_bytes())
+    with pytest.raises(state.ProjectStateError):
+        state.observer_native_identity({"session_id": session, "transcript_path": supplied})
+
+
+def test_native_identity_contract_ambiguous_client_roots_refuse(native_identity_contract, monkeypatch):
+    session, roots, paths = native_identity_contract
+    path = paths["claude"]
+    path.write_text(json.dumps({"sessionId": session, "type": "session_meta", "payload": {"id": session}}) + "\n")
+    monkeypatch.setenv("CODEX_HOME", str(roots["claude"]))
+    with pytest.raises(state.ProjectStateError, match="unambiguously"):
+        state.observer_native_identity({"session_id": session, "transcript_path": str(path)})

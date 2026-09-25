@@ -24,7 +24,7 @@ EARLIER_ENV = {"SYNTHESIS_CLIENT_SESSION_REF": "codex:earlier-seat"}
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch):
-    for name in ("SYNTHESIS_CLIENT_SESSION_REF", "CLAUDE_CODE_HOST_SESSION_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID", "CLAUDECODE"):
+    for name in ("SYNTHESIS_CLIENT_SESSION_REF", "CLAUDE_CODE_HOST_SESSION_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID", "CLAUDECODE", "CODEX_THREAD_ID", "MUSE_SESSION_ID", "SYNTHESIS_HOOK_CLIENT"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -255,3 +255,13 @@ def test_muse_wrapper_delivers_and_consumes(tmp_path, monkeypatch) -> None:
     assert "Per-turn hello." in data["hookSpecificOutput"]["additionalContext"]
     second = subprocess.run(["sh", str(wrapper), "--board", str(board)], input=payload, capture_output=True, text=True, env=env)
     assert second.returncode == 0 and "Per-turn hello." not in second.stdout
+
+
+def test_native_identity_contract_conflict_does_not_consume_inbox(board):
+    before = {str(p): p.read_bytes() for p in board.parent.rglob("*") if p.is_file()}
+    with pytest.raises(ValueError, match="contradict"):
+        INBOX.inbox_text({"session_id": ME_SID}, board=board,
+                         environ={**ME_ENV, "SYNTHESIS_HOOK_CLIENT": "muse"})
+    after = {str(p): p.read_bytes() for p in board.parent.rglob("*") if p.is_file()}
+    assert after == before
+    assert "2 unread message(s)" in INBOX.inbox_text({"session_id": ME_SID}, board=board, environ=ME_ENV)

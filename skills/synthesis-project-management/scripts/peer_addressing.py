@@ -214,27 +214,36 @@ def identity_from_hook(payload: dict, environ: dict[str, str] | None = None) -> 
     env = os.environ if environ is None else environ
     session_id = str(payload.get("session_id") or "").strip()
     base = detect_self(env)
+    marker = env.get("SYNTHESIS_HOOK_CLIENT", "").strip().lower()
+    clients = {"claude": CLIENT_CLAUDE, CLIENT_CLAUDE: CLIENT_CLAUDE,
+               CLIENT_CODEX: CLIENT_CODEX, CLIENT_MUSE: CLIENT_MUSE}
+    if marker and marker not in clients:
+        raise ValueError("unsupported native hook client")
+    hints = {clients[marker]} if marker else set()
+    explicit = env.get("SYNTHESIS_CLIENT_SESSION_REF", "").strip()
+    for prefix, client in (("cc:", CLIENT_CLAUDE), ("ccd:", CLIENT_CLAUDE),
+                           ("codex:", CLIENT_CODEX), ("muse:", CLIENT_MUSE)):
+        if explicit.startswith(prefix):
+            hints.add(client)
+    if any(env.get(key, "").strip() for key in
+           ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_HOST_SESSION_ID")):
+        hints.add(CLIENT_CLAUDE)
+    if env.get("CODEX_THREAD_ID", "").strip():
+        hints.add(CLIENT_CODEX)
+    if env.get("MUSE_SESSION_ID", "").strip():
+        hints.add(CLIENT_MUSE)
+    if len(hints) > 1:
+        raise ValueError("contradictory native hook client hints")
     if not session_id:
         return base
-    if base.client == CLIENT_CLAUDE:
-        return SelfIdentity(
-            client=CLIENT_CLAUDE,
-            harness_session_id=session_id,
-            host_session_id=base.host_session_id,
-            pid=base.pid,
-        )
-    if env.get("SYNTHESIS_HOOK_CLIENT", "").strip().lower() == "muse":
-        return SelfIdentity(
-            client=CLIENT_MUSE,
-            harness_session_id=session_id,
-            explicit_ref=f"muse:{session_id}",
-            pid=base.pid,
-        )
-    return SelfIdentity(
-        client=CLIENT_CODEX,
-        harness_session_id=session_id,
-        explicit_ref=f"codex:{session_id}",
-    )
+    # Hints classify a delivered event; they never authenticate ownership.
+    # Keep same-client payload IDs authoritative over stale shell IDs.
+    client = next(iter(hints), CLIENT_CODEX)
+    if client == CLIENT_CLAUDE:
+        return SelfIdentity(client=client, harness_session_id=session_id,
+                            host_session_id=base.host_session_id, pid=base.pid)
+    return SelfIdentity(client=client, harness_session_id=session_id,
+                        explicit_ref=f"{client}:{session_id}", pid=base.pid)
 
 
 # --------------------------------------------------------------------------

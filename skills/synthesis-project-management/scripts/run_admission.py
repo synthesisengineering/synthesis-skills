@@ -228,6 +228,27 @@ def _snapshot(board: Path, *, readonly: bool = False) -> str:
         return text
 
 
+def reconcile_readback(board: Path) -> dict:
+    """Refresh an active controller's mirror, never grant admission or mutate a run.
+
+    Owner CAS invalidates the passive stamp. Active callers may reconcile through
+    the existing PM lease reader, then must revalidate their exact owner/paths.
+    Passive Stop and read-only inspection never invoke this mutating mirror seam.
+    No older cache is accepted and no lease is bootstrapped when unavailable.
+    """
+    board = Path(board).expanduser().absolute()
+    if board.is_symlink() or not board.is_file() or board.parent.is_symlink():
+        raise AdmissionError("coordination board is missing or unsafe")
+    try:
+        with bounded_lock(board.parent / ".active-sessions.lock", timeout=2 * coordination.LEASE_GIT_TIMEOUT):
+            result = coordination._lease_refresh_locked(board)
+            if result.get("cache_warning"):
+                raise AdmissionError("fresh PM snapshot could not be retained: " + result["cache_warning"])
+            return result
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise AdmissionError("owner readback refresh unavailable; committed journal remains retained: " + str(exc)) from exc
+
+
 def native_binding(board: Path, native_payload: dict, *, readonly: bool = False,
                    optional: bool = False, _passive_paths=None) -> dict | None:
     """Resolve one active native seat without scanning run storage."""

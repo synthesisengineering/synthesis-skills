@@ -677,26 +677,33 @@ def evaluate(
 
 
 def record(board: Path, payload: dict, decision: Decision, environ: dict[str, str] | None = None, now: datetime | None = None) -> None:
-    sender = identity_from_hook(payload, environ)
+    # A denied call still needs an audit when identity resolution itself failed.
+    # Never guess a client or attribute that denial to a stale environment hint.
+    identity_error = ""
+    try:
+        sender_key = identity_from_hook(payload, environ).sender_key
+    except Exception as exc:
+        if decision.allow:
+            raise
+        sender_key = ""
+        identity_error = f"{type(exc).__name__}: {exc}"
     tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
     body = message_body(decision.lane, tool_input) if decision.lane in {"harness", "ccd", "codex"} else ""
-    try:
-        append_send_log(
-            board,
-            {
-                "at": iso(now or utcnow()),
-                "decision": "allow" if decision.allow else "deny",
-                "lane": decision.lane,
-                "target": decision.target,
-                "target_uuid": decision.target_uuid,
-                "sender_key": sender.sender_key,
-                "digest": body_digest(body) if body else "",
-                "reason": decision.reason,
-                "tool": payload.get("tool_name"),
-            },
-        )
-    except OSError:
-        pass
+    entry = {
+        "at": iso(now or utcnow()),
+        "decision": "allow" if decision.allow else "deny",
+        "lane": decision.lane,
+        "target": decision.target,
+        "target_uuid": decision.target_uuid,
+        "sender_key": sender_key,
+        "digest": body_digest(body) if body else "",
+        "reason": decision.reason,
+        "tool": payload.get("tool_name"),
+    }
+    if identity_error:
+        entry.update(identity_status="unresolved", identity_error=identity_error)
+    # The gate owns the fail-closed exit contract, including an unwritable log.
+    append_send_log(board, entry)
 
 
 def gate(board: Path) -> int:
@@ -721,7 +728,17 @@ def gate(board: Path) -> int:
             "invoked directly, not nested in shells, evals or substitutions",
         )
     if decision.logged:
-        record(board, payload, decision)
+        try:
+            record(board, payload, decision)
+        except Exception as exc:
+            # Claude requires exit 2: a secondary audit error must neither admit
+            # an unaudited send nor turn a rejected call into an exit-1 crash.
+            decision = Decision(
+                False, decision.lane, decision.target,
+                f"{decision.reason}; recording the peer-send audit raised "
+                f"{type(exc).__name__}: {exc}; the call fails closed",
+                target_uuid=decision.target_uuid,
+            )
     if decision.allow:
         return 0
     sys.stderr.write(
@@ -745,16 +762,24 @@ def doctor(board: Path, environ: dict[str, str] | None = None) -> int:
         report(True, "board", f"{board} readable; {len(rows)} active row(s)")
     except Exception as exc:
         report(False, "board", f"{board}: {exc}")
-    identity = identity_from_hook({}, environ)
-    if identity.sender_key:
-        seat = seat_for_identity(board, identity)
-        report(
-            seat is not None,
-            "seat",
-            f"{identity.sender_key} → {seat.compact_id if seat else 'no seat: claim before sending'}",
-        )
-    else:
-        report(False, "identity", "no CLAUDE_CODE_SESSION_ID or SYNTHESIS_CLIENT_SESSION_REF in this environment")
+    identity = None
+    try:
+        identity = identity_from_hook({}, environ)
+    except Exception as exc:
+        report(False, "identity", f"{type(exc).__name__}: {exc}")
+    if identity is not None:
+        if identity.sender_key:
+            try:
+                seat = seat_for_identity(board, identity)
+                report(
+                    seat is not None,
+                    "seat",
+                    f"{identity.sender_key} → {seat.compact_id if seat else 'no seat: claim before sending'}",
+                )
+            except Exception as exc:
+                report(False, "seat", f"{type(exc).__name__}: {exc}")
+        else:
+            report(False, "identity", "no native sender identity in this environment")
     directory = receipts_dir(board)
     try:
         directory.mkdir(parents=True, exist_ok=True)
@@ -766,7 +791,7 @@ def doctor(board: Path, environ: dict[str, str] | None = None) -> int:
         report(False, "receipts", f"{directory}: {exc}")
     log = send_log_path(board)
     report(log.parent.is_dir(), "send-log", str(log))
-    if identity.client == CLIENT_CLAUDE:
+    if identity is not None and identity.client == CLIENT_CLAUDE:
         registry = registry_dir()
         # A missing registry is a fact about this machine (no harness peers
         # registered here), not a broken gate: the bus and ccd lanes stand.
