@@ -5,12 +5,20 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.8.4"
+  version: "2.8.5"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+**Version 2.8.5** preserves each pinned marketplace-created native generation
+before the next command. A closed cache-parent inventory refuses unknown entries
+and changed historical material before another destructive action. Post-command
+historical repair retains changed materialized bytes in a verified external
+bundle before replacement; ordinary runtime bytecode follows the existing
+integrity policy. Interrupted native commands remain failures even after
+successful recovery.
+
 **Version 2.8.4** verifies mandatory initial restoration before starting the
 existing bounded quiet-window observation. Retained native Git checkouts are
 copied with complete bytes, types and modes into a durable store outside the
