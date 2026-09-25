@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.145.6] - 2026-09-25
+
+Codex cache recovery begins its bounded settling observation after mandatory
+initial restoration. Complete byte and mode verification remains required;
+continuing mutation still exhausts the existing deadline.
+
+Before native refresh, retained Git checkouts are copied and verified outside
+the client-owned cache. A durable intent, exact inventory and verified seal
+preserve recovery through native cache replacement and process interruption.
+Missing or changed committed recovery refuses refresh. Unknown transition roots
+are retained for explicit recovery, and no native metadata is inserted into the
+public historical archive or automatically deleted.
+
 ## [4.145.5] - 2026-09-25
 
 Codex cache recovery distinguishes the current client-owned checkout from
