@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.149.4** refreshes the model-role catalog with public verification
+sources and native API mappings. Explicit model and effort choices remain in
+control; availability is verified separately for the actual client and account.
+
 Release **4.149.3** reduces repeated Git metadata work during project resolution
 and recognizes typed Codex routing metadata without granting execution authority.
 

@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.149.4] - 2026-09-25
+
+Refresh documented provider model identifiers and role preferences with explicit
+source provenance, native API namespace mappings and offline rejection tests.
+Catalog recommendations preserve an explicitly selected model or reasoning
+effort. Account availability and local hardware suitability remain separate
+runtime checks; documentation verification does not establish endpoint access.
+
 ## [4.149.3] - 2026-09-25
 
 Project resolution shares immutable Git metadata within one read while keeping
