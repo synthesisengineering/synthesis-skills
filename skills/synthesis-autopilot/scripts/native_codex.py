@@ -16,9 +16,9 @@ import math
 import re
 
 
-ADAPTER_VERSION = "codex-dialect-v5"
+ADAPTER_VERSION = "codex-dialect-v6"
 SUPPORTED_SCHEMAS = (
-    "session_meta", "turn_context", "inter_agent_communication_metadata", "token_usage_record", "event_msg.token_count",
+    "session_meta", "turn_context", "compacted", "inter_agent_communication_metadata", "token_usage_record", "event_msg.token_count",
     "event_msg.task_started", "event_msg.task_complete", "event_msg.turn_aborted",
     "event_msg.user_message", "event_msg.agent_message", "event_msg.agent_reasoning",
     "event_msg.item_completed",
@@ -194,11 +194,18 @@ def is_ignored_projection(projected, producer):
 
 
 def supports_record_readback(projected, producer):
-    """Only identified rollout item observations may use bounded full readback.
+    """Route qualified item/compaction shapes to the existing bounded readback.
 
-    This projection is a routing hint. The complete current record still passes
-    strict JSON, producer, envelope and item validation before emitting a fact.
+    This projection is only a routing hint. Complete current bytes still pass
+    strict JSON, producer and whole-envelope validation before emitting a fact.
+    Compaction's embedded usage supplies the native identities at that boundary.
     """
+    _producer(producer)
+    if projected.get("type") == "compacted":
+        return all(projected.get(key, expected) == expected for key, expected in (
+            ("thread_id", producer["thread_id"]), ("session_id", producer["root_session_id"]),
+            ("payload.thread_id", producer["thread_id"]),
+            ("payload.session_id", producer["root_session_id"])))
     return (projected.get("type") == "event_msg"
         and projected.get("payload.type") == "item_completed"
         and projected.get("payload.thread_id") == producer["thread_id"]
@@ -285,6 +292,146 @@ def _completed_item(value, producer):
         "portable_completion": False, "grants_authority": False}
 
 
+def _compacted(row, producer):
+    """Observe context replacement without replaying history or charging usage.
+
+    This closed grammar is pinned to the observed native compaction envelope.
+    Unknown retained item/context shapes remain coverage gaps. History bodies
+    are authenticated by digests, never promoted into messages, tool calls,
+    permissions or additive measurements by this translation.
+    """
+    def fields(value, required, optional=()):
+        _object(value, "compaction object")
+        if not set(required) <= value.keys() or set(value) - set(required) - set(optional):
+            raise DialectError("unsupported compaction fields")
+
+    def boolean(value):
+        if type(value) is not bool:
+            raise DialectError("compaction flag must be boolean")
+
+    def string(value):
+        # Body text may exceed an identity's 4096-character bound; the existing
+        # whole-record decoder bounds still apply before this helper is reached.
+        if not isinstance(value, str):
+            raise DialectError("compaction body must be text")
+
+    def array(value):
+        if not isinstance(value, list):
+            raise DialectError("compaction collection must be an array")
+
+    fields(row, {"type", "payload", "timestamp", "ordinal"}, {"thread_id", "session_id"})
+    stamp = row["timestamp"]
+    if (not isinstance(stamp, str) or len(stamp) > 64
+            or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})", stamp)):
+        raise DialectError("invalid compaction timestamp")
+    if not stamp.endswith("Z") and (int(stamp[-5:-3]) > 23 or int(stamp[-2:]) > 59):
+        raise DialectError("invalid compaction timezone offset")
+    try:
+        parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise DialectError("invalid compaction timestamp") from exc
+    if parsed.utcoffset() is None:
+        raise DialectError("compaction timestamp lacks timezone")
+
+    value = row["payload"]
+    fields(value, {"message", "replacement_history", "replacement_history_metadata", "retained_context",
+                   "window_number", "first_window_id", "previous_window_id", "window_id",
+                   "compaction_response_id", "latest_token_usage_record"})
+    string(value["message"])
+    _integer(value["window_number"], "window number")
+    for key in ("first_window_id", "previous_window_id", "window_id", "compaction_response_id"):
+        _text(value[key], key)
+    history, metadata = value["replacement_history"], value["replacement_history_metadata"]
+    array(history); array(metadata)
+    if not history or len(history) != len(metadata):
+        raise DialectError("compaction history metadata cardinality mismatch")
+    content_kinds = {"user.text", "user.image", "unknown", "generic.developer_instructions",
+                     "memories.instructions", "host_skills.instructions", "permissions.instructions",
+                     "collaboration_mode.instructions", "multi_agent.role_instructions",
+                     "multi_agent.mode_instructions", "agents_md.instructions", "environments.environment_context"}
+    for item, item_metadata in zip(history, metadata):
+        fields(item_metadata, {"client_authored"}, {"user_input_order", "compaction_model_hash"})
+        boolean(item_metadata["client_authored"])
+        if "user_input_order" in item_metadata:
+            _integer(item_metadata["user_input_order"], "retained input order")
+        if "compaction_model_hash" in item_metadata:
+            _text(item_metadata["compaction_model_hash"], "compaction model hash")
+        _object(item, "retained history item")
+        if item.get("type") == "message":
+            fields(item, {"type", "id", "role", "content", "internal_chat_message_metadata_passthrough"})
+            if item["role"] not in ("user", "developer"):
+                raise DialectError("unsupported retained message role")
+            array(item["content"])
+            passthrough = item["internal_chat_message_metadata_passthrough"]
+            fields(passthrough, {"turn_id", "content_item_kinds"}, {"create_time"})
+            array(passthrough["content_item_kinds"])
+            if (not item["content"] or len(item["content"]) != len(passthrough["content_item_kinds"])
+                    or any(not isinstance(kind, str) or kind not in content_kinds
+                           for kind in passthrough["content_item_kinds"])):
+                raise DialectError("unsupported retained content metadata")
+            if "create_time" in passthrough:
+                instant = passthrough["create_time"]
+                if (type(instant) not in (int, float) or instant < 0
+                        or (type(instant) is float and not math.isfinite(instant))):
+                    raise DialectError("invalid retained creation time")
+            for part in item["content"]:
+                _object(part, "retained content item")
+                if part.get("type") == "input_text":
+                    fields(part, {"type", "text"}); string(part["text"])
+                elif part.get("type") == "input_image":
+                    fields(part, {"type", "detail", "image_url"})
+                    if part["detail"] not in ("auto", "low", "high", "original"):
+                        raise DialectError("unsupported retained image detail")
+                    string(part["image_url"])
+                else:
+                    raise DialectError("unsupported retained content item")
+        elif item.get("type") == "compaction":
+            fields(item, {"type", "id", "encrypted_content", "internal_chat_message_metadata_passthrough"})
+            string(item["encrypted_content"])
+            passthrough = item["internal_chat_message_metadata_passthrough"]
+            fields(passthrough, {"turn_id"})
+        else:
+            raise DialectError("unsupported retained history item")
+        _text(item["id"], "retained item identity")
+        _text(passthrough["turn_id"], "retained turn identity")
+
+    retained = value["retained_context"]
+    fields(retained, {"verified_answers", "incomplete", "user_messages", "user_messages_incomplete", "next_order"})
+    # No nonempty verified-answer schema was observed; do not infer its meaning.
+    if retained["verified_answers"] != []:
+        raise DialectError("unsupported retained verified-answer schema")
+    boolean(retained["incomplete"]); boolean(retained["user_messages_incomplete"])
+    _integer(retained["next_order"], "retained next order")
+    array(retained["user_messages"])
+    for message in retained["user_messages"]:
+        fields(message, {"complete", "message_id", "order", "text", "turn_id"})
+        boolean(message["complete"]); _integer(message["order"], "retained message order")
+        string(message["text"])
+        _text(message["message_id"], "retained message identity")
+        _text(message["turn_id"], "retained message turn")
+
+    usage = value["latest_token_usage_record"]
+    fields(usage, {"thread_id", "session_id", "response_id", "turn_id", "root_turn_id",
+                   "usage", "turn_token_usage", "thread_token_usage"})
+    if usage["thread_id"] != producer["thread_id"] or usage["session_id"] != producer["root_session_id"]:
+        raise DialectError("compaction usage producer mismatch")
+    for key in ("thread_id", "session_id", "response_id", "turn_id", "root_turn_id"):
+        _text(usage[key], key)
+    for key in ("usage", "turn_token_usage", "thread_token_usage"):
+        fields(usage[key], COUNTERS)
+        _counts(usage[key])
+    return {"native_type": "compacted", "window_number": value["window_number"],
+            **{key: value[key] for key in ("first_window_id", "previous_window_id", "window_id", "compaction_response_id")},
+            "message_digest": _digest(value["message"]), "replacement_history_count": len(history),
+            "replacement_history_digest": _digest(history),
+            "replacement_history_metadata_digest": _digest(metadata),
+            "retained_context_digest": _digest(retained),
+            "retained_user_message_count": len(retained["user_messages"]),
+            "retained_usage": deepcopy(usage), "retained_usage_counted": False,
+            "usage_semantics": "historical_snapshot_not_additive", "history_replayed": False,
+            "grants_authority": False, "portable_completion": False, "recovery_proven": False}
+
+
 def decode_record(row, producer, *, mode="synthetic", source_locator=None):
     _bounded(row); _object(row, "record"); _producer(producer)
     if "ordinal" in row: _integer(row["ordinal"], "record ordinal")
@@ -329,6 +476,8 @@ def decode_record(row, producer, *, mode="synthetic", source_locator=None):
         return fact("communication.observation", "observed", {
             "trigger_turn": value["trigger_turn"], "portable_completion": False,
             "grants_authority": False, "proves_wake": False})
+    if outer == "compacted":
+        return fact("context.compaction", "observed", _compacted(row, producer))
     if outer == "token_usage_record":
         for key in ("thread_id", "session_id", "response_id", "turn_id", "root_turn_id"):
             _text(value.get(key), key)

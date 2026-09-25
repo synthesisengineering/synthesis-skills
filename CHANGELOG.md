@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [4.149.4] - 2026-09-25
 
+Read native Codex compaction records as bounded, non-authoritative context observations. Preserve original usage accounting and reject unknown schemas. Correct streaming JSON key accounting to charge live container state while retaining duplicate-key and memory limits.
+
 Refresh documented provider model identifiers and role preferences with explicit
 source provenance, native API namespace mappings and offline rejection tests.
 Catalog recommendations preserve an explicitly selected model or reasoning

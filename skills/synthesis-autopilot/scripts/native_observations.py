@@ -195,8 +195,10 @@ class _StreamJSON:
     """Resumable bounded JSON validator for a frame that exceeds retention.
 
     Cursor state contains only container states, bounded object keys and a
-    partial UTF-8 codepoint. It never retains ignored values. Excessive key
-    inventories are an explicit validation gap, not an allocation escape.
+    partial UTF-8 codepoint. It never retains ignored values. Key inventory
+    accounts for open objects only: closed sibling keys no longer occupy the
+    cursor, while enclosing keys remain until their own object closes. Excessive
+    retained inventories are an explicit validation gap, not an allocation escape.
     """
     def __init__(self, state=None, depth=32):
         self.s = deepcopy(state) if state else {
@@ -306,6 +308,11 @@ class _StreamJSON:
             if frame and c == ("}" if frame["kind"] == "object" else "]"):
                 if expected not in {"key_or_end", "value_or_end", "comma_or_end"}:
                     raise SourceError("unexpected JSON container end")
+                # Duplicate detection needs all keys of each still-open object.
+                # Closing a sibling releases exactly its retained inventory;
+                # cumulative keys processed are work, not live cursor memory.
+                s["key_bytes"] -= sum(len(key.encode("utf-8", errors="surrogatepass"))
+                                      for key in frame["keys"])
                 s["stack"].pop()
                 i += 1
                 continue
