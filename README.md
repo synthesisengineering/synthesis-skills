@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.149.1** streams large retained evidence and binds complete project
+inventories in compact execution receipts. Fresh capture is required for the
+new receipt schema; identity, content and resource checks remain enforced.
+
 Release **4.149.0** adds autopilot 3.4.0: current native transport evidence,
 consumer-bound domain quality, decisive uncertainty and explicit resource accounting.
 It also delivers the native-observation controller, productive persistence,

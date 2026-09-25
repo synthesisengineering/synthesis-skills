@@ -64,7 +64,7 @@ def checkpoint_basis(context):
     identities = {key for key, row in state['artifacts'].items() if not row.get('managed_input')}
     present = identities & set(context['artifacts'])
     files, _inputs, _events = _inventory(context)
-    records = {name: files[name] for name in ('CONTEXT.md', 'CURRENT_STATE.json') if name in files}
+    records = deepcopy(files['records'])
     # A normal post-terminal PM build can explicitly succeed the execution
     # proof. The original source observation remains reproducible only after
     # that current whole-project owner proves the exact successor.
@@ -73,8 +73,11 @@ def checkpoint_basis(context):
     if state['status'] == 'completed' and isinstance(pm, dict):
         from execution_checkpoint import current_proof
         if current_proof(context, pm)['scope'] == 'TERMINAL_CLEAN_CHECKPOINT_SUCCESSOR':
-            records = {name: pm['project_files'][name] for name in records}
-            files.update(records)
+            # The execution owner has verified the complete current inventory
+            # and the exact terminal PM successor. Normalize its whole compact
+            # commitment together, never splice records beneath a stale root.
+            files = deepcopy(pm['project_files'])
+            records = deepcopy(files['records'])
     return {'schema_version': 1, 'bindings': _bindings(state), 'plan_digest': context['plan_digest'],
         'artifact_digests': _current_hashes(context, present), 'missing_artifacts': sorted(identities - present),
         'project_records': records, 'project_files': files,

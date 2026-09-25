@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.18.6"
+  version: "2.18.7"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -161,7 +161,7 @@ Projects use a three-tier context system that separates information by lifecycle
 | Semantic memory | REFERENCE.md | Stable facts (team, URLs, architecture) | ≤300 lines (soft) | Updated in place when facts change |
 | Episodic memory | sessions/YYYY-MM.md | Archived session logs | No budget | Append-only, monthly files |
 
-**Archival protocol:** At session start, if CONTEXT.md exceeds 120 lines: archive completed tasks and old session logs to sessions/, move stable facts to REFERENCE.md, verify content exists in destination, then remove from CONTEXT.md. Archive FIRST, delete second — two-phase commit.
+**Archival protocol:** At session start, if CONTEXT.md exceeds 120 lines: archive completed tasks and old session logs to sessions/, move stable facts to REFERENCE.md, verify content exists in destination, then remove from CONTEXT.md. Archive FIRST, delete second — two-phase commit. Autopilot receipts bind complete retained evidence; [execution basis](references/execution-basis.md) specifies streaming inventory, resource bounds and fresh capture after schema changes.
 
 ### 3. Lessons (`lessons/`)
 
