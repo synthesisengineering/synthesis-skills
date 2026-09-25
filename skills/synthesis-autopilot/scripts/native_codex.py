@@ -191,6 +191,21 @@ def is_ignored_projection(projected, producer):
                 ("event_msg", "agent_message")})
 
 
+def supports_record_readback(projected, producer):
+    """Only identified rollout item observations may use bounded full readback.
+
+    This projection is a routing hint. The complete current record still passes
+    strict JSON, producer, envelope and item validation before emitting a fact.
+    """
+    return (projected.get("type") == "event_msg"
+        and projected.get("payload.type") == "item_completed"
+        and projected.get("payload.thread_id") == producer["thread_id"]
+        and projected.get("payload.item.type") in ("CommandExecution", "FileChange", "Reasoning", "AgentMessage")
+        and all(projected.get(key, expected) == expected for key, expected in (
+            ("thread_id", producer["thread_id"]), ("session_id", producer["root_session_id"]),
+            ("payload.session_id", producer["root_session_id"]))))
+
+
 def _completed_item(value, producer):
     """Read a native rollout item projection without inventing a tool pair.
 
@@ -222,6 +237,21 @@ def _completed_item(value, producer):
                 raise DialectError("invalid item output")
         status = ("failed" if native_status == "failed" or code not in (None, 0)
                   else "observed" if native_status == "completed" and code == 0 else "unknown")
+    elif kind == "FileChange":
+        # Qualified from the actual rollout's add/content change envelope.
+        # Other change grammars remain explicit gaps until independently read.
+        changes = _object(item.get("changes"), "item changes")
+        if not changes:
+            raise DialectError("empty item changes")
+        for path, change in changes.items():
+            _text(path, "change path")
+            if (not isinstance(change, dict) or set(change) != {"type", "content"}
+                    or change.get("type") != "add" or not isinstance(change.get("content"), str)):
+                raise DialectError("unsupported FileChange change grammar")
+        native_status = _text(item.get("status"), "item status")
+        if any(not isinstance(item.get(field), str) for field in ("stdout", "stderr")):
+            raise DialectError("invalid item output")
+        status = "failed" if native_status == "failed" else "observed" if native_status == "completed" else "unknown"
     elif kind == "Reasoning":
         for field in ("summary_text", "raw_content"):
             if not isinstance(item.get(field), list) or any(not isinstance(x, str) for x in item[field]):

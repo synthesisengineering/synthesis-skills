@@ -10,6 +10,7 @@ import pytest
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 from test_run_state import engine, world, create, command  # noqa: F401
+from test_controller import facade  # noqa: F401
 
 
 @pytest.fixture
@@ -42,6 +43,46 @@ def pair(world, identity='call', output='actual synthetic result'):
 def observe(engine, world, state, **kwargs):
     return command(engine, world, state, 'native.observe', {'source_handle': 'root',
         'through_event': None, 'task_id': None, 'attempt_id': None}, **kwargs)
+
+
+@pytest.mark.parametrize('kind', [None, 'turn_aborted', 'user_message'])
+@pytest.mark.parametrize('position', ['before', 'after'])
+def test_owner_journal_large_codex_item_preserves_current_invalidations(bridge, engine, facade, world, monkeypatch, kind, position):
+    from test_native_observations import completed_item
+    from test_controller import invoke, request, start_request, state_of
+    native = world['actor']['native_payload']['session_id']
+    home = world['scratch'] / 'fixture-codex'
+    directory = home / 'sessions/2026/09/25'; directory.mkdir(parents=True)
+    transcript = directory / ('rollout-' + native + '.jsonl')
+    transcript.write_text(json.dumps({'type': 'session_meta', 'payload': {'id': native,
+        'cwd': str(world['repo'])}}) + '\n')
+    world['transcript'] = transcript
+    world['actor']['native_payload']['transcript_path'] = str(transcript)
+    world['board'].write_text(world['board'].read_text().replace('| claude |', '| codex |').replace('cc:' + native, 'codex:' + native))
+    monkeypatch.setenv('CODEX_HOME', str(home))
+    monkeypatch.setenv('SYNTHESIS_CLIENT_SESSION_REF', 'codex:' + native)
+    started = invoke(facade, world, start_request(world))
+    assert started['status'] == 'READY', started
+    state = state_of(world, started)
+    rows = [completed_item(thread=native)]
+    if kind:
+        change = {'type': 'event_msg', 'payload': {'type': kind, 'turn_id': 'turn', 'message': 'Pause this task'}}
+        rows.insert(0 if position == 'before' else 1, change)
+    for ordinal, row in enumerate(rows, 1): row['ordinal'] = ordinal
+    append(world, *rows)
+    pending = bridge.current_invalidation(engine.inspect_context(state, world['actor']))
+    assert pending['status'] == ('invalidated' if kind else 'clear'), pending
+    recorded = invoke(facade, world, request('record', {'kind': 'native', 'source_handle': 'root',
+        'through_event': None, 'task_id': None, 'attempt_id': None}, state, 'large-record'))
+    assert recorded['status'] == 'RECORDED', recorded
+    state = state_of(world, recorded)
+    source = state['extensions']['native_observations']
+    assert not source['latest_batch']['gaps'] and not source['latest_batch']['diagnostics']
+    assert len([e for e in source['latest_batch']['events'] if e['kind'] == 'item.observation']) == 1
+    current = bridge.current_invalidation(engine.inspect_context(state, world['actor']))
+    assert current['status'] == ('invalidated' if kind else 'clear'), current
+    assert engine.load_run(world['project'], state['run_id']) == state
+    assert state['status'] != 'completed' and not source['projection']['pairs']
 
 
 def test_current_invalidation_requires_enrollment_and_rechecks_source_bytes(bridge, engine, world):

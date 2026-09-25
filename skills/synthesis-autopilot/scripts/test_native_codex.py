@@ -67,6 +67,27 @@ class CodexTests(unittest.TestCase):
         row = self.item_completed(); row["payload"]["item"]["exit_code"] = -9
         self.assertEqual(adapter.decode_record(row, ROOT)[0]["status"], "failed")
 
+    def test_file_change_is_compact_observation_without_pair_or_permission(self):
+        item = {"type": "FileChange", "id": "change", "changes": {
+            "/tmp/synthetic.py": {"type": "add", "content": "print('synthetic')\n"}},
+            "status": "completed", "stdout": "Applied", "stderr": ""}
+        row = self.item_completed(item)
+        observed = adapter.decode_record(row, ROOT)[0]
+        self.assertEqual(observed["kind"], "item.observation")
+        self.assertEqual(observed["status"], "observed")
+        self.assertEqual(observed["data"]["item_digest"], adapter._digest(item))
+        self.assertIsNone(observed["native"]["call_id"])
+        self.assertFalse(observed["data"]["portable_completion"])
+        self.assertFalse(observed["data"]["grants_authority"])
+        for key, value in (("changes", []), ("changes", {}), ("stdout", None),
+                           ("changes", {"x": {"type": "future", "content": "x"}}),
+                           ("changes", {"x": {"type": "add", "content": 4}})):
+            bad = deepcopy(row); bad["payload"]["item"][key] = value
+            with self.assertRaises(ValueError): adapter.decode_record(bad, ROOT)
+        for native_status, expected in (("failed", "failed"), ("future", "unknown")):
+            changed = deepcopy(row); changed["payload"]["item"]["status"] = native_status
+            self.assertEqual(adapter.decode_record(changed, ROOT)[0]["status"], expected)
+
     def wire(self, value):
         return adapter.decode_wire(value, {"producer": ROOT, "mode": "synthetic"})[0]
 

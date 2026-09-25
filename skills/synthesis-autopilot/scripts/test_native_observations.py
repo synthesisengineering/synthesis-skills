@@ -62,6 +62,128 @@ def tool_events(events):
     return [event for event in events if event["kind"].startswith("tool.")]
 
 
+def completed_item(size=305000, ordinal=1, thread=ROOT):
+    """Synthetic large output in the observed rollout envelope, not exec JSON."""
+    return {"type": "event_msg", "ordinal": ordinal, "payload": {
+        "type": "item_completed", "thread_id": thread, "turn_id": "turn",
+        "started_at_ms": 10, "completed_at_ms": 20, "item": {
+            "type": "CommandExecution", "id": "item-" + str(ordinal),
+            "command": ["synthetic"], "cwd": "/tmp", "status": "completed",
+            "exit_code": 0, "stdout": "x" * size, "stderr": "", "aggregated_output": ""}}}
+
+
+@pytest.mark.parametrize("page_bytes", [1024 * 1024, 65536])
+def test_large_completed_item_is_current_compact_bounded_observation(tmp_path, page_bytes):
+    row = completed_item()
+    path, binding, cursor = source(tmp_path, [row])
+    events, projection, batches = drain(binding, cursor, no.Limits(page_bytes=page_bytes))
+    assert not projection["gaps"] and not projection["diagnostics"]
+    assert len(events) == 1 and events[0]["kind"] == "item.observation"
+    event = events[0]
+    assert event["native"]["sha256"] == no._sha(wire(row))
+    assert event["data"]["item_digest"] == no._digest(row["payload"]["item"])
+    assert not event["data"]["grants_authority"] and not event["data"]["portable_completion"]
+    assert event["native"]["call_id"] is None and not projection["pairs"]
+    assert len(wire(event)) < 4096
+    assert all(len(b["cursor"]["pending"]) <= 4 * (no.Limits().payload_bytes + 2) // 3 for b in batches)
+    assert all(b["record_readback_bytes"] <= 1024 * 1024 for b in batches)
+    assert sum(b["record_readback_bytes"] for b in batches) == len(wire(row))
+    result = no.revalidate_observations(binding, events, required_interval=(0, path.stat().st_size))
+    assert result["status"] == "current" and result["negative_coverage"] == "CURRENT_BOUNDED_INTERVAL"
+    path.write_bytes(path.read_bytes().replace(b'"stdout":"x', b'"stdout":"y', 1))
+    assert no.revalidate_observations(binding, events)["status"] == "invalid"
+
+
+def test_large_readback_page_budget_yields_without_sequence_gap(tmp_path):
+    rows = [completed_item(400000, ordinal) for ordinal in range(1, 5)]
+    path, binding, cursor = source(tmp_path, rows)
+    events, projection, batches = drain(binding, cursor, no.Limits(page_bytes=4 * 1024 * 1024))
+    assert not projection["gaps"] and not projection["diagnostics"]
+    assert len(events) == 4 and len(batches) == 2
+    assert all(0 < b["record_readback_bytes"] <= 1024 * 1024 for b in batches)
+    assert batches[0]["cursor"]["offset"] == len(wire(header())) + sum(map(lambda r: len(wire(r)), rows[:2]))
+    assert batches[-1]["cursor"]["trusted_through"] == path.stat().st_size
+    assert [e["data"]["item_id"] for e in events] == ["item-1", "item-2", "item-3", "item-4"]
+
+
+@pytest.mark.parametrize("fault", ["over-envelope", "foreign", "future", "duplicate", "malformed"])
+def test_large_readback_keeps_unsupported_or_invalid_records_as_gaps(tmp_path, fault):
+    row = completed_item(1100000 if fault == "over-envelope" else 305000)
+    if fault == "foreign": row["payload"]["thread_id"] = "foreign"
+    if fault == "future": row["payload"]["item"]["type"] = "FutureItem"
+    raw = wire(row)
+    if fault == "duplicate": raw = raw.replace(b'"status":"completed"', b'"status":"failed","status":"completed"')
+    if fault == "malformed": raw = raw[:-2] + b'X\n'
+    path, binding, cursor = source(tmp_path, [])
+    with path.open("ab") as stream: stream.write(raw)
+    events, projection, batches = drain(binding, cursor)
+    assert not events and projection["gaps"]
+    assert batches[-1]["cursor"]["trusted_through"] < path.stat().st_size
+    result = no.revalidate_observations(binding, [], required_interval=(0, path.stat().st_size), max_bytes=2 * 1024 * 1024)
+    assert result["status"] != "current" and result["negative_coverage"] == "UNKNOWN"
+
+
+def test_large_completed_readback_rederives_current_type_after_partial_pages(tmp_path):
+    path, binding, cursor = source(tmp_path, [completed_item()])
+    first = no.read_page(binding, cursor, limits=no.Limits(page_bytes=280000))
+    assert first["cursor"]["oversized"] and not first["events"]
+    # Same-length edit in the previous page cannot inherit the saved type proof.
+    path.write_bytes(path.read_bytes().replace(b'"CommandExecution"', b'"UnknownExecution"'))
+    last = no.read_page(binding, first["cursor"])
+    assert not last["events"] and last["gaps"]
+
+
+def test_large_readback_rejects_changed_current_page_and_rotated_inode(tmp_path):
+    for mode in ("edit", "rotate"):
+        directory = tmp_path / mode; directory.mkdir()
+        path, binding, cursor = source(directory, [completed_item()])
+        original = no._stable_read
+        changed = []
+        def read(*args):
+            data = original(*args)
+            if args[2] == 0 and args[3] > binding["header_length"] and not changed:
+                changed.append(True)
+                if mode == "rotate":
+                    path.rename(directory / "retained-original")
+                path.write_bytes(data.replace(b'"stdout":"x', b'"stdout":"y', 1))
+            return data
+        with patch.object(no, "_stable_read", read):
+            batch = no.read_page(binding, cursor)
+        assert changed and batch["diagnostics"] and not batch["events"]
+        assert batch["cursor"] == cursor and batch["consumed_range"] is None
+
+
+def test_large_readback_replay_and_exact_interval_boundaries(tmp_path):
+    path, binding, cursor = source(tmp_path, [completed_item()])
+    first = no.read_page(binding, cursor)
+    replay = no.read_page(binding, json.loads(json.dumps(cursor)))
+    assert [e["event_id"] for e in first["events"]] == [e["event_id"] for e in replay["events"]]
+    assert first["cursor"] == replay["cursor"]
+    projection = no.reduce_observations(no.empty_projection(), first)
+    assert no.reduce_observations(projection, first) == projection
+    replayed = no.reduce_observations(projection, replay)
+    assert {k: v for k, v in replayed.items() if k != "coverage"} == {
+        k: v for k, v in projection.items() if k != "coverage"}
+    assert replayed["coverage"][binding["generation"]] == replay["coverage"]
+    for interval in ((binding["header_length"] + 1, path.stat().st_size), (0, path.stat().st_size - 1)):
+        current = no.revalidate_observations(binding, [], required_interval=interval)
+        assert current["status"] == "invalid" and current["negative_coverage"] == "UNKNOWN"
+
+
+@pytest.mark.parametrize("kind", ["turn_aborted", "user_message"])
+def test_large_completed_record_does_not_mask_adjacent_authority_changes(tmp_path, kind):
+    before = {"type": "event_msg", "ordinal": 1, "payload": {"type": kind, "turn_id": "turn", "message": "Pause"}}
+    after = copy.deepcopy(before); after["ordinal"] = 3
+    path, binding, cursor = source(tmp_path, [before, completed_item(305000, 2), after])
+    events, projection, batches = drain(binding, cursor, no.Limits(page_bytes=65536))
+    assert not projection["gaps"] and not projection["diagnostics"]
+    wanted = "lifecycle.cancelled" if kind == "turn_aborted" else "message.user"
+    assert [e["kind"] for e in events] == [wanted, "item.observation", wanted]
+    checked = no.revalidate_observations(binding, [], required_interval=(0, path.stat().st_size))
+    assert checked["status"] == "current"
+    assert [e["kind"] for e in checked["interval_events"]] == [wanted, "item.observation", wanted]
+
+
 def only_pair(projection):
     assert len(projection["pairs"]) == 1
     return next(iter(projection["pairs"].values()))

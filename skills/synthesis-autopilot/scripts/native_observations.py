@@ -18,8 +18,10 @@ source facts. Interval scans carry explicit bounds/times, never atomicity.
 
 Input memory is bounded by Limits. Oversized frames are validated incrementally
 using the bounded string-run technique from live_receipt._TranscriptJSON. A
-fixed projection identifies ignored nonmaterial records. Other oversized bodies
-produce a source gap/reference requiring structured owner readback. Physical
+fixed projection identifies ignored nonmaterial records or a client owner's
+explicit bounded-readback grammar. The latter is reopened in full within the
+existing 1 MiB decoder envelope; only compact derived facts are retained.
+Other oversized bodies produce a source gap/reference. Physical
 scan progress can cross gaps; trusted coverage cannot.
 No source transcript or auxiliary database is written by this module.
 """
@@ -53,6 +55,7 @@ MAX_INDEX_ENTRIES = 10000
 MAX_PROJECTION_BYTES = 2 * 1024 * 1024
 MAX_HEADER_BYTES = 1024 * 1024
 MAX_VALIDATOR_BYTES = 64 * 1024
+MAX_RECORD_READBACK_BYTES = 1024 * 1024
 _DIALECTS = {"codex": native_codex, "claude": native_claude, "muse": native_muse,
              "cursor": native_cursor, "copilot": native_copilot, "opencode": native_opencode}
 _DIALECT_HASHES = {client: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
@@ -127,6 +130,7 @@ class ObservationBatch(TypedDict):
     bytes_read: int
     source_bytes_read: int
     frame_revalidation_bytes: int
+    record_readback_bytes: int
 
 
 def _now() -> str:
@@ -184,7 +188,7 @@ _NUMBER = re.compile(r'-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\Z')
 _IGNORED_PROJECTION = {("type",), ("ordinal",), ("payload", "type"), ("thread_id",), ("session_id",),
                        ("payload", "thread_id"), ("payload", "session_id"), ("sequence",), ("schema_version",),
                        ("payload_schema_version",), ("payload_type",), ("stream", "kind"), ("stream", "id"),
-                       ("payload", "kind"), ("payload", "event", "kind")}
+                       ("payload", "kind"), ("payload", "event", "kind"), ("payload", "item", "type")}
 
 
 class _StreamJSON:
@@ -378,6 +382,23 @@ def _open(path, binding=None):
         stream.close()
         raise
     return stream, opened
+
+
+def _readback_eligible(projected, producer):
+    predicate = getattr(_DIALECTS[producer["client"]], "supports_record_readback", None)
+    return callable(predicate) and predicate(projected, producer)
+
+
+def _bounded_record(raw, producer, *, depth=32, payload_bytes=256 * 1024):
+    """Decode actual current bytes; cached projections are never type proof."""
+    if len(raw) > payload_bytes:
+        if len(raw) > MAX_RECORD_READBACK_BYTES:
+            raise SourceError("record exceeds bounded owner readback envelope")
+        validator = _StreamJSON(depth=depth)
+        validator.feed(raw[:-1] if raw.endswith(b"\n") else raw)
+        if not validator.finish() or not _readback_eligible(validator.s["projection"], producer):
+            raise SourceError("oversized record lacks a supported current owner readback grammar")
+    return _json(raw, depth)
 
 
 def _stable_read(stream, path, start, length, identity, minimum_size):
@@ -651,14 +672,17 @@ def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=No
     Scan progress crosses a rejected frame with an explicit gap; the trusted
     watermark stops at the first gap. Notifications are hints, never evidence.
     ``page_bytes`` bounds new input. One retained frame spanning a prior page
-    additionally rechecks at most ``payload_bytes``; ``bytes_read`` counts both
-    reads of those bytes and the bounded header. Idle polling reads no bytes.
+    additionally rechecks at most ``payload_bytes``. Eligible compact item
+    observations have a separate aggregate 1 MiB full-record readback budget
+    per page. Exhaustion yields the unconsumed frame for the next transaction.
+    ``bytes_read`` counts both reads and the bounded header. Idle polls read none.
     """
     _validate_binding(binding)
     _validate_cursor(binding, cursor, limits)
     now, next_cursor = _now(), deepcopy(cursor)
     result = {"schema_version": 1, "source_generation": binding["generation"], "events": [], "cursor": next_cursor,
               "gaps": [], "diagnostics": [], "bytes_read": 0, "source_bytes_read": 0, "frame_revalidation_bytes": 0,
+              "record_readback_bytes": 0,
               "consumed_range": None}
     size, ranges = cursor["offset"], []
     try:
@@ -678,6 +702,7 @@ def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=No
         ranges = [[0, binding["header_length"]], [cursor["offset"], cursor["offset"] + len(raw)]]
         position, completed = 0, 0
         while position < len(raw) and completed < limits.events:
+            checkpoint = deepcopy(next_cursor)
             end = raw.find(b"\n", position)
             complete = end >= 0
             end = end + 1 if complete else len(raw)
@@ -701,6 +726,7 @@ def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=No
             completed += 1
             start, length = next_cursor["frame_start"], next_cursor["offset"] - next_cursor["frame_start"]
             gap = None
+            frame = None
             if next_cursor["oversized"]:
                 valid = validator.finish()
                 ignored = valid and _ignored_projection(validator.s["projection"], binding["producer"])
@@ -710,14 +736,34 @@ def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=No
                     except SourceError as exc:
                         ignored = False
                         validator.s["error"] = str(exc)
-                if not ignored:
+                eligible = (valid and not ignored and length <= MAX_RECORD_READBACK_BYTES
+                            and _readback_eligible(validator.s["projection"], binding["producer"]))
+                if eligible:
+                    if result["record_readback_bytes"] + length > MAX_RECORD_READBACK_BYTES:
+                        next_cursor = checkpoint
+                        result["cursor"] = next_cursor
+                        break
+                    reopened, present = _open(binding["path"], binding)
+                    with reopened:
+                        frame = _stable_read(reopened, binding["path"], start, length,
+                                             (binding["device"], binding["inode"]), present.st_size)
+                    result["record_readback_bytes"] += length
+                    result["frame_revalidation_bytes"] += length
+                    result["bytes_read"] += 2 * length
+                    overlap = max(start, cursor["offset"])
+                    if frame[overlap - start:] != raw[overlap - cursor["offset"]:position]:
+                        raise SourceError("readback frame changed after the current page read")
+                    ranges.append([start, start + length])
+                elif not ignored:
                     gap = {"code": "oversized_record", "offset": start, "length": length,
                            "sha256": None, "json_valid": valid, "detail": validator.s["error"],
                            "validation_scope": "incremental historical bytes; current interval remains unknown",
                            "obligation": "structured source readback required; body was not retained"}
             else:
+                frame = pending
+            if frame is not None:
                 try:
-                    if start < cursor["offset"]:
+                    if not next_cursor["oversized"] and start < cursor["offset"]:
                         # This frame contains bytes saved by an earlier call.
                         # Reopen its entire bounded range before normalization;
                         # serializable pending bytes are not evidence caches.
@@ -730,10 +776,10 @@ def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=No
                         if current_frame != pending:
                             raise SourceError("frame changed between source pages")
                         ranges.append([start, start + length])
-                    row = _json(pending, limits.depth)
+                    row = _bounded_record(frame, binding["producer"], depth=limits.depth, payload_bytes=limits.payload_bytes)
                     sequence_gap = _dialect_sequence_gaps(next_cursor, row, binding["producer"], start)
                     _transport_transition(next_cursor, row, binding["producer"])
-                    events = _events(row, binding, start, length, _sha(pending), next_cursor["ordinal"],
+                    events = _events(row, binding, start, length, _sha(frame), next_cursor["ordinal"],
                                      run_id=run_id, task_id=task_id, attempt_id=attempt_id, now=now)
                     if len(result["events"]) + len(events) > limits.events:
                         raise SourceError("normalized event count exceeds page bound")
@@ -741,7 +787,7 @@ def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=No
                     gap = sequence_gap
                 except (ValueError, TypeError, KeyError) as exc:
                     gap = {"code": "unobservable_record", "offset": start, "length": length,
-                           "sha256": _sha(pending), "detail": str(exc), "obligation": "source owner reconciliation required"}
+                           "sha256": _sha(frame), "detail": str(exc), "obligation": "source owner reconciliation required"}
             if gap:
                 gap.update(source_generation=binding["generation"], source_handle=binding["source_handle"])
                 result["gaps"].append(gap)
@@ -970,7 +1016,7 @@ def revalidate_observations(binding, events, *, projection=None, required_interv
                 result["bytes_read"] += 2 * length
                 if _sha(raw) != digest or not raw.endswith(b"\n"):
                     raise SourceError("source_bytes_changed")
-                parsed[(start, length)] = _json(raw)
+                parsed[(start, length)] = _bounded_record(raw, binding["producer"])
                 result["current_verified_ranges"].append([start, start + length])
             for event in events:
                 ref = event["native"]
@@ -1013,9 +1059,7 @@ def revalidate_observations(binding, events, *, projection=None, required_interv
                 sequence_cursor = {"last_sequence": prior_sequence, "transport_state": None,
                                    "dialect_sequences": deepcopy(prior_sequences or {})}
                 for ordinal, line in enumerate(raw.splitlines(keepends=True)):
-                    if len(line) > Limits().payload_bytes:
-                        raise SourceError("interval contains oversized payload requiring owner readback")
-                    row = _json(line)
+                    row = _bounded_record(line, binding["producer"])
                     gap = _dialect_sequence_gaps(sequence_cursor, row, binding["producer"], offset)
                     if start == 0: _transport_transition(sequence_cursor, row, binding["producer"])
                     if gap is not None:
