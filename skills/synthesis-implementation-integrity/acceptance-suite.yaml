@@ -1,8 +1,8 @@
 schema: 2
-suite: native-cache-transition-4-145-5
+suite: native-cache-preservation-4-145-6
 membership: closed
-production_entry_point: Codex current native inventory verification and historical
-  cache restoration
+production_entry_point: Native refresh preservation, interrupted recovery and verified
+  post-restoration settling
 enforcing_boundary: Gated release consumes fresh transaction-bound acceptance before
   publishing and installing
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
@@ -10,10 +10,10 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Disposable real Git and filesystem consumers verify the source
-  transition. Actual native installation, stable activation and lifecycle reconciliation
-  require the gated installed checks; current desktop live loading and survival are
-  separate observations.
+unverified_remainder: Declared synthetic native CLI with real Git/filesystem/recovery
+  consumers; actual installed native refresh and lifecycle reconciliation require
+  the gated release acceptance. No historical missing Git tree reconstruction or current
+  desktop live-loading is asserted.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases: &id001
@@ -33,6 +33,7 @@ changed_surfaces:
   - native-cache-014
   - native-cache-015
   - native-cache-016
+  - native-cache-017
 - path: .codex-plugin/plugin.json
   cases: *id001
 - path: .muse-plugin/plugin.json
@@ -53,79 +54,92 @@ cases:
 - id: native-cache-001
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_native_current_mode_difference_preserves_real_git_checkout
-  motivating_defect: codex native current mode difference preserves real git checkout
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_native_parent_replacement_preserves_exact_git_local_bytes_modes_and_repeated_run
+  motivating_defect: native parent replacement preserves exact git local bytes modes
+    and repeated run
 - id: native-cache-002
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_native_historical_repair_retains_verified_git_recovery
-  motivating_defect: codex native historical repair retains verified git recovery
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_native_refresh_waits_real_required_quiet_window_after_initial_recovery
+  motivating_defect: native refresh waits real required quiet window after initial
+    recovery
 - id: native-cache-003
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_native_current_refuses_drift_without_mutating_tree
-  motivating_defect: codex native current refuses drift without mutating tree
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_initial_restore_cost_is_separate_from_bounded_genuine_churn
+  motivating_defect: initial restore cost is separate from bounded genuine churn
 - id: native-cache-004
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_native_current_needs_no_client_marker_or_particular_origin
-  motivating_defect: codex native current needs no client marker or particular origin
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_retained_native_ownership_and_path_refusal_precedes_every_cli_command
+  motivating_defect: retained native ownership and path refusal precedes every cli
+    command
 - id: native-cache-005
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_native_identity_never_executes_partial_clone_helper
-  motivating_defect: codex native identity never executes partial clone helper
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_native_recovery_corruption_after_cli_cannot_report_preservation
+  motivating_defect: native recovery corruption after cli cannot report preservation
 - id: native-cache-006
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_native_identity_does_not_load_checkout_execution_configuration
-  motivating_defect: codex native identity does not load checkout execution configuration
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_native_preservation_copy_interruption_retains_original_and_partial_then_retries
+  motivating_defect: native preservation copy interruption retains original and partial
+    then retries
 - id: native-cache-007
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_native_tracked_relative_link_obeys_release_inventory_contract
-  motivating_defect: codex native tracked relative link obeys release inventory contract
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_native_source_identity_change_after_snapshot_refuses_cli_and_keeps_both_copies
+  motivating_defect: native source identity change after snapshot refuses cli and
+    keeps both copies
 - id: native-cache-008
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_current_without_git_metadata_is_verified_without_repair
-  motivating_defect: codex current without git metadata is verified without repair
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_native_copy_type_change_to_fifo_refuses_without_blocking_or_running_cli
+  motivating_defect: native copy type change to fifo refuses without blocking or running
+    cli
 - id: native-cache-009
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_current_materialized_root_requires_immutable_source_binding
-  motivating_defect: codex current materialized root requires immutable source binding
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_hard_process_interruption_preserves_native_recovery_and_restarts
+  motivating_defect: hard process interruption preserves native recovery and restarts
 - id: native-cache-010
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_native_repair_repeats_without_more_displacement
-  motivating_defect: codex native repair repeats without more displacement
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_restart_refuses_missing_native_recovery_artifacts_before_another_cli
+  motivating_defect: restart refuses missing native recovery artifacts before another
+    cli
 - id: native-cache-011
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_native_repair_process_death_preserves_recovery
-  motivating_defect: codex native repair process death preserves recovery
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_interrupted_copy_without_original_or_ready_recovery_refuses_restart
+  motivating_defect: interrupted copy without original or ready recovery refuses restart
 - id: native-cache-012
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_native_repair_rechecks_ownership_after_copy
-  motivating_defect: codex native repair rechecks ownership after copy
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_native_preservation_publication_crashes_recover_from_exact_original
+  motivating_defect: native preservation publication crashes recover from exact original
 - id: native-cache-013
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_native_current_rechecks_identity_after_verification
-  motivating_defect: codex native current rechecks identity after verification
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_unknown_or_interrupted_transition_root_blocks_native_parent_replacement
+  motivating_defect: unknown or interrupted transition root blocks native parent replacement
 - id: native-cache-014
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_codex_native_restore_refuses_unowned_boundaries
-  motivating_defect: codex native restore refuses unowned boundaries
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_transition_root_appearing_after_snapshot_blocks_first_native_command
+  motivating_defect: transition root appearing after snapshot blocks first native
+    command
 - id: native-cache-015
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_snapshot_imports_complete_untagged_peer_root_missing_from_codex
-  motivating_defect: snapshot imports complete untagged peer root missing from codex
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_malformed_native_catalog_refuses_before_any_further_cli
+  motivating_defect: malformed native catalog refuses before any further cli
 - id: native-cache-016
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_new_native_recovery_between_commands_blocks_destructive_add
+  motivating_defect: new native recovery between commands blocks destructive add
+- id: native-cache-017
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent

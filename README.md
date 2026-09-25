@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.145.6** preserves retained native Git recovery outside client-owned
+cache trees and verifies the quiet window after mandatory restoration.
+
 Release **4.145.5** preserves Codex's current native checkout during cache
 recovery. Published content verification remains required, historical roots keep
 their exact recovery checks, and displaced Git-backed trees remain available.
