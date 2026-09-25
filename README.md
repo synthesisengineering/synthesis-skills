@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.145.7** preserves each new native cache generation between refresh
+commands and restores verified history when a native command is interrupted.
+
 Release **4.145.6** preserves retained native Git recovery outside client-owned
 cache trees and verifies the quiet window after mandatory restoration.
 

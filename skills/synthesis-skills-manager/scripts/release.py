@@ -59,8 +59,9 @@ import tarfile
 import tempfile
 import time
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
+from typing import NamedTuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR.parents[1] / "synthesis-agent-conformance" / "scripts"))
@@ -198,6 +199,19 @@ class CodexCacheSnapshot:
     client_owned_version: str | None = None
     native_sources: dict[str, tuple[str, frozenset[str]]] = field(default_factory=dict)
     native_recoveries: dict[str, NativeCacheRecovery] = field(default_factory=dict)
+    materialized_sources: dict[str, str] = field(default_factory=dict)
+
+
+class MaterializedCacheRecovery(NamedTuple):
+    tree: Path
+    digest: str
+    source: Path
+    intent_digest: str
+    manifest_digest: str
+    source_identity: tuple[int, int]
+    store_identity: tuple[int, int]
+    bundle_identity: tuple[int, int]
+    tree_identity: tuple[int, int]
 
 
 @dataclass(frozen=True)
@@ -997,10 +1011,11 @@ def _native_inventory_digest(entries: dict[str, list]) -> str:
     return _sha256_bytes(json.dumps(entries, sort_keys=True, separators=(",", ":")).encode())
 
 
-def _validate_native_recovery_store(store: Path, cache: Path) -> None:
+def _validate_native_recovery_store(store: Path, cache: Path, *, materialized: bool = False) -> None:
     archive = codex_cache_archive()
     protected = {Path.home().resolve(), Path.cwd().resolve(), SCRIPT_DIR.parents[2]}
-    if (store != archive.with_name(archive.name + "-native-retained")
+    suffix = "-materialized-retained" if materialized else "-native-retained"
+    if (store != archive.with_name(archive.name + suffix)
             or not store.is_absolute() or store.resolve() != store
             or any(root == store or root.is_relative_to(store) for root in protected)
             or any(store == root or store.is_relative_to(root) or root.is_relative_to(store)
@@ -1144,8 +1159,15 @@ def _native_roots_to_preserve(parent: Path) -> list[Path]:
                     or child.is_symlink() or not child.is_dir()):
                 raise OSError(f"unrecognized or interrupted native recovery path; review before refresh: {child}")
             roots.append(child)
-        elif RELEASE_VERSION_RE.fullmatch(child.name) and ((child / ".git").exists() or (child / ".git").is_symlink()):
-            roots.append(child)
+        elif RELEASE_VERSION_RE.fullmatch(child.name):
+            if child.is_symlink() or not child.is_dir():
+                raise OSError(f"unrecognized native cache entry; review before refresh: {child}")
+            if (child / ".git").exists() or (child / ".git").is_symlink():
+                roots.append(child)
+        else:
+            # The native client can replace this entire parent, so an unknown
+            # child is at risk even when it is not a Git-backed version root.
+            raise OSError(f"unrecognized native cache entry; review before refresh: {child}")
     return roots
 
 
@@ -1287,11 +1309,29 @@ def _preserve_native_recovery(source: Path, commit: str) -> NativeCacheRecovery:
                                identity, (info.st_dev, info.st_ino))
 
 
+def _verify_materialized_sources(snapshot: CodexCacheSnapshot, *, allow_missing: bool) -> None:
+    """Preserve local changes in historical cache roots without Git metadata."""
+    parent = plugin_cache_parent("codex")
+    for version, expected in snapshot.materialized_sources.items():
+        source = parent / version
+        if not source.exists() and not source.is_symlink() and allow_missing:
+            continue
+        if (source.is_symlink() or not source.is_dir()
+                or _tree_digest(source) != expected):
+            raise OSError(f"materialized native cache changed before destructive operation: {source}")
+
+
 def _verify_native_recoveries(snapshot: CodexCacheSnapshot, *, sources: bool = False,
                               allow_missing_sources: bool = False) -> None:
     parent = plugin_cache_parent("codex")
     if sources:
+        _verify_materialized_sources(snapshot, allow_missing=allow_missing_sources)
         observed = set(_native_roots_to_preserve(parent))
+        allowed_versions = set(snapshot.versions)
+        if snapshot.client_owned_version is not None:
+            allowed_versions.add(snapshot.client_owned_version)
+        if set(_real_version_roots(parent)) - allowed_versions:
+            raise OSError("unrecognized native cache version appeared before refresh")
         expected = {record.source for record in snapshot.native_recoveries.values() if record.source_identity}
         if observed - expected or (not allow_missing_sources and observed != expected):
             raise OSError("retained native recovery membership changed before refresh")
@@ -1322,6 +1362,46 @@ def _verify_native_recoveries(snapshot: CodexCacheSnapshot, *, sources: bool = F
             raise OSError(f"retained native source changed before refresh: {record.source}")
 
 
+def _preserve_marketplace_generation(snapshot: CodexCacheSnapshot) -> CodexCacheSnapshot:
+    """Admit only the pinned current root created by the preceding native command.
+
+    A marketplace upgrade can replace its entire parent before plugin add. The
+    old generation remains sealed outside that parent; the new generation must
+    be sealed as well before another destructive command. Unrelated new roots,
+    modified historical roots, and damaged recovery copies remain refusals.
+    """
+    _verify_native_recoveries(snapshot)
+    parent = plugin_cache_parent("codex")
+    version = snapshot.client_owned_version
+    if version not in snapshot.native_sources:
+        # Cache-only refresh has no authority to admit a new native checkout.
+        # Its existing complete-root restoration remains usable when there is
+        # no changed native membership at all.
+        _verify_native_recoveries(snapshot, sources=True, allow_missing_sources=True)
+        return snapshot
+    target = parent / version
+    observed = set(_native_roots_to_preserve(parent))
+    active = {record.source for record in snapshot.native_recoveries.values() if record.source_identity}
+    if observed - active - {target}:
+        raise OSError("unrecognized native recovery appeared between commands")
+    records = dict(snapshot.native_recoveries)
+    if target.exists() or target.is_symlink():
+        commit = snapshot.native_sources[version][0]
+        identity = _codex_native_git_identity(target, commit)
+        digest = _native_inventory_digest(_native_recovery_inventory(target))
+        current = [record for record in records.values() if record.source == target and record.source_identity]
+        if not any(record.source_identity == identity and record.digest == digest for record in current):
+            # Preserve the actual new generation first; only then stop comparing
+            # its reused pathname with an older, independently retained inode.
+            record = _preserve_native_recovery(target, commit)
+            records = {key: replace(value, source_identity=()) if value.source == target else value
+                       for key, value in records.items()}
+            records[str(record.manifest)] = record
+    candidate = replace(snapshot, native_recoveries=records)
+    _verify_native_recoveries(candidate, sources=True, allow_missing_sources=True)
+    return candidate
+
+
 def snapshot_codex_caches(
     result: Result, repo: Path | None = None
 ) -> CodexCacheSnapshot | None:
@@ -1338,6 +1418,7 @@ def snapshot_codex_caches(
     backup = Path(tempfile.mkdtemp(prefix="synthesis-codex-cache-"))
     native_sources: dict[str, tuple[str, frozenset[str]]] = {}
     native_recoveries: dict[str, NativeCacheRecovery] = {}
+    materialized_sources: dict[str, str] = {}
     try:
         peers = {
             "Codex cache": parent,
@@ -1358,6 +1439,10 @@ def snapshot_codex_caches(
                 stored.materialize(version, restored_archive)
                 archive_roots[version] = restored_archive
         retained_roots = _native_roots_to_preserve(parent)
+        materialized_sources = {
+            version: _tree_digest(root)
+            for version, root in cache_roots.items() if root not in retained_roots
+        }
         retained_versions = {_native_recovery_version(root.name) for root in retained_roots}
         boundary_versions = set(cache_roots) | set(peer_roots) | set(archive_roots) | retained_versions
         preserved_versions = set(boundary_versions)
@@ -1369,6 +1454,7 @@ def snapshot_codex_caches(
             current_version, detail = source_version(repo)
             if current_version is None:
                 raise OSError(detail)
+            materialized_sources.pop(current_version, None)
             if current_version not in tags:
                 tags.append(current_version)
                 tags.sort(key=_version_key)
@@ -1476,7 +1562,7 @@ def snapshot_codex_caches(
     )
     return CodexCacheSnapshot(backup=backup, versions=versions, archive=archive,
                               client_owned_version=current_version, native_sources=native_sources,
-                              native_recoveries=native_recoveries)
+                              native_recoveries=native_recoveries, materialized_sources=materialized_sources)
 
 
 def _remove_transition_backup(backup: Path) -> None:
@@ -1537,6 +1623,7 @@ def _replace_cache_root(
     source: Path, destination: Path, parent: Path, *,
     retain_displaced: bool = False,
     validate_destination: Callable[[], None] | None = None,
+    validate_displaced: Callable[[Path], None] | None = None,
 ) -> Path | None:
     """Stage and verify before swapping; retain Muse's old source for recovery.
 
@@ -1630,6 +1717,10 @@ def _replace_cache_root(
             _remove_cache_transition_tree(staging, parent, staging_prefix)
     if retain_displaced:
         return displaced if displaced.exists() else None
+    if validate_displaced is not None and displaced.exists():
+        # Re-read preservation at the destructive boundary too. A refusal
+        # retains the displaced original, even though promotion succeeded.
+        validate_displaced(displaced)
     _remove_cache_transition_tree(displaced, parent, displaced_prefix)
     return None
 
@@ -1768,6 +1859,96 @@ def _codex_native_git_identity(root: Path, expected_commit: str | None) -> tuple
     return info.st_dev, info.st_ino, git_info.st_dev, git_info.st_ino
 
 
+def _preserve_materialized_recovery(source: Path) -> MaterializedCacheRecovery:
+    """Retain changed cache bytes outside the native parent before repair.
+
+    These append-only bundles grant no native-source or installation authority.
+    A later review owns their disposition; refresh never cleans them up.
+    """
+    parent, archive = plugin_cache_parent("codex"), codex_cache_archive()
+    if (source.parent != parent or RELEASE_VERSION_RE.fullmatch(source.name) is None
+            or source.is_symlink() or not source.is_dir()):
+        raise OSError(f"unrecognized materialized cache source: {source}")
+    store = archive.with_name(archive.name + "-materialized-retained")
+    _validate_native_recovery_store(store, parent, materialized=True)
+    parent_identity = _cache_transition_parent_identity(parent)
+    source_identity = _cache_transition_parent_identity(source)
+    expected = _native_recovery_inventory(source)
+    digest = _native_inventory_digest(expected)
+    store.mkdir(parents=True, mode=0o700, exist_ok=True)
+    store_identity = _cache_transition_parent_identity(store)
+    bundle = store / ("retained-" + secrets.token_hex(16))
+    bundle.mkdir(mode=0o700)
+    bundle_identity = _cache_transition_parent_identity(bundle)
+    tree = bundle / source.name
+    payload = {"schema_version": 1, "source": str(source), "tree": tree.name,
+               "digest": digest, "inventory": expected,
+               "disposition": "RETAINED_FOR_SEPARATE_REVIEW"}
+    intent_digest = _write_native_recovery_record(bundle / "intent.json", {**payload, "state": "COPYING"})
+    shutil.copytree(source, tree, symlinks=True)
+    tree_identity = _cache_transition_parent_identity(tree)
+    if _native_recovery_inventory(tree) != expected or _native_recovery_inventory(source) != expected:
+        raise OSError("materialized cache changed during preservation")
+    for path in [*tree.rglob("*"), tree]:
+        if not path.is_symlink():
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            try:
+                if not (stat.S_ISREG(os.fstat(descriptor).st_mode) or stat.S_ISDIR(os.fstat(descriptor).st_mode)):
+                    raise OSError("materialized recovery changed file type")
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+    _validate_native_recovery_store(store, parent, materialized=True)
+    if (_cache_transition_parent_identity(parent) != parent_identity
+            or _cache_transition_parent_identity(store) != store_identity):
+        raise OSError("materialized recovery parent changed identity")
+    manifest_digest = _write_native_recovery_record(bundle / "manifest.json", {**payload, "state": "VERIFIED"})
+    for path in (bundle, store):
+        descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    return MaterializedCacheRecovery(tree, digest, source, intent_digest, manifest_digest,
+                                     source_identity, store_identity, bundle_identity, tree_identity)
+
+
+def _verify_materialized_recovery(record: MaterializedCacheRecovery, original: Path) -> None:
+    """Consume a current, exact sealed copy before moving or deleting originals."""
+    parent, archive = plugin_cache_parent("codex"), codex_cache_archive()
+    store = archive.with_name(archive.name + "-materialized-retained")
+    bundle, tree = record.tree.parent, record.tree
+    _validate_native_recovery_store(store, parent, materialized=True)
+    if (bundle.parent != store or re.fullmatch(r"retained-[0-9a-f]{32}", bundle.name) is None
+            or tree.name != record.source.name or record.source.parent != parent
+            or RELEASE_VERSION_RE.fullmatch(tree.name) is None
+            or original.parent != parent
+            or _cache_transition_parent_identity(store) != record.store_identity
+            or _cache_transition_parent_identity(bundle) != record.bundle_identity
+            or _cache_transition_parent_identity(tree) != record.tree_identity
+            or _cache_transition_parent_identity(original) != record.source_identity):
+        raise OSError("materialized recovery directory identity changed")
+    intent, intent_digest = _read_native_recovery_record(bundle / "intent.json")
+    manifest, manifest_digest = _read_native_recovery_record(bundle / "manifest.json")
+    expected = _native_recovery_inventory(tree)
+    payload = {"schema_version": 1, "source": str(record.source), "tree": tree.name,
+               "digest": record.digest, "inventory": expected,
+               "disposition": "RETAINED_FOR_SEPARATE_REVIEW"}
+    if (intent_digest != record.intent_digest or manifest_digest != record.manifest_digest
+            or intent != {**payload, "state": "COPYING"}
+            or manifest != {**payload, "state": "VERIFIED"}
+            or _native_inventory_digest(expected) != record.digest
+            or _native_recovery_inventory(original) != expected):
+        raise OSError("materialized recovery seal, copy or original changed before consumption")
+    # Inventory traversal itself can run long; bind the same directory objects
+    # after the read, just as the native-preservation consumer does.
+    if (_cache_transition_parent_identity(store) != record.store_identity
+            or _cache_transition_parent_identity(bundle) != record.bundle_identity
+            or _cache_transition_parent_identity(tree) != record.tree_identity
+            or _cache_transition_parent_identity(original) != record.source_identity):
+        raise OSError("materialized recovery directory changed during verification")
+
+
 def _restore_codex_caches_once(
     snapshot: CodexCacheSnapshot, retained: set[Path] | None = None,
 ) -> tuple[set[str], set[str]]:
@@ -1814,6 +1995,7 @@ def _restore_codex_caches_once(
                 raise OSError(f"Git metadata appeared during newest cache verification: {destination}")
             continue
 
+        materialized_recovery = None
         def validate_destination() -> None:
             _validate_codex_cache_boundary(destination, parent)
             if native_identity is not None:
@@ -1821,6 +2003,8 @@ def _restore_codex_caches_once(
                     raise OSError(f"native cache identity changed before repair: {destination}")
             elif (destination / ".git").exists() or (destination / ".git").is_symlink():
                 raise OSError(f"repository appeared before cache repair: {destination}")
+            if materialized_recovery is not None:
+                _verify_materialized_recovery(materialized_recovery, destination)
 
         if not destination.exists():
             _replace_cache_root(source, destination, parent, validate_destination=validate_destination)
@@ -1828,9 +2012,15 @@ def _restore_codex_caches_once(
         elif not destination.is_dir():
             raise OSError(f"version root is not a directory: {destination}")
         elif _tree_digest(source) != _tree_digest(destination):
+            if native_identity is None:
+                materialized_recovery = _preserve_materialized_recovery(destination)
+                if retained is not None:
+                    retained.add(materialized_recovery.tree)
             displaced = _replace_cache_root(source, destination, parent,
                                             retain_displaced=native_identity is not None,
-                                            validate_destination=validate_destination)
+                                            validate_destination=validate_destination,
+                                            validate_displaced=(lambda original: _verify_materialized_recovery(materialized_recovery, original))
+                                            if materialized_recovery is not None else None)
             if displaced is not None and retained is not None:
                 retained.add(displaced)
             repaired.add(version)
@@ -1889,7 +2079,7 @@ def restore_codex_caches(
         )
     if retained:
         result.add("install.codex.cache-recovery", True,
-                   "verified displaced Git checkouts retained without automatic deletion; "
+                   "verified changed cache trees retained without automatic deletion; "
                    "recovery disposition requires separate review: " + ", ".join(str(path) for path in sorted(retained)))
     if snapshot.native_recoveries:
         result.add("install.codex.cache-native-recovery", True,
@@ -2282,6 +2472,7 @@ def refresh_client(
                 return False
 
         commands_ok = True
+        cache_restore_allowed = True
         for index, command in enumerate(commands):
             label = f"install.{client}.{command[2] if len(command) > 2 else 'run'}"
             if dry_run:
@@ -2289,11 +2480,26 @@ def refresh_client(
                 continue
             if cache_snapshot is not None:
                 try:
+                    if index > 0:
+                        cache_snapshot = _preserve_marketplace_generation(cache_snapshot)
                     _verify_native_recoveries(cache_snapshot, sources=True, allow_missing_sources=index > 0)
                 except OSError as exc:
-                    return result.add("install.codex.cache-native-preservation", False,
-                                      f"native refresh refused; recovery inputs retained at {cache_snapshot.backup}: {exc}")
-            completed = run(command, timeout=600)
+                    result.add("install.codex.cache-native-preservation", False,
+                               f"native refresh refused; recovery inputs retained at {cache_snapshot.backup}: {exc}")
+                    if index == 0:
+                        return False
+                    # The previous command exposed unproven or changed work.
+                    # Recovery must not overwrite those bytes while refusing
+                    # the next native mutation; complete prior copies remain.
+                    commands_ok = False
+                    cache_restore_allowed = False
+                    break
+            try:
+                completed = run(command, timeout=600)
+            except (OSError, subprocess.SubprocessError) as exc:
+                result.add(label, False, f"native command outcome is unresolved: {exc}")
+                commands_ok = False
+                break
             if completed.returncode != 0:
                 tail = (completed.stderr or completed.stdout).strip().splitlines()
                 result.add(label, False, tail[-1] if tail else "command failed")
@@ -2302,7 +2508,12 @@ def refresh_client(
             result.add(label, True, " ".join(command[1:]))
         caches_ok = True
         if cache_snapshot is not None:
-            caches_ok = restore_codex_caches(cache_snapshot, result)
+            if cache_restore_allowed:
+                caches_ok = restore_codex_caches(cache_snapshot, result)
+            else:
+                caches_ok = result.add("install.codex.cache-restore", False,
+                    "restoration withheld to preserve changed or unproven cache entries; "
+                    f"complete prior recovery remains at {cache_snapshot.backup}")
         return commands_ok and caches_ok
     finally:
         if cache_lock is not None:

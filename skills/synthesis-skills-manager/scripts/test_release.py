@@ -69,6 +69,7 @@ def hermetic_release_train(
     )
     home = tmp_path / "lifecycle-home"
     monkeypatch.setenv("SYNTHESIS_HOME", str(home))
+    monkeypatch.setattr(release, "codex_cache_archive", lambda: tmp_path / "cache-recovery")
     for name, relative in {"XDG_CONFIG_HOME": ".config", "XDG_STATE_HOME": ".local/state",
                            "XDG_CACHE_HOME": ".cache", "XDG_DATA_HOME": ".local/share"}.items():
         monkeypatch.setenv(name, str(home / relative))
@@ -2703,6 +2704,242 @@ def test_malformed_native_catalog_refuses_before_any_further_cli(tmp_path, monke
     assert result.steps[-1].name == "install.codex.cache-snapshot"
 
 
+@pytest.mark.parametrize("existing_target", [False, True])
+def test_marketplace_created_current_generation_is_preserved_before_add(tmp_path, monkeypatch, existing_target):
+    source, parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    target = parent / "4.75.0"
+    if not existing_target:
+        target.rename(tmp_path / "prior-target-fixture")
+    cli = Path(release.resolve_client_binary("codex"))
+    original_script = cli.read_text()
+    boundary = "if sys.argv[1:3] == ['plugin', 'add']:"
+    appeared = tmp_path / "marketplace-generation"
+    replacement = f'''if sys.argv[1:3] == ['plugin', 'marketplace']:
+    shutil.rmtree(parent)
+    parent.mkdir()
+    subprocess.run(['git', '-c', 'core.hooksPath=' + os.devnull, 'clone', '--no-local',
+                    '--branch', 'v4.75.0', str(source), str(parent / '4.75.0')],
+                   check=True, capture_output=True)
+    (parent / '4.75.0' / 'between-native-commands').write_bytes(b'new native generation retained evidence')
+    shutil.copytree(parent / '4.75.0', pathlib.Path({str(appeared)!r}), symlinks=True)
+'''
+    cli.write_text(original_script.replace(boundary, replacement + boundary))
+    result = release.Result()
+    assert release.refresh_client("codex", result, False, repo=source), result.steps
+    assert len(log.read_text().splitlines()) == 2
+    bundles = tmp_path / "archive-native-retained"
+    assert any(_all_cache_bytes(copy) == _all_cache_bytes(appeared)
+               for copy in bundles.glob("retained-*/4.75.0"))
+    assert any(_all_cache_bytes(copy) == expected
+               for copy in bundles.glob("retained-*/" + retained.name))
+    assert not (target / "between-native-commands").exists()
+    assert (parent / "4.74.0/skills/example/SKILL.md").is_file()
+
+
+@pytest.mark.parametrize("damage", ["wrong-commit", "root-link", "nested-repository", "external-link"])
+def test_marketplace_current_generation_refuses_unproven_ownership(tmp_path, monkeypatch, damage):
+    source, parent, _retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    target = parent / "4.75.0"
+    external = tmp_path / "foreign"
+    external.mkdir()
+    (external / "sentinel").write_text("unrelated work")
+    original = release.run
+    captured = []
+    def native_transition(command, cwd=None, timeout=900):
+        result = original(command, cwd=cwd, timeout=timeout)
+        if command[1:3] == ["plugin", "marketplace"]:
+            if damage == "wrong-commit":
+                subprocess.run(["git", "-C", str(target), "checkout", "--detach", "v4.74.0"],
+                               check=True, capture_output=True)
+            elif damage == "root-link":
+                target.rename(tmp_path / "original-current")
+                target.symlink_to(external, target_is_directory=True)
+            elif damage == "nested-repository":
+                (target / "nested/.git").mkdir(parents=True)
+            else:
+                (target / "outside").symlink_to(external / "sentinel")
+            captured.append(_all_cache_bytes(target))
+        return result
+    monkeypatch.setattr(release, "run", native_transition)
+    result = release.Result()
+    assert not release.refresh_client("codex", result, False, repo=source)
+    assert len(log.read_text().splitlines()) == 1
+    assert _all_cache_bytes(target) == captured[0]
+    assert (external / "sentinel").read_text() == "unrelated work"
+
+
+@pytest.mark.parametrize("phase", ["before", "between"])
+@pytest.mark.parametrize("kind", ["plain", "git", "file", "symlink", "plain-version"])
+def test_unknown_cache_child_refuses_native_mutation(tmp_path, monkeypatch, phase, kind):
+    source, parent, _retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    unknown = parent / ("9.99.99" if kind == "plain-version" else "foreign")
+    sentinel = tmp_path / "outside-sentinel"
+    sentinel.write_bytes(b"unrelated retained bytes")
+    captured = []
+    def create():
+        if kind == "file":
+            unknown.write_bytes(b"unrecognized file")
+        elif kind == "symlink":
+            unknown.symlink_to(sentinel)
+        else:
+            if kind == "git":
+                subprocess.run(["git", "clone", "--no-local", str(source), str(unknown)],
+                               check=True, capture_output=True)
+            else:
+                unknown.mkdir()
+            (unknown / "local-evidence").write_bytes(b"unrecognized directory work")
+            captured.append(_all_cache_bytes(unknown))
+    original = release.run
+    def transition(command, cwd=None, timeout=900):
+        result = original(command, cwd=cwd, timeout=timeout)
+        if command[1:3] == ["plugin", "marketplace"]:
+            create()
+        return result
+    if phase == "before":
+        create()
+    else:
+        monkeypatch.setattr(release, "run", transition)
+    result = release.Result()
+    assert not release.refresh_client("codex", result, False, repo=source)
+    calls = log.read_text().splitlines() if log.exists() else []
+    assert len(calls) == (0 if phase == "before" else 1)
+    if kind == "file":
+        assert unknown.read_bytes() == b"unrecognized file"
+    elif kind == "symlink":
+        assert unknown.is_symlink() and unknown.read_bytes() == b"unrelated retained bytes"
+    else:
+        assert _all_cache_bytes(unknown) == captured[0]
+    assert sentinel.read_bytes() == b"unrelated retained bytes"
+
+
+def test_unqualified_plain_current_generation_without_prior_root_refuses_add(tmp_path, monkeypatch):
+    source, parent, _retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    target = parent / "4.75.0"
+    if target.exists():
+        target.rename(tmp_path / "initial-current")
+    original = release.run
+    def transition(command, cwd=None, timeout=900):
+        result = original(command, cwd=cwd, timeout=timeout)
+        if command[1:3] == ["plugin", "marketplace"]:
+            if target.exists():
+                target.rename(tmp_path / "marketplace-current")
+            target.mkdir()
+            (target / "unqualified-evidence").write_bytes(b"not an admitted Git generation")
+        return result
+    monkeypatch.setattr(release, "run", transition)
+    result = release.Result()
+    assert not release.refresh_client("codex", result, False, repo=source)
+    assert len(log.read_text().splitlines()) == 1
+    assert (target / "unqualified-evidence").read_bytes() == b"not an admitted Git generation"
+
+
+def test_unpinned_snapshot_cannot_admit_new_native_generation(tmp_path, monkeypatch):
+    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch)
+    before = _all_cache_bytes(parent)
+    unpinned = release.CodexCacheSnapshot(snapshot.backup, snapshot.versions)
+    with pytest.raises(OSError, match="membership changed"):
+        release._preserve_marketplace_generation(unpinned)
+    assert _all_cache_bytes(parent) == before
+
+
+def test_changed_materialized_history_refuses_add_and_preserves_changed_bytes(tmp_path, monkeypatch):
+    source, parent, retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    historical = parent / "4.74.0"
+    # The CLI fixture retains its old Git root under a displaced name. A real
+    # materialized historical root must also exist before the snapshot.
+    shutil.copytree(retained, historical, symlinks=True, ignore=shutil.ignore_patterns(".git"))
+    original = release.run
+    def transition(command, cwd=None, timeout=900):
+        result = original(command, cwd=cwd, timeout=timeout)
+        if command[1:3] == ["plugin", "marketplace"]:
+            (historical / "changed-work").write_bytes(b"new materialized evidence")
+        return result
+    monkeypatch.setattr(release, "run", transition)
+    result = release.Result()
+    assert not release.refresh_client("codex", result, False, repo=source)
+    assert len(log.read_text().splitlines()) == 1
+    assert (historical / "changed-work").read_bytes() == b"new materialized evidence"
+
+
+@pytest.mark.parametrize("fault", ["copy", "seal", "changed-source", "changed-seal",
+                                  "changed-intent", "changed-copy", "replaced-copy", "after-promotion"])
+def test_materialized_preservation_failure_prevents_repair(tmp_path, monkeypatch, fault):
+    parent = tmp_path / "cache"
+    source = parent / "4.74.0"
+    source.mkdir(parents=True)
+    (source / "work").write_bytes(b"new evidence")
+    backup = tmp_path / "synthesis-codex-cache-fixture"
+    (backup / "4.74.0").mkdir(parents=True)
+    (backup / "4.74.0/work").write_bytes(b"old version")
+    snapshot = release.CodexCacheSnapshot(backup, ("4.74.0",))
+    monkeypatch.setattr(release, "plugin_cache_parent", lambda client: parent)
+    original_copy, original_write = release.shutil.copytree, release._write_native_recovery_record
+    original_preserve, original_rename = release._preserve_materialized_recovery, release.os.rename
+    def copy(src, dst, *args, **kwargs):
+        result = original_copy(src, dst, *args, **kwargs)
+        if Path(dst).parent.name.startswith("retained-"):
+            if fault == "copy":
+                raise OSError("synthetic interrupted copy")
+            if fault == "changed-source":
+                (source / "work").write_bytes(b"concurrent retained evidence")
+        return result
+    def write(path, data):
+        if fault == "seal" and path.name == "manifest.json":
+            raise OSError("synthetic interrupted seal")
+        return original_write(path, data)
+    preserved = []
+    def preserve(path):
+        record = original_preserve(path)
+        preserved.append(record)
+        if fault == "changed-seal":
+            (record.tree.parent / "manifest.json").write_text("{}")
+        elif fault == "changed-intent":
+            (record.tree.parent / "intent.json").write_text("{}")
+        elif fault == "changed-copy":
+            (record.tree / "work").write_bytes(b"damaged recovery")
+        elif fault == "replaced-copy":
+            record.tree.rename(tmp_path / "first-copy")
+            original_copy(tmp_path / "first-copy", record.tree, symlinks=True)
+        return record
+    def rename(src, dst):
+        result = original_rename(src, dst)
+        if fault == "after-promotion" and Path(src).name.startswith(".release-repair-") and Path(dst) == source:
+            (preserved[-1].tree / "work").write_bytes(b"changed after promotion")
+        return result
+    monkeypatch.setattr(release.shutil, "copytree", copy)
+    monkeypatch.setattr(release, "_write_native_recovery_record", write)
+    monkeypatch.setattr(release, "_preserve_materialized_recovery", preserve)
+    monkeypatch.setattr(release.os, "rename", rename)
+    assert not release.restore_codex_caches(snapshot, release.Result())
+    if fault == "after-promotion":
+        displaced, = parent.glob(".release-displaced-4.74.0-*")
+        assert (displaced / "work").read_bytes() == b"new evidence"
+    else:
+        assert (source / "work").read_bytes() == (b"concurrent retained evidence" if fault == "changed-source" else b"new evidence")
+    assert backup.is_dir()
+
+
+@pytest.mark.parametrize("failure", ["timeout", "os-error"])
+def test_native_command_interruption_attempts_verified_history_restoration(tmp_path, monkeypatch, failure):
+    source, parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    original = release.run
+    def interrupted(command, cwd=None, timeout=900):
+        result = original(command, cwd=cwd, timeout=timeout)
+        if command[1:3] == ["plugin", "add"]:
+            if failure == "timeout":
+                raise subprocess.TimeoutExpired(command, timeout)
+            raise OSError("synthetic native result transport interruption")
+        return result
+    monkeypatch.setattr(release, "run", interrupted)
+    result = release.Result()
+    assert not release.refresh_client("codex", result, False, repo=source)
+    assert len(log.read_text().splitlines()) == 2
+    assert (parent / "4.74.0/skills/example/SKILL.md").is_file()
+    assert any(step.name == "install.codex.cache-restore" and step.ok for step in result.steps)
+    assert any(_all_cache_bytes(copy) == expected for copy in
+               (tmp_path / "archive-native-retained").glob("retained-*/" + retained.name))
+
+
 def test_new_native_recovery_between_commands_blocks_destructive_add(tmp_path, monkeypatch):
     source, parent, retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
     appeared = parent / (".release-displaced-4.74.0-" + "b" * 32)
@@ -2945,8 +3182,6 @@ def test_codex_refresh_restores_real_version_root_deleted_by_client(
     old_root = cache_parent / "4.74.0"
     (old_root / "hooks").mkdir(parents=True)
     (old_root / "hooks" / "hooks.json").write_text("old hook bytes\n", encoding="utf-8")
-    recovery_link = cache_parent / "4.73.0"
-    recovery_link.symlink_to(old_root)
 
     monkeypatch.setattr(release, "plugin_cache_parent", lambda client: cache_parent)
     monkeypatch.setattr(release, "resolve_client_binary", lambda name: "/fake/codex")
@@ -2954,19 +3189,33 @@ def test_codex_refresh_restores_real_version_root_deleted_by_client(
     def run(command, **_kwargs):
         if command[1:3] == ["plugin", "add"]:
             shutil.rmtree(old_root)
-            recovery_link.unlink()
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     monkeypatch.setattr(release, "run", run)
     result = release.Result()
     assert release.refresh_client("codex", result, dry_run=False) is True
     assert (old_root / "hooks" / "hooks.json").read_text(encoding="utf-8") == "old hook bytes\n"
-    assert not recovery_link.exists()
     steps = {step.name: step for step in result.steps}
     assert steps["install.codex.cache-snapshot"].ok is True
     assert "1 complete version" in steps["install.codex.cache-snapshot"].detail
     assert steps["install.codex.cache-restore"].ok is True
     assert "restored 1" in steps["install.codex.cache-restore"].detail
+
+
+def test_preexisting_version_symlink_refuses_refresh_without_removing_it(tmp_path, monkeypatch):
+    parent = tmp_path / "cache"
+    real = parent / "4.74.0"
+    real.mkdir(parents=True)
+    (real / "sentinel").write_text("retained")
+    link = parent / "4.73.0"
+    link.symlink_to(real)
+    monkeypatch.setattr(release, "plugin_cache_parent", lambda client: parent)
+    monkeypatch.setattr(release, "resolve_client_binary", lambda client: "/fake/codex")
+    calls = []
+    monkeypatch.setattr(release, "run", lambda *a, **k: calls.append(a))
+    assert not release.refresh_client("codex", release.Result(), False)
+    assert calls == [] and link.is_symlink()
+    assert (link / "sentinel").read_text() == "retained"
 
 
 def test_codex_refresh_repairs_if_existing_preserved_root_changes(
@@ -2994,6 +3243,8 @@ def test_codex_refresh_repairs_if_existing_preserved_root_changes(
     )
     assert restore.ok is True
     assert "repaired 1" in restore.detail
+    retained = list((tmp_path / "cache-recovery-materialized-retained").glob("retained-*/4.74.0/hooks/hooks.json"))
+    assert len(retained) == 1 and retained[0].read_text() == "modified\n"
 
 
 def test_codex_refresh_accepts_runtime_bytecode_change(
@@ -3052,6 +3303,8 @@ def test_codex_refresh_atomically_replaces_unowned_extra(
     )
     assert restore.ok is True
     assert not (old_root / "unexpected").exists()
+    retained = list((tmp_path / "cache-recovery-materialized-retained").glob("retained-*/4.74.0/unexpected"))
+    assert len(retained) == 1 and retained[0].read_text() == "late\n"
 
 
 def test_codex_refresh_does_not_write_through_nested_symlink(
