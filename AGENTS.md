@@ -60,6 +60,7 @@ python3 -m pytest skills/synthesis-agent-conformance/scripts/test_*.py -q
 python3 -m pytest skills/synthesis-project-management/scripts/ -q
 python3 -m pytest skills/synthesis-checkpoint/scripts/ -q
 python3 -m pytest skills/synthesis-autopilot/scripts/ -q
+python3 -m pytest skills/synthesis-model-tiers/scripts/ -q
 python3 -m pytest skills/synthesis-promotion-gate/scripts/ -q
 python3 -m pytest skills/synthesis-context-lifecycle/scripts/ skills/synthesis-implementation-integrity/scripts/ -q
 python3 -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q

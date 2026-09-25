@@ -1,17 +1,18 @@
 schema: 2
-suite: operator-observation-4-149-3
+suite: catalog-and-native-compaction-4-149-4
 membership: closed
-production_entry_point: Project-state resolver and native Codex source observation
-  consumers
+production_entry_point: Model-role catalog and bounded native Codex context recovery
 enforcing_boundary: Fresh transaction-bound acceptance before gated release
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Real Git and source/owner fixture consumers; installed latency,
-  real native recovery, process survival and comparative outcomes remain separately
-  qualified.
+unverified_remainder: Offline catalog and namespace verification does not prove endpoint
+  availability, provider execution, hardware fit or a native model switch. Product-consumer
+  integration has its own actual-consumer acceptance. Compaction source acceptance
+  does not prove current native ownership, full transcript coverage, wake, process-loss
+  recovery or installed reload.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -19,215 +20,200 @@ changed_surfaces:
 - path: .codex-plugin/plugin.json
   cases:
   - release-metadata
+- path: .github/workflows/validate.yml
+  cases:
+  - test_shipped_catalog_contract
+  - test_verified_role_assignments
+  - test_negative_catalog_controls
+  - release-metadata
+  - test_agents_verification_list_matches_ci_workflow
+  - test_required_checks_cover_ci_pytest_groups
 - path: .muse-plugin/plugin.json
   cases:
   - release-metadata
+- path: AGENTS.md
+  cases:
+  - test_agents_verification_list_matches_ci_workflow
+  - test_required_checks_cover_ci_pytest_groups
 - path: CHANGELOG.md
   cases:
-  - resolution-001
-  - resolution-002
-  - resolution-003
-  - resolution-004
-  - resolution-005
-  - resolution-006
-  - metadata-001
-  - metadata-002
-  - metadata-003
-  - metadata-004
-  - metadata-005
-  - metadata-006
-  - metadata-007
+  - test_shipped_catalog_contract
+  - test_verified_role_assignments
+  - test_negative_catalog_controls
   - release-metadata
-  - metadata-timestamp-1
-  - metadata-timestamp-2
 - path: README.md
   cases:
-  - resolution-001
-  - resolution-002
-  - resolution-003
-  - resolution-004
-  - resolution-005
-  - resolution-006
-  - metadata-001
-  - metadata-002
-  - metadata-003
-  - metadata-004
-  - metadata-005
-  - metadata-006
-  - metadata-007
+  - test_shipped_catalog_contract
+  - test_verified_role_assignments
+  - test_negative_catalog_controls
   - release-metadata
-  - metadata-timestamp-1
-  - metadata-timestamp-2
 - path: skills/synthesis-autopilot/SKILL.md
   cases:
-  - resolution-001
-  - resolution-002
-  - resolution-003
-  - resolution-004
-  - resolution-005
-  - resolution-006
-  - metadata-001
-  - metadata-002
-  - metadata-003
-  - metadata-004
-  - metadata-005
-  - metadata-006
-  - metadata-007
-  - release-metadata
-  - metadata-timestamp-1
-  - metadata-timestamp-2
+  - test_compaction_is_one_non_authoritative_context_fact
+  - test_actual_reader_handles_small_large_compaction_and_cancellation
+  - test_compaction_preserves_accounted_usage_without_epoch_reset_or_double_charge
+  - test_unknown_malformed_or_foreign_compaction_is_an_explicit_gap
+  - test_actual_reader_retains_envelope_and_complete_json_bounds
+  - test_readback_rechecks_current_compaction_payload_after_partial_read
+  - test_many_closed_history_objects_do_not_consume_live_validator_inventory
+  - test_stream_key_inventory_is_retained_space_across_serialized_pages
+  - test_live_key_inventory_keeps_duplicate_and_memory_limits
 - path: skills/synthesis-autopilot/scripts/native_codex.py
   cases:
-  - metadata-001
-  - metadata-002
-  - metadata-003
-  - metadata-004
-  - metadata-005
-  - metadata-006
-  - metadata-007
-  - metadata-timestamp-1
-  - metadata-timestamp-2
-- path: skills/synthesis-autopilot/scripts/test_native_metadata.py
+  - test_compaction_is_one_non_authoritative_context_fact
+  - test_actual_reader_handles_small_large_compaction_and_cancellation
+  - test_compaction_preserves_accounted_usage_without_epoch_reset_or_double_charge
+  - test_unknown_malformed_or_foreign_compaction_is_an_explicit_gap
+  - test_actual_reader_retains_envelope_and_complete_json_bounds
+  - test_readback_rechecks_current_compaction_payload_after_partial_read
+  - test_many_closed_history_objects_do_not_consume_live_validator_inventory
+  - test_stream_key_inventory_is_retained_space_across_serialized_pages
+  - test_live_key_inventory_keeps_duplicate_and_memory_limits
+- path: skills/synthesis-autopilot/scripts/native_observations.py
   cases:
-  - metadata-001
-  - metadata-002
-  - metadata-003
-  - metadata-004
-  - metadata-005
-  - metadata-006
-  - metadata-007
-  - metadata-timestamp-1
-  - metadata-timestamp-2
+  - test_compaction_is_one_non_authoritative_context_fact
+  - test_actual_reader_handles_small_large_compaction_and_cancellation
+  - test_compaction_preserves_accounted_usage_without_epoch_reset_or_double_charge
+  - test_unknown_malformed_or_foreign_compaction_is_an_explicit_gap
+  - test_actual_reader_retains_envelope_and_complete_json_bounds
+  - test_readback_rechecks_current_compaction_payload_after_partial_read
+  - test_many_closed_history_objects_do_not_consume_live_validator_inventory
+  - test_stream_key_inventory_is_retained_space_across_serialized_pages
+  - test_live_key_inventory_keeps_duplicate_and_memory_limits
+- path: skills/synthesis-autopilot/scripts/test_codex_compacted.py
+  cases:
+  - test_compaction_is_one_non_authoritative_context_fact
+  - test_actual_reader_handles_small_large_compaction_and_cancellation
+  - test_compaction_preserves_accounted_usage_without_epoch_reset_or_double_charge
+  - test_unknown_malformed_or_foreign_compaction_is_an_explicit_gap
+  - test_actual_reader_retains_envelope_and_complete_json_bounds
+  - test_readback_rechecks_current_compaction_payload_after_partial_read
+  - test_many_closed_history_objects_do_not_consume_live_validator_inventory
+  - test_stream_key_inventory_is_retained_space_across_serialized_pages
+  - test_live_key_inventory_keeps_duplicate_and_memory_limits
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
-  - resolution-001
-  - resolution-002
-  - resolution-003
-  - resolution-004
-  - resolution-005
-  - resolution-006
-  - metadata-001
-  - metadata-002
-  - metadata-003
-  - metadata-004
-  - metadata-005
-  - metadata-006
-  - metadata-007
+  - test_shipped_catalog_contract
+  - test_verified_role_assignments
+  - test_negative_catalog_controls
   - release-metadata
-  - metadata-timestamp-1
-  - metadata-timestamp-2
-- path: skills/synthesis-project-management/SKILL.md
+- path: skills/synthesis-model-tiers/SKILL.md
   cases:
-  - resolution-001
-  - resolution-002
-  - resolution-003
-  - resolution-004
-  - resolution-005
-  - resolution-006
-  - metadata-001
-  - metadata-002
-  - metadata-003
-  - metadata-004
-  - metadata-005
-  - metadata-006
-  - metadata-007
+  - test_shipped_catalog_contract
+  - test_verified_role_assignments
+  - test_negative_catalog_controls
   - release-metadata
-  - metadata-timestamp-1
-  - metadata-timestamp-2
-- path: skills/synthesis-project-management/scripts/project_state.py
+- path: skills/synthesis-model-tiers/references/catalog-verification.yaml
   cases:
-  - resolution-001
-  - resolution-002
-  - resolution-003
-  - resolution-004
-  - resolution-005
-  - resolution-006
-- path: skills/synthesis-project-management/scripts/test_project_resolution_read_cost.py
+  - test_shipped_catalog_contract
+  - test_verified_role_assignments
+  - test_negative_catalog_controls
+  - release-metadata
+- path: skills/synthesis-model-tiers/scripts/test_catalog.py
   cases:
-  - resolution-001
-  - resolution-002
-  - resolution-003
-  - resolution-004
-  - resolution-005
-  - resolution-006
+  - test_shipped_catalog_contract
+  - test_verified_role_assignments
+  - test_negative_catalog_controls
+  - release-metadata
+- path: skills/synthesis-model-tiers/tiers.yaml
+  cases:
+  - test_shipped_catalog_contract
+  - test_verified_role_assignments
+  - test_negative_catalog_controls
+  - release-metadata
+- path: skills/synthesis-skills-manager/SKILL.md
+  cases:
+  - test_agents_verification_list_matches_ci_workflow
+  - test_required_checks_cover_ci_pytest_groups
+- path: skills/synthesis-skills-manager/scripts/release.py
+  cases:
+  - test_agents_verification_list_matches_ci_workflow
+  - test_required_checks_cover_ci_pytest_groups
 cases:
-- id: resolution-001
+- id: test_shipped_catalog_contract
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_resolution_read_cost.py::test_aliases_do_not_repeat_immutable_project_history
-  motivating_defect: aliases do not repeat immutable project history
-- id: resolution-002
+  fixture: ../synthesis-model-tiers/scripts/test_catalog.py::test_shipped_catalog_contract
+  motivating_defect: Reject detached provenance, wrong namespaces and unsupported
+    readiness assertions.
+- id: test_verified_role_assignments
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_resolution_read_cost.py::test_read_memo_is_discarded_before_next_request
-  motivating_defect: read memo is discarded before next request
-- id: resolution-003
+  fixture: ../synthesis-model-tiers/scripts/test_catalog.py::test_verified_role_assignments
+  motivating_defect: Keep verified provider role assignments consistent.
+- id: test_negative_catalog_controls
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_resolution_read_cost.py::test_moving_git_selection_is_unresolved_not_stale_pass
-  motivating_defect: moving git selection is unresolved not stale pass
-- id: resolution-004
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_resolution_read_cost.py::test_aliases_cannot_hide_divergent_causal_states
-  motivating_defect: aliases cannot hide divergent causal states
-- id: resolution-005
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_resolution_read_cost.py::test_each_physical_worktree_keeps_its_fresh_dirty_scan
-  motivating_defect: each physical worktree keeps its fresh dirty scan
-- id: resolution-006
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_resolution_read_cost.py::test_moving_history_interpretation_invalidates_pinned_commit_read
-  motivating_defect: moving history interpretation invalidates pinned commit read
-- id: metadata-001
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_metadata_is_typed_non_authority_observation
-  motivating_defect: metadata is typed non authority observation
-- id: metadata-002
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_unknown_and_malformed_metadata_are_not_accepted
-  motivating_defect: unknown and malformed metadata are not accepted
-- id: metadata-003
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_metadata_envelope_refuses_foreign_or_unknown_fields
-  motivating_defect: metadata envelope refuses foreign or unknown fields
-- id: metadata-004
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_metadata_cannot_mask_cancel_or_user_instruction
-  motivating_defect: metadata cannot mask cancel or user instruction
-- id: metadata-005
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_exact_source_readback_retains_metadata_and_detects_changed_bytes
-  motivating_defect: exact source readback retains metadata and detects changed bytes
-- id: metadata-006
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_source_never_turns_unrecognized_metadata_into_clear_coverage
-  motivating_defect: source never turns unrecognized metadata into clear coverage
-- id: metadata-007
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_owner_journal_communication_metadata_preserves_current_invalidations
-  motivating_defect: owner journal communication metadata preserves current invalidations
+  fixture: ../synthesis-model-tiers/scripts/test_catalog.py::test_negative_catalog_controls
+  motivating_defect: Exercise fifteen invalid catalog and authority mutations.
 - id: release-metadata
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
-  motivating_defect: Release manifests and public metadata must agree.
-- id: metadata-timestamp-1
+  motivating_defect: Release manifests and package metadata must agree.
+- id: test_agents_verification_list_matches_ci_workflow
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_supplied_metadata_timestamp_must_be_bounded_valid_and_aware
-  motivating_defect: supplied metadata timestamp must be bounded valid and aware
-- id: metadata-timestamp-2
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
+  motivating_defect: The model catalog CI group must be declared locally and executed
+    by the release owner.
+- id: test_required_checks_cover_ci_pytest_groups
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_optional_metadata_timestamp_preserves_valid_native_forms
-  motivating_defect: optional metadata timestamp preserves valid native forms
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_cover_ci_pytest_groups
+  motivating_defect: The model catalog CI group must be declared locally and executed
+    by the release owner.
+- id: test_compaction_is_one_non_authoritative_context_fact
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_codex_compacted.py::test_compaction_is_one_non_authoritative_context_fact
+  motivating_defect: Native compaction must retain bounded observation, producer identity
+    and historical accounting without replay or authority.
+- id: test_actual_reader_handles_small_large_compaction_and_cancellation
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_codex_compacted.py::test_actual_reader_handles_small_large_compaction_and_cancellation
+  motivating_defect: Native compaction must retain bounded observation, producer identity
+    and historical accounting without replay or authority.
+- id: test_compaction_preserves_accounted_usage_without_epoch_reset_or_double_charge
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_codex_compacted.py::test_compaction_preserves_accounted_usage_without_epoch_reset_or_double_charge
+  motivating_defect: Native compaction must retain bounded observation, producer identity
+    and historical accounting without replay or authority.
+- id: test_unknown_malformed_or_foreign_compaction_is_an_explicit_gap
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_codex_compacted.py::test_unknown_malformed_or_foreign_compaction_is_an_explicit_gap
+  motivating_defect: Native compaction must retain bounded observation, producer identity
+    and historical accounting without replay or authority.
+- id: test_actual_reader_retains_envelope_and_complete_json_bounds
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_codex_compacted.py::test_actual_reader_retains_envelope_and_complete_json_bounds
+  motivating_defect: Native compaction must retain bounded observation, producer identity
+    and historical accounting without replay or authority.
+- id: test_readback_rechecks_current_compaction_payload_after_partial_read
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_codex_compacted.py::test_readback_rechecks_current_compaction_payload_after_partial_read
+  motivating_defect: Native compaction must retain bounded observation, producer identity
+    and historical accounting without replay or authority.
+- id: test_many_closed_history_objects_do_not_consume_live_validator_inventory
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_codex_compacted.py::test_many_closed_history_objects_do_not_consume_live_validator_inventory
+  motivating_defect: Native compaction must retain bounded observation, producer identity
+    and historical accounting without replay or authority.
+- id: test_stream_key_inventory_is_retained_space_across_serialized_pages
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_codex_compacted.py::test_stream_key_inventory_is_retained_space_across_serialized_pages
+  motivating_defect: Native compaction must retain bounded observation, producer identity
+    and historical accounting without replay or authority.
+- id: test_live_key_inventory_keeps_duplicate_and_memory_limits
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_codex_compacted.py::test_live_key_inventory_keeps_duplicate_and_memory_limits
+  motivating_defect: Native compaction must retain bounded observation, producer identity
+    and historical accounting without replay or authority.

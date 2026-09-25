@@ -1,0 +1,178 @@
+schema_version: 1
+scope: public_identifier_documentation
+reviewed_on: '2026-09-25'
+role_assignment: Synthesis recommendation based on provider descriptions; not a comparative benchmark
+  result.
+sources:
+  anthropic-models:
+    url: https://platform.claude.com/docs/en/models/overview
+    retrieved: '2026-09-25'
+    excerpt: Claude API ID
+    identifiers:
+    - claude-fable-5-1
+    - claude-opus-5-5
+    - claude-sonnet-5
+    - claude-haiku-4-5-20251001
+  openai-astra:
+    url: https://developers.openai.com/api/docs/models/gpt-6-astra
+    retrieved: '2026-09-25'
+    excerpt: Our most capable model, built for the hardest end-to-end work
+    identifiers:
+    - gpt-6-astra
+  openai-sol:
+    url: https://developers.openai.com/api/docs/models/gpt-6-sol
+    retrieved: '2026-09-25'
+    excerpt: Use `gpt-6-sol` in your API requests.
+    identifiers:
+    - gpt-6-sol
+  openai-luna:
+    url: https://developers.openai.com/api/docs/models/gpt-6-luna
+    retrieved: '2026-09-25'
+    excerpt: Our most efficient model for focused, high-volume tasks.
+    identifiers:
+    - gpt-6-luna
+  google-models:
+    url: https://ai.google.dev/gemini-api/docs/models
+    retrieved: '2026-09-25'
+    excerpt: Gemini 3.1 Flash-Lite Preview (Shut down)
+    identifiers:
+    - gemini-3.1-pro-preview
+    - gemini-3.8-flash
+    - gemini-3.5-flash-lite
+  ollama-qwen-moE:
+    url: https://ollama.com/library/qwen3.6:35b-a3b
+    retrieved: '2026-09-25'
+    excerpt: ollama run qwen3.6:35b-a3b
+    identifiers:
+    - qwen3.6:35b-a3b
+  ollama-qwen:
+    url: https://ollama.com/library/qwen3.6
+    retrieved: '2026-09-25'
+    excerpt: qwen3.6:27b
+    identifiers:
+    - qwen3.6:27b
+  ollama-gemma:
+    url: https://ollama.com/library/gemma4
+    retrieved: '2026-09-25'
+    excerpt: gemma4:e4b
+    identifiers:
+    - gemma4:31b
+    - gemma4:26b
+    - gemma4:e4b
+  litellm-gemini:
+    url: https://docs.litellm.ai/docs/providers/gemini
+    retrieved: '2026-09-25'
+    excerpt: Models without a prefix default to Vertex AI which requires full GCP authentication.
+    identifiers: []
+  codex-models:
+    url: https://learn.chatgpt.com/docs/models
+    retrieved: '2026-09-25'
+    excerpt: codex -m gpt-6-astra
+    identifiers: []
+  claude-code-models:
+    url: https://code.claude.com/docs/en/model-config
+    retrieved: '2026-09-25'
+    excerpt: To pin to a specific version, use the full model name
+    identifiers: []
+providers:
+  anthropic:
+    verified: '2026-09-25'
+    models:
+      claude-fable-5-1:
+        native_id: claude-fable-5-1
+        status: documented
+        sources:
+        - anthropic-models
+      claude-opus-5-5:
+        native_id: claude-opus-5-5
+        status: documented
+        sources:
+        - anthropic-models
+      claude-sonnet-5:
+        native_id: claude-sonnet-5
+        status: documented
+        sources:
+        - anthropic-models
+      claude-haiku-4-5-20251001:
+        native_id: claude-haiku-4-5-20251001
+        status: documented
+        sources:
+        - anthropic-models
+  openai:
+    verified: '2026-09-25'
+    models:
+      gpt-6-astra:
+        native_id: gpt-6-astra
+        status: documented
+        sources:
+        - openai-astra
+      gpt-6-sol:
+        native_id: gpt-6-sol
+        status: documented
+        sources:
+        - openai-sol
+      gpt-6-luna:
+        native_id: gpt-6-luna
+        status: documented
+        sources:
+        - openai-luna
+  google:
+    verified: '2026-09-25'
+    models:
+      gemini/gemini-3.1-pro-preview:
+        native_id: gemini-3.1-pro-preview
+        status: documented
+        sources:
+        - google-models
+      gemini/gemini-3.8-flash:
+        native_id: gemini-3.8-flash
+        status: documented
+        sources:
+        - google-models
+      gemini/gemini-3.5-flash-lite:
+        native_id: gemini-3.5-flash-lite
+        status: documented
+        sources:
+        - google-models
+  ollama:
+    verified: '2026-09-25'
+    models:
+      qwen3.6:35b-a3b:
+        native_id: qwen3.6:35b-a3b
+        status: documented
+        sources:
+        - ollama-qwen-moE
+      gemma4:31b:
+        native_id: gemma4:31b
+        status: documented
+        sources:
+        - ollama-gemma
+      gemma4:26b:
+        native_id: gemma4:26b
+        status: documented
+        sources:
+        - ollama-gemma
+      qwen3.6:27b:
+        native_id: qwen3.6:27b
+        status: documented
+        sources:
+        - ollama-qwen
+      gemma4:e4b:
+        native_id: gemma4:e4b
+        status: documented
+        sources:
+        - ollama-gemma
+selector_notes:
+  codex: Full GPT-6 model IDs are documented client selectors. Local client catalogs, API capabilities,
+    account access, active selection, and effort are separate evidence planes. No client or API execution
+    was performed for this refresh.
+  claude-code: Full Claude API IDs are accepted on the Anthropic API route. Family aliases vary with client
+    version, endpoint and configuration; Bedrock, Foundry and Google Cloud deployments need their own
+    selectors. Account access remains unknown.
+  google: Role lists keep the LiteLLM gemini/ routing namespace used by existing consumers. The gemini-api
+    client override supplies bare provider IDs for direct SDK use. Do not strip the prefix in LiteLLM.
+  ollama: Tags are documented. Installed model files, memory fit at requested context, runtime performance
+    and readiness were not tested.
+  unverified_clients: Muse Code, Cursor and other clients have no verified selector override in this refresh.
+    Missing entries do not establish availability or authorize changing an explicit user choice.
+excerpt_normalization: whitespace only; excerpts are short documentation evidence, not runtime acceptance

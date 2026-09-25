@@ -5,12 +5,15 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.8.5"
+  version: "2.8.6"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+**Version 2.8.6** runs model-catalog provenance and role validation in every
+release transaction, matching the declared local and hosted CI groups.
+
 **Version 2.8.5** preserves each pinned marketplace-created native generation
 before the next command. A closed cache-parent inventory refuses unknown entries
 and changed historical material before another destructive action. Post-command

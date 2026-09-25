@@ -139,6 +139,7 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
     ("pytest.coordination", ["python3", "-m", "pytest", "skills/synthesis-project-management/scripts/", "-q"]),
     ("pytest.checkpoint", ["python3", "-m", "pytest", "skills/synthesis-checkpoint/scripts/", "-q"]),
     ("pytest.autopilot", ["python3", "-m", "pytest", "skills/synthesis-autopilot/scripts/", "-q"]),
+    ("pytest.model-tiers", ["python3", "-m", "pytest", "skills/synthesis-model-tiers/scripts/", "-q"]),
     ("pytest.promotion-gate", ["python3", "-m", "pytest", "skills/synthesis-promotion-gate/scripts/", "-q"]),
     ("pytest.context-lifecycle-integrity", ["python3", "-m", "pytest", "skills/synthesis-context-lifecycle/scripts/", "skills/synthesis-implementation-integrity/scripts/", "-q"]),
     ("pytest.onboarding", ["python3", "-m", "pytest", "skills/synthesis-onboarding/scripts/", "-q"]),

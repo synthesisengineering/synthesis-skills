@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.0"
+  version: "2.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -14,7 +14,7 @@ metadata:
 
 A tiny convention that keeps model names out of everything except one file.
 
-Skills, project context files, agent memory, and standing instructions reference **role labels**; the labels resolve to current model identifiers in [`tiers.yaml`](tiers.yaml). When a vendor ships a new generation, one file changes and every consumer is current.
+Skills, project context files, agent memory, and standing instructions reference **role labels**; the labels resolve to current model identifiers in [`tiers.yaml`](tiers.yaml). When a vendor ships a new generation, refresh the table and verify each consuming catalog; a table edit alone does not update installed clients or product configuration.
 
 ## The three roles
 
@@ -55,10 +55,10 @@ The borrowing rule that fell out of the rename: **borrow an industry word only w
 
 ## Resolution rules
 
-1. Look up `providers.<provider>.<role>` in `tiers.yaml`. The list is an **ordered preference**: first entry preferred, later entries are supported fallbacks (cost, availability). Example: a provider may prefer its newest top model while keeping the previous flagship as the cost-conscious fallback in the same role.
+1. Look up `providers.<provider>.<role>` in `tiers.yaml`. The list is an **ordered preference**: first entry preferred, later entries are documented alternatives. This is guidance for a new selection, never authority to change an explicit user model or reasoning-effort choice. Preserve that choice even when catalog defaults change; account availability and host policy are separate checks.
 2. A provider with fewer rungs than another lists one model per role — the same model may serve two roles. When a vendor merges two rungs, a list shrinks; no schema change.
-3. **Local providers** (e.g., Ollama) are hardware-gated: their role lists carry only models that fit the operator's machine. A product catalog may keep bigger models for future hardware — catalog ⊇ role lists is allowed; the reverse is drift.
-4. `clients:` carries selector strings **only where a client UI differs from the API id**. Absent an entry, the API id is the selector.
+3. **Local providers** (e.g., Ollama) are hardware-gated at execution: a documented tag does not establish installation, RAM fit at the requested context, or acceptable performance. When `hardware_fit` is `unknown`, verify those conditions before recommending execution; do not download a model as a verification side effect. A product catalog may contain more models than the role lists; missing listed models remain drift.
+4. Read `identifier_namespace` before constructing a selector. OpenAI and Anthropic entries are native API IDs; Ollama entries are tags; Google entries use the LiteLLM `gemini/` route prefix. `clients.<client>.<provider>.<catalog-id>` records a documented override: `gemini-api` uses bare IDs, while LiteLLM keeps the prefix. No override means no documented translation, not proof that every client accepts that ID. Claude Code family aliases and third-party deployments can resolve differently; use the exact endpoint's verified selector. A local client catalog proves what that client advertises, not public API support or account access.
 5. Agents generally **cannot switch their own model** — model selection is a client-side action the human performs (e.g., Claude Code's `/model`). When work calls for a different tier, say so and wait; do not attempt workarounds.
 6. **An agent that finds itself under-tiered for the work must say so before acting**, not after. If a task arrives looking routine and turns out to be diagnosis — the cause is unknown, or a deliverable is in the blast radius — name that and let the human re-tier. Proceeding anyway and reporting a confident result is the failure mode this skill exists to prevent, and it is the one an agent is least able to detect in itself afterward.
 
@@ -71,17 +71,17 @@ The borrowing rule that fell out of the rename: **borrow an industry word only w
 ## Update protocol
 
 1. Verify identifiers against the provider's **official documentation** before editing — never from an agent's training data, which is reliably stale for model releases.
-2. Record the verification date per provider (`verified:`).
+2. Record the documentation retrieval date per provider (`verified:`), exact native IDs and primary URLs in [`references/catalog-verification.yaml`](references/catalog-verification.yaml). Bind every role-list entry to its source. The date attests to identifier documentation only; endpoint availability, installed state and runtime acceptance require separate evidence. Preserve historical verification dates if a fresh lookup does not establish the entry.
 3. Unknown values are the literal string `unknown` — never a guess. A wrong model id in a canonical table is worse than an explicit gap.
-4. Models only move **forward**. If a listed model errors, the problem is configuration or code, not the model choice.
-5. After editing, propagate: reinstall skill copies and refresh any human-readable mirror (e.g., a Model Tier Convention section in global agent instructions).
+4. Do not remove or downgrade a newer entry because documentation retrieval failed. Preserve it with an explicit unresolved verification finding. An execution error can indicate retirement, account access, endpoint/client configuration, or a code defect: diagnose it from current evidence. Never switch models or lower effort automatically to conceal that failure.
+5. Run the offline catalog fixtures and each affected consumer's consistency tests against this exact file before adoption. Product capability catalogs must be updated with independently verified product fields; do not invent pricing, context limits or capabilities to silence drift. After the approved source package passes review and CI, use the gated installation process and refresh human-readable mirrors. Catalog verification is not installation or live acceptance.
 6. If a role label is ever suspected of colliding with live vendor vocabulary, re-run the collision check in `references/naming-rationale.md` before writing the label into anything new.
 
 ## Consumer guidance
 
 - **In skills and project docs:** write "use a judgment-tier model" or "routine-tier is sufficient," optionally with the pointer *(resolve via synthesis-model-tiers)*.
 - **In agent memory/preferences:** store the role rule ("routine for daily sweeps; judgment when the rules don't cover it"), not the model name.
-- **In products:** read `tiers.yaml` programmatically, or carry a per-model `tier:` field in the product's own catalog using the same vocabulary — and enforce agreement with a test rather than reconciling by eye. Reference implementation: Ragbot's `tests/test_engines_yaml.py` (`TestTierVocabulary`, `TestTierRoleConsistency`), which validates every catalog tier and cross-checks the installed `tiers.yaml`, skipping cleanly where the skill isn't installed.
+- **In products:** read `tiers.yaml` programmatically, or carry a per-model `tier:` field in the product's own catalog using the same vocabulary — and enforce agreement with a test rather than reconciling by eye. Reference implementation: Ragbot's `tests/test_engines_yaml.py` (`TestTierVocabulary`, `TestTierRoleConsistency`), which validates every catalog tier and cross-checks `tiers.yaml`. Set `SYNTHESIS_TIERS_FILE` to the exact candidate file during acceptance; its legacy install-path search can miss native plugin installations. A skipped lookup is not a passing consistency check. Run this skill's `scripts/test_catalog.py` for offline schema, provenance and selector controls. These tests do not call providers or verify endpoint availability.
 
 ## License
 

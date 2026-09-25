@@ -33,6 +33,7 @@ jobs:
       - run: python -m pytest skills/synthesis-project-management/scripts/ -q
       - run: python -m pytest skills/synthesis-checkpoint/scripts/ -q
       - run: python -m pytest skills/synthesis-autopilot/scripts/ -q
+      - run: python -m pytest skills/synthesis-model-tiers/scripts/ -q
       - run: python -m pytest skills/synthesis-promotion-gate/scripts/ -q
       - run: python -m pytest skills/synthesis-context-lifecycle/scripts/ skills/synthesis-implementation-integrity/scripts/ -q
       - name: Resolve acceptance change base
