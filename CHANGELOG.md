@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.145.5] - 2026-09-25
+
+Codex cache recovery distinguishes the current client-owned checkout from
+historical recovery roots. Current content is verified against the published
+Git inventory without replacing legitimate client permission modes or metadata.
+Historical roots retain strict byte and mode verification. Validated Git-backed
+displacements are preserved with an explicit recovery disposition; untrusted
+repository metadata, redirected paths and changed source fail before mutation.
+Native Git identity reads use isolated metadata and local objects with remote
+protocols, lazy fetching and checkout execution settings disabled.
+
 ## [4.145.4] - 2026-09-24
 
 Checkpoint refresh, project management and conformance now share a bounded,

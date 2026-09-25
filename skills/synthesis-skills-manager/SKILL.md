@@ -5,12 +5,18 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.8.2"
+  version: "2.8.3"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+**Version 2.8.3** verifies the native current Codex version against its
+published source inventory while preserving the client-owned checkout and its
+metadata. Historical roots retain exact recovery integrity. Verified historical
+Git-backed displacements remain available with an explicit recovery disposition;
+unsafe source, Git and path boundaries fail before replacement.
+
 **Version 2.8.2** binds installed lifecycle reconciliation to the exact verified
 release and existing desired state. Muse refresh admits only owned bundle roots,
 verifies staged content before replacement and retains displaced bytes for

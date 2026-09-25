@@ -195,6 +195,8 @@ class CodexCacheSnapshot:
     backup: Path
     versions: tuple[str, ...]
     archive: Path | None = None
+    client_owned_version: str | None = None
+    native_sources: dict[str, tuple[str, frozenset[str]]] = field(default_factory=dict)
 
 
 def run(cmd: list[str], cwd: Path | None = None, timeout: int = 900) -> subprocess.CompletedProcess:
@@ -942,6 +944,7 @@ def snapshot_codex_caches(
     parent = plugin_cache_parent("codex")
     archive = codex_cache_archive() if repo is not None else None
     backup = Path(tempfile.mkdtemp(prefix="synthesis-codex-cache-"))
+    native_sources: dict[str, tuple[str, frozenset[str]]] = {}
     try:
         peers = {
             "Codex cache": parent,
@@ -1023,6 +1026,11 @@ def snapshot_codex_caches(
                 destination,
                 current_version=current_version or "",
             )
+            reference = "HEAD" if version == current_version else f"v{version}"
+            commit, detail = _git_value(repo, ["rev-parse", "--verify", reference + "^{commit}"])
+            if commit is None or re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+                raise OSError(f"cannot bind native recovery source for {version}: {detail}")
+            native_sources[version] = (commit, frozenset(tracked))
             # Git records child modes but no mode for the release root itself.
             # Keep its prior archive identity; new tagged roots use one declared
             # mode rather than inheriting the publisher's changing umask.
@@ -1058,7 +1066,8 @@ def snapshot_codex_caches(
         True,
         f"preserved {len(versions)} complete version root(s) before refresh",
     )
-    return CodexCacheSnapshot(backup=backup, versions=versions, archive=archive)
+    return CodexCacheSnapshot(backup=backup, versions=versions, archive=archive,
+                              client_owned_version=current_version, native_sources=native_sources)
 
 
 def _remove_transition_backup(backup: Path) -> None:
@@ -1216,29 +1225,214 @@ def _replace_cache_root(
     return None
 
 
+def _validate_codex_cache_boundary(path: Path, parent: Path) -> None:
+    """A version label is not authority to move a repository or workspace."""
+    protected = {Path.home().resolve(), Path.cwd().resolve(), SCRIPT_DIR.parents[2]}
+    if (not parent.is_absolute() or path.parent != parent
+            or RELEASE_VERSION_RE.fullmatch(path.name) is None
+            or parent == Path(parent.anchor) or parent.resolve() != parent
+            or any(p == parent or p == path or p.is_relative_to(path) for p in protected)):
+        raise OSError(f"unsafe Codex cache boundary: {path}")
+    for ancestor in (parent, *parent.parents):
+        if ancestor.is_symlink() or (ancestor.exists() and not ancestor.is_dir()):
+            raise OSError(f"redirected Codex cache ancestor: {ancestor}")
+        if ((ancestor / ".git").exists() or (ancestor / ".git").is_symlink()
+                or (ancestor / ".agents/repos.yaml").exists()):
+            raise OSError(f"Codex cache parent is inside a repository or workspace: {ancestor}")
+    if path.is_symlink() or (path.exists() and not path.is_dir()):
+        raise OSError(f"version root has an unsafe type: {path}")
+    if not path.exists():
+        recoveries = sorted(parent.glob(f".release-displaced-{path.name}-*"))
+        if recoveries:
+            raise OSError(f"cache root absent after an interrupted transition; retained recovery trees: {recoveries}")
+        return
+    for child in path.rglob("*"):
+        if child.name == ".git" and child != path / ".git":
+            raise OSError(f"nested repository inside Codex cache: {child}")
+
+
+def _codex_native_git_identity(root: Path, expected_commit: str | None) -> tuple[int, ...]:
+    """Admit only a standalone native checkout of the pinned published commit.
+
+    Inspect copied refs with controlled Git metadata and local objects only.
+    Never load the checkout's configuration during an object lookup: a normal
+    rev-parse can otherwise execute a promisor remote helper. No admitted
+    Git-backed tree is deleted.
+    """
+    metadata = root / ".git"
+    if (expected_commit is None or not metadata.is_dir() or metadata.is_symlink()
+            or root.is_symlink() or not root.is_dir()):
+        raise OSError(f"unproven native Git cache ownership: {root}")
+    for child in root.rglob("*"):
+        if child.name == ".git" and child != metadata:
+            raise OSError(f"redirect or nested repository in native Git cache: {child}")
+        if child.is_symlink():
+            try:
+                target = child.resolve(strict=True)
+            except (OSError, RuntimeError) as exc:
+                raise OSError(f"unverifiable native cache link: {child}") from exc
+            if (child.is_relative_to(metadata) or not target.is_relative_to(root)
+                    or target.is_relative_to(metadata)):
+                raise OSError(f"native Git metadata or payload redirects ownership: {child}")
+    for relative in ("commondir", "gitdir", "worktrees", "modules", "config.worktree",
+                     "objects/info/alternates", "objects/info/http-alternates"):
+        if (metadata / relative).exists():
+            raise OSError(f"native Git metadata redirects repository ownership: {metadata / relative}")
+    if list((metadata / "objects/pack").glob("*.promisor")):
+        raise OSError(f"native Git objects require a promisor remote: {root}")
+    marker = root / ".codex-marketplace-install.json"
+    if marker.exists():
+        if not marker.is_file() or marker.is_symlink():
+            raise OSError(f"native cache installation identity is not a regular file: {root}")
+        try:
+            installed = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise OSError(f"invalid native installation identity: {root}") from exc
+        if (not isinstance(installed, dict) or installed.get("source_type") != "git"
+                or installed.get("source") != "https://github.com/synthesisengineering/synthesis-skills.git"
+                or installed.get("revision") != expected_commit or installed.get("sparse_paths") != []):
+            raise OSError(f"native Git cache does not identify the pinned release: {root}")
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    environment.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", GIT_OPTIONAL_LOCKS="0",
+                       GIT_NO_LAZY_FETCH="1", GIT_ALLOW_PROTOCOL="", GIT_PROTOCOL_FROM_USER="0",
+                       GIT_TERMINAL_PROMPT="0", GIT_NO_REPLACE_OBJECTS="1")
+
+    def git(*arguments: str, cwd: Path, data: str | None = None) -> str:
+        try:
+            proc = subprocess.run(["git", "--no-pager", "-c", "core.hooksPath=" + os.devnull,
+                                   "-c", "core.fsmonitor=false", "-c", "protocol.allow=never", *arguments],
+                                  cwd=cwd, env=environment, input=data,
+                                  capture_output=True, text=True, timeout=30)
+        except subprocess.SubprocessError as exc:
+            raise OSError(f"native Git identity check failed: {root}") from exc
+        if proc.returncode:
+            raise OSError(f"native Git identity is unverifiable: {root}: {proc.stderr.strip()}")
+        return proc.stdout.strip()
+
+    # Parse captured bytes through Git's parser without repository discovery or
+    # include expansion. Subsequent Git commands use only this controlled temp
+    # repository, so even a concurrent edit to the real config cannot run code.
+    inputs: dict[str, bytes] = {}
+    for path in [metadata / "config", metadata / "HEAD", metadata / "packed-refs",
+                 *((metadata / "refs").rglob("*") if (metadata / "refs").is_dir() else ())]:
+        if path.exists() and not path.is_dir():
+            if path.is_symlink() or not stat.S_ISREG(path.lstat().st_mode):
+                raise OSError(f"unsafe native Git identity file: {path}")
+            inputs[str(path.relative_to(metadata))] = path.read_bytes()
+    if "config" not in inputs or "HEAD" not in inputs:
+        raise OSError(f"native Git identity metadata is incomplete: {root}")
+    with tempfile.TemporaryDirectory(prefix="synthesis-git-inspect-") as temporary:
+        inspection = Path(temporary)
+        environment["GIT_CEILING_DIRECTORIES"] = str(inspection.parent.resolve())
+        # An explicit file and a non-repository cwd prevent unsafe includes from
+        # being read even during the initial repository setup for git config.
+        try:
+            configuration = git("config", "--file", "-", "--no-includes", "--null", "--list",
+                                cwd=inspection, data=inputs["config"].decode("utf-8"))
+        except UnicodeError as exc:
+            raise OSError(f"native Git configuration is unreadable: {root}") from exc
+        for entry in configuration.split("\0"):
+            key, _, value = entry.partition("\n")
+            key = key.lower()
+            if (key.startswith(("include.", "includeif."))
+                    or key in {"core.worktree", "extensions.worktreeconfig", "extensions.partialclone"}
+                    or (key.startswith("remote.") and key.endswith((".promisor", ".partialclonefilter")))
+                    or (key == "core.bare" and value.lower() != "false")):
+                raise OSError(f"native Git configuration redirects ownership or requires a remote: {root}")
+        isolated = inspection / ".git"
+        (isolated / "objects").mkdir(parents=True)
+        (isolated / "refs").mkdir()
+        (isolated / "config").write_text("[core]\nrepositoryformatversion = 0\nbare = false\n")
+        for relative, contents in inputs.items():
+            if relative == "config":
+                continue
+            target = isolated / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(contents)
+        environment["GIT_OBJECT_DIRECTORY"] = str(metadata / "objects")
+        if git("rev-parse", "--verify", "HEAD^{commit}", cwd=inspection) != expected_commit:
+            raise OSError(f"foreign Git checkout at native cache location: {root}")
+    if any((metadata / relative).is_symlink() or (metadata / relative).read_bytes() != contents
+           for relative, contents in inputs.items()):
+        raise OSError(f"native Git identity changed during inspection: {root}")
+    info, git_info = root.stat(), metadata.stat()
+    return info.st_dev, info.st_ino, git_info.st_dev, git_info.st_ino
+
+
 def _restore_codex_caches_once(
-    snapshot: CodexCacheSnapshot,
+    snapshot: CodexCacheSnapshot, retained: set[Path] | None = None,
 ) -> tuple[set[str], set[str]]:
     """Restore or repair one observed generation of the cache tree."""
     parent = plugin_cache_parent("codex")
     restored: set[str] = set()
     repaired: set[str] = set()
-    parent.mkdir(parents=True, exist_ok=True)
-    for version in snapshot.versions:
+    if any(not isinstance(version, str) or RELEASE_VERSION_RE.fullmatch(version) is None
+           for version in snapshot.versions):
+        raise OSError("cache snapshot contains an unsafe version path")
+    for version in sorted(snapshot.versions, key=_version_key, reverse=True):
         source = snapshot.backup / version
         destination = parent / version
-        if destination.is_symlink():
-            raise OSError(f"version root became a symlink: {destination}")
+        _validate_codex_cache_boundary(destination, parent)
+        parent.mkdir(parents=True, exist_ok=True)
+        native_source = snapshot.native_sources.get(version)
+        commit = native_source[0] if native_source is not None else None
+        native_identity = None
+        if (destination / ".git").exists() or (destination / ".git").is_symlink():
+            native_identity = _codex_native_git_identity(destination, commit)
+        if version == snapshot.client_owned_version:
+            # Git archive permissions are historical recovery metadata. A native
+            # checkout owns its umask and Git state; verify its shipped inventory
+            # and executable bits without chmod, displacement, or cleanup.
+            if native_source is None:
+                raise OSError(f"client-owned newest cache has no immutable source binding: {destination}")
+            if not destination.is_dir():
+                raise OSError(f"client-owned newest cache is absent: {destination}")
+            current_identity = destination.stat().st_dev, destination.stat().st_ino
+            files = set(native_source[1])
+            try:
+                canonical_source = source.resolve()
+                digest = canonical_tracked_tree_digest(canonical_source, files)
+                verify_native_release_inventory(destination, canonical_source, digest, source_files=files)
+            except ContractError as exc:
+                raise OSError(f"client-owned newest cache failed release verification: {exc}") from exc
+            _validate_codex_cache_boundary(destination, parent)
+            if (destination.stat().st_dev, destination.stat().st_ino) != current_identity:
+                raise OSError(f"client-owned newest cache changed identity during verification: {destination}")
+            if native_identity is not None:
+                if _codex_native_git_identity(destination, commit) != native_identity:
+                    raise OSError(f"client-owned newest Git metadata changed identity: {destination}")
+            elif (destination / ".git").exists() or (destination / ".git").is_symlink():
+                raise OSError(f"Git metadata appeared during newest cache verification: {destination}")
+            continue
+
+        def validate_destination() -> None:
+            _validate_codex_cache_boundary(destination, parent)
+            if native_identity is not None:
+                if _codex_native_git_identity(destination, commit) != native_identity:
+                    raise OSError(f"native cache identity changed before repair: {destination}")
+            elif (destination / ".git").exists() or (destination / ".git").is_symlink():
+                raise OSError(f"repository appeared before cache repair: {destination}")
+
         if not destination.exists():
-            shutil.copytree(source, destination, symlinks=True)
+            _replace_cache_root(source, destination, parent, validate_destination=validate_destination)
             restored.add(version)
         elif not destination.is_dir():
             raise OSError(f"version root is not a directory: {destination}")
         elif _tree_digest(source) != _tree_digest(destination):
-            _replace_cache_root(source, destination, parent)
+            displaced = _replace_cache_root(source, destination, parent,
+                                            retain_displaced=native_identity is not None,
+                                            validate_destination=validate_destination)
+            if displaced is not None and retained is not None:
+                retained.add(displaced)
             repaired.add(version)
         if _tree_digest(source) != _tree_digest(destination):
             raise OSError(f"version root changed during refresh: {destination}")
+        for recovery in parent.glob(f".release-displaced-{version}-*"):
+            if re.fullmatch(rf"\.release-displaced-{re.escape(version)}-[0-9a-f]{{32}}", recovery.name) is None:
+                raise OSError(f"unrecognized retained recovery path: {recovery}")
+            _codex_native_git_identity(recovery, commit)
+            if retained is not None:
+                retained.add(recovery)
     return restored, repaired
 
 
@@ -1252,11 +1446,12 @@ def restore_codex_caches(
     """Restore complete roots and require a quiet post-command cache window."""
     restored: set[str] = set()
     repaired: set[str] = set()
+    retained: set[Path] = set()
     started = clock()
     quiet_since = started
     try:
         while True:
-            new_restored, new_repaired = _restore_codex_caches_once(snapshot)
+            new_restored, new_repaired = _restore_codex_caches_once(snapshot, retained)
             now = clock()
             if new_restored or new_repaired:
                 restored.update(new_restored)
@@ -1276,6 +1471,10 @@ def restore_codex_caches(
             False,
             f"active-session cache preservation failed; recovery copy kept at {snapshot.backup}: {exc}",
         )
+    if retained:
+        result.add("install.codex.cache-recovery", True,
+                   "verified displaced Git checkouts retained without automatic deletion; "
+                   "recovery disposition requires separate review: " + ", ".join(str(path) for path in sorted(retained)))
     return result.add(
         "install.codex.cache-restore",
         True,
