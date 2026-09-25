@@ -56,12 +56,13 @@ def strict_object(pairs):
 
 
 def read_json(path: Path) -> dict:
-    if path.is_symlink() or path.stat().st_size > MAX_JSON:
-        raise RefreshError("unsafe or oversized JSON input")
-    value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=strict_object)
-    if not isinstance(value, dict):
-        raise RefreshError("JSON input must be an object")
-    return value
+    try:
+        return project_state.read_json_object(path, max_bytes=MAX_JSON)
+    except project_state.ProjectStateError as exc:
+        # Optional campaign discovery distinguishes absence from invalid data.
+        if isinstance(exc.__cause__, FileNotFoundError):
+            raise exc.__cause__
+        raise RefreshError(str(exc)) from exc
 
 
 def campaign(path: Path, *, required: bool = False) -> dict | None:
@@ -157,9 +158,14 @@ def file_evidence(path: Path, role: str, *, required: bool = True) -> dict:
     try:
         if path.is_symlink():
             raise RefreshError("symlink evidence refused")
-        data = path.read_bytes()
+        data = (project_state.read_json_bytes(path, max_bytes=project_state.MAX_STATE_JSON_BYTES)
+                if path.name == project_state.STATE_FILE else path.read_bytes())
     except FileNotFoundError:
         return {**result, **status("FAIL" if required else "NOT_PRESENT", "REQUIRED_INPUT_MISSING" if required else "OPTIONAL_INPUT_ABSENT")}
+    except project_state.ProjectStateError as exc:
+        if isinstance(exc.__cause__, FileNotFoundError):
+            return {**result, **status("FAIL" if required else "NOT_PRESENT", "REQUIRED_INPUT_MISSING" if required else "OPTIONAL_INPUT_ABSENT")}
+        return {**result, **status("FAIL", "INPUT_UNREADABLE")}
     except (OSError, RefreshError):
         return {**result, **status("FAIL", "INPUT_UNREADABLE")}
     return {**result, **status("PASS", "FILE_INSPECTED"), "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data), "lines": len(data.splitlines())}
@@ -218,9 +224,9 @@ def selected_lifecycle(project: Path, index_name: str, project_id: str) -> tuple
         if successor:
             successors.add(successor.group(1))
         state_path = project / project_state.STATE_FILE
-        if state_path.exists():
+        if state_path.exists() or state_path.is_symlink():
             try:
-                state = read_json(state_path)
+                state = project_state.read_operational_state(state_path)
                 value = state.get("status")
                 if not isinstance(value, str) or value.lower() not in known:
                     uncertain = True
@@ -232,7 +238,7 @@ def selected_lifecycle(project: Path, index_name: str, project_id: str) -> tuple
                         successors.add(successor)
                     else:
                         uncertain = True
-            except (OSError, ValueError):
+            except (OSError, ValueError, project_state.ProjectStateError):
                 invalid_state = uncertain = True
         else:
             # Only an explicit current Status field in legacy context counts;

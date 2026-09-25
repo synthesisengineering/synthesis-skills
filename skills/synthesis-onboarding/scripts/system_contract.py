@@ -431,6 +431,92 @@ def canonical_tracked_tree_digest(root: Path, tracked_files: set[str]) -> str:
     return digest.hexdigest()
 
 
+def verify_native_release_inventory(
+    root: Path, source: Path, expected_digest: str, *, source_files: set[str] | None = None,
+) -> str:
+    """Bind native content to an immutable release, including file membership.
+
+    Client metadata and regular interpreter cache artifacts may coexist with
+    release content. The guardian owns those exception names and its bytecode
+    predicate; no other file, directory, link, or special object is admitted.
+    Source verification remains strict and does not inherit cache exceptions.
+    """
+    manager_scripts = Path(__file__).resolve().parents[2] / "synthesis-skills-manager" / "scripts"
+    if str(manager_scripts) not in sys.path:
+        sys.path.insert(0, str(manager_scripts))
+    try:
+        from cache_guardian import GuardianError, IGNORED_ROOTS, _is_ignorable_bytecode
+    except ImportError as exc:
+        raise ContractError("native cache integrity policy is unavailable: %s" % exc) from exc
+    if source_files is None:
+        source_entries = {relative: metadata for relative, metadata, _path in _iter_tree(source)}
+        files = {relative for relative, metadata in source_entries.items() if stat.S_ISREG(metadata.st_mode)}
+        source_digest = canonical_tree_digest(source)
+    else:
+        # A clean publisher checkout also contains Git metadata and build
+        # artifacts. Only its Git inventory can define the shipped release.
+        files = set(source_files)
+        source_entries = {}
+        source_digest = canonical_tracked_tree_digest(source, files)
+        for relative in files:
+            path = contained_path(source, relative, "native release source path")
+            source_entries[relative] = path.lstat()
+            for parent in path.relative_to(source).parents:
+                if parent != Path("."):
+                    source_entries[parent.as_posix()] = (source / parent).lstat()
+    if not files or source_digest != expected_digest:
+        raise ContractError("native verification requires the complete immutable source inventory")
+    if not root.is_absolute() or root.is_symlink() or root.resolve() != root or not root.is_dir():
+        raise ContractError("native plugin root must be a canonical real directory")
+
+    def inspect(path: Path) -> bool:
+        relative = path.relative_to(root)
+        name = relative.as_posix()
+        if name in source_entries:
+            metadata = path.lstat()
+            expected_directory = stat.S_ISDIR(source_entries[name].st_mode)
+            if (stat.S_ISLNK(metadata.st_mode)
+                    or (expected_directory and not stat.S_ISDIR(metadata.st_mode))
+                    or (not expected_directory and not stat.S_ISREG(metadata.st_mode))):
+                raise ContractError("native release entry changed type: %s" % name)
+            return False
+        if len(relative.parts) == 1 and name in IGNORED_ROOTS:
+            metadata = path.lstat()
+            if stat.S_ISLNK(metadata.st_mode):
+                raise ContractError("native client metadata is a symbolic link: %s" % name)
+            if name == ".codex-marketplace-install.json" and stat.S_ISREG(metadata.st_mode):
+                return True
+            if name == ".git" and (stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)):
+                return True
+            if name == ".in_use" and stat.S_ISDIR(metadata.st_mode):
+                if any(not stat.S_ISREG(entry.lstat().st_mode) for entry in path.iterdir()):
+                    raise ContractError("native in-use metadata contains an unexpected object")
+                return True
+            raise ContractError("native client metadata has an unexpected type: %s" % name)
+        try:
+            if _is_ignorable_bytecode(path, relative):
+                return False
+        except GuardianError as exc:
+            raise ContractError(str(exc)) from exc
+        raise ContractError("native plugin contains an unexpected release entry: %s" % name)
+
+    def unreadable(error: OSError) -> None:
+        raise error
+
+    try:
+        for directory, dirnames, filenames in os.walk(root, topdown=True, followlinks=False, onerror=unreadable):
+            current = Path(directory)
+            dirnames[:] = [name for name in sorted(dirnames) if not inspect(current / name)]
+            for name in sorted(filenames):
+                inspect(current / name)
+        digest = canonical_tracked_tree_digest(root, files)
+    except OSError as exc:
+        raise ContractError("native plugin inventory is unavailable: %s" % exc) from exc
+    if digest != expected_digest:
+        raise ContractError("native plugin bytes differ from the immutable release digest")
+    return digest
+
+
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
         ["git", "-C", str(repo), *args],
@@ -1987,9 +2073,7 @@ class SystemState:
                 raise ContractError("live-load generation has no release file inventory")
             if canonical_tracked_tree_digest(source_root, source_files) != release_digest:
                 raise ContractError("live-load source root drifted from the release digest")
-            plugin_digest = canonical_tracked_tree_digest(root, source_files)
-            if plugin_digest != release_digest:
-                raise ContractError("live-load plugin root does not match the release digest")
+            plugin_digest = verify_native_release_inventory(root, source_root, release_digest)
             current = transaction.get("live-loaded")
             receipts = dict(current.get("receipts") or {}) if isinstance(current, dict) else {}
             receipts[client] = {

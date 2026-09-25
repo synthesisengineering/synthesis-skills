@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -11,6 +13,178 @@ import pytest
 import project_state as state
 
 import coordination as engine
+
+
+@pytest.mark.parametrize("reader", [state.read_operational_state, state._load_json])
+def test_state_json_shared_size_boundary(tmp_path, monkeypatch, reader):
+    monkeypatch.setattr(state, "MAX_STATE_JSON_BYTES", 128)
+    path = tmp_path / state.STATE_FILE
+    raw = b'{"schema_version": 1}'
+    path.write_bytes(raw + b" " * (128 - len(raw)))
+    assert reader(path) == {"schema_version": 1}
+    assert state._sha_file(path) == hashlib.sha256(path.read_bytes()).hexdigest()
+    path.write_bytes(path.read_bytes() + b" ")
+    with pytest.raises(state.ProjectStateError, match="128-byte limit"):
+        reader(path)
+    with pytest.raises(state.ProjectStateError, match="128-byte limit"):
+        state._sha_file(path)
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status": "active", "status": "archived"}',
+    b'{"nested": {"value": 1, "value": 2}}',
+    b'{"truncated":', b"[]", b"null", b'{} trailing', b'{"invalid": "\xff"}',
+    b'{"value": NaN}', b'{"value": Infinity}', b'{"value": 1e309}',
+    b'{"nested":' + b"[" * 2000 + b"0" + b"]" * 2000 + b"}",
+], ids=["duplicate", "nested-duplicate", "truncated", "array", "null", "trailing", "utf8", "nan", "infinity", "float-overflow", "depth"])
+def test_state_json_rejects_malformed_objects(tmp_path, raw):
+    path = tmp_path / state.STATE_FILE
+    path.write_bytes(raw)
+    with pytest.raises(state.ProjectStateError):
+        state.read_operational_state(path)
+    assert path.read_bytes() == raw
+
+
+def test_state_json_depth_boundary_ignores_escaped_string_content(tmp_path):
+    path = tmp_path / state.STATE_FILE
+    literal = json.dumps("[{" * 100 + '\\"' + "]}" * 100)
+    nested = "[" * (state.MAX_JSON_DEPTH - 1) + literal + "]" * (state.MAX_JSON_DEPTH - 1)
+    raw = '{"value":' + nested + "}"
+    path.write_text(raw)
+    assert state.read_operational_state(path) == json.loads(raw)
+    path.write_text('{"value":[' + nested + "]}")
+    with pytest.raises(state.ProjectStateError, match="nesting"):
+        state.read_operational_state(path)
+
+
+@pytest.mark.parametrize("kind", ["directory", "symlink", "broken-symlink", "fifo"])
+def test_state_json_refuses_nonregular_inputs(tmp_path, kind):
+    path = tmp_path / state.STATE_FILE
+    if kind == "directory":
+        path.mkdir()
+    elif kind == "fifo":
+        os.mkfifo(path)
+    else:
+        target = tmp_path / "target.json"
+        if kind == "symlink":
+            target.write_text("{}")
+        path.symlink_to(target)
+    with pytest.raises(state.ProjectStateError, match="regular nonsymlink"):
+        state.read_operational_state(path)
+
+
+def test_state_json_refuses_symlink_raced_after_lstat(tmp_path, monkeypatch):
+    path = tmp_path / state.STATE_FILE
+    path.write_text("{}")
+    target = tmp_path / "target.json"
+    target.write_text("{}")
+    original = os.open
+
+    def replace_then_open(candidate, flags, *args, **kwargs):
+        if candidate == path:
+            path.unlink()
+            path.symlink_to(target)
+        return original(candidate, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", replace_then_open)
+    with pytest.raises(state.ProjectStateError):
+        state.read_operational_state(path)
+
+
+def test_state_json_actual_read_is_bounded_when_input_grows(tmp_path, monkeypatch):
+    path = tmp_path / state.STATE_FILE
+    path.write_text("{}")
+    reads = []
+    original = os.fdopen
+
+    class GrowingFile:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.handle.close()
+
+        def fileno(self):
+            return self.handle.fileno()
+
+        def read(self, size):
+            reads.append(size)
+            with path.open("ab") as writer:
+                writer.write(b" " * 256)
+            return self.handle.read(size)
+
+    monkeypatch.setattr(os, "fdopen", lambda *args: GrowingFile(original(*args)))
+    with pytest.raises(state.ProjectStateError, match="128-byte limit"):
+        state.read_json_object(path, max_bytes=128)
+    assert reads == [129]
+
+
+@pytest.mark.parametrize("change", ["replace", "modify"])
+def test_state_json_refuses_changed_read_snapshot(tmp_path, monkeypatch, change):
+    path = tmp_path / state.STATE_FILE
+    path.write_text('{"value": 1}')
+    original = os.fstat
+    calls = 0
+
+    def change_before_after_stat(fd):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            if change == "replace":
+                replacement = tmp_path / "replacement.json"
+                replacement.write_text('{"value": 1}')
+                os.replace(replacement, path)
+            else:
+                before = path.stat()
+                path.write_text('{"value": 2}')
+                os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000))
+        return original(fd)
+
+    monkeypatch.setattr(os, "fstat", change_before_after_stat)
+    with pytest.raises(state.ProjectStateError, match="changed during reading"):
+        state.read_operational_state(path)
+
+
+def test_state_compiler_refuses_oversize_before_changing_project(tmp_path, monkeypatch):
+    _repo, project = init_repo(tmp_path)
+    parameters = dict(project_id="alpha", phase="planning", status="active",
+        controlling_plan="resources/artifacts/plan.md", accepted_baseline="fixture",
+        next_actions=["Review"], last_session="2026-09-03", session_id="fixture")
+    state.build_operational_state(project, **parameters)
+    paths = (project / "CONTEXT.md", project / state.STATE_FILE)
+    before = {path: path.read_bytes() for path in paths}
+    monkeypatch.setattr(state, "MAX_STATE_JSON_BYTES", 128)
+    with pytest.raises(state.ProjectStateError, match="128-byte limit"):
+        state.build_operational_state(project, **{**parameters, "phase": "changed"})
+    assert {path: path.read_bytes() for path in paths} == before
+    assert not list(project.glob(".*.tmp"))
+
+
+@pytest.mark.parametrize("consumer", ["semantic", "doctor"])
+def test_broken_state_symlink_is_invalid_evidence_not_legacy_absence(tmp_path, consumer):
+    _repo, project = init_repo(tmp_path)
+    state.build_operational_state(project, project_id="alpha", phase="planning", status="active",
+        controlling_plan="resources/artifacts/plan.md", accepted_baseline="fixture",
+        next_actions=["Review"], last_session="2026-09-03", session_id="fixture")
+    assert state.semantic_issues(project) == []
+    path = project / state.STATE_FILE
+    path.unlink()
+    path.symlink_to(tmp_path / "missing-state.json")
+    if consumer == "semantic":
+        assert any("regular nonsymlink" in issue for issue in state.semantic_issues(project))
+    else:
+        doctor = (Path(__file__).resolve().parents[2] / "synthesis-context-lifecycle"
+                  / "scripts" / "context_doctor.py")
+        result = subprocess.run([sys.executable, "-B", str(doctor), "--project", str(project),
+            "--readiness", "local", "--no-report-cache", "--json"], capture_output=True, text=True)
+        report = json.loads(result.stdout)
+        assert result.returncode == 1 and report["ok"] is False
+        assert any(finding["check"] == "semantic-current-state" and finding["severity"] == "defect"
+                   and "regular nonsymlink" in finding["message"] for finding in report["findings"])
+    assert path.is_symlink() and not path.exists()
 
 
 @pytest.mark.parametrize("client", ["codex", "claude"])

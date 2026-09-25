@@ -1,268 +1,514 @@
 schema: 2
-suite: checkpoint-runtime-overhead-4-145-3
+suite: readiness-state-lifecycle-4-145-4
 membership: closed
-production_entry_point: project_state.py shared checkpoint hashing, coordination.py
-  exact lease fetch, and live_receipt.py bounded native identity parser
-enforcing_boundary: release.py consumes fresh schema-2 acceptance before publishing
-  and client installation
+production_entry_point: Shared operational-state readers and compiler; gated publisher
+  and exact-release lifecycle repair
+enforcing_boundary: release.py consumes fresh transaction-bound acceptance before
+  publishing and native installation
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Fixtures establish complete independent hashes and traversal,
-  root/directory/error refusal, one remote fetch on success with immutable tip/content
-  binding and failed-fetch absence checks, and chunk-bounded transcript parsing with
-  preserved grammar, identity, read and memory limits. Actual latency and installed
-  native-envelope acceptance require separate retained receipts. No action authority
-  is granted.
+unverified_remainder: Causal and adversarial fixtures establish strict bounded state
+  acceptance, exact desired/release/native source bindings, transaction preservation
+  and fail-closed release behavior. Actual installed doctor, true native loading and
+  host latency require separately retained observations. These checks grant no action
+  authority.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
-  - ch-007
+  - release-metadata
 - path: .codex-plugin/plugin.json
   cases:
-  - ch-007
+  - release-metadata
 - path: .muse-plugin/plugin.json
   cases:
-  - ch-007
+  - release-metadata
 - path: CHANGELOG.md
   cases: &id001
-  - ch-001
-  - ch-002
-  - ch-003
-  - ch-004
-  - ch-005
-  - ch-006
-  - ch-007
-  - ch-008
-  - ch-009
-  - ch-010
-  - ch-011
-  - ch-012
-  - lf-001
-  - lf-002
-  - lf-003
-  - lf-004
-  - lf-005
-  - lf-006
-  - lf-007
-  - lf-008
-  - ts-001
-  - ts-002
-  - ts-003
-  - ts-004
-  - ts-005
-  - ts-006
+  - readiness-001
+  - readiness-002
+  - readiness-003
+  - readiness-004
+  - readiness-005
+  - readiness-006
+  - readiness-007
+  - readiness-008
+  - readiness-009
+  - readiness-010
+  - readiness-011
+  - readiness-012
+  - readiness-013
+  - readiness-014
+  - readiness-015
+  - readiness-016
+  - readiness-017
+  - readiness-018
+  - readiness-019
+  - readiness-020
+  - readiness-021
+  - readiness-022
+  - readiness-023
+  - readiness-024
+  - readiness-025
+  - readiness-026
+  - readiness-027
+  - readiness-028
+  - readiness-029
+  - readiness-030
+  - readiness-031
+  - readiness-032
+  - readiness-033
+  - readiness-034
+  - readiness-035
+  - release-metadata
+  - runtime-version
 - path: README.md
   cases: *id001
-- path: skills/synthesis-project-management/SKILL.md
+- path: skills/synthesis-agent-conformance/SKILL.md
+  cases: &id002
+  - readiness-001
+  - readiness-002
+  - readiness-003
+  - readiness-004
+  - readiness-005
+  - readiness-006
+  - readiness-017
+  - readiness-018
+  - readiness-019
+  - readiness-020
+  - readiness-021
+  - readiness-022
+  - readiness-023
+  - readiness-024
+  - readiness-025
+- path: skills/synthesis-agent-conformance/scripts/conformance.py
+  cases: *id002
+- path: skills/synthesis-agent-conformance/scripts/session_context.py
+  cases: *id002
+- path: skills/synthesis-agent-conformance/scripts/test_conformance.py
   cases:
-  - ch-001
-  - ch-002
-  - ch-003
-  - ch-004
-  - ch-005
-  - ch-006
-  - ch-007
-  - ch-008
-  - ch-009
-  - ch-010
-  - ch-011
-  - ch-012
-  - lf-001
-  - lf-002
-  - lf-003
-  - lf-004
-  - lf-005
-  - lf-006
-  - lf-007
-  - lf-008
-- path: skills/synthesis-project-management/scripts/project_state.py
+  - readiness-001
+  - readiness-002
+- path: skills/synthesis-agent-conformance/scripts/test_session_context.py
   cases:
-  - ch-001
-  - ch-002
-  - ch-003
-  - ch-004
-  - ch-005
-  - ch-006
-  - ch-007
-  - ch-008
-  - ch-009
-  - ch-010
-  - ch-011
-  - ch-012
-- path: skills/synthesis-project-management/scripts/test_project_state.py
+  - readiness-003
+- path: skills/synthesis-checkpoint/SKILL.md
+  cases: *id002
+- path: skills/synthesis-checkpoint/scripts/refresh.py
+  cases: *id002
+- path: skills/synthesis-checkpoint/scripts/test_refresh.py
   cases:
-  - ch-001
-  - ch-002
-  - ch-003
-  - ch-004
-  - ch-005
-  - ch-006
-  - ch-007
-  - ch-008
-  - ch-009
-  - ch-010
-  - ch-011
-  - ch-012
+  - readiness-004
+  - readiness-005
+  - readiness-006
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases: *id001
-- path: skills/synthesis-project-management/scripts/coordination.py
-  cases: &id002
-  - lf-001
-  - lf-002
-  - lf-003
-  - lf-004
-  - lf-005
-  - lf-006
-  - lf-007
-  - lf-008
-- path: skills/synthesis-project-management/scripts/test_coordination.py
+- path: skills/synthesis-onboarding/SKILL.md
+  cases:
+  - readiness-007
+  - readiness-008
+  - readiness-009
+  - readiness-010
+  - readiness-011
+  - readiness-012
+  - readiness-013
+  - readiness-014
+  - readiness-015
+  - readiness-016
+  - readiness-026
+  - readiness-027
+  - readiness-028
+  - readiness-029
+  - readiness-030
+  - readiness-031
+  - readiness-032
+  - readiness-033
+  - readiness-034
+  - readiness-035
+  - release-metadata
+  - runtime-version
+- path: skills/synthesis-onboarding/scripts/bootstrap.py
+  cases:
+  - readiness-007
+  - readiness-008
+  - readiness-009
+  - readiness-010
+  - readiness-011
+  - readiness-012
+  - readiness-013
+  - readiness-014
+  - readiness-015
+  - readiness-016
+  - readiness-026
+  - readiness-027
+  - readiness-028
+  - readiness-029
+  - readiness-030
+  - readiness-031
+  - readiness-032
+  - readiness-033
+  - readiness-034
+  - readiness-035
+  - release-metadata
+  - runtime-version
+- path: skills/synthesis-onboarding/scripts/onboard.py
+  cases:
+  - readiness-007
+  - readiness-008
+  - readiness-009
+  - readiness-010
+  - readiness-011
+  - readiness-012
+  - readiness-013
+  - readiness-014
+  - readiness-015
+  - readiness-016
+  - readiness-026
+  - readiness-027
+  - readiness-028
+  - readiness-029
+  - readiness-030
+  - readiness-031
+  - readiness-032
+  - readiness-033
+  - readiness-034
+  - readiness-035
+  - release-metadata
+  - runtime-version
+- path: skills/synthesis-onboarding/scripts/synthesis_cli.py
+  cases:
+  - readiness-007
+  - readiness-008
+  - readiness-009
+  - readiness-010
+  - readiness-011
+  - readiness-012
+  - readiness-013
+  - readiness-014
+  - readiness-015
+  - readiness-016
+  - readiness-026
+  - readiness-027
+  - readiness-028
+  - readiness-029
+  - readiness-030
+  - readiness-031
+  - readiness-032
+  - readiness-033
+  - readiness-034
+  - readiness-035
+  - release-metadata
+  - runtime-version
+- path: skills/synthesis-onboarding/scripts/system_contract.py
+  cases:
+  - readiness-007
+  - readiness-008
+  - readiness-009
+  - readiness-010
+  - readiness-011
+  - readiness-012
+  - readiness-013
+  - readiness-014
+  - readiness-015
+  - readiness-016
+  - readiness-026
+  - readiness-027
+  - readiness-028
+  - readiness-029
+  - readiness-030
+  - readiness-031
+  - readiness-032
+  - readiness-033
+  - readiness-034
+  - readiness-035
+  - release-metadata
+  - runtime-version
+- path: skills/synthesis-onboarding/scripts/test_bootstrap.py
+  cases:
+  - readiness-007
+- path: skills/synthesis-onboarding/scripts/test_instruction_adversarial.py
+  cases:
+  - readiness-008
+- path: skills/synthesis-onboarding/scripts/test_synthesis_cli.py
+  cases:
+  - readiness-009
+  - readiness-010
+  - readiness-011
+  - readiness-012
+  - readiness-013
+  - readiness-014
+  - readiness-015
+- path: skills/synthesis-onboarding/scripts/test_system_contract.py
+  cases:
+  - readiness-016
+- path: skills/synthesis-project-management/SKILL.md
   cases: *id002
-- path: skills/synthesis-agent-conformance/SKILL.md
-  cases: &id003
-  - ts-001
-  - ts-002
-  - ts-003
-  - ts-004
-  - ts-005
-  - ts-006
-- path: skills/synthesis-agent-conformance/scripts/live_receipt.py
-  cases: *id003
-- path: skills/synthesis-agent-conformance/scripts/test_streaming_transcript.py
-  cases: *id003
+- path: skills/synthesis-project-management/scripts/project_state.py
+  cases: *id002
+- path: skills/synthesis-project-management/scripts/test_project_state.py
+  cases:
+  - readiness-017
+  - readiness-018
+  - readiness-019
+  - readiness-020
+  - readiness-021
+  - readiness-022
+  - readiness-023
+  - readiness-024
+  - readiness-025
+- path: skills/synthesis-skills-manager/SKILL.md
+  cases:
+  - readiness-007
+  - readiness-008
+  - readiness-009
+  - readiness-010
+  - readiness-011
+  - readiness-012
+  - readiness-013
+  - readiness-014
+  - readiness-015
+  - readiness-016
+  - readiness-026
+  - readiness-027
+  - readiness-028
+  - readiness-029
+  - readiness-030
+  - readiness-031
+  - readiness-032
+  - readiness-033
+  - readiness-034
+  - readiness-035
+  - release-metadata
+  - runtime-version
+- path: skills/synthesis-skills-manager/scripts/release.py
+  cases:
+  - readiness-007
+  - readiness-008
+  - readiness-009
+  - readiness-010
+  - readiness-011
+  - readiness-012
+  - readiness-013
+  - readiness-014
+  - readiness-015
+  - readiness-016
+  - readiness-026
+  - readiness-027
+  - readiness-028
+  - readiness-029
+  - readiness-030
+  - readiness-031
+  - readiness-032
+  - readiness-033
+  - readiness-034
+  - readiness-035
+  - release-metadata
+  - runtime-version
+- path: skills/synthesis-skills-manager/scripts/test_release.py
+  cases:
+  - readiness-026
+  - readiness-027
+  - readiness-028
+  - readiness-029
+  - readiness-030
+  - readiness-031
+  - readiness-032
+  - readiness-033
+  - readiness-034
+  - readiness-035
 cases:
-- id: ch-001
+- id: readiness-001
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_content_hashes_preserve_complete_selection_names_and_reads
-  motivating_defect: preserve complete selection names and reads
-- id: ch-002
+  fixture: ../synthesis-agent-conformance/scripts/test_conformance.py::test_project_summary_uses_shared_large_state_reader
+  motivating_defect: project summary uses shared large state reader
+- id: readiness-002
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_content_hashes_recompute_each_file_set_and_content
-  motivating_defect: recompute each file set and content
-- id: ch-003
+  fixture: ../synthesis-agent-conformance/scripts/test_conformance.py::test_project_summary_refuses_unsafe_structured_state
+  motivating_defect: project summary refuses unsafe structured state
+- id: readiness-003
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_content_hashes_keep_alias_order_and_final_plan_overwrite
-  motivating_defect: keep alias order and final plan overwrite
-- id: ch-004
+  fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_session_context_reads_state_through_shared_contract
+  motivating_defect: session context reads state through shared contract
+- id: readiness-004
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_content_hashes_use_constant_root_resolution_without_ancestor_walks
-  motivating_defect: use constant root resolution without ancestor walks
-- id: ch-005
+  fixture: ../synthesis-checkpoint/scripts/test_refresh.py::test_refresh_accepts_valid_large_inventory_state_without_mutation
+  motivating_defect: refresh accepts valid large inventory state without mutation
+- id: readiness-005
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_content_hashes_reject_outside_resolved_target_before_read
-  motivating_defect: reject outside resolved target before read
-- id: ch-006
+  fixture: ../synthesis-checkpoint/scripts/test_refresh.py::test_small_metadata_keeps_its_own_size_bound
+  motivating_defect: small metadata keeps its own size bound
+- id: readiness-006
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_content_hashes_reject_root_retarget_after_last_read
-  motivating_defect: reject root retarget after last read
-- id: ch-007
+  fixture: ../synthesis-checkpoint/scripts/test_refresh.py::test_refresh_rejects_state_beyond_shared_limit_without_unbounded_evidence_read
+  motivating_defect: refresh rejects state beyond shared limit without unbounded evidence
+    read
+- id: readiness-007
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_bootstrap.py::test_release_bound_repair_checks_digest_before_launcher_activation
+  motivating_defect: release bound repair checks digest before launcher activation
+- id: readiness-008
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_instruction_adversarial.py::test_published_release_reconciliation_refreshes_provenance_without_rewriting_unchanged_instructions
+  motivating_defect: published release reconciliation refreshes provenance without
+    rewriting unchanged instructions
+- id: readiness-009
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_release_bound_repair_rejects_another_release_before_recovery
+  motivating_defect: release bound repair rejects another release before recovery
+- id: readiness-010
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_release_bound_repair_preserves_a_changed_desired_selection
+  motivating_defect: release bound repair preserves a changed desired selection
+- id: readiness-011
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_release_bound_repair_rechecks_inside_first_lock_before_recovery
+  motivating_defect: release bound repair rechecks inside first lock before recovery
+- id: readiness-012
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_release_native_verification_rejects_complete_inventory_drift
+  motivating_defect: release native verification rejects complete inventory drift
+- id: readiness-013
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_release_native_verification_accepts_only_known_runtime_cache_artifacts
+  motivating_defect: release native verification accepts only known runtime cache
+    artifacts
+- id: readiness-014
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_release_bound_bootstrap_carries_the_original_exact_commit
+  motivating_defect: release bound bootstrap carries the original exact commit
+- id: readiness-015
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_release_bound_repair_preserves_selection_and_requires_engine_doctor
+  motivating_defect: release bound repair preserves selection and requires engine
+    doctor
+- id: readiness-016
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_system_contract.py::test_live_load_binds_client_root_to_the_release_content_digest
+  motivating_defect: live load binds client root to the release content digest
+- id: readiness-017
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_json_shared_size_boundary
+  motivating_defect: state json shared size boundary
+- id: readiness-018
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_json_rejects_malformed_objects
+  motivating_defect: state json rejects malformed objects
+- id: readiness-019
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_json_depth_boundary_ignores_escaped_string_content
+  motivating_defect: state json depth boundary ignores escaped string content
+- id: readiness-020
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_json_refuses_nonregular_inputs
+  motivating_defect: state json refuses nonregular inputs
+- id: readiness-021
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_json_refuses_symlink_raced_after_lstat
+  motivating_defect: state json refuses symlink raced after lstat
+- id: readiness-022
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_json_actual_read_is_bounded_when_input_grows
+  motivating_defect: state json actual read is bounded when input grows
+- id: readiness-023
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_json_refuses_changed_read_snapshot
+  motivating_defect: state json refuses changed read snapshot
+- id: readiness-024
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_state_compiler_refuses_oversize_before_changing_project
+  motivating_defect: state compiler refuses oversize before changing project
+- id: readiness-025
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_broken_state_symlink_is_invalid_evidence_not_legacy_absence
+  motivating_defect: broken state symlink is invalid evidence not legacy absence
+- id: readiness-026
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_stable_consumer_revalidates_full_inventory_and_preserves_previous_pointer
+  motivating_defect: stable consumer revalidates full inventory and preserves previous
+    pointer
+- id: readiness-027
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_refuses_completion_when_lifecycle_transaction_is_not_reconciled
+  motivating_defect: release refuses completion when lifecycle transaction is not
+    reconciled
+- id: readiness-028
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_native_effects_honor_saved_client_selection
+  motivating_defect: release native effects honor saved client selection
+- id: readiness-029
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_binds_original_selection_before_native_mutation
+  motivating_defect: release binds original selection before native mutation
+- id: readiness-030
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_stable_consumer_uses_actual_verified_client_root
+  motivating_defect: release stable consumer uses actual verified client root
+- id: readiness-031
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_reconciliation_keeps_original_publisher_selection_binding
+  motivating_defect: release reconciliation keeps original publisher selection binding
+- id: readiness-032
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_selection_preserves_explicit_profile_and_policy
+  motivating_defect: release selection preserves explicit profile and policy
+- id: readiness-033
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_commits_real_lifecycle_generation_only_after_exact_native_and_engine_checks
+  motivating_defect: release commits real lifecycle generation only after exact native
+    and engine checks
+- id: readiness-034
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deep_verify_checks_complete_reported_native_inventory
+  motivating_defect: deep verify checks complete reported native inventory
+- id: readiness-035
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_native_inventory_uses_git_release_membership_not_checkout_build_noise
+  motivating_defect: native inventory uses git release membership not checkout build
+    noise
+- id: release-metadata
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
-  motivating_defect: Release metadata must remain coherent.
-- id: ch-008
+  motivating_defect: Published metadata and archive contract agree
+- id: runtime-version
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_hash_traversal_matches_retained_rglob_corpus
-  motivating_defect: matches retained rglob corpus
-- id: ch-009
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_hash_traversal_scans_each_directory_once_per_fresh_pass
-  motivating_defect: scans each directory once per fresh pass
-- id: ch-010
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_hash_traversal_does_not_accept_incomplete_io
-  motivating_defect: does not accept incomplete io
-- id: ch-011
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_hash_traversal_rechecks_file_type_after_enumeration
-  motivating_defect: rechecks file type after enumeration
-- id: ch-012
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_hash_traversal_rejects_queued_directory_replaced_by_link
-  motivating_defect: rejects queued directory replaced by link
-- id: lf-001
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_success_uses_one_remote_call_and_exact_tip
-  motivating_defect: lease fetch success uses one remote call and exact tip
-- id: lf-002
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_verified_absence_never_reads_stale_tip_or_authorizes_bootstrap
-  motivating_defect: lease fetch verified absence never reads stale tip or authorizes
-    bootstrap
-- id: lf-003
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_captured_tip_and_board_stay_bound_during_local_ref_race
-  motivating_defect: lease fetch captured tip and board stay bound during local ref
-    race
-- id: lf-004
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_failure_requires_fresh_absence_and_never_uses_local_tip
-  motivating_defect: lease fetch failure requires fresh absence and never uses local
-    tip
-- id: lf-005
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_transport_exception_is_not_retried
-  motivating_defect: lease fetch transport exception is not retried
-- id: lf-006
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_accepts_typed_object_ids_and_uses_immutable_reads
-  motivating_defect: lease fetch accepts typed object ids and uses immutable reads
-- id: lf-007
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_rejects_invalid_tip_before_reading_tree
-  motivating_defect: lease fetch rejects invalid tip before reading tree
-- id: lf-008
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_lease_fetch_rejects_failed_local_commands_with_plausible_stdout
-  motivating_defect: lease fetch rejects failed local commands with plausible stdout
-- id: ts-001
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_streaming_transcript.py::test_string_scan_batches_complete_escapes_per_chunk
-  motivating_defect: string scan batches complete escapes per chunk
-- id: ts-002
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_streaming_transcript.py::test_batched_string_scan_keeps_every_escape_split_and_json_decoding
-  motivating_defect: batched string scan keeps every escape split and json decoding
-- id: ts-003
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_streaming_transcript.py::test_batched_string_scan_rejects_invalid_tokens_at_every_split
-  motivating_defect: batched string scan rejects invalid tokens at every split
-- id: ts-004
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_streaming_transcript.py::test_batched_string_scan_keeps_exact_encoded_projection_cap
-  motivating_defect: batched string scan keeps exact encoded projection cap
-- id: ts-005
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_streaming_transcript.py::test_batched_escape_prefix_preserves_all_records_and_late_evidence
-  motivating_defect: batched escape prefix preserves all records and late evidence
-- id: ts-006
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_streaming_transcript.py::test_dense_escaped_record_keeps_bounded_reads_and_memory
-  motivating_defect: dense escaped record keeps bounded reads and memory
+  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_runtime_version_matches_skill_metadata
+  motivating_defect: Both executable engine versions match skill metadata

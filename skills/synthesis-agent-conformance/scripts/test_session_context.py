@@ -67,6 +67,52 @@ def test_next_actions_is_empty_when_every_item_is_complete() -> None:
     assert MODULE.next_actions(context) == []
 
 
+@pytest.mark.parametrize("kind", ["large", "oversize", "duplicate", "symlink", "broken-symlink"])
+def test_session_context_reads_state_through_shared_contract(tmp_path, monkeypatch, kind):
+    import project_state
+
+    project = tmp_path / "alpha"
+    project.mkdir()
+    (project / "CONTEXT.md").write_text("# Context\n")
+    (project / "plan.md").write_text("# Plan\n")
+    path = project / project_state.STATE_FILE
+    value = {"phase": "shared reader", "status": "active", "next_actions": ["Inspect"],
+             "controlling_plan": "plan.md"}
+    raw = json.dumps(value).encode()
+    if kind in {"symlink", "broken-symlink"}:
+        target = tmp_path / "target.json"
+        if kind == "symlink":
+            target.write_bytes(raw)
+        path.symlink_to(target)
+    elif kind == "duplicate":
+        path.write_text('{"status":"active","status":"paused"}')
+    else:
+        path.write_bytes(raw + b" " * (546_930 - len(raw)))
+    if kind == "oversize":
+        monkeypatch.setattr(project_state, "MAX_STATE_JSON_BYTES", 128)
+    # Isolate this consumer boundary: resolver and semantic checks have their
+    # own integration fixtures; the parser and on-disk inputs stay real.
+    monkeypatch.setattr(MODULE, "reconciled_project", lambda *args, **kwargs: (project, []))
+    monkeypatch.setattr(MODULE, "semantic_issues", lambda _project: [])
+    monkeypatch.setattr(MODULE, "record_freshness", lambda _project: (True, "fixture"))
+    original = Path.read_text
+
+    def no_unbounded_state_read(candidate, *args, **kwargs):
+        assert candidate != path, "state consumers must use the bounded shared reader"
+        return original(candidate, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", no_unbounded_state_read)
+    lines = []
+    if kind == "large":
+        MODULE.append_project_context(lines, project, label="Fixture")
+        assert "Current phase: shared reader." in lines
+        assert "- Inspect" in lines
+    else:
+        with pytest.raises(ValueError, match="structured current-state failure"):
+            MODULE.append_project_context(lines, project, label="Fixture")
+        assert not lines
+
+
 def test_build_includes_active_coordination(tmp_path: Path) -> None:
     board = tmp_path / "active-sessions.md"
     board.write_text(

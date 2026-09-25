@@ -10,7 +10,11 @@ running clients silently behind their own source.
 This script makes that state unreachable by sequencing the whole operation
 behind one command that fails closed:
 
-    preflight -> required checks -> publish -> install all three clients -> verify
+    preflight -> required checks -> publish -> install selected clients -> verify
+
+Configured lifecycle selections define the native targets. Without a configured
+profile, the publisher retains its explicit Claude, Codex, and Muse install flow
+without inventing a lifecycle selection.
 
 The verification step is deliberately paranoid, for a reason learned the hard
 way: **a client's own version report is not sufficient evidence.** A client can
@@ -39,6 +43,7 @@ Exit codes: 0 released/verified, 1 a step failed, 2 preconditions unverifiable.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import fcntl
 import hashlib
 import io
@@ -79,7 +84,10 @@ from bootstrap import materialize_release
 from cache_guardian import GuardianError as CacheGuardianError
 from cache_guardian import _tree_digest as _guardian_tree_digest
 from cache_guardian import RecoveryStore, persist_archive
-from system_contract import ContractError, activate_cli, atomic_write_json
+from system_contract import (ContractError, SystemState, activate_cli, atomic_write_json,
+                             canonical_tracked_tree_digest, canonical_tree_digest,
+                             descriptor_fields, json_digest, validate_release_descriptor,
+                             verify_materialized_release, verify_native_release_inventory)
 
 
 PLUGIN_NAME = "synthesis-skills"
@@ -154,6 +162,7 @@ class Step:
 @dataclass
 class Result:
     steps: list[Step] = field(default_factory=list)
+    verified_roots: dict[str, Path] = field(default_factory=dict)
 
     def add(self, name: str, ok: bool, detail: str = "") -> bool:
         self.steps.append(Step(name, ok, detail))
@@ -648,16 +657,19 @@ def stable_path() -> Path:
     personal workspace's own day-start commands pinned a release twenty
     versions behind. The stable path is synthesis-owned, outside the
     client-owned caches (which the clients replace on their own schedule),
-    and is repointed atomically only after all three clients verified a version.
+    and is repointed atomically only after all selected clients verified a version.
     """
     return STABLE_ROOT / PLUGIN_NAME / "current"
 
 
 def refresh_stable_path(
-    version: str, result: Result, dry_run: bool, *, target: Path | None = None
+    version: str, result: Result, dry_run: bool, *, target: Path | None = None,
+    repo: Path | None = None,
 ) -> bool:
     link = stable_path()
-    root = target or installed_root("claude", version)
+    if target is None or repo is None:
+        return result.add("install.stable-path", False, "an exact verified native root and release source are required")
+    root = target
     if dry_run:
         return result.add("install.stable-path", True, f"would point {link} -> {root}")
     manifest = root / ".claude-plugin" / "plugin.json"
@@ -671,16 +683,37 @@ def refresh_stable_path(
         return result.add(
             "install.stable-path", False, f"{root} carries {installed}, expected {version}"
         )
+    ok, detail = content_digest_report(repo, root)
+    if not ok:
+        return result.add("install.stable-path", False, detail)
+    identity = (root.stat().st_dev, root.stat().st_ino)
+    if link.exists() and not link.is_symlink():
+        return result.add("install.stable-path", False, "existing stable path is not a managed symbolic link")
+    previous = os.readlink(link) if link.is_symlink() else None
     link.parent.mkdir(parents=True, exist_ok=True)
-    staging = link.with_name(link.name + ".tmp")
-    if staging.is_symlink() or staging.exists():
-        staging.unlink()
+    staging = link.with_name("." + link.name + "." + secrets.token_hex(8))
     os.symlink(root, staging)
     os.replace(staging, link)
-    resolved = Path(os.path.realpath(link))
+    # Client caches can change after verification. Recheck the actual consumer
+    # after publication and restore the preceding pointer on observed drift.
+    # Later cache changes remain the guardian's responsibility.
+    try:
+        resolved = Path(os.path.realpath(link))
+        ok, detail = content_digest_report(repo, root)
+        ok = ok and resolved == root and (root.stat().st_dev, root.stat().st_ino) == identity
+    except OSError as exc:
+        ok, detail = False, str(exc)
+    if not ok:
+        if link.is_symlink() and os.readlink(link) == str(root):
+            if previous is None:
+                link.unlink()
+            else:
+                os.symlink(previous, staging)
+                os.replace(staging, link)
+        return result.add("install.stable-path", False, "native root changed at stable publication; prior pointer preserved: " + detail)
     return result.add(
         "install.stable-path",
-        resolved == Path(os.path.realpath(root)),
+        True,
         f"{link} -> {root}",
     )
 
@@ -1166,7 +1199,7 @@ def restore_codex_caches(
 
 
 def content_digest_report(source_repo: Path, installed: Path) -> tuple[bool, str]:
-    """Compare every source skills/ file against the installed tree by bytes.
+    """Compare the complete shipped inventory against the installed tree.
 
     Version equality is a claim about a label; this is the check on the
     content behind it. The motivating false-green (2026-08-24): a skill was
@@ -1178,31 +1211,21 @@ def content_digest_report(source_repo: Path, installed: Path) -> tuple[bool, str
     skills_root = source_repo / "skills"
     if not skills_root.is_dir():
         return False, f"source skills/ missing at {skills_root}"
-    mismatched: list[str] = []
-    missing: list[str] = []
-    compared = 0
-    for path in sorted(skills_root.rglob("*")):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(source_repo)
-        if "__pycache__" in rel.parts or rel.suffix == ".pyc":
-            continue
-        counterpart = installed / rel
-        if not counterpart.is_file():
-            missing.append(str(rel))
-            continue
-        compared += 1
-        if _sha256_bytes(path.read_bytes()) != _sha256_bytes(counterpart.read_bytes()):
-            mismatched.append(str(rel))
-    if compared == 0 and not missing:
-        return False, "no source files compared — refusing an empty verification"
-    if missing or mismatched:
-        sample = (missing + mismatched)[:3]
-        return False, (
-            f"{len(missing)} missing, {len(mismatched)} differing of "
-            f"{compared + len(missing)} source files (e.g. {', '.join(sample)})"
-        )
-    return True, f"{compared} files byte-equal to source"
+    try:
+        toplevel, _detail = _git_value(source_repo, ["rev-parse", "--show-toplevel"])
+        files = None
+        if toplevel and Path(toplevel).resolve() == source_repo.resolve():
+            tracked = run(["git", "ls-files", "-z"], cwd=source_repo)
+            if tracked.returncode:
+                raise ContractError("source Git inventory is unavailable")
+            files = set(filter(None, tracked.stdout.split("\0")))
+            digest = canonical_tracked_tree_digest(source_repo, files)
+        else:
+            digest = canonical_tree_digest(source_repo)
+        verify_native_release_inventory(installed, source_repo, digest, source_files=files)
+    except (ContractError, OSError) as exc:
+        return False, str(exc)
+    return True, "complete native inventory and bytes match the source release digest %s" % digest
 
 
 def deep_verify(client: str, expected: str, result: Result,
@@ -1216,6 +1239,7 @@ def deep_verify(client: str, expected: str, result: Result,
     unbumped version can leave on-disk version equality vouching for stale
     content.
     """
+    result.verified_roots.pop(client, None)
     reported, load_path = client_reported_version(client)
     ok_reported = result.add(
         f"verify.{client}.reported",
@@ -1229,15 +1253,9 @@ def deep_verify(client: str, expected: str, result: Result,
         manifest_name = ".claude-plugin"
     else:
         manifest_name = ".codex-plugin"
-    candidates = [installed_root(client, expected)]
-    if load_path:
-        candidates.append(Path(load_path))
-    if client == "muse" and load_path:
-        # Muse's conventional root is the staged bundle, but the content
-        # leg must check the bytes the client actually loads: the reported
-        # cache path first, so a failed install cannot hide behind a fresh
-        # bundle the client never picked up.
-        candidates = [Path(load_path), installed_root(client, expected)]
+    # A healthy conventional cache or staged bundle cannot vouch for another
+    # tree the client actually reports loading, on any supported harness.
+    candidates = [Path(load_path)] if load_path else [installed_root(client, expected)]
     seen: list[str] = []
     ok_disk = False
     for candidate in candidates:
@@ -1264,7 +1282,10 @@ def deep_verify(client: str, expected: str, result: Result,
     else:
         result.add(f"verify.{client}.content", False,
                    "no source repo supplied for content comparison")
-    return ok_reported and ok_disk and ok_content
+    verified = ok_reported and ok_disk and ok_content
+    if verified:
+        result.verified_roots[client] = content_root
+    return verified
 
 
 def _muse_bundle_completeness(root: Path, version: str) -> tuple[bool, str]:
@@ -1567,6 +1588,112 @@ def activate_published_cli(
     )
 
 
+_UNREAD_SELECTION = object()
+
+
+def lifecycle_release_clients(version: str, result: Result, *, desired=_UNREAD_SELECTION) -> tuple[str, ...] | None:
+    """A publisher cannot broaden an explicit local installation selection."""
+    try:
+        if desired is _UNREAD_SELECTION:
+            desired = SystemState().read_desired()
+        if desired is None:
+            detail = "no lifecycle profile is configured; release will not infer one"
+            clients = ("claude", "codex", "muse")
+        else:
+            if not desired.get("enabled", True):
+                raise ContractError("the desired installation is disabled; preserved")
+            if desired["profile"] == "modular":
+                raise ContractError("the desired installation is modular; release cannot activate full native plugins")
+            pin = desired["release"].get("version_pin")
+            if pin and pin != version:
+                raise ContractError("release %s conflicts with the selected exact pin %s; preserved" % (version, pin))
+            detail = "%s profile and its saved policy will be preserved" % desired["profile"]
+            clients = tuple(desired["clients"])
+    except (ContractError, OSError, ValueError) as exc:
+        result.add("preflight.lifecycle-selection", False, str(exc))
+        return None
+    result.add("preflight.lifecycle-selection", True, detail + "; native targets: " + ", ".join(clients))
+    return clients
+
+
+def lifecycle_release_selection(version: str, result: Result) -> bool:
+    return lifecycle_release_clients(version, result) is not None
+
+
+def reconcile_published_lifecycle(
+    repo: Path, version: str, result: Result, dry_run: bool, *, expected_desired_digest: str | None = None,
+) -> bool:
+    """Finish a configured installation with a real, exact-release transaction.
+
+    CLI activation and native plugin updates do not advance lifecycle state.
+    Repair replays the saved organization commit and profile, verifies owned
+    output provenance, and records a new generation without accepting stale
+    SessionStart evidence or altering previous installation history.
+    """
+    state = SystemState()
+    try:
+        desired = state.read_desired()
+        if expected_desired_digest is not None and json_digest(desired) != expected_desired_digest:
+            raise ContractError("saved desired selection changed after publisher admission; reconciliation refused")
+        if desired is None:
+            return result.add("install.lifecycle", True,
+                "not configured; no desired profile or accepted generation was invented")
+        if not lifecycle_release_selection(version, result):
+            return False
+        if dry_run:
+            return result.add("install.lifecycle", True,
+                "dry-run: repair the saved selection, bind release %s, and verify its committed generation" % version)
+        before = state.read_observation()
+        pointer = state.state_dir / "active-release.json"
+        if pointer.is_symlink() or not pointer.is_file():
+            raise ContractError("activated release descriptor is unavailable or unsafe")
+        active = json.loads(pointer.read_text(encoding="utf-8"))
+        descriptor = validate_release_descriptor(descriptor_fields(active))
+        head, detail = _git_value(repo, ["rev-parse", "HEAD^{commit}"])
+        if head is None or descriptor["version"] != version or descriptor["commit"] != head:
+            raise ContractError("activated release does not match the published source: %s" % detail)
+        verify_materialized_release(Path(active["release_root"]), descriptor)
+        command = [str(state.launcher_path), "repair", "--expected-release-digest",
+                   descriptor["content_digest"], "--expected-desired-digest",
+                   expected_desired_digest or json_digest(desired), "--json"]
+        completed = run(command, timeout=900)
+        if completed.returncode:
+            detail = (completed.stderr or completed.stdout).strip().splitlines()
+            raise ContractError("lifecycle repair failed: %s" % (detail[-1] if detail else "exit %s" % completed.returncode))
+        receipt = json.loads(_first_json(completed.stdout))
+        after = state.read_observation()
+        if state.read_desired() != desired:
+            raise ContractError("desired selection changed during lifecycle repair; preserved for inspection")
+        if after["transactions"][:len(before["transactions"])] != before["transactions"]:
+            raise ContractError("prior lifecycle transaction history changed during repair; preserved for inspection")
+        latest = after["transactions"][-1] if after["transactions"] else {}
+        if (not isinstance(receipt, dict) or latest.get("transaction_id") != receipt.get("transaction_id")
+                or latest.get("state") != "committed" or latest.get("command") != "repair"
+                or after["generation"] != latest.get("generation")
+                or after["generation"] <= before["generation"]
+                or latest.get("committed_desired_digest") != json_digest(desired)):
+            raise ContractError("repair did not produce a new committed generation for the saved selection")
+        recorded = latest.get("release") or {}
+        if any(recorded.get(key) != descriptor[key] for key in ("version", "commit", "tree", "content_digest")):
+            raise ContractError("committed lifecycle generation belongs to another release")
+        source = latest.get("source-provenance") or {}
+        installed = latest.get("installed") or {}
+        if (source.get("status") != "verified" or source.get("content_digest") != descriptor["content_digest"]
+                or installed.get("status") != "verified"
+                or not isinstance((latest.get("details") or {}).get("engine", {}).get("post_repair_doctor"), dict)):
+            raise ContractError("committed generation lacks verified source or post-repair doctor evidence")
+        natives = installed.get("native_plugins") or {}
+        if any(not isinstance(natives.get(client), dict)
+               or natives[client].get("content_digest") != descriptor["content_digest"]
+               for client in desired["clients"]):
+            raise ContractError("committed generation lacks exact native plugin content evidence")
+    except (ContractError, OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
+        return result.add("install.lifecycle", False, str(exc))
+    return result.add("install.lifecycle", True,
+        "generation %s committed for %s with desired state and prior history preserved; native live-loading requires its own receipt"
+        % (latest["generation"], version))
+
+
 def fetch_published_tag(repo: Path, version: str, result: Result, dry_run: bool) -> bool:
     """Fetch and verify the remote-published immutable tag without authoring it."""
     if dry_run:
@@ -1862,6 +1989,37 @@ def main(argv: list[str] | None = None) -> int:
         print("\nRELEASE ABORTED: preflight failed. Nothing was published or installed.")
         return 2 if version is None else 1
 
+    clients = ("claude", "codex", "muse")
+    state = SystemState()
+    expected_selection = None
+    if not args.check_only and not args.acceptance_only:
+        try:
+            desired = state.read_desired()
+        except (ContractError, OSError, ValueError) as exc:
+            result.add("preflight.lifecycle-selection", False, str(exc))
+            return 1
+        expected_selection = json_digest(desired)
+        clients = lifecycle_release_clients(version, result, desired=desired)
+        if clients is None:
+            print("\nRELEASE ABORTED: local lifecycle selection was preserved. Nothing published or installed.")
+            return 1
+
+    def selection_check() -> bool:
+        if json_digest(state.read_desired()) != expected_selection:
+            return result.add("install.lifecycle-selection", False,
+                              "saved desired selection changed after publisher admission; further effects refused")
+        return True
+
+    def selected_effect(operation) -> bool:
+        # The native effect and its selection check share the lifecycle lock.
+        # Bootstrap activation and the child lifecycle transaction acquire
+        # their own resources; each handoff is checked independently below.
+        try:
+            with contextlib.nullcontext() if args.dry_run else state.locked():
+                return selection_check() and operation()
+        except (ContractError, OSError, ValueError) as exc:
+            return result.add("install.lifecycle-selection", False, str(exc))
+
     if args.acceptance_only:
         if args.install_only or args.check_only:
             print("\nRELEASE ABORTED: --acceptance-only cannot be combined with other modes.")
@@ -1889,24 +2047,30 @@ def main(argv: list[str] | None = None) -> int:
 
     # New plugin hooks call exec-public, so establish their verified execution
     # prerequisite before any client can load the new hook definitions.
-    if not activate_published_cli(repo, version, result, args.dry_run):
+    if (not selected_effect(lambda: True)
+            or not activate_published_cli(repo, version, result, args.dry_run)):
         print(
             f"\nRELEASE INCOMPLETE for {version}: the public synthesis CLI "
             "could not be activated through the release verifier. Clients left untouched."
         )
         return 1
 
-    for client in ("claude", "codex", "muse"):
-        refresh_client(client, result, args.dry_run, repo=repo)
+    for client in clients:
+        if not selected_effect(lambda: refresh_client(client, result, args.dry_run, repo=repo)):
+            print(f"\nRELEASE INCOMPLETE for {version}: native refresh refused or failed.")
+            return 1
 
-    install_codex_cache_guardian(repo, result, args.dry_run)
+    if "codex" in clients:
+        if not selected_effect(lambda: install_codex_cache_guardian(repo, result, args.dry_run)):
+            print(f"\nRELEASE INCOMPLETE for {version}: native guardian installation refused or failed.")
+            return 1
 
     if args.dry_run:
         print(f"\nDRY RUN complete for {version}. No state changed.")
         return 0
 
     verified = all(deep_verify(client, version, result, repo=repo)
-                   for client in ("claude", "codex", "muse"))
+                   for client in clients)
     if not verified or result.failed:
         print(
             f"\nRELEASE INCOMPLETE for {version}: "
@@ -1914,19 +2078,28 @@ def main(argv: list[str] | None = None) -> int:
             "re-run with --install-only after fixing."
         )
         return 1
-    if not refresh_stable_path(version, result, args.dry_run):
+    if not selected_effect(lambda: refresh_stable_path(version, result, args.dry_run,
+            target=result.verified_roots.get(clients[0]), repo=repo)):
         print(
             f"\nRELEASE INCOMPLETE for {version}: the stable path could not be "
             "repointed at the verified install — re-run with --install-only."
         )
         return 1
-    if not sync_commit_gate(result, args.dry_run):
+    if not selected_effect(lambda: sync_commit_gate(result, args.dry_run)):
         print(
             f"\nRELEASE INCOMPLETE for {version}: the commit gate could not be "
             "re-synced from the verified install — re-run with --install-only."
         )
         return 1
-    print(f"\nRELEASED {version}: published, installed, and verified on all three clients.")
+    if not reconcile_published_lifecycle(repo, version, result, args.dry_run,
+            expected_desired_digest=expected_selection):
+        print(
+            f"\nRELEASE INCOMPLETE for {version}: client installation succeeded, "
+            "but its selected lifecycle generation could not be reconciled. "
+            "Saved state and failed transaction evidence were retained."
+        )
+        return 1
+    print(f"\nRELEASED {version}: published, installed, and verified on {', '.join(clients)}.")
     return 0
 
 

@@ -67,6 +67,34 @@ def test_verified_cli_can_use_org_ssh_without_enabling_local_transports(tmp_path
         assert blocked.returncode != 0 and "not allowed" in blocked.stderr
 
 
+@pytest.mark.parametrize("matches", [True, False])
+def test_release_bound_repair_checks_digest_before_launcher_activation(tmp_path, monkeypatch, matches):
+    checkout = release_repo(tmp_path)
+    cli = checkout / "skills/synthesis-onboarding/scripts/synthesis_cli.py"
+    cli.write_text(cli.read_text().replace("commands.add_parser(name)",
+        "commands.add_parser(name).add_argument('--expected-release-digest')"))
+    git(checkout, "add", ".")
+    git(checkout, "commit", "-q", "-m", "Update fixture")
+    git(checkout, "branch", "-f", "stable", "HEAD")
+    git(checkout, "tag", "-f", "v9.8.7")
+    descriptor = system_contract.release_descriptor_from_checkout(checkout,
+        "stable", "stable", "https://example.test/synthesis-skills.git")
+    launcher, active = tmp_path / "bin/synthesis", tmp_path / "state/active.json"
+    calls = []
+    monkeypatch.setattr(bootstrap.subprocess, "call", lambda *a, **k: calls.append((a, k)) or 0)
+    expected = descriptor["content_digest"] if matches else "a" * 64
+    code = bootstrap.main([
+        "--checkout", str(checkout), "--releases-dir", str(tmp_path / "releases"),
+        "--launcher", str(launcher), "--active-descriptor", str(active),
+        "--channel", "stable", "--ref", "stable",
+        "--source-url", "https://example.test/synthesis-skills.git", "--", "repair",
+        "--expected-release-digest", expected])
+    assert code == (0 if matches else 2)
+    assert bool(calls) == matches
+    assert launcher.exists() == matches
+    assert active.exists() == matches
+
+
 def test_materialization_is_content_addressed_and_idempotent(tmp_path: Path) -> None:
     checkout = release_repo(tmp_path)
     releases = tmp_path / "cache" / "releases"

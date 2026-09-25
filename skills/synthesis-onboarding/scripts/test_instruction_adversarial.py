@@ -240,6 +240,79 @@ def test_retained_immutable_release_proof_accepts_committed_org_update(tmp_path,
     assert b"Advanced organization rules." in (workspace / "AGENTS.md").read_bytes()
 
 
+def test_published_release_reconciliation_refreshes_provenance_without_rewriting_unchanged_instructions(tmp_path, monkeypatch):
+    import onboard
+
+    relative = "skills/synthesis-onboarding/references/kernel.example.md"
+    graph, roots, workspace, old, descriptor, retained, identity = immutable_legacy_pair(
+        tmp_path, monkeypatch, public_relative=relative)
+    (roots["organization"] / ".agents").mkdir()
+    personal = source(tmp_path.resolve() / "personal", "Personal committed rules.\n")
+    graph["sources"].append({"role": "personal", "path": "instructions.md", "required": True})
+    roots["personal"] = personal
+    pair = migrate(graph, roots, workspace, old, source_identities={"public": identity})
+    real_receipts = onboard.Receipts
+    receipt_path = tmp_path / "lifecycle-receipts.json"
+    receipts = real_receipts(receipt_path)
+    receipts.data.update(instruction_receipt=pair, instruction_generation=pair["generation"],
+                         foreign_sentinel={"owner": "independent-fixture", "selection": "retained"})
+    receipts.save()
+    monkeypatch.setattr(onboard, "Receipts", lambda *a, **k: real_receipts(receipt_path))
+    monkeypatch.setattr(onboard, "WORKSPACES_ROOT", workspace.parent)
+    monkeypatch.setattr(onboard, "render_layer_doctor", lambda *a, **k: False)
+    manifest = {"org": {"workspace": workspace.name},
+        "_path": str(roots["organization"] / ".agents/onboarding.yaml"),
+        "skills_repos": [], "knowledge_bases": [],
+        "instruction_sources": [{"path": "instructions.md", "required": True}]}
+
+    def doctor():
+        report = onboard.Report(as_json=True)
+        code = onboard.doctor(report, manifest, [], onboard.normalize_policy("stable", None))
+        return code, report
+
+    monkeypatch.setattr(onboard, "source_root", lambda: roots["public"])
+    assert doctor()[0] == 0
+    outputs_before = pair_snapshot(workspace)
+    history_before = retained.read_bytes()
+    foreign = tmp_path / "foreign-work.md"
+    foreign.write_bytes(b"Independent retained work.\n")
+
+    public = tmp_path.resolve() / "public-source"
+    for client in (".claude-plugin", ".codex-plugin"):
+        (public / client / "plugin.json").write_text(json.dumps({"name": "synthesis-skills", "version": "9.8.8"}) + "\n")
+    git(public, "add", ".")
+    git(public, "commit", "-q", "-m", "Advance fixture release")
+    git(public, "branch", "-f", "stable", "HEAD")
+    git(public, "tag", "v9.8.8")
+    current = contract.release_descriptor_from_checkout(public, "stable", "stable", descriptor["source_url"])
+    state = contract.SystemState()
+    new_root = state.cache_dir / "releases" / current["content_digest"]
+    shutil.copytree(public, new_root, ignore=shutil.ignore_patterns(".git"))
+    (state.state_dir / "releases/9.8.8.json").write_text(json.dumps(current))
+    (tmp_path / "active-release.json").write_text(json.dumps({**current, "release_root": str(new_root)}))
+    monkeypatch.setattr(onboard, "source_root", lambda: new_root)
+    before = receipt_path.read_bytes()
+    code, report = doctor()
+    assert code == 1
+    assert any("public instruction receipt differs" in step["detail"] for step in report.steps)
+    assert receipt_path.read_bytes() == before and pair_snapshot(workspace) == outputs_before
+
+    report = onboard.Report(as_json=True)
+    onboard.phase_workspace(report, manifest, receipts, False, personal_instruction_source=personal / "instructions.md")
+    assert report.exit_code() == 0, report.steps
+    receipts.save()
+    code, report = doctor()
+    assert code == 0, report.steps
+    refreshed = real_receipts(receipt_path).data
+    assert refreshed["instruction_receipt"]["sources"][0]["repository"] == str(new_root)
+    assert refreshed["instruction_receipt"]["sources"][0]["commit"] == current["commit"]
+    assert refreshed["instruction_receipt"]["sources"][1:] == pair["sources"][1:]
+    assert refreshed["foreign_sentinel"] == {"owner": "independent-fixture", "selection": "retained"}
+    assert pair_snapshot(workspace) == outputs_before
+    assert retained.read_bytes() == history_before
+    assert foreign.read_bytes() == b"Independent retained work.\n"
+
+
 @pytest.mark.parametrize("attack", ["missing-descriptor", "descriptor-link", "invalid-descriptor", "broken-json",
                                     "different-commit", "different-content", "content-tamper",
                                     "non-addressed-root", "receipt-commit", "source-link"])

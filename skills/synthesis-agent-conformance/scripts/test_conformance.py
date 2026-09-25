@@ -651,6 +651,48 @@ def write_stopped_project(tmp_path: Path) -> Path:
     return project
 
 
+def test_project_summary_uses_shared_large_state_reader(tmp_path, monkeypatch):
+    import project_state
+
+    project = write_stopped_project(tmp_path)
+    context = project / "CONTEXT.md"
+    context.write_text("# Context\n\n" + context.read_text())
+    project_state.build_operational_state(project, project_id="demo", phase="verified inventory",
+        status="active", controlling_plan="resources/artifacts/demo-plan.md", accepted_baseline="fixture",
+        next_actions=["Inspect"], last_session="2026-09-06", session_id="fixture")
+    path = project / project_state.STATE_FILE
+    raw = path.read_bytes()
+    path.write_bytes(raw + b" " * (546_930 - len(raw)))
+    original = Path.read_text
+
+    def no_unbounded_state_read(candidate, *args, **kwargs):
+        assert candidate != path, "state consumers must use the bounded shared reader"
+        return original(candidate, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", no_unbounded_state_read)
+    summary, checks = MODULE.project_summary(project)
+    assert summary["phase"] == "verified inventory"
+    assert next(check for check in checks if check.name == "handoff.semantic-current-state").ok
+
+
+@pytest.mark.parametrize("kind", ["oversize", "duplicate", "symlink", "broken-symlink"])
+def test_project_summary_refuses_unsafe_structured_state(tmp_path, monkeypatch, kind):
+    import project_state
+
+    project = write_stopped_project(tmp_path)
+    path = project / project_state.STATE_FILE
+    if kind in {"symlink", "broken-symlink"}:
+        target = tmp_path / "target.json"
+        if kind == "symlink":
+            target.write_text("{}")
+        path.symlink_to(target)
+    else:
+        path.write_text("{}" + " " * 129 if kind == "oversize" else '{"status":"active","status":"paused"}')
+    monkeypatch.setattr(project_state, "MAX_STATE_JSON_BYTES", 128)
+    _, checks = MODULE.project_summary(project)
+    assert not next(check for check in checks if check.name == "handoff.semantic-current-state").ok
+
+
 def test_stopped_handoff_passes_without_active_pointer(tmp_path: Path) -> None:
     project = write_stopped_project(tmp_path)
 

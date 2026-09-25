@@ -25,6 +25,7 @@ from enrollment import (EnrollmentJournal, recover_enrollments, require_settled_
                         engine_lock, engine_state_root, recover_copy_transactions)
 from system_contract import (
     DESCRIPTOR_FIELDS,
+    HEX64_RE,
     descriptor_fields,
     LAUNCHER_MARK,
     TRUTH_PLANES,
@@ -46,7 +47,7 @@ from system_contract import (
 )
 
 
-ENGINE_VERSION = "2.8.1"
+ENGINE_VERSION = "2.8.2"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
     "setup",
@@ -151,6 +152,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     for name in ("update", "repair"):
         sub = commands.add_parser(name, help="%s the declared installation" % name)
+        if name == "repair":
+            sub.add_argument(
+                "--expected-release-digest",
+                help="bind release-driven repair to this immutable SHA-256 release digest",
+            )
+            sub.add_argument(
+                "--expected-desired-digest",
+                help="refuse release-driven repair if the saved selection has changed",
+            )
         _common_output(sub)
 
     status = commands.add_parser("status", help="show desired and observed state")
@@ -209,6 +219,61 @@ def _clients(value: str) -> list[str]:
 
 def _active_release() -> dict[str, Any] | None:
     return active_release_descriptor()
+
+
+def _require_expected_release(args: argparse.Namespace) -> dict[str, Any] | None:
+    """An exact release repair may not silently follow a moving channel."""
+    expected = getattr(args, "expected_release_digest", None)
+    if expected is None:
+        return None
+    if not isinstance(expected, str) or HEX64_RE.fullmatch(expected) is None:
+        raise ContractError("expected release digest must be a lowercase SHA-256 digest")
+    active = _active_release()
+    if active is None or active.get("content_digest") != expected:
+        raise ContractError("active release differs from the expected release digest; no reconciliation was performed")
+    if (Path(active["release_root"]).resolve() != REPO_ROOT.resolve()
+            or Path(onboard.source_root()).resolve() != REPO_ROOT.resolve()):
+        raise ContractError("release-bound repair must execute from the expected release root")
+    verify_materialized_release(Path(active["release_root"]), descriptor_fields(active))
+    return active
+
+
+def _require_expected_desired(args: argparse.Namespace, state: SystemState) -> None:
+    expected = getattr(args, "expected_desired_digest", None)
+    if expected is None:
+        return
+    if not getattr(args, "expected_release_digest", None):
+        raise ContractError("expected desired digest requires an expected release digest")
+    if not isinstance(expected, str) or HEX64_RE.fullmatch(expected) is None:
+        raise ContractError("expected desired digest must be a lowercase SHA-256 digest")
+    if json_digest(state.read_desired()) != expected:
+        raise ContractError("saved desired selection changed before release reconciliation; preserved")
+
+
+def _release_native_root(client: str, version: str, home: Path) -> Path | None:
+    scripts = REPO_ROOT / "skills" / "synthesis-agent-conformance" / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    try:
+        from conformance import _enabled_plugin_root
+    except ImportError as exc:
+        raise ContractError("native plugin identity verifier is unavailable: %s" % exc) from exc
+    return _enabled_plugin_root(client, version, home)
+
+
+def _verify_release_native_clients(desired: dict[str, Any], active: dict[str, Any], home: Path) -> dict[str, Any]:
+    """Release repair reconciles records only after native installation succeeds."""
+    source = Path(active["release_root"])
+    from system_contract import verify_native_release_inventory
+    verify_materialized_release(source, descriptor_fields(active))
+    verified = {}
+    for client in desired["clients"]:
+        root = _release_native_root(client, active["version"], home)
+        if root is None or not root.is_absolute() or root.is_symlink() or root.resolve() != root or not root.is_dir():
+            raise ContractError("release-bound repair cannot verify the enabled %s plugin root" % client)
+        digest = verify_native_release_inventory(root, source, active["content_digest"])
+        verified[client] = {"root": str(root), "version": active["version"], "content_digest": digest}
+    return verified
 
 
 def _policy_text(channel: str, version_pin: str | None) -> str:
@@ -1112,6 +1177,11 @@ def _run_release_bootstrap(
         environment["SYNTHESIS_ONBOARD_VERSION_PIN"] = version_pin
     else:
         environment.pop("SYNTHESIS_ONBOARD_VERSION_PIN", None)
+    arguments = build_parser().parse_args(argv if argv is not None else sys.argv[1:])
+    if getattr(arguments, "expected_release_digest", None):
+        # The shell acquisition boundary checks this before it can replace the
+        # active CLI. The Python bootstrap independently checks the digest.
+        environment["SYNTHESIS_ONBOARD_EXPECTED_COMMIT"] = active["commit"]
     return subprocess.call(command, env=environment)
 
 
@@ -1288,8 +1358,19 @@ def main(
         lambda engine_args: _quiet_engine_runner(engine_args, verbose=args.verbose)
     )
     try:
+        _require_expected_release(args)
+        _require_expected_desired(args, state)
+        if getattr(args, "expected_release_digest", None):
+            selected = state.read_desired()
+            if not selected or not selected.get("enabled", True) or selected["profile"] == "modular":
+                raise ContractError("release-bound repair requires an enabled full or skills-only desired installation")
         if args.command in {"setup", "activate", "deactivate", "enroll", "update", "repair", "workspace", "uninstall"}:
             with state.locked(), engine_lock(engine_state_root(state.home)):
+                # An earlier owner may have committed while either lock was
+                # being acquired. Recovery is a mutation, so validate here
+                # before replaying any interrupted transaction.
+                _require_expected_release(args)
+                _require_expected_desired(args, state)
                 recover_copy_transactions(engine_state_root(state.home), state.home)
                 recover_enrollments(state)
                 modular.recover(state, rollback_engine=lambda prior, tx: _recover_interrupted_modular_engine(state, engine_runner, prior, tx))
@@ -1606,6 +1687,8 @@ def main(
         if args.command in ("update", "repair"):
             try:
                 with state.locked():
+                    _require_expected_release(args)
+                    _require_expected_desired(args, state)
                     desired = state.read_desired()
                     migrated_legacy = desired is None
                     if desired is None:
@@ -1639,6 +1722,12 @@ def main(
                             raise RebootstrapRequired(
                                 release["channel"], release.get("version_pin")
                             )
+                        exact_repair = bool(getattr(args, "expected_release_digest", None))
+                        if exact_repair and resolved != desired:
+                            raise ContractError("release-bound repair cannot change the saved desired selection")
+                        active_exact = _require_expected_release(args)
+                        if exact_repair:
+                            _verify_release_native_clients(resolved, active_exact, state.home)
                         # The engine must see the newly resolved commit,
                         # clients and policy, not the preceding generation.
                         proposed_context = (
@@ -1647,14 +1736,32 @@ def main(
                         )
                         with proposed_context as desired_path:
                             engine_args = _engine_args(resolved, args.command, args, desired_state_path=desired_path)
+                            if exact_repair:
+                                engine_args.append("--no-plugin-cli")
                             if resolved["release"] != desired["release"]:
                                 engine_args.append("--policy-transition")
                             if manifest_path:
                                 engine_args.extend(["--manifest", str(manifest_path)])
                             code, engine_details = _execute_engine(engine_runner, engine_args)
+                            if code == 0 and exact_repair:
+                                if engine_details is None:
+                                    raise ContractError("release-bound repair requires a structured engine receipt")
+                                _require_expected_release(args)
+                                _verify_release_native_clients(resolved, active_exact, state.home)
+                                doctor_args = _engine_args(resolved, "doctor", args, desired_state_path=desired_path)
+                                if manifest_path:
+                                    doctor_args.extend(["--manifest", str(manifest_path)])
+                                code, doctor_details = _execute_engine(engine_runner, doctor_args)
+                                if doctor_details is None:
+                                    raise ContractError("release-bound repair requires a structured post-repair doctor receipt")
+                                engine_details["post_repair_doctor"] = doctor_details
                         if code:
                             raise EngineFailure(code)
+                        _require_expected_release(args)
+                        _require_expected_desired(args, state)
                         result = _planes(resolved, args.command)
+                        if exact_repair:
+                            result["installed"]["native_plugins"] = _verify_release_native_clients(resolved, active_exact, state.home)
                         result["_desired"] = resolved
                         if engine_details is not None:
                             result["details"] = {"engine": engine_details}

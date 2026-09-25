@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.145.4** fixes large-project checkpoint refresh and reconciles the
+lifecycle transaction after each gated release, preserving adoption preferences
+and strict source verification.
+
 Release **4.145.3** reduces repeated path and directory work while retaining
 full verification. Incomplete traversal and changes to the project root fail closed.
 

@@ -65,6 +65,11 @@ def hermetic_release_train(
     monkeypatch.setenv(
         "SYNTHESIS_ACTIVE_PROJECT_FILE", str(tmp_path / "absent-pointer.json")
     )
+    home = tmp_path / "lifecycle-home"
+    monkeypatch.setenv("SYNTHESIS_HOME", str(home))
+    for name, relative in {"XDG_CONFIG_HOME": ".config", "XDG_STATE_HOME": ".local/state",
+                           "XDG_CACHE_HOME": ".cache", "XDG_DATA_HOME": ".local/share"}.items():
+        monkeypatch.setenv(name, str(home / relative))
 
 
 # --- source of truth -------------------------------------------------------
@@ -134,13 +139,17 @@ def test_stable_path_points_at_the_verified_install_root(tmp_path, monkeypatch) 
     release atomically and never point at an unverified tree."""
     monkeypatch.setattr(release, "STABLE_ROOT", tmp_path / "plugins")
     first = _install_root(tmp_path, "4.82.0")
-    assert release.refresh_stable_path("4.82.0", release.Result(), False, target=first)
+    first_source = tmp_path / "source-first"
+    _seed_content(first_source, first)
+    assert release.refresh_stable_path("4.82.0", release.Result(), False, target=first, repo=first_source)
     link = release.stable_path()
     assert link.is_symlink()
     assert Path(os.path.realpath(link)) == first.resolve()
 
     second = _install_root(tmp_path, "4.83.0")
-    assert release.refresh_stable_path("4.83.0", release.Result(), False, target=second)
+    second_source = tmp_path / "source-second"
+    _seed_content(second_source, second)
+    assert release.refresh_stable_path("4.83.0", release.Result(), False, target=second, repo=second_source)
     assert Path(os.path.realpath(link)) == second.resolve()
     assert not link.with_name(link.name + ".tmp").exists()
 
@@ -156,6 +165,31 @@ def test_stable_path_refuses_an_unverified_or_mismatched_root(tmp_path, monkeypa
     other = _install_root(tmp_path, "4.81.0")
     assert not release.refresh_stable_path("4.82.0", release.Result(), False, target=other)
     assert not release.stable_path().exists()
+
+
+@pytest.mark.parametrize("mutation", ["before", "at-publication"])
+def test_stable_consumer_revalidates_full_inventory_and_preserves_previous_pointer(tmp_path, monkeypatch, mutation):
+    monkeypatch.setattr(release, "STABLE_ROOT", tmp_path / "plugins")
+    prior = _install_root(tmp_path, "4.82.0")
+    root = _install_root(tmp_path, "4.83.0")
+    source = tmp_path / "source"
+    _seed_content(source, root)
+    link = release.stable_path()
+    link.parent.mkdir(parents=True)
+    link.symlink_to(prior)
+    def corrupt():
+        (root / "unapproved-hook.py").write_text("Unexpected loadable content.\n")
+    real_replace = release.os.replace
+    def replace(src, dst):
+        real_replace(src, dst)
+        if Path(dst) == link and link.resolve() == root:
+            corrupt()
+    if mutation == "before":
+        corrupt()
+    else:
+        monkeypatch.setattr(release.os, "replace", replace)
+    assert not release.refresh_stable_path("4.83.0", release.Result(), False, target=root, repo=source)
+    assert link.resolve() == prior
 
 
 def test_stable_path_doc_states_the_two_caller_rule() -> None:
@@ -465,8 +499,211 @@ def test_release_establishes_required_launcher_before_exposing_new_hooks(repo, m
     monkeypatch.setattr(release, "deep_verify", lambda *args, **kwargs: True)
     monkeypatch.setattr(release, "refresh_stable_path", lambda *args, **kwargs: True)
     monkeypatch.setattr(release, "sync_commit_gate", lambda *args, **kwargs: True)
+    monkeypatch.setattr(release, "reconcile_published_lifecycle", lambda *args, **kwargs: True)
     assert release.main(["--repo-root", str(repo), "--install-only"]) == (0 if activation_ok else 1)
     assert observations == ([("claude", True), ("codex", True), ("muse", True)] if activation_ok else [])
+
+
+def test_release_refuses_completion_when_lifecycle_transaction_is_not_reconciled(repo, monkeypatch, capsys):
+    order = []
+    monkeypatch.setattr(release, "preflight", lambda *a: "9.9.9")
+    for name in ("activate_published_cli", "refresh_client", "install_codex_cache_guardian",
+                 "deep_verify", "refresh_stable_path", "sync_commit_gate"):
+        monkeypatch.setattr(release, name, lambda *a, _name=name, **k: order.append(_name) or True)
+    monkeypatch.setattr(release, "reconcile_published_lifecycle", lambda *a, **k: order.append("lifecycle") or False, raising=False)
+    assert release.main(["--repo-root", str(repo), "--install-only"]) == 1
+    assert order[-1] == "lifecycle"
+    output = capsys.readouterr().out
+    assert "RELEASE INCOMPLETE" in output and "RELEASED" not in output
+
+
+@pytest.mark.parametrize("selected", [None, ["claude"], ["codex"], ["claude", "codex"]])
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_release_native_effects_honor_saved_client_selection(repo, monkeypatch, selected, dry_run):
+    import system_contract as contract
+    state = contract.SystemState()
+    if selected is not None:
+        desired = contract.default_desired_state("skills-only", selected, "stable")
+        state.run_transaction("setup", desired, lambda _tx: {})
+    before = state.read_desired()
+    expected = selected if selected is not None else ["claude", "codex", "muse"]
+    calls = {name: [] for name in ("refresh", "verify", "guardian", "stable")}
+    monkeypatch.setattr(release, "preflight", lambda *a: "9.9.9")
+    for name in ("activate_published_cli", "sync_commit_gate", "reconcile_published_lifecycle"):
+        monkeypatch.setattr(release, name, lambda *a, **kw: True)
+    monkeypatch.setattr(release, "refresh_client", lambda client, *a, **kw: calls["refresh"].append(client) or True)
+    def verify(client, version, result, **kwargs):
+        calls["verify"].append(client)
+        result.verified_roots[client] = release.installed_root(client, version)
+        return True
+    monkeypatch.setattr(release, "deep_verify", verify)
+    monkeypatch.setattr(release, "install_codex_cache_guardian", lambda *a, **kw: calls["guardian"].append(True) or True)
+    monkeypatch.setattr(release, "refresh_stable_path", lambda *a, **kw: calls["stable"].append(kw.get("target")) or True)
+    command = ["--repo-root", str(repo), "--install-only"] + (["--dry-run"] if dry_run else [])
+    assert release.main(command) == 0
+    assert calls["refresh"] == expected
+    assert calls["verify"] == ([] if dry_run else expected)
+    assert bool(calls["guardian"]) == ("codex" in expected)
+    if not dry_run:
+        assert calls["stable"] == [release.installed_root(expected[0], "9.9.9")]
+    assert state.read_desired() == before
+
+
+@pytest.mark.parametrize("changed_at", ["activation", "before-native-lock"])
+def test_release_binds_original_selection_before_native_mutation(repo, monkeypatch, capsys, changed_at):
+    import contextlib
+    import system_contract as contract
+    state = contract.SystemState()
+    original = contract.default_desired_state("skills-only", ["codex"], "stable")
+    changed = contract.default_desired_state("skills-only", ["claude"], "stable")
+    state.run_transaction("setup", original, lambda _tx: {})
+    monkeypatch.setattr(release, "preflight", lambda *a: "9.9.9")
+    native_calls = []
+    activated = False
+    def activate(*a, **kw):
+        nonlocal activated
+        activated = True
+        if changed_at == "activation":
+            state.run_transaction("setup", changed, lambda _tx: {})
+        return True
+    real_lock = contract.SystemState.locked
+    @contextlib.contextmanager
+    def locked(instance):
+        with real_lock(instance):
+            if activated and changed_at == "before-native-lock":
+                contract.atomic_write_json(state.desired_path, changed)
+            yield
+    monkeypatch.setattr(contract.SystemState, "locked", locked)
+    monkeypatch.setattr(release, "activate_published_cli", activate)
+    monkeypatch.setattr(release, "refresh_client", lambda client, *a, **kw: native_calls.append(client) or True)
+    for name in ("deep_verify", "install_codex_cache_guardian", "sync_commit_gate", "refresh_stable_path", "reconcile_published_lifecycle"):
+        monkeypatch.setattr(release, name, lambda *a, **kw: True)
+    assert release.main(["--repo-root", str(repo), "--install-only"]) == 1
+    assert native_calls == []
+    assert state.read_desired() == changed
+    assert "RELEASED" not in capsys.readouterr().out
+
+
+def test_release_stable_consumer_uses_actual_verified_client_root(tmp_path, monkeypatch):
+    import system_contract as contract
+    from test_system_contract import release_repo
+    state = contract.SystemState()
+    state.run_transaction("setup", contract.default_desired_state("skills-only", ["codex"], "stable"), lambda _tx: {})
+    source = release_repo(tmp_path / "source", "9.9.9")
+    generation, _descriptor = release.materialize_release(source, tmp_path / "generations", channel="stable", ref="stable",
+        source_url="https://example.test/synthesis-skills.git")
+    conventional, loaded = tmp_path.resolve() / "conventional", tmp_path.resolve() / "reported"
+    shutil.copytree(generation, conventional)
+    shutil.copytree(generation, loaded)
+    conventional.chmod(0o755)
+    (conventional / "unapproved-hook.py").write_text("Unexpected loadable content.\n")
+    monkeypatch.setattr(release, "STABLE_ROOT", tmp_path / "stable")
+    monkeypatch.setattr(release, "preflight", lambda *a: "9.9.9")
+    monkeypatch.setattr(release, "installed_root", lambda *a: conventional)
+    monkeypatch.setattr(release, "client_reported_version", lambda *a: ("9.9.9", str(loaded)))
+    for name in ("activate_published_cli", "refresh_client", "install_codex_cache_guardian", "sync_commit_gate", "reconcile_published_lifecycle"):
+        monkeypatch.setattr(release, name, lambda *a, **kw: True)
+    assert release.main(["--repo-root", str(source), "--install-only"]) == 0
+    assert release.stable_path().resolve() == loaded
+    assert release.content_digest_report(source, release.stable_path().resolve())[0]
+
+
+def test_release_reconciliation_keeps_original_publisher_selection_binding(repo, monkeypatch):
+    import system_contract as contract
+    state = contract.SystemState()
+    original = contract.default_desired_state("skills-only", ["codex"], "stable")
+    changed = contract.default_desired_state("skills-only", ["claude"], "stable")
+    state.run_transaction("setup", changed, lambda _tx: {})
+    before = state.observation_path.read_bytes(), state.desired_path.read_bytes()
+    monkeypatch.setattr(release, "run", lambda *a, **kw: pytest.fail("repair ran with a recaptured selection"))
+    assert not release.reconcile_published_lifecycle(repo, "9.9.9", release.Result(), False,
+        expected_desired_digest=contract.json_digest(original))
+    assert (state.observation_path.read_bytes(), state.desired_path.read_bytes()) == before
+
+
+@pytest.mark.parametrize("selection", ["missing", "disabled", "modular", "other-pin", "selected"])
+def test_release_selection_preserves_explicit_profile_and_policy(tmp_path, monkeypatch, selection):
+    import system_contract as contract
+    state = contract.SystemState()
+    if selection != "missing":
+        desired = contract.default_desired_state("skills-only", ["codex"], "stable",
+            version_pin="8.0.0" if selection == "other-pin" else None,
+            enabled=selection != "disabled")
+        if selection == "modular":
+            desired = contract.default_desired_state("modular", ["codex"], "stable",
+                modular={"roots": ["synthesis-autopilot"], "stage_core": True})
+        state.run_transaction("setup", desired, lambda _tx: {})
+    before = {str(p): p.read_bytes() for p in state.home.rglob("*") if p.is_file()}
+    result = release.Result()
+    assert release.lifecycle_release_selection("9.9.9", result) == (selection in {"missing", "selected"})
+    after = {str(p): p.read_bytes() for p in state.home.rglob("*") if p.is_file()}
+    assert after == before
+
+
+@pytest.mark.parametrize("failure", [None, "engine", "doctor", "same-version-corruption", "unapproved-extra", "no-transaction"])
+def test_release_commits_real_lifecycle_generation_only_after_exact_native_and_engine_checks(tmp_path, monkeypatch, failure):
+    import contextlib
+    import io
+    import synthesis_cli as cli
+    import system_contract as contract
+    from bootstrap import materialize_release
+    from test_system_contract import release_repo
+
+    source = release_repo(tmp_path / "fixture-source", version="9.9.9")
+    state = contract.SystemState()
+    desired = contract.default_desired_state("skills-only", ["codex"], "stable")
+    state.run_transaction("setup", desired, lambda _tx: {})
+    old = state.read_observation()["transactions"][0]
+    generation, descriptor = materialize_release(source, state.cache_dir / "releases",
+        channel="stable", ref="stable", source_url="https://example.test/synthesis-skills.git")
+    pointer = state.state_dir / "active-release.json"
+    contract.activate_cli(generation, descriptor, state.launcher_path, pointer)
+    monkeypatch.setenv("SYNTHESIS_ACTIVE_DESCRIPTOR", str(pointer))
+    monkeypatch.setattr(cli, "REPO_ROOT", generation)
+    monkeypatch.setattr(cli.onboard, "source_root", lambda: generation)
+    native = tmp_path.resolve() / "native-plugin"
+    shutil.copytree(generation, native)
+    if failure == "same-version-corruption":
+        target = native / "skills/synthesis-onboarding/scripts/synthesis_cli.py"
+        target.chmod(0o644)
+        target.write_text("Corrupted runtime with unchanged version labels.\n")
+    if failure == "unapproved-extra":
+        (native / "skills").chmod(0o755)
+        target = native / "skills/unapproved-extra/SKILL.md"
+        target.parent.mkdir()
+        target.write_text("Additional loadable synthetic skill outside the release.\n")
+    monkeypatch.setattr(cli, "_release_native_root", lambda *_a: native)
+    engine_calls = []
+    def engine(args):
+        engine_calls.append(args[0])
+        return {"engine": "fixture", "counts": {"ok": 1}, "steps": [],
+                "exit": 1 if args[0] == failure or (failure == "engine" and args[0] == "repair") else 0}
+    real_run = release.run
+    def run(command, *args, **kwargs):
+        if command[0] != str(state.launcher_path):
+            return real_run(command, *args, **kwargs)
+        if failure == "no-transaction":
+            return subprocess.CompletedProcess(command, 0, '{"state":"committed"}', "")
+        output, error = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
+            code = cli.main(command[1:], state=state, engine_runner=engine)
+        return subprocess.CompletedProcess(command, code, output.getvalue(), error.getvalue())
+    monkeypatch.setattr(release, "run", run)
+    assert release.reconcile_published_lifecycle(source, "9.9.9", release.Result(), False) == (failure is None)
+    assert state.read_desired() == desired
+    observation = state.read_observation()
+    assert observation["transactions"][0] == old
+    if failure is None:
+        latest = observation["transactions"][-1]
+        assert observation["generation"] == 2 and latest["state"] == "committed"
+        assert latest["release"]["content_digest"] == descriptor["content_digest"]
+        assert latest["installed"]["native_plugins"]["codex"]["content_digest"] == descriptor["content_digest"]
+        assert latest["live-loaded"]["status"] == "restart-required"
+        assert engine_calls == ["repair", "doctor"]
+    else:
+        assert observation["generation"] == 1
+        if failure in {"same-version-corruption", "unapproved-extra"}:
+            assert engine_calls == []
 
 
 def test_publisher_activates_cli_through_public_release_verifier(
@@ -1116,6 +1353,7 @@ def test_main_carries_acceptance_authority_to_publish_boundary(
 
     monkeypatch.setattr(release, "publish", publish)
     monkeypatch.setattr(release, "refresh_client", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(release, "install_codex_cache_guardian", lambda *_args, **_kwargs: True)
 
     assert release.main(["--repo-root", str(repo), "--dry-run"]) == 0
     assert received == [(authority, "9.9.9")]
@@ -1155,6 +1393,13 @@ def test_deep_verify_fails_when_cli_reports_but_disk_is_stale(
 
 
 def _seed_content(source: Path, installed: Path, drift: bool = False) -> None:
+    # The fixture source is the whole release, including its native manifest.
+    for manifest in release.MANIFESTS:
+        path = installed / manifest
+        if path.is_file():
+            target = source / manifest
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
     for base in (source, installed):
         (base / "skills" / "demo" / "scripts").mkdir(parents=True, exist_ok=True)
         (base / "skills" / "demo" / "SKILL.md").write_text("# demo\n", encoding="utf-8")
@@ -1200,6 +1445,49 @@ def test_deep_verify_fails_on_content_drift_despite_version_parity(
     names = {s.name: s.ok for s in result.steps}
     assert names["verify.codex.on-disk"] is True
     assert names["verify.codex.content"] is False
+
+
+@pytest.mark.parametrize("client", ["claude", "codex", "muse"])
+@pytest.mark.parametrize("drift", ["extra-skill", "extra-directory", "hook-bytes", "loaded-root"])
+def test_deep_verify_checks_complete_reported_native_inventory(tmp_path, monkeypatch, client, drift):
+    source, conventional, loaded = (tmp_path / name for name in ("source", "conventional", "loaded"))
+    source.mkdir()
+    write_manifests(source, "9.9.9", "9.9.9", "9.9.9")
+    (source / "skills/demo").mkdir(parents=True)
+    (source / "skills/demo/SKILL.md").write_text("# fixture\n")
+    (source / "hooks").mkdir()
+    (source / "hooks/hooks.json").write_text('{"hooks": {}}\n')
+    shutil.copytree(source, conventional)
+    shutil.copytree(source, loaded)
+    target = loaded if drift == "loaded-root" else conventional
+    if drift in {"extra-skill", "loaded-root"}:
+        (target / "skills/unapproved-extra").mkdir()
+        (target / "skills/unapproved-extra/SKILL.md").write_text("# unexpected\n")
+    elif drift == "extra-directory":
+        (target / "unexpected").mkdir()
+    else:
+        (target / "hooks/hooks.json").write_text('{"hooks":{"extra":[]}}\n')
+    monkeypatch.setattr(release, "installed_root", lambda *a: conventional)
+    monkeypatch.setattr(release, "client_reported_version", lambda *a: ("9.9.9", str(target)))
+    assert not release.deep_verify(client, "9.9.9", release.Result(), repo=source)
+
+
+def test_native_inventory_uses_git_release_membership_not_checkout_build_noise(tmp_path):
+    from bootstrap import materialize_release
+    from test_system_contract import release_repo
+    source = release_repo(tmp_path / "source")
+    generation, _descriptor = materialize_release(source, tmp_path / "releases", channel="stable", ref="stable",
+        source_url="https://example.test/synthesis-skills.git")
+    native = tmp_path.resolve() / "native"
+    shutil.copytree(generation, native)
+    cache = source / ".pytest_cache"
+    cache.mkdir()
+    (cache / "lastfailed").write_text("{}\n")
+    assert release.content_digest_report(source, native)[0]
+    native.chmod(0o755)
+    (native / "unapproved-hook.py").write_text("Unexpected shipped file.\n")
+    ok, detail = release.content_digest_report(source, native)
+    assert not ok and "unexpected release entry" in detail
 
 
 def test_deep_verify_fails_closed_without_source_repo(
@@ -2282,17 +2570,19 @@ def test_muse_refresh_reuses_complete_bundle(
     _fake_muse_binary(tmp_path, monkeypatch, "{}")
     bundles = tmp_path / "bundles"
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
-    _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
-    skill = repo / "skills" / "demo" / "SKILL.md"
-    skill.parent.mkdir(parents=True, exist_ok=True)
-    skill.write_text("# demo\n", encoding="utf-8")
+    source = _write_muse_bundle(tmp_path / "release-source", "9.9.9")
+    for manifest in release.MANIFESTS[:2]:
+        target = source / manifest
+        target.parent.mkdir()
+        shutil.copy2(repo / manifest, target)
+    shutil.copytree(source, bundles / "v9.9.9")
 
     def exploding_export(*args: object, **kwargs: object) -> set[str]:
         raise AssertionError("complete bundle must be reused, not re-exported")
 
     monkeypatch.setattr(release, "_export_release_tag", exploding_export)
     result = release.Result()
-    assert release.refresh_client("muse", result, dry_run=False, repo=repo) is True
+    assert release.refresh_client("muse", result, dry_run=False, repo=source) is True
     names = [s.name for s in result.steps]
     assert "install.muse.bundle-replace" not in names
 

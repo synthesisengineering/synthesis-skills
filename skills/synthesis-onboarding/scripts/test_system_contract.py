@@ -449,7 +449,8 @@ def test_live_load_rejects_nonexistent_root_unbound_transcript_and_stale_time(
         state.record_live_load(receipt=stale)
 
 
-def test_live_load_binds_client_root_to_the_release_content_digest(tmp_path: Path) -> None:
+@pytest.mark.parametrize("drift", ["tracked-bytes", "extra-skill", "extra-directory"])
+def test_live_load_binds_client_root_to_the_release_content_digest(tmp_path: Path, drift: str) -> None:
     source_receipt = live_receipt(tmp_path, "codex")
     source = Path(source_receipt["plugin_root"])
     loaded = tmp_path / "loaded-plugin"
@@ -465,12 +466,19 @@ def test_live_load_binds_client_root_to_the_release_content_digest(tmp_path: Pat
             "source-provenance": {"status": "verified", "root": str(source)},
         },
     )
-    (loaded / "hooks" / "hooks.json").write_text(
-        json.dumps({"hooks": {"SessionStart": [{"command": "changed"}]}}) + "\n",
-        encoding="utf-8",
-    )
-    with pytest.raises(system_contract.ContractError, match="release digest"):
+    if drift == "tracked-bytes":
+        (loaded / "hooks" / "hooks.json").write_text(
+            json.dumps({"hooks": {"SessionStart": [{"command": "changed"}]}}) + "\n",
+            encoding="utf-8",
+        )
+    else:
+        (loaded / "skills/extra").mkdir(parents=True)
+        if drift == "extra-skill":
+            (loaded / "skills/extra/SKILL.md").write_text("Additional unapproved skill.\n")
+    before = state.observation_path.read_bytes()
+    with pytest.raises(system_contract.ContractError, match="release digest" if drift == "tracked-bytes" else "unexpected release entry"):
         state.record_live_load(receipt=receipt)
+    assert state.observation_path.read_bytes() == before
 
 
 def test_live_load_validates_muse_store_bound_sessions(tmp_path: Path) -> None:

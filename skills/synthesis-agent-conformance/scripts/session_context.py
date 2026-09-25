@@ -51,7 +51,8 @@ if str(ONBOARDING_SCRIPTS_DIR) not in sys.path:
 from project_context import extract, next_actions, record_freshness  # noqa: E402
 from plan_reference import locate_plan  # noqa: E402
 from active_project import load_and_validate  # noqa: E402
-from project_state import STATE_FILE, resolve_project, semantic_issues  # noqa: E402
+from project_state import (STATE_FILE, ProjectStateError, read_operational_state,
+                           resolve_project, semantic_issues)  # noqa: E402
 from coordination_schema import display_id, parse_table_rows, row_identity  # noqa: E402
 from live_receipt import (  # noqa: E402
     claude_root_transcript_path,
@@ -710,12 +711,16 @@ def append_project_context(
     if semantic:
         raise ValueError("semantic current-state failure: " + "; ".join(semantic))
     state_path = project / STATE_FILE
-    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+    has_state = state_path.exists() or state_path.is_symlink()
+    try:
+        state = read_operational_state(state_path) if has_state else {}
+    except ProjectStateError as exc:
+        raise ValueError(f"structured current-state failure: {exc}") from exc
     phase = str(state.get("phase") or extract(context, "Phase"))
     status = str(state.get("status") or extract(context, "Status"))
     plan_ref = (
         locate_plan(project, context, controlling_plan=state.get("controlling_plan"))
-        if state_path.is_file()
+        if has_state
         else locate_plan(project, context)
     )
     if plan_ref.declared is not None and plan_ref.resolved is None:
