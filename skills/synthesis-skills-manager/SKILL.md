@@ -5,12 +5,21 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.8.3"
+  version: "2.8.4"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+**Version 2.8.4** verifies mandatory initial restoration before starting the
+existing bounded quiet-window observation. Retained native Git checkouts are
+copied with complete bytes, types and modes into a durable store outside the
+client-owned cache before refresh can replace that cache. Cataloged intent and
+verified seals distinguish interrupted preservation from missing committed
+recovery. Unknown transition roots and damaged recovery refuse refresh. These
+bundles have a separate retention disposition; they are not silently deleted or
+folded into the public historical archive.
+
 **Version 2.8.3** verifies the native current Codex version against its
 published source inventory while preserving the client-owned checkout and its
 metadata. Historical roots retain exact recovery integrity. Verified historical

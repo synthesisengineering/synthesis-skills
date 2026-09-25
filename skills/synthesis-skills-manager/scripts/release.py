@@ -197,6 +197,22 @@ class CodexCacheSnapshot:
     archive: Path | None = None
     client_owned_version: str | None = None
     native_sources: dict[str, tuple[str, frozenset[str]]] = field(default_factory=dict)
+    native_recoveries: dict[str, NativeCacheRecovery] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class NativeCacheRecovery:
+    """Exact retained native metadata, outside the client-owned cache tree."""
+
+    source: Path
+    tree: Path
+    manifest: Path
+    digest: str
+    manifest_digest: str
+    intent_digest: str
+    commit: str
+    source_identity: tuple[int, ...]
+    bundle_identity: tuple[int, int]
 
 
 def run(cmd: list[str], cwd: Path | None = None, timeout: int = 900) -> subprocess.CompletedProcess:
@@ -742,7 +758,11 @@ def codex_cache_archive() -> Path:
 
 def _acquire_codex_cache_lock():
     """Acquire the single-writer lock for the Codex cache transition."""
-    lock_path = codex_cache_archive().parent / f".{PLUGIN_NAME}.release.lock"
+    archive = codex_cache_archive()
+    if not archive.is_absolute() or not archive.name:
+        raise OSError(f"unsafe Codex recovery archive boundary: {archive}")
+    _validate_native_recovery_store(archive.with_name(archive.name + "-native-retained"), plugin_cache_parent("codex"))
+    lock_path = archive.parent / f".{PLUGIN_NAME}.release.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     flags = os.O_RDWR | os.O_CREAT
     if hasattr(os, "O_CLOEXEC"):
@@ -930,6 +950,378 @@ def _persist_codex_archive(
     persist_archive(archive, {version: backup / version for version in versions}, budget=CODEX_CACHE_ARCHIVE_BUDGET_BYTES)
 
 
+def _native_recovery_inventory(root: Path) -> dict[str, list]:
+    """Hash every byte and mode, including Git and otherwise ignored metadata.
+
+    This is deliberately separate from the historical release/archive policy.
+    No links are traversed and unsupported types fail before a native command.
+    """
+    entries: dict[str, list] = {}
+    pending = [root]
+    while pending:
+        path = pending.pop()
+        info = path.lstat()
+        mode = stat.S_IMODE(info.st_mode)
+        relative = str(path.relative_to(root))
+        if stat.S_ISDIR(info.st_mode):
+            entries[relative] = ["directory", mode]
+            pending.extend(sorted(path.iterdir(), reverse=True))
+        elif stat.S_ISLNK(info.st_mode):
+            entries[relative] = ["link", mode, os.readlink(path)]
+        elif stat.S_ISREG(info.st_mode):
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(descriptor, "rb") as handle:
+                opened = os.fstat(handle.fileno())
+                if (opened.st_dev, opened.st_ino, opened.st_mode) != (info.st_dev, info.st_ino, info.st_mode):
+                    raise OSError(f"retained native file changed identity: {path}")
+                digest = hashlib.sha256()
+                size = 0
+                while size < info.st_size and (chunk := handle.read(min(1024 * 1024, info.st_size - size))):
+                    digest.update(chunk)
+                    size += len(chunk)
+                if handle.read(1):
+                    raise OSError(f"retained native file grew during inspection: {path}")
+                after = os.fstat(handle.fileno())
+            if (size != info.st_size or (after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+                    != (info.st_size, info.st_mtime_ns, info.st_ctime_ns)):
+                raise OSError(f"retained native file changed during inspection: {path}")
+            entries[relative] = ["file", mode, size, digest.hexdigest()]
+        else:
+            raise OSError(f"unsupported retained native file type: {path}")
+        if len(entries) + len(pending) > 200_000:
+            raise OSError("retained native recovery exceeds the 200000-entry inspection bound")
+    return entries
+
+
+def _native_inventory_digest(entries: dict[str, list]) -> str:
+    return _sha256_bytes(json.dumps(entries, sort_keys=True, separators=(",", ":")).encode())
+
+
+def _validate_native_recovery_store(store: Path, cache: Path) -> None:
+    archive = codex_cache_archive()
+    protected = {Path.home().resolve(), Path.cwd().resolve(), SCRIPT_DIR.parents[2]}
+    if (store != archive.with_name(archive.name + "-native-retained")
+            or not store.is_absolute() or store.resolve() != store
+            or any(root == store or root.is_relative_to(store) for root in protected)
+            or any(store == root or store.is_relative_to(root) or root.is_relative_to(store)
+                   for root in (cache, archive))):
+        raise OSError(f"unsafe retained native recovery store: {store}")
+    for ancestor in (store, *store.parents):
+        if (ancestor.is_symlink() or (ancestor.exists() and not ancestor.is_dir())
+                or (ancestor / ".git").exists() or (ancestor / ".git").is_symlink()
+                or (ancestor / ".agents/repos.yaml").exists()):
+            raise OSError(f"redirected retained native recovery store: {ancestor}")
+
+
+def _write_native_recovery_record(path: Path, value: dict) -> str:
+    raw = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode()
+    identity = _cache_transition_parent_identity(path.parent)
+    directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    temporary = "." + path.name + "-" + secrets.token_hex(16) + ".tmp"
+    try:
+        opened = os.fstat(directory)
+        if (opened.st_dev, opened.st_ino) != identity:
+            raise OSError(f"native recovery record parent changed identity: {path.parent}")
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=directory)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(raw)
+            handle.flush()
+            os.fsync(handle.fileno())
+        # Link publishes the fully synced seal atomically and cannot overwrite
+        # an unexpected existing record. Failed attempts remain for inspection.
+        os.link(temporary, path.name, src_dir_fd=directory, dst_dir_fd=directory, follow_symlinks=False)
+        os.unlink(temporary, dir_fd=directory)
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+    return _sha256_bytes(raw)
+
+
+def _read_native_recovery_record(path: Path) -> tuple[dict, str]:
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if (not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600
+                or info.st_size > 64 * 1024 * 1024):
+            raise OSError(f"unsafe native recovery record: {path}")
+        raw = handle.read(info.st_size + 1)
+        after = os.fstat(handle.fileno())
+    if (len(raw) != info.st_size or (after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+            != (info.st_size, info.st_mtime_ns, info.st_ctime_ns)):
+        raise OSError(f"native recovery record changed during inspection: {path}")
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate recovery record key")
+            result[key] = value
+        return result
+    try:
+        value = json.loads(raw, object_pairs_hook=unique)
+    except (ValueError, UnicodeError) as exc:
+        raise OSError(f"unreadable native recovery record: {path}") from exc
+    if not isinstance(value, dict):
+        raise OSError(f"invalid native recovery record: {path}")
+    return value, _sha256_bytes(raw)
+
+
+def _native_recovery_catalog(store: Path) -> tuple[dict[str, dict], str | None]:
+    """Durable plans distinguish interrupted publication from lost recovery."""
+    path = store.with_name(store.name + ".json")
+    if not store.exists() and not store.is_symlink() and not path.exists() and not path.is_symlink():
+        return {}, None
+    data, digest = _read_native_recovery_record(path)
+    records = data.get("records")
+    if (set(data) != {"schema_version", "records"} or data.get("schema_version") != 1
+            or not isinstance(records, dict)):
+        raise OSError(f"invalid native preservation catalog: {path}")
+    for name, entry in records.items():
+        if (not isinstance(name, str) or re.fullmatch(r"retained-[0-9a-f]{32}", name) is None
+                or not isinstance(entry, dict) or set(entry) != {"state", "intent", "intent_digest", "manifest_digest"}
+                or not isinstance(entry["state"], str) or entry["state"] not in {"PLANNED", "VERIFIED"}
+                or not isinstance(entry["intent"], dict)
+                or entry["intent_digest"] != _sha256_bytes((json.dumps(entry["intent"], indent=2, sort_keys=True) + "\n").encode())
+                or (entry["state"] == "PLANNED" and entry["manifest_digest"] is not None)
+                or (entry["state"] == "VERIFIED" and (not isinstance(entry["manifest_digest"], str)
+                    or re.fullmatch(r"[0-9a-f]{64}", entry["manifest_digest"]) is None))):
+            raise OSError(f"invalid native preservation plan: {path}")
+    if store.is_symlink() or (store.exists() and not store.is_dir()):
+        raise OSError(f"native preservation store is redirected: {store}")
+    observed = {child.name for child in store.iterdir()} if store.exists() else set()
+    if not observed <= set(records):
+        raise OSError(f"native preservation bundle membership changed: {store}")
+    for name, entry in records.items():
+        bundle = store / name
+        if name not in observed:
+            if entry["state"] == "VERIFIED":
+                raise OSError(f"verified native preservation bundle is missing: {bundle}")
+            continue
+        _cache_transition_parent_identity(bundle)
+        intent = bundle / "intent.json"
+        if intent.exists() or intent.is_symlink() or entry["state"] == "VERIFIED":
+            if _read_native_recovery_record(intent)[1] != entry["intent_digest"]:
+                raise OSError(f"native preservation intent changed: {bundle}")
+        if entry["state"] == "VERIFIED":
+            if _read_native_recovery_record(bundle / "manifest.json")[1] != entry["manifest_digest"]:
+                raise OSError(f"native preservation seal changed: {bundle}")
+    return records, digest
+
+
+def _publish_native_recovery_catalog(store: Path, records: dict[str, dict], previous: str | None) -> None:
+    path = store.with_name(store.name + ".json")
+    candidate = path.with_name("." + path.name + "-" + secrets.token_hex(16))
+    _write_native_recovery_record(candidate, {"schema_version": 1, "records": records})
+    if previous is None:
+        # No-overwrite publication of the initial catalog.
+        os.link(candidate, path, follow_symlinks=False)
+        candidate.unlink()
+    else:
+        if _read_native_recovery_record(path)[1] != previous:
+            raise OSError(f"native preservation catalog changed during update: {path}")
+        os.replace(candidate, path)
+    descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _native_recovery_version(name: str) -> str | None:
+    if RELEASE_VERSION_RE.fullmatch(name):
+        return name
+    match = re.fullmatch(r"\.release-displaced-([0-9]+\.[0-9]+\.[0-9]+)-[0-9a-f]{32}", name)
+    return match[1] if match else None
+
+
+def _native_roots_to_preserve(parent: Path) -> list[Path]:
+    roots = []
+    if not parent.exists():
+        return roots
+    for child in sorted(parent.iterdir()):
+        if child.name.startswith(".release-"):
+            if (not child.name.startswith(".release-displaced-") or _native_recovery_version(child.name) is None
+                    or child.is_symlink() or not child.is_dir()):
+                raise OSError(f"unrecognized or interrupted native recovery path; review before refresh: {child}")
+            roots.append(child)
+        elif RELEASE_VERSION_RE.fullmatch(child.name) and ((child / ".git").exists() or (child / ".git").is_symlink()):
+            roots.append(child)
+    return roots
+
+
+def _load_native_recoveries(repo: Path | None, current_version: str | None) -> dict[str, NativeCacheRecovery]:
+    """Resume durable plans only from exact originals or complete sealed copies.
+
+    A verified catalog entry never falls back to its original if preservation
+    artifacts disappear. Incomplete attempts remain available for review.
+    """
+    parent, archive = plugin_cache_parent("codex"), codex_cache_archive()
+    store = archive.with_name(archive.name + "-native-retained")
+    _validate_native_recovery_store(store, parent)
+    catalog, catalog_digest = _native_recovery_catalog(store)
+    records: dict[str, NativeCacheRecovery] = {}
+    pending = []
+    expected_keys = {"schema_version", "source", "version", "commit", "tree", "digest", "disposition", "inventory", "state"}
+    for name, entry in sorted(catalog.items()):
+        bundle = store / name
+        intent, intent_digest = entry["intent"], entry["intent_digest"]
+        version, tree_name = intent.get("version"), intent.get("tree")
+        if (set(intent) != expected_keys or intent.get("schema_version") != 1
+                or intent.get("state") != "COPYING" or intent.get("disposition") != "RETAINED_FOR_SEPARATE_REVIEW"
+                or not isinstance(version, str) or RELEASE_VERSION_RE.fullmatch(version) is None
+                or not isinstance(tree_name, str) or _native_recovery_version(tree_name) != version
+                or intent.get("source") != str(parent / tree_name) or not isinstance(intent.get("inventory"), dict)
+                or _native_inventory_digest(intent["inventory"]) != intent.get("digest") or repo is None):
+            raise OSError(f"unproven native recovery intent: {bundle}")
+        reference = "HEAD" if version == current_version else f"v{version}"
+        commit, _ = _git_value(repo, ["rev-parse", "--verify", reference + "^{commit}"])
+        if commit is None or re.fullmatch(r"[0-9a-f]{40}", commit) is None or intent.get("commit") != commit:
+            raise OSError(f"native recovery no longer binds an immutable release: {bundle}")
+        manifest = bundle / "manifest.json"
+        if not manifest.exists() and not manifest.is_symlink():
+            pending.append((bundle, intent))
+            continue
+        ready, manifest_digest = _read_native_recovery_record(manifest)
+        tree = bundle / tree_name
+        if (ready != {**intent, "state": "VERIFIED"} or tree.is_symlink() or not tree.is_dir()
+                or _native_recovery_inventory(tree) != intent["inventory"]
+                or _read_native_recovery_record(bundle / "intent.json")[1] != intent_digest):
+            raise OSError(f"native recovery seal differs from its complete copy: {bundle}")
+        _codex_native_git_identity(tree, commit)
+        if entry["state"] == "PLANNED":
+            # A crash after the fsynced ready seal but before catalog advancement
+            # is recoverable only by re-verifying the complete sealed tree.
+            catalog[name] = {**entry, "state": "VERIFIED", "manifest_digest": manifest_digest}
+            _publish_native_recovery_catalog(store, catalog, catalog_digest)
+            _, catalog_digest = _native_recovery_catalog(store)
+        record = NativeCacheRecovery(parent / tree_name, tree, manifest, intent["digest"],
+                                     manifest_digest, intent_digest, commit, (), _cache_transition_parent_identity(bundle))
+        _verify_native_recoveries(CodexCacheSnapshot(bundle, (), native_recoveries={str(manifest): record}))
+        records[str(manifest)] = record
+    for bundle, intent in pending:
+        if any(record.source == Path(intent["source"]) and record.commit == intent["commit"]
+               and record.digest == intent["digest"] for record in records.values()):
+            continue
+        source = Path(intent["source"])
+        if (not source.is_dir() or source.is_symlink()
+                or _native_recovery_inventory(source) != intent["inventory"]):
+            raise OSError(f"interrupted native preservation has no exact original or complete recovery: {bundle}")
+        _codex_native_git_identity(source, intent["commit"])
+    return records
+
+
+def _preserve_native_recovery(source: Path, commit: str) -> NativeCacheRecovery:
+    """Copy a proven retained checkout before allowing native cache deletion.
+
+    Incomplete attempts and completed bundles are never automatically removed.
+    Only a verified bundle returned here can authorize the following refresh.
+    """
+    parent = plugin_cache_parent("codex")
+    version = _native_recovery_version(source.name)
+    if version is None or source.parent != parent or source.is_symlink() or not source.is_dir():
+        raise OSError(f"unrecognized retained native recovery path: {source}")
+    _validate_codex_cache_boundary(parent / version, parent, allow_retained=True)
+    parent_identity = _cache_transition_parent_identity(parent)
+    expected = _native_recovery_inventory(source)
+    identity = _codex_native_git_identity(source, commit)
+    archive = codex_cache_archive()
+    store = archive.with_name(archive.name + "-native-retained")
+    _validate_native_recovery_store(store, parent)
+    catalog, previous_catalog = _native_recovery_catalog(store)
+    bundle = store / ("retained-" + secrets.token_hex(16))
+    tree = bundle / source.name
+    digest = _native_inventory_digest(expected)
+    payload = {"schema_version": 1, "source": str(source), "version": version,
+               "commit": commit, "tree": tree.name, "digest": digest,
+               "disposition": "RETAINED_FOR_SEPARATE_REVIEW", "inventory": expected}
+    intent = {**payload, "state": "COPYING"}
+    intent_digest = _sha256_bytes((json.dumps(intent, indent=2, sort_keys=True) + "\n").encode())
+    entry = {"state": "PLANNED", "intent": intent, "intent_digest": intent_digest, "manifest_digest": None}
+    store.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # The complete durable intent precedes both directories. A process can die
+    # at any following boundary without creating an unregistered bundle.
+    _publish_native_recovery_catalog(store, {**catalog, bundle.name: entry}, previous_catalog)
+    catalog, previous_catalog = _native_recovery_catalog(store)
+    try:
+        store.mkdir(mode=0o700, exist_ok=True)
+        store_identity = _cache_transition_parent_identity(store)
+        bundle.mkdir(mode=0o700)
+        _write_native_recovery_record(bundle / "intent.json", intent)
+        shutil.copytree(source, tree, symlinks=True)
+        if (_native_recovery_inventory(tree) != expected
+                or _native_recovery_inventory(source) != expected
+                or _codex_native_git_identity(source, commit) != identity):
+            raise OSError("retained native checkout changed or copied bytes/modes differ")
+        _codex_native_git_identity(tree, commit)
+        _validate_native_recovery_store(store, parent)
+        if (_cache_transition_parent_identity(parent) != parent_identity
+                or _cache_transition_parent_identity(store) != store_identity):
+            raise OSError("retained native preservation parent changed identity")
+        # Commit file and directory contents before recording verified recovery.
+        for path in [*tree.rglob("*"), tree]:
+            if not path.is_symlink():
+                descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                try:
+                    mode = os.fstat(descriptor).st_mode
+                    if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+                        raise OSError(f"retained native copy changed file type: {path}")
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+        manifest = bundle / "manifest.json"
+        manifest_digest = _write_native_recovery_record(manifest, {**payload, "state": "VERIFIED"})
+        for path in (bundle, store):
+            descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        _publish_native_recovery_catalog(store,
+                                        {**catalog, bundle.name: {**entry, "state": "VERIFIED", "manifest_digest": manifest_digest}},
+                                        previous_catalog)
+    except BaseException:
+        print(f"Native recovery preservation interrupted before refresh; source path {source}; recovery attempt path {bundle}", flush=True)
+        raise
+    info = bundle.stat()
+    return NativeCacheRecovery(source, tree, manifest, digest, manifest_digest, intent_digest, commit,
+                               identity, (info.st_dev, info.st_ino))
+
+
+def _verify_native_recoveries(snapshot: CodexCacheSnapshot, *, sources: bool = False,
+                              allow_missing_sources: bool = False) -> None:
+    parent = plugin_cache_parent("codex")
+    if sources:
+        observed = set(_native_roots_to_preserve(parent))
+        expected = {record.source for record in snapshot.native_recoveries.values() if record.source_identity}
+        if observed - expected or (not allow_missing_sources and observed != expected):
+            raise OSError("retained native recovery membership changed before refresh")
+    for record in snapshot.native_recoveries.values():
+        bundle, store = record.tree.parent, record.tree.parent.parent
+        _validate_native_recovery_store(store, parent)
+        catalog, _ = _native_recovery_catalog(store)
+        if (re.fullmatch(r"retained-[0-9a-f]{32}", bundle.name) is None
+                or catalog.get(bundle.name, {}).get("state") != "VERIFIED"
+                or catalog[bundle.name]["intent_digest"] != record.intent_digest
+                or catalog[bundle.name]["manifest_digest"] != record.manifest_digest
+                or record.source.parent != parent or record.tree.name != record.source.name
+                or _native_recovery_version(record.tree.name) is None
+                or _cache_transition_parent_identity(bundle) != record.bundle_identity
+                or record.manifest != bundle / "manifest.json" or record.manifest.is_symlink()
+                or not record.manifest.is_file()
+                or _read_native_recovery_record(record.manifest)[1] != record.manifest_digest
+                or (bundle / "intent.json").is_symlink() or not (bundle / "intent.json").is_file()
+                or _read_native_recovery_record(bundle / "intent.json")[1] != record.intent_digest
+                or record.tree.is_symlink() or not record.tree.is_dir()
+                or _native_inventory_digest(_native_recovery_inventory(record.tree)) != record.digest):
+            raise OSError(f"retained native recovery is missing, changed or redirected: {bundle}")
+        _codex_native_git_identity(record.tree, record.commit)
+        source_present = record.source.exists() or record.source.is_symlink()
+        if (sources and record.source_identity and (source_present or not allow_missing_sources)
+                and (_codex_native_git_identity(record.source, record.commit) != record.source_identity
+                     or _native_inventory_digest(_native_recovery_inventory(record.source)) != record.digest)):
+            raise OSError(f"retained native source changed before refresh: {record.source}")
+
+
 def snapshot_codex_caches(
     result: Result, repo: Path | None = None
 ) -> CodexCacheSnapshot | None:
@@ -945,6 +1337,7 @@ def snapshot_codex_caches(
     archive = codex_cache_archive() if repo is not None else None
     backup = Path(tempfile.mkdtemp(prefix="synthesis-codex-cache-"))
     native_sources: dict[str, tuple[str, frozenset[str]]] = {}
+    native_recoveries: dict[str, NativeCacheRecovery] = {}
     try:
         peers = {
             "Codex cache": parent,
@@ -964,7 +1357,9 @@ def snapshot_codex_caches(
                 restored_archive = backup / ".archive-input" / version
                 stored.materialize(version, restored_archive)
                 archive_roots[version] = restored_archive
-        boundary_versions = set(cache_roots) | set(peer_roots) | set(archive_roots)
+        retained_roots = _native_roots_to_preserve(parent)
+        retained_versions = {_native_recovery_version(root.name) for root in retained_roots}
+        boundary_versions = set(cache_roots) | set(peer_roots) | set(archive_roots) | retained_versions
         preserved_versions = set(boundary_versions)
         seed_versions = set(boundary_versions)
         tags: list[str] = []
@@ -1043,6 +1438,19 @@ def snapshot_codex_caches(
                 _copy_cache_extras(cache_roots[version], destination, tracked)
 
         if archive is not None:
+            native_recoveries.update(_load_native_recoveries(repo, current_version))
+        for root in retained_roots:
+            version = _native_recovery_version(root.name)
+            if version not in native_sources:
+                raise OSError(f"retained native recovery has no immutable release binding: {root}")
+            record = _preserve_native_recovery(root, native_sources[version][0])
+            native_recoveries[str(record.manifest)] = record
+        if native_recoveries:
+            result.add("install.codex.cache-native-preservation", True,
+                       "verified exact native recovery bundles outside client cache; retained for separate review: "
+                       + ", ".join(str(record.manifest) for record in native_recoveries.values()))
+
+        if archive is not None:
             _persist_codex_archive(
                 backup, sorted(seed_versions, key=_version_key), archive
             )
@@ -1067,7 +1475,8 @@ def snapshot_codex_caches(
         f"preserved {len(versions)} complete version root(s) before refresh",
     )
     return CodexCacheSnapshot(backup=backup, versions=versions, archive=archive,
-                              client_owned_version=current_version, native_sources=native_sources)
+                              client_owned_version=current_version, native_sources=native_sources,
+                              native_recoveries=native_recoveries)
 
 
 def _remove_transition_backup(backup: Path) -> None:
@@ -1225,7 +1634,7 @@ def _replace_cache_root(
     return None
 
 
-def _validate_codex_cache_boundary(path: Path, parent: Path) -> None:
+def _validate_codex_cache_boundary(path: Path, parent: Path, *, allow_retained: bool = False) -> None:
     """A version label is not authority to move a repository or workspace."""
     protected = {Path.home().resolve(), Path.cwd().resolve(), SCRIPT_DIR.parents[2]}
     if (not parent.is_absolute() or path.parent != parent
@@ -1243,7 +1652,7 @@ def _validate_codex_cache_boundary(path: Path, parent: Path) -> None:
         raise OSError(f"version root has an unsafe type: {path}")
     if not path.exists():
         recoveries = sorted(parent.glob(f".release-displaced-{path.name}-*"))
-        if recoveries:
+        if recoveries and not allow_retained:
             raise OSError(f"cache root absent after an interrupted transition; retained recovery trees: {recoveries}")
         return
     for child in path.rglob("*"):
@@ -1447,9 +1856,15 @@ def restore_codex_caches(
     restored: set[str] = set()
     repaired: set[str] = set()
     retained: set[Path] = set()
-    started = clock()
-    quiet_since = started
     try:
+        _verify_native_recoveries(snapshot)
+        # Initial recovery is mandatory I/O, not evidence of continuing native
+        # mutation. Start the existing bounded settling window only once every
+        # preserved root has first been restored and verified.
+        initial_restored, initial_repaired = _restore_codex_caches_once(snapshot, retained)
+        restored.update(initial_restored)
+        repaired.update(initial_repaired)
+        started = quiet_since = clock()
         while True:
             new_restored, new_repaired = _restore_codex_caches_once(snapshot, retained)
             now = clock()
@@ -1458,6 +1873,7 @@ def restore_codex_caches(
                 repaired.update(new_repaired)
                 quiet_since = now
             if now - quiet_since >= CODEX_CACHE_QUIET_SECONDS:
+                _verify_native_recoveries(snapshot)
                 _remove_transition_backup(snapshot.backup)
                 break
             if now - started >= CODEX_CACHE_SETTLE_TIMEOUT_SECONDS:
@@ -1475,6 +1891,11 @@ def restore_codex_caches(
         result.add("install.codex.cache-recovery", True,
                    "verified displaced Git checkouts retained without automatic deletion; "
                    "recovery disposition requires separate review: " + ", ".join(str(path) for path in sorted(retained)))
+    if snapshot.native_recoveries:
+        result.add("install.codex.cache-native-recovery", True,
+                   "exact native metadata remains preserved outside the client cache; no automatic cleanup or reinsertion; "
+                   "recovery disposition requires separate review: "
+                   + ", ".join(str(record.manifest) for record in snapshot.native_recoveries.values()))
     return result.add(
         "install.codex.cache-restore",
         True,
@@ -1861,11 +2282,17 @@ def refresh_client(
                 return False
 
         commands_ok = True
-        for command in commands:
+        for index, command in enumerate(commands):
             label = f"install.{client}.{command[2] if len(command) > 2 else 'run'}"
             if dry_run:
                 result.add(label, True, "dry-run: " + " ".join(command[1:]))
                 continue
+            if cache_snapshot is not None:
+                try:
+                    _verify_native_recoveries(cache_snapshot, sources=True, allow_missing_sources=index > 0)
+                except OSError as exc:
+                    return result.add("install.codex.cache-native-preservation", False,
+                                      f"native refresh refused; recovery inputs retained at {cache_snapshot.backup}: {exc}")
             completed = run(command, timeout=600)
             if completed.returncode != 0:
                 tail = (completed.stderr or completed.stdout).strip().splitlines()
