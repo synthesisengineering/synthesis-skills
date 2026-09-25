@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -532,7 +533,21 @@ def test_live_receipt_records_real_sessionstart_shape(
         encoding="utf-8",
     )
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
-    monkeypatch.setenv("PLUGIN_ROOT", str(MODULE.SCRIPTS_DIR.parents[2]))
+    # The running source checkout is mutable (test caches and empty build
+    # directories differ between local worktrees and CI). Materialize the
+    # complete shipped file inventory as separate immutable source/native roots.
+    source_root = tmp_path / "release"
+    plugin_root = tmp_path / "native-plugin"
+    repo = MODULE.SCRIPTS_DIR.parents[2]
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=repo, check=True, capture_output=True,
+    ).stdout.decode().split("\0")
+    for relative in filter(None, tracked):
+        target = source_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(repo / relative, target)
+    shutil.copytree(source_root, plugin_root)
+    monkeypatch.setenv(MODULE.CLIENT_PLUGIN_ROOT_ENV, str(plugin_root))
     payload = {
         "hook_event_name": "SessionStart",
         "session_id": "019fff79-5858-7993-a329-b301bccf5d31",
@@ -560,16 +575,7 @@ def test_live_receipt_records_real_sessionstart_shape(
                 "ref": "v%s" % version,
                 "commit": "1" * 40,
                 "tree": "2" * 40,
-                    "content_digest": system_contract.canonical_tracked_tree_digest(
-                        MODULE.SCRIPTS_DIR.parents[2],
-                        {
-                            relative
-                            for relative, metadata, _path in system_contract._iter_tree(
-                                MODULE.SCRIPTS_DIR.parents[2]
-                            )
-                            if _path.is_file()
-                        },
-                    ),
+                "content_digest": system_contract.canonical_tree_digest(source_root),
                 "digest_algorithm": system_contract.DIGEST_ALGORITHM,
                 "tree_policy": system_contract.TREE_POLICY,
                 "source_url": "https://example.test/synthesis-skills.git",
@@ -577,7 +583,7 @@ def test_live_receipt_records_real_sessionstart_shape(
             },
             "source-provenance": {
                 "status": "verified",
-                "root": str(MODULE.SCRIPTS_DIR.parents[2]),
+                "root": str(source_root),
             },
             "live-loaded": {"status": "restart-required"},
         },
@@ -595,7 +601,7 @@ def test_live_receipt_records_real_sessionstart_shape(
     assert recorded["provenance_env"] == "codex-transcript"
     assert recorded["transcript_bound_at_record"] is True
     assert recorded["transcript_path"] == str(transcript)
-    assert Path(recorded["plugin_root"]).resolve() == MODULE.SCRIPTS_DIR.parents[2]
+    assert Path(recorded["plugin_root"]).resolve() == plugin_root
     assert Path(recorded["execution_root"]).resolve() == MODULE.SCRIPTS_DIR.parents[2]
     event_path = (
         receipt.parent
