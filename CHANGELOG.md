@@ -19,6 +19,24 @@ reviewed specification and escape hostile HTML, comment and control identifiers.
 Full-page Chromium tests verify the rendered consumer and fail if the required
 browser is unavailable.
 
+## [4.145.7] - 2026-09-25
+
+Native marketplace refresh can create or replace the current version before
+plugin installation. Each newly observed current generation is now verified
+against its pinned release and preserved outside the client cache before the
+next destructive native command. Earlier sealed generations remain retained;
+new unrelated roots, redirected ownership and damaged recovery still refuse.
+
+The complete cache-parent boundary now includes unrecognized names and
+materialized historical roots without Git metadata. Changed history refuses
+the next native command without overwriting it during recovery. Final repair
+retains changed materialized bytes in verified external bundles before restoring
+the historical release; ordinary runtime bytecode remains supported.
+
+Native command timeouts and transport errors remain failed installations while
+attempting the existing verified restoration of historical roots needed by
+active sessions. Recovery does not convert an unresolved command into success.
+
 ## [4.145.6] - 2026-09-25
 
 Codex cache recovery begins its bounded settling observation after mandatory

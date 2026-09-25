@@ -21,6 +21,9 @@ care](docs/fleet-operations.md).
 Release **4.146.0** adds autopilot 3.1.0: qualified outcome evaluation,
 current domain evidence, shared decision ownership and verified decision pages.
 
+Release **4.145.7** preserves each new native cache generation between refresh
+commands and restores verified history when a native command is interrupted.
+
 Release **4.145.6** preserves retained native Git recovery outside client-owned
 cache trees and verifies the quiet window after mandatory restoration.
 
