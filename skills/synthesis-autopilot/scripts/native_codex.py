@@ -9,14 +9,16 @@ current-byte verification, cancellation tombstones and PM/native authorization.
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime
 import hashlib
 import json
 import math
+import re
 
 
-ADAPTER_VERSION = "codex-dialect-v4"
+ADAPTER_VERSION = "codex-dialect-v5"
 SUPPORTED_SCHEMAS = (
-    "session_meta", "turn_context", "token_usage_record", "event_msg.token_count",
+    "session_meta", "turn_context", "inter_agent_communication_metadata", "token_usage_record", "event_msg.token_count",
     "event_msg.task_started", "event_msg.task_complete", "event_msg.turn_aborted",
     "event_msg.user_message", "event_msg.agent_message", "event_msg.agent_reasoning",
     "event_msg.item_completed",
@@ -303,6 +305,30 @@ def decode_record(row, producer, *, mode="synthetic", source_locator=None):
         return []
     if is_ignored_projection({"type": outer, "payload.type": subtype}, producer):
         return []
+    if outer == "inter_agent_communication_metadata":
+        # Native routing metadata records an observed trigger flag. It cannot
+        # prove delivery, a wake, worker termination, authority or completion.
+        if (set(row) - {"type", "payload", "timestamp", "ordinal", "thread_id", "session_id"}
+                or set(value) != {"trigger_turn"}
+                or type(value["trigger_turn"]) is not bool):
+            raise DialectError("unsupported communication metadata grammar")
+        if "timestamp" in row:
+            stamp = row["timestamp"]
+            if (not isinstance(stamp, str) or len(stamp) > 64
+                    or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})", stamp)):
+                raise DialectError("invalid communication metadata timestamp")
+            if (not stamp.endswith("Z")
+                    and (int(stamp[-5:-3]) > 23 or int(stamp[-2:]) > 59)):
+                raise DialectError("invalid communication metadata timezone offset")
+            try:
+                parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise DialectError("invalid communication metadata timestamp") from exc
+            if parsed.utcoffset() is None:
+                raise DialectError("communication metadata timestamp lacks timezone")
+        return fact("communication.observation", "observed", {
+            "trigger_turn": value["trigger_turn"], "portable_completion": False,
+            "grants_authority": False, "proves_wake": False})
     if outer == "token_usage_record":
         for key in ("thread_id", "session_id", "response_id", "turn_id", "root_turn_id"):
             _text(value.get(key), key)

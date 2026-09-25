@@ -1,18 +1,17 @@
 schema: 2
-suite: native-identity-observation-4-149-2
+suite: operator-observation-4-149-3
 membership: closed
-production_entry_point: PM native identity, SessionStart receipt writer, inbox identity
-  and native Codex item decoding, peer-send denial recording and active controller
-  owner readback
+production_entry_point: Project-state resolver and native Codex source observation
+  consumers
 enforcing_boundary: Fresh transaction-bound acceptance before gated release
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Synthetic native stores and real filesystem/journal consumers.
-  Separately retained genuine item-shape parsing is not native execution, recovery,
-  provider cost, installed reload or survival acceptance.
+unverified_remainder: Real Git and source/owner fixture consumers; installed latency,
+  real native recovery, process survival and comparative outcomes remain separately
+  qualified.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -24,1194 +23,211 @@ changed_surfaces:
   cases:
   - release-metadata
 - path: CHANGELOG.md
-  cases: &id001
-  - native-repair-001
-  - native-repair-002
-  - native-repair-003
-  - native-repair-004
-  - native-repair-005
-  - native-repair-006
-  - native-repair-007
-  - native-repair-008
-  - native-repair-009
-  - native-repair-010
-  - native-repair-011
-  - native-repair-012
-  - native-repair-013
-  - native-repair-014
-  - native-repair-015
-  - native-repair-016
-  - native-repair-017
-  - native-repair-018
-  - native-repair-019
-  - native-repair-020
-  - native-repair-021
-  - native-repair-022
-  - native-repair-023
-  - native-repair-024
-  - native-repair-025
-  - native-repair-026
-  - native-repair-027
-  - native-repair-028
-  - native-repair-029
-  - native-repair-030
-  - native-repair-031
-  - native-repair-032
-  - native-repair-033
-  - native-repair-034
-  - native-repair-035
-  - native-repair-036
-  - native-repair-037
-  - native-repair-038
-  - native-repair-039
-  - native-repair-040
-  - native-repair-041
-  - native-repair-042
-  - native-repair-043
-  - native-repair-044
-  - native-repair-045
-  - native-repair-046
-  - native-repair-047
-  - native-repair-048
-  - native-repair-049
-  - native-repair-050
-  - native-repair-051
-  - native-repair-052
-  - native-repair-053
-  - native-repair-054
+  cases:
+  - resolution-001
+  - resolution-002
+  - resolution-003
+  - resolution-004
+  - resolution-005
+  - resolution-006
+  - metadata-001
+  - metadata-002
+  - metadata-003
+  - metadata-004
+  - metadata-005
+  - metadata-006
+  - metadata-007
   - release-metadata
-  - peer-consumer-non-peer-tools-and-in-process-targets-pass-without-a-board
-  - peer-consumer-named-teammates-pass-when-a-team-registers-them
-  - peer-consumer-display-names-and-refs-are-refused-as-addresses
-  - peer-consumer-socket-address-needs-a-receipt-then-passes
-  - peer-consumer-socket-that-no-longer-maps-to-the-resolved-session-is-refused
-  - peer-consumer-a-receipt-for-one-socket-does-not-admit-another
-  - peer-consumer-reply-may-copy-the-from-address-of-a-received-message
-  - peer-consumer-idle-subscription-without-text-needs-only-the-receipt
-  - peer-consumer-ccd-session-id-needs-a-matching-receipt
-  - peer-consumer-a-reclaimed-seat-is-not-shadowed-by-its-old-receipt
-  - peer-consumer-released-target-is-refused-even-with-a-receipt
-  - peer-consumer-message-must-carry-the-senders-board-id
-  - peer-consumer-sender-without-a-seat-is-refused
-  - peer-consumer-missing-session-id-and-unreadable-board-fail-closed
-  - peer-consumer-same-text-to-a-second-session-is-a-broadcast
-  - peer-consumer-codex-queue-needs-a-receipt-for-that-thread
-  - peer-consumer-shell-lane-boundary-is-stated-in-the-protocol-and-the-gate
-  - peer-consumer-literal-codex-queue-in-a-heredoc-body-is-not-a-send
-  - peer-consumer-thread-values-carried-as-data-are-never-selected
-  - peer-consumer-a-real-send-with-a-thread-is-still-the-codex-lane
-  - peer-consumer-a-nested-shell-string-send-is-still-detected
-  - peer-consumer-a-send-inside-a-quoted-command-substitution-is-still-detected
-  - peer-consumer-an-unquoted-heredoc-body-runs-its-substitutions
-  - peer-consumer-a-here-string-handed-to-a-shell-is-nested-execution
-  - peer-consumer-a-named-coprocess-runs-the-group-that-follows-its-name
-  - peer-consumer-nesting-past-the-bound-is-gated-on-the-raw-words-not-crashed
-  - peer-consumer-message-is-read-from-the-parsed-send-only
-  - peer-consumer-nested-send-passes-the-gate-end-to-end-with-a-receipt
-  - peer-consumer-unbalanced-quotes-fail-closed-on-the-raw-words
-  - peer-consumer-gate-process-blocks-with-exit-2-and-admits-with-exit-0
-  - peer-consumer-gate-process-fails-closed-when-the-call-cannot-be-evaluated
-  - peer-consumer-doctor-reports-seat-and-stores
-  - peer-consumer-gate-process-identity-failure-blocks-without-sender-attribution
-  - peer-consumer-gate-audit-failure-always-blocks
-  - peer-consumer-record-never-logs-an-allow-with-unresolved-identity
-  - peer-consumer-gate-real-unwritable-audit-blocks-otherwise-valid-receipt
-  - peer-consumer-doctor-identity-error-is-deterministic-diagnosis
-  - peer-consumer-doctor-seat-lookup-error-is-a-diagnostic
-  - peer-consumer-doctor-process-mixed-identity-has-no-traceback
-  - peer-consumer-non-peer-process-controls-remain-allowed-with-mixed-hints
-  - canonical-consumer-coordination-dependencies-resolve-to-sibling-modules
-  - canonical-consumer-real-push-lands-and-restores-only-own-authority
-  - canonical-consumer-unsafe-canonical-retained-after-successful-remote-push
-  - canonical-consumer-foreign-authority-blocks-even-disjoint-canonical-paths
-  - canonical-consumer-yielded-push-is-retried-by-completion-without-shell-snapshot
-  - canonical-consumer-command-boundaries-are-explicit-and-never-infer-publication
-  - canonical-consumer-supported-source-forms-bind-exact-commit
-  - canonical-consumer-sha-source-forms-bind-exact-commit
-  - canonical-consumer-hex-branch-name-falls-back-when-no-such-commit
-  - canonical-consumer-unresolvable-source-refused-with-accurate-diagnostic
-  - canonical-consumer-native-identity-spoof-cannot-claim-or-recover
-  - canonical-consumer-remote-advancement-after-claim-refuses-and-restores
-  - canonical-consumer-interrupted-transaction-recovers-claim-then-retries
-  - canonical-consumer-changed-own-authority-is-retained-for-recovery
-  - canonical-consumer-ignored-collision-preserves-retained-bytes
-  - canonical-consumer-unrelated-ignored-files-do-not-prevent-landing
-  - canonical-consumer-receipt-symlink-is-refused-without-target-mutation
-  - canonical-consumer-unreachable-remote-is-not-reported-as-published
-  - canonical-consumer-changed-destination-is-not-observed-or-landed
-  - canonical-consumer-terminal-own-row-is-not-resurrected-during-cleanup
-  - canonical-consumer-actor-completion-cannot-consume-foreign-receipts
-  - canonical-consumer-context-landing-does-not-promote-contributor
-  - canonical-consumer-renames-claim-both-paths-before-mutation
-  - canonical-consumer-retry-rotation-does-not-starve-later-pending-push
-  - canonical-consumer-submodule-target-refuses-without-touching-canonical
-  - canonical-consumer-two-helpers-do-not-mutate-canonical-concurrently
-  - canonical-consumer-claude-native-seat-lands-with-same-authority-contract
-  - canonical-consumer-wrong-native-binding-cannot-borrow-a-board-seat
-  - canonical-consumer-redirected-coordination-authority-fails-closed
-  - canonical-consumer-real-release-clears-interrupted-receipt-without-recreating-authority
-  - canonical-consumer-pending-claim-cleanup-precedes-unsupported-receipt-reporting
-  - canonical-consumer-post-merge-hook-cannot-overwrite-foreign-ignored-retained-file
-  - canonical-consumer-external-checkout-effects-cannot-touch-retained-work
-  - canonical-consumer-nonexecutable-post-merge-hook-is-not-run-and-does-not-block
-  - canonical-consumer-disabled-fsmonitor-does-not-block
-  - canonical-consumer-released-but-changed-row-is-not-silently-accepted-as-cleanup
-  - leased-readback-successful-start-and-recovery-return-fresh-owner-readback
-  - leased-readback-inspect-and-stop-refuse-stale-stamp-without-refresh-or-writes
-  - leased-readback-fresh-manual-pm-status-then-readonly-inspect-is-a-positive-control
-  - leased-readback-postcommit-remote-loss-reports-retained-revision-and-exact-replay
-  - leased-readback-postcommit-owner-release-is-not-hidden-by-refresh
-  - leased-readback-readback-closure-does-not-reuse-owner-refresh-after-invalidation
-  - leased-readback-owner-refresh-lock-contention-is-bounded-and-does-not-change-journal
-  - leased-readback-missing-lease-configuration-cannot-fall-back-to-local-admission
-  - leased-readback-leased-completion-uses-real-existing-consumers-and-replay
-  - leased-readback-unretained-fresh-stamp-reports-unavailable-not-current
-  - leased-readback-passive-native-readback-cannot-request-owner-reconciliation
-  - leased-readback-owner-reconciliation-cannot-hide-intervening-journal-append
-  - recovery-readback-recovery-after-manual-refresh-returns-current-owner-context
+  - metadata-timestamp-1
+  - metadata-timestamp-2
 - path: README.md
-  cases: *id001
-- path: skills/synthesis-agent-conformance/SKILL.md
-  cases: *id001
-- path: skills/synthesis-agent-conformance/scripts/session_context.py
   cases:
-  - native-repair-001
-  - native-repair-002
-  - native-repair-003
-  - native-repair-024
-  - native-repair-025
-  - native-repair-026
-  - native-repair-027
-  - native-repair-028
-  - native-repair-029
-- path: skills/synthesis-agent-conformance/scripts/test_session_context.py
-  cases:
-  - native-repair-001
-  - native-repair-002
-  - native-repair-003
-  - native-repair-024
-  - native-repair-025
-  - native-repair-026
-  - native-repair-027
-  - native-repair-028
-  - native-repair-029
+  - resolution-001
+  - resolution-002
+  - resolution-003
+  - resolution-004
+  - resolution-005
+  - resolution-006
+  - metadata-001
+  - metadata-002
+  - metadata-003
+  - metadata-004
+  - metadata-005
+  - metadata-006
+  - metadata-007
+  - release-metadata
+  - metadata-timestamp-1
+  - metadata-timestamp-2
 - path: skills/synthesis-autopilot/SKILL.md
-  cases: *id001
-- path: skills/synthesis-autopilot/scripts/controller.py
   cases:
-  - leased-readback-successful-start-and-recovery-return-fresh-owner-readback
-  - leased-readback-inspect-and-stop-refuse-stale-stamp-without-refresh-or-writes
-  - leased-readback-fresh-manual-pm-status-then-readonly-inspect-is-a-positive-control
-  - leased-readback-postcommit-remote-loss-reports-retained-revision-and-exact-replay
-  - leased-readback-postcommit-owner-release-is-not-hidden-by-refresh
-  - leased-readback-readback-closure-does-not-reuse-owner-refresh-after-invalidation
-  - leased-readback-owner-refresh-lock-contention-is-bounded-and-does-not-change-journal
-  - leased-readback-missing-lease-configuration-cannot-fall-back-to-local-admission
-  - leased-readback-leased-completion-uses-real-existing-consumers-and-replay
-  - leased-readback-unretained-fresh-stamp-reports-unavailable-not-current
-  - leased-readback-passive-native-readback-cannot-request-owner-reconciliation
-  - leased-readback-owner-reconciliation-cannot-hide-intervening-journal-append
-  - recovery-readback-recovery-after-manual-refresh-returns-current-owner-context
+  - resolution-001
+  - resolution-002
+  - resolution-003
+  - resolution-004
+  - resolution-005
+  - resolution-006
+  - metadata-001
+  - metadata-002
+  - metadata-003
+  - metadata-004
+  - metadata-005
+  - metadata-006
+  - metadata-007
+  - release-metadata
+  - metadata-timestamp-1
+  - metadata-timestamp-2
 - path: skills/synthesis-autopilot/scripts/native_codex.py
-  cases: &id002
-  - native-repair-030
-  - native-repair-031
-  - native-repair-032
-  - native-repair-033
-  - native-repair-034
-  - native-repair-035
-  - native-repair-036
-  - native-repair-037
-  - native-repair-038
-  - native-repair-039
-  - native-repair-040
-  - native-repair-041
-  - native-repair-042
-  - native-repair-043
-  - native-repair-044
-  - native-repair-045
-  - native-repair-046
-  - native-repair-047
-  - native-repair-048
-  - native-repair-049
-  - native-repair-050
-  - native-repair-051
-  - native-repair-052
-  - native-repair-053
-  - native-repair-054
-- path: skills/synthesis-autopilot/scripts/run_state.py
   cases:
-  - leased-readback-successful-start-and-recovery-return-fresh-owner-readback
-  - leased-readback-inspect-and-stop-refuse-stale-stamp-without-refresh-or-writes
-  - leased-readback-fresh-manual-pm-status-then-readonly-inspect-is-a-positive-control
-  - leased-readback-postcommit-remote-loss-reports-retained-revision-and-exact-replay
-  - leased-readback-postcommit-owner-release-is-not-hidden-by-refresh
-  - leased-readback-readback-closure-does-not-reuse-owner-refresh-after-invalidation
-  - leased-readback-owner-refresh-lock-contention-is-bounded-and-does-not-change-journal
-  - leased-readback-missing-lease-configuration-cannot-fall-back-to-local-admission
-  - leased-readback-leased-completion-uses-real-existing-consumers-and-replay
-  - leased-readback-unretained-fresh-stamp-reports-unavailable-not-current
-  - leased-readback-passive-native-readback-cannot-request-owner-reconciliation
-  - leased-readback-owner-reconciliation-cannot-hide-intervening-journal-append
-  - recovery-readback-recovery-after-manual-refresh-returns-current-owner-context
-- path: skills/synthesis-autopilot/scripts/test_controller_leased_readback.py
+  - metadata-001
+  - metadata-002
+  - metadata-003
+  - metadata-004
+  - metadata-005
+  - metadata-006
+  - metadata-007
+  - metadata-timestamp-1
+  - metadata-timestamp-2
+- path: skills/synthesis-autopilot/scripts/test_native_metadata.py
   cases:
-  - leased-readback-successful-start-and-recovery-return-fresh-owner-readback
-  - leased-readback-inspect-and-stop-refuse-stale-stamp-without-refresh-or-writes
-  - leased-readback-fresh-manual-pm-status-then-readonly-inspect-is-a-positive-control
-  - leased-readback-postcommit-remote-loss-reports-retained-revision-and-exact-replay
-  - leased-readback-postcommit-owner-release-is-not-hidden-by-refresh
-  - leased-readback-readback-closure-does-not-reuse-owner-refresh-after-invalidation
-  - leased-readback-owner-refresh-lock-contention-is-bounded-and-does-not-change-journal
-  - leased-readback-missing-lease-configuration-cannot-fall-back-to-local-admission
-  - leased-readback-leased-completion-uses-real-existing-consumers-and-replay
-  - leased-readback-unretained-fresh-stamp-reports-unavailable-not-current
-  - leased-readback-passive-native-readback-cannot-request-owner-reconciliation
-  - leased-readback-owner-reconciliation-cannot-hide-intervening-journal-append
-  - recovery-readback-recovery-after-manual-refresh-returns-current-owner-context
-- path: skills/synthesis-autopilot/scripts/test_controller_recovery_readback.py
-  cases:
-  - leased-readback-successful-start-and-recovery-return-fresh-owner-readback
-  - leased-readback-inspect-and-stop-refuse-stale-stamp-without-refresh-or-writes
-  - leased-readback-fresh-manual-pm-status-then-readonly-inspect-is-a-positive-control
-  - leased-readback-postcommit-remote-loss-reports-retained-revision-and-exact-replay
-  - leased-readback-postcommit-owner-release-is-not-hidden-by-refresh
-  - leased-readback-readback-closure-does-not-reuse-owner-refresh-after-invalidation
-  - leased-readback-owner-refresh-lock-contention-is-bounded-and-does-not-change-journal
-  - leased-readback-missing-lease-configuration-cannot-fall-back-to-local-admission
-  - leased-readback-leased-completion-uses-real-existing-consumers-and-replay
-  - leased-readback-unretained-fresh-stamp-reports-unavailable-not-current
-  - leased-readback-passive-native-readback-cannot-request-owner-reconciliation
-  - leased-readback-owner-reconciliation-cannot-hide-intervening-journal-append
-  - recovery-readback-recovery-after-manual-refresh-returns-current-owner-context
-- path: skills/synthesis-autopilot/scripts/test_native_codex.py
-  cases: *id002
+  - metadata-001
+  - metadata-002
+  - metadata-003
+  - metadata-004
+  - metadata-005
+  - metadata-006
+  - metadata-007
+  - metadata-timestamp-1
+  - metadata-timestamp-2
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
-  cases: *id001
+  cases:
+  - resolution-001
+  - resolution-002
+  - resolution-003
+  - resolution-004
+  - resolution-005
+  - resolution-006
+  - metadata-001
+  - metadata-002
+  - metadata-003
+  - metadata-004
+  - metadata-005
+  - metadata-006
+  - metadata-007
+  - release-metadata
+  - metadata-timestamp-1
+  - metadata-timestamp-2
 - path: skills/synthesis-project-management/SKILL.md
-  cases: *id001
-- path: skills/synthesis-project-management/scripts/coordination.py
   cases:
-  - leased-readback-successful-start-and-recovery-return-fresh-owner-readback
-  - leased-readback-inspect-and-stop-refuse-stale-stamp-without-refresh-or-writes
-  - leased-readback-fresh-manual-pm-status-then-readonly-inspect-is-a-positive-control
-  - leased-readback-postcommit-remote-loss-reports-retained-revision-and-exact-replay
-  - leased-readback-postcommit-owner-release-is-not-hidden-by-refresh
-  - leased-readback-readback-closure-does-not-reuse-owner-refresh-after-invalidation
-  - leased-readback-owner-refresh-lock-contention-is-bounded-and-does-not-change-journal
-  - leased-readback-missing-lease-configuration-cannot-fall-back-to-local-admission
-  - leased-readback-leased-completion-uses-real-existing-consumers-and-replay
-  - leased-readback-unretained-fresh-stamp-reports-unavailable-not-current
-  - leased-readback-passive-native-readback-cannot-request-owner-reconciliation
-  - leased-readback-owner-reconciliation-cannot-hide-intervening-journal-append
-  - recovery-readback-recovery-after-manual-refresh-returns-current-owner-context
-- path: skills/synthesis-project-management/scripts/peer_addressing.py
-  cases:
-  - native-repair-004
-  - native-repair-005
-  - native-repair-006
-  - native-repair-007
-  - native-repair-008
-  - native-repair-009
-  - native-repair-010
-  - native-repair-011
-  - native-repair-012
-  - native-repair-013
-  - native-repair-014
-  - native-repair-015
-  - native-repair-016
-  - native-repair-017
-  - native-repair-018
-  - native-repair-019
-  - native-repair-020
-  - native-repair-021
-  - native-repair-022
-  - native-repair-023
-- path: skills/synthesis-project-management/scripts/peer_send_gate.py
-  cases: &id003
-  - peer-consumer-non-peer-tools-and-in-process-targets-pass-without-a-board
-  - peer-consumer-named-teammates-pass-when-a-team-registers-them
-  - peer-consumer-display-names-and-refs-are-refused-as-addresses
-  - peer-consumer-socket-address-needs-a-receipt-then-passes
-  - peer-consumer-socket-that-no-longer-maps-to-the-resolved-session-is-refused
-  - peer-consumer-a-receipt-for-one-socket-does-not-admit-another
-  - peer-consumer-reply-may-copy-the-from-address-of-a-received-message
-  - peer-consumer-idle-subscription-without-text-needs-only-the-receipt
-  - peer-consumer-ccd-session-id-needs-a-matching-receipt
-  - peer-consumer-a-reclaimed-seat-is-not-shadowed-by-its-old-receipt
-  - peer-consumer-released-target-is-refused-even-with-a-receipt
-  - peer-consumer-message-must-carry-the-senders-board-id
-  - peer-consumer-sender-without-a-seat-is-refused
-  - peer-consumer-missing-session-id-and-unreadable-board-fail-closed
-  - peer-consumer-same-text-to-a-second-session-is-a-broadcast
-  - peer-consumer-codex-queue-needs-a-receipt-for-that-thread
-  - peer-consumer-shell-lane-boundary-is-stated-in-the-protocol-and-the-gate
-  - peer-consumer-literal-codex-queue-in-a-heredoc-body-is-not-a-send
-  - peer-consumer-thread-values-carried-as-data-are-never-selected
-  - peer-consumer-a-real-send-with-a-thread-is-still-the-codex-lane
-  - peer-consumer-a-nested-shell-string-send-is-still-detected
-  - peer-consumer-a-send-inside-a-quoted-command-substitution-is-still-detected
-  - peer-consumer-an-unquoted-heredoc-body-runs-its-substitutions
-  - peer-consumer-a-here-string-handed-to-a-shell-is-nested-execution
-  - peer-consumer-a-named-coprocess-runs-the-group-that-follows-its-name
-  - peer-consumer-nesting-past-the-bound-is-gated-on-the-raw-words-not-crashed
-  - peer-consumer-message-is-read-from-the-parsed-send-only
-  - peer-consumer-nested-send-passes-the-gate-end-to-end-with-a-receipt
-  - peer-consumer-unbalanced-quotes-fail-closed-on-the-raw-words
-  - peer-consumer-gate-process-blocks-with-exit-2-and-admits-with-exit-0
-  - peer-consumer-gate-process-fails-closed-when-the-call-cannot-be-evaluated
-  - peer-consumer-doctor-reports-seat-and-stores
-  - peer-consumer-gate-process-identity-failure-blocks-without-sender-attribution
-  - peer-consumer-gate-audit-failure-always-blocks
-  - peer-consumer-record-never-logs-an-allow-with-unresolved-identity
-  - peer-consumer-gate-real-unwritable-audit-blocks-otherwise-valid-receipt
-  - peer-consumer-doctor-identity-error-is-deterministic-diagnosis
-  - peer-consumer-doctor-seat-lookup-error-is-a-diagnostic
-  - peer-consumer-doctor-process-mixed-identity-has-no-traceback
-  - peer-consumer-non-peer-process-controls-remain-allowed-with-mixed-hints
+  - resolution-001
+  - resolution-002
+  - resolution-003
+  - resolution-004
+  - resolution-005
+  - resolution-006
+  - metadata-001
+  - metadata-002
+  - metadata-003
+  - metadata-004
+  - metadata-005
+  - metadata-006
+  - metadata-007
+  - release-metadata
+  - metadata-timestamp-1
+  - metadata-timestamp-2
 - path: skills/synthesis-project-management/scripts/project_state.py
   cases:
-  - native-repair-001
-  - native-repair-002
-  - native-repair-003
-  - native-repair-024
-  - native-repair-025
-  - native-repair-026
-  - native-repair-027
-  - native-repair-028
-  - native-repair-029
-- path: skills/synthesis-project-management/scripts/run_admission.py
+  - resolution-001
+  - resolution-002
+  - resolution-003
+  - resolution-004
+  - resolution-005
+  - resolution-006
+- path: skills/synthesis-project-management/scripts/test_project_resolution_read_cost.py
   cases:
-  - leased-readback-successful-start-and-recovery-return-fresh-owner-readback
-  - leased-readback-inspect-and-stop-refuse-stale-stamp-without-refresh-or-writes
-  - leased-readback-fresh-manual-pm-status-then-readonly-inspect-is-a-positive-control
-  - leased-readback-postcommit-remote-loss-reports-retained-revision-and-exact-replay
-  - leased-readback-postcommit-owner-release-is-not-hidden-by-refresh
-  - leased-readback-readback-closure-does-not-reuse-owner-refresh-after-invalidation
-  - leased-readback-owner-refresh-lock-contention-is-bounded-and-does-not-change-journal
-  - leased-readback-missing-lease-configuration-cannot-fall-back-to-local-admission
-  - leased-readback-leased-completion-uses-real-existing-consumers-and-replay
-  - leased-readback-unretained-fresh-stamp-reports-unavailable-not-current
-  - leased-readback-passive-native-readback-cannot-request-owner-reconciliation
-  - leased-readback-owner-reconciliation-cannot-hide-intervening-journal-append
-  - recovery-readback-recovery-after-manual-refresh-returns-current-owner-context
-- path: skills/synthesis-project-management/scripts/test_board_inbox.py
-  cases:
-  - native-repair-004
-  - native-repair-005
-  - native-repair-006
-  - native-repair-007
-  - native-repair-008
-  - native-repair-009
-  - native-repair-010
-  - native-repair-011
-  - native-repair-012
-  - native-repair-013
-  - native-repair-014
-  - native-repair-015
-  - native-repair-016
-  - native-repair-017
-  - native-repair-018
-  - native-repair-019
-  - native-repair-020
-  - native-repair-021
-  - native-repair-022
-  - native-repair-023
-- path: skills/synthesis-project-management/scripts/test_canonical_landing.py
-  cases:
-  - canonical-consumer-coordination-dependencies-resolve-to-sibling-modules
-  - canonical-consumer-real-push-lands-and-restores-only-own-authority
-  - canonical-consumer-unsafe-canonical-retained-after-successful-remote-push
-  - canonical-consumer-foreign-authority-blocks-even-disjoint-canonical-paths
-  - canonical-consumer-yielded-push-is-retried-by-completion-without-shell-snapshot
-  - canonical-consumer-command-boundaries-are-explicit-and-never-infer-publication
-  - canonical-consumer-supported-source-forms-bind-exact-commit
-  - canonical-consumer-sha-source-forms-bind-exact-commit
-  - canonical-consumer-hex-branch-name-falls-back-when-no-such-commit
-  - canonical-consumer-unresolvable-source-refused-with-accurate-diagnostic
-  - canonical-consumer-native-identity-spoof-cannot-claim-or-recover
-  - canonical-consumer-remote-advancement-after-claim-refuses-and-restores
-  - canonical-consumer-interrupted-transaction-recovers-claim-then-retries
-  - canonical-consumer-changed-own-authority-is-retained-for-recovery
-  - canonical-consumer-ignored-collision-preserves-retained-bytes
-  - canonical-consumer-unrelated-ignored-files-do-not-prevent-landing
-  - canonical-consumer-receipt-symlink-is-refused-without-target-mutation
-  - canonical-consumer-unreachable-remote-is-not-reported-as-published
-  - canonical-consumer-changed-destination-is-not-observed-or-landed
-  - canonical-consumer-terminal-own-row-is-not-resurrected-during-cleanup
-  - canonical-consumer-actor-completion-cannot-consume-foreign-receipts
-  - canonical-consumer-context-landing-does-not-promote-contributor
-  - canonical-consumer-renames-claim-both-paths-before-mutation
-  - canonical-consumer-retry-rotation-does-not-starve-later-pending-push
-  - canonical-consumer-submodule-target-refuses-without-touching-canonical
-  - canonical-consumer-two-helpers-do-not-mutate-canonical-concurrently
-  - canonical-consumer-claude-native-seat-lands-with-same-authority-contract
-  - canonical-consumer-wrong-native-binding-cannot-borrow-a-board-seat
-  - canonical-consumer-redirected-coordination-authority-fails-closed
-  - canonical-consumer-real-release-clears-interrupted-receipt-without-recreating-authority
-  - canonical-consumer-pending-claim-cleanup-precedes-unsupported-receipt-reporting
-  - canonical-consumer-post-merge-hook-cannot-overwrite-foreign-ignored-retained-file
-  - canonical-consumer-external-checkout-effects-cannot-touch-retained-work
-  - canonical-consumer-nonexecutable-post-merge-hook-is-not-run-and-does-not-block
-  - canonical-consumer-disabled-fsmonitor-does-not-block
-  - canonical-consumer-released-but-changed-row-is-not-silently-accepted-as-cleanup
-- path: skills/synthesis-project-management/scripts/test_peer_addressing.py
-  cases:
-  - native-repair-004
-  - native-repair-005
-  - native-repair-006
-  - native-repair-007
-  - native-repair-008
-  - native-repair-009
-  - native-repair-010
-  - native-repair-011
-  - native-repair-012
-  - native-repair-013
-  - native-repair-014
-  - native-repair-015
-  - native-repair-016
-  - native-repair-017
-  - native-repair-018
-  - native-repair-019
-  - native-repair-020
-  - native-repair-021
-  - native-repair-022
-  - native-repair-023
-- path: skills/synthesis-project-management/scripts/test_peer_send_gate.py
-  cases: *id003
-- path: skills/synthesis-project-management/scripts/test_project_state.py
-  cases:
-  - native-repair-001
-  - native-repair-002
-  - native-repair-003
-  - native-repair-024
-  - native-repair-025
-  - native-repair-026
-  - native-repair-027
-  - native-repair-028
-  - native-repair-029
+  - resolution-001
+  - resolution-002
+  - resolution-003
+  - resolution-004
+  - resolution-005
+  - resolution-006
 cases:
-- id: native-repair-001
+- id: resolution-001
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_native_identity_contract_accepts_each_canonical_explicit_path
-  motivating_defect: native identity contract accepts each canonical explicit path
-- id: native-repair-002
+  fixture: ../synthesis-project-management/scripts/test_project_resolution_read_cost.py::test_aliases_do_not_repeat_immutable_project_history
+  motivating_defect: aliases do not repeat immutable project history
+- id: resolution-002
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_native_identity_contract_muse_supplied_path_never_falls_back
-  motivating_defect: native identity contract muse supplied path never falls back
-- id: native-repair-003
+  fixture: ../synthesis-project-management/scripts/test_project_resolution_read_cost.py::test_read_memo_is_discarded_before_next_request
+  motivating_defect: read memo is discarded before next request
+- id: resolution-003
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_state.py::test_native_identity_contract_ambiguous_client_roots_refuse
-  motivating_defect: native identity contract ambiguous client roots refuse
-- id: native-repair-004
+  fixture: ../synthesis-project-management/scripts/test_project_resolution_read_cost.py::test_moving_git_selection_is_unresolved_not_stale_pass
+  motivating_defect: moving git selection is unresolved not stale pass
+- id: resolution-004
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_muse_identity_comes_from_the_exported_ref
-  motivating_defect: muse identity comes from the exported ref
-- id: native-repair-005
+  fixture: ../synthesis-project-management/scripts/test_project_resolution_read_cost.py::test_aliases_cannot_hide_divergent_causal_states
+  motivating_defect: aliases cannot hide divergent causal states
+- id: resolution-005
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_muse_hook_payload_is_not_misattributed_to_codex
-  motivating_defect: muse hook payload is not misattributed to codex
-- id: native-repair-006
+  fixture: ../synthesis-project-management/scripts/test_project_resolution_read_cost.py::test_each_physical_worktree_keeps_its_fresh_dirty_scan
+  motivating_defect: each physical worktree keeps its fresh dirty scan
+- id: resolution-006
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_explicit_codex_ref_seats_a_codex_session
-  motivating_defect: explicit codex ref seats a codex session
-- id: native-repair-007
+  fixture: ../synthesis-project-management/scripts/test_project_resolution_read_cost.py::test_moving_history_interpretation_invalidates_pinned_commit_read
+  motivating_defect: moving history interpretation invalidates pinned commit read
+- id: metadata-001
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_native_identity_contract_conflicting_muse_hook_hints_refuse
-  motivating_defect: native identity contract conflicting muse hook hints refuse
-- id: native-repair-008
+  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_metadata_is_typed_non_authority_observation
+  motivating_defect: metadata is typed non authority observation
+- id: metadata-002
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_native_identity_contract_explicit_muse_ref_is_not_reclassified_as_codex
-  motivating_defect: native identity contract explicit muse ref is not reclassified
-    as codex
-- id: native-repair-009
+  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_unknown_and_malformed_metadata_are_not_accepted
+  motivating_defect: unknown and malformed metadata are not accepted
+- id: metadata-003
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_addressing.py::test_native_identity_contract_unknown_hook_client_refuses
-  motivating_defect: native identity contract unknown hook client refuses
-- id: native-repair-010
+  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_metadata_envelope_refuses_foreign_or_unknown_fields
+  motivating_defect: metadata envelope refuses foreign or unknown fields
+- id: metadata-004
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_inbox_delivers_once_to_the_named_seat
-  motivating_defect: inbox delivers once to the named seat
-- id: native-repair-011
+  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_metadata_cannot_mask_cancel_or_user_instruction
+  motivating_defect: metadata cannot mask cancel or user instruction
+- id: metadata-005
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_project_history_before_the_claim_is_not_delivered_to_a_new_seat
-  motivating_defect: project history before the claim is not delivered to a new seat
-- id: native-repair-012
+  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_exact_source_readback_retains_metadata_and_detects_changed_bytes
+  motivating_defect: exact source readback retains metadata and detects changed bytes
+- id: metadata-006
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_unseated_session_receives_nothing_even_when_a_global_pointer_names_a_project
-  motivating_defect: unseated session receives nothing even when a global pointer
-    names a project
-- id: native-repair-013
+  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_source_never_turns_unrecognized_metadata_into_clear_coverage
+  motivating_defect: source never turns unrecognized metadata into clear coverage
+- id: metadata-007
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_codex_session_learns_its_identity
-  motivating_defect: codex session learns its identity
-- id: native-repair-014
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_no_session_id_means_silence
-  motivating_defect: no session id means silence
-- id: native-repair-015
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_live_inbox_refuses_stale_delivery_without_advancing_watermark
-  motivating_defect: live inbox refuses stale delivery without advancing watermark
-- id: native-repair-016
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_diagnostic_inbox_never_fetches_or_marks
-  motivating_defect: diagnostic inbox never fetches or marks
-- id: native-repair-017
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_hook_process_emits_additional_context_json_or_nothing
-  motivating_defect: hook process emits additional context json or nothing
-- id: native-repair-018
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_session_context_appends_the_inbox
-  motivating_defect: session context appends the inbox
-- id: native-repair-019
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_diagnostic_inbox_survives_a_stale_schema1_seat_file
-  motivating_defect: diagnostic inbox survives a stale schema1 seat file
-- id: native-repair-020
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_hook_payload_identity_honors_without_shell_session_export
-  motivating_defect: hook payload identity honors without shell session export
-- id: native-repair-021
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_per_turn_inbox_honors_open_requests
-  motivating_defect: per turn inbox honors open requests
-- id: native-repair-022
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_muse_wrapper_delivers_and_consumes
-  motivating_defect: muse wrapper delivers and consumes
-- id: native-repair-023
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_board_inbox.py::test_native_identity_contract_conflict_does_not_consume_inbox
-  motivating_defect: native identity contract conflict does not consume inbox
-- id: native-repair-024
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_rejected_claude_identity_cannot_write_receipts
-  motivating_defect: rejected claude identity cannot write receipts
-- id: native-repair-025
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_pending_claude_receipt_revalidates_before_promotion
-  motivating_defect: pending claude receipt revalidates before promotion
-- id: native-repair-026
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_claude_pending_transcript_is_never_shadowed_by_the_muse_store
-  motivating_defect: claude pending transcript is never shadowed by the muse store
-- id: native-repair-027
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_same_claude_session_retains_pending_and_bound_events
-  motivating_defect: same claude session retains pending and bound events
-- id: native-repair-028
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_native_identity_contract_muse_receipt_round_trip
-  motivating_defect: native identity contract muse receipt round trip
-- id: native-repair-029
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-agent-conformance/scripts/test_session_context.py::test_native_identity_contract_provenance_refuses_supplied_muse_path_damage
-  motivating_defect: native identity contract provenance refuses supplied muse path
-    damage
-- id: native-repair-030
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_rollout_item_completion_is_observation_not_tool_or_task_completion
-  motivating_defect: rollout item completion is observation not tool or task completion
-- id: native-repair-031
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_rollout_item_completion_refuses_malformed_or_foreign_records
-  motivating_defect: rollout item completion refuses malformed or foreign records
-- id: native-repair-032
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_rollout_item_unknown_status_and_failure_do_not_become_success
-  motivating_defect: rollout item unknown status and failure do not become success
-- id: native-repair-033
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_file_change_is_compact_observation_without_pair_or_permission
-  motivating_defect: file change is compact observation without pair or permission
-- id: native-repair-034
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_actual_agent_activity_and_compaction_shapes_are_observations
-  motivating_defect: actual agent activity and compaction shapes are observations
-- id: native-repair-035
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_agent_activity_and_compaction_reject_unqualified_shapes
-  motivating_defect: agent activity and compaction reject unqualified shapes
-- id: native-repair-036
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_qualification_separates_root_and_child
-  motivating_defect: qualification separates root and child
-- id: native-repair-037
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_response_identity_dedups_independent_of_cumulative_snapshot
-  motivating_defect: response identity dedups independent of cumulative snapshot
-- id: native-repair-038
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_conflicting_response_counters_have_same_identity_different_digest
-  motivating_defect: conflicting response counters have same identity different digest
-- id: native-repair-039
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_child_usage_does_not_claim_nonoverlap
-  motivating_defect: child usage does not claim nonoverlap
-- id: native-repair-040
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_invalid_counters_fail_closed
-  motivating_defect: invalid counters fail closed
-- id: native-repair-041
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_legacy_usage_is_not_another_response
-  motivating_defect: legacy usage is not another response
-- id: native-repair-042
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_generic_exec_remains_opaque
-  motivating_defect: generic exec remains opaque
-- id: native-repair-043
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_goal_reset_retains_native_epoch_material
-  motivating_defect: goal reset retains native epoch material
-- id: native-repair-044
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_unknown_native_goal_status_is_not_completion
-  motivating_defect: unknown native goal status is not completion
-- id: native-repair-045
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_goal_clear_and_interrupted_turn_do_not_complete_portable_task
-  motivating_defect: goal clear and interrupted turn do not complete portable task
-- id: native-repair-046
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_unbound_ack_and_unknown_grammar_are_not_facts
-  motivating_defect: unbound ack and unknown grammar are not facts
-- id: native-repair-047
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_native_model_goal_tool_only_no_raw_mutation_bypass
-  motivating_defect: native model goal tool only no raw mutation bypass
-- id: native-repair-048
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_request_shape_rejects_target_substitution_and_bad_budget
-  motivating_defect: request shape rejects target substitution and bad budget
-- id: native-repair-049
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_inputs_are_unchanged
-  motivating_defect: inputs are unchanged
-- id: native-repair-050
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_response_usage_incomplete_counters_are_not_countable
-  motivating_defect: response usage incomplete counters are not countable
-- id: native-repair-051
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_qualification_rejects_empty_requested_identity
-  motivating_defect: qualification rejects empty requested identity
-- id: native-repair-052
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_wire_usage_requires_schema_required_counters
-  motivating_defect: wire usage requires schema required counters
-- id: native-repair-053
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_ordinal_cannot_be_boolean
-  motivating_defect: ordinal cannot be boolean
-- id: native-repair-054
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_codex.py::CodexTests::test_combined_body_bound_applies_across_small_strings
-  motivating_defect: combined body bound applies across small strings
+  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_owner_journal_communication_metadata_preserves_current_invalidations
+  motivating_defect: owner journal communication metadata preserves current invalidations
 - id: release-metadata
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
-  motivating_defect: Client manifests and release metadata must agree.
-- id: peer-consumer-non-peer-tools-and-in-process-targets-pass-without-a-board
+  motivating_defect: Release manifests and public metadata must agree.
+- id: metadata-timestamp-1
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_non_peer_tools_and_in_process_targets_pass_without_a_board
-  motivating_defect: non peer tools and in process targets pass without a board
-- id: peer-consumer-named-teammates-pass-when-a-team-registers-them
+  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_supplied_metadata_timestamp_must_be_bounded_valid_and_aware
+  motivating_defect: supplied metadata timestamp must be bounded valid and aware
+- id: metadata-timestamp-2
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_named_teammates_pass_when_a_team_registers_them
-  motivating_defect: named teammates pass when a team registers them
-- id: peer-consumer-display-names-and-refs-are-refused-as-addresses
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_display_names_and_refs_are_refused_as_addresses
-  motivating_defect: display names and refs are refused as addresses
-- id: peer-consumer-socket-address-needs-a-receipt-then-passes
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_socket_address_needs_a_receipt_then_passes
-  motivating_defect: socket address needs a receipt then passes
-- id: peer-consumer-socket-that-no-longer-maps-to-the-resolved-session-is-refused
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_socket_that_no_longer_maps_to_the_resolved_session_is_refused
-  motivating_defect: socket that no longer maps to the resolved session is refused
-- id: peer-consumer-a-receipt-for-one-socket-does-not-admit-another
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_a_receipt_for_one_socket_does_not_admit_another
-  motivating_defect: a receipt for one socket does not admit another
-- id: peer-consumer-reply-may-copy-the-from-address-of-a-received-message
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_reply_may_copy_the_from_address_of_a_received_message
-  motivating_defect: reply may copy the from address of a received message
-- id: peer-consumer-idle-subscription-without-text-needs-only-the-receipt
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_idle_subscription_without_text_needs_only_the_receipt
-  motivating_defect: idle subscription without text needs only the receipt
-- id: peer-consumer-ccd-session-id-needs-a-matching-receipt
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_ccd_session_id_needs_a_matching_receipt
-  motivating_defect: ccd session id needs a matching receipt
-- id: peer-consumer-a-reclaimed-seat-is-not-shadowed-by-its-old-receipt
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_a_reclaimed_seat_is_not_shadowed_by_its_old_receipt
-  motivating_defect: a reclaimed seat is not shadowed by its old receipt
-- id: peer-consumer-released-target-is-refused-even-with-a-receipt
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_released_target_is_refused_even_with_a_receipt
-  motivating_defect: released target is refused even with a receipt
-- id: peer-consumer-message-must-carry-the-senders-board-id
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_message_must_carry_the_senders_board_id
-  motivating_defect: message must carry the senders board id
-- id: peer-consumer-sender-without-a-seat-is-refused
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_sender_without_a_seat_is_refused
-  motivating_defect: sender without a seat is refused
-- id: peer-consumer-missing-session-id-and-unreadable-board-fail-closed
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_missing_session_id_and_unreadable_board_fail_closed
-  motivating_defect: missing session id and unreadable board fail closed
-- id: peer-consumer-same-text-to-a-second-session-is-a-broadcast
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_same_text_to_a_second_session_is_a_broadcast
-  motivating_defect: same text to a second session is a broadcast
-- id: peer-consumer-codex-queue-needs-a-receipt-for-that-thread
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_codex_queue_needs_a_receipt_for_that_thread
-  motivating_defect: codex queue needs a receipt for that thread
-- id: peer-consumer-shell-lane-boundary-is-stated-in-the-protocol-and-the-gate
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_shell_lane_boundary_is_stated_in_the_protocol_and_the_gate
-  motivating_defect: shell lane boundary is stated in the protocol and the gate
-- id: peer-consumer-literal-codex-queue-in-a-heredoc-body-is-not-a-send
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_literal_codex_queue_in_a_heredoc_body_is_not_a_send
-  motivating_defect: literal codex queue in a heredoc body is not a send
-- id: peer-consumer-thread-values-carried-as-data-are-never-selected
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_thread_values_carried_as_data_are_never_selected
-  motivating_defect: thread values carried as data are never selected
-- id: peer-consumer-a-real-send-with-a-thread-is-still-the-codex-lane
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_a_real_send_with_a_thread_is_still_the_codex_lane
-  motivating_defect: a real send with a thread is still the codex lane
-- id: peer-consumer-a-nested-shell-string-send-is-still-detected
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_a_nested_shell_string_send_is_still_detected
-  motivating_defect: a nested shell string send is still detected
-- id: peer-consumer-a-send-inside-a-quoted-command-substitution-is-still-detected
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_a_send_inside_a_quoted_command_substitution_is_still_detected
-  motivating_defect: a send inside a quoted command substitution is still detected
-- id: peer-consumer-an-unquoted-heredoc-body-runs-its-substitutions
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_an_unquoted_heredoc_body_runs_its_substitutions
-  motivating_defect: an unquoted heredoc body runs its substitutions
-- id: peer-consumer-a-here-string-handed-to-a-shell-is-nested-execution
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_a_here_string_handed_to_a_shell_is_nested_execution
-  motivating_defect: a here string handed to a shell is nested execution
-- id: peer-consumer-a-named-coprocess-runs-the-group-that-follows-its-name
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_a_named_coprocess_runs_the_group_that_follows_its_name
-  motivating_defect: a named coprocess runs the group that follows its name
-- id: peer-consumer-nesting-past-the-bound-is-gated-on-the-raw-words-not-crashed
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_nesting_past_the_bound_is_gated_on_the_raw_words_not_crashed
-  motivating_defect: nesting past the bound is gated on the raw words not crashed
-- id: peer-consumer-message-is-read-from-the-parsed-send-only
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_message_is_read_from_the_parsed_send_only
-  motivating_defect: message is read from the parsed send only
-- id: peer-consumer-nested-send-passes-the-gate-end-to-end-with-a-receipt
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_nested_send_passes_the_gate_end_to_end_with_a_receipt
-  motivating_defect: nested send passes the gate end to end with a receipt
-- id: peer-consumer-unbalanced-quotes-fail-closed-on-the-raw-words
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_unbalanced_quotes_fail_closed_on_the_raw_words
-  motivating_defect: unbalanced quotes fail closed on the raw words
-- id: peer-consumer-gate-process-blocks-with-exit-2-and-admits-with-exit-0
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_gate_process_blocks_with_exit_2_and_admits_with_exit_0
-  motivating_defect: gate process blocks with exit 2 and admits with exit 0
-- id: peer-consumer-gate-process-fails-closed-when-the-call-cannot-be-evaluated
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_gate_process_fails_closed_when_the_call_cannot_be_evaluated
-  motivating_defect: gate process fails closed when the call cannot be evaluated
-- id: peer-consumer-doctor-reports-seat-and-stores
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_doctor_reports_seat_and_stores
-  motivating_defect: doctor reports seat and stores
-- id: peer-consumer-gate-process-identity-failure-blocks-without-sender-attribution
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_gate_process_identity_failure_blocks_without_sender_attribution
-  motivating_defect: gate process identity failure blocks without sender attribution
-- id: peer-consumer-gate-audit-failure-always-blocks
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_gate_audit_failure_always_blocks
-  motivating_defect: gate audit failure always blocks
-- id: peer-consumer-record-never-logs-an-allow-with-unresolved-identity
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_record_never_logs_an_allow_with_unresolved_identity
-  motivating_defect: record never logs an allow with unresolved identity
-- id: peer-consumer-gate-real-unwritable-audit-blocks-otherwise-valid-receipt
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_gate_real_unwritable_audit_blocks_otherwise_valid_receipt
-  motivating_defect: gate real unwritable audit blocks otherwise valid receipt
-- id: peer-consumer-doctor-identity-error-is-deterministic-diagnosis
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_doctor_identity_error_is_deterministic_diagnosis
-  motivating_defect: doctor identity error is deterministic diagnosis
-- id: peer-consumer-doctor-seat-lookup-error-is-a-diagnostic
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_doctor_seat_lookup_error_is_a_diagnostic
-  motivating_defect: doctor seat lookup error is a diagnostic
-- id: peer-consumer-doctor-process-mixed-identity-has-no-traceback
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_doctor_process_mixed_identity_has_no_traceback
-  motivating_defect: doctor process mixed identity has no traceback
-- id: peer-consumer-non-peer-process-controls-remain-allowed-with-mixed-hints
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_non_peer_process_controls_remain_allowed_with_mixed_hints
-  motivating_defect: non peer process controls remain allowed with mixed hints
-- id: canonical-consumer-coordination-dependencies-resolve-to-sibling-modules
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_coordination_dependencies_resolve_to_sibling_modules
-  motivating_defect: coordination dependencies resolve to sibling modules
-- id: canonical-consumer-real-push-lands-and-restores-only-own-authority
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_real_push_lands_and_restores_only_own_authority
-  motivating_defect: real push lands and restores only own authority
-- id: canonical-consumer-unsafe-canonical-retained-after-successful-remote-push
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_unsafe_canonical_retained_after_successful_remote_push
-  motivating_defect: unsafe canonical retained after successful remote push
-- id: canonical-consumer-foreign-authority-blocks-even-disjoint-canonical-paths
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_foreign_authority_blocks_even_disjoint_canonical_paths
-  motivating_defect: foreign authority blocks even disjoint canonical paths
-- id: canonical-consumer-yielded-push-is-retried-by-completion-without-shell-snapshot
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_yielded_push_is_retried_by_completion_without_shell_snapshot
-  motivating_defect: yielded push is retried by completion without shell snapshot
-- id: canonical-consumer-command-boundaries-are-explicit-and-never-infer-publication
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_command_boundaries_are_explicit_and_never_infer_publication
-  motivating_defect: command boundaries are explicit and never infer publication
-- id: canonical-consumer-supported-source-forms-bind-exact-commit
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_supported_source_forms_bind_exact_commit
-  motivating_defect: supported source forms bind exact commit
-- id: canonical-consumer-sha-source-forms-bind-exact-commit
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_sha_source_forms_bind_exact_commit
-  motivating_defect: sha source forms bind exact commit
-- id: canonical-consumer-hex-branch-name-falls-back-when-no-such-commit
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_hex_branch_name_falls_back_when_no_such_commit
-  motivating_defect: hex branch name falls back when no such commit
-- id: canonical-consumer-unresolvable-source-refused-with-accurate-diagnostic
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_unresolvable_source_refused_with_accurate_diagnostic
-  motivating_defect: unresolvable source refused with accurate diagnostic
-- id: canonical-consumer-native-identity-spoof-cannot-claim-or-recover
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_native_identity_spoof_cannot_claim_or_recover
-  motivating_defect: native identity spoof cannot claim or recover
-- id: canonical-consumer-remote-advancement-after-claim-refuses-and-restores
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_remote_advancement_after_claim_refuses_and_restores
-  motivating_defect: remote advancement after claim refuses and restores
-- id: canonical-consumer-interrupted-transaction-recovers-claim-then-retries
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_interrupted_transaction_recovers_claim_then_retries
-  motivating_defect: interrupted transaction recovers claim then retries
-- id: canonical-consumer-changed-own-authority-is-retained-for-recovery
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_changed_own_authority_is_retained_for_recovery
-  motivating_defect: changed own authority is retained for recovery
-- id: canonical-consumer-ignored-collision-preserves-retained-bytes
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_ignored_collision_preserves_retained_bytes
-  motivating_defect: ignored collision preserves retained bytes
-- id: canonical-consumer-unrelated-ignored-files-do-not-prevent-landing
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_unrelated_ignored_files_do_not_prevent_landing
-  motivating_defect: unrelated ignored files do not prevent landing
-- id: canonical-consumer-receipt-symlink-is-refused-without-target-mutation
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_receipt_symlink_is_refused_without_target_mutation
-  motivating_defect: receipt symlink is refused without target mutation
-- id: canonical-consumer-unreachable-remote-is-not-reported-as-published
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_unreachable_remote_is_not_reported_as_published
-  motivating_defect: unreachable remote is not reported as published
-- id: canonical-consumer-changed-destination-is-not-observed-or-landed
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_changed_destination_is_not_observed_or_landed
-  motivating_defect: changed destination is not observed or landed
-- id: canonical-consumer-terminal-own-row-is-not-resurrected-during-cleanup
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_terminal_own_row_is_not_resurrected_during_cleanup
-  motivating_defect: terminal own row is not resurrected during cleanup
-- id: canonical-consumer-actor-completion-cannot-consume-foreign-receipts
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_actor_completion_cannot_consume_foreign_receipts
-  motivating_defect: actor completion cannot consume foreign receipts
-- id: canonical-consumer-context-landing-does-not-promote-contributor
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_context_landing_does_not_promote_contributor
-  motivating_defect: context landing does not promote contributor
-- id: canonical-consumer-renames-claim-both-paths-before-mutation
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_renames_claim_both_paths_before_mutation
-  motivating_defect: renames claim both paths before mutation
-- id: canonical-consumer-retry-rotation-does-not-starve-later-pending-push
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_retry_rotation_does_not_starve_later_pending_push
-  motivating_defect: retry rotation does not starve later pending push
-- id: canonical-consumer-submodule-target-refuses-without-touching-canonical
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_submodule_target_refuses_without_touching_canonical
-  motivating_defect: submodule target refuses without touching canonical
-- id: canonical-consumer-two-helpers-do-not-mutate-canonical-concurrently
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_two_helpers_do_not_mutate_canonical_concurrently
-  motivating_defect: two helpers do not mutate canonical concurrently
-- id: canonical-consumer-claude-native-seat-lands-with-same-authority-contract
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_claude_native_seat_lands_with_same_authority_contract
-  motivating_defect: claude native seat lands with same authority contract
-- id: canonical-consumer-wrong-native-binding-cannot-borrow-a-board-seat
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_wrong_native_binding_cannot_borrow_a_board_seat
-  motivating_defect: wrong native binding cannot borrow a board seat
-- id: canonical-consumer-redirected-coordination-authority-fails-closed
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_redirected_coordination_authority_fails_closed
-  motivating_defect: redirected coordination authority fails closed
-- id: canonical-consumer-real-release-clears-interrupted-receipt-without-recreating-authority
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_real_release_clears_interrupted_receipt_without_recreating_authority
-  motivating_defect: real release clears interrupted receipt without recreating authority
-- id: canonical-consumer-pending-claim-cleanup-precedes-unsupported-receipt-reporting
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_pending_claim_cleanup_precedes_unsupported_receipt_reporting
-  motivating_defect: pending claim cleanup precedes unsupported receipt reporting
-- id: canonical-consumer-post-merge-hook-cannot-overwrite-foreign-ignored-retained-file
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_post_merge_hook_cannot_overwrite_foreign_ignored_retained_file
-  motivating_defect: post merge hook cannot overwrite foreign ignored retained file
-- id: canonical-consumer-external-checkout-effects-cannot-touch-retained-work
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_external_checkout_effects_cannot_touch_retained_work
-  motivating_defect: external checkout effects cannot touch retained work
-- id: canonical-consumer-nonexecutable-post-merge-hook-is-not-run-and-does-not-block
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_nonexecutable_post_merge_hook_is_not_run_and_does_not_block
-  motivating_defect: nonexecutable post merge hook is not run and does not block
-- id: canonical-consumer-disabled-fsmonitor-does-not-block
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_disabled_fsmonitor_does_not_block
-  motivating_defect: disabled fsmonitor does not block
-- id: canonical-consumer-released-but-changed-row-is-not-silently-accepted-as-cleanup
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_canonical_landing.py::test_released_but_changed_row_is_not_silently_accepted_as_cleanup
-  motivating_defect: released but changed row is not silently accepted as cleanup
-- id: leased-readback-successful-start-and-recovery-return-fresh-owner-readback
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_controller_leased_readback.py::test_successful_start_and_recovery_return_fresh_owner_readback
-  motivating_defect: successful start and recovery return fresh owner readback
-- id: leased-readback-inspect-and-stop-refuse-stale-stamp-without-refresh-or-writes
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_controller_leased_readback.py::test_inspect_and_stop_refuse_stale_stamp_without_refresh_or_writes
-  motivating_defect: inspect and stop refuse stale stamp without refresh or writes
-- id: leased-readback-fresh-manual-pm-status-then-readonly-inspect-is-a-positive-control
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_controller_leased_readback.py::test_fresh_manual_pm_status_then_readonly_inspect_is_a_positive_control
-  motivating_defect: fresh manual pm status then readonly inspect is a positive control
-- id: leased-readback-postcommit-remote-loss-reports-retained-revision-and-exact-replay
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_controller_leased_readback.py::test_postcommit_remote_loss_reports_retained_revision_and_exact_replay
-  motivating_defect: postcommit remote loss reports retained revision and exact replay
-- id: leased-readback-postcommit-owner-release-is-not-hidden-by-refresh
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_controller_leased_readback.py::test_postcommit_owner_release_is_not_hidden_by_refresh
-  motivating_defect: postcommit owner release is not hidden by refresh
-- id: leased-readback-readback-closure-does-not-reuse-owner-refresh-after-invalidation
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_controller_leased_readback.py::test_readback_closure_does_not_reuse_owner_refresh_after_invalidation
-  motivating_defect: readback closure does not reuse owner refresh after invalidation
-- id: leased-readback-owner-refresh-lock-contention-is-bounded-and-does-not-change-journal
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_controller_leased_readback.py::test_owner_refresh_lock_contention_is_bounded_and_does_not_change_journal
-  motivating_defect: owner refresh lock contention is bounded and does not change
-    journal
-- id: leased-readback-missing-lease-configuration-cannot-fall-back-to-local-admission
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_controller_leased_readback.py::test_missing_lease_configuration_cannot_fall_back_to_local_admission
-  motivating_defect: missing lease configuration cannot fall back to local admission
-- id: leased-readback-leased-completion-uses-real-existing-consumers-and-replay
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_controller_leased_readback.py::test_leased_completion_uses_real_existing_consumers_and_replay
-  motivating_defect: leased completion uses real existing consumers and replay
-- id: leased-readback-unretained-fresh-stamp-reports-unavailable-not-current
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_controller_leased_readback.py::test_unretained_fresh_stamp_reports_unavailable_not_current
-  motivating_defect: unretained fresh stamp reports unavailable not current
-- id: leased-readback-passive-native-readback-cannot-request-owner-reconciliation
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_controller_leased_readback.py::test_passive_native_readback_cannot_request_owner_reconciliation
-  motivating_defect: passive native readback cannot request owner reconciliation
-- id: leased-readback-owner-reconciliation-cannot-hide-intervening-journal-append
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_controller_leased_readback.py::test_owner_reconciliation_cannot_hide_intervening_journal_append
-  motivating_defect: owner reconciliation cannot hide intervening journal append
-- id: recovery-readback-recovery-after-manual-refresh-returns-current-owner-context
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_controller_recovery_readback.py::test_recovery_after_manual_refresh_returns_current_owner_context
-  motivating_defect: recovery after manual refresh returns current owner context
+  fixture: ../synthesis-autopilot/scripts/test_native_metadata.py::test_optional_metadata_timestamp_preserves_valid_native_forms
+  motivating_defect: optional metadata timestamp preserves valid native forms

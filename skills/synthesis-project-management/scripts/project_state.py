@@ -337,6 +337,27 @@ def _worktrees(repo: Path, *, git_runner=None) -> list[tuple[Path, str, str | No
     return records
 
 
+def _project_refs(repo: Path) -> dict[str, str]:
+    """Pin candidate names and replacement refs for one read, never across reads."""
+    text = _run(repo, "for-each-ref", "--format=%(refname)%00%(objectname)", "--",
+                "refs/heads", "refs/remotes",
+                os.environ.get("GIT_REPLACE_REF_BASE", "refs/replace/")).stdout
+    return dict(line.split("\0", 1) for line in text.splitlines())
+
+
+def _project_history_frontier(repo: Path) -> tuple[tuple[str, str | None], ...]:
+    """Git object IDs alone do not pin shallow or grafted history semantics."""
+    paths = _run(repo, "rev-parse", "--git-path", "shallow",
+                 "--git-path", "info/grafts").stdout.splitlines()
+    result = []
+    for raw in paths:
+        path = Path(raw)
+        if not path.is_absolute():
+            path = repo / path
+        result.append((str(path), _sha_file(path) if path.exists() else None))
+    return tuple(result)
+
+
 def _latest_project_commit(repo: Path, ref: str, relative: str) -> str | None:
     result = _run(repo, "log", "-1", "--format=%H", ref, "--", relative, check=False)
     value = result.stdout.strip()
@@ -570,6 +591,31 @@ def resolve_project(
         fetch_succeeded = False
 
     worktree_records = _worktrees(repo)
+    ref_snapshot = _project_refs(repo)
+    history_frontier = _project_history_frontier(repo)
+    # Aliases of one immutable Git object share metadata only inside this call.
+    # Physical worktrees, dirty hashes, manifests and claims are still read fresh.
+    metadata_by_commit: dict[str, tuple[str | None, str | None, str]] = {}
+    ancestry: dict[tuple[str, str], bool] = {}
+
+    def project_metadata(repository_head: str) -> tuple[str | None, str | None, str]:
+        if repository_head not in metadata_by_commit:
+            result = _run(repo, "log", "-1", "--format=%H%x00%cI", repository_head,
+                          "--", relative, check=False)
+            head, _, timestamp = result.stdout.strip().partition("\0")
+            metadata_by_commit[repository_head] = (
+                head if result.returncode == 0 and head else None,
+                _tree_at(repo, repository_head, relative),
+                timestamp if result.returncode == 0 else "",
+            )
+        return metadata_by_commit[repository_head]
+
+    def is_ancestor(older: str, newer: str) -> bool:
+        pair = (older, newer)
+        if pair not in ancestry:
+            ancestry[pair] = _is_ancestor(repo, older, newer)
+        return ancestry[pair]
+
     registered = {str(path) for path, _head, _branch in worktree_records}
     metadata_root = _common_git_dir(repo) / "worktrees"
     if metadata_root.is_dir():
@@ -588,12 +634,11 @@ def resolve_project(
     )
     issues.extend(manifest_issues)
     authoritative: list[Candidate] = []
-    for worktree, _repository_head, branch in worktree_records:
+    for worktree, repository_head, branch in worktree_records:
         project = worktree / relative
         if not project.is_dir():
             continue
-        project_head = _latest_project_commit(worktree, "HEAD", relative)
-        tree = _tree_at(worktree, "HEAD", relative)
+        project_head, tree, timestamp = project_metadata(repository_head)
         if not project_head or not tree:
             continue
         dirty = _dirty_project_files(worktree, relative)
@@ -605,7 +650,7 @@ def resolve_project(
             ref=branch,
             head=project_head,
             project_tree=tree,
-            timestamp=_timestamp(worktree, project_head),
+            timestamp=timestamp,
             dirty_files=dirty,
             session_id=owner,
         )
@@ -614,16 +659,14 @@ def resolve_project(
         if worktree == repo:
             candidates.append(Candidate(**{**asdict(candidate), "source": "worktree"}))
 
-    refs = _run(repo, "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes").stdout.splitlines()
-    for ref in refs:
-        if ref.endswith("/HEAD"):
+    for ref, repository_head in ref_snapshot.items():
+        if ref.endswith("/HEAD") or not ref.startswith(("refs/heads/", "refs/remotes/")):
             continue
-        project_head = _latest_project_commit(repo, ref, relative)
-        tree = _tree_at(repo, ref, relative)
+        project_head, tree, timestamp = project_metadata(repository_head)
         if not project_head or not tree:
             continue
         candidates.append(
-            Candidate("ref", None, None, ref, project_head, tree, _timestamp(repo, project_head))
+            Candidate("ref", None, None, ref, project_head, tree, timestamp)
         )
 
     if not authoritative:
@@ -693,7 +736,7 @@ def resolve_project(
         status = "CONFLICT"
         selected = None
     elif dirty_candidates and any(
-        dirty.head != other.head and _is_ancestor(repo, dirty.head, other.head)
+        dirty.head != other.head and is_ancestor(dirty.head, other.head)
         for dirty in dirty_candidates
         for other in candidates
         if other.source in {"canonical", "worktree", "ref"}
@@ -721,7 +764,7 @@ def resolve_project(
         maximal: list[Candidate] = []
         for candidate in unique.values():
             if any(
-                candidate.head != other.head and _is_ancestor(repo, candidate.head, other.head)
+                candidate.head != other.head and is_ancestor(candidate.head, other.head)
                 for other in unique.values()
             ):
                 continue
@@ -738,30 +781,40 @@ def resolve_project(
                 item for item in authoritative if item.project_tree == target.project_tree
             ]
             selected = matching_paths[0] if matching_paths else target
-            if fast_forward_canonical and selected.project_path is None:
-                if not fetch_succeeded:
-                    ok, reason = False, "automatic fast-forward requires a successful fetch"
-                elif not selected.ref or not selected.ref.startswith("refs/remotes/"):
-                    ok, reason = False, "selected state is not a fetched remote ref"
-                else:
-                    ok, reason = _safe_fast_forward(
-                        repo,
-                        selected.ref,
-                        selected.head,
-                        selected.project_tree,
-                        relative,
-                    )
-                if ok:
-                    selected = Candidate(
-                        "canonical", str((repo / relative).resolve()), str(repo), None,
-                        selected.head, selected.project_tree, selected.timestamp,
-                    )
-                else:
-                    issues.append(f"automatic fast-forward refused: {reason}")
         else:
             status = "UNKNOWN"
             selected = None
             issues.append("no committed project state could be ordered")
+
+    # A pinned object is immutable; the selection that named it is not. Reject a
+    # moving inventory before reporting success or attempting an optional owner
+    # fast-forward. This also prevents cached alias metadata masking a ref race.
+    if (_worktrees(repo) != worktree_records or _project_refs(repo) != ref_snapshot
+            or _project_history_frontier(repo) != history_frontier):
+        issues.append("Git project selection changed during resolution; retry a fresh read")
+        status = "UNKNOWN"
+        selected = None
+
+    if status == "PASS" and fast_forward_canonical and selected is not None and selected.project_path is None:
+        if not fetch_succeeded:
+            ok, reason = False, "automatic fast-forward requires a successful fetch"
+        elif not selected.ref or not selected.ref.startswith("refs/remotes/"):
+            ok, reason = False, "selected state is not a fetched remote ref"
+        else:
+            ok, reason = _safe_fast_forward(
+                repo,
+                selected.ref,
+                selected.head,
+                selected.project_tree,
+                relative,
+            )
+        if ok:
+            selected = Candidate(
+                "canonical", str((repo / relative).resolve()), str(repo), None,
+                selected.head, selected.project_tree, selected.timestamp,
+            )
+        else:
+            issues.append(f"automatic fast-forward refused: {reason}")
 
     if any(issue.startswith(("fetch failed", "unreadable", "coordination board", "coordination lease", "missing worktree")) for issue in issues) and status not in {"CONFLICT", "LOCAL_RECOVERABLE"}:
         status = "UNKNOWN"
