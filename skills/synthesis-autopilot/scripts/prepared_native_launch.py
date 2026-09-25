@@ -25,8 +25,9 @@ def _clock():return datetime.now(timezone.utc)
 
 
 def validate(payload):
-    expected={'permit_id','authority_ref','token_sha256','expires_at','max_wall_seconds','max_output_bytes'}
+    expected={'permit_id','authority_ref','token_sha256','expires_at','max_wall_seconds','max_output_bytes','native_posture'}
     if not isinstance(payload,dict) or set(payload)!=expected:raise ValueError('launch preparation fields are closed')
+    native_resume.posture_arguments(payload['native_posture'])
     run_state._id(payload['permit_id'],'launch permit')
     if not isinstance(payload['authority_ref'],str) or not payload['authority_ref']:raise ValueError('launch authority reference is required')
     value=payload['token_sha256']
@@ -99,6 +100,7 @@ def _grant(state,permit,token):
 
 def current_fence(project,state,grant,*,runtime_root=None):
     """Fresh passive issuer inspection: deliberately not native mutation admission."""
+    native_resume.posture_arguments(grant.get('native_posture'))
     import recovery_capsule
     selector=grant['issuer_selector']
     import autopilot
@@ -152,6 +154,7 @@ def execute(project,run_id,permit,token,*,runtime_root=None):
     project=Path(project).absolute();state=run_state.load_run(project,run_id)
     grant=_grant(state,permit,token)
     native_resume.transport_for(grant['client'])
+    native_resume.posture_arguments(grant.get('native_posture'))
     _step(project,run_id,permit,token,'reserve',runtime_root=runtime_root)
     state=run_state.load_run(project,run_id);grant=deepcopy(_grant(state,permit,token))
     grant['max_wall_seconds']=min(grant['max_wall_seconds'],max(.01,(run_state._time(grant['expires_at'])-_clock()).total_seconds()))
@@ -175,7 +178,7 @@ def execute(project,run_id,permit,token,*,runtime_root=None):
 def status_view(state):
     rows=state.get('extensions',{}).get('prepared_native_launch',{}).get('permits',{})
     return {'schema_version':1,'permits':{key:{field:deepcopy(row.get(field)) for field in
-        ('status','client','native_session_id','prepared_revision','expires_at','max_wall_seconds','outcome','cancel_reason')} for key,row in rows.items()},
+        ('status','client','native_session_id','prepared_revision','expires_at','max_wall_seconds','native_posture','outcome','cancel_reason')} for key,row in rows.items()},
         'scope':'One-shot native transport grant; no task acceptance or ownership transfer',
         'hosts':{'muse':'writer-lease transport','codex':'atomic admission unavailable','claude':'atomic admission unavailable'},
         'survival':{'process_loss':'UNKNOWN','app_exit':'UNKNOWN','logout':'UNKNOWN','reboot':'UNKNOWN','machine_transfer':'UNKNOWN'}}

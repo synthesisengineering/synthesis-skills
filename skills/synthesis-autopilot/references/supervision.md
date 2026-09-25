@@ -61,9 +61,37 @@ credential or an instruction for Console to impersonate the native owner.
 An actual current native agent can prepare one exact-session launch through
 controller `record(kind=launch_prepare)`. Required fields are `permit_id`,
 `authority_ref`, `token_sha256`, `expires_at`, `max_wall_seconds` and
-`max_output_bytes`. The authority reference must already be in the current run
+`max_output_bytes` and `native_posture`. The authority reference must already be in the current run
 contract. Enrollment, current effects, native invalidation, waits, children,
 inputs, instructions and resource admission must all permit continuation.
+
+The native posture is an explicit requested launch policy, not a reconstructed
+fact about an earlier host. Muse's `serve` sandbox is fixed for the process
+lifetime; a saved Session carries approval mode but does not establish the
+previous shell, write, trust or network settings. The owner must retain the
+original launch-policy evidence and preserve every known stricter restriction.
+If that evidence or the authority to select the requested policy is missing,
+do not prepare a grant by guessing the previous defaults.
+
+The supported closed object is `{"schema_version":1,"profile":"muse-restricted-v1",
+"sandbox_enabled":true,"network":"restricted","shell_enabled":true,
+"write_enabled":true,"workspace_trust":false,"approval_mode":"onRequest"}`.
+`shell_enabled` and `write_enabled` may be explicitly false to retain stricter
+restrictions. All other values and extra fields are refused. The journal binds
+this requested-policy object to the one-use permit; its booleans are not native
+enforcement attestations. Inherited environment, saved trust and policy precedence
+remain UNKNOWN unless independently established for the actual host generation.
+Before reservation and again before spawn,
+the consumer validates it and uses only fixed `serve` flags: network restricted,
+plus disable-shell or disable-write when selected. It never accepts raw flags,
+disables the sandbox, or enables workspace trust. Network, disabled shell and
+disabled write have explicit flags. Sandbox enabled and workspace trust disabled
+use documented native defaults by omitting their disable/trust flags; those
+omissions do not prove effective inherited-policy enforcement.
+After exact-session resume, the actual Session must report `onRequest`; missing
+or different approval state prevents `turn/start`. No approval-mode change is
+sent. The retained native trial supports this explicit profile; it does not
+qualify every possible historical or future host policy.
 
 The agent generates a fresh cryptographically random token, submits only its
 SHA256 digest, and supplies the token to the existing local Console adapter by a
@@ -108,8 +136,9 @@ attribution, manufacture claims, publish, or create another authority database.
 The implemented transport uses Muse MSP `session/resume`, its native exclusive
 writer lease, and `turn/start` with queue semantics. It binds the actual installed
 versioned binary and refuses changed bytes, a different/forked session, an active
-turn, wrong workspace or pending human request. It never changes native trust,
-sandbox, model, provider or approval settings. The source contains finite tests;
+turn, wrong workspace or pending human request. The fixed launch-argument
+mapping above is enforced; no model, provider, trust or approval reconfiguration
+is performed. The source contains finite tests;
 release/native receipts must separately bind the actual installed binary.
 Both directions of the stdio exchange are bounded, including write backpressure
 and shutdown. A terminal needs a typed, exact-session source range and nonempty

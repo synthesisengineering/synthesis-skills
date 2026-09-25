@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 from test_controller import engine,facade,world,invoke,request,start_request,state_of,attribute_recovery_fixture
 
+from test_native_resume import explicit_posture
+
 TOKEN='isolated-fixture-token-0123456789abcdef0123456789abcdef'
 
 
@@ -20,7 +22,7 @@ def prepared(facade,world):
     payload={'kind':'launch_prepare','permit_id':'permit1','authority_ref':'explicit-service-enrollment',
         'token_sha256':hashlib.sha256(TOKEN.encode()).hexdigest(),
         'expires_at':(datetime.now(timezone.utc)+timedelta(minutes=10)).isoformat(),
-        'max_wall_seconds':60,'max_output_bytes':65536}
+        'max_wall_seconds':60,'max_output_bytes':65536,'native_posture':explicit_posture()}
     result=invoke(facade,world,request('record',payload,state,'prepare-launch'))
     assert result['status']=='RECORDED',result
     return state_of(world,result)
@@ -199,7 +201,7 @@ def exact_prepared(engine, facade, world):
         'kind': 'launch_prepare', 'permit_id': 'permit1', 'authority_ref': 'explicit-service-enrollment',
         'token_sha256': hashlib.sha256(TOKEN.encode()).hexdigest(),
         'expires_at': (datetime.now(timezone.utc)+timedelta(minutes=10)).isoformat(),
-        'max_wall_seconds': 60, 'max_output_bytes': 65536}, state, 'prepare-launch')))
+        'max_wall_seconds': 60, 'max_output_bytes': 65536,'native_posture':explicit_posture()}, state, 'prepare-launch')))
     assert state['extensions']['prepared_native_launch']['permits']['permit1']['artifacts']
     return state
 
@@ -238,3 +240,54 @@ def test_exact_input_set_bound_by_grant_is_not_silently_extended(engine, facade,
         assert refusal is not None, 'prepared exact-input grant silently admitted a changed registered input set'
         assert after == before
 
+
+
+def test_owner_preparation_persists_closed_requested_native_posture(facade,world):
+    state=prepared(facade,world)
+    grant=state['extensions']['prepared_native_launch']['permits']['permit1']
+    assert grant['native_posture']==explicit_posture()
+    assert grant['native_posture'] is not explicit_posture()
+
+
+@pytest.mark.parametrize('change',['missing','network','sandbox','trust','extra-args','number-boolean'])
+def test_controller_rejects_unsupported_posture_without_grant_or_reservation(facade,world,change):
+    seed=start_request(world);seed['input']['outcome_contract']['authority_refs']=['explicit-service-enrollment']
+    state=state_of(world,invoke(facade,world,seed))
+    state=state_of(world,invoke(facade,world,request('record',{'kind':'supervision','action':'enroll',
+        'authority_ref':'explicit-service-enrollment','max_requests':4,'max_attempts':2,
+        'lease_seconds':30,'backoff_seconds':10},state,'enroll')))
+    payload={'kind':'launch_prepare','permit_id':'permit1','authority_ref':'explicit-service-enrollment',
+        'token_sha256':hashlib.sha256(TOKEN.encode()).hexdigest(),
+        'expires_at':(datetime.now(timezone.utc)+timedelta(minutes=10)).isoformat(),
+        'max_wall_seconds':60,'max_output_bytes':65536,'native_posture':explicit_posture()}
+    if change=='missing':payload.pop('native_posture')
+    elif change=='network':payload['native_posture']['network']='proxy-only'
+    elif change=='sandbox':payload['native_posture']['sandbox_enabled']=False
+    elif change=='trust':payload['native_posture']['workspace_trust']=True
+    elif change=='extra-args':payload['native_posture']['argv']=['--disable-sandbox']
+    else:payload['native_posture']['write_enabled']=1
+    with pytest.raises(ValueError,match='posture|fields'):
+        invoke(facade,world,request('record',payload,state,'invalid-posture'))
+    current=state_of(world,{'run_id':state['run_id']})
+    assert not current['extensions'].get('prepared_native_launch',{}).get('permits')
+    assert current==state
+
+
+def test_a_stricter_posture_survives_owner_journal_without_mutating_input(facade,world):
+    import prepared_native_launch as owner
+    original=explicit_posture();original.update(shell_enabled=False,write_enabled=False)
+    # The real controller binds the payload; a requested restriction is never
+    # silently converted to a host default or a broader permission.
+    seed=start_request(world);seed['input']['outcome_contract']['authority_refs']=['explicit-service-enrollment']
+    state=state_of(world,invoke(facade,world,seed))
+    state=state_of(world,invoke(facade,world,request('record',{'kind':'supervision','action':'enroll',
+        'authority_ref':'explicit-service-enrollment','max_requests':4,'max_attempts':2,
+        'lease_seconds':30,'backoff_seconds':10},state,'enroll')))
+    payload={'kind':'launch_prepare','permit_id':'strict','authority_ref':'explicit-service-enrollment',
+        'token_sha256':hashlib.sha256(TOKEN.encode()).hexdigest(),
+        'expires_at':(datetime.now(timezone.utc)+timedelta(minutes=10)).isoformat(),
+        'max_wall_seconds':60,'max_output_bytes':65536,'native_posture':original}
+    result=invoke(facade,world,request('record',payload,state,'strict-posture'))
+    assert result['status']=='RECORDED',result
+    grant=state_of(world,result)['extensions']['prepared_native_launch']['permits']['strict']
+    assert grant['native_posture']==original and original['shell_enabled'] is False and original['write_enabled'] is False

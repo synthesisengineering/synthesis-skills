@@ -15,7 +15,7 @@ def test_resume_requires_exact_idle_unforked_native_owner(defect):
     import native_resume
     grant={'native_session_id':'01990000-0000-7000-8000-000000000022','workspace':'/fixture'}
     reply={'session':{'sessionId':grant['native_session_id'],'status':'idle','activeTurnId':None,
-                     'workspaceRoot':'/fixture','forkedFrom':None,'path':'/fixture/log'},'pendingRequests':[]}
+                     'workspaceRoot':'/fixture','forkedFrom':None,'path':'/fixture/log','approvalMode':{'mode':'onRequest','source':'startup','lastCommandId':None}},'pendingRequests':[]}
     if defect=='session':reply['session']['sessionId']='foreign'
     elif defect=='active':reply['session'].update(status='running',activeTurnId='active')
     elif defect=='fork':reply['session']['forkedFrom']={'sessionId':'original'}
@@ -28,7 +28,7 @@ def test_valid_exact_resume_is_only_transport_admission():
     import native_resume
     grant={'native_session_id':'01990000-0000-7000-8000-000000000022','workspace':'/fixture'}
     reply={'session':{'sessionId':grant['native_session_id'],'status':'idle','activeTurnId':None,
-                     'workspaceRoot':'/fixture','forkedFrom':None,'path':'/fixture/log'},'pendingRequests':[]}
+                     'workspaceRoot':'/fixture','forkedFrom':None,'path':'/fixture/log','approvalMode':{'mode':'onRequest','source':'startup','lastCommandId':None}},'pendingRequests':[]}
     assert native_resume.validate_resumed(grant,reply)['sessionId']==grant['native_session_id']
 
 
@@ -65,7 +65,7 @@ def test_owned_launch_refuses_bad_admission_and_retains_unknown(monkeypatch,fail
     import hashlib,time
     grant={'client':'muse','native_session_id':'01990000-0000-7000-8000-000000000022','workspace':'/fixture',
         'binary':{'path':'/fixture/binary','sha256':'a'*64,'size':4},'max_wall_seconds':30,'max_output_bytes':65536,
-        'resume_command_id':n.command_id(),'turn_command_id':n.command_id()}
+        'resume_command_id':n.command_id(),'turn_command_id':n.command_id(),'native_posture':explicit_posture()}
     calls=[]
     class RPC:
         def __init__(self,*a,**kw):self.wire=hashlib.sha256();self.size=0;self.stderr=b'';self.process=SimpleNamespace(returncode=0);self.deadline=time.monotonic()+30
@@ -73,7 +73,7 @@ def test_owned_launch_refuses_bad_admission_and_retains_unknown(monkeypatch,fail
         def call(self,method,payload):
             calls.append(method)
             if method=='session/resume':return {'session':{'sessionId':'foreign' if failure=='wrong-session' else grant['native_session_id'],
-                'status':'idle','activeTurnId':None,'forkedFrom':None,'workspaceRoot':'/fixture','path':'/fixture/log'},'pendingRequests':[]}
+                'status':'idle','activeTurnId':None,'forkedFrom':None,'workspaceRoot':'/fixture','path':'/fixture/log','approvalMode':{'mode':'onRequest','source':'startup','lastCommandId':None}},'pendingRequests':[]}
             return {'commandId':grant['turn_command_id'],'status':'accepted','disposition':'queued' if failure=='queued' else 'started','startedNewTurn':failure!='queued','turnId':'native-turn'}
         def terminal(self,*args):raise TimeoutError('synthetic native timeout')
         def close(self):pass
@@ -94,13 +94,13 @@ def test_submit_ack_is_bounded_inside_owner_lock(monkeypatch):
  from types import SimpleNamespace
  grant={'client':'muse','native_session_id':'01990000-0000-7000-8000-000000000022','workspace':'/fixture',
    'binary':{'path':'/fixture/binary','sha256':'a'*64,'size':4},'max_wall_seconds':900,'max_output_bytes':65536,
-   'resume_command_id':n.command_id(),'turn_command_id':n.command_id()}
+   'resume_command_id':n.command_id(),'turn_command_id':n.command_id(),'native_posture':explicit_posture()}
  class RPC:
   def __init__(self,*a,**kw):
    self.deadline=time.monotonic()+900;self.wire=hashlib.sha256();self.size=0;self.stderr=b'';self.process=SimpleNamespace(returncode=0)
   def initialize(self):return {}
   def call(self,method,payload):
-   if method=='session/resume':return {'session':{'sessionId':grant['native_session_id'],'status':'idle','activeTurnId':None,'forkedFrom':None,'workspaceRoot':'/fixture','path':'/fixture/log'},'pendingRequests':[]}
+   if method=='session/resume':return {'session':{'sessionId':grant['native_session_id'],'status':'idle','activeTurnId':None,'forkedFrom':None,'workspaceRoot':'/fixture','path':'/fixture/log','approvalMode':{'mode':'onRequest','source':'startup','lastCommandId':None}},'pendingRequests':[]}
    assert self.deadline-time.monotonic() <= 11, 'native ack must not hold run lock for the entire 900-second turn budget'
    return {'commandId':grant['turn_command_id'],'status':'accepted','disposition':'started','startedNewTurn':True,'turnId':'actual-test-turn'}
   def terminal(self,*args):
@@ -184,7 +184,7 @@ time.sleep(30)
 
 
 
-@pytest.mark.parametrize('mode', ['valid', 'wrong-ack', 'active-resume', 'missing-range', 'empty-range', 'foreign-range', 'empty-cursor', 'wrong-session-type'])
+@pytest.mark.parametrize('mode', ['valid', 'wrong-ack', 'active-resume', 'missing-range', 'empty-range', 'foreign-range', 'empty-cursor', 'wrong-session-type', 'missing-approval', 'weakened-approval'])
 def test_exact_native_wire_submission_and_terminal_source_binding(monkeypatch, tmp_path, mode):
     import native_resume as native
     identity = '01990000-0000-7000-8000-000000000022'
@@ -198,7 +198,9 @@ for raw in sys.stdin:
  if method=='initialized':continue
  result={}
  if method=='session/resume':
-  session={'sessionId':identity,'status':'running' if mode=='active-resume' else 'idle','activeTurnId':None,'workspaceRoot':workspace,'forkedFrom':None,'path':workspace+'/native-fixture.jsonl'}
+  session={'sessionId':identity,'status':'running' if mode=='active-resume' else 'idle','activeTurnId':None,'workspaceRoot':workspace,'forkedFrom':None,'path':workspace+'/native-fixture.jsonl','approvalMode':{'mode':'onRequest','source':'startup','lastCommandId':None}}
+  if mode=='missing-approval':session.pop('approvalMode')
+  if mode=='weakened-approval':session['approvalMode']['mode']='autoApprove'
   result={'session':[] if mode=='wrong-session-type' else session,'pendingRequests':[]}
  if method=='turn/start':
   turn=request['params']['commandId']
@@ -213,7 +215,7 @@ for raw in sys.stdin:
     actual = subprocess.Popen
     observed_process = []
     def fake_native(arguments, **kwargs):
-        assert arguments == ['/declared/synthetic-native', 'serve']
+        assert arguments == ['/declared/synthetic-native', 'serve', '--sandbox-network', 'restricted']
         assert kwargs['cwd'] == str(tmp_path)
         process = actual([sys.executable, '-u', '-c', code, mode, str(tmp_path), identity, str(wire)], **kwargs)
         observed_process.append(process)
@@ -221,7 +223,7 @@ for raw in sys.stdin:
     grant = {'client': 'muse', 'native_session_id': identity, 'workspace': str(tmp_path),
         'binary': {'path': '/declared/synthetic-native', 'sha256': 'a'*64, 'size': 4},
         'max_wall_seconds': 2, 'max_output_bytes': 65536,
-        'resume_command_id': native.command_id(), 'turn_command_id': native.command_id()}
+        'resume_command_id': native.command_id(), 'turn_command_id': native.command_id(),'native_posture':explicit_posture()}
     monkeypatch.setattr(native.subprocess, 'Popen', fake_native)
     monkeypatch.setattr(native, 'binary_identity', lambda _: dict(grant['binary']))
     result = None
@@ -243,4 +245,64 @@ for raw in sys.stdin:
             'ifBusy': 'queue', 'input': [{'type': 'text', 'text': 'Declared synthetic prompt'}]}
     else:
         assert result['status'] == 'unknown', 'malformed or foreign native source reference cannot establish a verified terminal'
+        if mode in {'missing-approval','weakened-approval'}:assert 'turn/start' not in [row['method'] for row in frames]
 
+
+
+# Native-policy repair: synthetic protocol/process inputs, actual owner argv.
+def explicit_posture():
+    return {'schema_version':1,'profile':'muse-restricted-v1','sandbox_enabled':True,
+            'network':'restricted','shell_enabled':True,'write_enabled':True,
+            'workspace_trust':False,'approval_mode':'onRequest'}
+
+
+def test_actual_transport_argv_retains_admitted_restricted_network(monkeypatch,tmp_path):
+    import native_resume as native
+    import subprocess,sys
+    seen=[];real=subprocess.Popen
+    grant={'client':'muse','native_session_id':'01990000-0000-7000-8000-000000000022','workspace':str(tmp_path),
+        'binary':{'path':'/synthetic/muse','sha256':'a'*64,'size':4},'max_wall_seconds':1,'max_output_bytes':65536,
+        'resume_command_id':native.command_id(),'turn_command_id':native.command_id(),'native_posture':explicit_posture()}
+    def process(args,**kwargs):
+        seen.append(args)
+        return real([sys.executable,'-I','-B','-c','raise SystemExit(0)'],**kwargs)
+    monkeypatch.setattr(native,'binary_identity',lambda _:grant['binary'])
+    monkeypatch.setattr(native.subprocess,'Popen',process)
+    result=native.launch(grant,'synthetic',send_admitted=lambda call:call(),cancelled=lambda:False)
+    assert result['status']=='unknown' and result['task_accepted'] is False
+    assert seen==[['/synthetic/muse','serve','--sandbox-network','restricted']]
+
+
+@pytest.mark.parametrize('change',['missing','network','sandbox','trust','approval','boolean-number','unknown-key'])
+def test_unadmitted_native_posture_cannot_start_a_process(monkeypatch,change):
+    import native_resume as native
+    grant={'client':'muse','native_posture':explicit_posture(),
+        'binary':{'path':'/synthetic/muse','sha256':'a'*64,'size':4},'workspace':'/synthetic',
+        'max_wall_seconds':1,'max_output_bytes':65536,'native_session_id':'synthetic'}
+    if change=='missing':grant.pop('native_posture')
+    elif change=='network':grant['native_posture']['network']='unrestricted'
+    elif change=='sandbox':grant['native_posture']['sandbox_enabled']=False
+    elif change=='trust':grant['native_posture']['workspace_trust']=True
+    elif change=='approval':grant['native_posture']['approval_mode']='autoApprove'
+    elif change=='boolean-number':grant['native_posture']['shell_enabled']=1
+    else:grant['native_posture']['extra_args']=['--disable-sandbox']
+    calls=[]
+    monkeypatch.setattr(native,'binary_identity',lambda _:grant['binary'])
+    monkeypatch.setattr(native,'MuseConnection',lambda *args,**kwargs:calls.append((args,kwargs)))
+    with pytest.raises(ValueError,match='posture'):native.launch(grant,'synthetic',send_admitted=lambda call:call(),cancelled=lambda:False)
+    assert calls==[]
+
+
+@pytest.mark.parametrize('mode',[None,'autoApprove','never',True,{'mode':'onRequest'}])
+def test_resumed_native_approval_is_verified_before_new_turn(mode):
+    import native_resume as native
+    grant={'native_session_id':'exact-session','workspace':'/fixture','native_posture':explicit_posture()}
+    reply={'session':{'sessionId':'exact-session','status':'idle','activeTurnId':None,'forkedFrom':None,
+        'workspaceRoot':'/fixture','path':'/fixture/source','approvalMode':{'mode':mode,'source':'startup','lastCommandId':None}},'pendingRequests':[]}
+    with pytest.raises(ValueError,match='approval'):native.validate_resumed(grant,reply)
+
+
+def test_stricter_explicit_write_and_shell_controls_are_never_removed():
+    import native_resume as native
+    posture=explicit_posture();posture.update(shell_enabled=False,write_enabled=False)
+    assert native.posture_arguments(posture)==('--sandbox-network','restricted','--disable-write','--disable-shell')

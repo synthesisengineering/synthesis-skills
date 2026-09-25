@@ -2,7 +2,11 @@
 
 Muse's writer lease is required before sending a queued turn. Other transports
 remain unavailable until they provide an atomic same-session ownership seam.
-No permissions, trust settings, provider, model or approval mode are changed.
+The explicit owner request determines fixed host-construction arguments.
+Sandbox enabled and workspace trust disabled rely on documented native defaults;
+argument construction alone does not attest effective inherited-policy enforcement.
+Saved session metadata does not establish the previous host's sandbox posture.
+No trust, provider, model or approval reconfiguration is performed.
 """
 from __future__ import annotations
 import hashlib
@@ -46,6 +50,29 @@ def transport_for(client):
     return 'muse-msp-writer-lease'
 
 
+def posture_arguments(posture):
+    """Closed requested policy, never arbitrary flags or inferred old defaults.
+
+    Muse's serve posture is fixed for the host lifetime. MSP cannot restore it
+    from a saved session. A native owner must explicitly request this supported
+    restricted profile, preserving any stricter known shell/write restrictions.
+    """
+    fields={'schema_version','profile','sandbox_enabled','network','shell_enabled',
+        'write_enabled','workspace_trust','approval_mode'}
+    if (not isinstance(posture,dict) or set(posture)!=fields
+        or type(posture['schema_version']) is not int or posture['schema_version']!=1
+        or posture['profile']!='muse-restricted-v1'
+        or any(type(posture[name]) is not bool for name in
+            ('sandbox_enabled','shell_enabled','write_enabled','workspace_trust'))
+        or posture['sandbox_enabled'] is not True or posture['network']!='restricted'
+        or posture['workspace_trust'] is not False or posture['approval_mode']!='onRequest'):
+        raise ValueError('native posture is missing, malformed or unsupported; original host policy is not inferred')
+    result=['--sandbox-network','restricted']
+    if not posture['write_enabled']:result.append('--disable-write')
+    if not posture['shell_enabled']:result.append('--disable-shell')
+    return tuple(result)
+
+
 def installed_binary(client):
     transport_for(client)
     launcher=shutil.which('muse')
@@ -83,6 +110,12 @@ def validate_resumed(grant,reply):
         or not isinstance(session.get('path'),str) or not session['path']
         or reply.get('pendingRequests')!=[]):
         raise ValueError('native resume did not acquire the exact idle session without pending human requests')
+    mode=session.get('approvalMode')
+    if (not isinstance(mode,dict) or mode.get('mode')!='onRequest'
+        or not isinstance(mode.get('source'),str) or not mode['source']
+        or 'lastCommandId' not in mode
+        or not (mode['lastCommandId'] is None or isinstance(mode['lastCommandId'],str) and 0<len(mode['lastCommandId'])<=512)):
+        raise ValueError('native resumed approval mode is not verified onRequest; no new turn is admitted')
     return session
 
 
@@ -254,16 +287,19 @@ class MuseConnection:
 
 def launch(grant,prompt,*,send_admitted,cancelled):
     transport_for(grant['client'])
+    arguments=posture_arguments(grant.get('native_posture'))
     if binary_identity(grant['binary']['path'])!=grant['binary']:
         raise ValueError('native executable changed after owner preparation')
-    rpc=MuseConnection(grant['binary']['path'],grant['workspace'],timeout=grant['max_wall_seconds'],max_bytes=grant['max_output_bytes'])
-    outcome={'status':'unknown','task_accepted':False,'native_session_id':grant['native_session_id']}
+    rpc=MuseConnection(grant['binary']['path'],grant['workspace'],timeout=grant['max_wall_seconds'],max_bytes=grant['max_output_bytes'],extra_args=arguments)
+    outcome={'status':'unknown','task_accepted':False,'native_session_id':grant['native_session_id'],
+        'requested_native_posture':dict(grant['native_posture'])}
     try:
         rpc.initialize()
         resumed=rpc.call('session/resume',{'commandId':grant['resume_command_id'],
             'sessionId':grant['native_session_id'],'excludeItems':True})
         session=validate_resumed(grant,resumed)
         outcome['native_source_path']=session['path']
+        outcome['resumed_approval_mode']=dict(session['approvalMode'])
         if cancelled():raise ValueError('prepared launch was cancelled before native turn')
         def send():
             original_deadline=rpc.deadline
