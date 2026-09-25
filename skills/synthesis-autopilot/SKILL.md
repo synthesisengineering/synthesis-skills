@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.0.0"
+  version: "3.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -104,9 +104,13 @@ wait for a clear window. Do not write through overlapping claims.
 
 ## Decisions and delegation
 
-Execute choices determined by the user's constraints. For an open technical
-choice, apply the thinking framework, decide and record why. Batch user-only
-questions while continuing independent work. Use the existing structured
+Use the shared [decision-ownership contract](../synthesis-thinking-framework/references/decision-ownership.md).
+Execute choices already decided by the user or determined by the user's
+constraints. For a delegated technical choice, apply the thinking framework,
+decide and record why. Preserve an explicitly requested review cadence. Batch
+material principal ambiguity and human-only actions while continuing independent
+authorized work. Existing valid user grants retain their stated scope; a packet
+record or reviewer verdict does not grant permission. Use the existing structured
 question tool for concise questions and the decision-packet skill for complex
 review packages. Generate packets with that skill's `scripts/build_packet.py`,
 never reimplemented inline. Prepare the concrete artifact before requesting
@@ -156,6 +160,13 @@ termination and scheduler deletion need observation, not inference.
 Use actual domain acceptance: software consumers, source-grounded research,
 reader purpose and factual fidelity for writing, data reconciliation, target
 read-back for browser operations, and cold recovery for project knowledge.
+Freeze the task's required dimensions, source universe and acceptance methods
+before observing outcomes. Use the [domain-quality contract](references/domain-quality.md)
+for task-specific rubrics and calibrated judgments. Preserve PASS, FAIL and
+UNKNOWN: missing evidence cannot become a pass, and a stylistic preference
+cannot veto valid work unless the task made that preference a requirement.
+Keep objective consumer observations separate from model judgments; neither
+substitutes for the other when both are required.
 Independence means a distinct reviewer or evidence source, not multiple votes
 from the same assumptions. A test process is not automatically an independent
 test design. Budget exploration where uncertainty justifies it, then assess the
@@ -226,7 +237,13 @@ current run journal, outstanding effects and the next ready task.
 - [Clients and recovery](references/clients-and-recovery.md): supported surfaces,
   native Stop behavior, continuation evidence, migration and diagnosis.
 - [Evaluation](references/evaluation.md): artifact corpus, calibration, controlled
-  and system comparisons, fault matrix and reviewed improvement proposals.
+  and strongest-native comparisons, frozen task clusters, complete episode and
+  cost accounting, uncertainty and reviewed improvement proposals.
+- [Domain quality](references/domain-quality.md): frozen task-specific rubrics,
+  source-grounded judgments, calibration and tri-state acceptance.
+- [Decision ownership](../synthesis-thinking-framework/references/decision-ownership.md):
+  delegated choices, material principal ambiguity, human-only dependencies and
+  the boundary between a decision record and an actual grant.
 
 Dependencies retain their ownership: project management admits paths and peers;
 context lifecycle/checkpoint preserve project state; thinking chooses approaches;

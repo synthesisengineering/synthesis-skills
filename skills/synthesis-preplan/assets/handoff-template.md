@@ -10,6 +10,7 @@ This file is the template the `synthesis-preplan` skill fills and previews to th
 | `{TICKET_URL}` | Full URL to the ticket. `none` if no tracker. | yes |
 | `{DECISIONS_FILE_PATH}` | Path to the decisions file written in Step 5. | yes |
 | `{BRANCH_BASE}` | Base branch the new work stacks on. | yes |
+| `{EXECUTION_CONTRACT}` | Mode, controlling instruction, decision owners, delegated scope and remaining approval gates from the decision summary. | yes |
 | `{WORKFLOW_DOC_PATH}` | **Resolved absolute path** to the bundled `references/commit-by-commit.md`, as it exists on the machine the planner runs on. See "Why this slot is absolute" below. | yes |
 | `{PROJECT_LENSES_BLOCK}` | Populated when the project flags specific lenses (privacy, security, etc.); an empty string otherwise. See "Project-lenses block" below. | optional |
 
@@ -26,7 +27,14 @@ Now let's write a plan. Use the commit-by-commit workflow defined in `{WORKFLOW_
 **Branch base:** {BRANCH_BASE}
 **Locked decisions:** {DECISIONS_FILE_PATH}
 
-Read the locked decisions file in full before drafting. The decisions are non-negotiable inputs to the plan — they were arrived at through explicit Q&A in the pre-planning skill and the user has already confirmed each one. If drafting the plan would require deviating from a locked decision, surface that as an open question rather than silently deviating.
+{EXECUTION_CONTRACT}
+
+Read the decisions file in full before drafting, including each decision's owner
+and authority source. Some choices were directed by the user; others were
+determined by constraints or selected under delegation. Do not relabel them all
+as individual user approvals. Follow the shared decision ownership contract
+linked from the workflow. New factual counterevidence returns the affected
+premise to its owner and invalidates dependent checks, preserving unrelated work.
 
 {PROJECT_LENSES_BLOCK}
 
@@ -36,7 +44,7 @@ The commit-by-commit workflow at `{WORKFLOW_DOC_PATH}` is the canonical referenc
 
 ### Step 0, before any file is touched
 
-The plan's todo list opens with these two items, and they run once, after the plan is approved and before the first edit:
+The plan's todo list opens with these two items, and they run once, after the plan is approved or resolved under delegation and before the first edit:
 
 1. Write the full todo list — every cycle step for every commit, plus the end-of-plan block. In full, not grown commit by commit: a list that arrives one commit at a time cannot show what is being skipped.
 2. Create and check out the branch on the base named above, and confirm with `git branch --show-current` that the merge target is not checked out.
@@ -54,7 +62,7 @@ Each commit's todo list must include these as **separate, explicit** items — n
 5. Audit commit N (run the isolated `synthesis-code-audit` skill, or your project's equivalent, on the commit's diff)
 6. Amend if findings (the amend-over-new-commit rule applies — see below)
 7. Full gate on commit N, once, after the amend (the whole-tree suite, including any container-backed integration tests), plus a re-run of the fast checks
-8. Pause for user approval before commit N+1's brief
+8. Checkpoint before commit N+1's brief; continue delegated work or wait at an explicit supervised/action gate
 
 The brief's **Verify** section is split into *fast checks* (step 3) and *the full gate* (step 7). The full gate runs exactly once per commit and only after the audit's findings are amended in. Running it before the audit wastes a full run, because the audit routinely produces amendments and that run then tested code that no longer exists.
 
@@ -74,8 +82,8 @@ After the last commit's per-commit cycle finishes, the plan's todo list must inc
 2. End-to-end verification against a real runtime, exercising:
    - The golden path
    - Edge cases: boundary inputs (max/min/empty/oversize), malformed inputs, auth boundaries, concurrency (process kill mid-flight if durability is claimed), adversarial values (PII-shaped strings, injection-shaped strings, Unicode edge cases), and confirmation that every documented error status code is actually returned
-3. Test-sufficiency self-review — judge whether the testing is enough to send to review with confidence. **First ground every candidate gap in real, shipping behavior**: confirm it covers an intended, in-design surface on a code path real users reach (check the design, the feature-flag registry, and the code). Do NOT add instrumentation/tests/abstractions for speculative, flag-gated, prototype, or not-yet-designed elements — closing a "gap" on a non-product surface is itself over-reach; leave it or delete the dead UI. Then enumerate the real gaps: **untested layers** (new code with no automated test — glue/integration code like UI effects, hooks, wiring, middleware is the usual blind spot); **wired-but-never-run surfaces** (implemented and audited but never executed against a real runtime — treat as unverified, not a pass); and **unobserved branches** (fallbacks/the `else` of a new conditional, error paths, alternate surfaces like desktop vs mobile, every documented status code). For each real gap, close it (run it or add a test) or consciously surface it in the PR with the residual-risk rationale.
-4. Plan-conformance review — did each commit do what was approved, does the accumulated drift change anything locked in the decisions file, **and are the plan's own remaining gates still executable** (a gate written for a positive outcome misfires when the plan's central question resolves negative, and a gate that restates facts rather than referencing the artifact of record can require writing falsehoods)
+3. Test-sufficiency self-review — judge whether the testing is enough to send to review with confidence. **First ground every candidate gap in real, shipping behavior**: confirm it covers an intended, in-design surface on a code path real users reach (check the design, the feature-flag registry, and the code). Do NOT add instrumentation/tests/abstractions for speculative, flag-gated, prototype, or not-yet-designed elements — closing a "gap" on a non-product surface is itself over-reach; leave it or delete the dead UI. Then enumerate the real gaps: **untested layers** (new code with no automated test — glue/integration code like UI effects, hooks, wiring, middleware is the usual blind spot); **wired-but-never-run surfaces** (implemented and audited but never executed against a real runtime — treat as unverified, not a pass); and **unobserved branches** (fallbacks/the `else` of a new conditional, error paths, alternate surfaces like desktop vs mobile, every documented status code). For each real gap, close it or route its residual-risk decision to the recorded owner. The designated integrator may decide technical sufficiency within delegated acceptance criteria; changing a required criterion needs its actual owner's authority. Surface the rationale in the PR and keep missing evidence unverified.
+4. Plan-conformance review — did each commit follow its recorded plan and decision owners, does the accumulated drift change anything locked in the decisions file, **and are the plan's own remaining gates still executable** (a gate written for a positive outcome misfires when the plan's central question resolves negative, and a gate that restates facts rather than referencing the artifact of record can require writing falsehoods)
 5. Branch-wide reconciliation — two checks no per-commit audit can see, because each was scoped to its own diff and to the branch rather than to what it merges into. **Re-derive any number the plan allocated in a shared append-only file** (changelog or decision rows, ticket keys, migration versions) against the **merge target**, not the branch base, and renumber; re-verify any "existing entries untouched" invariant against the merge target too; and tell the merger which target the allocation was derived against, since only the merge pins it. **Sweep any convention discovered mid-plan** back over the commits that predate it, deciding sweep-or-accept once rather than applying it forward only
 6. Address findings as **new commits** — the amend-over-new-commit rule does NOT apply at end of plan
 7. The project's changelog section, where it keeps one: one heading carrying the ticket key, with the PR number left as the project's placeholder
@@ -91,16 +99,16 @@ Produce the plan as a document with this exact structure:
 1. **Title + metadata** — ticket key/URL, branch base, decisions-file path, date.
 2. **Goal** — what the work buys the system, in plain terms.
 3. **Context** — current state, why now, what it builds on, constraints found in the codebase.
-4. **Decisions** — ALL decisions, rewritten into the plan and grouped by topic (decision / choice / why). Include not only the locked Q&A decisions from the decisions file but every decision taken from the ticket, project conventions, and the codebase. The plan must be self-contained on decisions.
+4. **Decisions** — ALL decisions, rewritten into the plan and grouped by topic (decision / choice / why / owner and source / reopening condition), with execution mode and remaining gates. Include not only the locked Q&A decisions from the decisions file but every decision taken from the ticket, project conventions, and the codebase. The plan must be self-contained on decisions.
 5. **Commits** — in execution sequence. Each commit:
    - heading = the commit's own top-level goal;
    - **Goal** (one line) · **Character** (`mechanical` or `judgment` — determinate once the plan is read, or a choice still being made inside the commit; diff size is not the signal) · **Changes** (what + files) · **Verification** (concrete, testable steps with expected results, split into fast checks and the full gate) · **Risks to flag to audit** (what the per-commit audit must scrutinize).
-   - Commits are always run in order — do NOT include ordering, dependency, or "depends on commit N" notes; sequence is implicit. (Operation order inside a single commit, e.g. within one migration, is a Verification/Risk item.)
+   - In this serial commit lane, sequence supplies the dependency order. Retain the larger dependency graph for independent delegated work alongside it. Intra-commit operation order belongs in Verification/Risks.
    - Every commit must be independently testable and sized as one coherent reviewable unit — none too large or too small.
 6. **E2E strategy** — explicit end-to-end validation for the whole change: golden path plus edge cases (boundaries, malformed input, auth boundaries, concurrency, adversarial values, every documented error code).
 7. **Mandatory gates** — as explicit todo items, not prose: the two Step 0 items above (write the full todo list, then create and check out the branch and confirm it), then the nine end-of-plan todo items listed under "End-of-plan steps" above, in that order. (The first five of those are the review gates; the last four are the findings commits, the changelog, the PR, and the backfill.)
 
-Strict adherence to the locked decisions; plans that diverge are returned for revision. The per-commit **Verification** and **Risks to flag to audit** subsections are the mandatory verify and audit todos — establish them in the plan, never improvise at execution time.
+Follow the recorded decisions and route evidence-backed amendments to their owners. The per-commit **Verification** and **Risks to flag to audit** subsections are mandatory verify and audit todos; establish them in the plan. Delegation changes approval cadence, not the required quality or action boundaries.
 
 ---
 
@@ -119,16 +127,16 @@ When the project flags specific lenses as priorities for this work (privacy, sec
 ```
 **Project lenses apply.** This ticket touches areas the project flags
 under <name the lenses: e.g. privacy, security, accessibility>. Apply
-those lenses alongside the standard code-review dimensions. The
-trade-off rule applies: prefer the lens-preserving option when costs
-are equivalent; surface the gap and take the cheap path when costs
-diverge. These considerations belong inside every audit pass
+those lenses alongside the standard code-review dimensions. Evaluate
+tradeoffs against the user's constraints and acceptance criteria;
+cost does not itself authorize weakening a required protection.
+These considerations belong inside every audit pass
 (per-commit and end-of-plan), not as a separate gate.
 ```
 
 ## Notes for the pre-planning skill
 
-- Preview the filled template inline before handing off to the planner. Tell the user: "Preview before I hand this to the planner — edit anything, or say 'go'."
+- Show the filled template before handing off. In supervised mode wait for the requested review; under delegation record the checkpoint and continue.
 - If the user provides an edited version, use it verbatim. Don't re-apply slot replacements after the user edits.
 - Hand the final prompt to your planning step — a dedicated plan mode, a planning subagent, or a fresh planning pass in a clean context. The plan output is the next thing the user reads.
-- Do not include conversation context, prior reasoning, or commentary in the prompt to the planner. The locked decisions file plus this prompt are the complete handoff.
+- Include the controlling instruction's source and execution contract, not unrelated conversation history. The decisions file and this prompt must carry sufficient authority and constraints for the planner to continue correctly.

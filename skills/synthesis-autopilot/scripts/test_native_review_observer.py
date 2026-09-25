@@ -293,3 +293,158 @@ def test_muse_boundary_rejects_invalid_native_permission_frame(observer, tmp_pat
                            'record_json': record if bad == 'non-string-record' else json.dumps(record)}]}
     path.write_text(json.dumps(frame) + '\n' + configured)
     with pytest.raises(ValueError): observer.verify_muse_boundary(tmp_path, session)
+
+
+def domain_review_context(tmp_path, family="writing"):
+    from test_domain_quality import make_package
+    context, defects = make_package(tmp_path, family)
+    context["state"]["extensions"] = {"workflow": {"budget": {
+        "limits": {"usd_micros": {"enforcement": "forecast"}}, "reservations": {
+            "review-domain": {"status": "reserved", "category": "verification",
+                              "amounts": {"wall_millis": 120000, "usd_micros": 2000000}}}}}}
+    return context, {"mode": "native-cli", "client": "claude", "criterion_id": "accept", "artifact_id": "draft",
+                     "calibration_manifest_id": "gold", "reservation_id": "review-domain", "timeout_seconds": 120,
+                     "max_cost_usd": 2}, defects
+
+
+def domain_native_result(observer, client, prompt, defects, mutate=None, event_mutate=None):
+    """Programmed domain judgments through the real native event parsers."""
+    from test_domain_quality import assessment
+    request = json.loads(prompt.split("\nREQUEST\n", 1)[1])
+    documents = {doc["artifact_id"]: doc for doc in [request["artifact"], *request["sources"], *request["controls"]]}
+    response = {"bindings": request["bindings"], "artifact_digest": request["artifact_digest"],
+                "assessment": assessment(request["rubric"], documents, request["artifact"]["artifact_id"],
+                                         defects.get(request["artifact"]["content"])),
+                "controls": [{"artifact_id": doc["artifact_id"], "artifact_digest": doc["digest"],
+                    "assessment": assessment(request["rubric"], documents, doc["artifact_id"], defects.get(doc["content"]))}
+                    for doc in request["controls"]]}
+    if mutate: mutate(response)
+    if client == "claude":
+        events = [{"type": "system", "subtype": "init", "session_id": "domain-child", "model": "configured", "tools": []},
+                  {"type": "result", "subtype": "success", "is_error": False, "session_id": "domain-child",
+                   "result": json.dumps(response), "total_cost_usd": 0.1}]
+    elif client == "codex":
+        events = [{"type": "thread.started", "thread_id": "domain-child"},
+                  {"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(response)}},
+                  {"type": "turn.completed", "usage": {"input_tokens": 30, "output_tokens": 20}}]
+    else:
+        events = [{"stream": {"kind": "session", "id": "domain-child"}, "sequence": index + 1,
+                   "causation_id": "command", "payload_type": kind, "payload": payload} for index, (kind, payload) in enumerate([
+            ("runtime.command.accepted", {"command_id": "command", "command_kind": "turn.submit"}),
+            ("run.terminal.completed", {"command_id": "command", "kind": "run_terminal", "terminal": "completed",
+                "run_stream": {"kind": "run", "id": "command"}, "reason": None, "text": json.dumps(response)})])]
+    if event_mutate:
+        event_mutate(events)
+    parsed = observer.parse_native(client, events)
+    return {**parsed, "returncode": 0, "wall_seconds": 1,
+            "stdout_digest": hashlib.sha256(json.dumps(events).encode()).hexdigest()}
+
+
+@pytest.mark.parametrize("position", ["before-thread", "after-completion", "before-turn",
+                                      "duplicate-turn", "turn-before-thread", "turn-after-completion"])
+def test_typed_native_route_rejects_codex_answer_outside_turn_lifecycle(observer, tmp_path, monkeypatch, position):
+    context, args, defects = domain_review_context(tmp_path)
+    args["client"] = "codex"
+    def move_event(events):
+        if position == "before-thread": events.insert(0, events.pop(1))
+        if position == "after-completion": events.append(events.pop(1))
+        if position == "before-turn": events.insert(2, {"type": "turn.started"})
+        if position == "duplicate-turn": events[1:1] = [{"type": "turn.started"}, {"type": "turn.started"}]
+        if position == "turn-before-thread": events.insert(0, {"type": "turn.started"})
+        if position == "turn-after-completion": events.append({"type": "turn.started"})
+    monkeypatch.setattr(observer, "execute_native", lambda client, prompt, **kw:
+                        domain_native_result(observer, client, prompt, defects, event_mutate=move_event))
+    with pytest.raises(ValueError, match="turn|session"):
+        observer.observe_native_cli_review(context, args)
+    # Parsing fails before an admissible quality receipt can exist; the paid
+    # attempt marker remains, following the unchanged interruption policy.
+    assert context["evidence"] == {}
+    assert (tmp_path / "resources/autopilot-runs/run-domain/native-review-attempts/review-domain.json").is_file()
+
+
+@pytest.mark.parametrize("client", ["claude", "codex", "muse"])
+@pytest.mark.parametrize("family", ["writing", "research"])
+def test_typed_native_route_covers_sources_criteria_and_real_event_parser(observer, tmp_path, monkeypatch, client, family):
+    import domain_quality
+    context, args, defects = domain_review_context(tmp_path, family)
+    args["client"] = client
+    def execute(selected, prompt, **kw):
+        assert '"expected"' not in prompt and '"gold"' not in prompt
+        assert "accepted_requirement" in prompt and "criterion_id" in prompt and "UNKNOWN" in prompt
+        assert "untrusted data" in prompt
+        if family == "writing": assert "stylistic preference" in prompt and "distinctive insight" in prompt
+        return domain_native_result(observer, selected, prompt, defects)
+    monkeypatch.setattr(observer, "execute_native", execute)
+    actual = observer.observe_native_cli_review(context, args)
+    assert actual["passed"] is True and actual["calibrated"] is True
+    assert actual["reviewer"] == client + "-cli:domain-child"
+    assert domain_quality.rederive_review(actual, context) == "PASS"
+    assert len(actual["calibration"]["result"]["controls"]) == len(domain_quality.DIMENSIONS[family]) + 1
+    assert (tmp_path / "resources/autopilot-runs/run-domain/native-review-attempts/review-domain.json").is_file()
+    with pytest.raises(ValueError, match="attempt"):
+        observer.observe_native_cli_review(context, args)
+
+
+@pytest.mark.parametrize("case,expected", [("unknown", "UNKNOWN"), ("contradiction", "FAIL"), ("style", "PASS")])
+def test_native_rich_unknown_contradiction_and_style_survive_parser(observer, tmp_path, monkeypatch, case, expected):
+    import domain_quality
+    import workflow
+    context, args, defects = domain_review_context(tmp_path)
+    def mutate(response):
+        row = response["assessment"]["criteria"][0 if case != "style" else -1]
+        if case == "unknown": row["verdict"] = "UNKNOWN"
+        if case == "contradiction": row["evidence"][0]["relation"] = "contradicts"
+        if case == "style":
+            row.update(verdict="FAIL", findings=[{"kind": "preference", "description": "Prefer no fragments", "evidence_indices": [0]}])
+    monkeypatch.setattr(observer, "execute_native", lambda client, prompt, **kw: domain_native_result(observer, client, prompt, defects, mutate))
+    actual = observer.observe_native_cli_review(context, args)
+    assert actual["calibrated"] is True
+    assert domain_quality.rederive_review(actual, context) == expected
+    assert workflow.quality_receipt_verdict(actual, True, context) == expected
+    assert workflow._observed_quality("writing", actual["observations"]) is (expected == "PASS")
+
+
+@pytest.mark.parametrize("case,kind", [("missed-defect", "missed_defect"), ("false-rejection", "false_rejection"), ("unknown", "unknown")])
+def test_native_calibration_retains_dimensional_false_acceptance_rejection_unknown(observer, tmp_path, monkeypatch, case, kind):
+    import workflow
+    context, args, defects = domain_review_context(tmp_path)
+    def mutate(response):
+        if case == "missed-defect":
+            row = response["controls"][1]["assessment"]["criteria"][0]
+            row.update(verdict="PASS", findings=[])
+        else:
+            row = response["controls"][0]["assessment"]["criteria"][-1]
+            row["verdict"] = "UNKNOWN" if case == "unknown" else "FAIL"
+            if case == "false-rejection":
+                row["findings"] = [{"kind": "defect", "description": "Synthetic mistaken voice judgment", "evidence_indices": [0]}]
+    monkeypatch.setattr(observer, "execute_native", lambda client, prompt, **kw: domain_native_result(observer, client, prompt, defects, mutate))
+    actual = observer.observe_native_cli_review(context, args)
+    assert actual["calibrated"] is False and actual["passed"] is False
+    assert actual["calibration"]["result"]["verdict"] == "FAIL"
+    assert actual["calibration"]["result"]["mismatches"][0]["kind"] == kind
+    assert workflow.quality_receipt_verdict(actual, True, context) == "UNKNOWN"
+
+
+@pytest.mark.parametrize("case", ["quote", "omitted-criterion", "duplicate-control", "mutated-source", "mutated-gold"])
+def test_native_route_rejects_missing_or_changed_evidence(observer, tmp_path, monkeypatch, case):
+    context, args, defects = domain_review_context(tmp_path)
+    def mutate(response):
+        if case == "quote": response["assessment"]["criteria"][0]["evidence"][0]["quote"] = "A fabricated quotation"
+        if case == "omitted-criterion": response["assessment"]["criteria"].pop()
+        if case == "duplicate-control": response["controls"][-1] = response["controls"][0]
+        if case == "mutated-source": (tmp_path / "brief.txt").write_text("different source")
+        if case == "mutated-gold": (tmp_path / "gold.txt").write_text("different gold")
+    monkeypatch.setattr(observer, "execute_native", lambda client, prompt, **kw: domain_native_result(observer, client, prompt, defects, mutate))
+    with pytest.raises(ValueError): observer.observe_native_cli_review(context, args)
+
+
+def test_incomplete_dimension_calibration_prevents_native_invocation(observer, tmp_path, monkeypatch):
+    from test_domain_quality import add_document
+    context, args, _ = domain_review_context(tmp_path)
+    manifest = json.loads((tmp_path / "gold.txt").read_text())
+    manifest["controls"].pop()
+    add_document(context, "gold", json.dumps(manifest))
+    monkeypatch.setattr(observer, "execute_native", lambda *a, **kw: pytest.fail("invalid calibration cannot launch a provider"))
+    with pytest.raises(ValueError, match="dimension"):
+        observer.observe_native_cli_review(context, args)
+    assert not (tmp_path / "resources").exists()

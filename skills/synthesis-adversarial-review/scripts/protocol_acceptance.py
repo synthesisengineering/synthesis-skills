@@ -126,17 +126,26 @@ def review_errors(text: str) -> list[str]:
 def autopilot_errors(text: str) -> list[str]:
     errors: list[str] = []
     _, sections = section_map(text)
+    # Autopilot routes to this skill instead of duplicating its detailed review
+    # protocol. Check the actual owner edge and call site, not obsolete prose
+    # that used to live in an inlined orchestration section.
+    frontmatter = text.split("---", 2)[1] if text.startswith("---\n") else ""
+    dependencies = re.search(r"^depends_on:\s*\[(.*?)\]\s*$", frontmatter, re.MULTILINE)
+    if not dependencies or "synthesis-adversarial-review" not in re.findall(
+        r'[\"\']([^\"\']+)[\"\']', dependencies.group(1)
+    ):
+        errors.append("autopilot does not declare the adversarial-review owner dependency")
     require_terms(
         sections,
-        "Cross-Agent Orchestration",
-        (
-            "direct session-to-session dispatch",
-            "principal courier crossings",
-            "round-trip budget",
-            "principal's outcome",
-            "generation N+1",
-            "generation N+2",
-        ),
+        "Verify outcomes",
+        ("adversarial review", "declared package", "substantiated"),
+        errors,
+    )
+    require_terms(
+        sections,
+        "Decisions and delegation",
+        ("../synthesis-thinking-framework/references/decision-ownership.md",
+         "existing authenticated session addressing", "principal", "budget"),
         errors,
     )
     return errors

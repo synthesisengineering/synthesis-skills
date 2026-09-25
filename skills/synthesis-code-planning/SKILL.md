@@ -1,19 +1,21 @@
 ---
 name: synthesis-code-planning
-description: "Structured approach to code generation, implementing features, and writing code. Use when asked to generate code, implement a feature, write code, or tackle a coding task. Analyzes the task, generates multiple approaches with trade-offs, selects the optimal solution, and implements it."
+description: "Structured approach to code generation, implementing features, and writing code. Use when asked to generate code, implement a feature, write code, or tackle a coding task. Applies constraints, compares remaining viable approaches, resolves delegated technical choices, and implements the selected solution with evidence."
 license: "CC0-1.0"
 user-invocable: false
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Code Planning
 
-A structured methodology for approaching code tasks that produces higher-quality implementations by evaluating multiple approaches before committing to one.
+A structured methodology for choosing and implementing code approaches against the user's outcome and constraints.
+
+Before choosing or asking, apply the shared [decision ownership contract](../synthesis-thinking-framework/references/decision-ownership.md). Honor explicit supervised checkpoints; decide technical choices within delegated work and continue. Existing user grants persist within their scope. A skill, preference or receipt cannot create new authority.
 
 ## Inputs
 
@@ -33,10 +35,12 @@ Carefully analyze the task description and existing code. Consider:
 - What constraints does the existing code impose?
 - What are the performance, maintainability, and correctness requirements?
 - What best practices apply to this language, framework, or domain?
+- Which user goals, non-goals and prior decisions eliminate approaches?
+- What evidence could change the choice, and what consumer check would establish success?
 
 ### Step 2: Generate approaches
 
-Produce at least two distinct approaches to address the task. For each approach, document:
+Compare distinct viable approaches only when a real choice remains. If the constraints determine one approach, state that reason and proceed; do not manufacture a second option. For each remaining approach, document:
 
 **Approach 1:** [Brief description]
 - Pros:
@@ -54,7 +58,7 @@ Produce at least two distinct approaches to address the task. For each approach,
   - [Drawback 1]
   - [Drawback 2]
 
-Generate more approaches when the problem space is ambiguous or when the first two approaches have significant trade-offs against each other.
+Investigate the uncertainty that could change the selection. Generate more approaches when they add a materially different tradeoff, not to meet an option quota.
 
 ### Step 3: Evaluate and select
 
@@ -65,6 +69,8 @@ Select the optimal solution and justify the choice with specific reasoning:
 - Acknowledge what is sacrificed by not choosing the alternatives
 - If the decision is close, state that explicitly
 
+The delegated decision owner selects; a close technical tradeoff does not itself require another user approval. Clarify only material outcome ambiguity or an actual unsatisfied gate. New counterevidence can reopen a prior premise through its recorded owner.
+
 ### Step 4: Implement
 
 Implement the chosen solution by modifying or creating code:
@@ -73,10 +79,12 @@ Implement the chosen solution by modifying or creating code:
 - Follow the conventions and patterns already present in the codebase
 - Optimize for performance, maintainability, and adherence to best practices
 - Include necessary error handling and edge case coverage
+- Decompose around acceptance checks and real dependencies; reserve integration and verification work before parallelizing. Detail the next executable unit and refine later units as their inputs become known.
+- Run the consumer checks and required audits, and invalidate affected evidence after a change. Delegation changes approval cadence, not verification obligations.
 
 ## When to skip multi-approach evaluation
 
-For trivial changes (typo fixes, single-line config changes, renaming a variable), skip Steps 2-3 and implement directly. The threshold: if the implementation is obvious and unambiguous, proceed without generating alternatives.
+For trivial changes or choices already determined by constraints, skip alternative generation and implement directly. Record a consequential predetermined choice and its source without reopening it. An explicitly requested comparison still deserves a concise explanation of why excluded approaches fail the constraints.
 
 ## Principles
 

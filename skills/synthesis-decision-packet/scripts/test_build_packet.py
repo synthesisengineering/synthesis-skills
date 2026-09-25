@@ -292,7 +292,9 @@ def test_embedded_json_cannot_close_the_host_script_block():
     body = out[out.index('<script type="application/json"'):]
     body = body[:body.index("</script>")]
     assert "</script>" not in body
-    assert "<\\/script>" in body
+    embedded = body[body.index(">") + 1:]
+    assert "<" not in embedded
+    assert json.loads(embedded)["rows"][0]["context"] == s["rows"][0]["context"]
 
 
 def test_theme_tokens_are_defined_on_bare_root():
@@ -754,14 +756,14 @@ def test_record_rulings_round_trips_a_generated_packet():
     assert "R-04  Item 4\n    -> — not yet decided\n    note: Come back to this one.\n\n" in text
     assert "R-05  Item 5\n    -> Leave the code as it stands\n\n" in text
     assert "R-06  Item 6\n    -> — not yet decided\n\n" in text
-    assert text.endswith("Decided 4 of 6.\n1 of those were accepted in bulk rather than considered one by one — weight them accordingly.")
+    assert text.split("\n" + rr.BINDING_PREFIX)[0].endswith("Decided 4 of 6.\n1 of those were accepted in bulk rather than considered one by one — weight them accordingly.")
 
-    record = rr.parse_summary(text)
+    record = rr.parse_summary(text, s)
     assert record["packet"] == "Phone contacts — keep or drop"
     assert record["decided"] == 4 and record["total"] == 6
     by_id = {r["id"]: r for r in record["rulings"]}
     assert list(by_id) == ["R-01", "R-02", "R-03", "R-04", "R-05", "R-06"]
-    assert by_id["R-01"] == {"id": "R-01", "label": "Item 1", "choice_label": "Ship the fix",
+    assert by_id["R-01"] == {"id": "R-01", "label": "Item 1", "choice_value": "yes", "choice_label": "Ship the fix",
                              "took_recommendation": True, "accepted_in_bulk": False,
                              "recommended_label": "Ship the fix", "note": None}
     assert by_id["R-02"]["choice_label"] == "Leave the code as it stands"
@@ -798,18 +800,19 @@ def test_record_rulings_round_trips_a_generated_packet():
         assert str(filed) in proc.stdout
         # The rulings file shares its stem with the spec and page build_packet files.
         assert filed.name.startswith("2026-09-14-" + bp.slugify(s["title"]))
-        # A second run refuses to overwrite the principal's record unless told to.
+        # An identical second run is idempotent; historical replacement is refused.
         proc2 = subprocess.run(
             [sys.executable, str(HERE / "record_rulings.py"), str(paste),
              "--file-into", str(target), "--date", "2026-09-14"],
             capture_output=True, text=True)
-        assert proc2.returncode == 2, proc2.stdout + proc2.stderr
-        assert str(filed) in proc2.stderr and "--replace" in proc2.stderr
+        assert proc2.returncode == 0, proc2.stdout + proc2.stderr
+        assert json.loads(filed.read_text()) == data
         proc3 = subprocess.run(
             [sys.executable, str(HERE / "record_rulings.py"), str(paste),
              "--file-into", str(target), "--date", "2026-09-14", "--replace"],
             capture_output=True, text=True)
-        assert proc3.returncode == 0, proc3.stdout + proc3.stderr
+        assert proc3.returncode == 2, proc3.stdout + proc3.stderr
+        assert json.loads(filed.read_text()) == data
 
 
 def test_record_rulings_refuses_a_paste_with_no_filed_spec():
@@ -841,12 +844,15 @@ def test_record_rulings_reads_the_storage_blocked_trailer_and_stdin():
     rr = _rr()
     s = compliant_spec()
     text = rr.compose_summary(s, {"R-01": {"choice": "yes"}}, storage_blocked=True)
-    assert text.endswith("Decided 1 of 6.\n(This browser blocked local storage, so nothing was saved between sittings.)")
-    record = rr.parse_summary(text)
+    assert text.split("\n" + rr.BINDING_PREFIX)[0].endswith("Decided 1 of 6.\n(This browser blocked local storage, so nothing was saved between sittings.)")
+    record = rr.parse_summary(text, s)
     assert record["decided"] == 1
-    proc = subprocess.run(
-        [sys.executable, str(HERE / "record_rulings.py"), "-", "--stdout"],
-        input=text, capture_output=True, text=True)
+    with tempfile.TemporaryDirectory() as td:
+        current = pathlib.Path(td) / "current-spec.json"
+        current.write_text(json.dumps(s), encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, str(HERE / "record_rulings.py"), "-", "--stdout", "--spec", str(current)],
+            input=text, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert json.loads(proc.stdout)["rulings"][0]["choice_label"] == "Ship the fix"
 
@@ -867,7 +873,7 @@ def test_record_rulings_refuses_malformed_input_naming_the_expected_first_line()
     }
     for name, text in bad_inputs.items():
         try:
-            rr.parse_summary(text)
+            rr.parse_summary(text, s)
         except rr.SummaryError as exc:
             msg = str(exc)
         else:
@@ -984,7 +990,7 @@ def test_browser_fixture_spec_builds_clean_under_the_reader_contract():
 
 def test_record_rulings_parses_a_summary_captured_from_the_real_page():
     rr = _rr()
-    assert rr.compose_summary(browser_fixture_spec(), BROWSER_STATE) == BROWSER_SUMMARY, (
+    assert rr.compose_legacy_summary(browser_fixture_spec(), BROWSER_STATE) == BROWSER_SUMMARY, (
         "compose_summary() must reproduce the page's own output byte for byte")
     record = rr.parse_summary(BROWSER_SUMMARY)
     assert record["packet"] == "Phone contacts — keep or drop"
@@ -1075,7 +1081,7 @@ def test_line_breaks_in_title_row_label_option_label_or_id_are_refused():
     s["options"][0]["label"] = "Ship the fix"
     assert not [p for p in bp.validate(s) if "line break" in p]
     state = {"R-01": {"choice": "yes"}, "R-02": {"choice": "no", "note": "Behind a branch."}}
-    record = rr.parse_summary(rr.compose_summary(s, state))
+    record = rr.parse_summary(rr.compose_summary(s, state), s)
     assert record["packet"] == "Two lines" and record["decided"] == 2
     assert record["rulings"][1]["label"] == "Item 2 second line"
     assert record["rulings"][1]["choice_label"] == "Leave the code as it stands"
@@ -1098,7 +1104,7 @@ def test_title_underline_counts_utf16_units_like_the_page():
     assert len(s["title"]) == 16 and rr.js_length(s["title"]) == 17
     text = rr.compose_summary(s, {"R-01": {"choice": "yes"}})
     assert text.split("\n")[1] == "=" * 17
-    record = rr.parse_summary(text)
+    record = rr.parse_summary(text, s)
     assert record["packet"] == s["title"] and record["decided"] == 1
     # An underline of the code-point length is what an edited paste would carry.
     assert "Copy summary" in _refused(rr, text.replace("=" * 17, "=" * 16, 1))
@@ -1134,13 +1140,16 @@ def test_worked_example_paste_parses_to_the_rulings_file_it_shows():
     assert rr.compose_summary(example, state) == paste
 
     # And the parser turns it into exactly the JSON the document shows.
-    parsed = rr.parse_summary(paste)
+    parsed = rr.parse_summary(paste, example)
     assert parsed["total"] == len(example["rows"]) == shown["total"]
     assert parsed["decided"] == shown["decided"]
     assert [r["id"] for r in parsed["rulings"]] == [r["id"] for r in example["rows"]]
-    proc = subprocess.run(
-        [sys.executable, str(HERE / "record_rulings.py"), "-", "--stdout", "--date", shown["ruled_on"]],
-        input=paste, capture_output=True, text=True)
+    with tempfile.TemporaryDirectory() as td:
+        current = pathlib.Path(td) / shown["spec"]["file"]
+        current.write_bytes(bp.canonical_spec_bytes(example))
+        proc = subprocess.run(
+            [sys.executable, str(HERE / "record_rulings.py"), "-", "--stdout", "--date", shown["ruled_on"],
+             "--spec", str(current)], input=paste, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert json.loads(proc.stdout) == shown
 
@@ -1253,7 +1262,7 @@ def test_record_rulings_refusals_quote_what_they_received():
     were accepted there; the old message said "got ''" for a blank line it
     had itself required."""
     rr = _rr()
-    good = rr.compose_summary(compliant_spec(), {"R-01": {"choice": "yes"}})
+    good = rr.compose_legacy_summary(compliant_spec(), {"R-01": {"choice": "yes"}})
     padded = good.replace("\n\n", "\n \n")
     assert padded != good
     assert rr.parse_summary(padded) == rr.parse_summary(good)

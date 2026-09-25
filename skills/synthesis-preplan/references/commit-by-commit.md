@@ -26,6 +26,14 @@ thinking about.
 
 ## Preconditions
 
+Apply [decision ownership](../../synthesis-thinking-framework/references/decision-ownership.md).
+Carry the plan's mode, controlling instruction, delegated scope and actual
+approval gates. In delegated work, technical decisions and completed commit
+cycles continue without renewed permission. In supervised work, honor the
+user's requested pauses. Project-specific protocols take precedence over this
+default sequence; neither mode relaxes required tests, isolated review or action
+authority. New counterevidence returns a premise to its recorded owner.
+
 This workflow assumes:
 
 1. **Architectural decisions are already locked.** For tickets with
@@ -40,7 +48,7 @@ This workflow assumes:
 
 ## Step 0: todo list and branch, before the first commit
 
-Runs once, after the plan is approved and **before any file is
+Runs once, after the plan is approved or resolved under delegated authority and **before any file is
 touched** — not at the first commit, and never discovered at commit
 time. Both parts are hard requirements, in this order:
 
@@ -125,10 +133,10 @@ Do not skip steps. Do not bundle.
    behavior, and the step-3 run was against pre-fix code. This is the
    only place the whole-tree suite runs for this commit. If it fails,
    fix and amend again, then re-run it.
-8. **Pause and wait for user approval** before starting the next
-   commit's brief, even in auto mode. The brief is the natural
-   checkpoint; the user can always say "go" to advance, but the
-   default is to wait.
+8. **Checkpoint under the execution contract.** In supervised work, wait at
+   the requested between-commit approval. In delegated work, record the
+   result and start the next admissible brief. Ask only if the next action
+   reaches an unsatisfied gate or materially changes the requested outcome.
 
 ### Three rules the verify step keeps needing
 
@@ -174,15 +182,12 @@ the old thing as the thing being ruled out. And take diff shape from
 - A failing verify mid-plan is cheaper to fix than a failing verify
   after multiple commits are stacked.
 
-### Why pause between commits
+### Why checkpoint between commits
 
-- Gives the user a moment to course-correct scope or design before
-  the next commit's diff is locked in.
-- Prevents auto-mode from sprinting through a multi-commit plan
-  without checkpoints. The user reads the brief and decides whether
-  to proceed or redirect.
-- The pause is the single per-commit handoff. No extra approval
-  prompts for sub-steps within a commit.
+Each checkpoint records what passed, what changed and what remains. The user
+can redirect through the agreed supervised cadence; delegated work continues
+inside its grant. A checkpoint is always required, but a fresh approval is
+required only by the controlling instruction or the next action's boundary.
 
 ## Todo-list discipline
 
@@ -205,7 +210,7 @@ For each commit, the todo list must contain these as distinct items:
 - Audit commit N (run the isolated `synthesis-code-audit` skill, or your project's equivalent, on the commit's diff — never an inline audit)
 - Amend if findings (the amend-over-new-commit rule applies)
 - Full gate on commit N, once, after the amend
-- Pause for user approval before commit N+1's brief
+- Checkpoint before commit N+1; wait only at an explicit supervised or action gate
 
 For the end of the plan, the todo list must additionally contain all
 of these. **This list and the Workflow summary below are the same items
@@ -375,19 +380,21 @@ executed against a real runtime — unverified, not a pass), and
 **unobserved branches** (the `else` of a new conditional, error paths,
 alternate surfaces, every documented status code).
 
-For each real gap: close it, or consciously accept it and surface it
-in the PR with the residual-risk rationale. Accepting is the user's
-call, not the implementer's.
+For each real gap: close it, or route its residual-risk decision to the
+recorded owner. A designated integrator may decide technical sufficiency
+within delegated acceptance criteria. Only the actual owner may change a
+required criterion or accept a risk outside that grant. Surface the rationale
+in the PR; do not treat missing evidence as a passing check.
 
 ### 4. Plan-conformance review
 
-Did each commit do what was approved, and does the accumulated drift
+Did each commit follow its recorded plan and decision owners, and does the accumulated drift
 change anything locked in the decisions file? This is what the
-per-commit approvals structurally cannot see: eight commits each
+per-commit checkpoints structurally cannot see: eight commits each
 defensible alone whose sum has moved away from what was agreed.
 
 It also surfaces what a later commit revealed about an earlier one,
-which could not have been known when the earlier one was approved.
+which could not have been known when the earlier one was planned.
 
 **It also asks whether the plan's own remaining gates are still
 executable.** This is the first reader holding both the plan and the
@@ -442,7 +449,7 @@ touch earlier commits. They do not: no rebase, no amend.
 
 **Per commit (N times):**
 
-1. Brief → Execute → Fast-check → Commit → Audit → Amend if findings → Full gate (once) → Pause for user "go".
+1. Brief → Execute → Fast-check → Commit → Audit → Amend if findings → Full gate (once) → Checkpoint; continue under delegation or wait at the explicit supervised/action gate.
 
 **End of plan (once):**
 

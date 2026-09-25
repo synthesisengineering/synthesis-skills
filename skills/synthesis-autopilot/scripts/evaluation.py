@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import importlib.util
 import json
 import math
 from pathlib import Path
@@ -18,7 +19,7 @@ import re
 import statistics
 
 DOMAINS = ("software", "research", "writing", "data", "browser", "project")
-COMMANDS = ("corpus", "prepare", "controls", "calibrate", "preregister", "compare", "propose")
+COMMANDS = ("corpus", "prepare", "controls", "calibrate", "preregister", "compare", "propose", "episode", "worker")
 SCHEMA = 1
 VERIFIER = "autopilot-evaluation/1"
 
@@ -244,7 +245,7 @@ def _calibration_valid(value):
     return check["status"] == "PASS"
 
 
-def preregister(*, tasks, repetitions, lane, seed, arms, thresholds, semantic_calibration):
+def _preregister_v1(*, tasks, repetitions, lane, seed, arms, thresholds, semantic_calibration):
     if type(repetitions) is not int or not 1 <= repetitions <= 100:
         raise ValueError("repetitions must be an integer from 1 to 100")
     if lane not in ("controlled", "system", "ablation") or type(seed) is not int:
@@ -312,7 +313,7 @@ def _wilson(passed, assigned):
     return [max(0.0, center - delta), min(1.0, center + delta)]
 
 
-def compare(registration, trials):
+def _compare_v1(registration, trials):
     reg = copy.deepcopy(registration)
     recorded_digest = reg.pop("digest", None)
     if recorded_digest != digest(reg):
@@ -489,6 +490,42 @@ def propose_improvement(*, title, trial_refs, applicability, benefit, regression
             "owner": owner, "retirement_test": retirement_test}
 
 
+_V2 = None
+
+
+def _v2():
+    global _V2
+    if _V2 is None:
+        spec = importlib.util.spec_from_file_location("autopilot_evaluation_v2", Path(__file__).with_name("evaluation_v2.py"))
+        _V2 = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_V2)
+    return _V2
+
+
+def preregister(*, schema_version=1, **spec):
+    """Dispatch explicitly; schema1 keeps its historical qualification meaning."""
+    if type(schema_version) is not int or schema_version not in (1, 2):
+        raise ValueError("unsupported evaluation schema")
+    if schema_version == 1:
+        return _preregister_v1(**spec)
+    return _v2().preregister(schema_version=2, **spec)
+
+
+def compare(registration, trials):
+    version = _object(registration, "registration").get("schema_version")
+    if type(version) is not int or version not in (1, 2):
+        raise ValueError("unsupported evaluation schema")
+    return _compare_v1(registration, trials) if version == 1 else _v2().compare(registration, trials)
+
+
+def episode(registration, **observation):
+    return _v2().episode(registration, **observation)
+
+
+def worker(registration, task_id):
+    return _v2().worker(registration, task_id)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=COMMANDS)
@@ -510,17 +547,22 @@ def main(argv=None):
         else:
             if args.spec is None:
                 raise ValueError("--spec required")
-            spec = json.loads(args.spec.read_text())
+            spec = _v2()._json(args.spec.read_text(), "specification")
             if args.command == "preregister":
                 output = preregister(**spec)
             elif args.command == "propose":
                 output = propose_improvement(**spec)
             elif args.command == "calibrate":
                 output = calibrate(**spec)
+            elif args.command == "worker":
+                if not args.task:
+                    raise ValueError("worker requires --task")
+                output = worker(spec, args.task)
             else:
                 if args.trials is None:
-                    raise ValueError("compare requires --trials")
-                output = compare(spec, json.loads(args.trials.read_text()))
+                    raise ValueError(f"{args.command} requires --trials")
+                observations = _v2()._json(args.trials.read_text(), "observations")
+                output = episode(spec, **observations) if args.command == "episode" else compare(spec, observations)
         print(json.dumps(output, indent=2, default=str, allow_nan=False))
         return 0
     except (ValueError, OSError, TypeError) as exc:

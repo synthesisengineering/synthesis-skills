@@ -41,10 +41,17 @@ def test_ci_sandbox_preflight_is_required_before_consumer_tests():
     assert setup['run'].splitlines() == [
         'sudo apt-get update && sudo apt-get install -y bubblewrap',
         'python .github/scripts/check-ci-sandbox.py',
+        'synthesis_ci_chromium="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"',
+        'test -n "$synthesis_ci_chromium"',
+        '"$synthesis_ci_chromium" --version',
+        'echo "SYNTHESIS_TEST_CHROMIUM=$synthesis_ci_chromium" >> "$GITHUB_ENV"',
     ]
     assert not setup.get('continue-on-error') and not job.get('continue-on-error')
     consumers = next(step for step in steps if step.get('run') == 'python -m pytest skills/synthesis-autopilot/scripts/ -q')
     assert steps.index(setup) < steps.index(consumers)
+    browser_consumers = next(step for step in steps
+                             if 'synthesis-decision-packet/scripts/test_*.py' in step.get('run', ''))
+    assert steps.index(setup) < steps.index(browser_consumers)
 
 
 def _result(code=0, stdout='', stderr='', **extra):

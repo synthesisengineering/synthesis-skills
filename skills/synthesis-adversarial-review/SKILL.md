@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-grounding-discipline", "synthesis-anti-shortcuts", "synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -22,6 +22,13 @@ large finding count are not completion criteria.
 
 This skill governs the review protocol. It does not grant publication, deployment,
 communication, or repair authority. Those approval boundaries survive the review.
+
+Apply the shared [decision ownership contract](../synthesis-thinking-framework/references/decision-ownership.md).
+Record the technical sufficiency owner and the controlling instruction before review.
+Explicit supervised checkpoints remain binding; a designated integrator may resolve
+technical sufficiency under delegation without asking the principal again. Existing
+user grants persist within their exact scope. Preferences and receipts cannot create
+authority or weaken required acceptance criteria.
 
 ## Before Round One: Proportionality Contract
 
@@ -91,7 +98,7 @@ packaging is the fix, re-open the three-skill split then.
 
 One goal-focused round has five terminal stages:
 
-1. **Contract.** Restate the principal's outcome, immutable decisions, approval gates,
+1. **Contract.** Restate the principal's outcome, recorded decisions and their owners, approval gates,
    assigned artifact universe, and this round's attack plane.
 2. **Attack.** Derive counterexamples from the production path. Start controls at
    generation zero: encode motivating real defects as failing fixtures before repair.
@@ -101,14 +108,18 @@ One goal-focused round has five terminal stages:
 4. **Concept sweep.** Search the whole evidence package for the semantic claim a repair
    displaced. A corrected row beside stale summaries, receipts, headings, or sidecars is
    not a correction.
-5. **Sufficiency.** Present established, open, and risk of shipping now. Put the ship-now
-   choice in front of the principal at the named checkpoint. The principal's ruling terminates the loop.
+5. **Sufficiency.** Record established, open, and risk of shipping now. The delegated
+   integrator decides technical sufficiency against the accepted criteria. At a
+   principal-owned or explicitly supervised checkpoint, the principal's ruling terminates the loop.
+   A technical ruling does not grant publication or waive an unsatisfied action gate.
 
 Until artifact acceptance is green, most effort belongs to the principal's artifacts.
 System improvements route separately unless they block delivery. A `ship-improving`
 finding names its follow-up project; it does not extend the current delivery. A
 `ship-blocking` finding remains in the delivery until repaired, conceded by the reviewer,
-or ruled on by the principal.
+or resolved by its recorded decision owner within that owner's authority. New factual
+counterevidence can reopen a locked premise through that owner; retain the prior decision
+and invalidate dependent evidence. The reviewer never silently rewrites the premise.
 
 ## Sidecars, Evidence, and Handoff Topology
 
@@ -194,8 +205,10 @@ successful build or publisher-authored receipt.
    artifact, board delivery, lifecycle receipt, remote publication, and receiver
    acceptance independently.
 5. End when every artifact has a terminal verdict. Generic review does not reopen an
-   approval already exercised. A reproduced concrete correction requires fresh approval
-   before any new publication or deployment.
+   approval already exercised. For a reproduced correction, the existing action owner
+   checks whether the current grant covers the exact new payload and target. Obtain
+   fresh approval when that action exceeds the grant or its policy requires it; do not
+   infer renewed permission from a technical acceptance record.
 
 ## Agent-Principal Norms
 

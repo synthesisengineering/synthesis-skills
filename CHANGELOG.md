@@ -4,6 +4,21 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.146.0] - 2026-09-25
+
+Autopilot 3.1.0 binds comparative evaluations to qualified task configurations
+and current artifacts. Domain checks distinguish evidence of behavioral quality
+from artifact existence, and native review observations retain their current
+source and input bindings. Completion requires accepted outcomes at the declared
+consumer boundary; these checks do not establish comparative superiority.
+
+Planning, review and decision skills share explicit decision ownership. Choices
+already determined by delegated authority proceed; principal-only choices retain
+their actual approval boundary. Generated decision packets bind rulings to the
+reviewed specification and escape hostile HTML, comment and control identifiers.
+Full-page Chromium tests verify the rendered consumer and fail if the required
+browser is unavailable.
+
 ## [4.145.5] - 2026-09-25
 
 Codex cache recovery distinguishes the current client-owned checkout from

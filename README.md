@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.146.0** adds autopilot 3.1.0: qualified outcome evaluation,
+current domain evidence, shared decision ownership and verified decision pages.
+
 Release **4.145.5** preserves Codex's current native checkout during cache
 recovery. Published content verification remains required, historical roots keep
 their exact recovery checks, and displaced Git-backed trees remain available.

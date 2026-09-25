@@ -34,7 +34,7 @@ The forbidden-criteria list is the key. Each entry maps a stated non-goal to the
 
 ### Step 3. Generate Approaches Under the Filter
 
-Generate at least two distinct approaches. For each, list pros and cons honestly. The filter: no pro from the forbidden-criteria list can appear. If an approach's primary appeal would be a forbidden pro, the approach is structurally unavailable.
+Compare the viable approaches that remain after applying the constraints. When more than one remains, examine their material trade-offs honestly. When the constraints determine one approach, record why and execute it within the existing authority; do not manufacture a second option or ask the user to decide it again. No pro from the forbidden-criteria list can appear. If an approach's primary appeal would be a forbidden pro, the approach is structurally unavailable.
 
 If an approach's pros list reads as "smaller change," "lower disruption," "easier rollback," "preserves the old way" — and the constraints have removed those criteria — that approach is not a legitimate option. Cross it out before continuing.
 
@@ -97,9 +97,7 @@ In the project context:
 - Pros: clean architecture; substrate library is genuinely independent; reference implementation is unambiguous.
 - Cons: every consumer needs updating (mechanical, ~30 imports across N files); CI failures during the transition window.
 
-**Approach C: Namespace re-export, no real extraction.** Keep code in the old package; expose a new namespace that re-exports.
-- Pros: minimal change.
-- Cons: the "extraction" is cosmetic; the substrate is not actually separable; the architecture does not serve the stated goal.
+**Approach C: Namespace re-export, no real extraction.** [REJECTED BEFORE COMPARISON — the substrate remains coupled and does not deliver the required architecture.]
 
 ### Step 4 — Selection
 
@@ -145,7 +143,7 @@ Print or paste this above any non-trivial analysis:
 - [ ] I have written stated goals.
 - [ ] I have written stated non-goals.
 - [ ] I have written forbidden criteria — the pros that cannot appear.
-- [ ] I have generated approaches under the filter.
+- [ ] I have compared the remaining viable approaches, or recorded the constraint-determined choice.
 - [ ] I have selected and justified with constraint-aligned reasoning.
 - [ ] I have run the scanner on the draft.
 - [ ] Zero unresolved costume-vocabulary hits remain.

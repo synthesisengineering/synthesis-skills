@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-code-integration", "synthesis-codebase-review"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -22,7 +22,7 @@ Eight related engineering skills cover different scopes and lifecycle phases:
 
 | Skill | Scope | When to use |
 |-------|-------|-------------|
-| **preplan** | Architecture-decision locking for a ticket | Before any plan exists — lock the load-bearing design choices via Q&A |
+| **preplan** | Architecture decisions and their owners | Before implementation when material choices remain — preserve existing decisions, decide delegated choices and ask only the actual owner of unresolved choices |
 | **code-planning** | Approach selection for a task | Before writing code — evaluate alternatives, pick the best approach |
 | **implementation-integrity** | Self-verification of a single implementation | After completing work — "Is my code genuinely complete?" |
 | **code-audit** | 10-dimension quality scan of a diff | After implementation — systematic quality measurement |
@@ -59,7 +59,7 @@ A PR review is a delta review — you are evaluating a change against the curren
 - [ ] If the PR bundles fixes, each fix is clearly identified and could stand alone
 - [ ] Actual code changes match the stated scope in the PR title and ticket
 - [ ] Any expansion beyond the title scope is explicitly justified in the description
-- [ ] Editorial or business decisions embedded in code have stakeholder sign-off
+- [ ] Editorial or business decisions follow the actual decision owner's grant and scope; existing decisions and delegated choices are preserved without repeated sign-off, and a new material direction has the required approval
 - [ ] All test files test the feature being implemented, not unrelated features
 - [ ] Test files covering different functionality are flagged for separation into their own PR
 
@@ -99,7 +99,7 @@ A PR review is a delta review — you are evaluating a change against the curren
 ### 5. Completeness
 
 - [ ] The fix is sufficient to actually solve the stated problem
-- [ ] If companion changes are needed (backend + frontend, migration + code), they are either included or explicitly tracked
+- [ ] Companion changes needed for the promised outcome are included and exercised in the integration package, or the current PR is explicitly a dependency with a named owner and remains incomplete for that outcome
 - [ ] Tests cover the new behavior (or a clear reason why they do not)
 
 **Red flag:** A frontend fix for a problem whose root cause is in the backend.
@@ -298,11 +298,11 @@ Implementing something one way while the rest of the codebase does it another wa
 
 When a PR passes review and is ready for integration:
 
-1. **If the PR is clean** — merge directly (rare for synthesis-coded projects, but possible as contributor quality improves)
-2. **If the PR needs adaptation** — the lead synthesist creates an integration branch, applies the adopt-and-adapt pattern, and merges the adapted version
-3. **If the PR needs follow-up work** — merge what is ready, create tickets for the remaining work, and document the dependency
+1. **If the PR is clean** — the authorized integrator merges it after the repository's current gates pass.
+2. **If the PR needs adaptation** — the lead synthesist creates an integration branch, applies the adopt-and-adapt pattern, verifies the adapted bytes and merges within the actual grant.
+3. **If required work remains** — retain it as an open obligation. A dependency may land when independently useful, safe and authorized, but tickets or a partial merge cannot satisfy a promise to complete the whole outcome.
 
-The review findings feed directly into the integration plan.
+The review findings feed directly into the integration plan. Apply the shared [decision-ownership contract](../synthesis-thinking-framework/references/decision-ownership.md): technical review acceptance, merge authorization, release/deployment authorization and delivered outcome are separate facts. Prior valid grants remain usable within their scope; reviewer approval cannot create a new grant. Do not request the same authorization again merely because work moved to another skill.
 
 ### Post-Merge Verification
 

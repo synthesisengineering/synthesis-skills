@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+# Source-structure diagnostics only. These checks cannot establish native agent
+# behavior, actual principal authority, or the sufficiency of a real review.
+
 import pathlib
 import subprocess
 import sys
 
 import yaml
+
+from protocol_acceptance import autopilot_errors, review_errors
 
 
 SKILL_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -66,15 +71,30 @@ def test_control_depth_and_sufficiency_are_bounded() -> None:
 
 
 def test_autopilot_tracks_direct_dispatch_and_courier_cost() -> None:
-    text = autopilot_text()
+    # Detailed courier budgets and bounded critique belong to adversarial review.
+    # Autopilot's dependency and operative call site must route to that owner.
+    assert not autopilot_errors(autopilot_text())
+    assert not review_errors(review_text())
+    text = review_text()
     for required in (
-        "direct session-to-session dispatch",
         "principal courier crossings",
-        "round-trip budget",
-        "proportionality",
-        "reviewer satisfaction",
+        "Round-trip budget",
+        "generation N+1",
+        "generation N+2",
     ):
         assert required in text
+
+    # Mutation controls: the diagnostic must reject a missing ownership edge,
+    # missing operative invocation, or missing common decision contract.
+    text = autopilot_text()
+    missing_owner = text.replace(', "synthesis-adversarial-review"', "")
+    assert autopilot_errors(missing_owner)
+    missing_call = text.replace("one complete adversarial review", "one complete review")
+    assert autopilot_errors(missing_call)
+    missing_contract = text.replace(
+        "../synthesis-thinking-framework/references/decision-ownership.md", "missing.md"
+    )
+    assert autopilot_errors(missing_contract)
 
 
 def test_hidden_specialist_is_reachable_through_the_router() -> None:

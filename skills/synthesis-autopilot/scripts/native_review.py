@@ -387,6 +387,11 @@ def authorization_question(context, proposal_id):
 
 def _calibration(data, context, request):
     """Derive calibration from blind controls; preserve an authentic failure."""
+    if "domain_review" in data or (isinstance(data.get("observations"), dict)
+                                  and data["observations"].get("kind") == "domain-assessment"):
+        from domain_quality import rederive_review
+        rederive_review(data, context, request)
+        return True  # Authentic UNKNOWN and failed controls are still evidence.
     if data.get("domain") not in {"writing", "research"}:
         return True
     calibration = data.get("calibration")

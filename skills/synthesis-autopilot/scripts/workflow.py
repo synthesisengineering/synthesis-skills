@@ -710,6 +710,9 @@ def integrate(state, payload, context):
 
 def _observed_quality(domain, observation):
     """Domain-specific comparisons over verified observations, not vote counts."""
+    if isinstance(observation, dict) and observation.get("kind") == "domain-assessment":
+        from domain_quality import observation_verdict
+        return observation_verdict(domain, observation) == "PASS"
     boolean_fields = {
         "research": {"sources_verified", "decisive_claims_verified", "counterevidence_checked"},
         "writing": {"source_fidelity", "reader_purpose", "structure", "voice"},
@@ -745,10 +748,19 @@ def _observed_quality(domain, observation):
     raise ValueError("Unsupported quality domain")
 
 
-def quality_receipt_verdict(data, independent):
+def quality_receipt_verdict(data, independent, context=None):
     """Compute one typed quality observation's verdict without changing state."""
     if independent and (data["reviewer"] == data["producer"] or data.get("independent") is not True):
         return "UNKNOWN"
+    if "domain_review" in data or (isinstance(data.get("observations"), dict)
+                                  and data["observations"].get("kind") == "domain-assessment"):
+        from domain_quality import observation_verdict, rederive_review
+        if context is not None:
+            return rederive_review(data, context)
+        # Historical repair checks the grade-bound observation. It must not
+        # demand old source bytes be current after a verified output change.
+        verdict = observation_verdict(data["domain"], data["observations"])
+        return verdict if data.get("calibrated") is True else "UNKNOWN"
     if data["domain"] in {"writing", "research"} and data.get("calibrated") is not True:
         return "UNKNOWN"
     return "PASS" if _observed_quality(data["domain"], data.get("observations")) else "FAIL"
@@ -781,7 +793,7 @@ def grade(state, payload, context):
         _strings(data.get("findings"))
         if data.get("domain") not in flow["profile"]["dimensions"]["domains"]:
             raise ValueError("Quality evidence does not assess a configured domain")
-        outcomes.append(quality_receipt_verdict(data, independent))
+        outcomes.append(quality_receipt_verdict(data, independent, {**context, "state": state}))
     known = set(outcomes) - {"UNKNOWN"}
     verdict = "DISAGREEMENT" if known == {"PASS", "FAIL"} else "FAIL" if "FAIL" in known else "UNKNOWN" if not outcomes or "UNKNOWN" in outcomes else "PASS"
     if old and set(old["receipt_ids"]) == set(ids):

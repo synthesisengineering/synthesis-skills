@@ -1055,3 +1055,69 @@ def test_native_terminal_with_unknown_boundary_is_retained_but_cannot_complete(w
     child=result['extensions']['workflow']['children']['child-a']
     assert child['worker_observation']['terminal']=='completed' and child['write_enforcement']=='UNKNOWN'
     with pytest.raises(ValueError):call(wf,result,context,'return',child_id='child-a',disposition='complete',artifact_ids=[],evidence_ids=[],reason='No enforcement proof')
+
+
+def rich_quality_fixture(wf, state, context, tmp_path, verdict="PASS"):
+    from test_domain_quality import make_package, complete_data, assessment, add_document
+    import domain_quality
+    fixture, defects = make_package(tmp_path)
+    state = copy.deepcopy(state)
+    state["contract"]["criteria"] = fixture["state"]["contract"]["criteria"]
+    state["contract"]["outcomes"][0]["criteria"] = ["accept"]
+    fixture["state"] = state
+    if verdict == "FAIL": add_document(fixture, "draft", next(iter(defects)), "output")
+    package = domain_quality.load_package(fixture, "gold", "accept", "draft")
+    raw = assessment(package["rubric"], package["documents"], defect=defects.get(package["documents"]["draft"]["content"]))
+    if verdict == "UNKNOWN": raw["criteria"][0]["verdict"] = "UNKNOWN"
+    data = complete_data(fixture, defects, target_assessment=raw)
+    merged = {**context, **fixture}
+    state = configured(wf, state, merged, domain="writing")
+    merged["state"] = state
+    return state, receipt(state, merged, "rich-one", "quality_observation", data), data, defects
+
+
+@pytest.mark.parametrize("verdict", ["PASS", "FAIL", "UNKNOWN"])
+def test_rich_grade_preserves_exact_tristate_and_core_acceptance(wf, state, context, tmp_path, verdict):
+    import evidence_bridge
+    state, context, data, _ = rich_quality_fixture(wf, state, context, tmp_path, verdict)
+    graded = call(wf, state, context, "grade", criterion_id="accept", receipt_ids=["rich-one"], independent=True)
+    grade = graded["extensions"]["workflow"]["quality"]["accept"]
+    assert grade["verdict"] == verdict and grade["receipt_verdicts"] == {"rich-one": verdict}
+    assert wf.quality_receipt_verdict(data, True) == verdict
+    assert evidence_bridge._accept(context["evidence"]["rich-one"], state, state["contract"]["criteria"][0], context) is (verdict == "PASS")
+
+
+@pytest.mark.parametrize("mutation", ["summary", "flag", "source"])
+def test_rich_grade_rederives_evidence_even_with_an_authentic_receipt(wf, state, context, tmp_path, mutation):
+    state, context, data, _ = rich_quality_fixture(wf, state, context, tmp_path, "UNKNOWN")
+    if mutation == "summary":
+        data["observations"]["verdict"] = "PASS"
+        for row in data["observations"]["criteria"]: row["verdict"] = "PASS"
+        data["observations"]["dimensions"] = {key: "PASS" for key in data["observations"]["dimensions"]}
+        data["passed"] = True
+    if mutation == "flag": data["passed"] = True
+    if mutation == "source": (tmp_path / "brief.txt").write_text("Changed after observation")
+    with pytest.raises(ValueError):
+        call(wf, state, context, "grade", criterion_id="accept", receipt_ids=["rich-one"], independent=True)
+
+
+def test_rich_historical_failure_retains_interpretation_after_repair(wf, state, context, tmp_path):
+    from test_domain_quality import add_document, complete_data, SOUND
+    state, context, old_data, defects = rich_quality_fixture(wf, state, context, tmp_path, "FAIL")
+    failed = call(wf, state, context, "grade", criterion_id="accept", receipt_ids=["rich-one"], independent=True)
+    prior = copy.deepcopy(failed["extensions"]["workflow"]["quality"]["accept"])
+    add_document(context, "draft", SOUND, "output")
+    context["state"] = failed
+    fresh_data = complete_data(context, defects)
+    context = receipt(failed, context, "rich-two", "quality_observation", fresh_data)
+    context["evidence"]["rich-two"]["digest"] = "d" * 64
+    assert wf.quality_receipt_verdict(old_data, True) == "FAIL"
+    with pytest.raises(ValueError): wf.quality_receipt_verdict(old_data, True, context)
+    bindings = {"rich-two": {"digest": "d" * 64, "artifact_id": "draft", "artifact_digest": fresh_data["artifact_digest"]}}
+    resolution = wf.quality_resolution_requirements(prior, "accept", bindings)
+    context = receipt(failed, context, "rich-repair", "quality_resolution", {**resolution, "changed_evidence": "Corrected the seeded unsupported count and history"})
+    repaired = call(wf, failed, context, "grade", criterion_id="accept", receipt_ids=["rich-two"], independent=True,
+                    resolution_receipt_id="rich-repair")
+    assert repaired["extensions"]["workflow"]["quality"]["accept"]["verdict"] == "PASS"
+    assert repaired["extensions"]["workflow"]["quality_history"]["accept"] == [prior]
+    assert prior["receipt_verdicts"] == {"rich-one": "FAIL"}
