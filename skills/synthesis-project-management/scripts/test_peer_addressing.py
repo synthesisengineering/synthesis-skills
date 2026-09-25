@@ -33,6 +33,9 @@ def _hermetic(monkeypatch):
         "CLAUDE_PID",
         "CLAUDECODE",
         "SYNTHESIS_PEER_REGISTRY",
+        "CODEX_THREAD_ID",
+        "MUSE_SESSION_ID",
+        "SYNTHESIS_HOOK_CLIENT",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -846,3 +849,26 @@ def test_board_machine_falls_back_to_machine() -> None:
     the machine value itself is the comparison operand."""
     assert _seat("some-host").board_machine == "some-host"
     assert _seat("fleet-id-1", "").board_machine == "fleet-id-1"
+
+
+@pytest.mark.parametrize("extra", [
+    {"CLAUDECODE": "1"}, {"CLAUDE_CODE_SESSION_ID": "foreign"},
+    {"SYNTHESIS_CLIENT_SESSION_REF": "codex:foreign"},
+    {"SYNTHESIS_CLIENT_SESSION_REF": "cc:foreign"},
+    {"SYNTHESIS_CLIENT_SESSION_REF": "muse:current", "CLAUDECODE": "1"},
+    {"CODEX_THREAD_ID": "foreign"},
+])
+def test_native_identity_contract_conflicting_muse_hook_hints_refuse(extra):
+    with pytest.raises(ValueError, match="contradict"):
+        PA.identity_from_hook({"session_id": "current"}, {"SYNTHESIS_HOOK_CLIENT": "muse", **extra})
+
+
+def test_native_identity_contract_explicit_muse_ref_is_not_reclassified_as_codex():
+    identity = PA.identity_from_hook({"session_id": "current"}, {"SYNTHESIS_CLIENT_SESSION_REF": "muse:current"})
+    assert identity.client == PA.CLIENT_MUSE
+    assert identity.sender_key == "muse:current"
+
+
+def test_native_identity_contract_unknown_hook_client_refuses():
+    with pytest.raises(ValueError, match="unsupported"):
+        PA.identity_from_hook({"session_id": "current"}, {"SYNTHESIS_HOOK_CLIENT": "unrecognized-client"})

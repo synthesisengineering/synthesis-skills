@@ -1860,6 +1860,41 @@ def _write_lease_stamp(board: Path, config: dict, sha: str) -> None:
             pass
 
 
+def _lease_refresh_locked(board: Path, *, max_age_seconds: float = 0) -> dict:
+    """Existing fresh mirror reconciliation; caller must hold the board lock."""
+    try:
+        config = lease_configuration(board)
+        if config is None:
+            if board.is_file() and declared_lease(board.read_text(encoding="utf-8")):
+                raise RuntimeError("board declares a lease but lease.json is missing")
+            return {"configured": False}
+        if max_age_seconds:
+            if not math.isfinite(max_age_seconds) or not 0 < max_age_seconds <= PASSIVE_STOP_REFRESH_SECONDS:
+                raise RuntimeError("passive lease refresh interval must be at most 300 seconds")
+            cached = _cached_lease_refresh(board, config, max_age_seconds)
+            if cached is not None:
+                return cached
+        # Invalidate under the mutation lock, before trying the remote.
+        # Failed forced reads cannot leave an older success usable.
+        _invalidate_lease_stamp(board)
+        sha, content = lease_fetch(config)
+        if content is None:
+            raise RuntimeError("coordination lease remote ref has not been published")
+        write_board(board, content)
+        result = {"configured": True, "refreshed": True, "sha": sha}
+        try:
+            _write_lease_stamp(board, config, sha)
+        except OSError as exc:
+            result["cache_warning"] = str(exc)
+        return result
+    except (RuntimeError, OSError):
+        try:
+            _invalidate_lease_stamp(board)
+        except OSError:
+            pass
+        raise
+
+
 def lease_refresh(board: Path, *, max_age_seconds: float = 0) -> dict:
     """Refresh the mirror under the same local lock as board mutations.
 
@@ -1874,37 +1909,7 @@ def lease_refresh(board: Path, *, max_age_seconds: float = 0) -> dict:
         lock_path = board.parent / ".active-sessions.lock"
         with lock_path.open("a+", encoding="utf-8") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-            try:
-                config = lease_configuration(board)
-                if config is None:
-                    if board.is_file() and declared_lease(board.read_text(encoding="utf-8")):
-                        raise RuntimeError("board declares a lease but lease.json is missing")
-                    return {"configured": False}
-                if max_age_seconds:
-                    if not math.isfinite(max_age_seconds) or not 0 < max_age_seconds <= PASSIVE_STOP_REFRESH_SECONDS:
-                        raise RuntimeError("passive lease refresh interval must be at most 300 seconds")
-                    cached = _cached_lease_refresh(board, config, max_age_seconds)
-                    if cached is not None:
-                        return cached
-                # Invalidate under the mutation lock, before trying the remote.
-                # Failed forced reads cannot leave an older success usable.
-                _invalidate_lease_stamp(board)
-                sha, content = lease_fetch(config)
-                if content is None:
-                    raise RuntimeError("coordination lease remote ref has not been published")
-                write_board(board, content)
-                result = {"configured": True, "refreshed": True, "sha": sha}
-                try:
-                    _write_lease_stamp(board, config, sha)
-                except OSError as exc:
-                    result["cache_warning"] = str(exc)
-                return result
-            except (RuntimeError, OSError):
-                try:
-                    _invalidate_lease_stamp(board)
-                except OSError:
-                    pass
-                raise
+            return _lease_refresh_locked(board, max_age_seconds=max_age_seconds)
     except (RuntimeError, OSError) as exc:
         # An unreadable lock/configuration is not evidence of an unleased
         # board. Preserve the read-path error result so strict status fails.

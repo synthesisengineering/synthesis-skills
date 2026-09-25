@@ -21,7 +21,7 @@ import run_state
 import run_profile
 import workflow
 import observation_bridge
-from run_admission import admit_paths, read_admission_observation, safe_path
+from run_admission import admit_paths, read_admission_observation, reconcile_readback, safe_path
 
 OPERATIONS = frozenset({"start", "next", "record", "checkpoint", "explain", "cancel", "recover", "finish"})
 MAX_REQUEST_BYTES = 256 * 1024
@@ -433,7 +433,20 @@ class _Transaction:
         self.step("input:" + step, "input.materialize", {"id": check_id, "value": spec})
         return self.step("observe:" + step, "observe:" + kind, {"check_id": check_id})
 
+    def reconcile_readback(self):
+        # Only active operations reconcile the PM-owned mirror. Inspection and
+        # Stop remain read-only and refuse an unavailable or stale snapshot.
+        readonly = self.request["operation"] == "explain" or (
+            self.request["operation"] == "next" and self.request["input"]["mode"] == "inspect")
+        if not readonly:
+            reconcile_readback(Path(self.actor["board"]))
+
+    def completion_report(self):
+        self.reconcile_readback()
+        return self.engine.completion_report(self.project, self.run_id, actor=self.actor)
+
     def context(self):
+        self.reconcile_readback()
         return {**self.engine.inspect_context(self.state, self.actor, project=self.project),
                 "state": deepcopy(self.state), "project": self.project, "actor": deepcopy(self.actor)}
 
@@ -800,7 +813,7 @@ def _finish(tx, data):
     profile = tx.observe("profile", "profile", {})
     tx.step("verify-profile", "verify", {"criteria": [row["id"] for row in tx.state["contract"]["criteria"] if row["id"] in closure_ids],
                                           "profile_evidence": profile})
-    report = tx.engine.completion_report(tx.project, tx.run_id, actor=tx.actor)
+    report = tx.completion_report()
     if report["status"] != "PASS":
         raise ValueError("existing completion owner rejected closure: " + "; ".join(report["issues"]))
     if include_pm:
@@ -1005,13 +1018,13 @@ def handle(request: Request, *, project: Path, actor=None, runtime_root=None, so
             before = tx.context()
             if (any(row["required"] and identity not in before["artifacts"] for identity, row in tx.state["artifacts"].items())
                     or run_state.criterion_report(tx.state, before)["status"] != "PASS"):
-                current_acceptance = tx.engine.completion_report(tx.project, tx.run_id, actor=actor)
+                current_acceptance = tx.completion_report()
                 raise ValueError("terminal completion proof is no longer current: " + "; ".join(current_acceptance["issues"]))
         postamble = _postamble(tx) if finishing else None
         context = tx.context() if actor is not None else None
         status = tx.state["status"].upper() if tx.state["status"] in run_state.TERMINAL else "RECORDED" if operation in {"record", "checkpoint"} else "READY"
         if finishing:
-            current_acceptance = tx.engine.completion_report(tx.project, tx.run_id, actor=actor)
+            current_acceptance = tx.completion_report()
             if current_acceptance["status"] != "PASS":
                 status = "UNRESOLVED"
         if tx.state["status"] not in run_state.TERMINAL:

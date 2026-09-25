@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.149.2** aligns native transcript and SessionStart identity checks,
+rejects contradictory inbox routing, and recognizes observed Codex activity
+and compaction records without granting execution or completion authority.
+
 Release **4.149.1** streams large retained evidence and binds complete project
 inventories in compact execution receipts. Fresh capture is required for the
 new receipt schema; identity, content and resource checks remain enforced.

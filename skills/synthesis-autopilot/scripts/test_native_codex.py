@@ -91,6 +91,47 @@ class CodexTests(unittest.TestCase):
     def wire(self, value):
         return adapter.decode_wire(value, {"producer": ROOT, "mode": "synthetic"})[0]
 
+    def test_actual_agent_activity_and_compaction_shapes_are_observations(self):
+        # Synthetic identifiers, preserving the shapes observed in a current
+        # native rollout. These items neither attest worker cleanup nor grant
+        # authority, even when the native activity label says completed.
+        items = [{"type": "ContextCompaction", "id": "compact"}]
+        items.extend({"type": "SubAgentActivity", "id": "activity-" + kind,
+                      "kind": kind, "agent_thread_id": "child", "agent_path": "/root/worker"}
+                     for kind in ("completed", "interacted"))
+        for item in items:
+            with self.subTest(item=item):
+                row = self.item_completed(item)
+                before = deepcopy(row)
+                result = adapter.decode_record(row, ROOT)[0]
+                self.assertEqual(result["kind"], "item.observation")
+                self.assertEqual(result["status"], "observed")
+                self.assertFalse(result["data"]["portable_completion"])
+                self.assertFalse(result["data"]["grants_authority"])
+                self.assertIsNone(result["native"]["call_id"])
+                self.assertEqual(result["data"]["item_digest"], adapter._digest(item))
+                self.assertEqual(before, row)
+                projected = {"type": "event_msg", "payload.type": "item_completed",
+                             "payload.thread_id": "root", "payload.item.type": item["type"]}
+                self.assertTrue(adapter.supports_record_readback(projected, ROOT))
+                projected["payload.thread_id"] = "foreign"
+                self.assertFalse(adapter.supports_record_readback(projected, ROOT))
+
+    def test_agent_activity_and_compaction_reject_unqualified_shapes(self):
+        activity = {"type": "SubAgentActivity", "id": "activity", "kind": "completed",
+                    "agent_thread_id": "child", "agent_path": "/root/worker"}
+        for key, value in (("kind", "future"), ("kind", None), ("agent_thread_id", "root"),
+                           ("agent_thread_id", ""), ("agent_path", "/root"),
+                           ("agent_path", "/root/../worker"), ("agent_path", None)):
+            with self.subTest(key=key, value=value):
+                item = {**activity, key: value}
+                with self.assertRaises(ValueError):
+                    adapter.decode_record(self.item_completed(item), ROOT)
+        for item in ({**activity, "future_grant": True},
+                     {"type": "ContextCompaction", "id": "compact", "future_grant": True}):
+            with self.assertRaises(ValueError):
+                adapter.decode_record(self.item_completed(item), ROOT)
+
     def test_qualification_separates_root_and_child(self):
         for producer in (ROOT, CHILD):
             header = {"type": "session_meta", "payload": {"id": producer["thread_id"],

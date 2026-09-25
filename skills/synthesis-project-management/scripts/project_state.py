@@ -1542,17 +1542,25 @@ def observer_native_identity(payload: dict[str, Any]) -> tuple[str, str]:
         )
     except (ImportError, SyntaxError) as exc:
         raise ProjectStateError("observer native transcript validator is unavailable") from exc
-    if isinstance(raw, str) and Path(raw).is_absolute():
+    if raw is not None and raw != "":
+        if not isinstance(raw, str) or not Path(raw).is_absolute():
+            raise ProjectStateError("observer native transcript path must be absolute")
         transcript = Path(raw)
         if transcript.is_symlink() or not transcript.is_file():
             raise ProjectStateError("observer native transcript is missing or unsafe")
         matches = []
-        for client, variable in (("claude", "CLAUDE_CONFIG_DIR"), ("codex", "CODEX_HOME")):
-            raw_home = os.environ.get(variable, str(Path.home() / f".{client}"))
+        roots = [(client, os.environ.get(variable, str(Path.home() / f".{client}")))
+                 for client, variable in (("claude", "CLAUDE_CONFIG_DIR"), ("codex", "CODEX_HOME"))]
+        roots.append(("muse", str(muse_sessions_root())))
+        for client, raw_home in roots:
             if not raw_home.strip() or not Path(raw_home).expanduser().is_absolute():
                 continue
             home = Path(raw_home).expanduser()
             if not client_root_transcript_path(transcript, client, native, home):
+                continue
+            # Explicit Muse paths must obey the same unique-store selection
+            # as payloads without a path; a second date shard is ambiguous.
+            if client == "muse" and resolve_muse_transcript(native) != transcript:
                 continue
             if transcript_binds_session(transcript, client, native):
                 matches.append(client)

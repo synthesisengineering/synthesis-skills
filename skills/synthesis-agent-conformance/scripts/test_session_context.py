@@ -846,6 +846,89 @@ def test_live_receipt_preserves_empty_claude_transcript_until_binding(
     assert recorded["transcript_bound_at_record"] is False
 
 
+@pytest.mark.parametrize("shape", [
+    "ambiguous-clients", "symlink-root-bound", "symlink-root-pending",
+])
+def test_rejected_claude_identity_cannot_write_receipts(tmp_path, monkeypatch, shape):
+    """The pre-transcript exception cannot override terminal provenance refusal."""
+    session_id = "019fff79-5858-7993-a329-b301bccf5d37"
+    claude_home = tmp_path / "claude"
+    transcript = claude_home / "projects" / "workspace" / f"{session_id}.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(json.dumps({"sessionId": session_id}) + "\n")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    monkeypatch.setenv("MUSE_SESSIONS_DIR", str(tmp_path / "muse"))
+    if shape == "ambiguous-clients":
+        monkeypatch.setenv("CODEX_HOME", str(claude_home))
+        transcript.write_text(json.dumps({
+            "sessionId": session_id, "type": "session_meta",
+            "payload": {"id": session_id},
+        }) + "\n")
+    else:
+        linked_home = tmp_path / "claude-link"
+        linked_home.symlink_to(claude_home, target_is_directory=True)
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(linked_home))
+        transcript = linked_home / transcript.relative_to(claude_home)
+        if shape == "symlink-root-pending":
+            transcript.unlink()
+    payload = {"hook_event_name": "SessionStart", "session_id": session_id,
+               "transcript_path": str(transcript)}
+    assert MODULE.client_provenance(payload, session_id) is None
+    # Check the actual consumer and all fixture bytes, including latest,
+    # immutable receipt events, and the lifecycle state registry.
+    before = {str(p.relative_to(tmp_path)): p.read_bytes()
+              for p in tmp_path.rglob("*") if p.is_file()}
+    assert MODULE.record_live_receipt(payload, tmp_path / "receipts/latest.json") is False
+    assert {str(p.relative_to(tmp_path)): p.read_bytes()
+            for p in tmp_path.rglob("*") if p.is_file()} == before
+    assert not (tmp_path / "receipts").exists()
+
+
+@pytest.mark.parametrize("transition", ["canonical-bound", "ambiguous-bound", "symlink-root"])
+def test_pending_claude_receipt_revalidates_before_promotion(tmp_path, monkeypatch, transition):
+    """A native first write cannot inherit authority from the pending exception."""
+    session_id = "019fff79-5858-7993-a329-b301bccf5d37"
+    claude_home = tmp_path / "claude"
+    transcript = claude_home / "projects" / "workspace" / f"{session_id}.jsonl"
+    transcript.parent.mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    monkeypatch.setenv("MUSE_SESSIONS_DIR", str(tmp_path / "muse"))
+    payload = {"hook_event_name": "SessionStart", "session_id": session_id,
+               "transcript_path": str(transcript)}
+    assert MODULE.deferred_claude_provenance(payload, session_id) == ("claude", "claude-transcript")
+    original_plugin_identity = MODULE.plugin_identity
+
+    def first_native_write():
+        # Deterministically exercise the actual file-state transition between
+        # pending validation and final binding classification. Validators and
+        # receipt/state writers remain real.
+        if transition == "symlink-root":
+            relocated = tmp_path / "relocated-claude"
+            claude_home.rename(relocated)
+            claude_home.symlink_to(relocated, target_is_directory=True)
+        else:
+            header = {"sessionId": session_id}
+            if transition == "ambiguous-bound":
+                monkeypatch.setenv("CODEX_HOME", str(claude_home))
+                header.update({"type": "session_meta", "payload": {"id": session_id}})
+            transcript.write_text(json.dumps(header) + "\n")
+        return original_plugin_identity()
+
+    monkeypatch.setattr(MODULE, "plugin_identity", first_native_write)
+    receipt = tmp_path / "receipts/latest.json"
+    if transition == "canonical-bound":
+        assert MODULE.record_live_receipt(payload, receipt) is True
+        recorded = json.loads(receipt.read_text())
+        assert recorded["client"] == "claude"
+        assert recorded["transcript_bound_at_record"] is True
+    else:
+        assert MODULE.record_live_receipt(payload, receipt) is False
+        assert not receipt.parent.exists()
+        assert not (tmp_path / "state").exists()
+
+
 def _muse_store(tmp_path: Path, session_id: str, *, declared: str | None = None) -> Path:
     store = tmp_path / "muse-sessions"
     log = store / "2026" / "09" / "17" / session_id / "session.jsonl"
@@ -1548,3 +1631,43 @@ def test_plugin_identity_falls_back_to_the_execution_root_without_a_client_root(
     version_again, root_again = MODULE.plugin_identity()
     assert Path(root_again).resolve() == MODULE.SCRIPTS_DIR.parents[2]
     assert version_again == version
+
+
+@pytest.mark.parametrize("supplied", [False, True])
+def test_native_identity_contract_muse_receipt_round_trip(tmp_path, monkeypatch, supplied):
+    import project_state
+    session = "01990000-0000-7000-8000-000000000333"
+    store = _muse_store(tmp_path, session)
+    path = store / "2026/09/17" / session / "session.jsonl"
+    monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
+    payload = {"hook_event_name": "SessionStart", "session_id": session, "cwd": str(tmp_path), "source": "startup"}
+    if supplied: payload["transcript_path"] = str(path)
+    receipt = tmp_path / "receipt.json"
+    assert MODULE.record_live_receipt(payload, receipt)
+    emitted = json.loads(receipt.read_text())
+    assert emitted["transcript_path"] == str(path)
+    assert project_state.observer_native_identity(emitted) == ("muse", session)
+
+
+@pytest.mark.parametrize("damage", ["relative", "nonstring", "foreign", "missing", "symlink", "duplicate", "contradictory-session"])
+def test_native_identity_contract_provenance_refuses_supplied_muse_path_damage(tmp_path, monkeypatch, damage):
+    session = "01990000-0000-7000-8000-000000000444"
+    store = _muse_store(tmp_path, session)
+    path = store / "2026/09/17" / session / "session.jsonl"
+    monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
+    payload = {"session_id": session, "transcript_path": str(path)}
+    if damage == "relative": payload["transcript_path"] = "session.jsonl"
+    elif damage == "nonstring": payload["transcript_path"] = {"path": str(path)}
+    elif damage == "foreign":
+        other = tmp_path / "foreign.jsonl"; other.write_bytes(path.read_bytes()); payload["transcript_path"] = str(other)
+    elif damage == "missing": payload["transcript_path"] = str(path.parent / "missing.jsonl")
+    elif damage == "symlink":
+        saved = path.with_suffix(".retained"); path.rename(saved); path.symlink_to(saved)
+    elif damage == "duplicate":
+        other = store / "2026/09/18" / session / "session.jsonl"; other.parent.mkdir(parents=True); other.write_bytes(path.read_bytes())
+    else: payload["session_id"] = "01990000-0000-7000-8000-000000000555"
+    assert MODULE.client_provenance(payload, session) is None

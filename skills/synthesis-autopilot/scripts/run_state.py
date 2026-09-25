@@ -38,7 +38,7 @@ PM_SCRIPTS = Path(__file__).resolve().parents[2] / "synthesis-project-management
 if str(PM_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(PM_SCRIPTS))
 from plan_reference import resolve_plan_target
-from run_admission import admit_paths, admission_scope, bounded_lock, inspect_paths, native_binding, safe_path
+from run_admission import admit_paths, admission_scope, bounded_lock, inspect_paths, native_binding, reconcile_readback, safe_path
 from project_state import observer_native_identity
 import coordination
 
@@ -1067,13 +1067,15 @@ def inspect_context(state, actor, *, project=None):
     return context
 
 
-def _native_readback(project, state, actor, journal_head, *, passive=False, invalidation=False):
+def _native_readback(project, state, actor, journal_head, *, passive=False, invalidation=False, owner_reconcile=False):
     """An ephemeral fresh-read operation, never a reusable admission token.
 
     The closure binds an already chain-verified state. Each invocation acquires
     fresh native/PM admission and rejects an intervening journal append before
     and after the selected current source ranges are read.
     """
+    if passive and owner_reconcile:
+        raise RunStateError("passive Stop readback cannot reconcile the coordination mirror")
     selected, principal, head = deepcopy(state), deepcopy(actor), deepcopy(journal_head)
     project = Path(project)
     def read(event_ids=None, interval=None, *, source_handle="root"):
@@ -1081,6 +1083,8 @@ def _native_readback(project, state, actor, journal_head, *, passive=False, inva
         base = {"project": project, "state": selected, "actor": principal}
         if observation_bridge._current_head(base) != head["digest"]:
             raise RunStateError("native readback journal head changed")
+        if owner_reconcile:
+            reconcile_readback(Path(principal["board"]))
         proof = _binding(project, selected, principal, readonly=True, passive=passive)
         purpose = "passive-stop" if passive else "mutation"
         with admission_scope(proof, principal, project, purpose=purpose) as token:
@@ -1637,7 +1641,7 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
             if command == "owner.resume":
                 context["owner_resume"] = deepcopy(getattr(proof, "_owner_resume_observation", None))
             context["journal_head"] = {"revision": state["revision"], "digest": previous["digest"], "scope": "full_run"}
-            context["current_native_invalidation"] = _native_readback(project, state, actor, context["journal_head"], invalidation=True)
+            context["current_native_invalidation"] = _native_readback(project, state, actor, context["journal_head"], invalidation=True, owner_reconcile=True)
             updated = deepcopy(state)
             if command.startswith("observe:") and command.split(":", 1)[1] in _OBSERVERS:
                 if command_id in state["evidence"] or command_id in state.get("observations", {}):

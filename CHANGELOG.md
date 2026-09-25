@@ -4,6 +4,24 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.149.2] - 2026-09-25
+
+Native identity and SessionStart now share canonical transcript validation
+across Claude, Codex and Muse. Supplied unsafe or ambiguous paths refuse;
+contradictory client hints cannot consume another client's inbox. Claude's
+pre-transcript receipt path remains available only while genuinely pending
+and revalidates before promotion to bound evidence.
+
+Autopilot recognizes observed Codex sub-agent activity and context compaction
+items without turning them into task completion, ownership, cleanup or cost
+settlement. Unsupported shapes still produce an explicit observation gap.
+Actual native recovery and supervision remain separate acceptance boundaries.
+
+Peer-send identity and audit failures now produce explicit denial. Active
+controller readback refreshes the existing PM mirror after its own lease CAS,
+then rechecks exact ownership. Read-only inspection and Stop keep their strict
+freshness and no-mutation boundaries.
+
 ## [4.149.1] - 2026-09-25
 
 Execution recovery streams retained evidence into compact complete-inventory

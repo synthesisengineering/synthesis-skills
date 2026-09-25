@@ -52,10 +52,9 @@ from project_context import extract, next_actions, record_freshness  # noqa: E40
 from plan_reference import locate_plan  # noqa: E402
 from active_project import load_and_validate  # noqa: E402
 from project_state import (STATE_FILE, ProjectStateError, read_operational_state,
-                           resolve_project, semantic_issues)  # noqa: E402
+                           resolve_project, semantic_issues, observer_native_identity)  # noqa: E402
 from coordination_schema import display_id, parse_table_rows, row_identity  # noqa: E402
 from live_receipt import (  # noqa: E402
-    claude_root_transcript_path,
     client_root_transcript_path,
     latest_receipt_paths,
     muse_sessions_root,
@@ -63,7 +62,6 @@ from live_receipt import (  # noqa: E402
     receipt_recorded_order,
     resolve_muse_transcript,
     transcript_binding_state,
-    transcript_binds_session,
     validate_receipt_event_directory,
 )
 from plugin_currency import sessionstart_notice  # noqa: E402
@@ -259,49 +257,19 @@ def append_runtime_digest_notice(message: str, payload: dict[str, object]) -> st
 def client_provenance(
     payload: dict[str, object], session_id: str
 ) -> tuple[str, str] | None:
-    """Identify the client from a transcript bound to the claimed session."""
-    transcript = Path(str(payload.get("transcript_path") or "")).expanduser()
-    candidates = (
-        (
-            "codex",
-            Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).expanduser(),
-        ),
-        (
-            "claude",
-            Path(
-                os.environ.get("CLAUDE_CONFIG_DIR", str(Path.home() / ".claude"))
-            ).expanduser(),
-        ),
-    )
-    if transcript.is_absolute():
-        if not transcript.is_file():
-            # Absolute-but-missing is the Claude pending case; the deferred
-            # path below owns it. Never let store resolution shadow it.
-            return None
-        for client, transcript_root in candidates:
-            try:
-                transcript.resolve().relative_to(transcript_root.resolve())
-            except (OSError, ValueError):
-                continue
-            if client == "claude" and not claude_root_transcript_path(
-                transcript, transcript_root, session_id
-            ):
-                continue
-            if transcript_binds_session(transcript, client, session_id):
-                return client, f"{client}-transcript"
+    """Use PM's shared native path/identity contract for lifecycle receipts.
+
+    This is historical identity evidence only. PM admission and the native
+    writer contract still establish current ownership before any mutation.
+    A supplied invalid path cannot fall back to another valid native store.
+    """
+    if payload.get("session_id") not in (None, "", session_id):
         return None
-    # Muse hook payloads carry no transcript path: resolve the date-sharded
-    # session log from the store and require the same binding evidence.
-    resolved = resolve_muse_transcript(session_id)
-    if resolved is None:
+    try:
+        client, _native = observer_native_identity({**payload, "session_id": session_id})
+    except ProjectStateError:
         return None
-    if not client_root_transcript_path(
-        resolved, "muse", session_id, muse_sessions_root()
-    ):
-        return None
-    if transcript_binds_session(resolved, "muse", session_id):
-        return "muse", "muse-transcript"
-    return None
+    return client, f"{client}-transcript"
 
 
 def deferred_claude_provenance(
@@ -315,19 +283,24 @@ def deferred_claude_provenance(
     still requires that exact client-owned transcript to bind the session id
     before accepting the evidence.
     """
-    transcript_text = str(payload.get("transcript_path") or "")
-    transcript = Path(transcript_text).expanduser()
+    transcript_text = payload.get("transcript_path")
+    if (
+        not isinstance(transcript_text, str)
+        or not Path(transcript_text).is_absolute()
+        or payload.get("session_id") not in (None, "", session_id)
+    ):
+        return None
+    transcript = Path(transcript_text)
     claude_root = Path(
         os.environ.get("CLAUDE_CONFIG_DIR", str(Path.home() / ".claude"))
     ).expanduser()
-    if not transcript_text or not claude_root_transcript_path(
-        transcript, claude_root, session_id
+    if not claude_root.is_absolute() or not client_root_transcript_path(
+        transcript, "claude", session_id, claude_root
     ):
         return None
-    if transcript_binding_state(transcript, "claude", session_id) not in {
-        "pending",
-        "bound",
-    }:
+    # This exception is only for an as-yet-unbound native destination. Bound
+    # history must pass the shared observer, including cross-client ambiguity.
+    if transcript_binding_state(transcript, "claude", session_id) != "pending":
         return None
     return "claude", "claude-transcript"
 
@@ -348,6 +321,7 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
     except ValueError:
         return False
     provenance = client_provenance(payload, session_id)
+    deferred = provenance is None
     if provenance is None:
         provenance = deferred_claude_provenance(payload, session_id)
     if provenance is None:
@@ -371,6 +345,17 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
         client == "claude" and binding_state == "pending"
     ):
         return False
+    if deferred:
+        # Claude can create its transcript while SessionStart is running. A
+        # pending exception cannot promote that new history without the full
+        # identity contract, or retain a destination that has become unsafe.
+        current = (
+            client_provenance(payload, session_id)
+            if binding_state == "bound"
+            else deferred_claude_provenance(payload, session_id)
+        )
+        if current != provenance:
+            return False
     transcript_bound_at_record = binding_state == "bound"
     event_id = str(uuid.uuid4())
     receipt = {

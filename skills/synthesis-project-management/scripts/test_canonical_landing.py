@@ -47,6 +47,11 @@ def isolate_git_config(tmp_path, monkeypatch):
 def _fresh_public_import_state(tmp_path, monkeypatch):
     isolate_public_import_state(monkeypatch)
     isolate_git_config(tmp_path, monkeypatch)
+    # A fixture owns its native client; inherited runner hints are not evidence.
+    for key in ("SYNTHESIS_CLIENT_SESSION_REF", "SYNTHESIS_HOOK_CLIENT", "CODEX_THREAD_ID",
+                "MUSE_SESSION_ID", "CLAUDECODE", "CLAUDE_CODE_SESSION_ID",
+                "CLAUDE_CODE_HOST_SESSION_ID", "CLAUDE_PID"):
+        monkeypatch.delenv(key, raising=False)
 
 
 def test_coordination_dependencies_resolve_to_sibling_modules(monkeypatch):

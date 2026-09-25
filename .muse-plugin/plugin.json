@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "synthesis-skills",
   "displayName": "Synthesis Skills",
-  "version": "4.149.1",
+  "version": "4.149.2",
   "description": "Synthesis engineering workflows for durable human-agent work across Muse, Claude Code, Codex, and other Agent Skills runtimes.",
   "compat": {
     "source": "native",

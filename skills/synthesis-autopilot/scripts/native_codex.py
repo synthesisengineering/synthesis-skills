@@ -14,7 +14,7 @@ import json
 import math
 
 
-ADAPTER_VERSION = "codex-dialect-v3"
+ADAPTER_VERSION = "codex-dialect-v4"
 SUPPORTED_SCHEMAS = (
     "session_meta", "turn_context", "token_usage_record", "event_msg.token_count",
     "event_msg.task_started", "event_msg.task_complete", "event_msg.turn_aborted",
@@ -200,7 +200,8 @@ def supports_record_readback(projected, producer):
     return (projected.get("type") == "event_msg"
         and projected.get("payload.type") == "item_completed"
         and projected.get("payload.thread_id") == producer["thread_id"]
-        and projected.get("payload.item.type") in ("CommandExecution", "FileChange", "Reasoning", "AgentMessage")
+        and projected.get("payload.item.type") in ("CommandExecution", "FileChange", "Reasoning",
+            "AgentMessage", "SubAgentActivity", "ContextCompaction")
         and all(projected.get(key, expected) == expected for key, expected in (
             ("thread_id", producer["thread_id"]), ("session_id", producer["root_session_id"]),
             ("payload.session_id", producer["root_session_id"]))))
@@ -260,6 +261,20 @@ def _completed_item(value, producer):
         if not isinstance(item.get("content"), list) or any(not isinstance(x, dict) for x in item["content"]):
             raise DialectError("invalid item message projection")
         _text(item.get("phase"), "item message phase")
+    elif kind == "SubAgentActivity":
+        # An activity label is a root-side observation, not proof that a child
+        # owns a task, completed it, settled usage or stopped its descendants.
+        if (set(item) != {"type", "id", "kind", "agent_thread_id", "agent_path"}
+                or item.get("kind") not in {"completed", "interacted"}):
+            raise DialectError("unsupported agent activity grammar")
+        thread = _text(item.get("agent_thread_id"), "agent activity thread")
+        path = _text(item.get("agent_path"), "agent activity path")
+        if (thread == producer["thread_id"] or not path.startswith("/root/")
+                or any(part in {"", ".", ".."} for part in path.split("/")[2:])):
+            raise DialectError("invalid agent activity identity")
+    elif kind == "ContextCompaction":
+        if set(item) != {"type", "id"}:
+            raise DialectError("unsupported context compaction grammar")
     else:
         raise DialectError("unsupported Codex completed item grammar")
     return status, {"turn_id": turn, "item_id": ident, "native_type": kind,
