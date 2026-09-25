@@ -23,6 +23,17 @@ do not assert measured comparative superiority or complete provider billing.
 
 ### Recovery, additional clients and operator visibility
 
+Same-native restart recovery connects a released seat to its authenticated new
+seat without resetting the run, costs, deadlines or unfinished obligations.
+Codex and Claude recovery verify the actual direct-user record; unsupported
+text-custody contracts refuse explicitly. A restart acknowledgment preserves
+the original wait and grants no new action authority.
+
+Cold-process Stop discovery loads its canonical identity owner before checking
+applicability. Explicit client hints cannot substitute for native evidence.
+Claude desktop legacy indexing retains verified native aliases across release;
+erased pre-index bindings remain explicitly unqualified during recovery.
+
 Recovery capsules preserve unfinished obligations, instructions and exact input
 bindings. Owner-prepared one-use continuation checks current authority and
 journal state before the supported native transport acts. Bounded supervision

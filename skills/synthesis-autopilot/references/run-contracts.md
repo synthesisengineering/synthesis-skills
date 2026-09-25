@@ -99,6 +99,11 @@ the actual bytes; changing them invalidates acceptance.
 | `continuation.renew` | A `receipt` from the `continuation-renewal` observer; extend the same live pair without resetting wake history or deadline |
 | `continuation.cancel` / `continuation.cancel-confirm` | Cancellation intent, then native readback of the exact pair's removal |
 | `owner.transfer.prepare` / `owner.transfer.accept` / `owner.transfer.revoke` | Bounded same-board intent, exclusive PM claim transition, then exact native target acceptance |
+| `owner.resume` | Same native conversation, terminal prior seat, exclusive replacement seat and current direct-user evidence; retains obligations and enters recovery |
+
+For a released seat replaced within the same native conversation, use the
+[same-native owner renewal protocol](owner-resume.md). It does not substitute
+for transferring work to a different native conversation.
 
 Handoff uses two authenticated phases because PM correctly prohibits both seats
 holding overlapping mutable claims. While it still owns the run, the predecessor

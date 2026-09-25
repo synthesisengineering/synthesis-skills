@@ -446,6 +446,16 @@ def _pending_handoff(project, state, payload):
 
 
 def _command_binding(project, state, actor, command, payload):
+    if command == "owner.resume":
+        # This is same-native seat renewal only. A different native owner still
+        # needs the predecessor's two-phase transfer, never this recovery seam.
+        if any(
+                row.get("request_digest") == _digest(payload)
+                and row.get("target", {}).get("session_uuid") == state["owner"]["session_uuid"]
+                for row in state.get("ownership_recoveries", [])):
+            return _binding(project, state, actor)  # Exact replay is checked below.
+        proof = _resume_binding(project, state, actor, payload)
+        return proof
     if command != "owner.transfer.accept" or state.get("handoff", {}).get("status") == "accepted":
         return _binding(project, state, actor)
     intent = _pending_handoff(project, state, payload)
@@ -459,6 +469,202 @@ def _command_binding(project, state, actor, command, payload):
     for key in ("project_id", "project_root", "repository", "branch"):
         if proof[key] != state["owner"][key]:
             raise RunStateError("handoff target changed the project or workspace binding")
+    return proof
+
+
+def _resume_user_message(actor, proof, spec, released_at):
+    """Observe a native root-user paragraph; never manufacture an approval.
+
+    Source/type/currentness are mechanical facts. Interpreting the user's prose
+    remains the admitted agent's responsibility. This observation cannot clear
+    a wait, amend authority, or rearm a cancelled run.
+    """
+    import native_observations as native
+    from html.parser import HTMLParser
+
+    class MarkupRegions(HTMLParser):
+        """Conservative exclusion of HTML containers and pending markup."""
+        def __init__(self):
+            super().__init__(convert_charrefs=False)
+            self.stack, self.seen = [], False
+
+        def handle_starttag(self, tag, attrs):
+            self.seen = True
+            if tag not in {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}:
+                self.stack.append(tag)
+
+        def handle_startendtag(self, tag, attrs):
+            self.seen = True
+
+        def handle_endtag(self, tag):
+            self.seen = True
+            if self.stack and self.stack[-1] == tag:
+                self.stack.pop()
+
+        def handle_comment(self, data):
+            self.seen = True
+    _fields(spec, {"offset", "length", "sha256", "excerpt"}, {"offset", "length", "sha256", "excerpt"})
+    if (type(spec["offset"]) is not int or spec["offset"] < 0 or type(spec["length"]) is not int
+            or not 0 < spec["length"] <= native.Limits().payload_bytes
+            or not isinstance(spec["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", spec["sha256"])
+            or not isinstance(spec["excerpt"], str) or not 0 < len(spec["excerpt"]) <= 4096):
+        raise RunStateError("resume requires a bounded exact native user locator and excerpt")
+    client, identity = observer_native_identity(actor["native_payload"])
+    if (client, identity) != (proof["client"], proof["native_session_id"]):
+        raise RunStateError("resume user source changed native identity")
+    path = actor["native_payload"].get("transcript_path")
+    if client == "muse":
+        from live_receipt import resolve_muse_transcript
+        path = resolve_muse_transcript(identity)
+    if not path:
+        raise RunStateError("resume user source is unavailable")
+    binding, _ = native.enroll_source(path, client=client, expected_root_session_id=identity,
+        expected_thread_id=identity, source_handle="owner-resume", mode="native")
+    stream, info = native._open(binding["path"], binding)
+    with stream:
+        native._header(stream, binding, info.st_size)
+        if spec["offset"] and native._stable_read(stream, binding["path"], spec["offset"] - 1, 1,
+                (binding["device"], binding["inode"]), info.st_size) != b"\n":
+            raise RunStateError("resume user locator is not a record boundary")
+        raw = native._stable_read(stream, binding["path"], spec["offset"], spec["length"],
+            (binding["device"], binding["inode"]), info.st_size)
+    if hashlib.sha256(raw).hexdigest() != spec["sha256"] or not raw.endswith(b"\n") or raw.count(b"\n") != 1:
+        raise RunStateError("resume user source bytes or record framing changed")
+    row = native._json(raw)
+    if any(row.get(key, False) is not False for key in ("isMeta", "isSidechain")):
+        raise RunStateError("generated or child user records cannot renew an owner")
+    events = native._events(row, binding, spec["offset"], spec["length"], spec["sha256"], 0)
+    if not events or any(event["kind"] != "message.user" for event in events):
+        raise RunStateError("resume locator is not a direct native root-user record")
+    times = {_time(event["native_timestamp"]) for event in events}
+    if any(moment <= _time(released_at) or moment > _time(_now()) for moment in times):
+        raise RunStateError("resume user evidence must follow the previous release and not be future dated")
+    # Use explicit textual content only: no serialized tool input, peer output,
+    # metadata, recursively discovered strings, or opaque future client payload.
+    if client == "claude":
+        message = row.get("message", {})
+        if message.get("role") != "user":
+            raise RunStateError("resume record has no explicit user role")
+        content = message.get("content")
+    elif client == "codex":
+        value = row.get("payload", {})
+        content = value.get("message") if row.get("type") == "event_msg" else value.get("content")
+    else:
+        # The current Muse raw adapter identifies accepted user intents, but its
+        # opaque intent bodies are not a text-custody contract. Refuse until that
+        # client provides a qualified direct-user text reader.
+        raise RunStateError("native client has no qualified direct-user text reader for owner renewal")
+    texts = [content] if isinstance(content, str) else [block["text"] for block in content or []
+        if isinstance(block, dict) and block.get("type") in {"text", "input_text"} and isinstance(block.get("text"), str)]
+    paragraphs = []
+    for text in texts:
+        if any(marker in text for marker in ("<hook_prompt", "<heartbeat", "<send_user_message_question_reply")):
+            raise RunStateError("injected lifecycle feedback is not direct-user restart evidence")
+        current, fence, quoted_paragraph = [], None, False
+        markup = MarkupRegions()
+        for line in text.splitlines() + [""]:
+            stripped = line.strip()
+            expanded = line.expandtabs(4)
+            # A fence is closed only by the same character, at least its
+            # opening length, no more than three leading spaces, and no info
+            # suffix. Other marker runs remain quoted contents, not toggles.
+            if fence is not None:
+                char, length = fence
+                if re.fullmatch(r" {0,3}" + re.escape(char) + "{" + str(length) + r",}[ \t]*", expanded):
+                    fence = None
+                continue
+            # Markdown permits lazy continuation lines inside block quotes.
+            # A missing '>' on the next line does not make it user prose.
+            if not stripped:
+                quoted_paragraph = False
+            elif stripped.startswith(">"):
+                quoted_paragraph = True
+            if quoted_paragraph:
+                if current:
+                    paragraphs.append("\n".join(current).strip()); current = []
+                continue
+            opening = re.fullmatch(r" {0,3}(`{3,}|~{3,})(.*)", expanded)
+            if opening and (opening[1][0] != "`" or "`" not in opening[2]):
+                fence = (opening[1][0], len(opening[1]))
+                if current:
+                    paragraphs.append("\n".join(current).strip()); current = []
+                continue
+            # Indented code remains data. Expand tabs using Markdown's four
+            # column stops; stripping first would erase this provenance.
+            indented = expanded.startswith("    ")
+            in_markup = bool(markup.stack or markup.rawdata)
+            markup.seen = False
+            if not indented:
+                markup.feed(line + "\n")
+                in_markup = in_markup or bool(markup.stack or markup.rawdata or markup.seen)
+            if not stripped or indented or in_markup or stripped.startswith((">", "<", "```", "~~~")):
+                if current:
+                    paragraphs.append("\n".join(current).strip()); current = []
+                continue
+            current.append(line)
+    if spec["excerpt"] not in paragraphs:
+        raise RunStateError("resume excerpt must be an exact unquoted direct-user paragraph")
+    return {**deepcopy(spec), "path": binding["path"], "generation": binding["generation"],
+        "native_timestamp": min(times).isoformat(), "event_ids": [event["event_id"] for event in events],
+        "scope": "Native root-user text provenance; interpretation is the admitted agent's recorded judgment",
+        "authority_granted": False}
+
+
+def _resume_binding(project, state, actor, payload):
+    required = {"previous_owner", "basis_revision", "basis_digest", "plan_digest", "user_message", "reason"}
+    _fields(payload, required | {"restart_wait"}, required)
+    prior = payload["previous_owner"]
+    if (not isinstance(prior, dict) or set(prior) != {"session_uuid", "native_ref"}
+            or prior != {key: state["owner"][key] for key in prior}
+            or type(payload["basis_revision"]) is not int or payload["basis_revision"] != state["revision"]
+            or payload["basis_digest"] != _digest(state) or payload["plan_digest"] != _plan_digest(project, state)
+            or not isinstance(payload["reason"], str) or not 0 < len(payload["reason"].strip()) <= 4096):
+        raise RunStateError("owner renewal requires the exact previous owner, state, plan and recorded interpretation")
+    if state["status"] in TERMINAL or state.get("handoff", {}).get("status") == "pending":
+        raise RunStateError("terminal runs or pending native transfers cannot use owner renewal")
+    if not isinstance(actor, dict) or set(actor) != {"board", "native_payload"} or str(Path(actor["board"]).expanduser().absolute()) != state["owner"]["board"]:
+        raise RunStateError("owner renewal requires the original coordination board")
+    if observer_native_identity(actor["native_payload"]) != (state["owner"]["client"], state["owner"]["native_session_id"]):
+        raise RunStateError("owner renewal requires the same native session; different native owners require prepared transfer")
+    # Finish authoritative predecessor and native-source observations before
+    # issuing PM's short-lived, unused mutation proof. A network lease read
+    # after issuance can spend that proof's lifetime; a passive stamp is not an
+    # authority substitute. Missing/archived predecessors still cannot resume.
+    from run_admission import _snapshot
+    board = Path(actor["board"])
+    board_snapshot = _snapshot(board)
+    rows = coordination.rows(board_snapshot)
+    previous = coordination.find_session(rows, prior["session_uuid"])
+    if (previous is None or previous.status.lower() not in coordination.TERMINAL_STATUSES
+            or previous.client_ref != prior["native_ref"] or previous.project != state["project_id"]
+            or previous.machine != state["owner"]["machine"]):
+        raise RunStateError("previous exact native seat has no current terminal proof")
+    message = _resume_user_message(actor, state["owner"], payload["user_message"], previous.heartbeat)
+    restart_wait = payload.get("restart_wait")
+    if restart_wait is not None:
+        _fields(restart_wait, {"id", "sha256"}, {"id", "sha256"})
+        wait = state["waits"].get(restart_wait["id"])
+        if (state["status"] != "waiting_user" or not wait or wait.get("kind") != "user"
+                or wait.get("status") != "pending" or _digest(wait) != restart_wait["sha256"]
+                or _time(message["native_timestamp"]) <= _time(wait["at"])):
+            raise RunStateError("restart acknowledgment requires the exact pending user wait and a later native user message")
+    proof = _binding(project, {**state, "owner": None}, actor)
+    if proof["session_uuid"] == prior["session_uuid"] or any(proof[key] != state["owner"][key] for key in
+            ("native_ref", "client", "native_session_id", "machine", "project_id", "project_root", "repository", "branch")):
+        raise RunStateError("owner renewal requires a new exclusive seat for the same native session and project")
+    # The just-issued proof re-fenced PM's authoritative board. Match its local
+    # mirror to the predecessor observation without another network operation;
+    # changed evidence refuses rather than renewing or extending a stale proof.
+    if board.is_symlink() or board.parent.is_symlink() or board.read_text(encoding="utf-8") != board_snapshot:
+        raise RunStateError("coordination predecessor changed during owner renewal")
+    proof._owner_resume_observation = {"previous": deepcopy(prior),
+        "target": {key: proof[key] for key in ("session_uuid", "native_ref")},
+        "previous_status": previous.status, "released_at": previous.heartbeat,
+        "basis_revision": state["revision"], "basis_digest": payload["basis_digest"],
+        "plan_digest": payload["plan_digest"], "user_message": message,
+        "interpretation": payload["reason"], "request_digest": _digest(payload),
+        "authority_granted": False, "restart_wait": deepcopy(restart_wait),
+        "waits_resolved": [restart_wait["id"]] if restart_wait else [], "effects_replayed": False}
     return proof
 
 
@@ -1341,6 +1547,21 @@ def _reduce(project, state, name, payload, context):
             "prepared_at": context["now"], "expires_at": payload["expires_at"],
             "prepared_revision": state["revision"] + 1, "state_digest": _handoff_snapshot(state),
             "plan_digest": context["plan_digest"]}
+    elif name == "owner.resume":
+        observation = context.get("owner_resume")
+        if not observation or observation["basis_digest"] != _digest(state):
+            raise RunStateError("owner renewal lacks its fresh production observation")
+        state.setdefault("ownership_recoveries", []).append({**deepcopy(observation), "at": context["now"]})
+        if observation["restart_wait"] is not None:
+            wait = state["waits"][observation["restart_wait"]["id"]]
+            prior = deepcopy(wait)
+            wait.update(status="resolved", resolved_at=context["now"],
+                restart_acknowledgment={"prior": prior, "prior_digest": _digest(prior),
+                    "ownership_recovery_digest": _digest(observation),
+                    "interpretation": payload["reason"], "native_user_message": deepcopy(observation["user_message"]),
+                    "authority_granted": False, "scope": "Agent-interpreted restart-pause acknowledgment only; no action approval"})
+        state["owner"] = context["binding"]
+        state["status"] = "recovering"
     elif name == "owner.transfer.revoke":
         _fields(payload, {"id"}, {"id"})
         intent = state.get("handoff")
@@ -1362,7 +1583,7 @@ def _reduce(project, state, name, payload, context):
 
 CORE_COMMANDS = frozenset({"transition", "progress", "wait.add", "wait.resolve", "contract.amend", "profile.amend",
     "artifact.register", "input.materialize", "evidence.record", "criterion.evidence.bind", "verify", "close", "effect.prepare", "effect.observe", "effect.reconcile",
-    "owner.transfer.prepare", "owner.transfer.accept", "owner.transfer.revoke"})
+    "owner.transfer.prepare", "owner.transfer.accept", "owner.transfer.revoke", "owner.resume"})
 
 
 def apply_command(project: Path, run_id: str, command: str, payload: dict, *, expected_revision: int,
@@ -1413,6 +1634,8 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
         # scope ends before the fresh mutation admission below.
         with admission_scope(proof, actor, project) as operation:
             context = _context_observed(project, state, payload, proof, actor=actor, observation=operation)
+            if command == "owner.resume":
+                context["owner_resume"] = deepcopy(getattr(proof, "_owner_resume_observation", None))
             context["journal_head"] = {"revision": state["revision"], "digest": previous["digest"], "scope": "full_run"}
             context["current_native_invalidation"] = _native_readback(project, state, actor, context["journal_head"], invalidation=True)
             updated = deepcopy(state)
@@ -1544,7 +1767,7 @@ def _owned_records(actor, *, runtime_root=None, require_admission=True):
     return result
 
 
-def discover_legacy(actor, legacy_root, *, plan=None, runtime_root=None, _paths=None):
+def discover_legacy(actor, legacy_root, *, plan=None, runtime_root=None, _paths=None, _desktop_bindings=None):
     """Bounded read-only upgrade inventory, scoped before semantic validation.
 
     Foreign or unattributed bytes are retained. A corrupt candidate containing
@@ -1596,8 +1819,9 @@ def discover_legacy(actor, legacy_root, *, plan=None, runtime_root=None, _paths=
     total = 0
     for path in paths:
         result["scanned"] += 1
+        selected_desktop = path.name in (_desktop_bindings or {})
         if path.is_symlink() or not path.is_file():
-            result["unattributed"].append({"source": str(path), "reason": "unsafe record", "blocking": path == exact})
+            result["unattributed"].append({"source": str(path), "reason": "unsafe record", "blocking": path == exact or selected_desktop})
             continue
         size = path.stat().st_size
         total += min(size, MAX_JSON_BYTES)
@@ -1606,7 +1830,7 @@ def discover_legacy(actor, legacy_root, *, plan=None, runtime_root=None, _paths=
             break
         with path.open("rb") as stream:
             raw = stream.read(MAX_JSON_BYTES + 1)
-        identity_hint = any(marker.encode() in raw for marker in refs | owners)
+        identity_hint = selected_desktop or any(marker.encode() in raw for marker in refs | owners)
         try:
             if len(raw) > MAX_JSON_BYTES:
                 raise ValueError("oversized record")
@@ -1616,12 +1840,29 @@ def discover_legacy(actor, legacy_root, *, plan=None, runtime_root=None, _paths=
         except (ValueError, UnicodeError) as exc:
             result["unattributed"].append({"source": str(path), "reason": str(exc), "blocking": identity_hint or path == exact})
             continue
-        if legacy.get("client_session_ref") not in refs and legacy.get("session_id") not in owners:
-            if legacy.get("client_session_ref") or legacy.get("session_id"):
-                result["foreign_count"] += 1
-            else:
-                result["unattributed"].append({"source": str(path), "reason": "record has no bound native owner", "blocking": path == exact})
+        # Validate retained identity before accepting any alternative selector.
+        # A matching modern seat/native reference cannot erase a contradiction
+        # in this record's previously observed desktop host and seat binding.
+        desktop = (_desktop_bindings or {}).get(path.name)
+        if desktop is not None and (legacy.get("client_session_ref") != desktop["host_ref"]
+                or legacy.get("session_id") != desktop["session_uuid"]):
+            result["unattributed"].append({"source": str(path), "reason": "Indexed desktop legacy binding changed", "blocking": True})
             continue
+        if desktop is None and legacy.get("client_session_ref") not in refs and legacy.get("session_id") not in owners:
+            # Historical binding is discovery only. A released seat never
+            # regains mutation authority, even when this record is selected.
+            if path == exact and str(legacy.get("client_session_ref", "")).startswith("ccd:"):
+                # Explicit plan selection is causal relevance, not proof of
+                # identity. Closed records need no continued execution.
+                if legacy.get("status") not in {"closed", "completed", "incomplete", "cancelled"}:
+                    result["unattributed"].append({"source": str(path), "reason": "Selected desktop legacy native binding is unavailable", "blocking": True})
+                continue
+            else:
+                if legacy.get("client_session_ref") or legacy.get("session_id"):
+                    result["foreign_count"] += 1
+                else:
+                    result["unattributed"].append({"source": str(path), "reason": "record has no bound native owner", "blocking": path == exact})
+                continue
         digest = hashlib.sha256(raw).hexdigest()
         item = {"source": str(path), "sha256": digest, "plan": legacy.get("plan"), "project_id": legacy.get("project_id")}
         if digest in imported:
@@ -1641,6 +1882,52 @@ def _legacy_selector_path(home, kind, identity):
     return home / kind / (hashlib.sha256(identity.encode()).hexdigest() + ".json")
 
 
+def _desktop_legacy_binding(board, value):
+    """Observe one exact PM sidecar before release removes its native mapping."""
+    from peer_addressing import CLIENT_CLAUDE, read_seat, seat_path
+    session = _uuid(value.get("session_id"))
+    path = seat_path(Path(board), session)
+    if path.is_symlink() or path.parent.is_symlink() or not path.is_file() or path.stat().st_size > MAX_JSON_BYTES:
+        raise RunStateError("Desktop legacy native binding is unavailable or unsafe")
+    raw = path.read_bytes()
+    seat = read_seat(Path(board), session, strict=True)
+    if (seat is None or seat.client != CLIENT_CLAUDE or not seat.host_session_id
+            or "ccd:" + seat.host_session_id != value.get("client_session_ref")
+            or path.read_bytes() != raw):
+        raise RunStateError("Desktop legacy native binding does not match its PM sidecar")
+    native = _uuid(seat.harness_session_id)
+    return {"native_ref": "cc:" + native, "host_ref": "ccd:" + seat.host_session_id,
+            "session_uuid": session, "sidecar_sha256": hashlib.sha256(raw).hexdigest()}
+
+
+def _validate_desktop_binding(name, binding):
+    if (not isinstance(name, str) or Path(name).name != name or not name.endswith(".json")
+            or not isinstance(binding, dict)
+            or set(binding) != {"native_ref", "host_ref", "session_uuid", "sidecar_sha256"}
+            or not isinstance(binding["native_ref"], str) or not binding["native_ref"].startswith("cc:")
+            or not isinstance(binding["host_ref"], str) or not binding["host_ref"].startswith("ccd:")
+            or not 4 < len(binding["host_ref"]) <= 4096
+            or not isinstance(binding["sidecar_sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", binding["sidecar_sha256"])):
+        raise RunStateError("invalid retained desktop legacy binding")
+    _uuid(binding["session_uuid"])
+    _uuid(binding["native_ref"][3:])
+
+
+def _retained_desktop_bindings(home, root):
+    path = home / "manifest.json"
+    if not path.exists():
+        return {}
+    prior = _read(path)
+    if prior.get("schema_version") != SCHEMA or prior.get("root") != str(root):
+        raise RunStateError("legacy inventory manifest does not bind this registry")
+    retained = prior.get("desktop_bindings", {})
+    if not isinstance(retained, dict):
+        raise RunStateError("invalid retained desktop legacy bindings")
+    for name, binding in retained.items():
+        _validate_desktop_binding(name, binding)
+    return retained
+
+
 def index_legacy(actor, legacy_root, *, runtime_root=None):
     """Explicit migration preparation, outside Stop. Preserve all source bytes.
 
@@ -1654,7 +1941,14 @@ def index_legacy(actor, legacy_root, *, runtime_root=None):
     if root.is_symlink() or (root.exists() and not root.is_dir()):
         raise RunStateError("legacy registry directory is unsafe")
     home = _legacy_index_home(root, runtime_root)
-    selectors, unknown, scanned = {}, [], 0
+    selectors, desktop_bindings, unknown, scanned = {}, {}, [], 0
+    retained = _retained_desktop_bindings(home, root)
+    for name, binding in retained.items():
+        identity = binding["native_ref"]
+        selectors.setdefault(("native", identity), set()).add(name)
+        desktop_bindings.setdefault(identity, {})[name] = binding
+        if not (root / name).exists():
+            unknown.append({"source": str(root / name), "reason": "Previously indexed desktop source disappeared", "status": "UNKNOWN"})
     identity_pattern = re.compile(rb"(?:cc:|codex:|muse:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
     for path in sorted(root.glob("*.json")):
         scanned += 1
@@ -1675,6 +1969,19 @@ def index_legacy(actor, legacy_root, *, runtime_root=None):
                     if isinstance(value.get(field), str) and value[field]]
                 if not identities:
                     raise ValueError("record has no bound owner")
+                if str(value.get("client_session_ref", "")).startswith("ccd:"):
+                    try:
+                        binding = _desktop_legacy_binding(actor["board"], value)
+                        if path.name in retained and any(retained[path.name][key] != binding[key]
+                                for key in ("native_ref", "host_ref", "session_uuid")):
+                            raise RunStateError("Previously indexed desktop binding changed; retained original discovery evidence")
+                        identity = binding["native_ref"]
+                        identities.append(("native", identity))
+                        desktop_bindings.setdefault(identity, {})[path.name] = binding
+                        retained[path.name] = binding
+                    except (OSError, ValueError) as exc:
+                        if value.get("status") not in {"closed", "completed", "incomplete", "cancelled"}:
+                            unknown.append({"source": str(path), "reason": str(exc), "status": "UNKNOWN"})
             except (ValueError, UnicodeError) as exc:
                 unknown.append({"source": str(path), "reason": str(exc), "status": "UNKNOWN"})
                 # A malformed own record must remain discoverable. Hints only
@@ -1687,16 +1994,29 @@ def index_legacy(actor, legacy_root, *, runtime_root=None):
             unknown.append({"source": str(path), "reason": str(exc), "status": "UNKNOWN"})
     generation = str(uuid.uuid4())
     with bounded_lock(home / ".index.lock"):
+        # Another explicit index operation may have observed the last sidecar
+        # before release. Do not erase its proof with our older scan snapshot.
+        for name, binding in _retained_desktop_bindings(home, root).items():
+            if name in retained and any(retained[name][key] != binding[key]
+                    for key in ("native_ref", "host_ref", "session_uuid")):
+                raise RunStateError("Concurrent desktop legacy binding changed; preserve the committed inventory")
+            retained.setdefault(name, binding)
+            identity = retained[name]["native_ref"]
+            selectors.setdefault(("native", identity), set()).add(name)
+            desktop_bindings.setdefault(identity, {})[name] = retained[name]
         generation_home = home / "generations" / generation
         for directory in ("native", "seats"):
             (generation_home / directory).mkdir(parents=True, exist_ok=True)
         for (kind, identity), names in selectors.items():
-            _write(_legacy_selector_path(generation_home, kind, identity), _json({"schema_version": SCHEMA,
-                   "generation": generation, "identity": identity, "sources": sorted(names)}) + b"\n")
+            selected = {"schema_version": SCHEMA, "generation": generation, "identity": identity, "sources": sorted(names)}
+            if kind == "native" and identity in desktop_bindings:
+                selected["desktop_bindings"] = desktop_bindings[identity]
+            _write(_legacy_selector_path(generation_home, kind, identity), _json(selected) + b"\n")
         # A complete generation commits through one manifest replacement;
         # concurrent Stop readers cannot mix old and newly built selectors.
         _write(home / "manifest.json", _json({"schema_version": SCHEMA, "root": str(root),
-               "generation": generation, "scanned": scanned, "unattributed_count": len(unknown)}) + b"\n")
+               "generation": generation, "scanned": scanned, "unattributed_count": len(unknown),
+               "desktop_bindings": retained}) + b"\n")
     return {"health": "PASS", "scanned": scanned, "unattributed": unknown, "index": str(home)}
 
 
@@ -1729,7 +2049,7 @@ def legacy_for_stop(actor, legacy_root, *, plan=None, runtime_root=None):
         row = row_for_event(parse_table_rows(board.read_text(encoding="utf-8")), actor["native_payload"], board=board)
         if row:
             owners.add(row["session uuid"])
-    paths = set()
+    paths, desktop_bindings = set(), {}
     if plan is None and board.is_file() and row:
         from project_state import _project_from_claim, _load_json, STATE_FILE
         from plan_reference import locate_plan
@@ -1751,6 +2071,16 @@ def legacy_for_stop(actor, legacy_root, *, plan=None, runtime_root=None):
             raise RunStateError("selected legacy owner index is invalid")
         if selected.get("generation") != manifest["generation"]:
             raise RunStateError("selected legacy generation does not match manifest")
+        bindings = selected.get("desktop_bindings", {})
+        if not isinstance(bindings, dict):
+            raise RunStateError("invalid desktop legacy bindings")
+        for name, binding in bindings.items():
+            _validate_desktop_binding(name, binding)
+            if (kind != "native" or identity != native_ref or client != "claude"
+                    or binding["native_ref"] != native_ref
+                    or name not in selected.get("sources", [])):
+                raise RunStateError("desktop legacy binding does not select this native observer")
+            desktop_bindings[name] = binding
         for name in selected.get("sources", []):
             if not isinstance(name, str) or Path(name).name != name or not name.endswith(".json"):
                 raise RunStateError("unsafe indexed legacy source")
@@ -1764,7 +2094,7 @@ def legacy_for_stop(actor, legacy_root, *, plan=None, runtime_root=None):
         path = root / f"{target.stem[:40]}-{key}.json"
         if path.exists():
             paths.add(path)
-    return {**discover_legacy(actor, root, plan=plan, runtime_root=runtime, _paths=paths), "health": "PASS",
+    return {**discover_legacy(actor, root, plan=plan, runtime_root=runtime, _paths=paths, _desktop_bindings=desktop_bindings), "health": "PASS",
             "inventory_unattributed": manifest.get("unattributed_count", 0)}
 
 

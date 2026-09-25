@@ -69,10 +69,23 @@ def actor_from_hook(payload):
             "native_payload": payload}
 
 
+def _observer_identity(payload):
+    # Combined Stop calls this before engine() or a CLI request decoder has
+    # imported PM. Resolve the canonical owner explicitly; import order and
+    # optional harness environment hints must not decide whether it exists.
+    scripts = HERE.parents[1] / "synthesis-project-management/scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from project_state import observer_native_identity
+    return observer_native_identity(payload)
+
+
 def surface_for(payload):
+    from capabilities import supported_surfaces
     explicit = payload.get("synthesis_surface") if isinstance(payload, dict) else None
     if explicit:
-        return explicit
+        entry = supported_surfaces()["surfaces"].get(explicit) if isinstance(explicit, str) else None
+        return explicit if entry and entry["dialect"] in {"claude", "codex", "muse", "cursor", "copilot"} else None
     if os.environ.get("SYNTHESIS_HOOK_CLIENT") == "muse":
         return "muse-cli"
     native = os.environ.get("SYNTHESIS_CLIENT_SESSION_REF", "")
@@ -87,15 +100,14 @@ def surface_for(payload):
     # Discover only a family established by the PM-native transcript validator.
     # Desktop vs CLI capabilities still require an explicit surface observation.
     try:
-        from run_admission import observer_native_identity
-        family, _ = observer_native_identity(payload)
+        family, _ = _observer_identity(payload)
         return {"codex": "codex-cli", "claude": "claude-code-cli", "muse": "muse-cli"}[family]
     except (ValueError, OSError, ImportError, KeyError, TypeError, RuntimeError):
         return None
 
 
 def stop_result(actor, *, runtime_root=None, reserve_feedback=True):
-    from capabilities import normalize_event, stop_response, continuation_status, wait_delivery_status
+    from capabilities import normalize_event, stop_response, continuation_status, wait_delivery_status, supported_surfaces
     payload = actor.get("native_payload", {}) if isinstance(actor, dict) else {}
     surface = surface_for(payload)
     if surface is None:
@@ -103,6 +115,12 @@ def stop_result(actor, *, runtime_root=None, reserve_feedback=True):
         return {"continue": False, "stopReason": message, "systemMessage": message}
     try:
         normalize_event(surface, payload)
+        # A surface/ref hint chooses a wire dialect, never ownership. Prove
+        # native identity even when no runtime index exists, so an absent or
+        # invalid transcript cannot be mistaken for an inactive engagement.
+        family, _ = _observer_identity(payload)
+        if family != supported_surfaces()["surfaces"][surface]["dialect"]:
+            raise ValueError("native transcript does not bind the selected Stop surface")
         runtime = engine()
         root = runtime_root if runtime_root is not None else default_runtime_root()
         legacy = runtime.legacy_for_stop(actor, Path(root) / "engagements", runtime_root=root)
