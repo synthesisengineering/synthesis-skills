@@ -19,6 +19,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -1735,7 +1736,7 @@ def test_repeated_archive_admission_preserves_root_identity_across_umask(tmp_pat
 
 
 def _native_codex_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-                          versions=("4.74.0", "4.75.0")):
+                          versions=("4.74.0", "4.75.0"), *, take_snapshot=True):
     source = tmp_path / "publisher"
     source.mkdir()
     (source / "install.sh").write_text("#!/bin/sh\nexit 0\n")
@@ -1759,8 +1760,8 @@ def _native_codex_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
         }))
     monkeypatch.setattr(release, "plugin_cache_parent", lambda _client: parent)
     monkeypatch.setattr(release, "codex_cache_archive", lambda: tmp_path / "archive")
-    snapshot = release.snapshot_codex_caches(release.Result(), repo=source)
-    assert snapshot is not None
+    snapshot = release.snapshot_codex_caches(release.Result(), repo=source) if take_snapshot else None
+    assert snapshot is not None or not take_snapshot
     return source, parent, snapshot
 
 
@@ -2253,6 +2254,470 @@ def test_restore_repeats_after_post_command_cache_deletion(
     )
     assert "restored 1" in detail
 
+
+def _replacement_native_cli(tmp_path, monkeypatch):
+    """Execute a declared synthetic native CLI that replaces its entire cache."""
+    home = tmp_path / "isolated-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    source, parent, _initial = _native_codex_fixture(tmp_path, monkeypatch, take_snapshot=False)
+    retained = parent / (".release-displaced-4.74.0-" + "a" * 32)
+    (parent / "4.74.0").rename(retained)
+    (retained / "local-note").write_bytes(b"native local bytes\x00\xff")
+    (retained / "local-note").chmod(0o640)
+    (retained / "local-link").symlink_to("local-note")
+    expected = _all_cache_bytes(retained)
+    cli = tmp_path / "synthetic-codex"
+    log = tmp_path / "cli.jsonl"
+    cli.write_text("#!" + sys.executable + "\n" + f'''
+import json, os, pathlib, shutil, subprocess, sys
+parent = pathlib.Path({str(parent)!r})
+source = pathlib.Path({str(source)!r})
+with pathlib.Path({str(log)!r}).open('a') as handle:
+    handle.write(json.dumps(sys.argv[1:]) + '\\n')
+if sys.argv[1:3] == ['plugin', 'add']:
+    assert parent.parent == pathlib.Path({str(tmp_path)!r}) and not parent.is_symlink()
+    shutil.rmtree(parent)
+    parent.mkdir()
+    subprocess.run(['git', '-c', 'core.hooksPath=' + os.devnull, 'clone', '--no-local',
+                    '--branch', 'v4.75.0', str(source), str(parent / '4.75.0')],
+                   check=True, capture_output=True)
+''')
+    cli.chmod(0o755)
+    monkeypatch.setattr(release, "resolve_client_binary", lambda _client: str(cli))
+    monkeypatch.setattr(release, "install_codex_cache_guardian", lambda *args, **kwargs: True)
+    return source, parent, retained, expected, log
+
+
+def _retained_bundles(tmp_path):
+    return sorted(bundle for bundle in (tmp_path / "archive-native-retained").glob("retained-*")
+                  if (bundle / "intent.json").is_file()
+                  and json.loads((bundle / "intent.json").read_text())["tree"].startswith(".release-displaced-"))
+
+
+def test_native_parent_replacement_preserves_exact_git_local_bytes_modes_and_repeated_run(tmp_path, monkeypatch):
+    source, parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    current_before = _all_cache_bytes(parent / "4.75.0")
+    result = release.Result()
+    assert release.refresh_client("codex", result, False, repo=source), result.steps
+    current_copies = list((tmp_path / "archive-native-retained").glob("retained-*/4.75.0"))
+    assert len(current_copies) == 1 and _all_cache_bytes(current_copies[0]) == current_before
+    assert len(log.read_text().splitlines()) == 2
+    assert not retained.exists()
+    bundle, = _retained_bundles(tmp_path)
+    copy = bundle / retained.name
+    assert _all_cache_bytes(copy) == expected
+    record = json.loads((bundle / "manifest.json").read_text())
+    assert record["state"] == "VERIFIED"
+    assert record["disposition"] == "RETAINED_FOR_SEPARATE_REVIEW"
+    assert record["source"] == str(retained)
+    assert stat.S_IMODE(bundle.stat().st_mode) == 0o700
+    assert stat.S_IMODE((bundle / "manifest.json").stat().st_mode) == 0o600
+    archive = tmp_path / "archive"
+    assert release._tree_bytes(archive) < release.CODEX_CACHE_ARCHIVE_BUDGET_BYTES
+    assert not list(archive.rglob(".git"))
+    assert any(str(bundle / "manifest.json") in step.detail for step in result.steps)
+    archive_before = release.RecoveryStore.read(archive).versions
+    assert release.refresh_client("codex", release.Result(), False, repo=source)
+    assert _retained_bundles(tmp_path) == [bundle]
+    assert _all_cache_bytes(copy) == expected
+    assert release.RecoveryStore.read(archive).versions == archive_before
+
+
+def test_native_refresh_waits_real_required_quiet_window_after_initial_recovery(tmp_path, monkeypatch):
+    source, _parent, _retained, _expected, _log = _replacement_native_cli(tmp_path, monkeypatch)
+    monkeypatch.setattr(release, "CODEX_CACHE_QUIET_SECONDS", 10.0)
+    monkeypatch.setattr(release, "CODEX_CACHE_POLL_SECONDS", 1.0)
+    started = time.monotonic()
+    result = release.Result()
+    assert release.refresh_client("codex", result, False, repo=source), result.steps
+    assert time.monotonic() - started >= 10.0
+    assert "10s quiet window" in result.steps[-1].detail
+
+
+@pytest.mark.parametrize("churn", [False, True])
+def test_initial_restore_cost_is_separate_from_bounded_genuine_churn(tmp_path, monkeypatch, churn):
+    source, parent, retained, expected, _log = _replacement_native_cli(tmp_path, monkeypatch)
+    monkeypatch.setattr(release, "CODEX_CACHE_QUIET_SECONDS", 10.0)
+    monkeypatch.setattr(release, "CODEX_CACHE_POLL_SECONDS", 1.0)
+    clock, passes, slept = [0.0], [], []
+    original_once, original_restore = release._restore_codex_caches_once, release.restore_codex_caches
+    def once(*args, **kwargs):
+        observed = original_once(*args, **kwargs)
+        passes.append(observed)
+        if len(passes) == 1:
+            clock[0] += 61.0  # Declared I/O latency; no Git/copy/hash operation is mocked.
+        return observed
+    def sleep(seconds):
+        clock[0] += seconds
+        slept.append(seconds)
+        if churn:
+            shutil.rmtree(parent / "4.74.0")
+    monkeypatch.setattr(release, "_restore_codex_caches_once", once)
+    monkeypatch.setattr(release, "restore_codex_caches", lambda snapshot, result:
+                        original_restore(snapshot, result, clock=lambda: clock[0], sleeper=sleep))
+    result = release.Result()
+    assert release.refresh_client("codex", result, False, repo=source) == (not churn)
+    assert passes[0] == ({"4.74.0"}, set())
+    assert len(passes) >= 2 and sum(slept) >= 10.0
+    if churn:
+        assert clock[0] == 61.0 + release.CODEX_CACHE_SETTLE_TIMEOUT_SECONDS
+        assert "quiet window" in result.steps[-1].detail
+    else:
+        assert clock[0] == 71.0
+    bundle, = _retained_bundles(tmp_path)
+    assert _all_cache_bytes(bundle / retained.name) == expected
+
+
+@pytest.mark.parametrize("damage", ["foreign-git", "nested-git", "metadata-link", "external-payload-link",
+                                    "root-link", "root-file", "malformed-name", "store-link", "store-inside-cache"])
+def test_retained_native_ownership_and_path_refusal_precedes_every_cli_command(tmp_path, monkeypatch, damage):
+    source, parent, retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    sentinel = tmp_path / "external"
+    sentinel.mkdir()
+    (sentinel / "private").write_text("foreign sentinel")
+    if damage == "foreign-git":
+        subprocess.run(["git", "-C", str(retained), "checkout", "--detach", "v4.75.0"], check=True, capture_output=True)
+    elif damage == "nested-git":
+        (retained / "nested/.git").mkdir(parents=True)
+    elif damage == "metadata-link":
+        (retained / ".git/config").rename(retained / ".git/saved-config")
+        (retained / ".git/config").symlink_to("saved-config")
+    elif damage == "external-payload-link":
+        (retained / "external-link").symlink_to(sentinel / "private")
+    elif damage == "root-link":
+        retained.rename(tmp_path / "original-retained")
+        retained.symlink_to(tmp_path / "original-retained", target_is_directory=True)
+    elif damage == "root-file":
+        retained.rename(tmp_path / "original-retained")
+        retained.write_text("not a directory")
+    elif damage == "malformed-name":
+        retained.rename(parent / ".release-displaced-unrecognized")
+    elif damage == "store-link":
+        (tmp_path / "archive-native-retained").symlink_to(sentinel, target_is_directory=True)
+    else:
+        monkeypatch.setattr(release, "codex_cache_archive", lambda: parent / "archive")
+    before = _all_cache_bytes(parent)
+    result = release.Result()
+    assert not release.refresh_client("codex", result, False, repo=source)
+    assert not log.exists()
+    assert _all_cache_bytes(parent) == before
+    assert (sentinel / "private").read_text() == "foreign sentinel"
+
+
+@pytest.mark.parametrize("damage", ["copy-bytes", "copy-mode", "manifest", "missing-intent", "missing-copy", "copy-link", "bundle-identity"])
+def test_native_recovery_corruption_after_cli_cannot_report_preservation(tmp_path, monkeypatch, damage):
+    source, _parent, retained, _expected, _log = _replacement_native_cli(tmp_path, monkeypatch)
+    original = release.run
+    def mutate_after_native(command, cwd=None, timeout=900):
+        result = original(command, cwd=cwd, timeout=timeout)
+        if command[1:3] == ["plugin", "add"]:
+            bundle, = _retained_bundles(tmp_path)
+            tree = bundle / retained.name
+            if damage == "copy-bytes":
+                (tree / "local-note").write_bytes(b"corrupt")
+            elif damage == "copy-mode":
+                (tree / "local-note").chmod(0o600)
+            elif damage == "manifest":
+                (bundle / "manifest.json").write_text("{}")
+            elif damage == "missing-intent":
+                (bundle / "intent.json").unlink()
+            elif damage == "missing-copy":
+                tree.rename(tmp_path / "retained-outside-bundle")
+            elif damage == "copy-link":
+                tree.rename(tmp_path / "retained-outside-bundle")
+                tree.symlink_to(tmp_path / "retained-outside-bundle", target_is_directory=True)
+            else:
+                bundle.rename(tmp_path / "original-bundle")
+                shutil.copytree(tmp_path / "original-bundle", bundle, symlinks=True)
+        return result
+    monkeypatch.setattr(release, "run", mutate_after_native)
+    result = release.Result()
+    assert not release.refresh_client("codex", result, False, repo=source)
+    assert "active-session cache preservation failed" in result.steps[-1].detail
+    assert "recovery copy kept" in result.steps[-1].detail
+
+
+def test_native_preservation_copy_interruption_retains_original_and_partial_then_retries(tmp_path, monkeypatch):
+    source, _parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    original = release.shutil.copytree
+    def interrupted_copy(src, dst, *args, **kwargs):
+        copied = original(src, dst, *args, **kwargs)
+        if Path(dst).name == retained.name and Path(dst).parent.name.startswith("retained-"):
+            raise KeyboardInterrupt("fixture interruption after native copy")
+        return copied
+    with monkeypatch.context() as interrupted:
+        interrupted.setattr(release.shutil, "copytree", interrupted_copy)
+        with pytest.raises(KeyboardInterrupt, match="fixture interruption"):
+            release.refresh_client("codex", release.Result(), False, repo=source)
+    assert not log.exists()
+    assert _all_cache_bytes(retained) == expected
+    incomplete, = _retained_bundles(tmp_path)
+    assert (incomplete / "intent.json").is_file() and not (incomplete / "manifest.json").exists()
+    assert release.refresh_client("codex", release.Result(), False, repo=source)
+    assert incomplete in _retained_bundles(tmp_path)
+    completed = [bundle for bundle in _retained_bundles(tmp_path) if (bundle / "manifest.json").is_file()]
+    assert len(completed) == 1
+    assert _all_cache_bytes(completed[0] / retained.name) == expected
+    assert release.refresh_client("codex", release.Result(), False, repo=source)
+    assert incomplete.is_dir() and len(_retained_bundles(tmp_path)) == 2
+
+
+def test_native_source_identity_change_after_snapshot_refuses_cli_and_keeps_both_copies(tmp_path, monkeypatch):
+    source, _parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    original = release._preserve_native_recovery
+    def replaced_after_preservation(root, commit):
+        record = original(root, commit)
+        if root == retained:
+            root.rename(tmp_path / "original-source")
+            shutil.copytree(tmp_path / "original-source", root, symlinks=True)
+        return record
+    monkeypatch.setattr(release, "_preserve_native_recovery", replaced_after_preservation)
+    result = release.Result()
+    assert not release.refresh_client("codex", result, False, repo=source)
+    assert not log.exists()
+    assert _all_cache_bytes(retained) == expected
+    assert _all_cache_bytes(tmp_path / "original-source") == expected
+    bundle, = _retained_bundles(tmp_path)
+    assert _all_cache_bytes(bundle / retained.name) == expected
+
+
+def test_native_copy_type_change_to_fifo_refuses_without_blocking_or_running_cli(tmp_path, monkeypatch):
+    source, _parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    original = release._native_recovery_inventory
+    changed = []
+    def replace_after_inventory(root):
+        result = original(root)
+        if root.name == retained.name and root.parent.name.startswith("retained-") and not changed:
+            target = root / "local-note"
+            target.unlink()
+            os.mkfifo(target)
+            changed.append(target)
+        return result
+    monkeypatch.setattr(release, "_native_recovery_inventory", replace_after_inventory)
+    result = release.Result()
+    assert not release.refresh_client("codex", result, False, repo=source)
+    assert not log.exists() and changed
+    assert _all_cache_bytes(retained) == expected
+    assert "changed file type" in result.steps[-1].detail
+
+
+@pytest.mark.parametrize("phase", ["copy", "after-native"])
+def test_hard_process_interruption_preserves_native_recovery_and_restarts(tmp_path, monkeypatch, phase):
+    source, parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    cli = tmp_path / "synthetic-codex"
+    script = tmp_path / "crash-copy.py"
+    script.write_text('''
+import os, pathlib, sys
+sys.path.insert(0, sys.argv[1])
+import release
+source, parent, archive, cli = map(pathlib.Path, sys.argv[2:6])
+phase = sys.argv[6]
+release.plugin_cache_parent = lambda _client: parent
+release.codex_cache_archive = lambda: archive
+release.resolve_client_binary = lambda _client: str(cli)
+release.install_codex_cache_guardian = lambda *a, **k: True
+original = release.shutil.copytree
+def crash(src, dst, *args, **kwargs):
+    value = original(src, dst, *args, **kwargs)
+    if phase == 'copy' and pathlib.Path(dst).parent.name.startswith('retained-'):
+        os._exit(77)
+    return value
+release.shutil.copytree = crash
+original_run = release.run
+def crash_after_native(command, cwd=None, timeout=900):
+    result = original_run(command, cwd=cwd, timeout=timeout)
+    if phase == 'after-native' and command[1:3] == ['plugin', 'add']:
+        os._exit(77)
+    return result
+release.run = crash_after_native
+release.refresh_client('codex', release.Result(), False, repo=source)
+''')
+    process = subprocess.run([sys.executable, str(script), str(Path(release.__file__).parent),
+                              str(source), str(parent), str(tmp_path / "archive"), str(cli), phase],
+                             capture_output=True, text=True, timeout=30)
+    assert process.returncode == 77, process.stdout + process.stderr
+    incomplete, = _retained_bundles(tmp_path)
+    assert (incomplete / "intent.json").is_file()
+    if phase == "copy":
+        assert not log.exists() and _all_cache_bytes(retained) == expected
+        assert not (incomplete / "manifest.json").exists()
+    else:
+        assert len(log.read_text().splitlines()) == 2 and not retained.exists()
+        assert (incomplete / "manifest.json").is_file()
+    assert _all_cache_bytes(incomplete / retained.name) == expected
+    assert release.refresh_client("codex", release.Result(), False, repo=source)
+    assert incomplete.is_dir()
+    completed = [bundle for bundle in _retained_bundles(tmp_path) if (bundle / "manifest.json").is_file()]
+    assert len(completed) == 1 and _all_cache_bytes(completed[0] / retained.name) == expected
+
+
+@pytest.mark.parametrize("missing", ["intent", "manifest", "tree", "bundle", "store", "catalog"])
+def test_restart_refuses_missing_native_recovery_artifacts_before_another_cli(tmp_path, monkeypatch, missing):
+    source, _parent, retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    assert release.refresh_client("codex", release.Result(), False, repo=source)
+    bundle, = _retained_bundles(tmp_path)
+    target = {"intent": bundle / "intent.json", "manifest": bundle / "manifest.json", "tree": bundle / retained.name,
+              "bundle": bundle, "store": bundle.parent, "catalog": tmp_path / "archive-native-retained.json"}[missing]
+    target.rename(tmp_path / "removed-artifact")
+    calls = log.read_bytes()
+    result = release.Result()
+    assert not release.refresh_client("codex", result, False, repo=source)
+    assert log.read_bytes() == calls
+    assert result.steps[-1].name == "install.codex.cache-snapshot"
+
+
+def test_interrupted_copy_without_original_or_ready_recovery_refuses_restart(tmp_path, monkeypatch):
+    source, _parent, retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    original = release.shutil.copytree
+    def interrupted_copy(src, dst, *args, **kwargs):
+        value = original(src, dst, *args, **kwargs)
+        if Path(dst).parent.name.startswith("retained-"):
+            raise KeyboardInterrupt("fixture interruption")
+        return value
+    with monkeypatch.context() as interrupted:
+        interrupted.setattr(release.shutil, "copytree", interrupted_copy)
+        with pytest.raises(KeyboardInterrupt):
+            release.refresh_client("codex", release.Result(), False, repo=source)
+    retained.rename(tmp_path / "unadmitted-original")
+    result = release.Result()
+    assert not release.refresh_client("codex", result, False, repo=source)
+    assert not log.exists()
+    assert "no exact original or complete recovery" in result.steps[-1].detail
+
+
+@pytest.mark.parametrize("boundary", ["plan", "store-mkdir", "bundle-mkdir", "intent", "copy", "ready", "verified"])
+def test_native_preservation_publication_crashes_recover_from_exact_original(tmp_path, monkeypatch, boundary):
+    source, parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    calls = []
+    def crash(point):
+        if point == boundary and not calls:
+            calls.append(point)
+            raise KeyboardInterrupt("fixture publication boundary " + point)
+    publish, write = release._publish_native_recovery_catalog, release._write_native_recovery_record
+    mkdir, copytree = Path.mkdir, release.shutil.copytree
+    def publish_then_crash(store, records, previous):
+        value = publish(store, records, previous)
+        if any(entry["intent"]["source"] == str(retained) for entry in records.values()):
+            crash("verified" if any(entry["state"] == "VERIFIED" for entry in records.values()) else "plan")
+        return value
+    def mkdir_then_crash(path, *args, **kwargs):
+        value = mkdir(path, *args, **kwargs)
+        if path.name == "archive-native-retained":
+            crash("store-mkdir")
+        if path.name.startswith("retained-"):
+            crash("bundle-mkdir")
+        return value
+    def write_then_crash(path, value):
+        digest = write(path, value)
+        if path.name in {"intent.json", "manifest.json"}:
+            crash("intent" if path.name == "intent.json" else "ready")
+        return digest
+    def copy_then_crash(src, dst, *args, **kwargs):
+        value = copytree(src, dst, *args, **kwargs)
+        if Path(dst).parent.name.startswith("retained-"):
+            crash("copy")
+        return value
+    with monkeypatch.context() as interrupted:
+        interrupted.setattr(release, "_publish_native_recovery_catalog", publish_then_crash)
+        interrupted.setattr(release, "_write_native_recovery_record", write_then_crash)
+        interrupted.setattr(Path, "mkdir", mkdir_then_crash)
+        interrupted.setattr(release.shutil, "copytree", copy_then_crash)
+        with pytest.raises(KeyboardInterrupt, match="fixture publication boundary"):
+            release.refresh_client("codex", release.Result(), False, repo=source)
+    assert calls == [boundary] and not log.exists()
+    assert _all_cache_bytes(retained) == expected
+    catalog_path = tmp_path / "archive-native-retained.json"
+    original_catalog = json.loads(catalog_path.read_text())["records"]
+    assert original_catalog
+    result = release.Result()
+    assert release.refresh_client("codex", result, False, repo=source), result.steps
+    assert not retained.exists()
+    verified = [bundle / retained.name for bundle in _retained_bundles(tmp_path)
+                if (bundle / "manifest.json").is_file()]
+    assert verified and all(_all_cache_bytes(tree) == expected for tree in verified)
+    # Restart again after the native source has gone: completed recovery covers
+    # the original durable plan; no incomplete attempts or plans are deleted.
+    assert release.refresh_client("codex", release.Result(), False, repo=source)
+    assert set(original_catalog) <= set(json.loads(catalog_path.read_text())["records"])
+    assert all(_all_cache_bytes(tree) == expected for tree in verified)
+
+
+@pytest.mark.parametrize("name", [".release-stage-4.74.0-" + "b" * 32,
+                                  ".release-repair-4.74.0-" + "b" * 32,
+                                  ".release-displaced-unrecognized", ".release-private-recovery"])
+def test_unknown_or_interrupted_transition_root_blocks_native_parent_replacement(tmp_path, monkeypatch, name):
+    source, parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    root = parent / name
+    root.mkdir()
+    (root / "private-evidence").write_bytes(b"do not discard interruption evidence")
+    before = _all_cache_bytes(parent)
+    result = release.Result()
+    assert not release.refresh_client("codex", result, False, repo=source)
+    assert "review before refresh" in result.steps[-1].detail
+    assert not log.exists() and _all_cache_bytes(parent) == before
+    assert _all_cache_bytes(retained) == expected
+
+
+def test_transition_root_appearing_after_snapshot_blocks_first_native_command(tmp_path, monkeypatch):
+    source, parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    original = release.snapshot_codex_caches
+    def inject(*args, **kwargs):
+        snapshot = original(*args, **kwargs)
+        assert snapshot is not None
+        root = parent / (".release-stage-4.74.0-" + "b" * 32)
+        root.mkdir()
+        (root / "evidence").write_text("interrupted")
+        return snapshot
+    monkeypatch.setattr(release, "snapshot_codex_caches", inject)
+    result = release.Result()
+    assert not release.refresh_client("codex", result, False, repo=source)
+    assert not log.exists() and _all_cache_bytes(retained) == expected
+
+
+@pytest.mark.parametrize("damage", ["state-type", "records-type", "intent-type", "manifest-digest", "duplicate-key", "unknown-bundle"])
+def test_malformed_native_catalog_refuses_before_any_further_cli(tmp_path, monkeypatch, damage):
+    source, _parent, _retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    assert release.refresh_client("codex", release.Result(), False, repo=source)
+    catalog = tmp_path / "archive-native-retained.json"
+    data = json.loads(catalog.read_text())
+    first = next(iter(data["records"].values()))
+    if damage == "state-type":
+        first["state"] = {}
+    elif damage == "records-type":
+        data["records"] = []
+    elif damage == "intent-type":
+        first["intent"] = []
+    elif damage == "manifest-digest":
+        first["manifest_digest"] = "f" * 64
+    elif damage == "unknown-bundle":
+        (tmp_path / "archive-native-retained" / ("retained-" + "e" * 32)).mkdir()
+    if damage == "duplicate-key":
+        catalog.write_text('{"schema_version":1,"schema_version":1,"records":{}}')
+    elif damage != "unknown-bundle":
+        catalog.write_text(json.dumps(data))
+    calls = log.read_bytes()
+    result = release.Result()
+    assert not release.refresh_client("codex", result, False, repo=source)
+    assert calls == log.read_bytes()
+    assert result.steps[-1].name == "install.codex.cache-snapshot"
+
+
+def test_new_native_recovery_between_commands_blocks_destructive_add(tmp_path, monkeypatch):
+    source, parent, retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+    appeared = parent / (".release-displaced-4.74.0-" + "b" * 32)
+    original = release.run
+    def add_recovery_after_marketplace(command, cwd=None, timeout=900):
+        result = original(command, cwd=cwd, timeout=timeout)
+        if command[1:3] == ["plugin", "marketplace"]:
+            shutil.copytree(retained, appeared, symlinks=True)
+            (appeared / "new-private-evidence").write_bytes(b"appeared between actual native commands")
+        return result
+    monkeypatch.setattr(release, "run", add_recovery_after_marketplace)
+    result = release.Result()
+    assert not release.refresh_client("codex", result, False, repo=source)
+    assert len(log.read_text().splitlines()) == 1
+    assert (appeared / "new-private-evidence").read_bytes() == b"appeared between actual native commands"
 
 def test_tag_backed_snapshot_refuses_archive_budget_overflow(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
