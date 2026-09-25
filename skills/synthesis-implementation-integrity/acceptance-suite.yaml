@@ -510,5 +510,5 @@ cases:
 - id: runtime-version
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_runtime_version_matches_skill_metadata
+  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_engine_versions_and_skill_contract_agree
   motivating_defect: Both executable engine versions match skill metadata
